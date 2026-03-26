@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+.env.*
+coverage
+.turbo
+.DS_Store
+apps/api/generated
+

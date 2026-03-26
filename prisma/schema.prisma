@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RequirementStatus {
+  ACTIVE
+}
+
+enum WorkflowRunStatus {
+  CREATED
+  TASK_SPLIT_PENDING
+  TASK_SPLIT_WAITING_CONFIRMATION
+  TASK_SPLIT_CONFIRMED
+  PLAN_PENDING
+  PLAN_WAITING_CONFIRMATION
+  PLAN_CONFIRMED
+  EXECUTION_PENDING
+  EXECUTION_RUNNING
+  REVIEW_PENDING
+  HUMAN_REVIEW_PENDING
+  DONE
+  FAILED
+}
+
+enum StageType {
+  REQUIREMENT_INTAKE
+  TASK_SPLIT
+  TECHNICAL_PLAN
+  EXECUTION
+  AI_REVIEW
+  HUMAN_REVIEW
+}
+
+enum StageExecutionStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  WAITING_CONFIRMATION
+  REJECTED
+}
+
+enum TaskStatus {
+  DRAFT
+  CONFIRMED
+  REJECTED
+}
+
+enum PlanStatus {
+  DRAFT
+  WAITING_HUMAN_CONFIRMATION
+  CONFIRMED
+  REJECTED
+}
+
+enum CodeExecutionStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  WAITING_HUMAN_REVIEW
+}
+
+enum ReviewReportStatus {
+  COMPLETED
+  FAILED
+  WAITING_HUMAN_REVIEW
+}
+
+model Requirement {
+  id                 String        @id @default(cuid())
+  status             RequirementStatus @default(ACTIVE)
+  title              String
+  description        String
+  acceptanceCriteria String
+  workflowRuns       WorkflowRun[]
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+}
+
+model WorkflowRun {
+  id             String              @id @default(cuid())
+  status         WorkflowRunStatus   @default(CREATED)
+  currentStage   StageType?
+  requirementId  String
+  requirement    Requirement         @relation(fields: [requirementId], references: [id])
+  stageExecutions StageExecution[]
+  tasks          Task[]
+  plan           Plan?
+  codeExecution  CodeExecution?
+  reviewReport   ReviewReport?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+}
+
+model StageExecution {
+  id           String               @id @default(cuid())
+  workflowRunId String
+  workflowRun  WorkflowRun          @relation(fields: [workflowRunId], references: [id])
+  stage        StageType
+  attempt      Int                  @default(1)
+  status       StageExecutionStatus @default(PENDING)
+  input        Json?
+  output       Json?
+  errorMessage String?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([workflowRunId, stage, attempt])
+}
+
+model Task {
+  id           String     @id @default(cuid())
+  workflowRunId String
+  workflowRun  WorkflowRun @relation(fields: [workflowRunId], references: [id])
+  title        String
+  description  String
+  order        Int
+  status       TaskStatus @default(DRAFT)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Plan {
+  id                 String     @id @default(cuid())
+  workflowRunId      String     @unique
+  workflowRun        WorkflowRun @relation(fields: [workflowRunId], references: [id])
+  status             PlanStatus @default(DRAFT)
+  summary            String
+  implementationPlan Json
+  filesToModify      Json
+  newFiles           Json
+  riskPoints         Json
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+}
+
+model CodeExecution {
+  id           String              @id @default(cuid())
+  workflowRunId String             @unique
+  workflowRun  WorkflowRun         @relation(fields: [workflowRunId], references: [id])
+  status       CodeExecutionStatus @default(RUNNING)
+  patchSummary String
+  changedFiles Json
+  codeChanges  Json
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+}
+
+model ReviewReport {
+  id           String              @id @default(cuid())
+  workflowRunId String             @unique
+  workflowRun  WorkflowRun         @relation(fields: [workflowRunId], references: [id])
+  status       ReviewReportStatus  @default(COMPLETED)
+  issues       Json
+  bugs         Json
+  missingTests Json
+  suggestions  Json
+  impactScope  Json
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+}
