@@ -52,6 +52,9 @@ function formatStageStatus(status?: string) {
 }
 
 export function StageCard(props: StageCardProps) {
+  const shouldShowStatusMessage =
+    !!props.statusMessage && (props.status === 'RUNNING' || props.status === 'FAILED');
+
   return (
     <Card
       className="stage-card"
@@ -76,7 +79,7 @@ export function StageCard(props: StageCardProps) {
       }
     >
       <div className="stage-output-label">阶段产出</div>
-      {props.statusMessage ? (
+      {shouldShowStatusMessage ? (
         <Text type="secondary" className="requirement-criteria">
           {props.statusMessage}
         </Text>

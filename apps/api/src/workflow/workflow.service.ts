@@ -282,7 +282,7 @@ export class WorkflowService {
 
           await this.updateStageExecution(tx, stageExecution.id, StageExecutionStatus.WAITING_CONFIRMATION, {
             output: splitOutput,
-            statusMessage: '任务拆解完成，等待人工确认',
+            statusMessage: null,
             finishedAt: new Date(),
           });
 
@@ -449,7 +449,7 @@ export class WorkflowService {
 
           await this.updateStageExecution(tx, planStage.id, StageExecutionStatus.WAITING_CONFIRMATION, {
             output,
-            statusMessage: '技术方案已生成，等待人工确认',
+            statusMessage: null,
             finishedAt: new Date(),
           });
 
@@ -622,7 +622,7 @@ export class WorkflowService {
 
           await this.updateStageExecution(tx, executionStage.id, StageExecutionStatus.COMPLETED, {
             output,
-            statusMessage: '开发执行完成，等待 AI 审查',
+            statusMessage: null,
             finishedAt: new Date(),
           });
 
@@ -752,7 +752,7 @@ export class WorkflowService {
 
           await this.updateStageExecution(tx, reviewStage.id, StageExecutionStatus.COMPLETED, {
             output,
-            statusMessage: 'AI 审查完成，等待人工评审',
+            statusMessage: null,
             finishedAt: new Date(),
           });
 
