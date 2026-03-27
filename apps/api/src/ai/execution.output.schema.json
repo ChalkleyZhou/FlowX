@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["patchSummary", "changedFiles", "codeChanges"],
+  "properties": {
+    "patchSummary": { "type": "string", "minLength": 1 },
+    "changedFiles": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "codeChanges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "changeType", "summary"],
+        "properties": {
+          "file": { "type": "string", "minLength": 1 },
+          "changeType": { "type": "string", "enum": ["create", "update"] },
+          "summary": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

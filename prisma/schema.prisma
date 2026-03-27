@@ -3,166 +3,230 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
-enum RequirementStatus {
-  ACTIVE
-}
-
-enum WorkflowRunStatus {
-  CREATED
-  TASK_SPLIT_PENDING
-  TASK_SPLIT_WAITING_CONFIRMATION
-  TASK_SPLIT_CONFIRMED
-  PLAN_PENDING
-  PLAN_WAITING_CONFIRMATION
-  PLAN_CONFIRMED
-  EXECUTION_PENDING
-  EXECUTION_RUNNING
-  REVIEW_PENDING
-  HUMAN_REVIEW_PENDING
-  DONE
-  FAILED
-}
-
-enum StageType {
-  REQUIREMENT_INTAKE
-  TASK_SPLIT
-  TECHNICAL_PLAN
-  EXECUTION
-  AI_REVIEW
-  HUMAN_REVIEW
-}
-
-enum StageExecutionStatus {
-  PENDING
-  RUNNING
-  COMPLETED
-  FAILED
-  WAITING_CONFIRMATION
-  REJECTED
-}
-
-enum TaskStatus {
-  DRAFT
-  CONFIRMED
-  REJECTED
-}
-
-enum PlanStatus {
-  DRAFT
-  WAITING_HUMAN_CONFIRMATION
-  CONFIRMED
-  REJECTED
-}
-
-enum CodeExecutionStatus {
-  RUNNING
-  COMPLETED
-  FAILED
-  WAITING_HUMAN_REVIEW
-}
-
-enum ReviewReportStatus {
-  COMPLETED
-  FAILED
-  WAITING_HUMAN_REVIEW
-}
-
 model Requirement {
-  id                 String        @id @default(cuid())
-  status             RequirementStatus @default(ACTIVE)
+  id                 String   @id @default(cuid())
+  status             String   @default("ACTIVE")
   title              String
   description        String
   acceptanceCriteria String
+  workspaceId        String?
+  workspace          Workspace? @relation(fields: [workspaceId], references: [id])
   workflowRuns       WorkflowRun[]
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Workspace {
+  id           String       @id @default(cuid())
+  status       String       @default("ACTIVE")
+  name         String
+  description  String?
+  repositories Repository[]
+  requirements Requirement[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model Repository {
+  id            String    @id @default(cuid())
+  status        String    @default("ACTIVE")
+  workspaceId   String
+  workspace     Workspace @relation(fields: [workspaceId], references: [id])
+  name          String
+  url           String
+  defaultBranch String?
+  currentBranch String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model User {
+  id            String          @id @default(cuid())
+  account       String?         @unique
+  email         String?         @unique
+  displayName   String
+  avatarUrl     String?
+  status        String          @default("ACTIVE")
+  localCredential LocalCredential?
+  identities    AuthIdentity[]
+  sessions      UserSession[]
+  memberships   UserOrganization[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+}
+
+model LocalCredential {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id])
+  account      String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model AuthIdentity {
+  id                    String   @id @default(cuid())
+  userId                String
+  user                  User     @relation(fields: [userId], references: [id])
+  provider              String
+  providerUserId        String
+  providerUnionId       String?
+  providerRawProfile    Json?
+  lastLoginAt           DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([provider, providerUserId])
+}
+
+model Organization {
+  id                    String             @id @default(cuid())
+  provider              String
+  providerOrganizationId String
+  name                  String
+  logoUrl               String?
+  memberships           UserOrganization[]
+  sessions              UserSession[]
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  @@unique([provider, providerOrganizationId])
+}
+
+model UserOrganization {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  role           String       @default("member")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([userId, organizationId])
+}
+
+model UserSession {
+  id            String    @id @default(cuid())
+  token         String    @unique
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  organizationId String?
+  organization  Organization? @relation(fields: [organizationId], references: [id])
+  expiresAt     DateTime
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model OAuthState {
+  id          String   @id @default(cuid())
+  provider    String
+  state       String   @unique
+  redirectUri String
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PendingOrganizationSelection {
+  id             String   @id @default(cuid())
+  token          String   @unique
+  provider       String
+  profile        Json
+  organizations  Json
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model WorkflowRun {
-  id             String              @id @default(cuid())
-  status         WorkflowRunStatus   @default(CREATED)
-  currentStage   StageType?
+  id              String @id @default(cuid())
+  status          String @default("CREATED")
+  currentStage    String?
   requirementId  String
-  requirement    Requirement         @relation(fields: [requirementId], references: [id])
+  requirement    Requirement @relation(fields: [requirementId], references: [id])
   stageExecutions StageExecution[]
   tasks          Task[]
   plan           Plan?
   codeExecution  CodeExecution?
   reviewReport   ReviewReport?
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model StageExecution {
-  id           String               @id @default(cuid())
+  id           String @id @default(cuid())
   workflowRunId String
-  workflowRun  WorkflowRun          @relation(fields: [workflowRunId], references: [id])
-  stage        StageType
-  attempt      Int                  @default(1)
-  status       StageExecutionStatus @default(PENDING)
+  workflowRun  WorkflowRun @relation(fields: [workflowRunId], references: [id])
+  stage        String
+  attempt      Int @default(1)
+  status       String @default("PENDING")
   input        Json?
   output       Json?
   errorMessage String?
   startedAt    DateTime?
   finishedAt   DateTime?
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([workflowRunId, stage, attempt])
 }
 
 model Task {
-  id           String     @id @default(cuid())
+  id           String @id @default(cuid())
   workflowRunId String
   workflowRun  WorkflowRun @relation(fields: [workflowRunId], references: [id])
   title        String
   description  String
   order        Int
-  status       TaskStatus @default(DRAFT)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  status       String @default("DRAFT")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model Plan {
-  id                 String     @id @default(cuid())
+  id                 String @id @default(cuid())
   workflowRunId      String     @unique
   workflowRun        WorkflowRun @relation(fields: [workflowRunId], references: [id])
-  status             PlanStatus @default(DRAFT)
+  status             String @default("DRAFT")
   summary            String
   implementationPlan Json
   filesToModify      Json
   newFiles           Json
   riskPoints         Json
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model CodeExecution {
-  id           String              @id @default(cuid())
+  id           String @id @default(cuid())
   workflowRunId String             @unique
-  workflowRun  WorkflowRun         @relation(fields: [workflowRunId], references: [id])
-  status       CodeExecutionStatus @default(RUNNING)
+  workflowRun  WorkflowRun @relation(fields: [workflowRunId], references: [id])
+  status       String @default("RUNNING")
   patchSummary String
   changedFiles Json
   codeChanges  Json
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model ReviewReport {
-  id           String              @id @default(cuid())
+  id           String @id @default(cuid())
   workflowRunId String             @unique
-  workflowRun  WorkflowRun         @relation(fields: [workflowRunId], references: [id])
-  status       ReviewReportStatus  @default(COMPLETED)
+  workflowRun  WorkflowRun @relation(fields: [workflowRunId], references: [id])
+  status       String @default("COMPLETED")
   issues       Json
   bugs         Json
   missingTests Json
   suggestions  Json
   impactScope  Json
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

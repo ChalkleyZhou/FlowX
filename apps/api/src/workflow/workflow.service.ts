@@ -4,16 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  Prisma,
-  CodeExecutionStatus as PrismaCodeExecutionStatus,
-  PlanStatus as PrismaPlanStatus,
-  ReviewReportStatus as PrismaReviewReportStatus,
-  StageExecutionStatus as PrismaStageExecutionStatus,
-  StageType as PrismaStageType,
-  TaskStatus as PrismaTaskStatus,
-  WorkflowRunStatus as PrismaWorkflowRunStatus,
-} from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { AI_EXECUTOR, AIExecutor } from '../ai/ai-executor';
 import {
   HumanReviewDecision,
@@ -25,43 +16,43 @@ import { WorkflowStateMachine } from '../common/workflow-state-machine';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWorkflowRunDto } from './dto/create-workflow-run.dto';
 
-const workflowStatusMap: Record<WorkflowRunStatus, PrismaWorkflowRunStatus> = {
-  [WorkflowRunStatus.CREATED]: PrismaWorkflowRunStatus.CREATED,
-  [WorkflowRunStatus.TASK_SPLIT_PENDING]: PrismaWorkflowRunStatus.TASK_SPLIT_PENDING,
+const workflowStatusMap: Record<WorkflowRunStatus, string> = {
+  [WorkflowRunStatus.CREATED]: 'CREATED',
+  [WorkflowRunStatus.TASK_SPLIT_PENDING]: 'TASK_SPLIT_PENDING',
   [WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION]:
-    PrismaWorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION,
+    'TASK_SPLIT_WAITING_CONFIRMATION',
   [WorkflowRunStatus.TASK_SPLIT_CONFIRMED]:
-    PrismaWorkflowRunStatus.TASK_SPLIT_CONFIRMED,
-  [WorkflowRunStatus.PLAN_PENDING]: PrismaWorkflowRunStatus.PLAN_PENDING,
+    'TASK_SPLIT_CONFIRMED',
+  [WorkflowRunStatus.PLAN_PENDING]: 'PLAN_PENDING',
   [WorkflowRunStatus.PLAN_WAITING_CONFIRMATION]:
-    PrismaWorkflowRunStatus.PLAN_WAITING_CONFIRMATION,
-  [WorkflowRunStatus.PLAN_CONFIRMED]: PrismaWorkflowRunStatus.PLAN_CONFIRMED,
-  [WorkflowRunStatus.EXECUTION_PENDING]: PrismaWorkflowRunStatus.EXECUTION_PENDING,
-  [WorkflowRunStatus.EXECUTION_RUNNING]: PrismaWorkflowRunStatus.EXECUTION_RUNNING,
-  [WorkflowRunStatus.REVIEW_PENDING]: PrismaWorkflowRunStatus.REVIEW_PENDING,
+    'PLAN_WAITING_CONFIRMATION',
+  [WorkflowRunStatus.PLAN_CONFIRMED]: 'PLAN_CONFIRMED',
+  [WorkflowRunStatus.EXECUTION_PENDING]: 'EXECUTION_PENDING',
+  [WorkflowRunStatus.EXECUTION_RUNNING]: 'EXECUTION_RUNNING',
+  [WorkflowRunStatus.REVIEW_PENDING]: 'REVIEW_PENDING',
   [WorkflowRunStatus.HUMAN_REVIEW_PENDING]:
-    PrismaWorkflowRunStatus.HUMAN_REVIEW_PENDING,
-  [WorkflowRunStatus.DONE]: PrismaWorkflowRunStatus.DONE,
-  [WorkflowRunStatus.FAILED]: PrismaWorkflowRunStatus.FAILED,
+    'HUMAN_REVIEW_PENDING',
+  [WorkflowRunStatus.DONE]: 'DONE',
+  [WorkflowRunStatus.FAILED]: 'FAILED',
 };
 
-const stageStatusMap: Record<StageExecutionStatus, PrismaStageExecutionStatus> = {
-  [StageExecutionStatus.PENDING]: PrismaStageExecutionStatus.PENDING,
-  [StageExecutionStatus.RUNNING]: PrismaStageExecutionStatus.RUNNING,
-  [StageExecutionStatus.COMPLETED]: PrismaStageExecutionStatus.COMPLETED,
-  [StageExecutionStatus.FAILED]: PrismaStageExecutionStatus.FAILED,
+const stageStatusMap: Record<StageExecutionStatus, string> = {
+  [StageExecutionStatus.PENDING]: 'PENDING',
+  [StageExecutionStatus.RUNNING]: 'RUNNING',
+  [StageExecutionStatus.COMPLETED]: 'COMPLETED',
+  [StageExecutionStatus.FAILED]: 'FAILED',
   [StageExecutionStatus.WAITING_CONFIRMATION]:
-    PrismaStageExecutionStatus.WAITING_CONFIRMATION,
-  [StageExecutionStatus.REJECTED]: PrismaStageExecutionStatus.REJECTED,
+    'WAITING_CONFIRMATION',
+  [StageExecutionStatus.REJECTED]: 'REJECTED',
 };
 
-const stageTypeMap: Record<StageType, PrismaStageType> = {
-  [StageType.REQUIREMENT_INTAKE]: PrismaStageType.REQUIREMENT_INTAKE,
-  [StageType.TASK_SPLIT]: PrismaStageType.TASK_SPLIT,
-  [StageType.TECHNICAL_PLAN]: PrismaStageType.TECHNICAL_PLAN,
-  [StageType.EXECUTION]: PrismaStageType.EXECUTION,
-  [StageType.AI_REVIEW]: PrismaStageType.AI_REVIEW,
-  [StageType.HUMAN_REVIEW]: PrismaStageType.HUMAN_REVIEW,
+const stageTypeMap: Record<StageType, string> = {
+  [StageType.REQUIREMENT_INTAKE]: 'REQUIREMENT_INTAKE',
+  [StageType.TASK_SPLIT]: 'TASK_SPLIT',
+  [StageType.TECHNICAL_PLAN]: 'TECHNICAL_PLAN',
+  [StageType.EXECUTION]: 'EXECUTION',
+  [StageType.AI_REVIEW]: 'AI_REVIEW',
+  [StageType.HUMAN_REVIEW]: 'HUMAN_REVIEW',
 };
 
 @Injectable()
@@ -84,7 +75,7 @@ export class WorkflowService {
       const workflow = await tx.workflowRun.create({
         data: {
           requirementId: dto.requirementId,
-          status: PrismaWorkflowRunStatus.CREATED,
+          status: 'CREATED',
         },
       });
 
@@ -131,6 +122,7 @@ export class WorkflowService {
         description: requirement.description,
         acceptanceCriteria: requirement.acceptanceCriteria,
       },
+      workspace: this.buildWorkspaceContext(requirement.workspace),
     });
 
     return this.prisma.$transaction(async (tx) => {
@@ -152,7 +144,7 @@ export class WorkflowService {
           title: task.title,
           description: task.description,
           order: index,
-          status: PrismaTaskStatus.DRAFT,
+          status: 'DRAFT',
         })),
       });
 
@@ -185,7 +177,7 @@ export class WorkflowService {
 
   async confirmTaskSplit(id: string) {
     const workflow = await this.getWorkflowOrThrow(id);
-    if (workflow.status !== PrismaWorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION) {
+    if (workflow.status !== 'TASK_SPLIT_WAITING_CONFIRMATION') {
       throw new BadRequestException('Task split is not waiting for confirmation.');
     }
 
@@ -197,7 +189,7 @@ export class WorkflowService {
 
       await tx.task.updateMany({
         where: { workflowRunId: id },
-        data: { status: PrismaTaskStatus.CONFIRMED },
+        data: { status: 'CONFIRMED' },
       });
 
       await this.transitionWorkflow(tx, id, WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION, {
@@ -217,7 +209,7 @@ export class WorkflowService {
 
   async rejectTaskSplit(id: string) {
     const workflow = await this.getWorkflowOrThrow(id);
-    if (workflow.status !== PrismaWorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION) {
+    if (workflow.status !== 'TASK_SPLIT_WAITING_CONFIRMATION') {
       throw new BadRequestException('Task split is not waiting for confirmation.');
     }
 
@@ -229,7 +221,7 @@ export class WorkflowService {
 
       await tx.task.updateMany({
         where: { workflowRunId: id },
-        data: { status: PrismaTaskStatus.REJECTED },
+        data: { status: 'REJECTED' },
       });
 
       await this.transitionWorkflow(tx, id, WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION, {
@@ -246,7 +238,7 @@ export class WorkflowService {
 
   async runPlan(id: string) {
     const workflow = await this.getWorkflowOrThrow(id);
-    if (workflow.status !== PrismaWorkflowRunStatus.PLAN_PENDING) {
+    if (workflow.status !== 'PLAN_PENDING') {
       throw new BadRequestException('Plan can only run after task split is confirmed.');
     }
 
@@ -263,6 +255,7 @@ export class WorkflowService {
         acceptanceCriteria: workflow.requirement.acceptanceCriteria,
       },
       tasks,
+      workspace: this.buildWorkspaceContext(workflow.requirement.workspace),
     });
 
     return this.prisma.$transaction(async (tx) => {
@@ -279,7 +272,7 @@ export class WorkflowService {
         where: { workflowRunId: id },
         create: {
           workflowRunId: id,
-          status: PrismaPlanStatus.WAITING_HUMAN_CONFIRMATION,
+          status: 'WAITING_HUMAN_CONFIRMATION',
           summary: output.summary,
           implementationPlan: output.implementationPlan,
           filesToModify: output.filesToModify,
@@ -287,7 +280,7 @@ export class WorkflowService {
           riskPoints: output.riskPoints,
         },
         update: {
-          status: PrismaPlanStatus.WAITING_HUMAN_CONFIRMATION,
+          status: 'WAITING_HUMAN_CONFIRMATION',
           summary: output.summary,
           implementationPlan: output.implementationPlan,
           filesToModify: output.filesToModify,
@@ -320,7 +313,7 @@ export class WorkflowService {
 
   async confirmPlan(id: string) {
     const workflow = await this.getWorkflowOrThrow(id);
-    if (workflow.status !== PrismaWorkflowRunStatus.PLAN_WAITING_CONFIRMATION) {
+    if (workflow.status !== 'PLAN_WAITING_CONFIRMATION') {
       throw new BadRequestException('Plan is not waiting for confirmation.');
     }
 
@@ -332,7 +325,7 @@ export class WorkflowService {
 
       await tx.plan.update({
         where: { workflowRunId: id },
-        data: { status: PrismaPlanStatus.CONFIRMED },
+        data: { status: 'CONFIRMED' },
       });
 
       await this.transitionWorkflow(tx, id, WorkflowRunStatus.PLAN_WAITING_CONFIRMATION, {
@@ -352,7 +345,7 @@ export class WorkflowService {
 
   async rejectPlan(id: string) {
     const workflow = await this.getWorkflowOrThrow(id);
-    if (workflow.status !== PrismaWorkflowRunStatus.PLAN_WAITING_CONFIRMATION) {
+    if (workflow.status !== 'PLAN_WAITING_CONFIRMATION') {
       throw new BadRequestException('Plan is not waiting for confirmation.');
     }
 
@@ -364,7 +357,7 @@ export class WorkflowService {
 
       await tx.plan.update({
         where: { workflowRunId: id },
-        data: { status: PrismaPlanStatus.REJECTED },
+        data: { status: 'REJECTED' },
       });
 
       await this.transitionWorkflow(tx, id, WorkflowRunStatus.PLAN_WAITING_CONFIRMATION, {
@@ -381,7 +374,7 @@ export class WorkflowService {
 
   async runExecution(id: string) {
     const workflow = await this.getWorkflowOrThrow(id);
-    if (workflow.status !== PrismaWorkflowRunStatus.EXECUTION_PENDING) {
+    if (workflow.status !== 'EXECUTION_PENDING') {
       throw new BadRequestException('Execution can only run after plan confirmation.');
     }
     if (!workflow.plan) {
@@ -406,6 +399,7 @@ export class WorkflowService {
         newFiles: workflow.plan.newFiles as string[],
         riskPoints: workflow.plan.riskPoints as string[],
       },
+      workspace: this.buildWorkspaceContext(workflow.requirement.workspace),
     });
 
     return this.prisma.$transaction(async (tx) => {
@@ -427,13 +421,13 @@ export class WorkflowService {
         where: { workflowRunId: id },
         create: {
           workflowRunId: id,
-          status: PrismaCodeExecutionStatus.WAITING_HUMAN_REVIEW,
+          status: 'WAITING_HUMAN_REVIEW',
           patchSummary: output.patchSummary,
           changedFiles: output.changedFiles,
           codeChanges: output.codeChanges,
         },
         update: {
-          status: PrismaCodeExecutionStatus.WAITING_HUMAN_REVIEW,
+          status: 'WAITING_HUMAN_REVIEW',
           patchSummary: output.patchSummary,
           changedFiles: output.changedFiles,
           codeChanges: output.codeChanges,
@@ -459,7 +453,7 @@ export class WorkflowService {
 
   async runReview(id: string) {
     const workflow = await this.getWorkflowOrThrow(id);
-    if (workflow.status !== PrismaWorkflowRunStatus.REVIEW_PENDING) {
+    if (workflow.status !== 'REVIEW_PENDING') {
       throw new BadRequestException('Review can only run after execution completes.');
     }
     if (!workflow.plan || !workflow.codeExecution) {
@@ -489,6 +483,7 @@ export class WorkflowService {
           summary: string;
         }>,
       },
+      workspace: this.buildWorkspaceContext(workflow.requirement.workspace),
     });
 
     return this.prisma.$transaction(async (tx) => {
@@ -505,7 +500,7 @@ export class WorkflowService {
         where: { workflowRunId: id },
         create: {
           workflowRunId: id,
-          status: PrismaReviewReportStatus.WAITING_HUMAN_REVIEW,
+          status: 'WAITING_HUMAN_REVIEW',
           issues: output.issues,
           bugs: output.bugs,
           missingTests: output.missingTests,
@@ -513,7 +508,7 @@ export class WorkflowService {
           impactScope: output.impactScope,
         },
         update: {
-          status: PrismaReviewReportStatus.WAITING_HUMAN_REVIEW,
+          status: 'WAITING_HUMAN_REVIEW',
           issues: output.issues,
           bugs: output.bugs,
           missingTests: output.missingTests,
@@ -541,7 +536,7 @@ export class WorkflowService {
 
   async decideHumanReview(id: string, decision: HumanReviewDecision) {
     const workflow = await this.getWorkflowOrThrow(id);
-    if (workflow.status !== PrismaWorkflowRunStatus.HUMAN_REVIEW_PENDING) {
+    if (workflow.status !== 'HUMAN_REVIEW_PENDING') {
       throw new BadRequestException('Workflow is not waiting for human review.');
     }
 
@@ -570,7 +565,15 @@ export class WorkflowService {
 
   private workflowInclude() {
     return {
-      requirement: true,
+      requirement: {
+        include: {
+          workspace: {
+            include: {
+              repositories: true,
+            },
+          },
+        },
+      },
       stageExecutions: {
         orderBy: {
           createdAt: 'asc' as const,
@@ -584,6 +587,32 @@ export class WorkflowService {
       plan: true,
       codeExecution: true,
       reviewReport: true,
+    };
+  }
+
+  private buildWorkspaceContext(
+    workspace:
+      | (Prisma.WorkspaceGetPayload<{
+          include: { repositories: true };
+        }>)
+      | null
+      | undefined,
+  ) {
+    if (!workspace) {
+      return null;
+    }
+
+    return {
+      id: workspace.id,
+      name: workspace.name,
+      description: workspace.description,
+      repositories: workspace.repositories.map((repository) => ({
+        id: repository.id,
+        name: repository.name,
+        url: repository.url,
+        defaultBranch: repository.defaultBranch,
+        currentBranch: repository.currentBranch,
+      })),
     };
   }
 
@@ -696,7 +725,7 @@ export class WorkflowService {
     });
   }
 
-  private fromPrismaWorkflowStatus(status: PrismaWorkflowRunStatus): WorkflowRunStatus {
+  private fromPrismaWorkflowStatus(status: string): WorkflowRunStatus {
     const entry = Object.entries(workflowStatusMap).find(([, value]) => value === status);
     if (!entry) {
       throw new BadRequestException(`Unsupported workflow status: ${status}`);
@@ -704,7 +733,7 @@ export class WorkflowService {
     return entry[0] as WorkflowRunStatus;
   }
 
-  private fromPrismaStageStatus(status: PrismaStageExecutionStatus): StageExecutionStatus {
+  private fromPrismaStageStatus(status: string): StageExecutionStatus {
     const entry = Object.entries(stageStatusMap).find(([, value]) => value === status);
     if (!entry) {
       throw new BadRequestException(`Unsupported stage status: ${status}`);

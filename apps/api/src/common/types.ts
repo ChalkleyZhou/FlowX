@@ -7,8 +7,24 @@ export interface RequirementRecord {
   acceptanceCriteria: string;
 }
 
+export interface RepositoryContext {
+  id: string;
+  name: string;
+  url: string;
+  defaultBranch?: string | null;
+  currentBranch?: string | null;
+}
+
+export interface WorkspaceContext {
+  id: string;
+  name: string;
+  description?: string | null;
+  repositories: RepositoryContext[];
+}
+
 export interface SplitTasksInput {
   requirement: RequirementRecord;
+  workspace?: WorkspaceContext | null;
 }
 
 export interface SplitTaskItem {
@@ -25,6 +41,7 @@ export interface SplitTasksOutput {
 export interface GeneratePlanInput {
   requirement: RequirementRecord;
   tasks: SplitTaskItem[];
+  workspace?: WorkspaceContext | null;
 }
 
 export interface GeneratePlanOutput {
@@ -39,6 +56,7 @@ export interface ExecuteTaskInput {
   requirement: RequirementRecord;
   tasks: SplitTaskItem[];
   plan: GeneratePlanOutput;
+  workspace?: WorkspaceContext | null;
 }
 
 export interface ExecuteTaskOutput {
@@ -55,6 +73,7 @@ export interface ReviewCodeInput {
   requirement: RequirementRecord;
   plan: GeneratePlanOutput;
   execution: ExecuteTaskOutput;
+  workspace?: WorkspaceContext | null;
 }
 
 export interface ReviewCodeOutput {
@@ -85,4 +104,3 @@ export interface StageHistoryRecord {
 export interface HumanReviewDecisionInput {
   decision: HumanReviewDecision;
 }
-

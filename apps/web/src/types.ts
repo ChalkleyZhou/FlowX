@@ -3,6 +3,25 @@ export interface Requirement {
   title: string;
   description: string;
   acceptanceCriteria: string;
+  workspace?: Workspace | null;
+}
+
+export interface Repository {
+  id: string;
+  name: string;
+  url: string;
+  defaultBranch?: string | null;
+  currentBranch?: string | null;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  description?: string | null;
+  repositories: Repository[];
+  _count?: {
+    requirements: number;
+  };
 }
 
 export interface StageExecution {
@@ -43,3 +62,23 @@ export interface WorkflowRun {
   stageExecutions: StageExecution[];
 }
 
+export interface AuthOrganization {
+  id: string;
+  name: string;
+  providerOrganizationId?: string;
+  logoUrl?: string;
+}
+
+export interface AuthUser {
+  id: string;
+  email?: string;
+  displayName: string;
+  avatarUrl?: string;
+}
+
+export interface AuthSession {
+  token: string;
+  expiresAt: string;
+  user: AuthUser;
+  organization: AuthOrganization | null;
+}

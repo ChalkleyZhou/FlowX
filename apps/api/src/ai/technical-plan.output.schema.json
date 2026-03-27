@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "implementationPlan", "filesToModify", "newFiles", "riskPoints"],
+  "properties": {
+    "summary": { "type": "string", "minLength": 1 },
+    "implementationPlan": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "filesToModify": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "newFiles": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "riskPoints": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

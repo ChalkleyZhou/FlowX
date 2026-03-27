@@ -12,5 +12,8 @@ export class CreateRequirementDto {
   @IsString()
   @IsNotEmpty()
   acceptanceCriteria!: string;
-}
 
+  @IsString()
+  @IsNotEmpty()
+  workspaceId!: string;
+}

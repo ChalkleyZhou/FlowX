@@ -4,7 +4,7 @@ This repository contains a staged, interruptible, human-confirmable AI研发调�
 
 ## Stack
 
-- Backend: NestJS + TypeScript + Prisma + PostgreSQL
+- Backend: NestJS + TypeScript + Prisma + SQLite
 - Frontend: React + Ant Design + Vite
 - AI integration: provider abstraction with a mock executor
 
@@ -20,9 +20,11 @@ This repository contains a staged, interruptible, human-confirmable AI研发调�
 1. Create `.env` in the repository root:
 
 ```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/flowx?schema=public"
+DATABASE_URL="file:./dev.db"
 PORT=3000
 VITE_API_BASE_URL="http://localhost:3000"
+DINGTALK_APP_ID=""
+DINGTALK_APP_SECRET=""
 ```
 
 2. Install dependencies:
@@ -31,18 +33,29 @@ VITE_API_BASE_URL="http://localhost:3000"
 npm install
 ```
 
-3. Generate Prisma client and run migrations:
+3. Generate Prisma client and sync schema:
 
 ```bash
-npm run prisma:generate
-npm run prisma:migrate -- --name init
+pnpm prisma:generate
+pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma
 ```
 
 4. Start both apps:
 
 ```bash
-npm run dev
+pnpm dev
 ```
+
+## Auth
+
+- Built-in user system with extensible third-party provider abstraction.
+- Supports account/password login and registration.
+- DingTalk login is available at `/auth/dingtalk/*`.
+- For real DingTalk OAuth, set `DINGTALK_APP_ID`, `DINGTALK_APP_SECRET`, and optionally override endpoints via:
+  - `DINGTALK_AUTHORIZE_URL`
+  - `DINGTALK_TOKEN_URL`
+  - `DINGTALK_PROFILE_URL`
+  - `DINGTALK_ORGS_URL`
 
 ## MVP flow
 
@@ -55,4 +68,3 @@ npm run dev
 7. Run execution
 8. Run AI review
 9. Inspect full stage history
-

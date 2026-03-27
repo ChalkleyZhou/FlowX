@@ -32,8 +32,11 @@ function createBaselineTasks(title: string): SplitTaskItem[] {
 @Injectable()
 export class MockAiExecutor implements AIExecutor {
   async splitTasks(input: SplitTasksInput): Promise<SplitTasksOutput> {
+    const workspaceName = input.workspace?.name;
     return {
-      tasks: createBaselineTasks(input.requirement.title),
+      tasks: createBaselineTasks(
+        workspaceName ? `${input.requirement.title} in ${workspaceName}` : input.requirement.title,
+      ),
       ambiguities: [
         'Whether execution should apply real patches or only store generated patch metadata in MVP.',
         'Whether human review decisions should be recorded per issue or per workflow run.',
@@ -115,4 +118,3 @@ export class MockAiExecutor implements AIExecutor {
     };
   }
 }
-
