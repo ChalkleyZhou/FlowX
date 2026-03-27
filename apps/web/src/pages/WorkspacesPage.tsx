@@ -56,7 +56,7 @@ export function WorkspacesPage() {
       setRepositoryModalOpen(false);
       setRepositoryWorkspaceId('');
       await refresh();
-      messageApi.success('代码库已加入工作区');
+      messageApi.success('代码库已拉取并加入工作区');
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : '添加代码库失败');
     }
@@ -72,7 +72,7 @@ export function WorkspacesPage() {
       setBranchModalOpen(false);
       setEditingRepository(null);
       await refresh();
-      messageApi.success('当前分支已更新');
+      messageApi.success('分支已切换并同步');
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : '更新分支失败');
     }
@@ -180,7 +180,25 @@ export function WorkspacesPage() {
                             <Tag bordered={false} color="processing">
                               当前分支 {repository.currentBranch ?? repository.defaultBranch ?? '未设置'}
                             </Tag>
+                            <Tag
+                              bordered={false}
+                              color={
+                                repository.syncStatus === 'READY'
+                                  ? 'success'
+                                  : repository.syncStatus === 'ERROR'
+                                    ? 'error'
+                                    : 'gold'
+                              }
+                            >
+                              同步状态 {repository.syncStatus ?? 'PENDING'}
+                            </Tag>
                           </div>
+                          <Text className="requirement-criteria">{repository.localPath ?? '尚未落盘到本地'}</Text>
+                          {repository.syncError ? (
+                            <Text type="danger" className="requirement-criteria">
+                              同步失败：{repository.syncError}
+                            </Text>
+                          ) : null}
                         </div>
                         <Button
                           className="ghost-button"
@@ -192,7 +210,7 @@ export function WorkspacesPage() {
                             setBranchModalOpen(true);
                           }}
                         >
-                          修改分支
+                          切换分支
                         </Button>
                       </div>
                     ))}

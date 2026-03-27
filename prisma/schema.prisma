@@ -40,6 +40,10 @@ model Repository {
   url           String
   defaultBranch String?
   currentBranch String?
+  localPath     String?
+  syncStatus    String    @default("PENDING")
+  syncError     String?
+  lastSyncedAt  DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }

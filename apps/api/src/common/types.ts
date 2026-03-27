@@ -13,6 +13,8 @@ export interface RepositoryContext {
   url: string;
   defaultBranch?: string | null;
   currentBranch?: string | null;
+  localPath?: string | null;
+  syncStatus?: string | null;
 }
 
 export interface WorkspaceContext {

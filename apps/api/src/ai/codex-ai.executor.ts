@@ -179,7 +179,7 @@ ${input.execution.codeChanges
       ? workspace.repositories
           .map(
             (repository) =>
-              `  - ${repository.name} | URL: ${repository.url} | 默认分支: ${repository.defaultBranch ?? '未设置'} | 当前分支: ${repository.currentBranch ?? repository.defaultBranch ?? '未设置'}`,
+              `  - ${repository.name} | URL: ${repository.url} | 默认分支: ${repository.defaultBranch ?? '未设置'} | 当前分支: ${repository.currentBranch ?? repository.defaultBranch ?? '未设置'}\n    本地路径: ${repository.localPath ?? '未同步'}\n    同步状态: ${repository.syncStatus ?? '未知'}`,
           )
           .join('\n')
       : '  - 当前工作区未登记代码库';

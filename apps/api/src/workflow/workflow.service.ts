@@ -14,6 +14,7 @@ import {
 } from '../common/enums';
 import { WorkflowStateMachine } from '../common/workflow-state-machine';
 import { PrismaService } from '../prisma/prisma.service';
+import { RepositorySyncService } from '../workspaces/repository-sync.service';
 import { CreateWorkflowRunDto } from './dto/create-workflow-run.dto';
 
 const workflowStatusMap: Record<WorkflowRunStatus, string> = {
@@ -60,16 +61,28 @@ export class WorkflowService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly stateMachine: WorkflowStateMachine,
+    private readonly repositorySyncService: RepositorySyncService,
     @Inject(AI_EXECUTOR) private readonly aiExecutor: AIExecutor,
   ) {}
 
   async createWorkflowRun(dto: CreateWorkflowRunDto) {
-    await this.prisma.requirement.findFirstOrThrow({
+    const requirement = await this.prisma.requirement.findFirstOrThrow({
       where: {
         id: dto.requirementId,
         status: 'ACTIVE',
       },
+      include: {
+        workspace: {
+          include: {
+            repositories: true,
+          },
+        },
+      },
     });
+
+    if (requirement.workspaceId) {
+      await this.repositorySyncService.syncWorkspaceRepositories(requirement.workspaceId);
+    }
 
     return this.prisma.$transaction(async (tx) => {
       const workflow = await tx.workflowRun.create({
@@ -612,6 +625,8 @@ export class WorkflowService {
         url: repository.url,
         defaultBranch: repository.defaultBranch,
         currentBranch: repository.currentBranch,
+        localPath: repository.localPath,
+        syncStatus: repository.syncStatus,
       })),
     };
   }

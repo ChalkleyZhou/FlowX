@@ -12,6 +12,10 @@ export interface Repository {
   url: string;
   defaultBranch?: string | null;
   currentBranch?: string | null;
+  localPath?: string | null;
+  syncStatus?: string;
+  syncError?: string | null;
+  lastSyncedAt?: string | null;
 }
 
 export interface Workspace {
