@@ -242,6 +242,12 @@ a {
   align-items: start;
 }
 
+.workflow-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
 .panel-heading-inline,
 .workflow-steps-heading,
 .inline-action-group,
@@ -452,6 +458,165 @@ a {
   gap: 12px;
 }
 
+.diff-review-panel .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.diff-review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.diff-review-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 340px;
+}
+
+.diff-summary-pill {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-muted);
+}
+
+.diff-summary-pill .ant-typography {
+  display: block;
+  margin-bottom: 0;
+}
+
+.diff-artifact-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.diff-artifact-button,
+.diff-file-button {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.diff-artifact-button:hover,
+.diff-file-button:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-subtle);
+}
+
+.diff-artifact-button-active,
+.diff-file-button-active {
+  border-color: rgba(37, 99, 235, 0.28);
+  background: var(--primary-soft);
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.08);
+}
+
+.diff-artifact-button {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 180px;
+  padding: 12px 14px;
+  border-radius: 14px;
+}
+
+.diff-artifact-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.diff-artifact-meta {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.diff-review-layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.diff-file-list,
+.diff-viewer-panel {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+
+.diff-review-subhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.diff-file-list-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 560px;
+  overflow: auto;
+}
+
+.diff-file-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+}
+
+.diff-file-path {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.diff-file-kind.ant-tag {
+  flex: 0 0 auto;
+}
+
+.diff-stat-box,
+.diff-code-block {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 12px;
+  line-height: 1.6;
+  font-family: "SFMono-Regular", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diff-stat-box {
+  margin-bottom: 12px;
+  background: #111827;
+  color: #dbeafe;
+}
+
+.diff-code-block {
+  max-height: 720px;
+  overflow: auto;
+}
+
 .repo-row,
 .finding-card {
   padding: 14px;
@@ -575,7 +740,7 @@ a {
 
 .status-pill {
   padding: 6px 12px;
-  border-radius: 999px;
+  border-radius: 12px;
   color: var(--primary);
   background: var(--primary-soft);
   font-size: 12px;
@@ -612,6 +777,10 @@ a {
 .workflow-side-metric .ant-typography {
   display: block;
   margin-bottom: 0;
+}
+
+.workflow-side-metric .ant-tag {
+  border-radius: 10px;
 }
 
 .workflow-steps-panel .ant-card-body {
@@ -658,6 +827,34 @@ a {
   gap: 16px;
 }
 
+.stage-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.stage-meta-pill {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+
+.stage-meta-label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.stage-meta-value {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .stage-index {
   display: block;
   color: var(--primary);
@@ -694,6 +891,7 @@ a {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface-muted);
+  overflow: hidden;
 }
 
 .stage-structured-grid,
@@ -709,6 +907,8 @@ a {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--surface);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .stage-structured-label {
@@ -723,6 +923,8 @@ a {
 .stage-structured-value {
   color: var(--text);
   line-height: 1.6;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .stage-chip-list {
@@ -735,12 +937,20 @@ a {
   color: var(--text-secondary);
   background: var(--surface-muted);
   border: 1px solid var(--border);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .stage-primitive {
   color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.workflow-side-tags .ant-tag,
+.repo-meta-row .ant-tag {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .empty-panel .ant-card-body {
@@ -1099,8 +1309,103 @@ a.ghost-button:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .workflow-context-grid {
+    grid-template-columns: 1fr;
+  }
+
   .auth-feature-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1440px) {
+  .app-topbar {
+    padding: 12px 28px 4px;
+  }
+
+  .page-container {
+    width: min(var(--page-width), calc(100vw - 36px));
+    padding-bottom: 24px;
+  }
+
+  .page-grid {
+    grid-template-columns: 360px minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .page-summary-grid {
+    gap: 12px;
+  }
+
+  .summary-card .ant-card-body,
+  .panel .ant-card-body {
+    padding: 16px;
+  }
+
+  .workflow-detail-grid {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 16px;
+  }
+
+  .workflow-context-grid {
+    gap: 14px;
+  }
+
+  .diff-review-layout {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+
+  .filter-toolbar-panel {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .app-topbar {
+    gap: 16px;
+  }
+
+  .session-panel {
+    gap: 10px;
+    padding: 8px 12px;
+  }
+
+  .record-list-item {
+    flex-direction: column;
+  }
+
+  .record-list-item .inline-action-group {
+    justify-content: flex-start;
+    min-height: auto;
+  }
+
+  .stage-card-title,
+  .stage-card-meta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .filter-toolbar-grid,
+  .filter-toolbar-selects {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .diff-review-header {
+    flex-direction: column;
+  }
+
+  .diff-review-summary {
+    min-width: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .diff-review-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .diff-file-list-body,
+  .diff-code-block {
+    max-height: none;
   }
 }
 
@@ -1163,6 +1468,10 @@ a.ghost-button:hover {
   }
 
   .workflow-side-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .diff-review-summary {
     grid-template-columns: 1fr;
   }
 

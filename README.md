@@ -2,11 +2,69 @@
 
 This repository contains a staged, interruptible, human-confirmable AI研发调度系统 MVP.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    U["用户 / 管理员"] --> W["Web 控制台\nReact + Ant Design + Vite"]
+    W --> A["API 服务\nNestJS + TypeScript"]
+    A --> DB["SQLite / Prisma"]
+
+    subgraph Orchestration["工作流编排层"]
+      REQ["Requirement\n需求"]
+      WF["WorkflowRun\n工作流"]
+      ST["StageExecution\n阶段执行"]
+      RF["ReviewFinding / Issue / Bug\n审查沉淀"]
+    end
+
+    A --> REQ
+    A --> WF
+    A --> ST
+    A --> RF
+
+    subgraph RepoLayer["代码库上下文层"]
+      WS["Workspace"]
+      RP["Repositories\n基线仓库"]
+      WR["Workflow Repositories\n工作流副本 / 工作分支"]
+    end
+
+    A --> WS
+    WS --> RP
+    WF --> WR
+    RP --> WR
+
+    subgraph AI["AI 执行器层"]
+      EX["AIExecutor 抽象"]
+      CX["Codex Executor"]
+      MX["Mock Executor"]
+      PT["Prompt Templates"]
+    end
+
+    A --> EX
+    EX --> CX
+    EX --> MX
+    CX --> PT
+    MX --> PT
+
+    WR --> CX
+    ST --> CX
+    CX --> ST
+    ST --> RF
+```
+
+### Flow at a glance
+
+1. 在 `Workspace` 下登记代码库，系统拉取基线仓库并维护当前分支。
+2. 创建 `Requirement` 后发起 `WorkflowRun`。
+3. 工作流会为每个仓库准备独立的 workflow 副本和工作分支。
+4. `Task Split -> Technical Plan -> Execution -> AI Review` 按阶段推进，关键节点必须人工确认。
+5. 执行与审查结果结构化落库，并可沉淀为 `ReviewFinding / Issue / Bug`。
+
 ## Stack
 
 - Backend: NestJS + TypeScript + Prisma + SQLite
 - Frontend: React + Ant Design + Vite
-- AI integration: provider abstraction with a mock executor
+- AI integration: provider abstraction with Codex / Mock executor
 
 ## Structure
 
@@ -30,7 +88,7 @@ DINGTALK_APP_SECRET=""
 2. Install dependencies:
 
 ```bash
-npm install
+pnpm install
 ```
 
 3. Generate Prisma client and sync schema:

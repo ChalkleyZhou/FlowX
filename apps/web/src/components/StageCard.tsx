@@ -19,6 +19,7 @@ interface StageCardProps {
   status?: string;
   statusMessage?: string | null;
   attempt?: number;
+  metaItems?: Array<{ key: string; label: string; value: ReactNode }>;
   output?: unknown;
   actions?: StageAction[];
 }
@@ -165,7 +166,13 @@ export function StageCard(props: StageCardProps) {
             <Text className="stage-index">{props.title}</Text>
             <div className="stage-subtitle">{props.subtitle}</div>
           </div>
-          <Space size={8}>
+          <div className="stage-card-meta">
+            {props.metaItems?.map((item) => (
+              <div key={item.key} className="stage-meta-pill">
+                <Text className="stage-meta-label">{item.label}</Text>
+                <div className="stage-meta-value">{item.value}</div>
+              </div>
+            ))}
             {props.attempt ? (
               <Tag className="attempt-pill" bordered={false}>
                 第 {props.attempt} 次
@@ -174,7 +181,7 @@ export function StageCard(props: StageCardProps) {
             <Tag color={getStatusColor(props.status)} bordered={false}>
               {formatStageStatus(props.status)}
             </Tag>
-          </Space>
+          </div>
         </div>
       }
     >

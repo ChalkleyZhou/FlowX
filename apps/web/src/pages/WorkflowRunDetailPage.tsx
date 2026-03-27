@@ -38,6 +38,22 @@ interface StageDetailView {
   actions: StageActionView[];
 }
 
+interface DiffArtifactView {
+  repository: string;
+  branch: string;
+  localPath: string;
+  diffStat: string;
+  diffText: string;
+  untrackedFiles: string[];
+}
+
+interface DiffFileView {
+  key: string;
+  path: string;
+  kind: 'modified' | 'untracked';
+  diffText: string;
+}
+
 const stageMeta: Record<
   WorkflowStageKey,
   { title: string; stepLabel: string; stageNo: string; editableStage: EditableStage }
@@ -110,6 +126,29 @@ function inferFocusedStage(run: WorkflowRun): WorkflowStageKey {
   return 'TASK_SPLIT';
 }
 
+function splitDiffTextIntoFiles(diffText: string): DiffFileView[] {
+  if (!diffText.trim()) {
+    return [];
+  }
+
+  const chunks = diffText
+    .split(/(?=^diff --git )/gm)
+    .map((chunk) => chunk.trim())
+    .filter(Boolean);
+
+  return chunks.map((chunk, index) => {
+    const header = chunk.match(/^diff --git a\/(.+?) b\/(.+)$/m);
+    const path = header?.[2] ?? header?.[1] ?? `变更文件 ${index + 1}`;
+
+    return {
+      key: `modified-${path}-${index}`,
+      path,
+      kind: 'modified' as const,
+      diffText: chunk,
+    };
+  });
+}
+
 export function WorkflowRunDetailPage() {
   const { workflowRunId = '' } = useParams();
   const [workflowRun, setWorkflowRun] = useState<WorkflowRun | null>(null);
@@ -122,6 +161,8 @@ export function WorkflowRunDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const [busyStage, setBusyStage] = useState<string | null>(null);
   const [busyFindingId, setBusyFindingId] = useState<string | null>(null);
+  const [selectedArtifactKey, setSelectedArtifactKey] = useState<string | null>(null);
+  const [selectedDiffFileKey, setSelectedDiffFileKey] = useState<string | null>(null);
   const [feedbackForm] = Form.useForm();
   const [editForm] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
@@ -178,6 +219,41 @@ export function WorkflowRunDetailPage() {
   }, [workflowRun]);
 
   const hasRunningStage = workflowRun?.stageExecutions.some((item) => item.status === 'RUNNING') ?? false;
+  const diffArtifacts = useMemo<DiffArtifactView[]>(
+    () => ((workflowRun?.codeExecution?.diffArtifacts as DiffArtifactView[] | undefined) ?? []).filter(Boolean),
+    [workflowRun],
+  );
+  const diffReviewData = useMemo(() => {
+    return diffArtifacts.map((artifact, artifactIndex) => {
+      const modifiedFiles = splitDiffTextIntoFiles(artifact.diffText);
+      const untrackedFiles = (artifact.untrackedFiles ?? []).map((path, untrackedIndex) => ({
+        key: `untracked-${path}-${untrackedIndex}`,
+        path,
+        kind: 'untracked' as const,
+        diffText: `未跟踪文件\n\n${path}\n\n该文件尚未纳入 Git 版本控制，请在人工审查时确认是否需要保留。`,
+      }));
+
+      return {
+        artifactKey: `${artifact.repository}-${artifact.branch}-${artifactIndex}`,
+        ...artifact,
+        files: [...modifiedFiles, ...untrackedFiles],
+      };
+    });
+  }, [diffArtifacts]);
+  const activeArtifact = useMemo(() => {
+    return (
+      diffReviewData.find((artifact) => artifact.artifactKey === selectedArtifactKey) ??
+      diffReviewData[0] ??
+      null
+    );
+  }, [diffReviewData, selectedArtifactKey]);
+  const activeDiffFile = useMemo(() => {
+    if (!activeArtifact) {
+      return null;
+    }
+
+    return activeArtifact.files.find((item) => item.key === selectedDiffFileKey) ?? activeArtifact.files[0] ?? null;
+  }, [activeArtifact, selectedDiffFileKey]);
   const workflowMetrics = useMemo(() => {
     if (!workflowRun) {
       return null;
@@ -206,6 +282,27 @@ export function WorkflowRunDetailPage() {
 
     return () => window.clearInterval(timer);
   }, [hasRunningStage, workflowRunId]);
+
+  useEffect(() => {
+    if (!activeArtifact) {
+      setSelectedArtifactKey(null);
+      setSelectedDiffFileKey(null);
+      return;
+    }
+
+    if (selectedArtifactKey !== activeArtifact.artifactKey) {
+      setSelectedArtifactKey(activeArtifact.artifactKey);
+    }
+
+    if (!activeDiffFile && activeArtifact.files[0]) {
+      setSelectedDiffFileKey(activeArtifact.files[0].key);
+      return;
+    }
+
+    if (activeDiffFile && selectedDiffFileKey !== activeDiffFile.key) {
+      setSelectedDiffFileKey(activeDiffFile.key);
+    }
+  }, [activeArtifact, activeDiffFile, selectedArtifactKey, selectedDiffFileKey]);
 
   async function runAction(stage: string, action: () => Promise<unknown>, successText: string) {
     if (busyStage) {
@@ -657,147 +754,36 @@ export function WorkflowRunDetailPage() {
             />
           </Card>
 
-          <div className="workflow-detail-grid">
-            <div className="workflow-detail-main">
-              {selectedStageContent ? (
-                <StageCard
-                  title={selectedStageContent.title}
-                  subtitle={selectedStageContent.subtitle}
-                  status={selectedStageContent.status}
-                  statusMessage={selectedStageContent.statusMessage}
-                  attempt={selectedStageContent.attempt}
-                  output={selectedStageContent.output}
-                  actions={selectedStageContent.actions}
-                />
-              ) : (
-                <Card className="panel empty-panel" bordered={false}>
-                  <Empty description="当前阶段暂无详情" />
-                </Card>
-              )}
-
-              {selectedStage === 'AI_REVIEW' ? (
-                <Card className="panel finding-panel" bordered={false}>
-                  <div className="finding-panel-header">
-                    <SectionHeader
-                      eyebrow="Review Findings"
-                      title="审查条目沉淀"
-                      description="将 AI 审查结果沉淀为可跟踪的问题项与缺陷，便于后续人工确认和持续处理。"
-                    />
-                    <div className="finding-panel-actions">
-                      <div className="finding-summary-pills">
-                        <Tag bordered={false}>{workflowRun.reviewFindings.length} 条条目</Tag>
-                        <Tag bordered={false} color="processing">
-                          {workflowRun.reviewFindings.filter((item) => item.status === 'OPEN').length} 条待处理
-                        </Tag>
-                      </div>
-                      <Button
-                        className="ghost-button"
-                        onClick={() => {
-                          if (!reviewReportId) {
-                            return;
-                          }
-                          void runFindingAction(reviewReportId, () => api.syncReviewFindings(reviewReportId), '已同步审查条目');
-                        }}
-                        disabled={!reviewReportId || busyFindingId !== null}
-                      >
-                        同步 Findings
-                      </Button>
-                    </div>
-                  </div>
-                  {workflowRun.reviewFindings.length > 0 ? (
-                    <div className="finding-list">
-                      {workflowRun.reviewFindings.map((finding) => (
-                        <div key={finding.id} className="finding-card">
-                          <div className="finding-card-head">
-                            <div>
-                              <Text strong>{finding.title}</Text>
-                              <div className="repo-meta-row">
-                                <Tag bordered={false} color="processing">
-                                  {finding.type}
-                                </Tag>
-                                <Tag bordered={false}>{finding.severity}</Tag>
-                                <Tag bordered={false}>{finding.status}</Tag>
-                              </div>
-                            </div>
-                            <Text className="finding-card-index">#{finding.id.slice(-6).toUpperCase()}</Text>
-                          </div>
-                          <Paragraph className="workflow-side-copy">{finding.description}</Paragraph>
-                          {finding.impactScope && finding.impactScope.length > 0 ? (
-                            <div className="workflow-side-tags">
-                              {finding.impactScope.map((item) => (
-                                <Tag key={item} bordered={false}>
-                                  {item}
-                                </Tag>
-                              ))}
-                            </div>
-                          ) : null}
-                          <div className="stage-action-row">
-                            <Button
-                              className="ghost-button"
-                              onClick={() => void runFindingAction(finding.id, () => api.acceptReviewFinding(finding.id), '审查条目已接受')}
-                              loading={busyFindingId === finding.id}
-                              disabled={busyFindingId !== null || finding.status === 'CONVERTED_TO_ISSUE' || finding.status === 'CONVERTED_TO_BUG'}
-                            >
-                              接受
-                            </Button>
-                            <Button
-                              className="ghost-button"
-                              onClick={() => void runFindingAction(finding.id, () => api.dismissReviewFinding(finding.id), '审查条目已忽略')}
-                              loading={busyFindingId === finding.id}
-                              disabled={busyFindingId !== null || !!finding.convertedIssueId || !!finding.convertedBugId}
-                            >
-                              忽略
-                            </Button>
-                            <Button
-                              className="ghost-button"
-                              onClick={() =>
-                                void runFindingAction(finding.id, () => api.convertReviewFindingToIssue(finding.id), '已录入为问题项')
-                              }
-                              loading={busyFindingId === finding.id}
-                              disabled={busyFindingId !== null || !!finding.convertedIssueId || !!finding.convertedBugId}
-                            >
-                              转问题项
-                            </Button>
-                            <Button
-                              type="primary"
-                              className="accent-button"
-                              onClick={() =>
-                                void runFindingAction(finding.id, () => api.convertReviewFindingToBug(finding.id), '已录入为缺陷')
-                              }
-                              loading={busyFindingId === finding.id}
-                              disabled={busyFindingId !== null || !!finding.convertedIssueId || !!finding.convertedBugId}
-                            >
-                              转缺陷
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <Empty description="还没有沉淀的审查条目，先同步 findings。" />
-                  )}
-                </Card>
-              ) : null}
-            </div>
-
-            <div className="workflow-detail-side">
-              <ContextCard
-                eyebrow="Stage Focus"
-                title={stageMeta[selectedStage].title}
-                metrics={[
+          <div className="workflow-detail-main">
+            {selectedStageContent ? (
+              <StageCard
+                title={selectedStageContent.title}
+                subtitle={selectedStageContent.subtitle}
+                status={selectedStageContent.status}
+                statusMessage={selectedStageContent.statusMessage}
+                attempt={selectedStageContent.attempt}
+                metaItems={[
                   { key: 'step', label: '当前步骤', value: `${selectedStageIndex + 1}/${STAGE_SEQUENCE.length}` },
                   {
-                    key: 'status',
+                    key: 'focus-status',
                     label: '阶段状态',
-                    value: <Tag bordered={false} color={hasRunningStage ? 'gold' : 'processing'}>{hasRunningStage ? '后台处理中' : selectedStageContent?.status ?? '未开始'}</Tag>,
+                    value: (
+                      <Tag bordered={false} color={hasRunningStage ? 'gold' : 'processing'}>
+                        {hasRunningStage ? '后台处理中' : selectedStageContent.status ?? '未开始'}
+                      </Tag>
+                    ),
                   },
                 ]}
-              >
-                <Paragraph className="workflow-side-copy">
-                  当前展示的是所选阶段的结构化产出和可执行操作。上方步骤条反映全流程进度，等待确认和执行中的阶段会优先高亮。
-                </Paragraph>
-              </ContextCard>
+                output={selectedStageContent.output}
+                actions={selectedStageContent.actions}
+              />
+            ) : (
+              <Card className="panel empty-panel" bordered={false}>
+                <Empty description="当前阶段暂无详情" />
+              </Card>
+            )}
 
+            <div className="workflow-context-grid">
               {workflowRun.workflowRepositories.length > 0 ? (
                 <ContextCard eyebrow="Workflow Branches" title="本次工作流使用的代码分支">
                   <div className="repo-list">
@@ -836,6 +822,223 @@ export function WorkflowRunDetailPage() {
                 </ContextCard>
               ) : null}
             </div>
+
+            {diffReviewData.length > 0 ? (
+              <Card className="panel diff-review-panel" bordered={false}>
+                <div className="diff-review-header">
+                  <SectionHeader
+                    eyebrow="Diff Review"
+                    title="代码变更审查"
+                    description="先确认变更范围，再逐文件查看真实差异，最后结合 AI 审查结果做人工判断。"
+                  />
+                  <div className="diff-review-summary">
+                    <div className="diff-summary-pill">
+                      <Text className="summary-label">变更仓库</Text>
+                      <Text strong>{diffReviewData.length}</Text>
+                    </div>
+                    <div className="diff-summary-pill">
+                      <Text className="summary-label">变更文件</Text>
+                      <Text strong>
+                        {diffReviewData.reduce((total, artifact) => total + artifact.files.length, 0)}
+                      </Text>
+                    </div>
+                    <div className="diff-summary-pill">
+                      <Text className="summary-label">未跟踪文件</Text>
+                      <Text strong>
+                        {diffReviewData.reduce((total, artifact) => total + artifact.untrackedFiles.length, 0)}
+                      </Text>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="diff-artifact-switcher">
+                  {diffReviewData.map((artifact) => (
+                    <button
+                      key={artifact.artifactKey}
+                      type="button"
+                      className={[
+                        'diff-artifact-button',
+                        artifact.artifactKey === activeArtifact?.artifactKey ? 'diff-artifact-button-active' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      onClick={() => {
+                        setSelectedArtifactKey(artifact.artifactKey);
+                        setSelectedDiffFileKey(artifact.files[0]?.key ?? null);
+                      }}
+                    >
+                      <span className="diff-artifact-title">{artifact.repository}</span>
+                      <span className="diff-artifact-meta">{artifact.branch}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {activeArtifact ? (
+                  <div className="diff-review-layout">
+                    <div className="diff-file-list">
+                      <div className="diff-review-subhead">
+                        <Text strong>变更文件</Text>
+                        <Text className="requirement-criteria">
+                          {activeArtifact.files.length} 个文件
+                        </Text>
+                      </div>
+                      {activeArtifact.diffStat ? (
+                        <pre className="diff-stat-box">{activeArtifact.diffStat}</pre>
+                      ) : null}
+                      <div className="diff-file-list-body">
+                        {activeArtifact.files.map((file) => (
+                          <button
+                            key={file.key}
+                            type="button"
+                            className={[
+                              'diff-file-button',
+                              file.key === activeDiffFile?.key ? 'diff-file-button-active' : '',
+                            ]
+                              .filter(Boolean)
+                              .join(' ')}
+                            onClick={() => setSelectedDiffFileKey(file.key)}
+                          >
+                            <span className="diff-file-path">{file.path}</span>
+                            <Tag
+                              bordered={false}
+                              color={file.kind === 'untracked' ? 'gold' : 'processing'}
+                              className="diff-file-kind"
+                            >
+                              {file.kind === 'untracked' ? '未跟踪' : '已修改'}
+                            </Tag>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="diff-viewer-panel">
+                      <div className="diff-review-subhead">
+                        <div>
+                          <Text strong>{activeDiffFile?.path ?? '选择一个文件查看差异'}</Text>
+                          <div className="repo-meta-row">
+                            <Tag bordered={false}>{activeArtifact.repository}</Tag>
+                            <Tag bordered={false} color="processing">
+                              {activeArtifact.branch}
+                            </Tag>
+                          </div>
+                        </div>
+                      </div>
+                      {activeDiffFile ? (
+                        <pre className="diff-code-block">{activeDiffFile.diffText}</pre>
+                      ) : (
+                        <Empty description="当前仓库没有可查看的差异内容" />
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <Empty description="当前执行结果还没有可审查的 diff" />
+                )}
+              </Card>
+            ) : null}
+
+            {selectedStage === 'AI_REVIEW' ? (
+              <Card className="panel finding-panel" bordered={false}>
+                <div className="finding-panel-header">
+                  <SectionHeader
+                    eyebrow="Review Findings"
+                    title="审查条目沉淀"
+                    description="将 AI 审查结果沉淀为可跟踪的问题项与缺陷，便于后续人工确认和持续处理。"
+                  />
+                  <div className="finding-panel-actions">
+                    <div className="finding-summary-pills">
+                      <Tag bordered={false}>{workflowRun.reviewFindings.length} 条条目</Tag>
+                      <Tag bordered={false} color="processing">
+                        {workflowRun.reviewFindings.filter((item) => item.status === 'OPEN').length} 条待处理
+                      </Tag>
+                    </div>
+                    <Button
+                      className="ghost-button"
+                      onClick={() => {
+                        if (!reviewReportId) {
+                          return;
+                        }
+                        void runFindingAction(reviewReportId, () => api.syncReviewFindings(reviewReportId), '已同步审查条目');
+                      }}
+                      disabled={!reviewReportId || busyFindingId !== null}
+                    >
+                      同步 Findings
+                    </Button>
+                  </div>
+                </div>
+                {workflowRun.reviewFindings.length > 0 ? (
+                  <div className="finding-list">
+                    {workflowRun.reviewFindings.map((finding) => (
+                      <div key={finding.id} className="finding-card">
+                        <div className="finding-card-head">
+                          <div>
+                            <Text strong>{finding.title}</Text>
+                            <div className="repo-meta-row">
+                              <Tag bordered={false} color="processing">
+                                {finding.type}
+                              </Tag>
+                              <Tag bordered={false}>{finding.severity}</Tag>
+                              <Tag bordered={false}>{finding.status}</Tag>
+                            </div>
+                          </div>
+                          <Text className="finding-card-index">#{finding.id.slice(-6).toUpperCase()}</Text>
+                        </div>
+                        <Paragraph className="workflow-side-copy">{finding.description}</Paragraph>
+                        {finding.impactScope && finding.impactScope.length > 0 ? (
+                          <div className="workflow-side-tags">
+                            {finding.impactScope.map((item) => (
+                              <Tag key={item} bordered={false}>
+                                {item}
+                              </Tag>
+                            ))}
+                          </div>
+                        ) : null}
+                        <div className="stage-action-row">
+                          <Button
+                            className="ghost-button"
+                            onClick={() => void runFindingAction(finding.id, () => api.acceptReviewFinding(finding.id), '审查条目已接受')}
+                            loading={busyFindingId === finding.id}
+                            disabled={busyFindingId !== null || finding.status === 'CONVERTED_TO_ISSUE' || finding.status === 'CONVERTED_TO_BUG'}
+                          >
+                            接受
+                          </Button>
+                          <Button
+                            className="ghost-button"
+                            onClick={() => void runFindingAction(finding.id, () => api.dismissReviewFinding(finding.id), '审查条目已忽略')}
+                            loading={busyFindingId === finding.id}
+                            disabled={busyFindingId !== null || !!finding.convertedIssueId || !!finding.convertedBugId}
+                          >
+                            忽略
+                          </Button>
+                          <Button
+                            className="ghost-button"
+                            onClick={() =>
+                              void runFindingAction(finding.id, () => api.convertReviewFindingToIssue(finding.id), '已录入为问题项')
+                            }
+                            loading={busyFindingId === finding.id}
+                            disabled={busyFindingId !== null || !!finding.convertedIssueId || !!finding.convertedBugId}
+                          >
+                            转问题项
+                          </Button>
+                          <Button
+                            type="primary"
+                            className="accent-button"
+                            onClick={() =>
+                              void runFindingAction(finding.id, () => api.convertReviewFindingToBug(finding.id), '已录入为缺陷')
+                            }
+                            loading={busyFindingId === finding.id}
+                            disabled={busyFindingId !== null || !!finding.convertedIssueId || !!finding.convertedBugId}
+                          >
+                            转缺陷
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <Empty description="还没有沉淀的审查条目，先同步 findings。" />
+                )}
+              </Card>
+            ) : null}
           </div>
         </div>
       ) : (
