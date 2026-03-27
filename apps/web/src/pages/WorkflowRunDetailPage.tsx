@@ -3,7 +3,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { AppLayout } from '../components/AppLayout';
+import { ContextCard } from '../components/ContextCard';
+import { DetailBanner } from '../components/DetailBanner';
+import { SectionHeader } from '../components/SectionHeader';
 import { StageCard } from '../components/StageCard';
+import { SummaryMetrics } from '../components/SummaryMetrics';
 import type { WorkflowRun } from '../types';
 import { formatWorkflowStatus, getStage } from '../utils/workflow-ui';
 
@@ -174,6 +178,22 @@ export function WorkflowRunDetailPage() {
   }, [workflowRun]);
 
   const hasRunningStage = workflowRun?.stageExecutions.some((item) => item.status === 'RUNNING') ?? false;
+  const workflowMetrics = useMemo(() => {
+    if (!workflowRun) {
+      return null;
+    }
+
+    const completedStages = workflowRun.stageExecutions.filter((item) => item.status === 'COMPLETED').length;
+    const waitingStages = workflowRun.stageExecutions.filter((item) => item.status === 'WAITING_CONFIRMATION').length;
+    const findingsCount = workflowRun.reviewFindings.length;
+
+    return {
+      completedStages,
+      waitingStages,
+      findingsCount,
+      repositoryCount: workflowRun.workflowRepositories.length,
+    };
+  }, [workflowRun]);
 
   useEffect(() => {
     if (!hasRunningStage) {
@@ -553,37 +573,74 @@ export function WorkflowRunDetailPage() {
       </Modal>
       {workflowRun ? (
         <div className="workflow-detail-stack">
-          <Card className="panel workflow-banner" bordered={false} loading={loading}>
-            <div className="workflow-banner-copy">
-              <Text className="eyebrow">Workflow Detail</Text>
-              <Title level={3}>{workflowRun.requirement.title}</Title>
-              <Paragraph>{workflowRun.requirement.description}</Paragraph>
-              <div className="workspace-meta-row">
+          <DetailBanner
+            eyebrow="Workflow Detail"
+            title={workflowRun.requirement.title}
+            description={workflowRun.requirement.description}
+            loading={loading}
+            tags={
+              <>
                 <Tag bordered={false} color="processing">
                   {workflowRun.requirement.workspace?.name ?? '未绑定工作区'}
                 </Tag>
                 <Tag bordered={false}>{workflowRun.id}</Tag>
-              </div>
-            </div>
-            <div className="workflow-banner-side">
-              <Tag className="status-pill" bordered={false}>
-                {formatWorkflowStatus(workflowRun.status)}
-              </Tag>
-              <Text className="workflow-criteria">{workflowRun.requirement.acceptanceCriteria}</Text>
-              <Link className="ant-btn ghost-button" to="/workflow-runs">
-                返回列表
-              </Link>
-            </div>
-          </Card>
+              </>
+            }
+            actions={
+              <>
+                <Tag className="status-pill" bordered={false}>
+                  {formatWorkflowStatus(workflowRun.status)}
+                </Tag>
+                <Text className="workflow-criteria">{workflowRun.requirement.acceptanceCriteria}</Text>
+                <Link className="ant-btn ghost-button" to="/workflow-runs">
+                  返回列表
+                </Link>
+              </>
+            }
+          />
+
+          {workflowMetrics ? (
+            <SummaryMetrics
+              className="workflow-summary-grid"
+              items={[
+                {
+                  key: 'status',
+                  label: '当前状态',
+                  value: formatWorkflowStatus(workflowRun.status),
+                  helpText: hasRunningStage ? '当前有阶段正在后台执行。' : '当前没有后台执行中的阶段。',
+                },
+                {
+                  key: 'progress',
+                  label: '阶段进度',
+                  value: `${workflowMetrics.completedStages}/${STAGE_SEQUENCE.length}`,
+                  helpText: '已完成阶段数，按任务拆解到 AI 审查统计。',
+                },
+                {
+                  key: 'waiting',
+                  label: '待人工处理',
+                  value: workflowMetrics.waitingStages,
+                  helpText: '等待人工确认或下一步决策的阶段数量。',
+                },
+                {
+                  key: 'repos',
+                  label: '代码上下文',
+                  value: workflowMetrics.repositoryCount,
+                  helpText:
+                    workflowMetrics.findingsCount > 0
+                      ? `已沉淀 ${workflowMetrics.findingsCount} 条审查条目。`
+                      : '当前还没有沉淀的审查条目。',
+                },
+              ]}
+            />
+          ) : null}
 
           <Card className="panel workflow-steps-panel" bordered={false}>
-            <div className="panel-heading workflow-steps-heading">
-              <div>
-                <Text className="eyebrow">Workflow Steps</Text>
-                <Title level={4}>按阶段查看流程与产物</Title>
-              </div>
-              <Text className="requirement-criteria">点击步骤切换详情，产物仅在下方显示</Text>
-            </div>
+            <SectionHeader
+              eyebrow="Workflow Steps"
+              title="按阶段查看流程与产物"
+              className="workflow-steps-heading"
+              extra={<Text className="requirement-criteria">点击步骤切换详情，产物仅在下方显示</Text>}
+            />
             <Steps
               current={selectedStageIndex}
               responsive
@@ -619,24 +676,33 @@ export function WorkflowRunDetailPage() {
               )}
 
               {selectedStage === 'AI_REVIEW' ? (
-                <Card className="panel" bordered={false}>
-                  <div className="panel-heading workflow-steps-heading">
-                    <div>
-                      <Text className="eyebrow">Review Findings</Text>
-                      <Title level={4}>审查条目沉淀</Title>
+                <Card className="panel finding-panel" bordered={false}>
+                  <div className="finding-panel-header">
+                    <SectionHeader
+                      eyebrow="Review Findings"
+                      title="审查条目沉淀"
+                      description="将 AI 审查结果沉淀为可跟踪的问题项与缺陷，便于后续人工确认和持续处理。"
+                    />
+                    <div className="finding-panel-actions">
+                      <div className="finding-summary-pills">
+                        <Tag bordered={false}>{workflowRun.reviewFindings.length} 条条目</Tag>
+                        <Tag bordered={false} color="processing">
+                          {workflowRun.reviewFindings.filter((item) => item.status === 'OPEN').length} 条待处理
+                        </Tag>
+                      </div>
+                      <Button
+                        className="ghost-button"
+                        onClick={() => {
+                          if (!reviewReportId) {
+                            return;
+                          }
+                          void runFindingAction(reviewReportId, () => api.syncReviewFindings(reviewReportId), '已同步审查条目');
+                        }}
+                        disabled={!reviewReportId || busyFindingId !== null}
+                      >
+                        同步 Findings
+                      </Button>
                     </div>
-                    <Button
-                      className="ghost-button"
-                      onClick={() => {
-                        if (!reviewReportId) {
-                          return;
-                        }
-                        void runFindingAction(reviewReportId, () => api.syncReviewFindings(reviewReportId), '已同步审查条目');
-                      }}
-                      disabled={!reviewReportId || busyFindingId !== null}
-                    >
-                      同步 Findings
-                    </Button>
                   </div>
                   {workflowRun.reviewFindings.length > 0 ? (
                     <div className="finding-list">
@@ -653,6 +719,7 @@ export function WorkflowRunDetailPage() {
                                 <Tag bordered={false}>{finding.status}</Tag>
                               </div>
                             </div>
+                            <Text className="finding-card-index">#{finding.id.slice(-6).toUpperCase()}</Text>
                           </div>
                           <Paragraph className="workflow-side-copy">{finding.description}</Paragraph>
                           {finding.impactScope && finding.impactScope.length > 0 ? (
@@ -684,23 +751,23 @@ export function WorkflowRunDetailPage() {
                             <Button
                               className="ghost-button"
                               onClick={() =>
-                                void runFindingAction(finding.id, () => api.convertReviewFindingToIssue(finding.id), '已录入为 Issue')
+                                void runFindingAction(finding.id, () => api.convertReviewFindingToIssue(finding.id), '已录入为问题项')
                               }
                               loading={busyFindingId === finding.id}
                               disabled={busyFindingId !== null || !!finding.convertedIssueId || !!finding.convertedBugId}
                             >
-                              转 Issue
+                              转问题项
                             </Button>
                             <Button
                               type="primary"
                               className="accent-button"
                               onClick={() =>
-                                void runFindingAction(finding.id, () => api.convertReviewFindingToBug(finding.id), '已录入为 Bug')
+                                void runFindingAction(finding.id, () => api.convertReviewFindingToBug(finding.id), '已录入为缺陷')
                               }
                               loading={busyFindingId === finding.id}
                               disabled={busyFindingId !== null || !!finding.convertedIssueId || !!finding.convertedBugId}
                             >
-                              转 Bug
+                              转缺陷
                             </Button>
                           </div>
                         </div>
@@ -714,32 +781,25 @@ export function WorkflowRunDetailPage() {
             </div>
 
             <div className="workflow-detail-side">
-              <Card className="panel" bordered={false}>
-                <div className="panel-heading">
-                  <Text className="eyebrow">Stage Focus</Text>
-                  <Title level={4}>{stageMeta[selectedStage].title}</Title>
-                </div>
+              <ContextCard
+                eyebrow="Stage Focus"
+                title={stageMeta[selectedStage].title}
+                metrics={[
+                  { key: 'step', label: '当前步骤', value: `${selectedStageIndex + 1}/${STAGE_SEQUENCE.length}` },
+                  {
+                    key: 'status',
+                    label: '阶段状态',
+                    value: <Tag bordered={false} color={hasRunningStage ? 'gold' : 'processing'}>{hasRunningStage ? '后台处理中' : selectedStageContent?.status ?? '未开始'}</Tag>,
+                  },
+                ]}
+              >
                 <Paragraph className="workflow-side-copy">
                   当前展示的是所选阶段的结构化产出和可执行操作。上方步骤条反映全流程进度，等待确认和执行中的阶段会优先高亮。
                 </Paragraph>
-                <div className="workflow-side-tags">
-                  <Tag bordered={false} color="processing">
-                    当前步骤 {selectedStageIndex + 1}/{STAGE_SEQUENCE.length}
-                  </Tag>
-                  {hasRunningStage ? (
-                    <Tag bordered={false} color="gold">
-                      后台处理中
-                    </Tag>
-                  ) : null}
-                </div>
-              </Card>
+              </ContextCard>
 
               {workflowRun.workflowRepositories.length > 0 ? (
-                <Card className="panel" bordered={false}>
-                  <div className="panel-heading">
-                    <Text className="eyebrow">Workflow Branches</Text>
-                    <Title level={4}>本次工作流使用的代码分支</Title>
-                  </div>
+                <ContextCard eyebrow="Workflow Branches" title="本次工作流使用的代码分支">
                   <div className="repo-list">
                     {workflowRun.workflowRepositories.map((repository) => (
                       <div key={repository.id} className="repo-row">
@@ -773,7 +833,7 @@ export function WorkflowRunDetailPage() {
                       </div>
                     ))}
                   </div>
-                </Card>
+                </ContextCard>
               ) : null}
             </div>
           </div>

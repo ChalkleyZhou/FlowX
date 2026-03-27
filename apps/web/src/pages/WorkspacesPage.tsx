@@ -1,10 +1,13 @@
 import { Button, Card, Empty, Form, Input, List, Modal, Tag, Typography, message } from 'antd';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import type { Repository, Workspace } from '../types';
 import { AppLayout } from '../components/AppLayout';
+import { PageHero } from '../components/PageHero';
+import { SectionHeader } from '../components/SectionHeader';
+import { SummaryMetrics } from '../components/SummaryMetrics';
 
-const { Title, Text } = Typography;
+const { Title, Text, Paragraph } = Typography;
 
 export function WorkspacesPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -21,6 +24,16 @@ export function WorkspacesPage() {
   const [repositoryForm] = Form.useForm();
   const [branchForm] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
+
+  const workspaceSummary = useMemo(() => {
+    const repositoryCount = workspaces.reduce((sum, workspace) => sum + workspace.repositories.length, 0);
+    const requirementCount = workspaces.reduce((sum, workspace) => sum + (workspace._count?.requirements ?? 0), 0);
+    return {
+      workspaceCount: workspaces.length,
+      repositoryCount,
+      requirementCount,
+    };
+  }, [workspaces]);
 
   async function refresh() {
     setLoading(true);
@@ -139,27 +152,46 @@ export function WorkspacesPage() {
         </Form>
       </Modal>
 
-      <div className="page-hero">
-        <Text className="eyebrow">Workspace</Text>
-        <Title level={2}>项目工作区与代码库</Title>
-      </div>
+      <PageHero
+        eyebrow="Workspace"
+        title="项目工作区与代码库"
+        description="统一管理项目上下文、仓库分支与本地副本，为后续需求和工作流提供稳定的研发基线。"
+      />
+      <SummaryMetrics
+        items={[
+          { key: 'workspaceCount', label: '工作区数量', value: workspaceSummary.workspaceCount },
+          { key: 'repositoryCount', label: '代码库数量', value: workspaceSummary.repositoryCount },
+          { key: 'requirementCount', label: '关联需求数', value: workspaceSummary.requirementCount },
+        ]}
+      />
       <Card className="panel" bordered={false} loading={loading}>
-        <div className="panel-heading panel-heading-inline">
-          <div>
-            <Text className="eyebrow">Project Space</Text>
-            <Title level={4}>按项目组织需求上下文</Title>
-          </div>
-          <Button className="accent-button" type="primary" onClick={() => setWorkspaceModalOpen(true)}>
-            新建工作区
-          </Button>
-        </div>
+        <SectionHeader
+          eyebrow="Project Space"
+          title="按项目组织需求上下文"
+          extra={
+            <Button className="accent-button" type="primary" onClick={() => setWorkspaceModalOpen(true)}>
+              新建工作区
+            </Button>
+          }
+        />
         <List
           dataSource={workspaces}
           locale={{ emptyText: <Empty description="暂无工作区" /> }}
           renderItem={(workspace) => (
             <List.Item className="workspace-item">
               <div className="workspace-copy">
-                <Text strong>{workspace.name}</Text>
+                <div className="list-item-head">
+                  <Text strong className="requirement-title">{workspace.name}</Text>
+                  <Button
+                    className="ghost-button"
+                    onClick={() => {
+                      setRepositoryWorkspaceId(workspace.id);
+                      setRepositoryModalOpen(true);
+                    }}
+                  >
+                    添加代码库
+                  </Button>
+                </div>
                 <Text className="requirement-criteria">{workspace.description || '未填写描述'}</Text>
                 <div className="workspace-meta-row">
                   <Tag bordered={false} color="gold">
@@ -193,7 +225,6 @@ export function WorkspacesPage() {
                               同步状态 {repository.syncStatus ?? 'PENDING'}
                             </Tag>
                           </div>
-                          <Text className="requirement-criteria">{repository.localPath ?? '尚未落盘到本地'}</Text>
                           {repository.syncError ? (
                             <Text type="danger" className="requirement-criteria">
                               同步失败：{repository.syncError}
@@ -217,15 +248,6 @@ export function WorkspacesPage() {
                   </div>
                 ) : null}
               </div>
-              <Button
-                className="ghost-button"
-                onClick={() => {
-                  setRepositoryWorkspaceId(workspace.id);
-                  setRepositoryModalOpen(true);
-                }}
-              >
-                添加代码库
-              </Button>
             </List.Item>
           )}
         />

@@ -3,9 +3,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { AppLayout } from '../components/AppLayout';
+import { ListToolbar } from '../components/ListToolbar';
+import { PageHero } from '../components/PageHero';
+import { RecordListItem } from '../components/RecordListItem';
+import { SectionHeader } from '../components/SectionHeader';
+import { SummaryMetrics } from '../components/SummaryMetrics';
 import type { Issue, Workspace } from '../types';
 
-const { Title, Text, Paragraph } = Typography;
+const { Text, Paragraph } = Typography;
 
 export function IssuesPage() {
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -34,6 +39,17 @@ export function IssuesPage() {
     });
   }, [issues, keyword, selectedPriority, selectedStatus, selectedWorkspaceId]);
 
+  const issueSummary = useMemo(() => {
+    const openCount = issues.filter((item) => item.status === 'OPEN').length;
+    const inProgressCount = issues.filter((item) => item.status === 'IN_PROGRESS').length;
+    return {
+      total: issues.length,
+      visible: filteredIssues.length,
+      openCount,
+      inProgressCount,
+    };
+  }, [filteredIssues.length, issues]);
+
   async function refresh() {
     setLoading(true);
     try {
@@ -58,25 +74,35 @@ export function IssuesPage() {
   return (
     <AppLayout>
       {contextHolder}
+      <PageHero
+        eyebrow="Issue Registry"
+        title="问题项中心"
+        description="汇总 AI 审查沉淀的问题项，按工作区、状态和优先级持续跟踪，确保风险和改进建议都有归属。"
+      />
+      <SummaryMetrics
+        items={[
+          { key: 'total', label: '问题项总数', value: issueSummary.total },
+          { key: 'visible', label: '当前筛选结果', value: issueSummary.visible },
+          { key: 'openCount', label: '开放中', value: issueSummary.openCount },
+          { key: 'inProgressCount', label: '处理中', value: issueSummary.inProgressCount },
+        ]}
+      />
       <Card className="panel" bordered={false} loading={loading}>
-        <div className="panel-heading panel-heading-inline">
-          <div>
-            <Text className="eyebrow">Issue Registry</Text>
-            <Title level={4}>Issue 列表</Title>
-          </div>
-          <div className="inline-filter-group">
+        <SectionHeader eyebrow="Issue Registry" title="问题项列表" />
+        <div className="filter-toolbar-panel filter-toolbar-grid">
+          <div className="filter-toolbar-search filter-toolbar-span-full">
             <Input.Search
               allowClear
               placeholder="搜索标题、描述、需求、工作区"
               value={keyword}
-              style={{ minWidth: 260 }}
               onChange={(event) => setKeyword(event.target.value)}
             />
+          </div>
+          <ListToolbar className="filter-toolbar-selects filter-toolbar-span-full">
             <Select
               allowClear
               placeholder="按工作区筛选"
               value={selectedWorkspaceId}
-              style={{ minWidth: 220 }}
               onChange={(value) => setSelectedWorkspaceId(value)}
               options={workspaces.map((workspace) => ({ label: workspace.name, value: workspace.id }))}
             />
@@ -84,7 +110,6 @@ export function IssuesPage() {
               allowClear
               placeholder="按状态筛选"
               value={selectedStatus}
-              style={{ minWidth: 180 }}
               onChange={(value) => setSelectedStatus(value)}
               options={[
                 { label: 'OPEN', value: 'OPEN' },
@@ -98,7 +123,6 @@ export function IssuesPage() {
               allowClear
               placeholder="按优先级筛选"
               value={selectedPriority}
-              style={{ minWidth: 180 }}
               onChange={(value) => setSelectedPriority(value)}
               options={[
                 { label: 'LOW', value: 'LOW' },
@@ -107,11 +131,11 @@ export function IssuesPage() {
                 { label: 'URGENT', value: 'URGENT' },
               ]}
             />
-          </div>
+          </ListToolbar>
         </div>
         <List
           dataSource={filteredIssues}
-          locale={{ emptyText: <Empty description="暂无 Issue" /> }}
+          locale={{ emptyText: <Empty description="暂无问题项" /> }}
           pagination={{
             current: page,
             pageSize: 8,
@@ -122,35 +146,37 @@ export function IssuesPage() {
           }}
           renderItem={(item) => (
             <List.Item className="requirement-item">
-              <div className="requirement-copy">
-                <Text strong className="requirement-title">
-                  {item.title}
-                </Text>
-                <div className="workspace-meta-row">
-                  <Tag bordered={false} color="processing">
-                    {item.workspace?.name ?? '未绑定工作区'}
-                  </Tag>
-                  <Tag bordered={false}>{item.priority}</Tag>
-                  <Tag bordered={false}>{item.status}</Tag>
-                </div>
-                <Paragraph className="requirement-desc">{item.description}</Paragraph>
-                <Text className="requirement-criteria">
-                  来源需求：{item.requirement?.title ?? '未关联需求'}
-                </Text>
-                <Text className="requirement-criteria">
-                  分支：{item.branchName ?? '未记录分支'}
-                </Text>
-              </div>
-              <div className="inline-action-group">
-                <Link className="ant-btn ghost-button" to={`/issues/${item.id}`}>
-                  查看详情
-                </Link>
-                {item.workflowRun?.id ? (
-                  <Link className="ant-btn ghost-button" to={`/workflow-runs/${item.workflowRun.id}`}>
-                    查看来源流程
-                  </Link>
-                ) : null}
-              </div>
+              <RecordListItem
+                title={<Text strong className="requirement-title">{item.title}</Text>}
+                badges={
+                  <>
+                    <Tag bordered={false} color="processing">
+                      {item.workspace?.name ?? '未绑定工作区'}
+                    </Tag>
+                    <Tag bordered={false}>{item.priority}</Tag>
+                    <Tag bordered={false}>{item.status}</Tag>
+                  </>
+                }
+                description={<Paragraph className="requirement-desc">{item.description}</Paragraph>}
+                details={
+                  <>
+                    <Text className="requirement-criteria">来源需求：{item.requirement?.title ?? '未关联需求'}</Text>
+                    <Text className="requirement-criteria">分支：{item.branchName ?? '未记录分支'}</Text>
+                  </>
+                }
+                actions={
+                  <>
+                    <Link className="ant-btn ghost-button" to={`/issues/${item.id}`}>
+                      查看详情
+                    </Link>
+                    {item.workflowRun?.id ? (
+                      <Link className="ant-btn ghost-button" to={`/workflow-runs/${item.workflowRun.id}`}>
+                        查看来源流程
+                      </Link>
+                    ) : null}
+                  </>
+                }
+              />
             </List.Item>
           )}
         />

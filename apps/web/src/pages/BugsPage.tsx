@@ -3,9 +3,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { AppLayout } from '../components/AppLayout';
+import { ListToolbar } from '../components/ListToolbar';
+import { PageHero } from '../components/PageHero';
+import { RecordListItem } from '../components/RecordListItem';
+import { SectionHeader } from '../components/SectionHeader';
+import { SummaryMetrics } from '../components/SummaryMetrics';
 import type { Bug, Workspace } from '../types';
 
-const { Title, Text, Paragraph } = Typography;
+const { Text, Paragraph } = Typography;
 
 export function BugsPage() {
   const [bugs, setBugs] = useState<Bug[]>([]);
@@ -36,6 +41,17 @@ export function BugsPage() {
     });
   }, [bugs, keyword, selectedPriority, selectedSeverity, selectedStatus, selectedWorkspaceId]);
 
+  const bugSummary = useMemo(() => {
+    const openCount = bugs.filter((item) => item.status === 'OPEN').length;
+    const criticalCount = bugs.filter((item) => item.severity === 'CRITICAL').length;
+    return {
+      total: bugs.length,
+      visible: filteredBugs.length,
+      openCount,
+      criticalCount,
+    };
+  }, [bugs, filteredBugs.length]);
+
   async function refresh() {
     setLoading(true);
     try {
@@ -60,25 +76,35 @@ export function BugsPage() {
   return (
     <AppLayout>
       {contextHolder}
+      <PageHero
+        eyebrow="Bug Registry"
+        title="缺陷中心"
+        description="集中管理 AI 审查和人工确认后的缺陷，统一查看严重级别、优先级、来源流程和修复上下文。"
+      />
+      <SummaryMetrics
+        items={[
+          { key: 'total', label: '缺陷总数', value: bugSummary.total },
+          { key: 'visible', label: '当前筛选结果', value: bugSummary.visible },
+          { key: 'openCount', label: '开放中', value: bugSummary.openCount },
+          { key: 'criticalCount', label: '严重缺陷', value: bugSummary.criticalCount },
+        ]}
+      />
       <Card className="panel" bordered={false} loading={loading}>
-        <div className="panel-heading panel-heading-inline">
-          <div>
-            <Text className="eyebrow">Bug Registry</Text>
-            <Title level={4}>Bug 列表</Title>
-          </div>
-          <div className="inline-filter-group">
+        <SectionHeader eyebrow="Bug Registry" title="缺陷列表" />
+        <div className="filter-toolbar-panel filter-toolbar-grid">
+          <div className="filter-toolbar-search filter-toolbar-span-full">
             <Input.Search
               allowClear
               placeholder="搜索标题、描述、需求、工作区"
               value={keyword}
-              style={{ minWidth: 260 }}
               onChange={(event) => setKeyword(event.target.value)}
             />
+          </div>
+          <ListToolbar className="filter-toolbar-selects filter-toolbar-span-full">
             <Select
               allowClear
               placeholder="按工作区筛选"
               value={selectedWorkspaceId}
-              style={{ minWidth: 220 }}
               onChange={(value) => setSelectedWorkspaceId(value)}
               options={workspaces.map((workspace) => ({ label: workspace.name, value: workspace.id }))}
             />
@@ -86,7 +112,6 @@ export function BugsPage() {
               allowClear
               placeholder="按状态筛选"
               value={selectedStatus}
-              style={{ minWidth: 180 }}
               onChange={(value) => setSelectedStatus(value)}
               options={[
                 { label: 'OPEN', value: 'OPEN' },
@@ -102,7 +127,6 @@ export function BugsPage() {
               allowClear
               placeholder="按严重级别筛选"
               value={selectedSeverity}
-              style={{ minWidth: 180 }}
               onChange={(value) => setSelectedSeverity(value)}
               options={[
                 { label: 'LOW', value: 'LOW' },
@@ -115,7 +139,6 @@ export function BugsPage() {
               allowClear
               placeholder="按优先级筛选"
               value={selectedPriority}
-              style={{ minWidth: 180 }}
               onChange={(value) => setSelectedPriority(value)}
               options={[
                 { label: 'LOW', value: 'LOW' },
@@ -124,11 +147,11 @@ export function BugsPage() {
                 { label: 'URGENT', value: 'URGENT' },
               ]}
             />
-          </div>
+          </ListToolbar>
         </div>
         <List
           dataSource={filteredBugs}
-          locale={{ emptyText: <Empty description="暂无 Bug" /> }}
+          locale={{ emptyText: <Empty description="暂无缺陷" /> }}
           pagination={{
             current: page,
             pageSize: 8,
@@ -139,38 +162,40 @@ export function BugsPage() {
           }}
           renderItem={(item) => (
             <List.Item className="requirement-item">
-              <div className="requirement-copy">
-                <Text strong className="requirement-title">
-                  {item.title}
-                </Text>
-                <div className="workspace-meta-row">
-                  <Tag bordered={false} color="error">
-                    {item.severity}
-                  </Tag>
-                  <Tag bordered={false}>{item.priority}</Tag>
-                  <Tag bordered={false}>{item.status}</Tag>
-                  <Tag bordered={false} color="processing">
-                    {item.workspace?.name ?? '未绑定工作区'}
-                  </Tag>
-                </div>
-                <Paragraph className="requirement-desc">{item.description}</Paragraph>
-                <Text className="requirement-criteria">
-                  来源需求：{item.requirement?.title ?? '未关联需求'}
-                </Text>
-                <Text className="requirement-criteria">
-                  分支：{item.branchName ?? '未记录分支'}
-                </Text>
-              </div>
-              <div className="inline-action-group">
-                <Link className="ant-btn ghost-button" to={`/bugs/${item.id}`}>
-                  查看详情
-                </Link>
-                {item.workflowRun?.id ? (
-                  <Link className="ant-btn ghost-button" to={`/workflow-runs/${item.workflowRun.id}`}>
-                    查看来源流程
-                  </Link>
-                ) : null}
-              </div>
+              <RecordListItem
+                title={<Text strong className="requirement-title">{item.title}</Text>}
+                badges={
+                  <>
+                    <Tag bordered={false} color="error">
+                      {item.severity}
+                    </Tag>
+                    <Tag bordered={false}>{item.priority}</Tag>
+                    <Tag bordered={false}>{item.status}</Tag>
+                    <Tag bordered={false} color="processing">
+                      {item.workspace?.name ?? '未绑定工作区'}
+                    </Tag>
+                  </>
+                }
+                description={<Paragraph className="requirement-desc">{item.description}</Paragraph>}
+                details={
+                  <>
+                    <Text className="requirement-criteria">来源需求：{item.requirement?.title ?? '未关联需求'}</Text>
+                    <Text className="requirement-criteria">分支：{item.branchName ?? '未记录分支'}</Text>
+                  </>
+                }
+                actions={
+                  <>
+                    <Link className="ant-btn ghost-button" to={`/bugs/${item.id}`}>
+                      查看详情
+                    </Link>
+                    {item.workflowRun?.id ? (
+                      <Link className="ant-btn ghost-button" to={`/workflow-runs/${item.workflowRun.id}`}>
+                        查看来源流程
+                      </Link>
+                    ) : null}
+                  </>
+                }
+              />
             </List.Item>
           )}
         />

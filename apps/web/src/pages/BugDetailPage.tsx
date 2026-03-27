@@ -3,6 +3,10 @@ import { useEffect, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { AppLayout } from '../components/AppLayout';
+import { ContextCard } from '../components/ContextCard';
+import { DetailBanner } from '../components/DetailBanner';
+import { SectionHeader } from '../components/SectionHeader';
+import { SummaryMetrics } from '../components/SummaryMetrics';
 import type { Bug } from '../types';
 
 const { Title, Text, Paragraph } = Typography;
@@ -36,7 +40,7 @@ export function BugDetailPage() {
         resolution: nextBug.resolution ?? '',
       });
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : '加载 Bug 详情失败');
+      messageApi.error(error instanceof Error ? error.message : '加载缺陷详情失败');
     } finally {
       setLoading(false);
     }
@@ -82,9 +86,9 @@ export function BugDetailPage() {
         reproductionSteps: (nextBug.reproductionSteps ?? []).join('\n'),
         resolution: nextBug.resolution ?? '',
       });
-      messageApi.success('Bug 已更新');
+      messageApi.success('缺陷已更新');
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : '更新 Bug 失败');
+      messageApi.error(error instanceof Error ? error.message : '更新缺陷失败');
     } finally {
       setSaving(false);
     }
@@ -98,12 +102,13 @@ export function BugDetailPage() {
     <AppLayout>
       {contextHolder}
       <div className="workflow-detail-stack">
-        <Card className="panel workflow-banner" bordered={false} loading={loading}>
-          <div className="workflow-banner-copy">
-            <Text className="eyebrow">Bug Detail</Text>
-            <Title level={3}>{bug?.title ?? 'Bug 详情'}</Title>
-            <Paragraph>{bug?.description ?? '查看并维护平台内的 Bug 资产。'}</Paragraph>
-            <div className="workspace-meta-row">
+        <DetailBanner
+          eyebrow="Bug Detail"
+          title={bug?.title ?? '缺陷详情'}
+          description={bug?.description ?? '查看并维护平台内的缺陷资产。'}
+          loading={loading}
+          tags={
+            <>
               <Tag bordered={false} color="error">
                 {bug?.severity ?? 'MEDIUM'}
               </Tag>
@@ -112,27 +117,36 @@ export function BugDetailPage() {
               <Tag bordered={false} color="processing">
                 {bug?.workspace?.name ?? '未绑定工作区'}
               </Tag>
-            </div>
-          </div>
-          <div className="workflow-banner-side">
-            <Link className="ant-btn ghost-button" to="/bugs">
-              返回 Bug 列表
-            </Link>
-            {bug?.workflowRun?.id ? (
-              <Link className="ant-btn ghost-button" to={`/workflow-runs/${bug.workflowRun.id}`}>
-                查看来源流程
+            </>
+          }
+          actions={
+            <>
+              <Link className="ant-btn ghost-button" to="/bugs">
+                返回缺陷列表
               </Link>
-            ) : null}
-          </div>
-        </Card>
+              {bug?.workflowRun?.id ? (
+                <Link className="ant-btn ghost-button" to={`/workflow-runs/${bug.workflowRun.id}`}>
+                  查看来源流程
+                </Link>
+              ) : null}
+            </>
+          }
+        />
+
+        <SummaryMetrics
+          className="detail-summary-grid"
+          items={[
+            { key: 'status', label: '当前状态', value: bug?.status ?? 'OPEN', helpText: '缺陷当前所处的处理阶段。' },
+            { key: 'severity', label: '严重级别', value: bug?.severity ?? 'MEDIUM', helpText: '用于标记影响范围和风险等级。' },
+            { key: 'priority', label: '优先级', value: bug?.priority ?? 'MEDIUM', helpText: '用于安排修复顺序与处理节奏。' },
+            { key: 'workspace', label: '所属工作区', value: bug?.workspace?.name ?? '未绑定', helpText: '当前缺陷所属的项目空间。' },
+          ]}
+        />
 
         <div className="workflow-detail-grid">
           <div className="workflow-detail-main">
             <Card className="panel" bordered={false} loading={loading}>
-              <div className="panel-heading">
-                <Text className="eyebrow">Edit Bug</Text>
-                <Title level={4}>编辑 Bug</Title>
-              </div>
+              <SectionHeader eyebrow="Edit Bug" title="编辑缺陷" />
               <Form form={form} layout="vertical" onFinish={(values) => void submit(values)}>
                 <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
                   <Input size="large" />
@@ -198,15 +212,17 @@ export function BugDetailPage() {
           </div>
 
           <div className="workflow-detail-side">
-            <Card className="panel" bordered={false} loading={loading}>
-              <div className="panel-heading">
-                <Text className="eyebrow">Source</Text>
-                <Title level={4}>来源上下文</Title>
-              </div>
-              <Text className="requirement-criteria">来源需求：{bug?.requirement?.title ?? '未关联需求'}</Text>
-              <Text className="requirement-criteria">来源分支：{bug?.branchName ?? '未记录分支'}</Text>
+            <ContextCard
+              eyebrow="Source"
+              title="来源上下文"
+              loading={loading}
+              metrics={[
+                { key: 'requirement', label: '来源需求', value: bug?.requirement?.title ?? '未关联需求' },
+                { key: 'branch', label: '来源分支', value: bug?.branchName ?? '未记录分支' },
+              ]}
+            >
               {bug?.reviewFinding ? (
-                <>
+                <div className="detail-context-block">
                   <div className="workflow-side-tags">
                     <Tag bordered={false} color="processing">
                       {bug.reviewFinding.type}
@@ -214,9 +230,9 @@ export function BugDetailPage() {
                     <Tag bordered={false}>{bug.reviewFinding.severity}</Tag>
                   </div>
                   <Paragraph className="workflow-side-copy">{bug.reviewFinding.description}</Paragraph>
-                </>
+                </div>
               ) : null}
-            </Card>
+            </ContextCard>
           </div>
         </div>
       </div>

@@ -3,6 +3,10 @@ import { useEffect, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { AppLayout } from '../components/AppLayout';
+import { ContextCard } from '../components/ContextCard';
+import { DetailBanner } from '../components/DetailBanner';
+import { SectionHeader } from '../components/SectionHeader';
+import { SummaryMetrics } from '../components/SummaryMetrics';
 import type { Issue } from '../types';
 
 const { Title, Text, Paragraph } = Typography;
@@ -32,7 +36,7 @@ export function IssueDetailPage() {
         resolution: nextIssue.resolution ?? '',
       });
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : '加载 Issue 详情失败');
+      messageApi.error(error instanceof Error ? error.message : '加载问题项详情失败');
     } finally {
       setLoading(false);
     }
@@ -65,9 +69,9 @@ export function IssueDetailPage() {
         branchName: nextIssue.branchName ?? '',
         resolution: nextIssue.resolution ?? '',
       });
-      messageApi.success('Issue 已更新');
+      messageApi.success('问题项已更新');
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : '更新 Issue 失败');
+      messageApi.error(error instanceof Error ? error.message : '更新问题项失败');
     } finally {
       setSaving(false);
     }
@@ -81,38 +85,53 @@ export function IssueDetailPage() {
     <AppLayout>
       {contextHolder}
       <div className="workflow-detail-stack">
-        <Card className="panel workflow-banner" bordered={false} loading={loading}>
-          <div className="workflow-banner-copy">
-            <Text className="eyebrow">Issue Detail</Text>
-            <Title level={3}>{issue?.title ?? 'Issue 详情'}</Title>
-            <Paragraph>{issue?.description ?? '查看并维护平台内的 Issue 资产。'}</Paragraph>
-            <div className="workspace-meta-row">
+        <DetailBanner
+          eyebrow="Issue Detail"
+          title={issue?.title ?? '问题项详情'}
+          description={issue?.description ?? '查看并维护平台内的问题项资产。'}
+          loading={loading}
+          tags={
+            <>
               <Tag bordered={false} color="processing">
                 {issue?.workspace?.name ?? '未绑定工作区'}
               </Tag>
               <Tag bordered={false}>{issue?.priority ?? 'MEDIUM'}</Tag>
               <Tag bordered={false}>{issue?.status ?? 'OPEN'}</Tag>
-            </div>
-          </div>
-          <div className="workflow-banner-side">
-            <Link className="ant-btn ghost-button" to="/issues">
-              返回 Issue 列表
-            </Link>
-            {issue?.workflowRun?.id ? (
-              <Link className="ant-btn ghost-button" to={`/workflow-runs/${issue.workflowRun.id}`}>
-                查看来源流程
+            </>
+          }
+          actions={
+            <>
+              <Link className="ant-btn ghost-button" to="/issues">
+                返回问题项列表
               </Link>
-            ) : null}
-          </div>
-        </Card>
+              {issue?.workflowRun?.id ? (
+                <Link className="ant-btn ghost-button" to={`/workflow-runs/${issue.workflowRun.id}`}>
+                  查看来源流程
+                </Link>
+              ) : null}
+            </>
+          }
+        />
+
+        <SummaryMetrics
+          className="detail-summary-grid"
+          items={[
+            { key: 'status', label: '当前状态', value: issue?.status ?? 'OPEN', helpText: '问题项当前所处的处理阶段。' },
+            { key: 'priority', label: '优先级', value: issue?.priority ?? 'MEDIUM', helpText: '用于标记后续处理和排期的紧急程度。' },
+            { key: 'workspace', label: '所属工作区', value: issue?.workspace?.name ?? '未绑定', helpText: '当前问题项所属的项目空间。' },
+            {
+              key: 'workflow',
+              label: '来源流程',
+              value: issue?.workflowRun ? '已关联' : '未关联',
+              helpText: issue?.workflowRun ? '可追溯到原始工作流与审查上下文。' : '当前未记录来源工作流。',
+            },
+          ]}
+        />
 
         <div className="workflow-detail-grid">
           <div className="workflow-detail-main">
             <Card className="panel" bordered={false} loading={loading}>
-              <div className="panel-heading">
-                <Text className="eyebrow">Edit Issue</Text>
-                <Title level={4}>编辑 Issue</Title>
-              </div>
+              <SectionHeader eyebrow="Edit Issue" title="编辑问题项" />
               <Form form={form} layout="vertical" onFinish={(values) => void submit(values)}>
                 <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
                   <Input size="large" />
@@ -157,15 +176,17 @@ export function IssueDetailPage() {
           </div>
 
           <div className="workflow-detail-side">
-            <Card className="panel" bordered={false} loading={loading}>
-              <div className="panel-heading">
-                <Text className="eyebrow">Source</Text>
-                <Title level={4}>来源上下文</Title>
-              </div>
-              <Text className="requirement-criteria">来源需求：{issue?.requirement?.title ?? '未关联需求'}</Text>
-              <Text className="requirement-criteria">来源分支：{issue?.branchName ?? '未记录分支'}</Text>
+            <ContextCard
+              eyebrow="Source"
+              title="来源上下文"
+              loading={loading}
+              metrics={[
+                { key: 'requirement', label: '来源需求', value: issue?.requirement?.title ?? '未关联需求' },
+                { key: 'branch', label: '来源分支', value: issue?.branchName ?? '未记录分支' },
+              ]}
+            >
               {issue?.reviewFinding ? (
-                <>
+                <div className="detail-context-block">
                   <div className="workflow-side-tags">
                     <Tag bordered={false} color="processing">
                       {issue.reviewFinding.type}
@@ -173,9 +194,9 @@ export function IssueDetailPage() {
                     <Tag bordered={false}>{issue.reviewFinding.severity}</Tag>
                   </div>
                   <Paragraph className="workflow-side-copy">{issue.reviewFinding.description}</Paragraph>
-                </>
+                </div>
               ) : null}
-            </Card>
+            </ContextCard>
           </div>
         </div>
       </div>
