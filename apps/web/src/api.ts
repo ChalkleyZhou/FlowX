@@ -1,4 +1,4 @@
-import type { AuthOrganization, AuthSession, Requirement, WorkflowRun, Workspace, Repository } from './types';
+import type { AuthOrganization, AuthSession, Bug, Issue, Requirement, ReviewFinding, WorkflowRun, Workspace, Repository } from './types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
 const AUTH_TOKEN_STORAGE_KEY = 'flowx-auth-token';
@@ -179,6 +179,85 @@ export const api = {
     }),
   runReview: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/review/run`, { method: 'POST' }),
+  getReviewFindings: (workflowRunId: string) =>
+    request<ReviewFinding[]>(`/workflow-runs/${workflowRunId}/review-findings`),
+  syncReviewFindings: (reviewReportId: string) =>
+    request<ReviewFinding[]>(`/review-reports/${reviewReportId}/findings/sync`, { method: 'POST' }),
+  acceptReviewFinding: (id: string) =>
+    request<ReviewFinding>(`/review-findings/${id}/accept`, { method: 'POST' }),
+  dismissReviewFinding: (id: string) =>
+    request<ReviewFinding>(`/review-findings/${id}/dismiss`, { method: 'POST' }),
+  convertReviewFindingToIssue: (id: string, payload?: { title?: string; description?: string; priority?: string }) =>
+    request<Issue>(`/review-findings/${id}/convert-to-issue`, {
+      method: 'POST',
+      body: JSON.stringify(payload ?? {}),
+    }),
+  convertReviewFindingToBug: (
+    id: string,
+    payload?: { title?: string; description?: string; severity?: string; priority?: string },
+  ) =>
+    request<Bug>(`/review-findings/${id}/convert-to-bug`, {
+      method: 'POST',
+      body: JSON.stringify(payload ?? {}),
+    }),
+  getIssues: (params?: { workspaceId?: string; workflowRunId?: string; status?: string }) =>
+    request<Issue[]>(
+      `/issues?${new URLSearchParams(
+        Object.entries(params ?? {}).reduce<Record<string, string>>((acc, [key, value]) => {
+          if (value) {
+            acc[key] = value;
+          }
+          return acc;
+        }, {}),
+      ).toString()}`,
+    ),
+  getIssue: (id: string) => request<Issue>(`/issues/${id}`),
+  updateIssue: (
+    id: string,
+    payload: {
+      title?: string;
+      description?: string;
+      status?: string;
+      priority?: string;
+      resolution?: string;
+      branchName?: string;
+    },
+  ) =>
+    request<Issue>(`/issues/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  getBugs: (params?: { workspaceId?: string; workflowRunId?: string; status?: string }) =>
+    request<Bug[]>(
+      `/bugs?${new URLSearchParams(
+        Object.entries(params ?? {}).reduce<Record<string, string>>((acc, [key, value]) => {
+          if (value) {
+            acc[key] = value;
+          }
+          return acc;
+        }, {}),
+      ).toString()}`,
+    ),
+  getBug: (id: string) => request<Bug>(`/bugs/${id}`),
+  updateBug: (
+    id: string,
+    payload: {
+      title?: string;
+      description?: string;
+      status?: string;
+      severity?: string;
+      priority?: string;
+      expectedBehavior?: string;
+      actualBehavior?: string;
+      reproductionSteps?: string[];
+      resolution?: string;
+      branchName?: string;
+    },
+  ) =>
+    request<Bug>(`/bugs/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
   reviseReview: (id: string, feedback: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/review/revise`, {
       method: 'POST',

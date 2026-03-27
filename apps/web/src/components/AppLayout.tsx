@@ -10,6 +10,8 @@ const items = [
   { key: '/workspaces', label: <Link to="/workspaces">工作区</Link> },
   { key: '/requirements', label: <Link to="/requirements">需求</Link> },
   { key: '/workflow-runs', label: <Link to="/workflow-runs">工作流</Link> },
+  { key: '/issues', label: <Link to="/issues">Issues</Link> },
+  { key: '/bugs', label: <Link to="/bugs">Bugs</Link> },
 ];
 
 export function AppLayout({ children }: PropsWithChildren) {

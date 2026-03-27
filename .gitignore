@@ -6,4 +6,8 @@ coverage
 .turbo
 .DS_Store
 apps/api/generated
-
+.flowx-data/
+prisma/dev.db
+prisma/.env
+apps/*/.env
+*.tsbuildinfo

@@ -46,6 +46,42 @@ pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma
 pnpm dev
 ```
 
+## Docker deployment
+
+This repo includes a multi-stage `Dockerfile` that builds both the API and the web app.
+
+Build the image:
+
+```bash
+docker build \
+  --build-arg VITE_API_BASE_URL="http://YOUR_SERVER_IP:3000" \
+  -t flowx:latest .
+```
+
+Run the container:
+
+```bash
+docker run -d \
+  --name flowx \
+  -p 3000:3000 \
+  -p 4173:4173 \
+  -e PORT=3000 \
+  -e WEB_PORT=4173 \
+  -e DATABASE_URL="file:/data/dev.db" \
+  -e AI_EXECUTOR_PROVIDER="codex" \
+  -e DINGTALK_APP_ID="your_app_id" \
+  -e DINGTALK_APP_SECRET="your_app_secret" \
+  -v flowx-data:/data \
+  flowx:latest
+```
+
+Notes:
+
+- API runs on `3000`
+- Web runs on `4173`
+- SQLite data is stored in `/data/dev.db`, so mounting `/data` is recommended
+- If your server environment does not provide Codex CLI, set `AI_EXECUTOR_PROVIDER="mock"` temporarily
+
 ## Auth
 
 - Built-in user system with extensible third-party provider abstraction.

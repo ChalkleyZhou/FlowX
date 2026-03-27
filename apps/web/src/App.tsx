@@ -1,5 +1,9 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './auth';
+import { BugsPage } from './pages/BugsPage';
+import { BugDetailPage } from './pages/BugDetailPage';
+import { IssuesPage } from './pages/IssuesPage';
+import { IssueDetailPage } from './pages/IssueDetailPage';
 import { RequirementsPage } from './pages/RequirementsPage';
 import { WorkflowRunDetailPage } from './pages/WorkflowRunDetailPage';
 import { WorkflowRunsPage } from './pages/WorkflowRunsPage';
@@ -45,6 +49,38 @@ export default function App() {
           element={
             <ProtectedRoute>
               <WorkflowRunDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/issues"
+          element={
+            <ProtectedRoute>
+              <IssuesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/issues/:issueId"
+          element={
+            <ProtectedRoute>
+              <IssueDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/bugs"
+          element={
+            <ProtectedRoute>
+              <BugsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/bugs/:bugId"
+          element={
+            <ProtectedRoute>
+              <BugDetailPage />
             </ProtectedRoute>
           }
         />

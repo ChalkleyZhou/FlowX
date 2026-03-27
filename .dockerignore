@@ -1,0 +1,10 @@
+.git
+.gitignore
+.env
+.flowx-data
+node_modules
+apps/*/node_modules
+apps/*/dist
+prisma/dev.db
+*.log
+dist

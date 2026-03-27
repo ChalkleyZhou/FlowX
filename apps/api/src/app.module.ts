@@ -5,6 +5,7 @@ import { AiModule } from './ai/ai.module';
 import { AuthModule } from './auth/auth.module';
 import { SessionAuthGuard } from './auth/session-auth.guard';
 import { PrismaModule } from './prisma/prisma.module';
+import { ReviewArtifactsModule } from './review-artifacts/review-artifacts.module';
 import { RequirementsModule } from './requirements/requirements.module';
 import { WorkflowModule } from './workflow/workflow.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
@@ -18,6 +19,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
     PrismaModule,
     AiModule,
     AuthModule,
+    ReviewArtifactsModule,
     WorkspacesModule,
     RequirementsModule,
     WorkflowModule,

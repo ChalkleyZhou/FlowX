@@ -16,6 +16,9 @@ model Requirement {
   workspaceId        String?
   workspace          Workspace? @relation(fields: [workspaceId], references: [id])
   workflowRuns       WorkflowRun[]
+  issues             Issue[]
+  bugs               Bug[] @relation("BugSourceRequirement")
+  fixingBugs         Bug[] @relation("BugFixRequirement")
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }
@@ -27,6 +30,8 @@ model Workspace {
   description  String?
   repositories Repository[]
   requirements Requirement[]
+  issues       Issue[]
+  bugs         Bug[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
@@ -45,6 +50,8 @@ model Repository {
   syncError     String?
   lastSyncedAt  DateTime?
   workflowRepositories WorkflowRepository[]
+  issues        Issue[]
+  bugs          Bug[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -60,6 +67,10 @@ model User {
   identities    AuthIdentity[]
   sessions      UserSession[]
   memberships   UserOrganization[]
+  reportedIssues Issue[] @relation("IssueReportedBy")
+  assignedIssues Issue[] @relation("IssueAssignedTo")
+  reportedBugs   Bug[]   @relation("BugReportedBy")
+  assignedBugs   Bug[]   @relation("BugAssignedTo")
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 }
@@ -163,6 +174,9 @@ model WorkflowRun {
   codeExecution  CodeExecution?
   reviewReport   ReviewReport?
   workflowRepositories WorkflowRepository[]
+  reviewFindings ReviewFinding[]
+  issues         Issue[]
+  bugs           Bug[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
@@ -200,6 +214,7 @@ model StageExecution {
   errorMessage String?
   startedAt    DateTime?
   finishedAt   DateTime?
+  reviewFindings ReviewFinding[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -255,6 +270,99 @@ model ReviewReport {
   missingTests Json
   suggestions  Json
   impactScope  Json
+  reviewFindings ReviewFinding[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+model ReviewFinding {
+  id                   String   @id @default(cuid())
+  status               String   @default("OPEN")
+  type                 String
+  sourceType           String
+  sourceIndex          Int
+  severity             String   @default("MEDIUM")
+  title                String
+  description          String
+  recommendation       String?
+  impactScope          Json?
+  metadata             Json?
+  reviewReportId       String
+  reviewReport         ReviewReport @relation(fields: [reviewReportId], references: [id])
+  workflowRunId        String
+  workflowRun          WorkflowRun @relation(fields: [workflowRunId], references: [id])
+  sourceStageExecutionId String?
+  sourceStageExecution StageExecution? @relation(fields: [sourceStageExecutionId], references: [id])
+  convertedIssueId     String?   @unique
+  convertedIssue       Issue?    @relation("FindingToIssue", fields: [convertedIssueId], references: [id])
+  convertedBugId       String?   @unique
+  convertedBug         Bug?      @relation("FindingToBug", fields: [convertedBugId], references: [id])
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([workflowRunId, type, status])
+  @@index([reviewReportId, createdAt])
+  @@unique([reviewReportId, sourceType, sourceIndex])
+}
+
+model Issue {
+  id               String   @id @default(cuid())
+  status           String   @default("OPEN")
+  priority         String   @default("MEDIUM")
+  title            String
+  description      String
+  resolution       String?
+  workspaceId      String
+  workspace        Workspace @relation(fields: [workspaceId], references: [id])
+  requirementId    String?
+  requirement      Requirement? @relation(fields: [requirementId], references: [id])
+  workflowRunId    String?
+  workflowRun      WorkflowRun? @relation(fields: [workflowRunId], references: [id])
+  reviewFinding    ReviewFinding? @relation("FindingToIssue")
+  repositoryId     String?
+  repository       Repository? @relation(fields: [repositoryId], references: [id])
+  branchName       String?
+  assigneeUserId   String?
+  assigneeUser     User? @relation("IssueAssignedTo", fields: [assigneeUserId], references: [id])
+  reportedByUserId String?
+  reportedByUser   User? @relation("IssueReportedBy", fields: [reportedByUserId], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([workspaceId, status, priority])
+  @@index([workflowRunId, createdAt])
+}
+
+model Bug {
+  id               String   @id @default(cuid())
+  status           String   @default("OPEN")
+  severity         String   @default("MEDIUM")
+  priority         String   @default("MEDIUM")
+  title            String
+  description      String
+  expectedBehavior String?
+  actualBehavior   String?
+  reproductionSteps Json?
+  resolution       String?
+  workspaceId      String
+  workspace        Workspace @relation(fields: [workspaceId], references: [id])
+  requirementId    String?
+  requirement      Requirement? @relation("BugSourceRequirement", fields: [requirementId], references: [id])
+  workflowRunId    String?
+  workflowRun      WorkflowRun? @relation(fields: [workflowRunId], references: [id])
+  reviewFinding    ReviewFinding? @relation("FindingToBug")
+  repositoryId     String?
+  repository       Repository? @relation(fields: [repositoryId], references: [id])
+  branchName       String?
+  fixRequirementId String?
+  fixRequirement   Requirement? @relation("BugFixRequirement", fields: [fixRequirementId], references: [id])
+  assigneeUserId   String?
+  assigneeUser     User? @relation("BugAssignedTo", fields: [assigneeUserId], references: [id])
+  reportedByUserId String?
+  reportedByUser   User? @relation("BugReportedBy", fields: [reportedByUserId], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([workspaceId, status, severity, priority])
+  @@index([workflowRunId, createdAt])
 }

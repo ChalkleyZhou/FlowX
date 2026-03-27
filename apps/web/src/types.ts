@@ -76,6 +76,7 @@ export interface WorkflowRun {
     status: string;
   };
   reviewReport?: {
+    id: string;
     issues: string[];
     bugs: string[];
     missingTests: string[];
@@ -83,7 +84,73 @@ export interface WorkflowRun {
     impactScope: string[];
     status: string;
   };
+  reviewFindings: ReviewFinding[];
   stageExecutions: StageExecution[];
+}
+
+export interface ReviewFinding {
+  id: string;
+  status: string;
+  type: string;
+  sourceType: string;
+  sourceIndex: number;
+  severity: string;
+  title: string;
+  description: string;
+  recommendation?: string | null;
+  impactScope?: string[] | null;
+  convertedIssueId?: string | null;
+  convertedBugId?: string | null;
+}
+
+export interface Issue {
+  id: string;
+  status: string;
+  priority: string;
+  title: string;
+  description: string;
+  workspace?: { id: string; name: string } | null;
+  requirement?: { id: string; title: string } | null;
+  workflowRun?: { id: string; status: string } | null;
+  workflowRunId?: string | null;
+  requirementId?: string | null;
+  branchName?: string | null;
+  createdAt?: string;
+  resolution?: string | null;
+  reviewFinding?: {
+    id: string;
+    type: string;
+    severity: string;
+    title: string;
+    description: string;
+  } | null;
+}
+
+export interface Bug {
+  id: string;
+  status: string;
+  severity: string;
+  priority: string;
+  title: string;
+  description: string;
+  workspace?: { id: string; name: string } | null;
+  requirement?: { id: string; title: string } | null;
+  workflowRun?: { id: string; status: string } | null;
+  workflowRunId?: string | null;
+  requirementId?: string | null;
+  branchName?: string | null;
+  createdAt?: string;
+  expectedBehavior?: string | null;
+  actualBehavior?: string | null;
+  reproductionSteps?: string[] | null;
+  resolution?: string | null;
+  reviewFinding?: {
+    id: string;
+    type: string;
+    severity: string;
+    title: string;
+    description: string;
+  } | null;
 }
 
 export interface AuthOrganization {

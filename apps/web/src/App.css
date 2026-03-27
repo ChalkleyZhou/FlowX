@@ -127,6 +127,20 @@ body {
   gap: 22px;
 }
 
+.workflow-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) 360px;
+  gap: 22px;
+  align-items: start;
+}
+
+.workflow-detail-main,
+.workflow-detail-side {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
 .panel-heading-inline {
   display: flex;
   justify-content: space-between;
@@ -634,6 +648,65 @@ body {
   text-align: right;
 }
 
+.workflow-steps-panel .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.workflow-steps-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 0;
+}
+
+.workflow-steps.ant-steps {
+  padding: 8px 6px 4px;
+}
+
+.workflow-steps .ant-steps-item-title {
+  font-weight: 700;
+}
+
+.workflow-steps .ant-steps-item-description {
+  max-width: 180px;
+  color: var(--muted);
+}
+
+.workflow-side-copy.ant-typography {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.workflow-side-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.finding-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.finding-card {
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(23, 32, 51, 0.08);
+}
+
+.finding-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
 .stage-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -729,7 +802,8 @@ body {
   }
 
   .hero,
-  .workflow-banner .ant-card-body {
+  .workflow-banner .ant-card-body,
+  .workflow-steps-heading {
     flex-direction: column;
   }
 
@@ -744,6 +818,10 @@ body {
   }
 
   .auth-feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-detail-grid {
     grid-template-columns: 1fr;
   }
 }

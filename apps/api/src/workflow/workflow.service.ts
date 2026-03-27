@@ -967,6 +967,9 @@ export class WorkflowService {
       plan: true,
       codeExecution: true,
       reviewReport: true,
+      reviewFindings: {
+        orderBy: [{ createdAt: 'asc' as const }, { sourceIndex: 'asc' as const }],
+      },
       workflowRepositories: {
         orderBy: {
           createdAt: 'asc' as const,
@@ -1231,6 +1234,7 @@ type WorkflowPayload = Prisma.WorkflowRunGetPayload<{
     plan: true;
     codeExecution: true;
     reviewReport: true;
+    reviewFindings: true;
     workflowRepositories: true;
   };
 }>;
