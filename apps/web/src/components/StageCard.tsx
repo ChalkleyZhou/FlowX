@@ -7,6 +7,7 @@ interface StageAction {
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  loading?: boolean;
   danger?: boolean;
   variant?: 'primary' | 'default';
 }
@@ -15,6 +16,7 @@ interface StageCardProps {
   title: string;
   subtitle: string;
   status?: string;
+  statusMessage?: string | null;
   attempt?: number;
   output?: unknown;
   actions?: StageAction[];
@@ -74,6 +76,11 @@ export function StageCard(props: StageCardProps) {
       }
     >
       <div className="stage-output-label">阶段产出</div>
+      {props.statusMessage ? (
+        <Text type="secondary" className="requirement-criteria">
+          {props.statusMessage}
+        </Text>
+      ) : null}
       <pre className="stage-output-box">
         {JSON.stringify(props.output ?? { message: '暂无输出' }, null, 2)}
       </pre>
@@ -87,6 +94,7 @@ export function StageCard(props: StageCardProps) {
               danger={action.danger}
               onClick={action.onClick}
               disabled={action.disabled}
+              loading={action.loading}
               className={action.variant === 'primary' ? 'accent-button' : 'ghost-button'}
             >
               {action.label}

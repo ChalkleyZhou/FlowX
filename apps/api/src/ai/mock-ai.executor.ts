@@ -99,6 +99,19 @@ export class MockAiExecutor implements AIExecutor {
           summary: 'Render execution and review actions in the workflow operator console.',
         },
       ],
+      diffArtifacts: [
+        {
+          repository: input.workspace?.repositories[0]?.name ?? 'mock-repository',
+          branch:
+            input.workspace?.repositories[0]?.currentBranch ??
+            input.workspace?.repositories[0]?.defaultBranch ??
+            'mock-branch',
+          localPath: input.workspace?.repositories[0]?.localPath ?? '/mock/path',
+          diffStat: '3 files changed, 42 insertions(+), 8 deletions(-)',
+          diffText: 'diff --git a/apps/api/src/workflow/workflow.service.ts b/apps/api/src/workflow/workflow.service.ts\n...[mock diff]',
+          untrackedFiles: [],
+        },
+      ],
     };
   }
 

@@ -97,6 +97,122 @@ export class RepositorySyncService {
     }
   }
 
+  async prepareWorkflowRepositories(workflowRunId: string) {
+    const workflowRepositories = await this.prisma.workflowRepository.findMany({
+      where: { workflowRunId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    for (const workflowRepository of workflowRepositories) {
+      await this.prepareWorkflowRepository(workflowRepository.id);
+    }
+  }
+
+  async prepareWorkflowRepository(workflowRepositoryId: string) {
+    const workflowRepository = await this.prisma.workflowRepository.findUniqueOrThrow({
+      where: { id: workflowRepositoryId },
+      include: { repository: true },
+    });
+
+    if (!workflowRepository.localPath) {
+      throw new InternalServerErrorException('工作流代码库未绑定本地路径。');
+    }
+
+    await this.prisma.workflowRepository.update({
+      where: { id: workflowRepositoryId },
+      data: {
+        status: 'PREPARING',
+        syncError: null,
+      },
+    });
+
+    try {
+      await mkdir(this.getWorkflowStoragePath(workflowRepository.workflowRunId), {
+        recursive: true,
+      });
+
+      if (workflowRepository.repository) {
+        await this.syncRepository(workflowRepository.repository);
+        const sourcePath = workflowRepository.repository.localPath;
+        if (!sourcePath) {
+          throw new InternalServerErrorException('源代码库尚未同步到本地。');
+        }
+
+        if (!(await this.pathExists(join(workflowRepository.localPath, '.git')))) {
+          await rm(workflowRepository.localPath, { recursive: true, force: true });
+          await this.runGit(
+            ['clone', '--no-hardlinks', sourcePath, workflowRepository.localPath],
+          );
+        }
+      } else if (!(await this.pathExists(join(workflowRepository.localPath, '.git')))) {
+        throw new InternalServerErrorException('工作流代码库副本不存在，无法继续准备分支。');
+      }
+
+      await this.removeStaleIndexLock(workflowRepository.localPath);
+
+      if (await this.remoteNamedOriginExists(workflowRepository.localPath)) {
+        await this.runGit(['fetch', 'origin', '--prune'], workflowRepository.localPath);
+      }
+
+      const remoteBaseExists = await this.remoteBranchExists(
+        workflowRepository.localPath,
+        workflowRepository.baseBranch,
+      );
+
+      if (remoteBaseExists) {
+        await this.runGit(
+          ['checkout', '-B', workflowRepository.baseBranch, `origin/${workflowRepository.baseBranch}`],
+          workflowRepository.localPath,
+        );
+        await this.runGit(
+          ['pull', '--ff-only', 'origin', workflowRepository.baseBranch],
+          workflowRepository.localPath,
+        );
+      } else {
+        await this.runGit(
+          ['checkout', '-B', workflowRepository.baseBranch],
+          workflowRepository.localPath,
+        );
+      }
+
+      await this.runGit(
+        ['checkout', '-B', workflowRepository.workingBranch],
+        workflowRepository.localPath,
+      );
+
+      return this.prisma.workflowRepository.update({
+        where: { id: workflowRepositoryId },
+        data: {
+          status: 'READY',
+          syncError: null,
+          preparedAt: new Date(),
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown workflow branch error';
+      this.logger.error(`Workflow repository prepare failed for ${workflowRepositoryId}: ${message}`);
+      await this.prisma.workflowRepository.update({
+        where: { id: workflowRepositoryId },
+        data: {
+          status: 'ERROR',
+          syncError: message,
+        },
+      });
+      throw new InternalServerErrorException(`工作流分支准备失败：${message}`);
+    }
+  }
+
+  buildWorkflowRepositoryPath(
+    workflowRunId: string,
+    workflowRepositoryId: string,
+    repositoryName: string,
+  ) {
+    return join(
+      this.getWorkflowStoragePath(workflowRunId),
+      `${this.slugify(repositoryName)}-${workflowRepositoryId.slice(0, 8)}`,
+    );
+  }
+
   private async runGit(args: string[], cwd?: string) {
     const { stderr } = await execFile('git', args, {
       cwd,
@@ -150,6 +266,13 @@ export class RepositorySyncService {
     return join(root, workspaceId, 'repositories');
   }
 
+  private getWorkflowStoragePath(workflowRunId: string) {
+    const root = process.env.WORKSPACE_REPOS_ROOT?.trim()
+      ? process.env.WORKSPACE_REPOS_ROOT.trim()
+      : join(process.cwd(), '.flowx-data', 'workflows');
+    return join(root, workflowRunId, 'repositories');
+  }
+
   private slugify(input: string) {
     const fallback = basename(input).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
     return fallback.replace(/^-+|-+$/g, '') || 'repository';
@@ -158,6 +281,29 @@ export class RepositorySyncService {
   private async pathExists(path: string) {
     try {
       await access(path);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async removeStaleIndexLock(localPath: string) {
+    const lockPath = join(localPath, '.git', 'index.lock');
+    if (await this.pathExists(lockPath)) {
+      await rm(lockPath, { force: true });
+    }
+  }
+
+  private async remoteNamedOriginExists(localPath: string) {
+    try {
+      await execFile(
+        'git',
+        ['remote', 'get-url', 'origin'],
+        {
+          cwd: localPath,
+          env: process.env,
+        },
+      );
       return true;
     } catch {
       return false;

@@ -139,16 +139,56 @@ export const api = {
     request<WorkflowRun>(`/workflow-runs/${id}/task-split/confirm`, { method: 'POST' }),
   rejectTaskSplit: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/task-split/reject`, { method: 'POST' }),
+  reviseTaskSplit: (id: string, feedback: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/task-split/revise`, {
+      method: 'POST',
+      body: JSON.stringify({ feedback }),
+    }),
+  manualEditTaskSplit: (id: string, output: unknown) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/task-split/manual-edit`, {
+      method: 'PATCH',
+      body: JSON.stringify({ output }),
+    }),
   runPlan: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/plan/run`, { method: 'POST' }),
   confirmPlan: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/plan/confirm`, { method: 'POST' }),
   rejectPlan: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/plan/reject`, { method: 'POST' }),
+  revisePlan: (id: string, feedback: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/plan/revise`, {
+      method: 'POST',
+      body: JSON.stringify({ feedback }),
+    }),
+  manualEditPlan: (id: string, output: unknown) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/plan/manual-edit`, {
+      method: 'PATCH',
+      body: JSON.stringify({ output }),
+    }),
   runExecution: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/execution/run`, { method: 'POST' }),
+  reviseExecution: (id: string, feedback: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/execution/revise`, {
+      method: 'POST',
+      body: JSON.stringify({ feedback }),
+    }),
+  manualEditExecution: (id: string, output: unknown) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/execution/manual-edit`, {
+      method: 'PATCH',
+      body: JSON.stringify({ output }),
+    }),
   runReview: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/review/run`, { method: 'POST' }),
+  reviseReview: (id: string, feedback: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/review/revise`, {
+      method: 'POST',
+      body: JSON.stringify({ feedback }),
+    }),
+  manualEditReview: (id: string, output: unknown) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/review/manual-edit`, {
+      method: 'PATCH',
+      body: JSON.stringify({ output }),
+    }),
   decideHumanReview: (id: string, decision: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/human-review/decision`, {
       method: 'POST',

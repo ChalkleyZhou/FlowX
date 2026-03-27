@@ -29,6 +29,7 @@ const workflowTransitions: Record<WorkflowRunStatus, WorkflowRunStatus[]> = {
   ],
   [WorkflowRunStatus.EXECUTION_RUNNING]: [
     WorkflowRunStatus.REVIEW_PENDING,
+    WorkflowRunStatus.EXECUTION_PENDING,
     WorkflowRunStatus.FAILED,
   ],
   [WorkflowRunStatus.REVIEW_PENDING]: [
@@ -111,4 +112,3 @@ export class WorkflowStateMachine {
     }
   }
 }
-

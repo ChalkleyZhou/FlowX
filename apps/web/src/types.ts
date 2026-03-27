@@ -32,6 +32,7 @@ export interface StageExecution {
   id: string;
   stage: string;
   status: string;
+  statusMessage?: string | null;
   attempt: number;
   output: unknown;
 }
@@ -40,6 +41,17 @@ export interface WorkflowRun {
   id: string;
   status: string;
   requirement: Requirement;
+  workflowRepositories: Array<{
+    id: string;
+    name: string;
+    url: string;
+    baseBranch: string;
+    workingBranch: string;
+    localPath?: string | null;
+    status: string;
+    syncError?: string | null;
+    preparedAt?: string | null;
+  }>;
   tasks: Array<{ id: string; title: string; description: string; status: string }>;
   plan?: {
     summary: string;
@@ -53,6 +65,14 @@ export interface WorkflowRun {
     patchSummary: string;
     changedFiles: string[];
     codeChanges: unknown[];
+    diffArtifacts?: Array<{
+      repository: string;
+      branch: string;
+      localPath: string;
+      diffStat: string;
+      diffText: string;
+      untrackedFiles: string[];
+    }>;
     status: string;
   };
   reviewReport?: {

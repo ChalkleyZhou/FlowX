@@ -24,9 +24,16 @@ export interface WorkspaceContext {
   repositories: RepositoryContext[];
 }
 
+export interface WorkflowRepositoryContext extends RepositoryContext {
+  baseBranch?: string | null;
+  workingBranch?: string | null;
+}
+
 export interface SplitTasksInput {
   requirement: RequirementRecord;
   workspace?: WorkspaceContext | null;
+  humanFeedback?: string | null;
+  previousOutput?: SplitTasksOutput | null;
 }
 
 export interface SplitTaskItem {
@@ -44,6 +51,8 @@ export interface GeneratePlanInput {
   requirement: RequirementRecord;
   tasks: SplitTaskItem[];
   workspace?: WorkspaceContext | null;
+  humanFeedback?: string | null;
+  previousOutput?: GeneratePlanOutput | null;
 }
 
 export interface GeneratePlanOutput {
@@ -59,6 +68,7 @@ export interface ExecuteTaskInput {
   tasks: SplitTaskItem[];
   plan: GeneratePlanOutput;
   workspace?: WorkspaceContext | null;
+  humanFeedback?: string | null;
 }
 
 export interface ExecuteTaskOutput {
@@ -69,6 +79,14 @@ export interface ExecuteTaskOutput {
     changeType: 'create' | 'update';
     summary: string;
   }>;
+  diffArtifacts: Array<{
+    repository: string;
+    branch: string;
+    localPath: string;
+    diffStat: string;
+    diffText: string;
+    untrackedFiles: string[];
+  }>;
 }
 
 export interface ReviewCodeInput {
@@ -76,6 +94,8 @@ export interface ReviewCodeInput {
   plan: GeneratePlanOutput;
   execution: ExecuteTaskOutput;
   workspace?: WorkspaceContext | null;
+  humanFeedback?: string | null;
+  previousOutput?: ReviewCodeOutput | null;
 }
 
 export interface ReviewCodeOutput {

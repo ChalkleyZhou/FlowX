@@ -44,6 +44,7 @@ model Repository {
   syncStatus    String    @default("PENDING")
   syncError     String?
   lastSyncedAt  DateTime?
+  workflowRepositories WorkflowRepository[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -161,8 +162,29 @@ model WorkflowRun {
   plan           Plan?
   codeExecution  CodeExecution?
   reviewReport   ReviewReport?
+  workflowRepositories WorkflowRepository[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+model WorkflowRepository {
+  id            String      @id @default(cuid())
+  workflowRunId String
+  workflowRun   WorkflowRun @relation(fields: [workflowRunId], references: [id])
+  repositoryId  String?
+  repository    Repository? @relation(fields: [repositoryId], references: [id])
+  name          String
+  url           String
+  baseBranch    String
+  workingBranch String
+  localPath     String?
+  status        String      @default("PENDING")
+  syncError     String?
+  preparedAt    DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([workflowRunId, createdAt])
 }
 
 model StageExecution {
@@ -172,6 +194,7 @@ model StageExecution {
   stage        String
   attempt      Int @default(1)
   status       String @default("PENDING")
+  statusMessage String?
   input        Json?
   output       Json?
   errorMessage String?
@@ -217,6 +240,7 @@ model CodeExecution {
   patchSummary String
   changedFiles Json
   codeChanges  Json
+  diffArtifacts Json?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
