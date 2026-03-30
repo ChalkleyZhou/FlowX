@@ -1,7 +1,6 @@
-import { Typography } from 'antd';
 import type { ReactNode } from 'react';
-
-const { Title, Text, Paragraph } = Typography;
+import { cn } from '../lib/utils';
+import { SectionHeading } from './ui/section-heading';
 
 interface SectionHeaderProps {
   eyebrow: string;
@@ -13,13 +12,15 @@ interface SectionHeaderProps {
 
 export function SectionHeader({ eyebrow, title, description, extra, className }: SectionHeaderProps) {
   return (
-    <div className={['panel-heading', extra ? 'panel-heading-inline' : '', className].filter(Boolean).join(' ')}>
-      <div>
-        <Text className="eyebrow">{eyebrow}</Text>
-        <Title level={4}>{title}</Title>
-        {description ? <Paragraph className="section-header-copy">{description}</Paragraph> : null}
-      </div>
-      {extra}
+    <div className={cn('flex flex-col gap-3 md:flex-row md:items-start md:justify-between', className)}>
+      <SectionHeading
+        eyebrow={eyebrow}
+        title={title}
+        description={description}
+        titleClassName="text-xl"
+        descriptionClassName="max-w-none"
+      />
+      {extra ? <div className="flex shrink-0 flex-wrap items-center gap-3">{extra}</div> : null}
     </div>
   );
 }

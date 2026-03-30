@@ -110,6 +110,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  updateRepository: (
+    workspaceId: string,
+    repositoryId: string,
+    payload: { name: string; defaultBranch?: string },
+  ) =>
+    request<Repository>(`/workspaces/${workspaceId}/repositories/${repositoryId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
   updateRepositoryBranch: (
     workspaceId: string,
     repositoryId: string,
@@ -128,6 +137,18 @@ export const api = {
     }),
   getWorkflowRuns: () => request<WorkflowRun[]>('/workflow-runs'),
   getWorkflowRun: (id: string) => request<WorkflowRun>(`/workflow-runs/${id}`),
+  deleteWorkflowRun: (id: string) =>
+    request<{ success: boolean }>(`/workflow-runs/${id}`, { method: 'DELETE' }),
+  publishWorkflowGitChanges: (id: string) =>
+    request<{
+      message: string;
+      repositories: Array<{
+        repository: string;
+        branch: string;
+        commitSha: string;
+        pushed: boolean;
+      }>;
+    }>(`/workflow-runs/${id}/git/publish`, { method: 'POST' }),
   createWorkflowRun: (requirementId: string) =>
     request<WorkflowRun>('/workflow-runs', {
       method: 'POST',
@@ -171,6 +192,10 @@ export const api = {
     request<WorkflowRun>(`/workflow-runs/${id}/execution/revise`, {
       method: 'POST',
       body: JSON.stringify({ feedback }),
+    }),
+  fixReviewFinding: (workflowRunId: string, findingId: string) =>
+    request<WorkflowRun>(`/workflow-runs/${workflowRunId}/review-findings/${findingId}/fix`, {
+      method: 'POST',
     }),
   manualEditExecution: (id: string, output: unknown) =>
     request<WorkflowRun>(`/workflow-runs/${id}/execution/manual-edit`, {

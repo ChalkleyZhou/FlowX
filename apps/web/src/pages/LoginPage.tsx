@@ -1,24 +1,16 @@
-import {
-  Alert,
-  Button,
-  Card,
-  Form,
-  Input,
-  List,
-  Modal,
-  Segmented,
-  Space,
-  Tag,
-  Typography,
-  message,
-} from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { api } from '../api';
+import { cn } from '../lib/utils';
+import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader } from '../components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Input as UiInput } from '../components/ui/input';
+import { useToast } from '../components/ui/toast';
 import type { AuthOrganization } from '../types';
-
-const { Title, Paragraph, Text } = Typography;
 
 type LoginMode = 'password' | 'register';
 
@@ -43,7 +35,10 @@ export function LoginPage() {
   const [selectionToken, setSelectionToken] = useState('');
   const [organizationModalOpen, setOrganizationModalOpen] = useState(false);
   const [errorText, setErrorText] = useState(() => readOAuthError(searchParams));
-  const [messageApi, contextHolder] = message.useMessage();
+  const [account, setAccount] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [password, setPassword] = useState('');
+  const toast = useToast();
 
   const redirectPath = useMemo(() => {
     const state = location.state as { from?: string } | null;
@@ -75,12 +70,12 @@ export function LoginPage() {
         try {
           const current = await api.getCurrentSession();
           applySession(current);
-          messageApi.success('登录成功');
+          toast.success('登录成功');
           navigate(redirectPath, { replace: true });
         } catch (error) {
           const nextError = error instanceof Error ? error.message : '登录失败';
           setErrorText(nextError);
-          messageApi.error(nextError);
+          toast.error(nextError);
         } finally {
           setOauthProcessing(false);
           setSearchParams({}, { replace: true });
@@ -103,7 +98,7 @@ export function LoginPage() {
         setSearchParams({}, { replace: true });
       }
     }
-  }, [applySession, messageApi, navigate, redirectPath, searchParams, setSearchParams]);
+  }, [applySession, navigate, redirectPath, searchParams, setSearchParams, toast]);
 
   async function submitPassword(values: {
     account: string;
@@ -126,15 +121,49 @@ export function LoginPage() {
             });
 
       applySession(result);
-      messageApi.success(loginMode === 'password' ? '登录成功' : '注册成功');
+      toast.success(loginMode === 'password' ? '登录成功' : '注册成功');
       navigate(redirectPath, { replace: true });
     } catch (error) {
       const nextError = error instanceof Error ? error.message : '登录失败';
       setErrorText(nextError);
-      messageApi.error(nextError);
+      toast.error(nextError);
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handlePasswordSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const nextAccount = account.trim();
+    const nextDisplayName = displayName.trim();
+
+    if (!nextAccount) {
+      const nextError = '请输入账号';
+      setErrorText(nextError);
+      toast.error(nextError);
+      return;
+    }
+
+    if (!password) {
+      const nextError = '请输入密码';
+      setErrorText(nextError);
+      toast.error(nextError);
+      return;
+    }
+
+    if (password.length < 8) {
+      const nextError = '密码至少 8 位';
+      setErrorText(nextError);
+      toast.error(nextError);
+      return;
+    }
+
+    await submitPassword({
+      account: nextAccount,
+      password,
+      displayName: loginMode === 'register' && nextDisplayName ? nextDisplayName : undefined,
+    });
   }
 
   async function loginByDingTalk() {
@@ -149,7 +178,7 @@ export function LoginPage() {
     } catch (error) {
       const nextError = error instanceof Error ? error.message : '无法发起钉钉登录';
       setErrorText(nextError);
-      messageApi.error(nextError);
+      toast.error(nextError);
       setSubmitting(false);
     }
   }
@@ -166,156 +195,186 @@ export function LoginPage() {
       setOrganizationModalOpen(false);
       setSelectionToken('');
       setOrganizations([]);
-      messageApi.success('组织选择成功');
+      toast.success('组织选择成功');
       navigate(redirectPath, { replace: true });
     } catch (error) {
       const nextError = error instanceof Error ? error.message : '组织选择失败';
       setErrorText(nextError);
-      messageApi.error(nextError);
+      toast.error(nextError);
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <div className="auth-page">
-      {contextHolder}
-      <Modal
-        title="选择登录组织"
+    <div className="min-h-screen bg-[var(--bg)] px-6 py-8 max-[780px]:px-3 max-[780px]:py-5">
+      <Dialog
         open={organizationModalOpen}
-        footer={null}
-        onCancel={() => setOrganizationModalOpen(false)}
+        onOpenChange={(open) => {
+          setOrganizationModalOpen(open);
+          if (!open) {
+            setSelectionToken('');
+            setOrganizations([]);
+          }
+        }}
       >
-        <List
-          dataSource={organizations}
-          renderItem={(organization) => (
-            <List.Item
-              actions={[
-                <Button
-                  key={organization.id}
-                  type="primary"
-                  loading={submitting}
-                  onClick={() => void confirmOrganization(organization.id)}
-                >
-                  进入组织
-                </Button>,
-              ]}
-            >
-              <List.Item.Meta title={organization.name} description={organization.id} />
-            </List.Item>
-          )}
-        />
-      </Modal>
-
-      <div className="auth-shell">
-        <section className="auth-showcase">
-          <Tag className="hero-tag auth-showcase-tag" bordered={false}>
-            FlowX Orchestrator
-          </Tag>
-          <Title level={1} className="auth-showcase-title">
-            把 AI 研发流程做成可确认、可追踪、可继续的系统
-          </Title>
-          <Paragraph className="auth-showcase-copy">
-            面向标准产品研发团队，把需求拆解、方案确认、执行审查和人工决策放进同一条可中断工作流。
-          </Paragraph>
-          <div className="auth-pill-row">
-            <span className="auth-pill">阶段式工作流</span>
-            <span className="auth-pill">人机确认节点</span>
-            <span className="auth-pill">可替换 AI 执行器</span>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>选择登录组织</DialogTitle>
+            <DialogDescription>钉钉登录成功后，请选择要进入的组织上下文。</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-[10px]">
+            {organizations.map((organization) => (
+              <div key={organization.id} className="flex items-center justify-between gap-4 rounded-[14px] border border-[var(--border)] bg-[var(--surface-muted)] p-[14px]">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-[var(--text)]">{organization.name}</div>
+                  <div className="mt-1 overflow-wrap-anywhere text-xs text-[var(--text-tertiary)]">{organization.id}</div>
+                </div>
+                <Button disabled={submitting} onClick={() => void confirmOrganization(organization.id)}>
+                  {submitting ? '处理中...' : '进入组织'}
+                </Button>
+              </div>
+            ))}
           </div>
-          <div className="auth-feature-grid">
-            <div className="auth-feature-card">
-              <Text className="auth-feature-label">Stage Control</Text>
-              <Title level={4}>每个阶段都有输入、输出和确认点</Title>
-              <Paragraph>从 Requirement 到 Review，每次推进都基于上一步的确认结果。</Paragraph>
+        </DialogContent>
+      </Dialog>
+
+      <div className="mx-auto grid w-full max-w-[1200px] items-center gap-6 [grid-template-columns:minmax(0,1.1fr)_440px] max-[1280px]:grid-cols-1">
+        <section className="rounded-[28px] border border-slate-800 bg-slate-950 p-10 shadow-[var(--shadow-lg)] max-[780px]:p-5">
+          <Badge className="mb-4" variant="outline">
+            FlowX Orchestrator
+          </Badge>
+          <h1 className="m-0 text-[clamp(38px,5vw,56px)] font-bold leading-[1.02] tracking-[-0.03em] text-slate-50">
+            把 AI 研发流程做成可确认、可追踪、可继续的系统
+          </h1>
+          <p className="mb-0 mt-4 max-w-[680px] text-base leading-[1.7] text-slate-50/80">
+            面向标准产品研发团队，把需求拆解、方案确认、执行审查和人工决策放进同一条可中断工作流。
+          </p>
+          <div className="mt-[22px] flex flex-wrap gap-[10px]">
+            <span className="rounded-full bg-white/10 px-3 py-2 text-[13px] text-slate-50/85">阶段式工作流</span>
+            <span className="rounded-full bg-white/10 px-3 py-2 text-[13px] text-slate-50/85">人机确认节点</span>
+            <span className="rounded-full bg-white/10 px-3 py-2 text-[13px] text-slate-50/85">可替换 AI 执行器</span>
+          </div>
+          <div className="mt-7 grid gap-[14px] [grid-template-columns:repeat(3,minmax(0,1fr))] max-[1280px]:grid-cols-1">
+            <div className="rounded-[var(--radius-md)] border border-white/10 bg-white/5 p-[18px]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-sky-300">Stage Control</span>
+              <h3 className="mt-[10px] text-lg font-bold leading-[1.35] text-slate-50">每个阶段都有输入、输出和确认点</h3>
+              <p className="mt-[10px] leading-[1.6] text-slate-50/70">从 Requirement 到 Review，每次推进都基于上一步的确认结果。</p>
             </div>
-            <div className="auth-feature-card">
-              <Text className="auth-feature-label">Structured Output</Text>
-              <Title level={4}>AI 产出默认结构化沉淀</Title>
-              <Paragraph>任务拆解、技术方案、代码执行和审查结果都能复用，不是一次性对话。</Paragraph>
+            <div className="rounded-[var(--radius-md)] border border-white/10 bg-white/5 p-[18px]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-sky-300">Structured Output</span>
+              <h3 className="mt-[10px] text-lg font-bold leading-[1.35] text-slate-50">AI 产出默认结构化沉淀</h3>
+              <p className="mt-[10px] leading-[1.6] text-slate-50/70">任务拆解、技术方案、代码执行和审查结果都能复用，不是一次性对话。</p>
             </div>
-            <div className="auth-feature-card">
-              <Text className="auth-feature-label">Human In Loop</Text>
-              <Title level={4}>关键推进节点永远保留人工决策</Title>
-              <Paragraph>确认、驳回、返工、回滚都在流程里，而不是散落在聊天记录中。</Paragraph>
+            <div className="rounded-[var(--radius-md)] border border-white/10 bg-white/5 p-[18px]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-sky-300">Human In Loop</span>
+              <h3 className="mt-[10px] text-lg font-bold leading-[1.35] text-slate-50">关键推进节点永远保留人工决策</h3>
+              <p className="mt-[10px] leading-[1.6] text-slate-50/70">确认、驳回、返工、回滚都在流程里，而不是散落在聊天记录中。</p>
             </div>
           </div>
         </section>
 
-        <Card className="panel auth-card" bordered={false}>
-          <div className="auth-hero">
-            <Text className="eyebrow">认证中心</Text>
-            <Title level={2}>进入研发调度台</Title>
-            <Paragraph>
+        <Card className="w-full rounded-3xl border border-slate-200 bg-white shadow-[var(--shadow-lg)]">
+          <CardHeader className="mb-[18px] p-6 pb-0">
+            <span className="eyebrow">认证中心</span>
+            <h2 className="mt-[10px] text-[28px] font-bold leading-[1.2] text-[var(--text)]">进入研发调度台</h2>
+            <p className="mt-[10px] text-[var(--text-secondary)] leading-[1.65]">
               账号密码适合日常访问，钉钉登录适合企业身份接入与组织上下文绑定。
-            </Paragraph>
-          </div>
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-6 p-5 pt-0">
 
           {errorText ? (
-            <Alert
-              className="auth-alert"
-              type="error"
-              showIcon
-              message="登录失败"
-              description={errorText}
-            />
+            <Alert variant="destructive" className="mb-[18px]">
+              <AlertTitle>登录失败</AlertTitle>
+              <AlertDescription>{errorText}</AlertDescription>
+            </Alert>
           ) : null}
 
-          <Segmented
-            block
-            value={loginMode}
-            onChange={(value) => setLoginMode(value as LoginMode)}
-            options={[
-              { label: '账号登录', value: 'password' },
-              { label: '注册账号', value: 'register' },
-            ]}
-          />
-
-          <Form layout="vertical" onFinish={(values) => void submitPassword(values)} style={{ marginTop: 20 }}>
-            <Form.Item name="account" label="账号" rules={[{ required: true, message: '请输入账号' }]}>
-              <Input size="large" placeholder="请输入账号" autoComplete="username" />
-            </Form.Item>
-            {loginMode === 'register' ? (
-              <Form.Item name="displayName" label="显示名称">
-                <Input size="large" placeholder="用于团队内显示，可选填写" />
-              </Form.Item>
-            ) : null}
-            <Form.Item
-              name="password"
-              label="密码"
-              rules={[
-                { required: true, message: '请输入密码' },
-                { min: 8, message: '密码至少 8 位' },
-              ]}
+          <div className="grid grid-cols-2 gap-2 rounded-[14px] border border-[var(--border)] bg-[var(--surface-muted)] p-1">
+            <button
+              type="button"
+              className={cn(
+                'h-10 rounded-[10px] border-0 bg-transparent text-sm font-semibold text-[var(--text-secondary)] transition-[background-color,color,box-shadow] duration-150',
+                'hover:text-[var(--text)]',
+                loginMode === 'password' && 'bg-[var(--surface)] text-[var(--text)] shadow-[var(--shadow-sm)]',
+              )}
+              onClick={() => setLoginMode('password')}
             >
-              <Input.Password size="large" placeholder="请输入密码" autoComplete="current-password" />
-            </Form.Item>
+              账号登录
+            </button>
+            <button
+              type="button"
+              className={cn(
+                'h-10 rounded-[10px] border-0 bg-transparent text-sm font-semibold text-[var(--text-secondary)] transition-[background-color,color,box-shadow] duration-150',
+                'hover:text-[var(--text)]',
+                loginMode === 'register' && 'bg-[var(--surface)] text-[var(--text)] shadow-[var(--shadow-sm)]',
+              )}
+              onClick={() => setLoginMode('register')}
+            >
+              注册账号
+            </button>
+          </div>
 
-            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <form className="mt-5 flex flex-col gap-[14px]" onSubmit={(event) => void handlePasswordSubmit(event)}>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="login-account">账号</label>
+              <UiInput
+                id="login-account"
+                value={account}
+                onChange={(event) => setAccount(event.target.value)}
+                placeholder="请输入账号"
+                autoComplete="username"
+              />
+            </div>
+            {loginMode === 'register' ? (
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-[var(--text)]" htmlFor="login-display-name">显示名称</label>
+                <UiInput
+                  id="login-display-name"
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  placeholder="用于团队内显示，可选填写"
+                />
+              </div>
+            ) : null}
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="login-password">密码</label>
+              <UiInput
+                id="login-password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="请输入密码"
+                autoComplete="current-password"
+              />
+            </div>
+
+            <div className="mt-1.5 flex flex-col gap-3">
               <Button
-                type="primary"
-                size="large"
-                htmlType="submit"
-                className="accent-button"
-                loading={submitting || oauthProcessing}
-                block
+                type="submit"
+                size="lg"
+                className="w-full"
+                disabled={submitting || oauthProcessing}
               >
                 {loginMode === 'password' ? '账号登录' : '注册并登录'}
               </Button>
 
-              <div className="login-divider">或使用企业身份登录</div>
+              <div className="my-[14px] mb-[10px] text-center text-[var(--text-tertiary)]">或使用企业身份登录</div>
 
               <Button
-                size="large"
-                className="ghost-button"
+                type="button"
+                size="lg"
+                variant="outline"
+                className="w-full"
                 onClick={() => void loginByDingTalk()}
-                loading={submitting || oauthProcessing}
-                block
+                disabled={submitting || oauthProcessing}
               >
                 使用钉钉登录
               </Button>
-            </Space>
-          </Form>
+            </div>
+          </form>
+          </CardContent>
         </Card>
       </div>
     </div>

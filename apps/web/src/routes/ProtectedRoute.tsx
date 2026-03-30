@@ -1,7 +1,8 @@
 import type { ReactElement } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
-import { Spin } from 'antd';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth';
+import { AppLayout } from '../components/AppLayout';
+import { Spinner } from '../components/ui/spinner';
 
 export function ProtectedRoute({ children }: { children: ReactElement }) {
   const { session, loading } = useAuth();
@@ -10,7 +11,7 @@ export function ProtectedRoute({ children }: { children: ReactElement }) {
   if (loading) {
     return (
       <div className="page-loading">
-        <Spin size="large" />
+        <Spinner className="h-10 w-10" />
       </div>
     );
   }
@@ -20,4 +21,27 @@ export function ProtectedRoute({ children }: { children: ReactElement }) {
   }
 
   return children;
+}
+
+export function ProtectedLayout() {
+  const { session, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return (
+      <div className="page-loading">
+        <Spinner className="h-10 w-10" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  return (
+    <AppLayout>
+      <Outlet />
+    </AppLayout>
+  );
 }

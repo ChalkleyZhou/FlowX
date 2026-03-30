@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { cn } from '../lib/utils';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
 interface RecordListItemProps {
   className?: string;
@@ -7,20 +9,39 @@ interface RecordListItemProps {
   description?: ReactNode;
   details?: ReactNode;
   actions?: ReactNode;
+  interactive?: boolean;
 }
 
-export function RecordListItem({ className, title, badges, description, details, actions }: RecordListItemProps) {
+export function RecordListItem({
+  className,
+  title,
+  badges,
+  description,
+  details,
+  actions,
+  interactive = false,
+}: RecordListItemProps) {
   return (
-    <div className={['record-list-item', className].filter(Boolean).join(' ')}>
-      <div className="record-list-main">
-        <div className="list-item-head">
-          <div className="record-list-title">{title}</div>
+    <Card
+      className={cn(
+        'rounded-2xl border-slate-200 bg-white shadow-sm',
+        interactive && 'transition-all hover:border-slate-300 hover:bg-slate-50/40',
+        className,
+      )}
+    >
+      <CardHeader className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-3">
+          <CardTitle className="text-base leading-6">{title}</CardTitle>
+          {badges ? <div className="flex flex-wrap gap-3">{badges}</div> : null}
         </div>
-        {badges ? <div className="workspace-meta-row">{badges}</div> : null}
-        {description ? <div className="record-list-description">{description}</div> : null}
-        {details ? <div className="record-list-details">{details}</div> : null}
-      </div>
-      {actions ? <div className="inline-action-group">{actions}</div> : null}
-    </div>
+        {actions ? <div className="flex min-h-10 shrink-0 flex-wrap items-center justify-end gap-3 max-[1180px]:min-h-0 max-[1180px]:justify-start">{actions}</div> : null}
+      </CardHeader>
+      {(description || details) ? (
+        <CardContent className="space-y-2 p-5 pt-0">
+          {description ? <div className="flex min-w-0 flex-col gap-1 text-sm leading-6 text-slate-600">{description}</div> : null}
+          {details ? <div className="flex min-w-0 flex-col gap-1 text-sm leading-6 text-slate-500">{details}</div> : null}
+        </CardContent>
+      ) : null}
+    </Card>
   );
 }

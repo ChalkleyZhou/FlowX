@@ -1,17 +1,15 @@
-import { Avatar, Button, Layout, Menu, Typography } from 'antd';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
 import type { PropsWithChildren } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
-
-const { Sider, Header, Content } = Layout;
-const { Text } = Typography;
+import { Button } from './ui/button';
+import { Badge } from './ui/badge';
 
 const items = [
-  { key: '/workspaces', label: <Link to="/workspaces">工作区</Link> },
-  { key: '/requirements', label: <Link to="/requirements">需求</Link> },
-  { key: '/workflow-runs', label: <Link to="/workflow-runs">工作流</Link> },
-  { key: '/issues', label: <Link to="/issues">问题项</Link> },
-  { key: '/bugs', label: <Link to="/bugs">缺陷</Link> },
+  { key: '/workspaces', label: '工作区' },
+  { key: '/requirements', label: '需求' },
+  { key: '/workflow-runs', label: '工作流' },
+  { key: '/issues', label: '问题项' },
+  { key: '/bugs', label: '缺陷' },
 ];
 
 export function AppLayout({ children }: PropsWithChildren) {
@@ -28,43 +26,48 @@ export function AppLayout({ children }: PropsWithChildren) {
   }
 
   return (
-    <Layout className="app-nav-shell">
-      <Sider width={248} className="app-nav-sider" breakpoint="lg" collapsedWidth={0}>
+    <div className="app-nav-shell">
+      <aside className="app-nav-sider">
         <div className="app-brand">
           <div className="app-brand-mark">F</div>
-          <div>
-            <Text className="app-brand-eyebrow">FlowX</Text>
+          <div className="min-w-0">
+            <div className="app-brand-eyebrow">FlowX</div>
+            <div className="text-xs text-slate-500">AI Delivery Workspace</div>
           </div>
         </div>
-        <Menu
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          items={items}
-          className="app-nav-menu"
-        />
-      </Sider>
-      <Layout className="app-main-layout">
-        <Header className="app-topbar">
-          <div />
-          {session ? (
+        <nav className="app-nav-menu">
+          {items.map((item) => {
+            const active = selectedKey === item.key;
+            return (
+              <Link key={item.key} to={item.key} className={['app-nav-link', active ? 'app-nav-link-active' : ''].filter(Boolean).join(' ')}>
+                <span>{item.label}</span>
+                {active ? <Badge variant="secondary" className="app-nav-pill">当前</Badge> : null}
+              </Link>
+            );
+          })}
+        </nav>
+        {session ? (
+          <div className="app-nav-footer">
             <div className="session-panel app-topbar-session">
-              <Avatar src={session.user.avatarUrl}>
-                {session.user.displayName.slice(0, 1)}
-              </Avatar>
-              <div>
-                <Text strong>{session.user.displayName}</Text>
-                <div>
-                  <Text type="secondary">{session.organization?.name ?? '未绑定组织'}</Text>
+              <div className="session-panel-header">
+                <div className="session-avatar">{session.user.avatarUrl ? <img src={session.user.avatarUrl} alt={session.user.displayName} className="session-avatar-image" /> : session.user.displayName.slice(0, 1)}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-slate-950">{session.user.displayName}</div>
+                  <div className="mt-1">
+                    <Badge variant="outline">{session.organization?.name ?? '未绑定组织'}</Badge>
+                  </div>
                 </div>
               </div>
-              <Button className="ghost-button" onClick={handleLogout}>
+              <Button variant="outline" className="w-full" onClick={handleLogout}>
                 退出
               </Button>
             </div>
-          ) : null}
-        </Header>
-        <Content className="page-container">{children}</Content>
-      </Layout>
-    </Layout>
+          </div>
+        ) : null}
+      </aside>
+      <div className="app-main-layout">
+        <main className="page-container">{children}</main>
+      </div>
+    </div>
   );
 }

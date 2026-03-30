@@ -137,6 +137,8 @@ ${JSON.stringify(input.previousOutput ?? {}, null, 2)}
     return `${technicalPlanPrompt.system}
 
 你必须只返回符合 JSON Schema 的 JSON，不要输出解释文字或 Markdown。
+所有 filesToModify / newFiles 都必须使用“目标代码仓库根目录下的相对路径”。
+不要输出 FlowX 编排系统文件、绝对路径、本地工作目录路径或临时目录路径。
 
 ${technicalPlanPrompt.user}
 
@@ -158,6 +160,8 @@ ${input.tasks.map((task, index) => `${index + 1}. ${task.title}: ${task.descript
     return `${executionPrompt.system}
 
 你必须只返回符合 JSON Schema 的 JSON，不要输出解释文字或 Markdown。
+所有涉及文件的描述都必须使用“目标代码仓库根目录下的相对路径”。
+不要输出 FlowX 编排系统文件、绝对路径、本地工作目录路径或临时目录路径。
 
 ${executionPrompt.user}
 
@@ -203,7 +207,6 @@ ${input.humanFeedback}
 - 名称: ${repository.name}
 - URL: ${repository.url}
 - 工作分支: ${repository.currentBranch ?? repository.defaultBranch ?? '未设置'}
-- 本地路径: ${repository.localPath ?? '未知'}
 
 ${executionPrompt.user}
 
@@ -211,6 +214,8 @@ ${executionPrompt.user}
 - 只在当前仓库内进行必要改动
 - 优先落地已确认技术方案中与当前仓库相关的部分
 - 不要创建与当前仓库无关的改动
+- 所有涉及文件的描述都使用当前仓库根目录下的相对路径
+- 不要提及 FlowX 编排系统文件或本地绝对路径
 - 完成后不要输出 Markdown，只需结束任务
 
 需求信息:
@@ -298,7 +303,7 @@ ${diffSection}
       ? workspace.repositories
           .map(
             (repository) =>
-              `  - ${repository.name} | URL: ${repository.url} | 默认分支: ${repository.defaultBranch ?? '未设置'} | 当前分支: ${repository.currentBranch ?? repository.defaultBranch ?? '未设置'}\n    本地路径: ${repository.localPath ?? '未同步'}\n    同步状态: ${repository.syncStatus ?? '未知'}`,
+              `  - ${repository.name} | URL: ${repository.url} | 默认分支: ${repository.defaultBranch ?? '未设置'} | 当前分支: ${repository.currentBranch ?? repository.defaultBranch ?? '未设置'}\n    同步状态: ${repository.syncStatus ?? '未知'}`,
           )
           .join('\n')
       : '  - 当前工作区未登记代码库';
@@ -501,7 +506,7 @@ ${repositories}`;
     return artifacts
       .map((artifact) => {
         const parts = [
-          `- ${artifact.repository} | 工作分支: ${artifact.branch} | 本地路径: ${artifact.localPath}`,
+          `- ${artifact.repository} | 工作分支: ${artifact.branch}`,
         ];
 
         if (artifact.diffStat) {

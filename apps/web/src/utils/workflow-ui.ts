@@ -6,6 +6,19 @@ export function getStage(run: WorkflowRun, stage: string) {
     .sort((a, b) => b.attempt - a.attempt)[0];
 }
 
+export function formatStageExecutionStatus(status: string) {
+  const map: Record<string, string> = {
+    PENDING: '待执行',
+    RUNNING: '执行中',
+    COMPLETED: '已完成',
+    FAILED: '执行失败',
+    WAITING_CONFIRMATION: '待人工确认',
+    REJECTED: '已驳回',
+  };
+
+  return map[status] ?? status;
+}
+
 export function formatWorkflowStatus(status: string) {
   const map: Record<string, string> = {
     CREATED: '已创建',

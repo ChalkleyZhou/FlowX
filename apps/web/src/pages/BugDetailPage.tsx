@@ -1,23 +1,58 @@
-import { Button, Card, Form, Input, Select, Tag, Typography, message } from 'antd';
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { api } from '../api';
-import { AppLayout } from '../components/AppLayout';
-import { ContextCard } from '../components/ContextCard';
-import { DetailBanner } from '../components/DetailBanner';
+import { ContextPanel } from '../components/ContextPanel';
+import { DetailHeader } from '../components/DetailHeader';
+import { MetricCard } from '../components/MetricCard';
 import { SectionHeader } from '../components/SectionHeader';
-import { SummaryMetrics } from '../components/SummaryMetrics';
+import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
+import { Badge } from '../components/ui/badge';
+import { Button as UiButton } from '../components/ui/button';
+import { Card, CardContent, CardHeader } from '../components/ui/card';
+import { Input as UiInput } from '../components/ui/input';
+import { Spinner } from '../components/ui/spinner';
+import { useToast } from '../components/ui/toast';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
+import { Textarea } from '../components/ui/textarea';
 import type { Bug } from '../types';
-
-const { Title, Text, Paragraph } = Typography;
+import {
+  formatBugStatus,
+  formatPriority,
+  formatPriorityLabel,
+  formatReviewFindingType,
+  formatSeverity,
+  formatSeverityLabel,
+} from '../utils/label-utils';
 
 export function BugDetailPage() {
   const { bugId = '' } = useParams();
   const [bug, setBug] = useState<Bug | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form] = Form.useForm();
-  const [messageApi, contextHolder] = message.useMessage();
+  const [saveFeedback, setSaveFeedback] = useState<{
+    variant: 'default' | 'destructive';
+    title: string;
+    description: string;
+  } | null>(null);
+  const [draft, setDraft] = useState({
+    title: '',
+    description: '',
+    status: 'OPEN',
+    severity: 'MEDIUM',
+    priority: 'MEDIUM',
+    branchName: '',
+    expectedBehavior: '',
+    actualBehavior: '',
+    reproductionSteps: '',
+    resolution: '',
+  });
+  const toast = useToast();
 
   async function refresh() {
     if (!bugId) {
@@ -27,7 +62,7 @@ export function BugDetailPage() {
     try {
       const nextBug = await api.getBug(bugId);
       setBug(nextBug);
-      form.setFieldsValue({
+      setDraft({
         title: nextBug.title,
         description: nextBug.description,
         status: nextBug.status,
@@ -40,7 +75,7 @@ export function BugDetailPage() {
         resolution: nextBug.resolution ?? '',
       });
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : '加载缺陷详情失败');
+      toast.error(error instanceof Error ? error.message : '加载缺陷详情失败');
     } finally {
       setLoading(false);
     }
@@ -74,7 +109,7 @@ export function BugDetailPage() {
           : [],
       });
       setBug(nextBug);
-      form.setFieldsValue({
+      setDraft({
         title: nextBug.title,
         description: nextBug.description,
         status: nextBug.status,
@@ -86,12 +121,49 @@ export function BugDetailPage() {
         reproductionSteps: (nextBug.reproductionSteps ?? []).join('\n'),
         resolution: nextBug.resolution ?? '',
       });
-      messageApi.success('缺陷已更新');
+      setSaveFeedback({
+        variant: 'default',
+        title: '保存成功',
+        description: '缺陷信息已更新，你可以继续完善修复上下文或返回列表。',
+      });
+      toast.success('缺陷已更新');
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : '更新缺陷失败');
+      setSaveFeedback({
+        variant: 'destructive',
+        title: '保存失败',
+        description: error instanceof Error ? error.message : '更新缺陷失败',
+      });
+      toast.error(error instanceof Error ? error.message : '更新缺陷失败');
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!draft.title.trim() || !draft.description.trim()) {
+      setSaveFeedback({
+        variant: 'destructive',
+        title: '保存失败',
+        description: '请完整填写标题和描述。',
+      });
+      toast.error('请完整填写标题和描述');
+      return;
+    }
+
+    await submit({
+      title: draft.title.trim(),
+      description: draft.description.trim(),
+      status: draft.status,
+      severity: draft.severity,
+      priority: draft.priority,
+      branchName: draft.branchName.trim() || undefined,
+      expectedBehavior: draft.expectedBehavior.trim() || undefined,
+      actualBehavior: draft.actualBehavior.trim() || undefined,
+      reproductionSteps: draft.reproductionSteps,
+      resolution: draft.resolution.trim() || undefined,
+    });
   }
 
   if (!bugId) {
@@ -99,143 +171,205 @@ export function BugDetailPage() {
   }
 
   return (
-    <AppLayout>
-      {contextHolder}
-      <div className="workflow-detail-stack">
-        <DetailBanner
+    <>
+      <div className="flex flex-col gap-[18px]">
+        <DetailHeader
           eyebrow="Bug Detail"
           title={bug?.title ?? '缺陷详情'}
-          description={bug?.description ?? '查看并维护平台内的缺陷资产。'}
-          loading={loading}
-          tags={
-            <>
-              <Tag bordered={false} color="error">
-                {bug?.severity ?? 'MEDIUM'}
-              </Tag>
-              <Tag bordered={false}>{bug?.priority ?? 'MEDIUM'}</Tag>
-              <Tag bordered={false}>{bug?.status ?? 'OPEN'}</Tag>
-              <Tag bordered={false} color="processing">
-                {bug?.workspace?.name ?? '未绑定工作区'}
-              </Tag>
-            </>
-          }
+          description="查看并维护缺陷的当前状态、严重级别和来源信息。"
+          badges={[
+            { key: 'severity', label: formatSeverityLabel(bug?.severity ?? 'MEDIUM'), variant: 'destructive' },
+            { key: 'priority', label: formatPriorityLabel(bug?.priority ?? 'MEDIUM'), variant: 'outline' },
+            { key: 'status', label: formatBugStatus(bug?.status ?? 'OPEN'), variant: 'secondary' },
+            { key: 'workspace', label: bug?.workspace?.name ?? '未绑定工作区', variant: 'default' },
+          ]}
           actions={
             <>
-              <Link className="ant-btn ghost-button" to="/bugs">
-                返回缺陷列表
-              </Link>
+              <UiButton variant="outline" asChild>
+                <Link to="/bugs">返回缺陷列表</Link>
+              </UiButton>
               {bug?.workflowRun?.id ? (
-                <Link className="ant-btn ghost-button" to={`/workflow-runs/${bug.workflowRun.id}`}>
-                  查看来源流程
-                </Link>
+                <UiButton variant="outline" asChild>
+                  <Link to={`/workflow-runs/${bug.workflowRun.id}`}>查看来源流程</Link>
+                </UiButton>
               ) : null}
             </>
           }
         />
 
-        <SummaryMetrics
-          className="detail-summary-grid"
-          items={[
-            { key: 'status', label: '当前状态', value: bug?.status ?? 'OPEN', helpText: '缺陷当前所处的处理阶段。' },
-            { key: 'severity', label: '严重级别', value: bug?.severity ?? 'MEDIUM', helpText: '用于标记影响范围和风险等级。' },
-            { key: 'priority', label: '优先级', value: bug?.priority ?? 'MEDIUM', helpText: '用于安排修复顺序与处理节奏。' },
-            { key: 'workspace', label: '所属工作区', value: bug?.workspace?.name ?? '未绑定', helpText: '当前缺陷所属的项目空间。' },
-          ]}
-        />
+        <div className="grid gap-5 md:grid-cols-4">
+          <MetricCard label="当前状态" value={formatBugStatus(bug?.status ?? 'OPEN')} helpText="缺陷当前所处的处理阶段。" />
+          <MetricCard label="严重级别" value={formatSeverity(bug?.severity ?? 'MEDIUM')} helpText="用于标记影响范围和风险等级。" />
+          <MetricCard label="优先级" value={formatPriority(bug?.priority ?? 'MEDIUM')} helpText="用于安排修复顺序与处理节奏。" />
+          <MetricCard label="所属工作区" value={bug?.workspace?.name ?? '未绑定'} helpText="当前缺陷所属的项目空间。" />
+        </div>
 
-        <div className="workflow-detail-grid">
-          <div className="workflow-detail-main">
-            <Card className="panel" bordered={false} loading={loading}>
-              <SectionHeader eyebrow="Edit Bug" title="编辑缺陷" />
-              <Form form={form} layout="vertical" onFinish={(values) => void submit(values)}>
-                <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
-                  <Input size="large" />
-                </Form.Item>
-                <Form.Item name="description" label="描述" rules={[{ required: true, message: '请输入描述' }]}>
-                  <Input.TextArea rows={5} />
-                </Form.Item>
-                <div className="inline-filter-group">
-                  <Form.Item name="status" label="状态" style={{ minWidth: 220, flex: 1 }}>
-                    <Select
-                      options={[
-                        { label: 'OPEN', value: 'OPEN' },
-                        { label: 'CONFIRMED', value: 'CONFIRMED' },
-                        { label: 'FIXING', value: 'FIXING' },
-                        { label: 'FIXED', value: 'FIXED' },
-                        { label: 'VERIFIED', value: 'VERIFIED' },
-                        { label: 'CLOSED', value: 'CLOSED' },
-                        { label: 'WONT_FIX', value: 'WONT_FIX' },
-                      ]}
-                    />
-                  </Form.Item>
-                  <Form.Item name="severity" label="严重级别" style={{ minWidth: 220, flex: 1 }}>
-                    <Select
-                      options={[
-                        { label: 'LOW', value: 'LOW' },
-                        { label: 'MEDIUM', value: 'MEDIUM' },
-                        { label: 'HIGH', value: 'HIGH' },
-                        { label: 'CRITICAL', value: 'CRITICAL' },
-                      ]}
-                    />
-                  </Form.Item>
-                  <Form.Item name="priority" label="优先级" style={{ minWidth: 220, flex: 1 }}>
-                    <Select
-                      options={[
-                        { label: 'LOW', value: 'LOW' },
-                        { label: 'MEDIUM', value: 'MEDIUM' },
-                        { label: 'HIGH', value: 'HIGH' },
-                        { label: 'URGENT', value: 'URGENT' },
-                      ]}
-                    />
-                  </Form.Item>
+        <div className="grid items-start gap-5 min-[1281px]:grid-cols-[minmax(0,1.5fr)_360px] max-[1280px]:grid-cols-1">
+          <div className="flex flex-col gap-[18px]">
+            <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <CardHeader className="pb-4">
+                <SectionHeader eyebrow="Edit Bug" title="编辑缺陷" />
+              </CardHeader>
+              <CardContent className="p-5 pt-0">
+                {loading ? (
+                  <div className="flex min-h-40 items-center justify-center">
+                    <Spinner className="h-7 w-7" />
+                  </div>
+                ) : (
+              <form className="flex flex-col gap-4" onSubmit={(event) => void handleSubmit(event)}>
+                {saveFeedback ? (
+                  <Alert variant={saveFeedback.variant} className="mb-1">
+                    <AlertTitle>{saveFeedback.title}</AlertTitle>
+                    <AlertDescription>{saveFeedback.description}</AlertDescription>
+                  </Alert>
+                ) : null}
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="bug-title">标题</label>
+                  <UiInput
+                    id="bug-title"
+                    value={draft.title}
+                    onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
+                  />
                 </div>
-                <Form.Item name="branchName" label="分支">
-                  <Input />
-                </Form.Item>
-                <Form.Item name="expectedBehavior" label="预期行为">
-                  <Input.TextArea rows={3} />
-                </Form.Item>
-                <Form.Item name="actualBehavior" label="实际行为">
-                  <Input.TextArea rows={3} />
-                </Form.Item>
-                <Form.Item name="reproductionSteps" label="复现步骤">
-                  <Input.TextArea rows={5} placeholder="每行一步" />
-                </Form.Item>
-                <Form.Item name="resolution" label="处理结论">
-                  <Input.TextArea rows={4} />
-                </Form.Item>
-                <Button type="primary" htmlType="submit" loading={saving} className="accent-button">
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="bug-description">描述</label>
+                  <Textarea
+                    id="bug-description"
+                    rows={5}
+                    value={draft.description}
+                    onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
+                  />
+                </div>
+                <div className="inline-filter-group">
+                  <div className="flex min-w-[220px] flex-1 flex-col gap-2">
+                    <label className="text-sm font-semibold text-[var(--text)]">状态</label>
+                    <Select value={draft.status} onValueChange={(value) => setDraft((current) => ({ ...current, status: value }))}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="OPEN">{formatBugStatus('OPEN')}</SelectItem>
+                        <SelectItem value="CONFIRMED">{formatBugStatus('CONFIRMED')}</SelectItem>
+                        <SelectItem value="FIXING">{formatBugStatus('FIXING')}</SelectItem>
+                        <SelectItem value="FIXED">{formatBugStatus('FIXED')}</SelectItem>
+                        <SelectItem value="VERIFIED">{formatBugStatus('VERIFIED')}</SelectItem>
+                        <SelectItem value="CLOSED">{formatBugStatus('CLOSED')}</SelectItem>
+                        <SelectItem value="WONT_FIX">{formatBugStatus('WONT_FIX')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex min-w-[220px] flex-1 flex-col gap-2">
+                    <label className="text-sm font-semibold text-[var(--text)]">严重级别</label>
+                    <Select value={draft.severity} onValueChange={(value) => setDraft((current) => ({ ...current, severity: value }))}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="LOW">{formatSeverity('LOW')}</SelectItem>
+                        <SelectItem value="MEDIUM">{formatSeverity('MEDIUM')}</SelectItem>
+                        <SelectItem value="HIGH">{formatSeverity('HIGH')}</SelectItem>
+                        <SelectItem value="CRITICAL">{formatSeverity('CRITICAL')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex min-w-[220px] flex-1 flex-col gap-2">
+                    <label className="text-sm font-semibold text-[var(--text)]">优先级</label>
+                    <Select value={draft.priority} onValueChange={(value) => setDraft((current) => ({ ...current, priority: value }))}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="LOW">{formatPriority('LOW')}</SelectItem>
+                        <SelectItem value="MEDIUM">{formatPriority('MEDIUM')}</SelectItem>
+                        <SelectItem value="HIGH">{formatPriority('HIGH')}</SelectItem>
+                        <SelectItem value="URGENT">{formatPriority('URGENT')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="bug-branch">分支</label>
+                  <UiInput
+                    id="bug-branch"
+                    value={draft.branchName}
+                    onChange={(event) => setDraft((current) => ({ ...current, branchName: event.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="bug-expected">预期行为</label>
+                  <Textarea
+                    id="bug-expected"
+                    rows={3}
+                    value={draft.expectedBehavior}
+                    onChange={(event) => setDraft((current) => ({ ...current, expectedBehavior: event.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="bug-actual">实际行为</label>
+                  <Textarea
+                    id="bug-actual"
+                    rows={3}
+                    value={draft.actualBehavior}
+                    onChange={(event) => setDraft((current) => ({ ...current, actualBehavior: event.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="bug-reproduction">复现步骤</label>
+                  <Textarea
+                    id="bug-reproduction"
+                    rows={5}
+                    value={draft.reproductionSteps}
+                    onChange={(event) => setDraft((current) => ({ ...current, reproductionSteps: event.target.value }))}
+                    placeholder="每行一步"
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="bug-resolution">处理结论</label>
+                  <Textarea
+                    id="bug-resolution"
+                    rows={4}
+                    value={draft.resolution}
+                    onChange={(event) => setDraft((current) => ({ ...current, resolution: event.target.value }))}
+                  />
+                </div>
+                <UiButton type="submit" disabled={saving} className="self-start min-w-[120px]">
                   保存变更
-                </Button>
-              </Form>
+                </UiButton>
+              </form>
+                )}
+              </CardContent>
             </Card>
           </div>
 
-          <div className="workflow-detail-side">
-            <ContextCard
+          <div className="flex flex-col gap-[18px]">
+            <ContextPanel
               eyebrow="Source"
               title="来源上下文"
-              loading={loading}
-              metrics={[
-                { key: 'requirement', label: '来源需求', value: bug?.requirement?.title ?? '未关联需求' },
-                { key: 'branch', label: '来源分支', value: bug?.branchName ?? '未记录分支' },
-              ]}
+              description="回看当前缺陷对应的原始需求、分支以及 AI 审查结论。"
             >
+              <div className="space-y-4">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">来源需求</div>
+                  <div className="break-words text-sm font-medium text-slate-900">{bug?.requirement?.title ?? '未关联需求'}</div>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">来源分支</div>
+                  <div className="break-all text-sm font-medium text-slate-900">{bug?.branchName ?? '未记录分支'}</div>
+                </div>
               {bug?.reviewFinding ? (
-                <div className="detail-context-block">
-                  <div className="workflow-side-tags">
-                    <Tag bordered={false} color="processing">
-                      {bug.reviewFinding.type}
-                    </Tag>
-                    <Tag bordered={false}>{bug.reviewFinding.severity}</Tag>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    <Badge variant="default">{formatReviewFindingType(bug.reviewFinding.type)}</Badge>
+                    <Badge variant="outline">{formatSeverity(bug.reviewFinding.severity)}</Badge>
                   </div>
-                  <Paragraph className="workflow-side-copy">{bug.reviewFinding.description}</Paragraph>
+                  <p className="break-words text-sm leading-6 text-slate-600">{bug.reviewFinding.description}</p>
                 </div>
               ) : null}
-            </ContextCard>
+              </div>
+            </ContextPanel>
           </div>
         </div>
       </div>
-    </AppLayout>
+    </>
   );
 }

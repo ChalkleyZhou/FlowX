@@ -213,6 +213,11 @@ export class RepositorySyncService {
     );
   }
 
+  async removeWorkflowStorage(workflowRunId: string) {
+    const workflowStoragePath = this.getWorkflowStoragePath(workflowRunId);
+    await rm(workflowStoragePath, { recursive: true, force: true });
+  }
+
   private async runGit(args: string[], cwd?: string) {
     const { stderr } = await execFile('git', args, {
       cwd,

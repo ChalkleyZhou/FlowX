@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { CreateWorkflowRunDto } from './dto/create-workflow-run.dto';
 import { HumanReviewDecisionDto } from './dto/human-review-decision.dto';
 import { StageFeedbackDto } from './dto/stage-feedback.dto';
@@ -27,6 +27,11 @@ export class WorkflowController {
   @Get(':id/history')
   history(@Param('id') id: string) {
     return this.workflowService.getHistory(id);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.workflowService.deleteWorkflowRun(id);
   }
 
   @Post(':id/task-split/run')
@@ -87,6 +92,16 @@ export class WorkflowController {
   @Post(':id/execution/revise')
   reviseExecution(@Param('id') id: string, @Body() dto: StageFeedbackDto) {
     return this.workflowService.runExecution(id, dto.feedback);
+  }
+
+  @Post(':id/review-findings/:findingId/fix')
+  fixReviewFinding(@Param('id') id: string, @Param('findingId') findingId: string) {
+    return this.workflowService.fixReviewFinding(id, findingId);
+  }
+
+  @Post(':id/git/publish')
+  publishGitChanges(@Param('id') id: string) {
+    return this.workflowService.publishGitChanges(id);
   }
 
   @Patch(':id/execution/manual-edit')

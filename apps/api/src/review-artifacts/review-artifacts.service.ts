@@ -165,8 +165,8 @@ export class ReviewArtifactsService {
       data: {
         status: 'OPEN',
         priority: dto.priority ?? this.mapSeverityToPriority(finding.severity),
-        title: dto.title ?? finding.title,
-        description: dto.description ?? finding.description,
+        title: dto.title ?? this.getFindingDefaultTitle(finding),
+        description: dto.description ?? this.getFindingDefaultDescription(finding),
         workspaceId: workflowRun.requirement.workspaceId,
         requirementId: workflowRun.requirementId,
         workflowRunId: workflowRun.id,
@@ -209,8 +209,8 @@ export class ReviewArtifactsService {
         status: 'OPEN',
         severity: dto.severity ?? finding.severity,
         priority: dto.priority ?? this.mapSeverityToPriority(dto.severity ?? finding.severity),
-        title: dto.title ?? finding.title,
-        description: dto.description ?? finding.description,
+        title: dto.title ?? this.getFindingDefaultTitle(finding),
+        description: dto.description ?? this.getFindingDefaultDescription(finding),
         expectedBehavior: dto.expectedBehavior,
         actualBehavior: dto.actualBehavior,
         reproductionSteps: dto.reproductionSteps ?? [],
@@ -359,20 +359,24 @@ export class ReviewArtifactsService {
     items: string[],
     impactScope: string[],
   ) {
-    return items.map((item, index) => ({
-      workflowRunId,
-      reviewReportId,
-      type,
-      sourceType: type,
-      sourceIndex: index,
-      severity: this.defaultSeverityForType(type),
-      title: item,
-      description: item,
-      recommendation: null,
-      impactScope,
-      metadata: { sourceValue: item },
-      status: 'OPEN',
-    }));
+    return items.map((item, index) => {
+      const normalized = this.normalizeFindingText(item);
+
+      return {
+        workflowRunId,
+        reviewReportId,
+        type,
+        sourceType: type,
+        sourceIndex: index,
+        severity: this.defaultSeverityForType(type),
+        title: normalized.title,
+        description: normalized.description,
+        recommendation: null,
+        impactScope,
+        metadata: { sourceValue: item },
+        status: 'OPEN',
+      };
+    });
   }
 
   private toStringArray(value: Prisma.JsonValue): string[] {
@@ -411,5 +415,91 @@ export class ReviewArtifactsService {
 
   private inferBranchName(workflowRunId: string) {
     return workflowRunId ? `workflow/${workflowRunId}` : null;
+  }
+
+  private getFindingDefaultTitle(finding: {
+    title: string;
+    description: string;
+    metadata: Prisma.JsonValue;
+  }) {
+    if (finding.title && finding.title !== finding.description) {
+      return finding.title;
+    }
+
+    const sourceValue =
+      finding.metadata && typeof finding.metadata === 'object' && !Array.isArray(finding.metadata)
+        ? (finding.metadata as Record<string, unknown>).sourceValue
+        : null;
+
+    if (typeof sourceValue === 'string' && sourceValue.trim()) {
+      return this.normalizeFindingText(sourceValue).title;
+    }
+
+    return this.extractFindingTitle(finding.title || finding.description);
+  }
+
+  private getFindingDefaultDescription(finding: {
+    title: string;
+    description: string;
+    metadata: Prisma.JsonValue;
+  }) {
+    if (finding.description && finding.description.trim()) {
+      return finding.description;
+    }
+
+    const sourceValue =
+      finding.metadata && typeof finding.metadata === 'object' && !Array.isArray(finding.metadata)
+        ? (finding.metadata as Record<string, unknown>).sourceValue
+        : null;
+
+    if (typeof sourceValue === 'string') {
+      return sourceValue;
+    }
+
+    return finding.title;
+  }
+
+  private normalizeFindingText(value: string) {
+    const source = value.trim().replace(/\s+/g, ' ');
+    if (!source) {
+      return {
+        title: '未命名条目',
+        description: '',
+      };
+    }
+
+    const title = this.extractFindingTitle(source);
+    const description = title === source ? source : source;
+
+    return {
+      title,
+      description,
+    };
+  }
+
+  private extractFindingTitle(source: string) {
+    const delimiters = ['。', '；', ';', '\n'];
+    for (const delimiter of delimiters) {
+      const index = source.indexOf(delimiter);
+      if (index > 0) {
+        return this.truncateFindingTitle(source.slice(0, index).trim());
+      }
+    }
+
+    const colonMatch = source.match(/^([^:：]{1,80})[:：]\s*(.+)$/);
+    if (colonMatch?.[1]) {
+      return this.truncateFindingTitle(colonMatch[1].trim());
+    }
+
+    return this.truncateFindingTitle(source);
+  }
+
+  private truncateFindingTitle(value: string) {
+    const trimmed = value.trim();
+    if (trimmed.length <= 80) {
+      return trimmed;
+    }
+
+    return `${trimmed.slice(0, 77).trimEnd()}...`;
   }
 }

@@ -1,7 +1,7 @@
-import { Button, Card, Space, Tag, Typography } from 'antd';
+import { Button } from './ui/button';
+import { Badge } from './ui/badge';
+import { Card, CardContent, CardHeader } from './ui/card';
 import type { ReactNode } from 'react';
-
-const { Text } = Typography;
 
 interface StageAction {
   key: string;
@@ -25,22 +25,6 @@ interface StageCardProps {
 }
 
 type JsonLike = string | number | boolean | null | JsonLike[] | { [key: string]: JsonLike };
-
-function getStatusColor(status?: string) {
-  switch (status) {
-    case 'COMPLETED':
-      return 'green';
-    case 'WAITING_CONFIRMATION':
-      return 'gold';
-    case 'RUNNING':
-      return 'cyan';
-    case 'FAILED':
-    case 'REJECTED':
-      return 'red';
-    default:
-      return 'default';
-  }
-}
 
 function formatStageStatus(status?: string) {
   const map: Record<string, string> = {
@@ -86,31 +70,39 @@ function isRecord(value: unknown): value is Record<string, JsonLike> {
 }
 
 function renderPrimitive(value: JsonLike) {
-  return <span className="stage-primitive">{String(value)}</span>;
+  return <span className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">{String(value)}</span>;
 }
 
 function renderArray(values: JsonLike[]) {
   if (values.length === 0) {
-    return <Text type="secondary">暂无内容</Text>;
+    return <span className="text-sm text-slate-500">暂无内容</span>;
   }
 
   const simpleValues = values.every((item) => typeof item !== 'object' || item === null);
   if (simpleValues) {
     return (
-      <div className="stage-chip-list">
+      <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white">
         {values.map((item, index) => (
-          <Tag key={`${String(item)}-${index}`} bordered={false} className="stage-chip">
-            {String(item)}
-          </Tag>
+          <div
+            key={`${String(item)}-${index}`}
+            className="flex items-start gap-3 border-b border-slate-200/80 px-4 py-3 last:border-b-0"
+          >
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-slate-100 text-[11px] font-semibold text-slate-500">
+              {index + 1}
+            </span>
+            <span className="min-w-0 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
+              {String(item)}
+            </span>
+          </div>
         ))}
       </div>
     );
   }
 
   return (
-    <div className="stage-group-list">
+    <div className="space-y-3">
       {values.map((item, index) => (
-        <div key={index} className="stage-group-card">
+        <div key={index} className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-4 py-3">
           {renderStructuredValue(item)}
         </div>
       ))}
@@ -121,24 +113,56 @@ function renderArray(values: JsonLike[]) {
 function renderObject(record: Record<string, JsonLike>) {
   const entries = Object.entries(record);
   if (entries.length === 0) {
-    return <Text type="secondary">暂无内容</Text>;
+    return <span className="text-sm text-slate-500">暂无内容</span>;
   }
 
   return (
-    <div className="stage-structured-grid">
+    <div className="divide-y divide-slate-200">
       {entries.map(([key, value]) => (
-        <div key={key} className="stage-structured-section">
-          <div className="stage-structured-label">{formatOutputLabel(key)}</div>
-          <div className="stage-structured-value">{renderStructuredValue(value)}</div>
-        </div>
+        <section key={key} className="space-y-3 py-4 first:pt-0 last:pb-0">
+          <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">{formatOutputLabel(key)}</div>
+          <div className="min-w-0 overflow-hidden text-sm leading-6 text-slate-700">{renderStructuredValue(value)}</div>
+        </section>
       ))}
+    </div>
+  );
+}
+
+function renderStageOutput(value: unknown) {
+  if (value === null || value === undefined) {
+    return <span className="text-sm text-slate-500">暂无输出</span>;
+  }
+
+  if (isRecord(value)) {
+    const entries = Object.entries(value);
+    if (entries.length === 0) {
+      return <span className="text-sm text-slate-500">暂无输出</span>;
+    }
+
+    return (
+      <div className="space-y-1">
+        {entries.map(([key, entryValue]) => (
+          <section key={key} className="rounded-xl border border-slate-200/80 bg-slate-50/40 px-4 py-4">
+            <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">
+              {formatOutputLabel(key)}
+            </div>
+            <div className="min-w-0 overflow-hidden">{renderStructuredValue(entryValue)}</div>
+          </section>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200/80 bg-slate-50/40 px-4 py-4">
+      {renderStructuredValue(value)}
     </div>
   );
 }
 
 function renderStructuredValue(value: unknown): ReactNode {
   if (value === null || value === undefined) {
-    return <Text type="secondary">暂无内容</Text>;
+    return <span className="text-sm text-slate-500">暂无内容</span>;
   }
 
   if (Array.isArray(value)) {
@@ -157,64 +181,73 @@ export function StageCard(props: StageCardProps) {
     !!props.statusMessage && (props.status === 'RUNNING' || props.status === 'FAILED');
 
   return (
-    <Card
-      className="stage-card"
-      bordered={false}
-      title={
-        <div className="stage-card-title">
+    <Card className="border-slate-200 bg-white shadow-sm">
+      <CardHeader className="space-y-5 p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <Text className="stage-index">{props.title}</Text>
-            <div className="stage-subtitle">{props.subtitle}</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-primary">{props.title}</div>
+            <div className="mt-1 text-[28px] font-bold leading-none tracking-tight text-slate-950">
+              {props.subtitle}
+            </div>
           </div>
-          <div className="stage-card-meta">
+          <div className="flex flex-wrap gap-2 lg:justify-end">
             {props.metaItems?.map((item) => (
-              <div key={item.key} className="stage-meta-pill">
-                <Text className="stage-meta-label">{item.label}</Text>
-                <div className="stage-meta-value">{item.value}</div>
+              <div key={item.key} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <div className="mb-0.5 text-[11px] font-semibold text-slate-400">{item.label}</div>
+                <div className="text-sm font-semibold text-slate-950">{item.value}</div>
               </div>
             ))}
             {props.attempt ? (
-              <Tag className="attempt-pill" bordered={false}>
+              <Badge className="rounded-xl px-3 py-1.5 text-xs font-semibold" variant="outline">
                 第 {props.attempt} 次
-              </Tag>
+              </Badge>
             ) : null}
-            <Tag color={getStatusColor(props.status)} bordered={false}>
+            <Badge
+              className="rounded-xl px-3 py-1.5 text-xs font-semibold"
+              variant={
+                props.status === 'COMPLETED'
+                  ? 'success'
+                  : props.status === 'FAILED' || props.status === 'REJECTED'
+                    ? 'destructive'
+                    : props.status === 'WAITING_CONFIRMATION'
+                      ? 'warning'
+                      : 'default'
+              }
+            >
               {formatStageStatus(props.status)}
-            </Tag>
+            </Badge>
           </div>
         </div>
-      }
-    >
-      <div className="stage-output-label">阶段产出</div>
-      {shouldShowStatusMessage ? (
-        <Text type="secondary" className="requirement-criteria">
-          {props.statusMessage}
-        </Text>
-      ) : null}
+      </CardHeader>
+      <CardContent className="space-y-4 p-5 pt-0">
+        <div className="text-xs font-bold uppercase tracking-[0.08em] text-slate-400">阶段产出</div>
+        {shouldShowStatusMessage ? (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+            {props.statusMessage}
+          </div>
+        ) : null}
 
-      <div className="stage-output-panel">
-        {props.output ? renderStructuredValue(props.output) : <Text type="secondary">暂无输出</Text>}
-      </div>
+        <div className="space-y-3">
+          {props.output ? renderStageOutput(props.output) : <span className="text-sm text-slate-500">暂无输出</span>}
+        </div>
 
-      <div className="stage-action-row">
-        {props.actions && props.actions.length > 0 ? (
-          props.actions.map((action) => (
-            <Button
-              key={action.key}
-              type={action.variant === 'primary' ? 'primary' : 'default'}
-              danger={action.danger}
-              onClick={action.onClick}
-              disabled={action.disabled}
-              loading={action.loading}
-              className={action.variant === 'primary' ? 'accent-button' : 'ghost-button'}
-            >
-              {action.label}
-            </Button>
-          ))
-        ) : (
-          <Text type="secondary">当前阶段暂无可用操作</Text>
-        )}
-      </div>
+        <div className="flex flex-wrap gap-3">
+          {props.actions && props.actions.length > 0 ? (
+            props.actions.map((action) => (
+              <Button
+                key={action.key}
+                variant={action.danger ? 'destructive' : action.variant === 'primary' ? 'default' : 'outline'}
+                onClick={action.onClick}
+                disabled={action.disabled}
+              >
+                {action.loading ? '处理中...' : action.label}
+              </Button>
+            ))
+          ) : (
+            <span className="text-sm text-slate-500">当前阶段暂无可用操作</span>
+          )}
+        </div>
+      </CardContent>
     </Card>
   );
 }

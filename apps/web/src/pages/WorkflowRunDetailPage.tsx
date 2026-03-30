@@ -1,17 +1,31 @@
-import { Button, Card, Empty, Form, Input, Modal, Steps, Tag, Typography, message } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
-import { AppLayout } from '../components/AppLayout';
-import { ContextCard } from '../components/ContextCard';
-import { DetailBanner } from '../components/DetailBanner';
+import { ContextPanel } from '../components/ContextPanel';
+import { DiffFileListPanel } from '../components/DiffFileListPanel';
+import { DiffViewerPanel } from '../components/DiffViewerPanel';
+import { EmptyState } from '../components/EmptyState';
+import { DetailHeader } from '../components/DetailHeader';
+import { MetricCard } from '../components/MetricCard';
+import { RepositoryBranchCard } from '../components/RepositoryBranchCard';
 import { SectionHeader } from '../components/SectionHeader';
+import { StatPill } from '../components/StatPill';
 import { StageCard } from '../components/StageCard';
-import { SummaryMetrics } from '../components/SummaryMetrics';
+import { ReviewFindingCard } from '../components/ReviewFindingCard';
+import { WorkflowSteps } from '../components/WorkflowSteps';
+import { Badge } from '../components/ui/badge';
+import { Button as UiButton } from '../components/ui/button';
+import { Card, CardContent, CardHeader } from '../components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Spinner } from '../components/ui/spinner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Textarea } from '../components/ui/textarea';
+import { useToast } from '../components/ui/toast';
 import type { WorkflowRun } from '../types';
-import { formatWorkflowStatus, getStage } from '../utils/workflow-ui';
-
-const { Title, Paragraph, Text } = Typography;
+import {
+  formatWorkflowRepositoryStatus,
+} from '../utils/label-utils';
+import { formatStageExecutionStatus, formatWorkflowStatus, getStage } from '../utils/workflow-ui';
 
 const STAGE_SEQUENCE = ['TASK_SPLIT', 'TECHNICAL_PLAN', 'EXECUTION', 'AI_REVIEW'] as const;
 
@@ -52,6 +66,11 @@ interface DiffFileView {
   path: string;
   kind: 'modified' | 'untracked';
   diffText: string;
+}
+
+interface RepositoryPathContext {
+  name: string;
+  localPath?: string | null;
 }
 
 const stageMeta: Record<
@@ -103,6 +122,18 @@ function getStepVisualStatus(stageStatus?: string): 'wait' | 'process' | 'finish
   }
 }
 
+function getStepDescription(stage?: { status?: string; statusMessage?: string | null }) {
+  if (!stage?.status) {
+    return '尚未开始';
+  }
+
+  if ((stage.status === 'RUNNING' || stage.status === 'FAILED') && stage.statusMessage?.trim()) {
+    return stage.statusMessage.trim();
+  }
+
+  return formatStageExecutionStatus(stage.status);
+}
+
 function inferFocusedStage(run: WorkflowRun): WorkflowStageKey {
   for (const stageKey of STAGE_SEQUENCE) {
     const stage = getStage(run, stageKey);
@@ -149,8 +180,64 @@ function splitDiffTextIntoFiles(diffText: string): DiffFileView[] {
   });
 }
 
+function sanitizeDisplayPathString(value: string, repositories: RepositoryPathContext[]) {
+  const text = value.trim();
+  if (!text) {
+    return text;
+  }
+
+  const normalizedText = text.replace(/\\/g, '/');
+
+  const repoContexts = repositories
+    .filter((repository) => repository.localPath)
+    .map((repository) => ({
+      name: repository.name,
+      localPath: String(repository.localPath).replace(/\\/g, '/').replace(/\/+$/, ''),
+    }))
+    .sort((a, b) => b.localPath.length - a.localPath.length);
+
+  for (const repository of repoContexts) {
+    if (normalizedText === repository.localPath || normalizedText.startsWith(`${repository.localPath}/`)) {
+      const relativePath = normalizedText.slice(repository.localPath.length).replace(/^\/+/, '');
+      if (!relativePath) {
+        return repoContexts.length > 1 ? `${repository.name}:.` : '.';
+      }
+      return repoContexts.length > 1 ? `${repository.name}:${relativePath}` : relativePath;
+    }
+  }
+
+  if (normalizedText.startsWith('/Users/') || normalizedText.startsWith('/tmp/') || /^[A-Za-z]:\//.test(normalizedText)) {
+    return '已隐藏本地绝对路径';
+  }
+
+  return text;
+}
+
+function sanitizeDisplayValue(value: unknown, repositories: RepositoryPathContext[]): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeDisplayValue(item, repositories));
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>).reduce<Record<string, unknown>>((acc, [key, entry]) => {
+      if (key === 'localPath') {
+        return acc;
+      }
+      acc[key] = sanitizeDisplayValue(entry, repositories);
+      return acc;
+    }, {});
+  }
+
+  if (typeof value === 'string') {
+    return sanitizeDisplayPathString(value, repositories);
+  }
+
+  return value;
+}
+
 export function WorkflowRunDetailPage() {
   const { workflowRunId = '' } = useParams();
+  const navigate = useNavigate();
   const [workflowRun, setWorkflowRun] = useState<WorkflowRun | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedStage, setSelectedStage] = useState<WorkflowStageKey>('TASK_SPLIT');
@@ -163,10 +250,14 @@ export function WorkflowRunDetailPage() {
   const [busyFindingId, setBusyFindingId] = useState<string | null>(null);
   const [selectedArtifactKey, setSelectedArtifactKey] = useState<string | null>(null);
   const [selectedDiffFileKey, setSelectedDiffFileKey] = useState<string | null>(null);
-  const [feedbackForm] = Form.useForm();
-  const [editForm] = Form.useForm();
-  const [messageApi, contextHolder] = message.useMessage();
+  const [feedbackText, setFeedbackText] = useState('');
+  const [editOutputText, setEditOutputText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const toast = useToast();
   const lastWorkflowSnapshotRef = useRef<string>('');
+  const hasInitializedStageSelectionRef = useRef(false);
+  const syncedReviewReportIdRef = useRef<string | null>(null);
 
   async function refresh(options?: { silent?: boolean }) {
     if (!workflowRunId) {
@@ -187,7 +278,7 @@ export function WorkflowRunDetailPage() {
       }
     } catch (error) {
       if (!options?.silent) {
-        messageApi.error(error instanceof Error ? error.message : '加载工作流失败');
+        toast.error(error instanceof Error ? error.message : '加载工作流失败');
       }
     } finally {
       if (!options?.silent) {
@@ -201,24 +292,63 @@ export function WorkflowRunDetailPage() {
   }, [workflowRunId]);
 
   useEffect(() => {
+    hasInitializedStageSelectionRef.current = false;
+    syncedReviewReportIdRef.current = null;
+  }, [workflowRunId]);
+
+  useEffect(() => {
     if (!workflowRun) {
       return;
     }
 
     const suggestedStage = inferFocusedStage(workflowRun);
+    if (!hasInitializedStageSelectionRef.current) {
+      setSelectedStage(suggestedStage);
+      hasInitializedStageSelectionRef.current = true;
+      return;
+    }
+
     const currentStage = getStage(workflowRun, selectedStage);
 
-    if (
-      !currentStage ||
-      currentStage.status === 'NOT_STARTED' ||
-      currentStage.status === undefined ||
-      currentStage.status === 'COMPLETED'
-    ) {
+    if (!currentStage || currentStage.status === 'NOT_STARTED' || currentStage.status === undefined) {
       setSelectedStage(suggestedStage);
     }
   }, [workflowRun]);
 
   const hasRunningStage = workflowRun?.stageExecutions.some((item) => item.status === 'RUNNING') ?? false;
+
+  useEffect(() => {
+    const reviewReportId = workflowRun?.reviewReport?.id;
+
+    if (!workflowRun || !reviewReportId || selectedStage !== 'AI_REVIEW' || workflowRun.status !== 'HUMAN_REVIEW_PENDING') {
+      return;
+    }
+
+    if (workflowRun.reviewFindings.length > 0) {
+      syncedReviewReportIdRef.current = reviewReportId;
+      return;
+    }
+
+    if (syncedReviewReportIdRef.current === reviewReportId || hasRunningStage) {
+      return;
+    }
+
+    syncedReviewReportIdRef.current = reviewReportId;
+    setBusyFindingId(`sync:${reviewReportId}`);
+
+    void api
+      .syncReviewFindings(reviewReportId)
+      .then(async () => {
+        await refresh({ silent: true });
+      })
+      .catch((error) => {
+        syncedReviewReportIdRef.current = null;
+        toast.error(error instanceof Error ? error.message : '整理 AI 审查结果失败');
+      })
+      .finally(() => {
+        setBusyFindingId(null);
+      });
+  }, [workflowRun, selectedStage, hasRunningStage]);
   const diffArtifacts = useMemo<DiffArtifactView[]>(
     () => ((workflowRun?.codeExecution?.diffArtifacts as DiffArtifactView[] | undefined) ?? []).filter(Boolean),
     [workflowRun],
@@ -259,8 +389,9 @@ export function WorkflowRunDetailPage() {
       return null;
     }
 
-    const completedStages = workflowRun.stageExecutions.filter((item) => item.status === 'COMPLETED').length;
-    const waitingStages = workflowRun.stageExecutions.filter((item) => item.status === 'WAITING_CONFIRMATION').length;
+    const latestStages = STAGE_SEQUENCE.map((stageKey) => getStage(workflowRun, stageKey)).filter(Boolean);
+    const completedStages = latestStages.filter((item) => item?.status === 'COMPLETED').length;
+    const waitingStages = latestStages.filter((item) => item?.status === 'WAITING_CONFIRMATION').length;
     const findingsCount = workflowRun.reviewFindings.length;
 
     return {
@@ -313,50 +444,61 @@ export function WorkflowRunDetailPage() {
     try {
       await action();
       await refresh();
-      messageApi.success(successText);
+      toast.success(successText);
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : '操作失败');
+      toast.error(error instanceof Error ? error.message : '操作失败');
     } finally {
       setBusyStage(null);
     }
   }
 
-  async function submitFeedback(values: { feedback: string }) {
+  async function submitFeedback() {
     if (!workflowRun || !feedbackModal) {
+      return;
+    }
+
+    const nextFeedback = feedbackText.trim();
+    if (!nextFeedback) {
+      toast.error('请输入你希望 AI 调整的意见');
       return;
     }
 
     setSubmitting(true);
     try {
       if (feedbackModal.stage === 'task-split') {
-        await api.reviseTaskSplit(workflowRun.id, values.feedback);
+        await api.reviseTaskSplit(workflowRun.id, nextFeedback);
       } else if (feedbackModal.stage === 'plan') {
-        await api.revisePlan(workflowRun.id, values.feedback);
+        await api.revisePlan(workflowRun.id, nextFeedback);
       } else if (feedbackModal.stage === 'execution') {
-        await api.reviseExecution(workflowRun.id, values.feedback);
+        await api.reviseExecution(workflowRun.id, nextFeedback);
       } else {
-        await api.reviseReview(workflowRun.id, values.feedback);
+        await api.reviseReview(workflowRun.id, nextFeedback);
       }
 
       setFeedbackModal(null);
-      feedbackForm.resetFields();
+      setFeedbackText('');
       await refresh();
-      messageApi.success('AI 已根据意见重新处理当前阶段');
+      toast.success('AI 已根据意见重新处理当前阶段');
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : '提交意见失败');
+      toast.error(error instanceof Error ? error.message : '提交意见失败');
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function submitManualEdit(values: { outputText: string }) {
+  async function submitManualEdit() {
     if (!workflowRun || !editModal) {
+      return;
+    }
+
+    if (!editOutputText.trim()) {
+      toast.error('请输入修改后的 JSON');
       return;
     }
 
     setSubmitting(true);
     try {
-      const output = JSON.parse(values.outputText);
+      const output = JSON.parse(editOutputText);
 
       if (editModal.stage === 'task-split') {
         await api.manualEditTaskSplit(workflowRun.id, output);
@@ -369,11 +511,11 @@ export function WorkflowRunDetailPage() {
       }
 
       setEditModal(null);
-      editForm.resetFields();
+      setEditOutputText('');
       await refresh();
-      messageApi.success('阶段产出已人工更新');
+      toast.success('阶段产出已人工更新');
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : '人工修改失败');
+      toast.error(error instanceof Error ? error.message : '人工修改失败');
     } finally {
       setSubmitting(false);
     }
@@ -388,11 +530,52 @@ export function WorkflowRunDetailPage() {
     try {
       await action();
       await refresh({ silent: true });
-      messageApi.success(successText);
+      toast.success(successText);
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : '处理审查条目失败');
+      toast.error(error instanceof Error ? error.message : '处理审查条目失败');
     } finally {
       setBusyFindingId(null);
+    }
+  }
+
+  async function handleDeleteWorkflow() {
+    if (!workflowRun) {
+      return;
+    }
+
+    const confirmed = window.confirm('删除后将清空这条工作流的阶段记录、审查结果和工作副本。确认删除吗？');
+    if (!confirmed) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      await api.deleteWorkflowRun(workflowRun.id);
+      toast.success('工作流已删除');
+      navigate('/workflow-runs', { replace: true });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '删除工作流失败');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function handlePublishGitChanges() {
+    if (!workflowRun) {
+      return;
+    }
+
+    setPublishing(true);
+    try {
+      const result = await api.publishWorkflowGitChanges(workflowRun.id);
+      await refresh({ silent: true });
+      toast.success(
+        `已提交并推送 ${result.repositories.length} 个代码库，提交信息：${result.message}`,
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '提交远程失败');
+    } finally {
+      setPublishing(false);
     }
   }
 
@@ -405,6 +588,10 @@ export function WorkflowRunDetailPage() {
     const planStage = getStage(workflowRun, 'TECHNICAL_PLAN');
     const executionStage = getStage(workflowRun, 'EXECUTION');
     const reviewStage = getStage(workflowRun, 'AI_REVIEW');
+    const repositoryPaths = workflowRun.workflowRepositories.map((repository) => ({
+      name: repository.name,
+      localPath: repository.localPath,
+    }));
 
     return {
       TASK_SPLIT: {
@@ -413,7 +600,7 @@ export function WorkflowRunDetailPage() {
         status: taskSplitStage?.status,
         statusMessage: taskSplitStage?.statusMessage,
         attempt: taskSplitStage?.attempt,
-        output: taskSplitStage?.output ?? { tasks: workflowRun.tasks },
+        output: sanitizeDisplayValue(taskSplitStage?.output ?? { tasks: workflowRun.tasks }, repositoryPaths),
         actions: [
           {
             key: 'run',
@@ -443,6 +630,7 @@ export function WorkflowRunDetailPage() {
             label: '提意见给 AI',
             onClick: (): void => {
               setFeedbackModal({ stage: 'task-split', title: '任务拆解意见' });
+              setFeedbackText('');
             },
             disabled: workflowRun.status !== 'TASK_SPLIT_WAITING_CONFIRMATION' || busyStage !== null,
           },
@@ -451,7 +639,7 @@ export function WorkflowRunDetailPage() {
             label: '人工修改',
             onClick: (): void => {
               const output = taskSplitStage?.output ?? { tasks: workflowRun.tasks };
-              editForm.setFieldsValue({ outputText: JSON.stringify(output, null, 2) });
+              setEditOutputText(JSON.stringify(output, null, 2));
               setEditModal({ stage: 'task-split', title: '人工修改任务拆解', initialOutput: output });
             },
             disabled: workflowRun.status !== 'TASK_SPLIT_WAITING_CONFIRMATION' || busyStage !== null,
@@ -464,7 +652,7 @@ export function WorkflowRunDetailPage() {
         status: planStage?.status,
         statusMessage: planStage?.statusMessage,
         attempt: planStage?.attempt,
-        output: planStage?.output ?? workflowRun.plan,
+        output: sanitizeDisplayValue(planStage?.output ?? workflowRun.plan, repositoryPaths),
         actions: [
           {
             key: 'run',
@@ -494,6 +682,7 @@ export function WorkflowRunDetailPage() {
             label: '提意见给 AI',
             onClick: (): void => {
               setFeedbackModal({ stage: 'plan', title: '技术方案意见' });
+              setFeedbackText('');
             },
             disabled: workflowRun.status !== 'PLAN_WAITING_CONFIRMATION' || busyStage !== null,
           },
@@ -502,7 +691,7 @@ export function WorkflowRunDetailPage() {
             label: '人工修改',
             onClick: (): void => {
               const output = planStage?.output ?? workflowRun.plan;
-              editForm.setFieldsValue({ outputText: JSON.stringify(output, null, 2) });
+              setEditOutputText(JSON.stringify(output, null, 2));
               setEditModal({ stage: 'plan', title: '人工修改技术方案', initialOutput: output });
             },
             disabled: workflowRun.status !== 'PLAN_WAITING_CONFIRMATION' || busyStage !== null,
@@ -515,7 +704,7 @@ export function WorkflowRunDetailPage() {
         status: executionStage?.status,
         statusMessage: executionStage?.statusMessage,
         attempt: executionStage?.attempt,
-        output: workflowRun.codeExecution,
+        output: sanitizeDisplayValue(workflowRun.codeExecution, repositoryPaths),
         actions: [
           {
             key: 'run',
@@ -530,6 +719,7 @@ export function WorkflowRunDetailPage() {
             label: '提意见给 AI',
             onClick: (): void => {
               setFeedbackModal({ stage: 'execution', title: '开发执行意见' });
+              setFeedbackText('');
             },
             disabled: workflowRun.status !== 'REVIEW_PENDING' || busyStage !== null,
           },
@@ -538,7 +728,7 @@ export function WorkflowRunDetailPage() {
             label: '人工修改',
             onClick: (): void => {
               const output = workflowRun.codeExecution;
-              editForm.setFieldsValue({ outputText: JSON.stringify(output, null, 2) });
+              setEditOutputText(JSON.stringify(output, null, 2));
               setEditModal({ stage: 'execution', title: '人工修改开发执行结果', initialOutput: output });
             },
             disabled:
@@ -554,11 +744,11 @@ export function WorkflowRunDetailPage() {
         status: reviewStage?.status,
         statusMessage: reviewStage?.statusMessage,
         attempt: reviewStage?.attempt,
-        output: workflowRun.reviewReport,
+        output: sanitizeDisplayValue(workflowRun.reviewReport, repositoryPaths),
         actions: [
           {
             key: 'run',
-            label: '执行 AI 审查',
+            label: workflowRun.reviewReport ? '重新执行 AI 审查' : '执行 AI 审查',
             onClick: () => void runAction('AI_REVIEW', () => api.runReview(workflowRun.id), 'AI 审查已启动'),
             disabled: workflowRun.status !== 'REVIEW_PENDING' || busyStage !== null,
             loading: busyStage === 'AI_REVIEW',
@@ -591,6 +781,7 @@ export function WorkflowRunDetailPage() {
             label: '提意见给 AI',
             onClick: (): void => {
               setFeedbackModal({ stage: 'review', title: 'AI 审查意见' });
+              setFeedbackText('');
             },
             disabled: workflowRun.status !== 'HUMAN_REVIEW_PENDING' || busyStage !== null,
           },
@@ -599,7 +790,7 @@ export function WorkflowRunDetailPage() {
             label: '人工修改',
             onClick: (): void => {
               const output = workflowRun.reviewReport;
-              editForm.setFieldsValue({ outputText: JSON.stringify(output, null, 2) });
+              setEditOutputText(JSON.stringify(output, null, 2));
               setEditModal({ stage: 'review', title: '人工修改 AI 审查结果', initialOutput: output });
             },
             disabled: workflowRun.status !== 'HUMAN_REVIEW_PENDING' || busyStage !== null,
@@ -618,143 +809,154 @@ export function WorkflowRunDetailPage() {
   const reviewReportId = workflowRun?.reviewReport?.id ?? null;
 
   return (
-    <AppLayout>
-      {contextHolder}
-      <Modal
-        title={feedbackModal?.title ?? '提交意见'}
+    <>
+      <Dialog
         open={!!feedbackModal}
-        footer={null}
-        onCancel={() => {
+        onOpenChange={(open) => {
+          if (open) {
+            return;
+          }
           setFeedbackModal(null);
-          feedbackForm.resetFields();
+          setFeedbackText('');
         }}
       >
-        <Form form={feedbackForm} layout="vertical" onFinish={(values) => void submitFeedback(values)}>
-          <Form.Item
-            name="feedback"
-            label="意见说明"
-            rules={[{ required: true, message: '请输入你希望 AI 调整的意见' }]}
-          >
-            <Input.TextArea
-              rows={6}
-              placeholder="例如：任务拆解缺少数据库迁移；方案里应优先改 API；执行代码需要补测试。"
-            />
-          </Form.Item>
-          <Button type="primary" htmlType="submit" loading={submitting} className="accent-button">
-            提交给 AI 修改
-          </Button>
-        </Form>
-      </Modal>
-      <Modal
-        title={editModal?.title ?? '人工修改'}
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{feedbackModal?.title ?? '提交意见'}</DialogTitle>
+            <DialogDescription>描述你希望 AI 如何调整当前阶段的产出，系统会基于这条意见重跑该阶段。</DialogDescription>
+          </DialogHeader>
+          <form className="flex flex-col gap-4" onSubmit={(event) => {
+            event.preventDefault();
+            void submitFeedback();
+          }}>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="workflow-feedback">意见说明</label>
+              <Textarea
+                id="workflow-feedback"
+                rows={6}
+                value={feedbackText}
+                onChange={(event) => setFeedbackText(event.target.value)}
+                placeholder="例如：任务拆解缺少数据库迁移；方案里应优先改 API；执行代码需要补测试。"
+              />
+            </div>
+            <UiButton type="submit" disabled={submitting}>{submitting ? '提交中...' : '提交给 AI 修改'}</UiButton>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog
         open={!!editModal}
-        width={760}
-        footer={null}
-        onCancel={() => {
+        onOpenChange={(open) => {
+          if (open) {
+            return;
+          }
           setEditModal(null);
-          editForm.resetFields();
+          setEditOutputText('');
         }}
       >
-        <Form form={editForm} layout="vertical" onFinish={(values) => void submitManualEdit(values)}>
-          <Form.Item
-            name="outputText"
-            label="阶段产出 JSON"
-            rules={[{ required: true, message: '请输入修改后的 JSON' }]}
-          >
-            <Input.TextArea rows={18} spellCheck={false} />
-          </Form.Item>
-          <Button type="primary" htmlType="submit" loading={submitting} className="accent-button">
-            保存人工修改
-          </Button>
-        </Form>
-      </Modal>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>{editModal?.title ?? '人工修改'}</DialogTitle>
+            <DialogDescription>直接编辑阶段产出的 JSON 结构，保存后会覆盖当前阶段的结构化结果。</DialogDescription>
+          </DialogHeader>
+          <form className="flex flex-col gap-4" onSubmit={(event) => {
+            event.preventDefault();
+            void submitManualEdit();
+          }}>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="workflow-edit-output">阶段产出 JSON</label>
+              <Textarea
+                id="workflow-edit-output"
+                rows={18}
+                spellCheck={false}
+                value={editOutputText}
+                onChange={(event) => setEditOutputText(event.target.value)}
+              />
+            </div>
+            <UiButton type="submit" disabled={submitting}>{submitting ? '保存中...' : '保存人工修改'}</UiButton>
+          </form>
+        </DialogContent>
+      </Dialog>
       {workflowRun ? (
-        <div className="workflow-detail-stack">
-          <DetailBanner
+        <div className="flex flex-col gap-[18px]">
+          <DetailHeader
             eyebrow="Workflow Detail"
             title={workflowRun.requirement.title}
             description={workflowRun.requirement.description}
-            loading={loading}
-            tags={
-              <>
-                <Tag bordered={false} color="processing">
-                  {workflowRun.requirement.workspace?.name ?? '未绑定工作区'}
-                </Tag>
-                <Tag bordered={false}>{workflowRun.id}</Tag>
-              </>
-            }
+            badges={[
+              { key: 'workspace', label: workflowRun.requirement.workspace?.name ?? '未绑定工作区', variant: 'default' },
+              { key: 'id', label: workflowRun.id, variant: 'outline' },
+              { key: 'status', label: formatWorkflowStatus(workflowRun.status), variant: 'secondary' },
+            ]}
             actions={
               <>
-                <Tag className="status-pill" bordered={false}>
-                  {formatWorkflowStatus(workflowRun.status)}
-                </Tag>
-                <Text className="workflow-criteria">{workflowRun.requirement.acceptanceCriteria}</Text>
-                <Link className="ant-btn ghost-button" to="/workflow-runs">
-                  返回列表
-                </Link>
+                <span className="workflow-criteria">{workflowRun.requirement.acceptanceCriteria}</span>
+                <UiButton variant="destructive" disabled={deleting || hasRunningStage} onClick={() => void handleDeleteWorkflow()}>
+                  {deleting ? '删除中...' : '删除工作流'}
+                </UiButton>
+                <UiButton variant="outline" asChild>
+                  <Link to="/workflow-runs">返回列表</Link>
+                </UiButton>
               </>
             }
           />
 
           {workflowMetrics ? (
-            <SummaryMetrics
-              className="workflow-summary-grid"
-              items={[
-                {
-                  key: 'status',
-                  label: '当前状态',
-                  value: formatWorkflowStatus(workflowRun.status),
-                  helpText: hasRunningStage ? '当前有阶段正在后台执行。' : '当前没有后台执行中的阶段。',
-                },
-                {
-                  key: 'progress',
-                  label: '阶段进度',
-                  value: `${workflowMetrics.completedStages}/${STAGE_SEQUENCE.length}`,
-                  helpText: '已完成阶段数，按任务拆解到 AI 审查统计。',
-                },
-                {
-                  key: 'waiting',
-                  label: '待人工处理',
-                  value: workflowMetrics.waitingStages,
-                  helpText: '等待人工确认或下一步决策的阶段数量。',
-                },
-                {
-                  key: 'repos',
-                  label: '代码上下文',
-                  value: workflowMetrics.repositoryCount,
-                  helpText:
-                    workflowMetrics.findingsCount > 0
-                      ? `已沉淀 ${workflowMetrics.findingsCount} 条审查条目。`
-                      : '当前还没有沉淀的审查条目。',
-                },
-              ]}
-            />
+            <div className="grid gap-5 md:grid-cols-4">
+              <MetricCard
+                label="当前状态"
+                value={formatWorkflowStatus(workflowRun.status)}
+                helpText={hasRunningStage ? '当前有阶段正在后台执行。' : '当前没有后台执行中的阶段。'}
+              />
+              <MetricCard
+                label="阶段进度"
+                value={`${workflowMetrics.completedStages}/${STAGE_SEQUENCE.length}`}
+                helpText="已完成阶段数，按任务拆解到 AI 审查统计。"
+              />
+              <MetricCard
+                label="待人工处理"
+                value={workflowMetrics.waitingStages}
+                helpText="等待人工确认或下一步决策的阶段数量。"
+              />
+              <MetricCard
+                label="代码上下文"
+                value={workflowMetrics.repositoryCount}
+                helpText={
+                  workflowMetrics.findingsCount > 0
+                    ? `已沉淀 ${workflowMetrics.findingsCount} 条审查条目。`
+                    : '当前还没有沉淀的审查条目。'
+                }
+              />
+            </div>
           ) : null}
 
-          <Card className="panel workflow-steps-panel" bordered={false}>
-            <SectionHeader
-              eyebrow="Workflow Steps"
-              title="按阶段查看流程与产物"
-              className="workflow-steps-heading"
-              extra={<Text className="requirement-criteria">点击步骤切换详情，产物仅在下方显示</Text>}
-            />
-            <Steps
-              current={selectedStageIndex}
-              responsive
-              className="workflow-steps"
-              onChange={(next) => setSelectedStage(STAGE_SEQUENCE[next] ?? 'TASK_SPLIT')}
-              items={STAGE_SEQUENCE.map((stageKey) => {
-                const stage = getStage(workflowRun, stageKey);
-                return {
-                  title: stageMeta[stageKey].stepLabel,
-                  description: stage?.statusMessage ?? (stage?.status ? undefined : '尚未开始'),
-                  status: getStepVisualStatus(stage?.status),
-                };
-              })}
-            />
+          <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
+            <CardHeader className="p-5 pb-0">
+              <SectionHeader
+                eyebrow="Workflow Steps"
+                title="按阶段查看流程与产物"
+                className="workflow-steps-heading"
+                extra={<span className="text-sm leading-6 text-slate-500">点击步骤切换详情，产物仅在下方显示</span>}
+              />
+            </CardHeader>
+            <CardContent className="p-5 pt-4">
+              <WorkflowSteps
+                current={selectedStageIndex}
+                className="workflow-steps"
+                onChange={(next) => setSelectedStage(STAGE_SEQUENCE[next] ?? 'TASK_SPLIT')}
+                items={STAGE_SEQUENCE.map((stageKey) => {
+                  const stage = getStage(workflowRun, stageKey);
+                  return {
+                    key: stageKey,
+                    title: stageMeta[stageKey].stepLabel,
+                    description: getStepDescription(stage),
+                    status: getStepVisualStatus(stage?.status),
+                  };
+                })}
+              />
+            </CardContent>
           </Card>
 
-          <div className="workflow-detail-main">
+          <div className="flex flex-col gap-[18px]">
             {selectedStageContent ? (
               <StageCard
                 title={selectedStageContent.title}
@@ -768,9 +970,19 @@ export function WorkflowRunDetailPage() {
                     key: 'focus-status',
                     label: '阶段状态',
                     value: (
-                      <Tag bordered={false} color={hasRunningStage ? 'gold' : 'processing'}>
-                        {hasRunningStage ? '后台处理中' : selectedStageContent.status ?? '未开始'}
-                      </Tag>
+                      <Badge
+                        variant={
+                          selectedStageContent.status === 'COMPLETED'
+                            ? 'success'
+                            : selectedStageContent.status === 'FAILED' || selectedStageContent.status === 'REJECTED'
+                              ? 'destructive'
+                              : selectedStageContent.status === 'WAITING_CONFIRMATION' || selectedStageContent.status === 'RUNNING'
+                                ? 'warning'
+                                : 'default'
+                        }
+                      >
+                        {selectedStageContent.status ? formatStageExecutionStatus(selectedStageContent.status) : '未开始'}
+                      </Badge>
                     ),
                   },
                 ]}
@@ -778,274 +990,259 @@ export function WorkflowRunDetailPage() {
                 actions={selectedStageContent.actions}
               />
             ) : (
-              <Card className="panel empty-panel" bordered={false}>
-                <Empty description="当前阶段暂无详情" />
+              <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <CardContent className="p-5">
+                  <EmptyState description="当前阶段还没有可展示的详情产物。" />
+                </CardContent>
               </Card>
             )}
 
-            <div className="workflow-context-grid">
+            <div className="grid gap-[18px] min-[1281px]:grid-cols-2 max-[1280px]:grid-cols-1 max-[1440px]:gap-[14px]">
               {workflowRun.workflowRepositories.length > 0 ? (
-                <ContextCard eyebrow="Workflow Branches" title="本次工作流使用的代码分支">
-                  <div className="repo-list">
+                <ContextPanel eyebrow="Workflow Branches" title="本次工作流使用的代码分支" description="每次工作流都会从基线仓库准备独立的工作分支，避免直接污染项目主分支。">
+                  <div className="flex flex-col gap-3">
                     {workflowRun.workflowRepositories.map((repository) => (
-                      <div key={repository.id} className="repo-row">
-                        <div>
-                          <Text strong>{repository.name}</Text>
-                          <div className="repo-meta-row">
-                            <Tag bordered={false}>基线分支 {repository.baseBranch}</Tag>
-                            <Tag bordered={false} color="processing">
-                              工作分支 {repository.workingBranch}
-                            </Tag>
-                            <Tag
-                              bordered={false}
-                              color={
-                                repository.status === 'READY'
-                                  ? 'success'
-                                  : repository.status === 'ERROR'
-                                    ? 'error'
-                                    : 'gold'
-                              }
-                            >
-                              {repository.status}
-                            </Tag>
-                          </div>
-                          <Text className="requirement-criteria">{repository.localPath ?? '未绑定本地路径'}</Text>
-                          {repository.syncError ? (
-                            <Text type="danger" className="requirement-criteria">
-                              分支准备失败：{repository.syncError}
-                            </Text>
-                          ) : null}
-                        </div>
-                      </div>
+                      <RepositoryBranchCard
+                        key={repository.id}
+                        name={repository.name}
+                        primaryMeta={`基线分支 ${repository.baseBranch}`}
+                        secondaryMeta={`工作分支 ${repository.workingBranch}`}
+                        statusLabel={formatWorkflowRepositoryStatus(repository.status)}
+                        statusVariant={
+                          repository.status === 'READY'
+                            ? 'success'
+                            : repository.status === 'ERROR'
+                              ? 'destructive'
+                              : 'warning'
+                        }
+                        description="已为本次工作流准备独立工作分支。"
+                        error={repository.syncError ? `分支准备失败：${repository.syncError}` : undefined}
+                      />
                     ))}
                   </div>
-                </ContextCard>
+                </ContextPanel>
               ) : null}
             </div>
 
-            {diffReviewData.length > 0 ? (
-              <Card className="panel diff-review-panel" bordered={false}>
-                <div className="diff-review-header">
-                  <SectionHeader
-                    eyebrow="Diff Review"
-                    title="代码变更审查"
-                    description="先确认变更范围，再逐文件查看真实差异，最后结合 AI 审查结果做人工判断。"
-                  />
-                  <div className="diff-review-summary">
-                    <div className="diff-summary-pill">
-                      <Text className="summary-label">变更仓库</Text>
-                      <Text strong>{diffReviewData.length}</Text>
-                    </div>
-                    <div className="diff-summary-pill">
-                      <Text className="summary-label">变更文件</Text>
-                      <Text strong>
-                        {diffReviewData.reduce((total, artifact) => total + artifact.files.length, 0)}
-                      </Text>
-                    </div>
-                    <div className="diff-summary-pill">
-                      <Text className="summary-label">未跟踪文件</Text>
-                      <Text strong>
-                        {diffReviewData.reduce((total, artifact) => total + artifact.untrackedFiles.length, 0)}
-                      </Text>
+            {diffReviewData.length > 0 && (selectedStage === 'EXECUTION' || selectedStage === 'AI_REVIEW') ? (
+              <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
+                <CardHeader className="space-y-4 p-5">
+                  <div className="flex items-start justify-between gap-4 max-[1180px]:flex-col">
+                    <SectionHeader
+                      eyebrow="Diff Review"
+                      title="代码变更审查"
+                      description="先确认变更范围，再逐文件查看真实差异，最后结合 AI 审查结果做人工判断。"
+                    />
+                    <div className="grid min-w-[340px] grid-cols-3 gap-[10px] max-[1180px]:min-w-0 max-[1180px]:grid-cols-2 max-[780px]:grid-cols-1">
+                      <StatPill label="变更仓库" value={diffReviewData.length} />
+                      <StatPill
+                        label="变更文件"
+                        value={diffReviewData.reduce((total, artifact) => total + artifact.files.length, 0)}
+                      />
+                      <StatPill
+                        label="未跟踪文件"
+                        value={diffReviewData.reduce((total, artifact) => total + artifact.untrackedFiles.length, 0)}
+                      />
                     </div>
                   </div>
-                </div>
-
-                <div className="diff-artifact-switcher">
-                  {diffReviewData.map((artifact) => (
-                    <button
-                      key={artifact.artifactKey}
-                      type="button"
-                      className={[
-                        'diff-artifact-button',
-                        artifact.artifactKey === activeArtifact?.artifactKey ? 'diff-artifact-button-active' : '',
-                      ]
-                        .filter(Boolean)
-                        .join(' ')}
-                      onClick={() => {
-                        setSelectedArtifactKey(artifact.artifactKey);
-                        setSelectedDiffFileKey(artifact.files[0]?.key ?? null);
+                </CardHeader>
+                <CardContent className="p-5 pt-0">
+                  {activeArtifact ? (
+                    <Tabs
+                      value={activeArtifact.artifactKey}
+                      onValueChange={(value) => {
+                        const nextArtifact = diffReviewData.find((item) => item.artifactKey === value);
+                        setSelectedArtifactKey(value);
+                        setSelectedDiffFileKey(nextArtifact?.files[0]?.key ?? null);
                       }}
                     >
-                      <span className="diff-artifact-title">{artifact.repository}</span>
-                      <span className="diff-artifact-meta">{artifact.branch}</span>
-                    </button>
-                  ))}
-                </div>
-
-                {activeArtifact ? (
-                  <div className="diff-review-layout">
-                    <div className="diff-file-list">
-                      <div className="diff-review-subhead">
-                        <Text strong>变更文件</Text>
-                        <Text className="requirement-criteria">
-                          {activeArtifact.files.length} 个文件
-                        </Text>
-                      </div>
-                      {activeArtifact.diffStat ? (
-                        <pre className="diff-stat-box">{activeArtifact.diffStat}</pre>
-                      ) : null}
-                      <div className="diff-file-list-body">
-                        {activeArtifact.files.map((file) => (
-                          <button
-                            key={file.key}
-                            type="button"
-                            className={[
-                              'diff-file-button',
-                              file.key === activeDiffFile?.key ? 'diff-file-button-active' : '',
-                            ]
-                              .filter(Boolean)
-                              .join(' ')}
-                            onClick={() => setSelectedDiffFileKey(file.key)}
+                      <TabsList>
+                        {diffReviewData.map((artifact) => (
+                          <TabsTrigger
+                            key={artifact.artifactKey}
+                            value={artifact.artifactKey}
+                            className="flex min-w-[180px] flex-col items-start justify-start gap-1"
                           >
-                            <span className="diff-file-path">{file.path}</span>
-                            <Tag
-                              bordered={false}
-                              color={file.kind === 'untracked' ? 'gold' : 'processing'}
-                              className="diff-file-kind"
-                            >
-                              {file.kind === 'untracked' ? '未跟踪' : '已修改'}
-                            </Tag>
-                          </button>
+                            <span className="text-sm font-semibold">{artifact.repository}</span>
+                            <span className="text-xs text-slate-500">{artifact.branch}</span>
+                          </TabsTrigger>
                         ))}
-                      </div>
-                    </div>
+                      </TabsList>
 
-                    <div className="diff-viewer-panel">
-                      <div className="diff-review-subhead">
-                        <div>
-                          <Text strong>{activeDiffFile?.path ?? '选择一个文件查看差异'}</Text>
-                          <div className="repo-meta-row">
-                            <Tag bordered={false}>{activeArtifact.repository}</Tag>
-                            <Tag bordered={false} color="processing">
-                              {activeArtifact.branch}
-                            </Tag>
-                          </div>
-                        </div>
-                      </div>
-                      {activeDiffFile ? (
-                        <pre className="diff-code-block">{activeDiffFile.diffText}</pre>
-                      ) : (
-                        <Empty description="当前仓库没有可查看的差异内容" />
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <Empty description="当前执行结果还没有可审查的 diff" />
-                )}
+                      {diffReviewData.map((artifact) => {
+                        const artifactFiles = artifact.files;
+                        const currentFile =
+                          artifact.artifactKey === activeArtifact.artifactKey
+                            ? activeDiffFile
+                            : artifact.files.find((item) => item.key === selectedDiffFileKey) ?? artifact.files[0] ?? null;
+
+                        return (
+                          <TabsContent key={artifact.artifactKey} value={artifact.artifactKey}>
+                            <div className="grid items-start gap-4 [grid-template-columns:320px_minmax(0,1fr)] max-[1440px]:[grid-template-columns:280px_minmax(0,1fr)] max-[1180px]:grid-cols-1">
+                              <DiffFileListPanel
+                                count={artifactFiles.length}
+                                files={artifactFiles}
+                                activeKey={currentFile?.key}
+                                onSelect={(key) => {
+                                  if (artifact.artifactKey !== activeArtifact.artifactKey) {
+                                    setSelectedArtifactKey(artifact.artifactKey);
+                                  }
+                                  setSelectedDiffFileKey(key);
+                                }}
+                              />
+
+                              <DiffViewerPanel
+                                filePath={currentFile?.path}
+                                repository={artifact.repository}
+                                branch={artifact.branch}
+                                diffText={currentFile?.diffText}
+                              />
+                            </div>
+                          </TabsContent>
+                        );
+                      })}
+                    </Tabs>
+                  ) : (
+                    <EmptyState description="当前执行结果还没有可审查的 diff。" />
+                  )}
+                </CardContent>
               </Card>
             ) : null}
 
             {selectedStage === 'AI_REVIEW' ? (
-              <Card className="panel finding-panel" bordered={false}>
-                <div className="finding-panel-header">
-                  <SectionHeader
-                    eyebrow="Review Findings"
-                    title="审查条目沉淀"
-                    description="将 AI 审查结果沉淀为可跟踪的问题项与缺陷，便于后续人工确认和持续处理。"
-                  />
-                  <div className="finding-panel-actions">
-                    <div className="finding-summary-pills">
-                      <Tag bordered={false}>{workflowRun.reviewFindings.length} 条条目</Tag>
-                      <Tag bordered={false} color="processing">
-                        {workflowRun.reviewFindings.filter((item) => item.status === 'OPEN').length} 条待处理
-                      </Tag>
-                    </div>
-                    <Button
-                      className="ghost-button"
-                      onClick={() => {
-                        if (!reviewReportId) {
-                          return;
-                        }
-                        void runFindingAction(reviewReportId, () => api.syncReviewFindings(reviewReportId), '已同步审查条目');
-                      }}
-                      disabled={!reviewReportId || busyFindingId !== null}
-                    >
-                      同步 Findings
-                    </Button>
-                  </div>
-                </div>
-                {workflowRun.reviewFindings.length > 0 ? (
-                  <div className="finding-list">
-                    {workflowRun.reviewFindings.map((finding) => (
-                      <div key={finding.id} className="finding-card">
-                        <div className="finding-card-head">
-                          <div>
-                            <Text strong>{finding.title}</Text>
-                            <div className="repo-meta-row">
-                              <Tag bordered={false} color="processing">
-                                {finding.type}
-                              </Tag>
-                              <Tag bordered={false}>{finding.severity}</Tag>
-                              <Tag bordered={false}>{finding.status}</Tag>
-                            </div>
-                          </div>
-                          <Text className="finding-card-index">#{finding.id.slice(-6).toUpperCase()}</Text>
-                        </div>
-                        <Paragraph className="workflow-side-copy">{finding.description}</Paragraph>
-                        {finding.impactScope && finding.impactScope.length > 0 ? (
-                          <div className="workflow-side-tags">
-                            {finding.impactScope.map((item) => (
-                              <Tag key={item} bordered={false}>
-                                {item}
-                              </Tag>
-                            ))}
-                          </div>
-                        ) : null}
-                        <div className="stage-action-row">
-                          <Button
-                            className="ghost-button"
-                            onClick={() => void runFindingAction(finding.id, () => api.acceptReviewFinding(finding.id), '审查条目已接受')}
-                            loading={busyFindingId === finding.id}
-                            disabled={busyFindingId !== null || finding.status === 'CONVERTED_TO_ISSUE' || finding.status === 'CONVERTED_TO_BUG'}
-                          >
-                            接受
-                          </Button>
-                          <Button
-                            className="ghost-button"
-                            onClick={() => void runFindingAction(finding.id, () => api.dismissReviewFinding(finding.id), '审查条目已忽略')}
-                            loading={busyFindingId === finding.id}
-                            disabled={busyFindingId !== null || !!finding.convertedIssueId || !!finding.convertedBugId}
-                          >
-                            忽略
-                          </Button>
-                          <Button
-                            className="ghost-button"
-                            onClick={() =>
-                              void runFindingAction(finding.id, () => api.convertReviewFindingToIssue(finding.id), '已录入为问题项')
-                            }
-                            loading={busyFindingId === finding.id}
-                            disabled={busyFindingId !== null || !!finding.convertedIssueId || !!finding.convertedBugId}
-                          >
-                            转问题项
-                          </Button>
-                          <Button
-                            type="primary"
-                            className="accent-button"
-                            onClick={() =>
-                              void runFindingAction(finding.id, () => api.convertReviewFindingToBug(finding.id), '已录入为缺陷')
-                            }
-                            loading={busyFindingId === finding.id}
-                            disabled={busyFindingId !== null || !!finding.convertedIssueId || !!finding.convertedBugId}
-                          >
-                            转缺陷
-                          </Button>
-                        </div>
+              <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
+                <CardHeader className="p-5">
+                  <div className="mb-4 flex items-start justify-between gap-4 max-[960px]:flex-col">
+                    <SectionHeader
+                      eyebrow="AI Review Results"
+                      title="AI 审查结果"
+                      description="直接基于审查结果决定继续修复、转为问题项或转为缺陷，不再额外理解中间对象。"
+                    />
+                    <div className="flex flex-col items-end gap-3 max-[960px]:items-start">
+                      <div className="flex flex-wrap justify-end gap-2 max-[960px]:justify-start">
+                        <Badge variant="secondary">{workflowRun.reviewFindings.length} 条结果</Badge>
+                        <Badge variant="default">{workflowRun.reviewFindings.filter((item) => !item.convertedIssueId && !item.convertedBugId).length} 条待处理</Badge>
                       </div>
-                    ))}
+                    </div>
                   </div>
-                ) : (
-                  <Empty description="还没有沉淀的审查条目，先同步 findings。" />
-                )}
+                </CardHeader>
+                <CardContent className="p-5 pt-0">
+                  {workflowRun.status === 'REVIEW_PENDING' ? (
+                    <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                      <div>
+                        当前展示的是上一轮 AI 审查结果。你已经继续修复或尚未重新发起审查，请在检查代码变更后再次执行 AI 审查获取最新结果。
+                      </div>
+                      <div>
+                        <UiButton
+                          onClick={() => void runAction('AI_REVIEW', () => api.runReview(workflowRun.id), 'AI 审查已启动')}
+                          disabled={busyStage !== null}
+                        >
+                          {busyStage === 'AI_REVIEW' ? '处理中...' : '重新执行 AI 审查'}
+                        </UiButton>
+                      </div>
+                    </div>
+                  ) : null}
+                  {workflowRun.reviewFindings.length > 0 ? (
+                    <div className="flex flex-col gap-3">
+                      {workflowRun.reviewFindings.map((finding) => (
+                        <ReviewFindingCard
+                          key={finding.id}
+                          id={finding.id}
+                          title={finding.title}
+                          type={finding.type}
+                          severity={finding.severity}
+                          status={finding.status}
+                          description={finding.description}
+                          impactScope={finding.impactScope}
+                          actions={[
+                            {
+                              key: 'fix',
+                              label: busyFindingId === finding.id ? '处理中...' : '立即修复',
+                              variant: 'outline',
+                              onClick: () =>
+                                void runFindingAction(
+                                  finding.id,
+                                  () => api.fixReviewFinding(workflowRun.id, finding.id),
+                                  '已开始基于该审查结果继续修复，请检查代码变更后再执行 AI 审查',
+                                ),
+                              disabled: busyFindingId !== null || workflowRun.status !== 'HUMAN_REVIEW_PENDING',
+                            },
+                            {
+                              key: 'issue',
+                              label: busyFindingId === finding.id ? '处理中...' : '转问题项',
+                              variant: 'outline',
+                              onClick: () =>
+                                void runFindingAction(finding.id, () => api.convertReviewFindingToIssue(finding.id), '已录入为问题项'),
+                              disabled:
+                                busyFindingId !== null ||
+                                workflowRun.status !== 'HUMAN_REVIEW_PENDING' ||
+                                !!finding.convertedIssueId ||
+                                !!finding.convertedBugId,
+                            },
+                            {
+                              key: 'bug',
+                              label: busyFindingId === finding.id ? '处理中...' : '转缺陷',
+                              onClick: () =>
+                                void runFindingAction(finding.id, () => api.convertReviewFindingToBug(finding.id), '已录入为缺陷'),
+                              disabled:
+                                busyFindingId !== null ||
+                                workflowRun.status !== 'HUMAN_REVIEW_PENDING' ||
+                                !!finding.convertedIssueId ||
+                                !!finding.convertedBugId,
+                            },
+                          ]}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      description={
+                        reviewReportId && busyFindingId === `sync:${reviewReportId}`
+                          ? '正在整理 AI 审查结果...'
+                          : '当前还没有可操作的 AI 审查结果。'
+                      }
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {workflowRun.status === 'DONE' ? (
+              <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
+                <CardHeader className="p-5">
+                  <SectionHeader
+                    eyebrow="Git Publish"
+                    title="提交到远程"
+                    description="人工确认通过后，将当前工作流工作分支中的代码变更一次性提交并推送到远程仓库。"
+                  />
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4 p-5 pt-0">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+                    这个动作会自动完成 git add、git commit 和 git push，并沿用当前 workflow 的工作分支。
+                  </div>
+                  <div>
+                    <UiButton onClick={() => void handlePublishGitChanges()} disabled={publishing}>
+                      {publishing ? '处理中...' : '提交并推送到远程'}
+                    </UiButton>
+                  </div>
+                </CardContent>
               </Card>
             ) : null}
           </div>
         </div>
       ) : (
-        <Card className="panel empty-panel" bordered={false} loading={loading}>
-          <Empty description="未找到工作流" />
+        <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <CardContent className="p-5">
+            {loading ? (
+              <div className="flex min-h-40 items-center justify-center">
+                <Spinner className="h-7 w-7" />
+              </div>
+            ) : (
+              <EmptyState description="没有找到对应的工作流记录。" />
+            )}
+          </CardContent>
         </Card>
       )}
-    </AppLayout>
+    </>
   );
 }

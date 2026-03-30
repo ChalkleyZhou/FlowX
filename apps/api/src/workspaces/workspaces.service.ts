@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateRepositoryDto } from './dto/create-repository.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { RepositorySyncService } from './repository-sync.service';
+import { UpdateRepositoryDto } from './dto/update-repository.dto';
 import { UpdateRepositoryBranchDto } from './dto/update-repository-branch.dto';
 
 @Injectable()
@@ -68,6 +69,30 @@ export class WorkspacesService {
     });
 
     return this.repositorySyncService.syncRepository(repository);
+  }
+
+  async updateRepository(
+    workspaceId: string,
+    repositoryId: string,
+    dto: UpdateRepositoryDto,
+  ) {
+    const existingRepository = await this.prisma.repository.findFirst({
+      where: {
+        id: repositoryId,
+        workspaceId,
+      },
+    });
+    if (!existingRepository) {
+      throw new NotFoundException('Repository not found.');
+    }
+
+    return this.prisma.repository.update({
+      where: { id: repositoryId },
+      data: {
+        name: dto.name.trim(),
+        defaultBranch: dto.defaultBranch?.trim() || null,
+      },
+    });
   }
 
   async updateRepositoryBranch(

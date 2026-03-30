@@ -5,7 +5,9 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { execFile as execFileCallback } from 'child_process';
 import { Prisma } from '@prisma/client';
+import { promisify } from 'util';
 import { AI_EXECUTOR, AIExecutor } from '../ai/ai-executor';
 import {
   HumanReviewDecision,
@@ -18,10 +20,13 @@ import {
   ReviewCodeOutput,
   SplitTasksOutput,
 } from '../common/types';
+import { sep } from 'path';
 import { WorkflowStateMachine } from '../common/workflow-state-machine';
 import { PrismaService } from '../prisma/prisma.service';
 import { RepositorySyncService } from '../workspaces/repository-sync.service';
 import { CreateWorkflowRunDto } from './dto/create-workflow-run.dto';
+
+const execFile = promisify(execFileCallback);
 
 const workflowStatusMap: Record<WorkflowRunStatus, string> = {
   [WorkflowRunStatus.CREATED]: 'CREATED',
@@ -202,6 +207,63 @@ export class WorkflowService {
 
   async findOne(id: string) {
     return this.getWorkflowOrThrow(id);
+  }
+
+  async deleteWorkflowRun(id: string) {
+    const workflow = await this.getWorkflowOrThrow(id);
+    const hasRunningStage = workflow.stageExecutions.some((stage) => stage.status === 'RUNNING');
+
+    if (hasRunningStage) {
+      throw new BadRequestException('当前工作流仍有阶段在执行中，请等待完成后再删除。');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.issue.updateMany({
+        where: { workflowRunId: id },
+        data: { workflowRunId: null },
+      });
+
+      await tx.bug.updateMany({
+        where: { workflowRunId: id },
+        data: { workflowRunId: null },
+      });
+
+      await tx.reviewFinding.deleteMany({
+        where: { workflowRunId: id },
+      });
+
+      await tx.reviewReport.deleteMany({
+        where: { workflowRunId: id },
+      });
+
+      await tx.codeExecution.deleteMany({
+        where: { workflowRunId: id },
+      });
+
+      await tx.plan.deleteMany({
+        where: { workflowRunId: id },
+      });
+
+      await tx.task.deleteMany({
+        where: { workflowRunId: id },
+      });
+
+      await tx.stageExecution.deleteMany({
+        where: { workflowRunId: id },
+      });
+
+      await tx.workflowRepository.deleteMany({
+        where: { workflowRunId: id },
+      });
+
+      await tx.workflowRun.delete({
+        where: { id },
+      });
+    });
+
+    await this.repositorySyncService.removeWorkflowStorage(id);
+
+    return { success: true };
   }
 
   async getHistory(id: string) {
@@ -407,7 +469,7 @@ export class WorkflowService {
 
     this.runInBackground(`plan:${id}`, async () => {
       try {
-        const output = await this.aiExecutor.generatePlan({
+        const rawOutput = await this.aiExecutor.generatePlan({
           requirement: {
             id: workflow.requirement.id,
             title: workflow.requirement.title,
@@ -419,6 +481,7 @@ export class WorkflowService {
           humanFeedback: humanFeedback ?? null,
           previousOutput: (previousStage?.output as GeneratePlanOutput | null) ?? null,
         });
+        const output = this.sanitizePlanOutputPaths(rawOutput, workflow.workflowRepositories);
 
         await this.prisma.$transaction(async (tx) => {
           const planStage = await tx.stageExecution.findFirstOrThrow({
@@ -528,12 +591,20 @@ export class WorkflowService {
     });
   }
 
-  async runExecution(id: string, humanFeedback?: string) {
+  async runExecution(
+    id: string,
+    humanFeedback?: string,
+    trigger?: {
+      triggerType?: string;
+      findingId?: string;
+      findingTitle?: string;
+    },
+  ) {
     const workflow = await this.getWorkflowOrThrow(id);
     this.assertStageNotRunning(workflow, StageType.EXECUTION);
     if (
       workflow.status !== 'EXECUTION_PENDING' &&
-      !(workflow.status === 'REVIEW_PENDING' && humanFeedback)
+      !((workflow.status === 'REVIEW_PENDING' || workflow.status === 'HUMAN_REVIEW_PENDING') && humanFeedback)
     ) {
       throw new BadRequestException('Execution can only run after plan confirmation.');
     }
@@ -543,8 +614,8 @@ export class WorkflowService {
     const confirmedPlan = workflow.plan;
 
     const startedWorkflow = await this.prisma.$transaction(async (tx) => {
-      if (workflow.status === 'REVIEW_PENDING') {
-        await this.transitionWorkflow(tx, id, WorkflowRunStatus.REVIEW_PENDING, {
+      if (workflow.status === 'REVIEW_PENDING' || workflow.status === 'HUMAN_REVIEW_PENDING') {
+        await this.transitionWorkflow(tx, id, this.fromPrismaWorkflowStatus(workflow.status), {
           to: WorkflowRunStatus.EXECUTION_PENDING,
           stage: StageType.EXECUTION,
         });
@@ -559,9 +630,15 @@ export class WorkflowService {
           requirement: workflow.requirement,
           plan: workflow.plan,
           humanFeedback: humanFeedback ?? null,
+          triggerType: trigger?.triggerType ?? null,
+          findingId: trigger?.findingId ?? null,
+          findingTitle: trigger?.findingTitle ?? null,
         },
         status: StageExecutionStatus.RUNNING,
-        statusMessage: '正在调用 Codex 执行开发',
+        statusMessage:
+          trigger?.triggerType === 'review_finding_fix'
+            ? '正在根据 AI 审查结果修复代码'
+            : '正在调用 Codex 执行开发',
         startedAt: new Date(),
       });
 
@@ -573,7 +650,7 @@ export class WorkflowService {
 
     this.runInBackground(`execution:${id}`, async () => {
       try {
-        const output = await this.aiExecutor.executeTask({
+        const rawOutput = await this.aiExecutor.executeTask({
           requirement: {
             id: workflow.requirement.id,
             title: workflow.requirement.title,
@@ -594,6 +671,7 @@ export class WorkflowService {
           workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
           humanFeedback: humanFeedback ?? null,
         });
+        const output = this.sanitizeExecutionOutputPaths(rawOutput, workflow.workflowRepositories);
 
         await this.prisma.$transaction(async (tx) => {
           const executionStage = await tx.stageExecution.findFirstOrThrow({
@@ -770,6 +848,83 @@ export class WorkflowService {
     return startedWorkflow;
   }
 
+  async fixReviewFinding(id: string, findingId: string) {
+    const workflow = await this.getWorkflowOrThrow(id);
+    if (workflow.status !== 'HUMAN_REVIEW_PENDING') {
+      throw new BadRequestException('只有在 AI 审查完成后，才能基于审查结果继续修复。');
+    }
+
+    const finding = await this.prisma.reviewFinding.findFirst({
+      where: {
+        id: findingId,
+        workflowRunId: id,
+      },
+    });
+
+    if (!finding) {
+      throw new NotFoundException('Review finding not found.');
+    }
+
+    return this.runExecution(id, this.buildReviewFindingFixFeedback(finding), {
+      triggerType: 'review_finding_fix',
+      findingId: finding.id,
+      findingTitle: finding.title,
+    });
+  }
+
+  async publishGitChanges(id: string) {
+    const workflow = await this.getWorkflowOrThrow(id);
+    if (workflow.status !== 'DONE') {
+      throw new BadRequestException('只有人工确认通过后的工作流才能提交到远程。');
+    }
+
+    const repositories = workflow.workflowRepositories.filter(
+      (repository) => repository.localPath && repository.status === 'READY',
+    );
+
+    if (repositories.length === 0) {
+      throw new BadRequestException('当前工作流没有可提交的代码仓库。');
+    }
+
+    const commitMessage = this.buildWorkflowCommitMessage(workflow);
+    const publishedRepositories: Array<{
+      repository: string;
+      branch: string;
+      commitSha: string;
+      pushed: boolean;
+    }> = [];
+
+    for (const repository of repositories) {
+      const cwd = repository.localPath!;
+      await this.runGit(['checkout', repository.workingBranch], cwd);
+
+      const hasChanges = await this.hasGitChanges(cwd);
+      if (!hasChanges) {
+        continue;
+      }
+
+      await this.runGit(['add', '-A'], cwd);
+      await this.runGit(['commit', '-m', commitMessage], cwd);
+      await this.runGit(['push', '-u', 'origin', repository.workingBranch], cwd);
+
+      publishedRepositories.push({
+        repository: repository.name,
+        branch: repository.workingBranch,
+        commitSha: await this.getHeadSha(cwd),
+        pushed: true,
+      });
+    }
+
+    if (publishedRepositories.length === 0) {
+      throw new BadRequestException('当前工作流没有新的代码改动可提交。');
+    }
+
+    return {
+      message: commitMessage,
+      repositories: publishedRepositories,
+    };
+  }
+
   async decideHumanReview(id: string, decision: HumanReviewDecision) {
     const workflow = await this.getWorkflowOrThrow(id);
     if (workflow.status !== 'HUMAN_REVIEW_PENDING') {
@@ -841,13 +996,13 @@ export class WorkflowService {
       throw new BadRequestException('Plan is not waiting for confirmation.');
     }
 
-    const normalized = {
+    const normalized = this.sanitizePlanOutputPaths({
       summary: String(output.summary ?? ''),
       implementationPlan: Array.isArray(output.implementationPlan) ? output.implementationPlan.map(String) : [],
       filesToModify: Array.isArray(output.filesToModify) ? output.filesToModify.map(String) : [],
       newFiles: Array.isArray(output.newFiles) ? output.newFiles.map(String) : [],
       riskPoints: Array.isArray(output.riskPoints) ? output.riskPoints.map(String) : [],
-    };
+    }, workflow.workflowRepositories);
 
     return this.prisma.$transaction(async (tx) => {
       const stage = this.getLatestStageOrThrow(workflow, StageType.TECHNICAL_PLAN);
@@ -875,12 +1030,12 @@ export class WorkflowService {
       throw new BadRequestException('Execution result is not available for manual edit.');
     }
 
-    const normalized = {
+    const normalized = this.sanitizeExecutionOutputPaths({
       patchSummary: String(output.patchSummary ?? ''),
       changedFiles: Array.isArray(output.changedFiles) ? output.changedFiles.map(String) : [],
       codeChanges: Array.isArray(output.codeChanges) ? output.codeChanges : [],
       diffArtifacts: Array.isArray(output.diffArtifacts) ? output.diffArtifacts : [],
-    };
+    }, workflow.workflowRepositories);
 
     return this.prisma.$transaction(async (tx) => {
       const stage = this.getLatestStageOrThrow(workflow, StageType.EXECUTION);
@@ -1008,6 +1163,144 @@ export class WorkflowService {
               syncStatus: repository.syncStatus,
             })),
     };
+  }
+
+  private sanitizePlanOutputPaths(
+    output: GeneratePlanOutput,
+    repositories?: WorkflowPayload['workflowRepositories'],
+  ): GeneratePlanOutput {
+    return {
+      ...output,
+      filesToModify: this.sanitizeFileReferenceList(output.filesToModify, repositories),
+      newFiles: this.sanitizeFileReferenceList(output.newFiles, repositories),
+    };
+  }
+
+  private sanitizeExecutionOutputPaths(
+    output: {
+      patchSummary: string;
+      changedFiles: string[];
+      codeChanges: Array<{ file: string; changeType: 'create' | 'update'; summary: string }>;
+      diffArtifacts: Array<{
+        repository: string;
+        branch: string;
+        localPath: string;
+        diffStat: string;
+        diffText: string;
+        untrackedFiles: string[];
+      }>;
+    },
+    repositories?: WorkflowPayload['workflowRepositories'],
+  ) {
+    return {
+      ...output,
+      changedFiles: this.sanitizeFileReferenceList(output.changedFiles, repositories),
+      codeChanges: output.codeChanges
+        .map((item) => {
+          const file = this.normalizeRepositoryFileReference(item.file, repositories);
+          return file ? { ...item, file } : null;
+        })
+        .filter(Boolean) as Array<{ file: string; changeType: 'create' | 'update'; summary: string }>,
+      diffArtifacts: output.diffArtifacts.map((artifact) => ({
+        ...artifact,
+        localPath: '',
+        untrackedFiles: this.sanitizeFileReferenceList(artifact.untrackedFiles, repositories),
+      })),
+    };
+  }
+
+  private buildReviewFindingFixFeedback(finding: {
+    type: string;
+    severity: string;
+    title: string;
+    description: string;
+    recommendation?: string | null;
+    impactScope?: Prisma.JsonValue;
+  }) {
+    const lines = [
+      '请基于当前工作流已经确认的任务、方案、代码上下文和工作分支，继续修复下面这条 AI 审查结果。',
+      `类型：${finding.type}`,
+      `严重级别：${finding.severity}`,
+      `标题：${finding.title}`,
+      `问题描述：${finding.description}`,
+    ];
+
+    if (finding.recommendation?.trim()) {
+      lines.push(`建议：${finding.recommendation.trim()}`);
+    }
+
+    if (Array.isArray(finding.impactScope) && finding.impactScope.length > 0) {
+      lines.push(`影响范围：${finding.impactScope.map(String).join('，')}`);
+    }
+
+    lines.push('要求：仅在当前 workflow 的工作分支中做增量修复，尽量最小改动解决该问题，不要处理无关事项。');
+    lines.push('修复完成后更新执行结果，但不要自动发起新的 AI 审查。');
+
+    return lines.join('\n');
+  }
+
+  private buildWorkflowCommitMessage(workflow: WorkflowPayload) {
+    const normalizedTitle = workflow.requirement.title
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/[:\r\n]+/g, ' ')
+      .slice(0, 60);
+    const prefix =
+      workflow.reviewFindings.some((finding) => finding.type === 'BUG') ||
+      (Array.isArray(workflow.reviewReport?.bugs) && workflow.reviewReport.bugs.length > 0)
+        ? 'fix'
+        : 'feat';
+
+    return `${prefix}: ${normalizedTitle || 'workflow update'}`;
+  }
+
+  private sanitizeFileReferenceList(
+    values: string[],
+    repositories?: WorkflowPayload['workflowRepositories'],
+  ) {
+    return values
+      .map((value) => this.normalizeRepositoryFileReference(value, repositories))
+      .filter((value): value is string => value !== null && value.trim().length > 0);
+  }
+
+  private normalizeRepositoryFileReference(
+    value: string,
+    repositories?: WorkflowPayload['workflowRepositories'],
+  ): string | null {
+    const text = String(value ?? '').trim();
+    if (!text) {
+      return '';
+    }
+
+    const normalizedText = text.replace(/\\/g, '/');
+    const normalizedAppRoot = process.cwd().replace(/\\/g, '/');
+    const repositoryContexts = (repositories ?? [])
+      .filter((repository) => repository.localPath)
+      .map((repository) => ({
+        name: repository.name,
+        localPath: String(repository.localPath).replace(/\\/g, '/').replace(/\/+$/, ''),
+      }))
+      .sort((a, b) => b.localPath.length - a.localPath.length);
+
+    for (const repository of repositoryContexts) {
+      if (normalizedText === repository.localPath || normalizedText.startsWith(`${repository.localPath}/`)) {
+        const relativePath = normalizedText.slice(repository.localPath.length).replace(/^\/+/, '');
+        if (!relativePath) {
+          return repositoryContexts.length > 1 ? `${repository.name}:.` : '.';
+        }
+        return repositoryContexts.length > 1 ? `${repository.name}:${relativePath}` : relativePath;
+      }
+    }
+
+    if (
+      normalizedText === normalizedAppRoot ||
+      normalizedText.startsWith(`${normalizedAppRoot}/`) ||
+      normalizedText.includes(`${normalizedAppRoot}/`)
+    ) {
+      return null;
+    }
+
+    return text.split(sep).join('/');
   }
 
   private async getWorkflowOrThrow(id: string) {
@@ -1166,6 +1459,29 @@ export class WorkflowService {
         this.logger.error(`${taskName} failed: ${message}`);
       });
     }, 0);
+  }
+
+  private async runGit(args: string[], cwd: string) {
+    const { stdout, stderr } = await execFile('git', args, {
+      cwd,
+      env: process.env,
+      maxBuffer: 1024 * 1024 * 8,
+    });
+
+    return {
+      stdout: stdout.trim(),
+      stderr: stderr.trim(),
+    };
+  }
+
+  private async hasGitChanges(cwd: string) {
+    const { stdout } = await this.runGit(['status', '--porcelain'], cwd);
+    return stdout.length > 0;
+  }
+
+  private async getHeadSha(cwd: string) {
+    const { stdout } = await this.runGit(['rev-parse', 'HEAD'], cwd);
+    return stdout;
   }
 
   private async markRunningStageFailed(

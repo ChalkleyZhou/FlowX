@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { CreateRepositoryDto } from './dto/create-repository.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
+import { UpdateRepositoryDto } from './dto/update-repository.dto';
 import { UpdateRepositoryBranchDto } from './dto/update-repository-branch.dto';
 import { WorkspacesService } from './workspaces.service';
 
@@ -21,6 +22,15 @@ export class WorkspacesController {
   @Post(':id/repositories')
   addRepository(@Param('id') id: string, @Body() dto: CreateRepositoryDto) {
     return this.workspacesService.addRepository(id, dto);
+  }
+
+  @Patch(':workspaceId/repositories/:repositoryId')
+  updateRepository(
+    @Param('workspaceId') workspaceId: string,
+    @Param('repositoryId') repositoryId: string,
+    @Body() dto: UpdateRepositoryDto,
+  ) {
+    return this.workspacesService.updateRepository(workspaceId, repositoryId, dto);
   }
 
   @Patch(':workspaceId/repositories/:repositoryId/branch')
