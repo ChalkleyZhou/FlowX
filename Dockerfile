@@ -38,6 +38,10 @@ ENV NODE_ENV="production"
 ENV PORT="3000"
 ENV WEB_PORT="4173"
 ENV DATABASE_URL="file:/data/dev.db"
+ENV GIT_AUTHOR_NAME=""
+ENV GIT_AUTHOR_EMAIL=""
+ENV GIT_COMMITTER_NAME=""
+ENV GIT_COMMITTER_EMAIL=""
 
 RUN corepack enable \
   && npm install -g serve@14.2.4 \

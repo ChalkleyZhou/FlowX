@@ -570,7 +570,7 @@ export function WorkflowRunDetailPage() {
       const result = await api.publishWorkflowGitChanges(workflowRun.id);
       await refresh({ silent: true });
       toast.success(
-        `已提交并推送 ${result.repositories.length} 个代码库，提交信息：${result.message}`,
+        `已推送 ${result.repositories.length} 个代码库到发布分支，提交信息：${result.message}`,
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '提交远程失败');
@@ -1213,12 +1213,12 @@ export function WorkflowRunDetailPage() {
                   <SectionHeader
                     eyebrow="Git Publish"
                     title="提交到远程"
-                    description="人工确认通过后，将当前工作流工作分支中的代码变更一次性提交并推送到远程仓库。"
+                    description="人工确认通过后，会基于当前工作分支生成唯一的发布分支，并将代码推送到远程仓库。"
                   />
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4 p-5 pt-0">
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
-                    这个动作会自动完成 git add、git commit 和 git push，并沿用当前 workflow 的工作分支。
+                    这个动作会自动完成 git add、git commit 和 git push。推送时不会直接复用工作分支，而是生成唯一的发布分支，避免与远端已有分支冲突。
                   </div>
                   <div>
                     <UiButton onClick={() => void handlePublishGitChanges()} disabled={publishing}>

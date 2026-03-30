@@ -878,12 +878,12 @@ export class WorkflowService {
       throw new BadRequestException('只有人工确认通过后的工作流才能提交到远程。');
     }
 
-    const repositories = workflow.workflowRepositories.filter(
-      (repository) => repository.localPath && repository.status === 'READY',
-    );
+    const repositories = this.resolvePublishRepositories(workflow);
 
     if (repositories.length === 0) {
-      throw new BadRequestException('当前工作流没有可提交的代码仓库。');
+      throw new BadRequestException(
+        '当前工作流没有可提交的代码仓库。若这是较早创建的工作流，请重新执行一次开发或新建工作流后再提交。',
+      );
     }
 
     const commitMessage = this.buildWorkflowCommitMessage(workflow);
@@ -895,7 +895,7 @@ export class WorkflowService {
     }> = [];
 
     for (const repository of repositories) {
-      const cwd = repository.localPath!;
+      const cwd = repository.localPath;
       await this.runGit(['checkout', repository.workingBranch], cwd);
 
       const hasChanges = await this.hasGitChanges(cwd);
@@ -905,11 +905,18 @@ export class WorkflowService {
 
       await this.runGit(['add', '-A'], cwd);
       await this.runGit(['commit', '-m', commitMessage], cwd);
-      await this.runGit(['push', '-u', 'origin', repository.workingBranch], cwd);
+      const publishBranch = this.buildPublishBranchName(
+        workflow.requirement.title,
+        workflow.id,
+        repository.repository,
+      );
+      await this.runGit(['checkout', '-B', publishBranch], cwd);
+      await this.runGit(['push', '-u', 'origin', publishBranch], cwd);
+      await this.runGit(['checkout', repository.workingBranch], cwd);
 
       publishedRepositories.push({
-        repository: repository.name,
-        branch: repository.workingBranch,
+        repository: repository.repository,
+        branch: publishBranch,
         commitSha: await this.getHeadSha(cwd),
         pushed: true,
       });
@@ -923,6 +930,50 @@ export class WorkflowService {
       message: commitMessage,
       repositories: publishedRepositories,
     };
+  }
+
+  private resolvePublishRepositories(workflow: WorkflowPayload) {
+    const workflowRepositories = workflow.workflowRepositories
+      .filter((repository) => repository.localPath && repository.status === 'READY')
+      .map((repository) => ({
+        repository: repository.name,
+        workingBranch: repository.workingBranch,
+        localPath: repository.localPath as string,
+      }));
+
+    if (workflowRepositories.length > 0) {
+      return workflowRepositories;
+    }
+
+    const legacyArtifacts = Array.isArray(workflow.codeExecution?.diffArtifacts)
+      ? (workflow.codeExecution.diffArtifacts as Array<Record<string, unknown>>)
+      : [];
+
+    const deduplicated = new Map<
+      string,
+      { repository: string; workingBranch: string; localPath: string }
+    >();
+
+    for (const artifact of legacyArtifacts) {
+      const localPath = String(artifact?.localPath ?? '').trim();
+      const branch = String(artifact?.branch ?? '').trim();
+      const repository = String(artifact?.repository ?? '').trim() || 'repository';
+
+      if (!localPath || !branch) {
+        continue;
+      }
+
+      const key = `${localPath}::${branch}`;
+      if (!deduplicated.has(key)) {
+        deduplicated.set(key, {
+          repository,
+          workingBranch: branch,
+          localPath,
+        });
+      }
+    }
+
+    return Array.from(deduplicated.values());
   }
 
   async decideHumanReview(id: string, decision: HumanReviewDecision) {
@@ -1250,8 +1301,45 @@ export class WorkflowService {
       (Array.isArray(workflow.reviewReport?.bugs) && workflow.reviewReport.bugs.length > 0)
         ? 'fix'
         : 'feat';
+    const scope = this.resolveCommitScope(workflow);
 
-    return `${prefix}: ${normalizedTitle || 'workflow update'}`;
+    return `${prefix}(${scope}): [flowx-ai] ${normalizedTitle || 'workflow update'}`;
+  }
+
+  private resolveCommitScope(workflow: WorkflowPayload) {
+    const changedFiles = Array.isArray(workflow.codeExecution?.changedFiles)
+      ? workflow.codeExecution.changedFiles
+      : [];
+    const filesToModify = Array.isArray(workflow.plan?.filesToModify)
+      ? workflow.plan.filesToModify
+      : [];
+    const newFiles = Array.isArray(workflow.plan?.newFiles)
+      ? workflow.plan.newFiles
+      : [];
+
+    const candidates = [
+      ...changedFiles,
+      ...filesToModify,
+      ...newFiles,
+    ].map((item) => String(item));
+
+    for (const value of candidates) {
+      const normalized = value.replace(/\\/g, '/');
+      if (normalized.includes('/admin-app/') || normalized.includes('apps/admin-app/')) {
+        return 'admin-app';
+      }
+      if (normalized.includes('/main-app/') || normalized.includes('apps/main-app/')) {
+        return 'main-app';
+      }
+      if (normalized.includes('/mobile-app/') || normalized.includes('apps/mobile-app/')) {
+        return 'mobile-app';
+      }
+      if (normalized.includes('/rk-bridge/') || normalized.includes('packages/rk-bridge/')) {
+        return 'rk-bridge';
+      }
+    }
+
+    return 'global';
   }
 
   private sanitizeFileReferenceList(
@@ -1443,13 +1531,32 @@ export class WorkflowService {
   }
 
   private buildWorkflowBranchName(requirementTitle: string, workflowId: string, repositoryName: string) {
-    const slug = `${requirementTitle}-${repositoryName}`
+    const slug = this.slugify(requirementTitle).slice(0, 24) || 'workflow';
+    return `flowx/work/${slug}/${workflowId.slice(-8)}`;
+  }
+
+  private buildPublishBranchName(requirementTitle: string, workflowId: string, repositoryName: string) {
+    const requirementSlug = this.slugify(requirementTitle).slice(0, 24) || 'workflow';
+    const repositorySlug = this.slugify(repositoryName).slice(0, 16) || 'repo';
+    const now = new Date();
+    const timestamp = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+      String(now.getHours()).padStart(2, '0'),
+      String(now.getMinutes()).padStart(2, '0'),
+      String(now.getSeconds()).padStart(2, '0'),
+    ].join('');
+
+    return `flowx/publish/${requirementSlug}/${workflowId.slice(-8)}-${repositorySlug}-${timestamp}`;
+  }
+
+  private slugify(input: string) {
+    return input
+      .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 36);
-
-    return `ai/${slug || 'workflow'}-${workflowId.slice(-8)}`;
+      .replace(/^-+|-+$/g, '');
   }
 
   private runInBackground(taskName: string, job: () => Promise<void>) {
