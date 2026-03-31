@@ -149,7 +149,7 @@ export class AuthService {
       backendOrigin: string;
     },
   ) {
-    return new URL(`/auth/${providerName}/callback`, input.backendOrigin).toString();
+    return new URL(`/api/auth/${providerName}/callback`, input.backendOrigin).toString();
   }
 
   private encodeBrowserState(input: { callbackUrl: string; next?: string }) {

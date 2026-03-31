@@ -67,7 +67,7 @@ FlowX 容器内部包含两个服务：
 - 钉钉变量是 `DINGTALK_APP_ID`，不是 `DINGTALK_APPID`
 - 如果你现在只是自己使用，可以先不配置钉钉登录
 - 如果你要用手动 `codex login`，可以不填 `OPENAI_API_KEY`
-- `FRONTEND_BUILD_MODE=nginx` 表示前端走同源代理，不在构建时写死 API 地址
+- `FRONTEND_BUILD_MODE=nginx` 表示前端走同源 `/api` 代理，不在构建时写死完整 API 域名
 - `FRONTEND_BUILD_MODE=direct` 表示前端直接请求 `DIRECT_API_BASE_URL`
 
 ## 4. 构建镜像
@@ -92,11 +92,11 @@ docker build \
 
 ### 4.2 使用 Nginx 同源代理
 
-如果你准备使用仓库里提供的 Nginx 方案，前端应走同源请求：
+如果你准备使用仓库里提供的 Nginx 方案，前端应走同源 `/api` 请求：
 
 ```bash
 docker build \
-  --build-arg VITE_API_BASE_URL="" \
+  --build-arg VITE_API_BASE_URL="/api" \
   -t flowx:latest .
 ```
 
@@ -210,13 +210,19 @@ cp .env.docker.example .env.docker
 - `GIT_AUTHOR_NAME`
 - `GIT_AUTHOR_EMAIL`
 
+注意：
+
+- `.env.docker` 会被 shell 直接读取
+- 如果变量值里有空格，必须加引号
+- 例如：`GIT_AUTHOR_NAME="FlowX Bot"`
+
 建议把 `.env.docker` 里的前端构建模式设为：
 
 ```env
-FRONTEND_BUILD_MODE=nginx
+FRONTEND_BUILD_MODE=auto
 ```
 
-然后直接执行更新脚本，它会自动以同源模式构建前端：
+然后直接执行更新脚本，它会自动在 Nginx 模式下把前端构建成同源 `/api` 访问：
 
 ```bash
 ./scripts/deploy-update.sh
@@ -226,7 +232,7 @@ FRONTEND_BUILD_MODE=nginx
 
 ```bash
 docker build \
-  --build-arg VITE_API_BASE_URL="" \
+  --build-arg VITE_API_BASE_URL="/api" \
   -t flowx:latest .
 ```
 
@@ -248,19 +254,10 @@ docker-compose -f docker-compose.nginx.yml up -d
 
 ### 6.2 当前 Nginx 路由规则
 
-这些路径会转发到 API：
+Nginx 规则现在是：
 
-- `/auth/`
-- `/projects`
-- `/workspaces`
-- `/requirements`
-- `/workflow-runs`
-- `/review-reports`
-- `/review-findings`
-- `/issues`
-- `/bugs`
-
-其他请求会转发到前端页面服务。
+- `/api/*` 全部转发到 API
+- 其他请求全部转发到前端页面服务
 
 ### 6.3 配置 Codex 登录
 
@@ -276,6 +273,12 @@ CODEX_HOME: "/data/.codex"
 ```bash
 docker exec -it flowx sh
 codex login
+```
+
+钉钉登录回调地址也应配置为：
+
+```text
+http://YOUR_SERVER_HOST/api/auth/dingtalk/callback
 ```
 
 说明：
@@ -485,17 +488,17 @@ curl http://127.0.0.1/
 验证 API 是否通过 Nginx 转发：
 
 ```bash
-curl http://127.0.0.1/auth/providers
+curl http://127.0.0.1/api/auth/providers
 ```
 
 ### 10.3 受保护接口
 
-像 `/projects` 这样的接口需要登录态或 bearer token。
+像 `/api/projects` 这样的接口需要登录态或 bearer token。
 
 直接访问：
 
 ```bash
-curl -i http://127.0.0.1/projects
+curl -i http://127.0.0.1/api/projects
 ```
 
 返回 `401` 是符合预期的，不表示服务没起来。

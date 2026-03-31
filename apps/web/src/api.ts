@@ -4,9 +4,23 @@ const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
 const API_BASE_URL = configuredApiBaseUrl
   ? configuredApiBaseUrl.replace(/\/$/, '')
   : typeof window !== 'undefined'
-    ? window.location.origin
+    ? `${window.location.origin}/api`
     : 'http://localhost:3000';
 const AUTH_TOKEN_STORAGE_KEY = 'flowx-auth-token';
+
+function buildApiUrl(path: string) {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+
+  if (API_BASE_URL.startsWith('http://') || API_BASE_URL.startsWith('https://')) {
+    return `${API_BASE_URL}${normalizedPath}`;
+  }
+
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}${API_BASE_URL}${normalizedPath}`;
+  }
+
+  return `http://localhost:3000${normalizedPath}`;
+}
 
 interface RequirementPayload {
   projectId: string;
@@ -30,7 +44,7 @@ function clearAuthToken() {
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const token = getAuthToken();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(buildApiUrl(path), {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -55,6 +69,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const authTokenStorageKey = AUTH_TOKEN_STORAGE_KEY;
+export const apiBaseUrl = API_BASE_URL;
+export const toApiUrl = buildApiUrl;
 
 export const api = {
   getAuthProviders: () => request<Array<{ name: string }>>('/auth/providers'),

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth';
-import { api } from '../api';
+import { api, toApiUrl } from '../api';
 import { cn } from '../lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
 import { Badge } from '../components/ui/badge';
@@ -11,13 +11,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input as UiInput } from '../components/ui/input';
 import { useToast } from '../components/ui/toast';
 import type { AuthOrganization } from '../types';
-
-const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
-const AUTH_BASE_URL = configuredApiBaseUrl
-  ? configuredApiBaseUrl.replace(/\/$/, '')
-  : typeof window !== 'undefined'
-    ? window.location.origin
-    : 'http://localhost:3000';
 
 type LoginMode = 'password' | 'register';
 
@@ -178,7 +171,7 @@ export function LoginPage() {
     setErrorText('');
     try {
       const callbackUrl = `${window.location.origin}/login`;
-      const loginUrl = new URL('/auth/dingtalk/login', AUTH_BASE_URL);
+      const loginUrl = new URL(toApiUrl('/auth/dingtalk/login'));
       loginUrl.searchParams.set('callbackUrl', callbackUrl);
       loginUrl.searchParams.set('next', redirectPath);
       window.location.href = loginUrl.toString();

@@ -116,7 +116,7 @@ Build the image:
 
 ```bash
 docker build \
-  --build-arg VITE_API_BASE_URL="" \
+  --build-arg VITE_API_BASE_URL="/api" \
   -t flowx:latest .
 ```
 
@@ -192,7 +192,7 @@ If you do not want to expose `3000` and `4173` directly, you can put Nginx in fr
 
 ```bash
 docker build \
-  --build-arg VITE_API_BASE_URL="" \
+  --build-arg VITE_API_BASE_URL="/api" \
   -t flowx:latest .
 ```
 
@@ -205,7 +205,7 @@ docker compose -f docker-compose.nginx.yml up -d
 This setup will:
 
 - expose only `80`
-- proxy `/auth`, `/projects`, `/workspaces`, `/requirements`, `/workflow-runs`, `/review-reports`, `/review-findings`, `/issues`, `/bugs` to the API container
+- proxy `/api/*` to the API container
 - proxy all other paths to the web app
 
 If you are using manual `codex login`, run it once after the containers start:
@@ -219,7 +219,7 @@ codex login
 
 - Built-in user system with extensible third-party provider abstraction.
 - Supports account/password login and registration.
-- DingTalk login is available at `/auth/dingtalk/*`.
+- DingTalk login is available at `/api/auth/dingtalk/*` when deployed behind Nginx.
 - For real DingTalk OAuth, set `DINGTALK_APP_ID`, `DINGTALK_APP_SECRET`, and optionally override endpoints via:
   - `DINGTALK_AUTHORIZE_URL`
   - `DINGTALK_TOKEN_URL`

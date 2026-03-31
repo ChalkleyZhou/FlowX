@@ -61,7 +61,7 @@ resolve_build_api_base_url() {
 
   case "${FRONTEND_BUILD_MODE}" in
     nginx)
-      printf '%s' ""
+      printf '%s' "/api"
       return 0
       ;;
     direct)
@@ -74,7 +74,7 @@ resolve_build_api_base_url() {
       ;;
     auto)
       if [ "${MODE}" = "nginx" ]; then
-        printf '%s' ""
+        printf '%s' "/api"
       else
         if [ -n "${DIRECT_API_BASE_URL}" ]; then
           printf '%s' "${DIRECT_API_BASE_URL}"
