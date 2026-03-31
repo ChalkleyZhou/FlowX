@@ -300,6 +300,7 @@ DATABASE_URL="file:/data/dev-current.db"
 - 这个仓库当前开发演进过程中已经从旧库迁到了 `dev-current.db`
 - 容器启动脚本会自动执行 `prisma db push`
 - 建议把 `/data` 挂成 volume，避免容器删除后数据库丢失
+- Nginx compose 部署还会默认持久化 `/app/.flowx-data`，用于保存工作区仓库和 workflow 副本
 
 如果你要把本地已经迁好的数据库带到服务器，可以先把数据库文件上传到宿主机，例如：
 
@@ -313,6 +314,12 @@ scp dev-current.db user@server:/opt/flowx-data/dev-current.db
 ```bash
 -v /opt/flowx-data:/data
 ```
+
+说明：
+
+- `/data` 主要保存数据库和 Codex 登录态
+- `/app/.flowx-data` 主要保存工作区仓库、本地副本和 workflow 仓库副本
+- 如果不持久化 `/app/.flowx-data`，容器重建后执行阶段可能会因为找不到仓库目录而失败
 
 ## 8. Git 与仓库操作要求
 
@@ -401,6 +408,7 @@ DIRECT_API_BASE_URL=http://YOUR_SERVER_IP:3000
 这个脚本默认：
 
 - 保留 `flowx-data` 卷
+- 保留 `flowx-workdir` 卷
 - 不删除数据库
 - 不清理 `/data/.codex`
 

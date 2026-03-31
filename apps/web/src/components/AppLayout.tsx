@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
+import { FlowXLogo } from './FlowXLogo';
 
 const items = [
   { key: '/workspaces', label: '工作区' },
@@ -30,11 +31,7 @@ export function AppLayout({ children }: PropsWithChildren) {
     <div className="app-nav-shell">
       <aside className="app-nav-sider">
         <div className="app-brand">
-          <div className="app-brand-mark">F</div>
-          <div className="min-w-0">
-            <div className="app-brand-eyebrow">FlowX</div>
-            <div className="text-xs text-slate-500">AI Delivery Workspace</div>
-          </div>
+          <FlowXLogo />
         </div>
         <nav className="app-nav-menu">
           {items.map((item) => {

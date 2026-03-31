@@ -90,19 +90,6 @@ a {
   border-bottom: 1px solid rgba(226, 232, 240, 0.9);
 }
 
-.app-brand-mark {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 14px;
-  background: var(--primary);
-  color: #fff;
-  font-size: 18px;
-  font-weight: 700;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
-}
-
 .app-brand-eyebrow,
 .eyebrow {
   display: inline-block;
@@ -121,6 +108,85 @@ a {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: none;
+}
+
+.flowx-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.flowx-logo-icon {
+  flex: 0 0 auto;
+  display: block;
+  filter: drop-shadow(0 10px 20px rgba(37, 99, 235, 0.14));
+}
+
+.flowx-logo-copy {
+  min-width: 0;
+}
+
+.flowx-logo-wordmark {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.flowx-logo-tagline {
+  margin-top: 5px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.flowx-logo-dark .flowx-logo-wordmark {
+  color: #f8fafc;
+}
+
+.flowx-logo-dark .flowx-logo-tagline {
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.flowx-logo-sm .flowx-logo-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.flowx-logo-sm .flowx-logo-wordmark {
+  font-size: 16px;
+}
+
+.flowx-logo-sm .flowx-logo-tagline {
+  font-size: 10px;
+}
+
+.flowx-logo-md .flowx-logo-icon {
+  width: 40px;
+  height: 40px;
+}
+
+.flowx-logo-lg {
+  gap: 16px;
+}
+
+.flowx-logo-lg .flowx-logo-icon {
+  width: 56px;
+  height: 56px;
+}
+
+.flowx-logo-lg .flowx-logo-wordmark {
+  font-size: 28px;
+}
+
+.flowx-logo-lg .flowx-logo-tagline {
+  margin-top: 7px;
+  font-size: 12px;
 }
 
 .app-nav-menu {

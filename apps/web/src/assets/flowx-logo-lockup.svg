@@ -1,0 +1,29 @@
+<svg width="456" height="120" viewBox="0 0 456 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tile" x1="14" y1="10" x2="84" y2="86" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0F172A"/>
+      <stop offset="0.5" stop-color="#1D4ED8"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+    <linearGradient id="streamA" x1="8" y1="32" x2="72" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#C4F1FF"/>
+    </linearGradient>
+    <linearGradient id="streamB" x1="18" y1="62" x2="74" y2="62" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7DD3FC"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="48" y1="20" x2="72" y2="74" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F8FAFC"/>
+      <stop offset="1" stop-color="#BFDBFE"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="18" width="84" height="84" rx="26" fill="url(#tile)"/>
+  <path d="M22 40C30.6 40 35.4 40 40 42.8C44.9 45.8 48.2 51.5 51.1 58.7L54.3 66.5C56.6 72 59.2 76 63.6 78.2C67.3 80 71.4 80 77 80" stroke="url(#streamA)" stroke-width="10" stroke-linecap="round"/>
+  <path d="M21 79H34.8C40.3 79 44.4 77.5 47.6 74.4C51 71.1 53.8 66.6 56.7 61.2C59.1 56.7 61.2 53.5 63.8 51C67.1 47.9 71.1 46 77 46" stroke="url(#streamB)" stroke-width="10" stroke-linecap="round"/>
+  <path d="M58 33L76 51M76 69L58 87" stroke="url(#accent)" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="22" cy="40" r="4" fill="#DBEAFE"/>
+  <circle cx="21" cy="79" r="4" fill="#67E8F9"/>
+  <text x="120" y="61" fill="#0F172A" font-family="Avenir Next, Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="38" font-weight="700" letter-spacing="-0.04em">FlowX</text>
+  <text x="121" y="88" fill="#475569" font-family="Avenir Next, Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="18" font-weight="500" letter-spacing="0.01em">AI Delivery Workspace</text>
+</svg>
