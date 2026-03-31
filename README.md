@@ -127,6 +127,8 @@ docker run -d \
   -e WEB_PORT=4173 \
   -e DATABASE_URL="file:/data/dev.db" \
   -e AI_EXECUTOR_PROVIDER="mock" \
+  -e OPENAI_API_KEY="your_openai_api_key" \
+  -e CODEX_HOME="/data/.codex" \
   -e DINGTALK_APP_ID="your_app_id" \
   -e DINGTALK_APP_SECRET="your_app_secret" \
   -e GIT_AUTHOR_NAME="FlowX Bot" \
@@ -141,11 +143,42 @@ Notes:
 - Web runs on `4173`
 - SQLite data is stored in `/data/dev.db`, so mounting `/data` is recommended
 - The container startup script will run `prisma db push` automatically before starting services
+- The runtime image now installs Codex CLI via the official npm package `@openai/codex`
+- Codex login state is stored under `/data/.codex` by default, so mounting `/data` will persist `codex login`
+- If you want to use `AI_EXECUTOR_PROVIDER="codex"`, set `OPENAI_API_KEY` in the container
 - If you want workflow `提交并推送到远程` to work, the container must have:
   - reachable git remote credentials (SSH key or HTTPS token)
   - git identity configured, e.g. `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL`
-- `AI_EXECUTOR_PROVIDER="codex"` is only available when your runtime image really has Codex CLI and its auth/context configured
-- The current `Dockerfile` does **not** install Codex CLI by default, so server deployments should usually start with `AI_EXECUTOR_PROVIDER="mock"` unless you are building a custom runtime image
+- `AI_EXECUTOR_PROVIDER="codex"` still requires valid Codex authentication in the container; in server environments the simplest way is `OPENAI_API_KEY`
+
+### Using manual `codex login` in Docker
+
+If you are still in a personal-use stage and prefer logging into Codex manually instead of configuring `OPENAI_API_KEY`, you can:
+
+1. Start the container with `AI_EXECUTOR_PROVIDER="codex"` and mount `/data`
+2. Enter the container once and run `codex login`
+3. Keep using the same `/data` volume so `/data/.codex` persists across restarts
+
+Example:
+
+```bash
+docker run -d \
+  --name flowx \
+  -p 3000:3000 \
+  -p 4173:4173 \
+  -e PORT=3000 \
+  -e WEB_PORT=4173 \
+  -e DATABASE_URL="file:/data/dev.db" \
+  -e AI_EXECUTOR_PROVIDER="codex" \
+  -e CODEX_HOME="/data/.codex" \
+  -v flowx-data:/data \
+  flowx:latest
+
+docker exec -it flowx sh
+codex login
+```
+
+After login succeeds once, the Codex auth state will stay in the mounted volume.
 
 ## Auth
 

@@ -16,8 +16,9 @@ async function bootstrap() {
   );
 
   const port = Number(process.env.PORT ?? 3000);
-  await app.listen(port, '127.0.0.1');
-  logger.log(`API listening on http://127.0.0.1:${port}`);
+  const host = process.env.HOST?.trim() || '0.0.0.0';
+  await app.listen(port, host);
+  logger.log(`API listening on http://${host}:${port}`);
 }
 
 bootstrap().catch((error) => {

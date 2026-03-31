@@ -38,14 +38,17 @@ ENV NODE_ENV="production"
 ENV PORT="3000"
 ENV WEB_PORT="4173"
 ENV DATABASE_URL="file:/data/dev.db"
+ENV AI_EXECUTOR_PROVIDER="mock"
+ENV OPENAI_API_KEY=""
+ENV CODEX_HOME="/data/.codex"
 ENV GIT_AUTHOR_NAME=""
 ENV GIT_AUTHOR_EMAIL=""
 ENV GIT_COMMITTER_NAME=""
 ENV GIT_COMMITTER_EMAIL=""
 
 RUN corepack enable \
-  && npm install -g serve@14.2.4 \
-  && mkdir -p /data
+  && npm install -g @openai/codex serve@14.2.4 \
+  && mkdir -p /data /data/.codex
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
