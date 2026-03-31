@@ -67,7 +67,7 @@ export class CodexAiExecutor implements AIExecutor {
 
     const executionOutput = await this.collectExecutionOutput(repositories);
     if (executionOutput.changedFiles.length === 0) {
-      throw new Error('Codex execution finished without producing any code changes.');
+      throw new Error(this.buildNoChangeDiagnostic(input, repositories, executionOutput.diffArtifacts));
     }
 
     return executionOutput;
@@ -216,6 +216,9 @@ ${executionPrompt.user}
 - 不要创建与当前仓库无关的改动
 - 所有涉及文件的描述都使用当前仓库根目录下的相对路径
 - 不要提及 FlowX 编排系统文件或本地绝对路径
+- 如果当前仓库存在可实施项，你必须至少落地一个真实文件改动，不能只做分析
+- 如果你判断当前仓库不该改，请先检查技术方案中的文件和任务是否真的与当前仓库无关
+- 如果最终仍无法修改，请在结束前明确写出阻塞原因，例如“计划文件路径不存在”或“当前仓库不包含目标模块”
 - 完成后不要输出 Markdown，只需结束任务
 
 需求信息:
@@ -469,6 +472,37 @@ ${repositories}`;
         }),
       ),
     };
+  }
+
+  private buildNoChangeDiagnostic(
+    input: ExecuteTaskInput,
+    repositories: RepositoryContext[],
+    diffArtifacts: ExecuteTaskOutput['diffArtifacts'],
+  ) {
+    const planFiles = [
+      ...(input.plan.filesToModify ?? []),
+      ...(input.plan.newFiles ?? []),
+    ];
+
+    const repositoryLines = repositories.map((repository) => {
+      const artifact = diffArtifacts.find((item) => item.repository === repository.name);
+      const diffStat = artifact?.diffStat?.trim() || '无';
+      const untracked = artifact?.untrackedFiles?.length
+        ? artifact.untrackedFiles.join(', ')
+        : '无';
+
+      return `${repository.name} [${repository.currentBranch ?? repository.defaultBranch ?? '未设置'}] diffStat=${diffStat}; untracked=${untracked}`;
+    });
+
+    return [
+      'Codex execution finished without producing any code changes.',
+      `Plan filesToModify: ${input.plan.filesToModify.join(', ') || '无'}`,
+      `Plan newFiles: ${input.plan.newFiles.join(', ') || '无'}`,
+      `Plan implementation steps: ${input.plan.implementationPlan.join(' | ') || '无'}`,
+      `All planned files: ${planFiles.join(', ') || '无'}`,
+      `Repositories inspected: ${repositoryLines.join(' || ') || '无'}`,
+      input.humanFeedback ? `Human feedback: ${input.humanFeedback}` : 'Human feedback: 无',
+    ].join(' ');
   }
 
   private async getRepositoryStatus(localPath: string) {
