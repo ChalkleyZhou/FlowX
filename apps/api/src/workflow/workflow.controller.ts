@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
 import { CreateWorkflowRunDto } from './dto/create-workflow-run.dto';
 import { HumanReviewDecisionDto } from './dto/human-review-decision.dto';
 import { StageFeedbackDto } from './dto/stage-feedback.dto';
@@ -35,13 +35,13 @@ export class WorkflowController {
   }
 
   @Post(':id/task-split/run')
-  runTaskSplit(@Param('id') id: string) {
-    return this.workflowService.runTaskSplit(id);
+  runTaskSplit(@Param('id') id: string, @Req() req: WorkflowRequest) {
+    return this.workflowService.runTaskSplit(id, undefined, req.authSession);
   }
 
   @Post(':id/task-split/revise')
-  reviseTaskSplit(@Param('id') id: string, @Body() dto: StageFeedbackDto) {
-    return this.workflowService.runTaskSplit(id, dto.feedback);
+  reviseTaskSplit(@Param('id') id: string, @Body() dto: StageFeedbackDto, @Req() req: WorkflowRequest) {
+    return this.workflowService.runTaskSplit(id, dto.feedback, req.authSession);
   }
 
   @Patch(':id/task-split/manual-edit')
@@ -50,8 +50,8 @@ export class WorkflowController {
   }
 
   @Post(':id/task-split/confirm')
-  confirmTaskSplit(@Param('id') id: string) {
-    return this.workflowService.confirmTaskSplit(id);
+  confirmTaskSplit(@Param('id') id: string, @Req() req: WorkflowRequest) {
+    return this.workflowService.confirmTaskSplit(id, req.authSession);
   }
 
   @Post(':id/task-split/reject')
@@ -60,13 +60,13 @@ export class WorkflowController {
   }
 
   @Post(':id/plan/run')
-  runPlan(@Param('id') id: string) {
-    return this.workflowService.runPlan(id);
+  runPlan(@Param('id') id: string, @Req() req: WorkflowRequest) {
+    return this.workflowService.runPlan(id, undefined, req.authSession);
   }
 
   @Post(':id/plan/revise')
-  revisePlan(@Param('id') id: string, @Body() dto: StageFeedbackDto) {
-    return this.workflowService.runPlan(id, dto.feedback);
+  revisePlan(@Param('id') id: string, @Body() dto: StageFeedbackDto, @Req() req: WorkflowRequest) {
+    return this.workflowService.runPlan(id, dto.feedback, req.authSession);
   }
 
   @Patch(':id/plan/manual-edit')
@@ -75,8 +75,8 @@ export class WorkflowController {
   }
 
   @Post(':id/plan/confirm')
-  confirmPlan(@Param('id') id: string) {
-    return this.workflowService.confirmPlan(id);
+  confirmPlan(@Param('id') id: string, @Req() req: WorkflowRequest) {
+    return this.workflowService.confirmPlan(id, req.authSession);
   }
 
   @Post(':id/plan/reject')
@@ -85,18 +85,18 @@ export class WorkflowController {
   }
 
   @Post(':id/execution/run')
-  runExecution(@Param('id') id: string) {
-    return this.workflowService.runExecution(id);
+  runExecution(@Param('id') id: string, @Req() req: WorkflowRequest) {
+    return this.workflowService.runExecution(id, undefined, undefined, req.authSession);
   }
 
   @Post(':id/execution/revise')
-  reviseExecution(@Param('id') id: string, @Body() dto: StageFeedbackDto) {
-    return this.workflowService.runExecution(id, dto.feedback);
+  reviseExecution(@Param('id') id: string, @Body() dto: StageFeedbackDto, @Req() req: WorkflowRequest) {
+    return this.workflowService.runExecution(id, dto.feedback, undefined, req.authSession);
   }
 
   @Post(':id/review-findings/:findingId/fix')
-  fixReviewFinding(@Param('id') id: string, @Param('findingId') findingId: string) {
-    return this.workflowService.fixReviewFinding(id, findingId);
+  fixReviewFinding(@Param('id') id: string, @Param('findingId') findingId: string, @Req() req: WorkflowRequest) {
+    return this.workflowService.fixReviewFinding(id, findingId, req.authSession);
   }
 
   @Post(':id/git/publish')
@@ -110,13 +110,13 @@ export class WorkflowController {
   }
 
   @Post(':id/review/run')
-  runReview(@Param('id') id: string) {
-    return this.workflowService.runReview(id);
+  runReview(@Param('id') id: string, @Req() req: WorkflowRequest) {
+    return this.workflowService.runReview(id, undefined, req.authSession);
   }
 
   @Post(':id/review/revise')
-  reviseReview(@Param('id') id: string, @Body() dto: StageFeedbackDto) {
-    return this.workflowService.runReview(id, dto.feedback);
+  reviseReview(@Param('id') id: string, @Body() dto: StageFeedbackDto, @Req() req: WorkflowRequest) {
+    return this.workflowService.runReview(id, dto.feedback, req.authSession);
   }
 
   @Patch(':id/review/manual-edit')
@@ -128,7 +128,21 @@ export class WorkflowController {
   decideHumanReview(
     @Param('id') id: string,
     @Body() dto: HumanReviewDecisionDto,
+    @Req() req: WorkflowRequest,
   ) {
-    return this.workflowService.decideHumanReview(id, dto.decision);
+    return this.workflowService.decideHumanReview(id, dto.decision, req.authSession);
   }
 }
+
+type WorkflowRequest = {
+  authSession?: {
+    user: {
+      id: string;
+      displayName: string;
+    };
+    organization?: {
+      providerOrganizationId?: string | null;
+      name?: string | null;
+    } | null;
+  };
+};

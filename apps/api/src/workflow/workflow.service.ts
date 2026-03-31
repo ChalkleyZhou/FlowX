@@ -22,6 +22,7 @@ import {
 } from '../common/types';
 import { sep } from 'path';
 import { WorkflowStateMachine } from '../common/workflow-state-machine';
+import { DingTalkNotificationService } from '../notifications/dingtalk-notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RepositorySyncService } from '../workspaces/repository-sync.service';
 import { CreateWorkflowRunDto } from './dto/create-workflow-run.dto';
@@ -67,6 +68,13 @@ const stageTypeMap: Record<StageType, string> = {
   [StageType.HUMAN_REVIEW]: 'HUMAN_REVIEW',
 };
 
+type WorkflowNotificationRecipient = {
+  flowxUserId: string;
+  displayName: string;
+  providerOrganizationId?: string | null;
+  organizationName?: string | null;
+};
+
 @Injectable()
 export class WorkflowService {
   private readonly logger = new Logger(WorkflowService.name);
@@ -75,6 +83,7 @@ export class WorkflowService {
     private readonly prisma: PrismaService,
     private readonly stateMachine: WorkflowStateMachine,
     private readonly repositorySyncService: RepositorySyncService,
+    private readonly dingTalkNotificationService: DingTalkNotificationService,
     @Inject(AI_EXECUTOR) private readonly aiExecutor: AIExecutor,
   ) {}
 
@@ -318,7 +327,11 @@ export class WorkflowService {
     return workflow.stageExecutions;
   }
 
-  async runTaskSplit(id: string, humanFeedback?: string) {
+  async runTaskSplit(
+    id: string,
+    humanFeedback?: string,
+    notifyRecipient?: WorkflowNotificationSession,
+  ) {
     const workflow = await this.getWorkflowOrThrow(id);
     this.assertStageNotRunning(workflow, StageType.TASK_SPLIT);
     const workflowStatus = this.fromPrismaWorkflowStatus(workflow.status);
@@ -330,6 +343,7 @@ export class WorkflowService {
     }
 
     const requirement = workflow.requirement;
+    const recipient = this.toNotificationRecipient(notifyRecipient);
     const previousStage =
       workflow.status === 'TASK_SPLIT_WAITING_CONFIRMATION'
         ? this.getLatestStageOrThrow(workflow, StageType.TASK_SPLIT)
@@ -346,6 +360,7 @@ export class WorkflowService {
         input: {
           requirement,
           humanFeedback: humanFeedback ?? null,
+          notifier: recipient,
         },
         status: StageExecutionStatus.RUNNING,
         statusMessage: '正在调用 Codex 进行任务拆解',
@@ -409,14 +424,14 @@ export class WorkflowService {
     return startedWorkflow;
   }
 
-  async confirmTaskSplit(id: string) {
+  async confirmTaskSplit(id: string, notifyRecipient?: WorkflowNotificationSession) {
     const workflow = await this.getWorkflowOrThrow(id);
     if (workflow.status !== 'TASK_SPLIT_WAITING_CONFIRMATION') {
       throw new BadRequestException('Task split is not waiting for confirmation.');
     }
 
     const taskSplitStage = this.getLatestStageOrThrow(workflow, StageType.TASK_SPLIT);
-    return this.prisma.$transaction(async (tx) => {
+    const updatedWorkflow = await this.prisma.$transaction(async (tx) => {
       await this.updateStageExecution(tx, taskSplitStage.id, StageExecutionStatus.COMPLETED, {
         finishedAt: new Date(),
       });
@@ -439,6 +454,17 @@ export class WorkflowService {
         include: this.workflowInclude(),
       });
     });
+
+    this.notifyStageCompleted({
+      recipient: this.toNotificationRecipient(notifyRecipient),
+      workflowRunId: updatedWorkflow.id,
+      requirementTitle: updatedWorkflow.requirement.title,
+      stageName: '任务拆解',
+      result: '已确认完成',
+      nextStep: '可以开始技术方案阶段',
+    });
+
+    return updatedWorkflow;
   }
 
   async rejectTaskSplit(id: string) {
@@ -470,7 +496,11 @@ export class WorkflowService {
     });
   }
 
-  async runPlan(id: string, humanFeedback?: string) {
+  async runPlan(
+    id: string,
+    humanFeedback?: string,
+    notifyRecipient?: WorkflowNotificationSession,
+  ) {
     const workflow = await this.getWorkflowOrThrow(id);
     this.assertStageNotRunning(workflow, StageType.TECHNICAL_PLAN);
     if (
@@ -480,6 +510,7 @@ export class WorkflowService {
       throw new BadRequestException('Plan can only run after task split is confirmed.');
     }
 
+    const recipient = this.toNotificationRecipient(notifyRecipient);
     const tasks = workflow.tasks.map((task) => ({
       title: task.title,
       description: task.description,
@@ -502,6 +533,7 @@ export class WorkflowService {
           requirement: workflow.requirement,
           tasks,
           humanFeedback: humanFeedback ?? null,
+          notifier: recipient,
         },
         status: StageExecutionStatus.RUNNING,
         statusMessage: '正在调用 Codex 生成技术方案',
@@ -577,14 +609,14 @@ export class WorkflowService {
     return startedWorkflow;
   }
 
-  async confirmPlan(id: string) {
+  async confirmPlan(id: string, notifyRecipient?: WorkflowNotificationSession) {
     const workflow = await this.getWorkflowOrThrow(id);
     if (workflow.status !== 'PLAN_WAITING_CONFIRMATION') {
       throw new BadRequestException('Plan is not waiting for confirmation.');
     }
 
     const planStage = this.getLatestStageOrThrow(workflow, StageType.TECHNICAL_PLAN);
-    return this.prisma.$transaction(async (tx) => {
+    const updatedWorkflow = await this.prisma.$transaction(async (tx) => {
       await this.updateStageExecution(tx, planStage.id, StageExecutionStatus.COMPLETED, {
         finishedAt: new Date(),
       });
@@ -607,6 +639,17 @@ export class WorkflowService {
         include: this.workflowInclude(),
       });
     });
+
+    this.notifyStageCompleted({
+      recipient: this.toNotificationRecipient(notifyRecipient),
+      workflowRunId: updatedWorkflow.id,
+      requirementTitle: updatedWorkflow.requirement.title,
+      stageName: '技术方案',
+      result: '已确认完成',
+      nextStep: '可以开始执行开发阶段',
+    });
+
+    return updatedWorkflow;
   }
 
   async rejectPlan(id: string) {
@@ -646,9 +689,11 @@ export class WorkflowService {
       findingId?: string;
       findingTitle?: string;
     },
+    notifyRecipient?: WorkflowNotificationSession,
   ) {
     const workflow = await this.getWorkflowOrThrow(id);
     this.assertStageNotRunning(workflow, StageType.EXECUTION);
+    const recipient = this.toNotificationRecipient(notifyRecipient);
     if (
       workflow.status !== 'EXECUTION_PENDING' &&
       !((workflow.status === 'REVIEW_PENDING' || workflow.status === 'HUMAN_REVIEW_PENDING') && humanFeedback)
@@ -680,6 +725,7 @@ export class WorkflowService {
           triggerType: trigger?.triggerType ?? null,
           findingId: trigger?.findingId ?? null,
           findingTitle: trigger?.findingTitle ?? null,
+          notifier: recipient,
         },
         status: StageExecutionStatus.RUNNING,
         statusMessage:
@@ -756,6 +802,15 @@ export class WorkflowService {
             stage: StageType.AI_REVIEW,
           });
         });
+
+        this.notifyStageCompleted({
+          recipient: this.readNotificationRecipient(startedWorkflow.stageExecutions, StageType.EXECUTION) ?? recipient,
+          workflowRunId: workflow.id,
+          requirementTitle: workflow.requirement.title,
+          stageName: '执行开发',
+          result: '已完成',
+          nextStep: '可以开始 AI 审查阶段',
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Execution failed';
         await this.markRunningStageFailed(id, StageType.EXECUTION, message, WorkflowRunStatus.EXECUTION_PENDING);
@@ -765,9 +820,14 @@ export class WorkflowService {
     return startedWorkflow;
   }
 
-  async runReview(id: string, humanFeedback?: string) {
+  async runReview(
+    id: string,
+    humanFeedback?: string,
+    notifyRecipient?: WorkflowNotificationSession,
+  ) {
     const workflow = await this.getWorkflowOrThrow(id);
     this.assertStageNotRunning(workflow, StageType.AI_REVIEW);
+    const recipient = this.toNotificationRecipient(notifyRecipient);
     if (
       workflow.status !== 'REVIEW_PENDING' &&
       !(workflow.status === 'HUMAN_REVIEW_PENDING' && humanFeedback)
@@ -797,6 +857,7 @@ export class WorkflowService {
           plan: workflow.plan,
           execution: workflow.codeExecution,
           humanFeedback: humanFeedback ?? null,
+          notifier: recipient,
         },
         status: StageExecutionStatus.RUNNING,
         statusMessage: '正在调用 Codex 执行 AI 审查',
@@ -886,6 +947,15 @@ export class WorkflowService {
             stage: StageType.HUMAN_REVIEW,
           });
         });
+
+        this.notifyStageCompleted({
+          recipient: this.readNotificationRecipient(startedWorkflow.stageExecutions, StageType.AI_REVIEW) ?? recipient,
+          workflowRunId: workflow.id,
+          requirementTitle: workflow.requirement.title,
+          stageName: 'AI 审查',
+          result: '已完成',
+          nextStep: '等待人工审核决策',
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Review failed';
         await this.markRunningStageFailed(id, StageType.AI_REVIEW, message);
@@ -895,7 +965,11 @@ export class WorkflowService {
     return startedWorkflow;
   }
 
-  async fixReviewFinding(id: string, findingId: string) {
+  async fixReviewFinding(
+    id: string,
+    findingId: string,
+    notifyRecipient?: WorkflowNotificationSession,
+  ) {
     const workflow = await this.getWorkflowOrThrow(id);
     if (workflow.status !== 'HUMAN_REVIEW_PENDING') {
       throw new BadRequestException('只有在 AI 审查完成后，才能基于审查结果继续修复。');
@@ -916,7 +990,7 @@ export class WorkflowService {
       triggerType: 'review_finding_fix',
       findingId: finding.id,
       findingTitle: finding.title,
-    });
+    }, notifyRecipient);
   }
 
   async publishGitChanges(id: string) {
@@ -1023,7 +1097,11 @@ export class WorkflowService {
     return Array.from(deduplicated.values());
   }
 
-  async decideHumanReview(id: string, decision: HumanReviewDecision) {
+  async decideHumanReview(
+    id: string,
+    decision: HumanReviewDecision,
+    notifyRecipient?: WorkflowNotificationSession,
+  ) {
     const workflow = await this.getWorkflowOrThrow(id);
     if (workflow.status !== 'HUMAN_REVIEW_PENDING') {
       throw new BadRequestException('Workflow is not waiting for human review.');
@@ -1036,7 +1114,7 @@ export class WorkflowService {
           ? WorkflowRunStatus.EXECUTION_PENDING
           : WorkflowRunStatus.FAILED;
 
-    return this.prisma.$transaction(async (tx) => {
+    const updatedWorkflow = await this.prisma.$transaction(async (tx) => {
       await this.transitionWorkflow(tx, id, WorkflowRunStatus.HUMAN_REVIEW_PENDING, {
         to: nextStatus,
         stage:
@@ -1050,6 +1128,22 @@ export class WorkflowService {
         include: this.workflowInclude(),
       });
     });
+
+    this.notifyStageCompleted({
+      recipient: this.toNotificationRecipient(notifyRecipient),
+      workflowRunId: updatedWorkflow.id,
+      requirementTitle: updatedWorkflow.requirement.title,
+      stageName: '人工审核',
+      result: this.describeHumanReviewDecision(decision),
+      nextStep:
+        nextStatus === WorkflowRunStatus.DONE
+          ? '工作流已结束，可按需发布代码'
+          : nextStatus === WorkflowRunStatus.EXECUTION_PENDING
+            ? '回到执行开发阶段继续处理'
+            : '工作流已标记失败',
+    });
+
+    return updatedWorkflow;
   }
 
   async manualEditTaskSplit(id: string, output: Record<string, unknown>) {
@@ -1620,6 +1714,91 @@ export class WorkflowService {
     }, 0);
   }
 
+  private notifyStageCompleted(input: {
+    recipient?: WorkflowNotificationRecipient | null;
+    workflowRunId: string;
+    requirementTitle: string;
+    stageName: string;
+    result: string;
+    nextStep?: string | null;
+    detail?: string | null;
+  }) {
+    this.runInBackground(`notify:${input.workflowRunId}:${input.stageName}`, async () => {
+      await this.dingTalkNotificationService.notifyStageCompleted(input);
+    });
+  }
+
+  private describeHumanReviewDecision(decision: HumanReviewDecision) {
+    switch (decision) {
+      case HumanReviewDecision.ACCEPT:
+        return '已通过';
+      case HumanReviewDecision.CONTINUE:
+        return '已继续放行';
+      case HumanReviewDecision.REWORK:
+        return '已打回重做';
+      case HumanReviewDecision.ROLLBACK:
+        return '已回滚终止';
+      default:
+        return decision;
+    }
+  }
+
+  private toNotificationRecipient(
+    session?: WorkflowNotificationSession,
+  ): WorkflowNotificationRecipient | null {
+    if (!session?.user?.id) {
+      return null;
+    }
+
+    return {
+      flowxUserId: session.user.id,
+      displayName: session.user.displayName,
+      providerOrganizationId: session.organization?.providerOrganizationId ?? null,
+      organizationName: session.organization?.name ?? null,
+    };
+  }
+
+  private readNotificationRecipient(
+    stageExecutions: WorkflowPayload['stageExecutions'],
+    stage: StageType,
+  ): WorkflowNotificationRecipient | null {
+    const latestStage = stageExecutions
+      .filter((item) => item.stage === stageTypeMap[stage])
+      .sort((a, b) => b.attempt - a.attempt)[0];
+
+    if (!latestStage?.input || typeof latestStage.input !== 'object' || Array.isArray(latestStage.input)) {
+      return null;
+    }
+
+    const notifier = (latestStage.input as Record<string, unknown>).notifier;
+    if (!notifier || typeof notifier !== 'object' || Array.isArray(notifier)) {
+      return null;
+    }
+
+    const candidate = notifier as Record<string, unknown>;
+    const flowxUserId =
+      typeof candidate.flowxUserId === 'string' ? candidate.flowxUserId.trim() : '';
+    const displayName =
+      typeof candidate.displayName === 'string' ? candidate.displayName.trim() : '';
+
+    if (!flowxUserId || !displayName) {
+      return null;
+    }
+
+    return {
+      flowxUserId,
+      displayName,
+      providerOrganizationId:
+        typeof candidate.providerOrganizationId === 'string'
+          ? candidate.providerOrganizationId
+          : null,
+      organizationName:
+        typeof candidate.organizationName === 'string'
+          ? candidate.organizationName
+          : null,
+    };
+  }
+
   private async runGit(args: string[], cwd: string) {
     const { stdout, stderr } = await execFile('git', args, {
       cwd,
@@ -1713,3 +1892,14 @@ type WorkflowPayload = Prisma.WorkflowRunGetPayload<{
     workflowRepositories: true;
   };
 }>;
+
+type WorkflowNotificationSession = {
+  user: {
+    id: string;
+    displayName: string;
+  };
+  organization?: {
+    providerOrganizationId?: string | null;
+    name?: string | null;
+  } | null;
+};

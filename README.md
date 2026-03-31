@@ -83,6 +83,7 @@ PORT=3000
 VITE_API_BASE_URL="http://localhost:3000"
 DINGTALK_APP_ID=""
 DINGTALK_APP_SECRET=""
+DINGTALK_AGENT_ID=""
 ```
 
 2. Install dependencies:
@@ -112,7 +113,7 @@ Build the image:
 
 ```bash
 docker build \
-  --build-arg VITE_API_BASE_URL="http://YOUR_SERVER_IP:3000" \
+  --build-arg VITE_API_BASE_URL="" \
   -t flowx:latest .
 ```
 
@@ -180,6 +181,37 @@ codex login
 
 After login succeeds once, the Codex auth state will stay in the mounted volume.
 
+### Deploy behind Nginx
+
+If you do not want to expose `3000` and `4173` directly, you can put Nginx in front and expose only port `80`.
+
+1. Build the image with same-origin API requests:
+
+```bash
+docker build \
+  --build-arg VITE_API_BASE_URL="" \
+  -t flowx:latest .
+```
+
+2. Start with the provided compose file:
+
+```bash
+docker compose -f docker-compose.nginx.yml up -d
+```
+
+This setup will:
+
+- expose only `80`
+- proxy `/auth`, `/projects`, `/workspaces`, `/requirements`, `/workflow-runs`, `/review-reports`, `/review-findings`, `/issues`, `/bugs` to the API container
+- proxy all other paths to the web app
+
+If you are using manual `codex login`, run it once after the containers start:
+
+```bash
+docker exec -it flowx sh
+codex login
+```
+
 ## Auth
 
 - Built-in user system with extensible third-party provider abstraction.
@@ -190,6 +222,8 @@ After login succeeds once, the Codex auth state will stay in the mounted volume.
   - `DINGTALK_TOKEN_URL`
   - `DINGTALK_PROFILE_URL`
   - `DINGTALK_ORGS_URL`
+- For personal stage completion notifications, also set `DINGTALK_AGENT_ID`.
+- FlowX will try to notify only the current DingTalk login user who triggered the stage or confirmation, instead of broadcasting through a group robot.
 
 ## MVP flow
 

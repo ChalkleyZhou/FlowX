@@ -1,0 +1,32 @@
+services:
+  flowx:
+    image: flowx:latest
+    container_name: flowx
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      WEB_PORT: "4173"
+      DATABASE_URL: "file:/data/dev-current.db"
+      AI_EXECUTOR_PROVIDER: "codex"
+      CODEX_HOME: "/data/.codex"
+      DINGTALK_APP_ID: "${DINGTALK_APP_ID:-}"
+      DINGTALK_APP_SECRET: "${DINGTALK_APP_SECRET:-}"
+      DINGTALK_AGENT_ID: "${DINGTALK_AGENT_ID:-}"
+      GIT_AUTHOR_NAME: "${GIT_AUTHOR_NAME:-FlowX Bot}"
+      GIT_AUTHOR_EMAIL: "${GIT_AUTHOR_EMAIL:-flowx@example.com}"
+    volumes:
+      - flowx-data:/data
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: flowx-nginx
+    restart: unless-stopped
+    depends_on:
+      - flowx
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/flowx.conf:/etc/nginx/conf.d/default.conf:ro
+
+volumes:
+  flowx-data:

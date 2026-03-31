@@ -27,6 +27,7 @@ export class SessionAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<{
       headers: { authorization?: string };
       user?: unknown;
+      authSession?: unknown;
     }>();
     const authorization = request.headers.authorization;
     if (!authorization?.startsWith('Bearer ')) {
@@ -36,7 +37,7 @@ export class SessionAuthGuard implements CanActivate {
     const token = authorization.slice('Bearer '.length);
     const session = await this.authService.getSession(token);
     request.user = session.user;
+    request.authSession = session;
     return true;
   }
 }
-
