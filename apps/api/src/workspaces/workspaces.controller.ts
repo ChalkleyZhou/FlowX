@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { CreateRepositoryDto } from './dto/create-repository.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { UpdateRepositoryDto } from './dto/update-repository.dto';
@@ -40,5 +40,13 @@ export class WorkspacesController {
     @Body() dto: UpdateRepositoryBranchDto,
   ) {
     return this.workspacesService.updateRepositoryBranch(workspaceId, repositoryId, dto);
+  }
+
+  @Delete(':workspaceId/repositories/:repositoryId')
+  deleteRepository(
+    @Param('workspaceId') workspaceId: string,
+    @Param('repositoryId') repositoryId: string,
+  ) {
+    return this.workspacesService.deleteRepository(workspaceId, repositoryId);
   }
 }

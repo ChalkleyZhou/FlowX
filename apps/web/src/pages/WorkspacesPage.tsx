@@ -122,6 +122,21 @@ export function WorkspacesPage() {
     }
   }
 
+  async function deleteRepository(workspaceId: string, repository: Repository) {
+    const confirmed = window.confirm(`确认删除代码库“${repository.name}”吗？这会移除工作区中的仓库记录和本地副本。`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await api.deleteRepository(workspaceId, repository.id);
+      await refresh();
+      toast.success('代码库已删除');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '删除代码库失败');
+    }
+  }
+
   async function handleCreateWorkspace(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!workspaceDraft.name.trim()) {
@@ -425,6 +440,13 @@ export function WorkspacesPage() {
                               }}
                             >
                               切换分支
+                            </UiButton>
+                            <UiButton
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => void deleteRepository(workspace.id, repository)}
+                            >
+                              删除
                             </UiButton>
                           </div>
                         }

@@ -70,7 +70,19 @@ export class WorkspacesService {
       },
     });
 
-    return this.repositorySyncService.syncRepository(repository);
+    try {
+      return await this.repositorySyncService.syncRepository(repository);
+    } catch (error) {
+      await this.prisma.repository.delete({
+        where: { id: repository.id },
+      });
+      await this.repositorySyncService.removeRepositoryStorage(
+        repository.workspaceId,
+        repository.id,
+        repository.name,
+      );
+      throw error;
+    }
   }
 
   async updateRepository(
@@ -120,5 +132,46 @@ export class WorkspacesService {
     });
 
     return this.repositorySyncService.syncRepository(repository);
+  }
+
+  async deleteRepository(workspaceId: string, repositoryId: string) {
+    const existingRepository = await this.prisma.repository.findFirst({
+      where: {
+        id: repositoryId,
+        workspaceId,
+      },
+    });
+    if (!existingRepository) {
+      throw new NotFoundException('Repository not found.');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.requirementRepository.deleteMany({
+        where: { repositoryId },
+      });
+      await tx.workflowRepository.updateMany({
+        where: { repositoryId },
+        data: { repositoryId: null },
+      });
+      await tx.issue.updateMany({
+        where: { repositoryId },
+        data: { repositoryId: null },
+      });
+      await tx.bug.updateMany({
+        where: { repositoryId },
+        data: { repositoryId: null },
+      });
+      await tx.repository.delete({
+        where: { id: repositoryId },
+      });
+    });
+
+    await this.repositorySyncService.removeRepositoryStorage(
+      existingRepository.workspaceId,
+      existingRepository.id,
+      existingRepository.name,
+    );
+
+    return { success: true };
   }
 }

@@ -218,6 +218,11 @@ export class RepositorySyncService {
     await rm(workflowStoragePath, { recursive: true, force: true });
   }
 
+  async removeRepositoryStorage(workspaceId: string, repositoryId: string, repositoryName: string) {
+    const repositoryPath = this.resolveRepositoryPath(workspaceId, repositoryId, repositoryName);
+    await rm(repositoryPath, { recursive: true, force: true });
+  }
+
   private async runGit(args: string[], cwd?: string) {
     const { stderr } = await execFile('git', args, {
       cwd,

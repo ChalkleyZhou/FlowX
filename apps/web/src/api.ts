@@ -156,6 +156,10 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
+  deleteRepository: (workspaceId: string, repositoryId: string) =>
+    request<{ success: boolean }>(`/workspaces/${workspaceId}/repositories/${repositoryId}`, {
+      method: 'DELETE',
+    }),
   getCurrentSession: () => request<AuthSession>('/auth/session/me'),
   getRequirements: () => request<Requirement[]>('/requirements'),
   createRequirement: (payload: RequirementPayload) =>
