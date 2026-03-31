@@ -21,6 +21,7 @@ services:
       GIT_COMMITTER_EMAIL: "${GIT_COMMITTER_EMAIL:-}"
     volumes:
       - flowx-data:/data
+      - ${SSH_MOUNT_SOURCE:-~/.ssh}:${SSH_MOUNT_TARGET:-/root/.ssh}:ro
 
   nginx:
     image: nginx:1.27-alpine

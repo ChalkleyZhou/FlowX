@@ -61,6 +61,8 @@ FlowX 容器内部包含两个服务：
 | `DINGTALK_AGENT_ID` | 钉钉通知 Agent ID | 仅钉钉通知时必填 |
 | `GIT_AUTHOR_NAME` | Git 提交用户名 | 建议填写 |
 | `GIT_AUTHOR_EMAIL` | Git 提交邮箱 | 建议填写 |
+| `SSH_MOUNT_SOURCE` | 宿主机 SSH 目录 | 使用 SSH 拉仓库时建议填写 |
+| `SSH_MOUNT_TARGET` | 容器内 SSH 挂载路径 | 一般保持默认 |
 
 说明：
 
@@ -209,12 +211,16 @@ cp .env.docker.example .env.docker
 - `OPENAI_API_KEY`
 - `GIT_AUTHOR_NAME`
 - `GIT_AUTHOR_EMAIL`
+- `SSH_MOUNT_SOURCE`
 
 注意：
 
 - `.env.docker` 会被 shell 直接读取
 - 如果变量值里有空格，必须加引号
 - 例如：`GIT_AUTHOR_NAME="FlowX Bot"`
+- 如果你要让容器访问宿主机上的 Git SSH key，建议保留：
+  - `SSH_MOUNT_SOURCE=~/.ssh`
+  - `SSH_MOUNT_TARGET=/root/.ssh`
 
 建议把 `.env.docker` 里的前端构建模式设为：
 
@@ -342,6 +348,15 @@ scp dev-current.db user@server:/opt/flowx-data/dev-current.db
 ```
 
 是否这样挂载，取决于你服务器上的运行用户和密钥管理方式。
+
+在 Nginx compose 部署下，这个挂载已经做成了可配置项，默认读取：
+
+```env
+SSH_MOUNT_SOURCE=~/.ssh
+SSH_MOUNT_TARGET=/root/.ssh
+```
+
+如果你的服务器不是用 `root` 运行 Docker，或者 SSH 目录不在默认位置，就把 `.env.docker` 里的这两个值改掉。
 
 ## 9. 常用运维命令
 
