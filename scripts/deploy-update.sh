@@ -5,6 +5,7 @@ MODE="${1:-nginx}"
 
 IMAGE_NAME="${IMAGE_NAME:-flowx:latest}"
 CONTAINER_NAME="${CONTAINER_NAME:-flowx}"
+NGINX_CONTAINER_NAME="${NGINX_CONTAINER_NAME:-flowx-nginx}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.nginx.yml}"
 BUILD_API_BASE_URL="${BUILD_API_BASE_URL:-}"
 PORT="${PORT:-3000}"
@@ -15,6 +16,16 @@ CODEX_HOME="${CODEX_HOME:-/data/.codex}"
 GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-FlowX Bot}"
 GIT_AUTHOR_EMAIL="${GIT_AUTHOR_EMAIL:-flowx@example.com}"
 DATA_VOLUME="${DATA_VOLUME:-flowx-data:/data}"
+AUTO_REMOVE_CONFLICT_CONTAINER="${AUTO_REMOVE_CONFLICT_CONTAINER:-0}"
+
+container_exists() {
+  docker container inspect "$1" >/dev/null 2>&1
+}
+
+compose_managed() {
+  label="$(docker container inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$1" 2>/dev/null || true)"
+  [ -n "${label}" ] && [ "${label}" != "<no value>" ]
+}
 
 echo "==> Updating FlowX in mode: ${MODE}"
 echo "==> Pulling latest code"
@@ -26,6 +37,19 @@ docker build \
   -t "${IMAGE_NAME}" .
 
 if [ "${MODE}" = "nginx" ]; then
+  if container_exists "${CONTAINER_NAME}" && ! compose_managed "${CONTAINER_NAME}"; then
+    echo "==> Found an existing standalone container named ${CONTAINER_NAME}." >&2
+    if [ "${AUTO_REMOVE_CONFLICT_CONTAINER}" = "1" ]; then
+      echo "==> AUTO_REMOVE_CONFLICT_CONTAINER=1, removing conflicting container ${CONTAINER_NAME}"
+      docker rm -f "${CONTAINER_NAME}"
+    else
+      echo "Nginx mode needs Compose to own container names '${CONTAINER_NAME}' and '${NGINX_CONTAINER_NAME}'." >&2
+      echo "Run one of these commands and then retry:" >&2
+      echo "  docker rm -f ${CONTAINER_NAME}" >&2
+      echo "  AUTO_REMOVE_CONFLICT_CONTAINER=1 sh scripts/deploy-update.sh nginx" >&2
+      exit 1
+    fi
+  fi
   echo "==> Restarting with Docker Compose"
   docker compose -f "${COMPOSE_FILE}" up -d --force-recreate
   echo "==> Done. Verify with: docker compose -f ${COMPOSE_FILE} ps"

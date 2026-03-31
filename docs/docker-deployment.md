@@ -182,12 +182,29 @@ docker run -d \
 
 - [docker-compose.nginx.yml](/Users/chalkley/workspace/FlowX/docker-compose.nginx.yml)
 - [docker/nginx/flowx.conf](/Users/chalkley/workspace/FlowX/docker/nginx/flowx.conf)
+- [.env.docker.example](/Users/chalkley/workspace/FlowX/.env.docker.example)
 
 这个方案下，对外只暴露一个端口：
 
 - `80`
 
 ### 6.1 启动步骤
+
+先准备环境变量文件：
+
+```bash
+cp .env.docker.example .env.docker
+```
+
+然后按你的实际情况修改 `.env.docker`，例如：
+
+- `AI_EXECUTOR_PROVIDER=codex` 或 `mock`
+- `DINGTALK_APP_ID`
+- `DINGTALK_APP_SECRET`
+- `DINGTALK_AGENT_ID`
+- `OPENAI_API_KEY`
+- `GIT_AUTHOR_NAME`
+- `GIT_AUTHOR_EMAIL`
 
 先构建镜像：
 
@@ -238,6 +255,12 @@ CODEX_HOME: "/data/.codex"
 docker exec -it flowx sh
 codex login
 ```
+
+说明：
+
+- `docker-compose.nginx.yml` 会自动读取 `.env.docker`
+- `.env.docker` 用来给容器注入运行时环境变量
+- 如果 `.env.docker` 不存在，Compose 替换变量时会退回到文件里写的默认值
 
 ## 7. 数据库说明
 
@@ -314,6 +337,23 @@ sh scripts/deploy-update.sh
 - `git pull --ff-only`
 - 重新 `docker build`
 - 执行 `docker compose -f docker-compose.nginx.yml up -d --force-recreate`
+
+执行前建议先确认 `.env.docker` 已经存在并填写完成。
+
+如果你之前是单容器部署，后来想切到 Nginx，脚本会先检查是否存在冲突的旧容器 `flowx`。
+
+这时你可以手工删除旧容器：
+
+```bash
+docker rm -f flowx
+sh scripts/deploy-update.sh
+```
+
+也可以让脚本自动删掉冲突容器：
+
+```bash
+AUTO_REMOVE_CONFLICT_CONTAINER=1 sh scripts/deploy-update.sh nginx
+```
 
 如果你是单容器部署：
 
