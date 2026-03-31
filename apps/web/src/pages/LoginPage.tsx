@@ -12,6 +12,13 @@ import { Input as UiInput } from '../components/ui/input';
 import { useToast } from '../components/ui/toast';
 import type { AuthOrganization } from '../types';
 
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+const AUTH_BASE_URL = configuredApiBaseUrl
+  ? configuredApiBaseUrl.replace(/\/$/, '')
+  : typeof window !== 'undefined'
+    ? window.location.origin
+    : 'http://localhost:3000';
+
 type LoginMode = 'password' | 'register';
 
 function readOAuthError(searchParams: URLSearchParams) {
@@ -171,7 +178,7 @@ export function LoginPage() {
     setErrorText('');
     try {
       const callbackUrl = `${window.location.origin}/login`;
-      const loginUrl = new URL('/auth/dingtalk/login', import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000');
+      const loginUrl = new URL('/auth/dingtalk/login', AUTH_BASE_URL);
       loginUrl.searchParams.set('callbackUrl', callbackUrl);
       loginUrl.searchParams.set('next', redirectPath);
       window.location.href = loginUrl.toString();

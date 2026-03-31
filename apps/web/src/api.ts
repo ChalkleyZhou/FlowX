@@ -1,6 +1,11 @@
 import type { AuthOrganization, AuthSession, Bug, Issue, Project, Requirement, ReviewFinding, WorkflowRun, Workspace, Repository } from './types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+const API_BASE_URL = configuredApiBaseUrl
+  ? configuredApiBaseUrl.replace(/\/$/, '')
+  : typeof window !== 'undefined'
+    ? window.location.origin
+    : 'http://localhost:3000';
 const AUTH_TOKEN_STORAGE_KEY = 'flowx-auth-token';
 
 interface RequirementPayload {

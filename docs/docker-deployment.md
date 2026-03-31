@@ -54,6 +54,8 @@ FlowX 容器内部包含两个服务：
 | `AI_EXECUTOR_PROVIDER` | `mock` 或 `codex` | 是 |
 | `CODEX_HOME` | Codex CLI 登录态目录 | `codex` 时建议设置 |
 | `OPENAI_API_KEY` | Codex/API 认证方式之一 | 否 |
+| `FRONTEND_BUILD_MODE` | 前端构建模式：`nginx`、`direct`、`auto` | 建议填写 |
+| `DIRECT_API_BASE_URL` | 直连模式下前端访问 API 的地址 | `direct` 时建议填写 |
 | `DINGTALK_APP_ID` | 钉钉登录 App ID | 仅钉钉登录时必填 |
 | `DINGTALK_APP_SECRET` | 钉钉登录 App Secret | 仅钉钉登录时必填 |
 | `DINGTALK_AGENT_ID` | 钉钉通知 Agent ID | 仅钉钉通知时必填 |
@@ -65,6 +67,8 @@ FlowX 容器内部包含两个服务：
 - 钉钉变量是 `DINGTALK_APP_ID`，不是 `DINGTALK_APPID`
 - 如果你现在只是自己使用，可以先不配置钉钉登录
 - 如果你要用手动 `codex login`，可以不填 `OPENAI_API_KEY`
+- `FRONTEND_BUILD_MODE=nginx` 表示前端走同源代理，不在构建时写死 API 地址
+- `FRONTEND_BUILD_MODE=direct` 表示前端直接请求 `DIRECT_API_BASE_URL`
 
 ## 4. 构建镜像
 
@@ -206,7 +210,19 @@ cp .env.docker.example .env.docker
 - `GIT_AUTHOR_NAME`
 - `GIT_AUTHOR_EMAIL`
 
-先构建镜像：
+建议把 `.env.docker` 里的前端构建模式设为：
+
+```env
+FRONTEND_BUILD_MODE=nginx
+```
+
+然后直接执行更新脚本，它会自动以同源模式构建前端：
+
+```bash
+./scripts/deploy-update.sh
+```
+
+如果你想手工构建，等价命令是：
 
 ```bash
 docker build \
@@ -370,6 +386,13 @@ AUTO_REMOVE_CONFLICT_CONTAINER=1 sh scripts/deploy-update.sh nginx
 
 ```bash
 sh scripts/deploy-update.sh single
+```
+
+如果你是单容器直连部署，建议在 `.env.docker` 里配置：
+
+```env
+FRONTEND_BUILD_MODE=direct
+DIRECT_API_BASE_URL=http://YOUR_SERVER_IP:3000
 ```
 
 这个脚本默认：
