@@ -2,6 +2,7 @@ node_modules
 dist
 .env
 .env.*
+!.env.docker.example
 coverage
 .turbo
 .DS_Store
