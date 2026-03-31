@@ -1,9 +1,36 @@
+export interface Project {
+  id: string;
+  name: string;
+  code?: string | null;
+  description?: string | null;
+  workspace: Workspace;
+  requirements?: Requirement[];
+  _count?: {
+    requirements: number;
+  };
+}
+
 export interface Requirement {
   id: string;
   title: string;
   description: string;
   acceptanceCriteria: string;
+  project: Project;
   workspace?: Workspace | null;
+  workflowRuns?: Array<{
+    id: string;
+    status: string;
+    workflowRepositories?: Array<{
+      id: string;
+      name: string;
+      repositoryId?: string | null;
+      status: string;
+    }>;
+  }>;
+  requirementRepositories?: Array<{
+    id: string;
+    repository: Repository;
+  }>;
 }
 
 export interface Repository {
@@ -24,6 +51,7 @@ export interface Workspace {
   description?: string | null;
   repositories: Repository[];
   _count?: {
+    projects: number;
     requirements: number;
   };
 }

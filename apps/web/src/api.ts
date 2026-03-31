@@ -1,13 +1,14 @@
-import type { AuthOrganization, AuthSession, Bug, Issue, Requirement, ReviewFinding, WorkflowRun, Workspace, Repository } from './types';
+import type { AuthOrganization, AuthSession, Bug, Issue, Project, Requirement, ReviewFinding, WorkflowRun, Workspace, Repository } from './types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
 const AUTH_TOKEN_STORAGE_KEY = 'flowx-auth-token';
 
 interface RequirementPayload {
+  projectId: string;
   title: string;
   description: string;
   acceptanceCriteria: string;
-  workspaceId: string;
+  repositoryIds?: string[];
 }
 
 function getAuthToken() {
@@ -97,8 +98,14 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   getWorkspaces: () => request<Workspace[]>('/workspaces'),
+  getProjects: () => request<Project[]>('/projects'),
   createWorkspace: (payload: { name: string; description?: string }) =>
     request<Workspace>('/workspaces', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  createProject: (payload: { workspaceId: string; name: string; code?: string; description?: string }) =>
+    request<Project>('/projects', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
@@ -149,10 +156,10 @@ export const api = {
         pushed: boolean;
       }>;
     }>(`/workflow-runs/${id}/git/publish`, { method: 'POST' }),
-  createWorkflowRun: (requirementId: string) =>
+  createWorkflowRun: (requirementId: string, repositoryIds?: string[]) =>
     request<WorkflowRun>('/workflow-runs', {
       method: 'POST',
-      body: JSON.stringify({ requirementId }),
+      body: JSON.stringify({ requirementId, repositoryIds }),
     }),
   runTaskSplit: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/task-split/run`, { method: 'POST' }),

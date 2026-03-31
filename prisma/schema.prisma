@@ -8,71 +8,93 @@ datasource db {
 }
 
 model Requirement {
-  id                 String   @id @default(cuid())
-  status             String   @default("ACTIVE")
-  title              String
-  description        String
-  acceptanceCriteria String
-  workspaceId        String?
-  workspace          Workspace? @relation(fields: [workspaceId], references: [id])
-  workflowRuns       WorkflowRun[]
-  issues             Issue[]
-  bugs               Bug[] @relation("BugSourceRequirement")
-  fixingBugs         Bug[] @relation("BugFixRequirement")
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                      String                  @id @default(cuid())
+  status                  String                  @default("ACTIVE")
+  title                   String
+  description             String
+  acceptanceCriteria      String
+  projectId               String
+  project                 Project                 @relation(fields: [projectId], references: [id])
+  workspaceId             String?
+  workspace               Workspace?              @relation(fields: [workspaceId], references: [id])
+  requirementRepositories RequirementRepository[]
+  workflowRuns            WorkflowRun[]
+  issues                  Issue[]
+  bugs                    Bug[]                   @relation("BugSourceRequirement")
+  fixingBugs              Bug[]                   @relation("BugFixRequirement")
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+
+  @@index([projectId, createdAt])
 }
 
 model Workspace {
-  id           String       @id @default(cuid())
-  status       String       @default("ACTIVE")
+  id           String        @id @default(cuid())
+  status       String        @default("ACTIVE")
   name         String
   description  String?
+  projects     Project[]
   repositories Repository[]
   requirements Requirement[]
   issues       Issue[]
   bugs         Bug[]
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Project {
+  id           String        @id @default(cuid())
+  status       String        @default("ACTIVE")
+  workspaceId  String
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id])
+  name         String
+  code         String?
+  description  String?
+  requirements Requirement[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([workspaceId, createdAt])
 }
 
 model Repository {
-  id            String    @id @default(cuid())
-  status        String    @default("ACTIVE")
-  workspaceId   String
-  workspace     Workspace @relation(fields: [workspaceId], references: [id])
-  name          String
-  url           String
-  defaultBranch String?
-  currentBranch String?
-  localPath     String?
-  syncStatus    String    @default("PENDING")
-  syncError     String?
-  lastSyncedAt  DateTime?
-  workflowRepositories WorkflowRepository[]
-  issues        Issue[]
-  bugs          Bug[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                      String                  @id @default(cuid())
+  status                  String                  @default("ACTIVE")
+  workspaceId             String
+  workspace               Workspace               @relation(fields: [workspaceId], references: [id])
+  name                    String
+  url                     String
+  defaultBranch           String?
+  currentBranch           String?
+  localPath               String?
+  syncStatus              String                  @default("PENDING")
+  syncError               String?
+  lastSyncedAt            DateTime?
+  requirementRepositories RequirementRepository[]
+  workflowRepositories    WorkflowRepository[]
+  issues                  Issue[]
+  bugs                    Bug[]
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
 }
 
 model User {
-  id            String          @id @default(cuid())
-  account       String?         @unique
-  email         String?         @unique
-  displayName   String
-  avatarUrl     String?
-  status        String          @default("ACTIVE")
+  id              String             @id @default(cuid())
+  account         String?            @unique
+  email           String?            @unique
+  displayName     String
+  avatarUrl       String?
+  status          String             @default("ACTIVE")
   localCredential LocalCredential?
-  identities    AuthIdentity[]
-  sessions      UserSession[]
-  memberships   UserOrganization[]
-  reportedIssues Issue[] @relation("IssueReportedBy")
-  assignedIssues Issue[] @relation("IssueAssignedTo")
-  reportedBugs   Bug[]   @relation("BugReportedBy")
-  assignedBugs   Bug[]   @relation("BugAssignedTo")
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  identities      AuthIdentity[]
+  sessions        UserSession[]
+  memberships     UserOrganization[]
+  reportedIssues  Issue[]            @relation("IssueReportedBy")
+  assignedIssues  Issue[]            @relation("IssueAssignedTo")
+  reportedBugs    Bug[]              @relation("BugReportedBy")
+  assignedBugs    Bug[]              @relation("BugAssignedTo")
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 }
 
 model LocalCredential {
@@ -86,30 +108,30 @@ model LocalCredential {
 }
 
 model AuthIdentity {
-  id                    String   @id @default(cuid())
-  userId                String
-  user                  User     @relation(fields: [userId], references: [id])
-  provider              String
-  providerUserId        String
-  providerUnionId       String?
-  providerRawProfile    Json?
-  lastLoginAt           DateTime?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                 String    @id @default(cuid())
+  userId             String
+  user               User      @relation(fields: [userId], references: [id])
+  provider           String
+  providerUserId     String
+  providerUnionId    String?
+  providerRawProfile Json?
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@unique([provider, providerUserId])
 }
 
 model Organization {
-  id                    String             @id @default(cuid())
-  provider              String
+  id                     String             @id @default(cuid())
+  provider               String
   providerOrganizationId String
-  name                  String
-  logoUrl               String?
-  memberships           UserOrganization[]
-  sessions              UserSession[]
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
+  name                   String
+  logoUrl                String?
+  memberships            UserOrganization[]
+  sessions               UserSession[]
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
 
   @@unique([provider, providerOrganizationId])
 }
@@ -128,57 +150,57 @@ model UserOrganization {
 }
 
 model UserSession {
+  id             String        @id @default(cuid())
+  token          String        @unique
+  userId         String
+  user           User          @relation(fields: [userId], references: [id])
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  expiresAt      DateTime
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model OAuthState {
+  id          String    @id @default(cuid())
+  provider    String
+  state       String    @unique
+  redirectUri String
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model PendingOrganizationSelection {
   id            String    @id @default(cuid())
   token         String    @unique
-  userId        String
-  user          User      @relation(fields: [userId], references: [id])
-  organizationId String?
-  organization  Organization? @relation(fields: [organizationId], references: [id])
+  provider      String
+  profile       Json
+  organizations Json
   expiresAt     DateTime
+  consumedAt    DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
 
-model OAuthState {
-  id          String   @id @default(cuid())
-  provider    String
-  state       String   @unique
-  redirectUri String
-  expiresAt   DateTime
-  usedAt      DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-model PendingOrganizationSelection {
-  id             String   @id @default(cuid())
-  token          String   @unique
-  provider       String
-  profile        Json
-  organizations  Json
-  expiresAt      DateTime
-  consumedAt     DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-}
-
 model WorkflowRun {
-  id              String @id @default(cuid())
-  status          String @default("CREATED")
-  currentStage    String?
-  requirementId  String
-  requirement    Requirement @relation(fields: [requirementId], references: [id])
-  stageExecutions StageExecution[]
-  tasks          Task[]
-  plan           Plan?
-  codeExecution  CodeExecution?
-  reviewReport   ReviewReport?
+  id                   String               @id @default(cuid())
+  status               String               @default("CREATED")
+  currentStage         String?
+  requirementId        String
+  requirement          Requirement          @relation(fields: [requirementId], references: [id])
+  stageExecutions      StageExecution[]
+  tasks                Task[]
+  plan                 Plan?
+  codeExecution        CodeExecution?
+  reviewReport         ReviewReport?
   workflowRepositories WorkflowRepository[]
-  reviewFindings ReviewFinding[]
-  issues         Issue[]
-  bugs           Bug[]
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  reviewFindings       ReviewFinding[]
+  issues               Issue[]
+  bugs                 Bug[]
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 }
 
 model WorkflowRepository {
@@ -201,167 +223,180 @@ model WorkflowRepository {
   @@index([workflowRunId, createdAt])
 }
 
+model RequirementRepository {
+  id            String      @id @default(cuid())
+  requirementId String
+  requirement   Requirement @relation(fields: [requirementId], references: [id])
+  repositoryId  String
+  repository    Repository  @relation(fields: [repositoryId], references: [id])
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([requirementId, repositoryId])
+  @@index([repositoryId, createdAt])
+}
+
 model StageExecution {
-  id           String @id @default(cuid())
-  workflowRunId String
-  workflowRun  WorkflowRun @relation(fields: [workflowRunId], references: [id])
-  stage        String
-  attempt      Int @default(1)
-  status       String @default("PENDING")
-  statusMessage String?
-  input        Json?
-  output       Json?
-  errorMessage String?
-  startedAt    DateTime?
-  finishedAt   DateTime?
+  id             String          @id @default(cuid())
+  workflowRunId  String
+  workflowRun    WorkflowRun     @relation(fields: [workflowRunId], references: [id])
+  stage          String
+  attempt        Int             @default(1)
+  status         String          @default("PENDING")
+  statusMessage  String?
+  input          Json?
+  output         Json?
+  errorMessage   String?
+  startedAt      DateTime?
+  finishedAt     DateTime?
   reviewFindings ReviewFinding[]
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   @@index([workflowRunId, stage, attempt])
 }
 
 model Task {
-  id           String @id @default(cuid())
+  id            String      @id @default(cuid())
   workflowRunId String
-  workflowRun  WorkflowRun @relation(fields: [workflowRunId], references: [id])
-  title        String
-  description  String
-  order        Int
-  status       String @default("DRAFT")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  workflowRun   WorkflowRun @relation(fields: [workflowRunId], references: [id])
+  title         String
+  description   String
+  order         Int
+  status        String      @default("DRAFT")
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 }
 
 model Plan {
-  id                 String @id @default(cuid())
-  workflowRunId      String     @unique
+  id                 String      @id @default(cuid())
+  workflowRunId      String      @unique
   workflowRun        WorkflowRun @relation(fields: [workflowRunId], references: [id])
-  status             String @default("DRAFT")
+  status             String      @default("DRAFT")
   summary            String
   implementationPlan Json
   filesToModify      Json
   newFiles           Json
   riskPoints         Json
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
 }
 
 model CodeExecution {
-  id           String @id @default(cuid())
-  workflowRunId String             @unique
-  workflowRun  WorkflowRun @relation(fields: [workflowRunId], references: [id])
-  status       String @default("RUNNING")
-  patchSummary String
-  changedFiles Json
-  codeChanges  Json
+  id            String      @id @default(cuid())
+  workflowRunId String      @unique
+  workflowRun   WorkflowRun @relation(fields: [workflowRunId], references: [id])
+  status        String      @default("RUNNING")
+  patchSummary  String
+  changedFiles  Json
+  codeChanges   Json
   diffArtifacts Json?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 }
 
 model ReviewReport {
-  id           String @id @default(cuid())
-  workflowRunId String             @unique
-  workflowRun  WorkflowRun @relation(fields: [workflowRunId], references: [id])
-  status       String @default("COMPLETED")
-  issues       Json
-  bugs         Json
-  missingTests Json
-  suggestions  Json
-  impactScope  Json
+  id             String          @id @default(cuid())
+  workflowRunId  String          @unique
+  workflowRun    WorkflowRun     @relation(fields: [workflowRunId], references: [id])
+  status         String          @default("COMPLETED")
+  issues         Json
+  bugs           Json
+  missingTests   Json
+  suggestions    Json
+  impactScope    Json
   reviewFindings ReviewFinding[]
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 }
 
 model ReviewFinding {
-  id                   String   @id @default(cuid())
-  status               String   @default("OPEN")
-  type                 String
-  sourceType           String
-  sourceIndex          Int
-  severity             String   @default("MEDIUM")
-  title                String
-  description          String
-  recommendation       String?
-  impactScope          Json?
-  metadata             Json?
-  reviewReportId       String
-  reviewReport         ReviewReport @relation(fields: [reviewReportId], references: [id])
-  workflowRunId        String
-  workflowRun          WorkflowRun @relation(fields: [workflowRunId], references: [id])
+  id                     String          @id @default(cuid())
+  status                 String          @default("OPEN")
+  type                   String
+  sourceType             String
+  sourceIndex            Int
+  severity               String          @default("MEDIUM")
+  title                  String
+  description            String
+  recommendation         String?
+  impactScope            Json?
+  metadata               Json?
+  reviewReportId         String
+  reviewReport           ReviewReport    @relation(fields: [reviewReportId], references: [id])
+  workflowRunId          String
+  workflowRun            WorkflowRun     @relation(fields: [workflowRunId], references: [id])
   sourceStageExecutionId String?
-  sourceStageExecution StageExecution? @relation(fields: [sourceStageExecutionId], references: [id])
-  convertedIssueId     String?   @unique
-  convertedIssue       Issue?    @relation("FindingToIssue", fields: [convertedIssueId], references: [id])
-  convertedBugId       String?   @unique
-  convertedBug         Bug?      @relation("FindingToBug", fields: [convertedBugId], references: [id])
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  sourceStageExecution   StageExecution? @relation(fields: [sourceStageExecutionId], references: [id])
+  convertedIssueId       String?         @unique
+  convertedIssue         Issue?          @relation("FindingToIssue", fields: [convertedIssueId], references: [id])
+  convertedBugId         String?         @unique
+  convertedBug           Bug?            @relation("FindingToBug", fields: [convertedBugId], references: [id])
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
 
+  @@unique([reviewReportId, sourceType, sourceIndex])
   @@index([workflowRunId, type, status])
   @@index([reviewReportId, createdAt])
-  @@unique([reviewReportId, sourceType, sourceIndex])
 }
 
 model Issue {
-  id               String   @id @default(cuid())
-  status           String   @default("OPEN")
-  priority         String   @default("MEDIUM")
+  id               String         @id @default(cuid())
+  status           String         @default("OPEN")
+  priority         String         @default("MEDIUM")
   title            String
   description      String
   resolution       String?
   workspaceId      String
-  workspace        Workspace @relation(fields: [workspaceId], references: [id])
+  workspace        Workspace      @relation(fields: [workspaceId], references: [id])
   requirementId    String?
-  requirement      Requirement? @relation(fields: [requirementId], references: [id])
+  requirement      Requirement?   @relation(fields: [requirementId], references: [id])
   workflowRunId    String?
-  workflowRun      WorkflowRun? @relation(fields: [workflowRunId], references: [id])
+  workflowRun      WorkflowRun?   @relation(fields: [workflowRunId], references: [id])
   reviewFinding    ReviewFinding? @relation("FindingToIssue")
   repositoryId     String?
-  repository       Repository? @relation(fields: [repositoryId], references: [id])
+  repository       Repository?    @relation(fields: [repositoryId], references: [id])
   branchName       String?
   assigneeUserId   String?
-  assigneeUser     User? @relation("IssueAssignedTo", fields: [assigneeUserId], references: [id])
+  assigneeUser     User?          @relation("IssueAssignedTo", fields: [assigneeUserId], references: [id])
   reportedByUserId String?
-  reportedByUser   User? @relation("IssueReportedBy", fields: [reportedByUserId], references: [id])
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  reportedByUser   User?          @relation("IssueReportedBy", fields: [reportedByUserId], references: [id])
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   @@index([workspaceId, status, priority])
   @@index([workflowRunId, createdAt])
 }
 
 model Bug {
-  id               String   @id @default(cuid())
-  status           String   @default("OPEN")
-  severity         String   @default("MEDIUM")
-  priority         String   @default("MEDIUM")
-  title            String
-  description      String
-  expectedBehavior String?
-  actualBehavior   String?
+  id                String         @id @default(cuid())
+  status            String         @default("OPEN")
+  severity          String         @default("MEDIUM")
+  priority          String         @default("MEDIUM")
+  title             String
+  description       String
+  expectedBehavior  String?
+  actualBehavior    String?
   reproductionSteps Json?
-  resolution       String?
-  workspaceId      String
-  workspace        Workspace @relation(fields: [workspaceId], references: [id])
-  requirementId    String?
-  requirement      Requirement? @relation("BugSourceRequirement", fields: [requirementId], references: [id])
-  workflowRunId    String?
-  workflowRun      WorkflowRun? @relation(fields: [workflowRunId], references: [id])
-  reviewFinding    ReviewFinding? @relation("FindingToBug")
-  repositoryId     String?
-  repository       Repository? @relation(fields: [repositoryId], references: [id])
-  branchName       String?
-  fixRequirementId String?
-  fixRequirement   Requirement? @relation("BugFixRequirement", fields: [fixRequirementId], references: [id])
-  assigneeUserId   String?
-  assigneeUser     User? @relation("BugAssignedTo", fields: [assigneeUserId], references: [id])
-  reportedByUserId String?
-  reportedByUser   User? @relation("BugReportedBy", fields: [reportedByUserId], references: [id])
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  resolution        String?
+  workspaceId       String
+  workspace         Workspace      @relation(fields: [workspaceId], references: [id])
+  requirementId     String?
+  requirement       Requirement?   @relation("BugSourceRequirement", fields: [requirementId], references: [id])
+  workflowRunId     String?
+  workflowRun       WorkflowRun?   @relation(fields: [workflowRunId], references: [id])
+  reviewFinding     ReviewFinding? @relation("FindingToBug")
+  repositoryId      String?
+  repository        Repository?    @relation(fields: [repositoryId], references: [id])
+  branchName        String?
+  fixRequirementId  String?
+  fixRequirement    Requirement?   @relation("BugFixRequirement", fields: [fixRequirementId], references: [id])
+  assigneeUserId    String?
+  assigneeUser      User?          @relation("BugAssignedTo", fields: [assigneeUserId], references: [id])
+  reportedByUserId  String?
+  reportedByUser    User?          @relation("BugReportedBy", fields: [reportedByUserId], references: [id])
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 
   @@index([workspaceId, status, severity, priority])
   @@index([workflowRunId, createdAt])

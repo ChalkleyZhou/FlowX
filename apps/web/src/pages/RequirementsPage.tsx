@@ -18,8 +18,6 @@ import { Badge } from '../components/ui/badge';
 import { Button as UiButton } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Input as UiInput } from '../components/ui/input';
-import { Spinner } from '../components/ui/spinner';
-import { useToast } from '../components/ui/toast';
 import {
   Select,
   SelectContent,
@@ -27,48 +25,77 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
+import { Spinner } from '../components/ui/spinner';
 import { Textarea } from '../components/ui/textarea';
-import type { Requirement, Workspace } from '../types';
+import { useToast } from '../components/ui/toast';
+import type { Project, Requirement, Workspace } from '../types';
 
 export function RequirementsPage() {
   const navigate = useNavigate();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>();
+  const [selectedProjectId, setSelectedProjectId] = useState<string>();
   const [loading, setLoading] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [launchModalRequirement, setLaunchModalRequirement] = useState<Requirement | null>(null);
+  const [launchRepositoryIds, setLaunchRepositoryIds] = useState<string[]>([]);
+  const [launchSubmitting, setLaunchSubmitting] = useState(false);
   const [createDraft, setCreateDraft] = useState({
-    workspaceId: '',
+    projectId: '',
     title: '',
     description: '',
     acceptanceCriteria: '',
+    repositoryIds: [] as string[],
   });
   const toast = useToast();
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === createDraft.projectId) ?? null,
+    [createDraft.projectId, projects],
+  );
+  const availableRepositories = selectedProject?.workspace.repositories ?? [];
 
-  const filteredRequirements = useMemo(() => {
-    if (!selectedWorkspaceId) {
-      return requirements;
-    }
-    return requirements.filter((item) => item.workspace?.id === selectedWorkspaceId);
-  }, [requirements, selectedWorkspaceId]);
+  const filteredProjects = useMemo(
+    () => projects.filter((project) => !selectedWorkspaceId || project.workspace.id === selectedWorkspaceId),
+    [projects, selectedWorkspaceId],
+  );
+
+  const filteredRequirements = useMemo(
+    () =>
+      requirements.filter((item) => {
+        if (selectedWorkspaceId && item.project.workspace.id !== selectedWorkspaceId) {
+          return false;
+        }
+        if (selectedProjectId && item.project.id !== selectedProjectId) {
+          return false;
+        }
+        return true;
+      }),
+    [requirements, selectedProjectId, selectedWorkspaceId],
+  );
 
   const requirementSummary = useMemo(() => {
-    const workspaceSet = new Set(requirements.map((item) => item.workspace?.id).filter(Boolean));
+    const workspaceSet = new Set(requirements.map((item) => item.project.workspace.id));
+    const projectSet = new Set(requirements.map((item) => item.project.id));
     return {
       requirementCount: requirements.length,
       visibleCount: filteredRequirements.length,
       workspaceCount: workspaceSet.size,
+      projectCount: projectSet.size,
     };
   }, [filteredRequirements.length, requirements]);
 
   async function refresh() {
     setLoading(true);
     try {
-      const [workspaceList, requirementList] = await Promise.all([
+      const [workspaceList, projectList, requirementList] = await Promise.all([
         api.getWorkspaces(),
+        api.getProjects(),
         api.getRequirements(),
       ]);
       setWorkspaces(workspaceList);
+      setProjects(projectList);
       setRequirements(requirementList);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '加载需求失败');
@@ -82,21 +109,23 @@ export function RequirementsPage() {
   }, []);
 
   async function createRequirement(values: {
-    workspaceId: string;
+    projectId: string;
     title: string;
     description: string;
     acceptanceCriteria: string;
+    repositoryIds: string[];
   }) {
     try {
       await api.createRequirement(values);
       setCreateDraft({
-        workspaceId: '',
+        projectId: '',
         title: '',
         description: '',
         acceptanceCriteria: '',
+        repositoryIds: [],
       });
       setCreateModalOpen(false);
-      setSelectedWorkspaceId(values.workspaceId);
+      setSelectedProjectId(values.projectId);
       await refresh();
       toast.success('需求创建成功');
     } catch (error) {
@@ -105,20 +134,28 @@ export function RequirementsPage() {
   }
 
   async function startWorkflow(requirementId: string) {
+    setLaunchSubmitting(true);
     try {
-      const run = await api.createWorkflowRun(requirementId);
+      const run = await api.createWorkflowRun(
+        requirementId,
+        launchRepositoryIds.length > 0 ? launchRepositoryIds : undefined,
+      );
       toast.success('工作流已启动');
+      setLaunchModalRequirement(null);
+      setLaunchRepositoryIds([]);
       navigate(`/workflow-runs/${run.id}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '启动工作流失败');
+    } finally {
+      setLaunchSubmitting(false);
     }
   }
 
   async function handleCreateRequirement(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!createDraft.workspaceId) {
-      toast.error('请选择工作区');
+    if (!createDraft.projectId) {
+      toast.error('请选择项目');
       return;
     }
 
@@ -128,25 +165,151 @@ export function RequirementsPage() {
     }
 
     await createRequirement({
-      workspaceId: createDraft.workspaceId,
+      projectId: createDraft.projectId,
       title: createDraft.title.trim(),
       description: createDraft.description.trim(),
       acceptanceCriteria: createDraft.acceptanceCriteria.trim(),
+      repositoryIds: createDraft.repositoryIds,
     });
+  }
+
+  function toggleRepository(repositoryId: string) {
+    setCreateDraft((current) => {
+      const exists = current.repositoryIds.includes(repositoryId);
+      return {
+        ...current,
+        repositoryIds: exists
+          ? current.repositoryIds.filter((id) => id !== repositoryId)
+          : [...current.repositoryIds, repositoryId],
+      };
+    });
+  }
+
+  function renderRepositoryScope(requirement: Requirement) {
+    const repositories = requirement.requirementRepositories?.map((entry) => entry.repository) ?? [];
+    if (repositories.length === 0) {
+      return '未单独指定仓库范围，将继承项目工作区的默认仓库上下文。';
+    }
+
+    return repositories.map((repository) => repository.name).join('、');
+  }
+
+  function getActiveWorkflowRuns(requirement: Requirement) {
+    return (requirement.workflowRuns ?? []).filter(
+      (run) => !['DONE', 'FAILED'].includes(run.status),
+    );
+  }
+
+  function renderActiveWorkflowScope(requirement: Requirement) {
+    const activeRuns = getActiveWorkflowRuns(requirement);
+    if (activeRuns.length === 0) {
+      return '当前没有进行中的工作流。';
+    }
+
+    return activeRuns
+      .map((run) => {
+        const repositories = run.workflowRepositories?.map((repository) => repository.name) ?? [];
+        const scopeLabel = repositories.length > 0 ? repositories.join('、') : '未记录仓库范围';
+        return `${run.id.slice(-6)} · ${run.status} · ${scopeLabel}`;
+      })
+      .join(' | ');
+  }
+
+  function getRequirementDefaultRepositories(requirement: Requirement) {
+    if ((requirement.requirementRepositories?.length ?? 0) > 0) {
+      return requirement.requirementRepositories!.map((entry) => entry.repository);
+    }
+    return requirement.project.workspace.repositories;
+  }
+
+  function toggleLaunchRepository(repositoryId: string) {
+    setLaunchRepositoryIds((current) =>
+      current.includes(repositoryId)
+        ? current.filter((id) => id !== repositoryId)
+        : [...current, repositoryId],
+    );
   }
 
   return (
     <>
+      <Dialog
+        open={Boolean(launchModalRequirement)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setLaunchModalRequirement(null);
+            setLaunchRepositoryIds([]);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>启动工作流</DialogTitle>
+            <DialogDescription>
+              留空则使用这条需求的默认仓库范围；如果只想并行推进其中一部分仓库，可以在这里手动缩小范围。
+            </DialogDescription>
+          </DialogHeader>
+          {launchModalRequirement ? (
+            <div className="flex flex-col gap-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="text-sm font-semibold text-slate-900">{launchModalRequirement.title}</div>
+                <div className="mt-1 text-sm leading-6 text-slate-600">
+                  默认范围：{renderRepositoryScope(launchModalRequirement)}
+                </div>
+              </div>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-3">
+                  <label className="text-sm font-semibold text-[var(--text)]">本次工作流仓库范围</label>
+                  <span className="text-xs leading-5 text-slate-500">不选则按默认范围启动</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {getRequirementDefaultRepositories(launchModalRequirement).map((repository) => {
+                    const selected = launchRepositoryIds.includes(repository.id);
+                    return (
+                      <UiButton
+                        key={repository.id}
+                        type="button"
+                        variant={selected ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => toggleLaunchRepository(repository.id)}
+                      >
+                        {selected ? '已选' : '选择'} {repository.name}
+                      </UiButton>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="flex justify-end gap-3">
+                <UiButton
+                  variant="outline"
+                  onClick={() => {
+                    setLaunchModalRequirement(null);
+                    setLaunchRepositoryIds([]);
+                  }}
+                >
+                  取消
+                </UiButton>
+                <UiButton
+                  onClick={() => void startWorkflow(launchModalRequirement.id)}
+                  disabled={launchSubmitting}
+                >
+                  {launchSubmitting ? '启动中...' : '确认启动'}
+                </UiButton>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={createModalOpen}
         onOpenChange={(open) => {
           setCreateModalOpen(open);
           if (!open) {
             setCreateDraft({
-              workspaceId: '',
+              projectId: '',
               title: '',
               description: '',
               acceptanceCriteria: '',
+              repositoryIds: [],
             });
           }
         }}
@@ -154,22 +317,27 @@ export function RequirementsPage() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>创建需求</DialogTitle>
-            <DialogDescription>填写基础信息后，这条需求就可以归档到工作区并发起工作流。</DialogDescription>
+            <DialogDescription>填写基础信息后，这条需求会先归档到项目，再发起工作流。</DialogDescription>
           </DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={(event) => void handleCreateRequirement(event)}>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]">所属工作区</label>
+              <label className="text-sm font-semibold text-[var(--text)]">所属项目</label>
               <Select
-                value={createDraft.workspaceId || undefined}
-                onValueChange={(value) => setCreateDraft((current) => ({ ...current, workspaceId: value }))}
+                value={createDraft.projectId || undefined}
+                onValueChange={(value) =>
+                  setCreateDraft((current) => ({
+                    ...current,
+                    projectId: value,
+                    repositoryIds: [],
+                  }))}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="选择需求属于哪个项目" />
+                  <SelectValue placeholder="选择需求归属的项目" />
                 </SelectTrigger>
                 <SelectContent>
-                  {workspaces.map((workspace) => (
-                    <SelectItem key={workspace.id} value={workspace.id}>
-                      {workspace.name}
+                  {projects.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -204,6 +372,36 @@ export function RequirementsPage() {
                 placeholder="列出本次迭代必须满足的验收检查点。"
               />
             </div>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-sm font-semibold text-[var(--text)]">影响仓库范围</label>
+                <span className="text-xs leading-5 text-slate-500">不选则默认继承项目工作区全部仓库</span>
+              </div>
+              {selectedProject ? (
+                availableRepositories.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {availableRepositories.map((repository) => {
+                      const selected = createDraft.repositoryIds.includes(repository.id);
+                      return (
+                        <UiButton
+                          key={repository.id}
+                          type="button"
+                          variant={selected ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => toggleRepository(repository.id)}
+                        >
+                          {selected ? '已选' : '选择'} {repository.name}
+                        </UiButton>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm leading-6 text-slate-500">当前项目所在工作区还没有可选仓库。</p>
+                )
+              ) : (
+                <p className="text-sm leading-6 text-slate-500">先选择项目，再指定这条需求实际影响的仓库。</p>
+              )}
+            </div>
             <UiButton type="submit" className="mt-2">
               创建需求
             </UiButton>
@@ -213,12 +411,13 @@ export function RequirementsPage() {
       <PageHeader
         eyebrow="Requirements"
         title="需求录入与流程发起"
-        description="先归档需求，再基于所属工作区发起工作流，让需求、代码仓库与执行历史保持同一条上下文链路。"
+        description="需求现在先归属于项目，再沿着项目所在工作区继承代码上下文和执行链路。"
       />
-      <div className="grid gap-5 md:grid-cols-3">
+      <div className="grid gap-5 md:grid-cols-4">
         <MetricCard label="需求总数" value={requirementSummary.requirementCount} />
         <MetricCard label="当前筛选结果" value={requirementSummary.visibleCount} />
         <MetricCard label="涉及工作区" value={requirementSummary.workspaceCount} />
+        <MetricCard label="涉及项目" value={requirementSummary.projectCount} />
       </div>
       <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <CardHeader className="pb-4">
@@ -229,7 +428,10 @@ export function RequirementsPage() {
               <FilterBar className="border-0 bg-transparent p-0">
                 <Select
                   value={selectedWorkspaceId ?? '__all__'}
-                  onValueChange={(value) => setSelectedWorkspaceId(value === '__all__' ? undefined : value)}
+                  onValueChange={(value) => {
+                    setSelectedWorkspaceId(value === '__all__' ? undefined : value);
+                    setSelectedProjectId(undefined);
+                  }}
                 >
                   <SelectTrigger className="min-w-[220px]">
                     <SelectValue placeholder="按工作区筛选" />
@@ -239,6 +441,22 @@ export function RequirementsPage() {
                     {workspaces.map((workspace) => (
                       <SelectItem key={workspace.id} value={workspace.id}>
                         {workspace.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={selectedProjectId ?? '__all__'}
+                  onValueChange={(value) => setSelectedProjectId(value === '__all__' ? undefined : value)}
+                >
+                  <SelectTrigger className="min-w-[220px]">
+                    <SelectValue placeholder="按项目筛选" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">全部项目</SelectItem>
+                    {filteredProjects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -257,29 +475,51 @@ export function RequirementsPage() {
             </div>
           ) : filteredRequirements.length > 0 ? (
             <div className="record-list-stack">
-            {filteredRequirements.map((item) => (
-              <RecordListItem
-                key={item.id}
-                title={<div className="text-base font-semibold leading-6 text-slate-950">{item.title}</div>}
-                badges={
-                  <Badge variant="default">
-                    {item.workspace?.name ?? '未绑定工作区'}
-                  </Badge>
-                }
-                description={<p className="leading-6">{item.description}</p>}
-                details={<p className="text-sm leading-6 text-slate-500">{item.acceptanceCriteria}</p>}
-                actions={
-                  <>
-                    <UiButton variant="outline" onClick={() => void startWorkflow(item.id)}>
-                      启动工作流
-                    </UiButton>
-                    <UiButton variant="outline" onClick={() => navigate(`/workflow-runs?requirementId=${item.id}`)}>
-                      查看流程
-                    </UiButton>
-                  </>
-                }
-              />
-            ))}
+              {filteredRequirements.map((item) => (
+                <RecordListItem
+                  key={item.id}
+                  title={<div className="text-base font-semibold leading-6 text-slate-950">{item.title}</div>}
+                  badges={
+                    <>
+                      <Badge variant="secondary">{item.project.name}</Badge>
+                      <Badge variant="outline">{item.project.workspace.name}</Badge>
+                      <Badge variant="default">{item.workflowRuns?.length ?? 0} 条工作流</Badge>
+                      <Badge variant={getActiveWorkflowRuns(item).length > 0 ? 'warning' : 'outline'}>
+                        {getActiveWorkflowRuns(item).length} 条活跃流
+                      </Badge>
+                      <Badge variant="outline">
+                        {(item.requirementRepositories?.length ?? 0) > 0
+                          ? `${item.requirementRepositories?.length ?? 0} 个目标仓库`
+                          : '默认仓库范围'}
+                      </Badge>
+                    </>
+                  }
+                  description={<p className="leading-6">{item.description}</p>}
+                  details={(
+                    <>
+                      <p className="text-sm leading-6 text-slate-500">{item.acceptanceCriteria}</p>
+                      <p className="text-sm leading-6 text-slate-500">仓库范围：{renderRepositoryScope(item)}</p>
+                      <p className="text-sm leading-6 text-slate-500">并行占用：{renderActiveWorkflowScope(item)}</p>
+                    </>
+                  )}
+                  actions={
+                    <>
+                      <UiButton
+                        variant="outline"
+                        onClick={() => {
+                          setLaunchModalRequirement(item);
+                          setLaunchRepositoryIds([]);
+                        }}
+                      >
+                        启动工作流
+                      </UiButton>
+                      <UiButton variant="outline" onClick={() => navigate(`/workflow-runs?requirementId=${item.id}`)}>
+                        查看流程
+                      </UiButton>
+                    </>
+                  }
+                />
+              ))}
             </div>
           ) : (
             <EmptyState description="还没有录入任何需求，先创建一条需求开始推进。" />

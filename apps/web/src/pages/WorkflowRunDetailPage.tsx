@@ -883,7 +883,8 @@ export function WorkflowRunDetailPage() {
             title={workflowRun.requirement.title}
             description={workflowRun.requirement.description}
             badges={[
-              { key: 'workspace', label: workflowRun.requirement.workspace?.name ?? '未绑定工作区', variant: 'default' },
+              { key: 'workspace', label: workflowRun.requirement.project.workspace.name, variant: 'default' },
+              { key: 'project', label: workflowRun.requirement.project.name, variant: 'outline' },
               { key: 'id', label: workflowRun.id, variant: 'outline' },
               { key: 'status', label: formatWorkflowStatus(workflowRun.status), variant: 'secondary' },
             ]}
@@ -928,6 +929,24 @@ export function WorkflowRunDetailPage() {
               />
             </div>
           ) : null}
+
+          <ContextPanel
+            eyebrow="Requirement Scope"
+            title="需求定义的仓库范围"
+            description="如果这里为空，本次工作流会回退继承项目工作区的默认仓库集合。"
+          >
+            {workflowRun.requirement.requirementRepositories?.length ? (
+              <div className="flex flex-wrap gap-3">
+                {workflowRun.requirement.requirementRepositories.map((entry) => (
+                  <Badge key={entry.id} variant="outline">
+                    {entry.repository.name}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm leading-6 text-slate-500">当前需求没有单独指定仓库范围。</p>
+            )}
+          </ContextPanel>
 
           <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
             <CardHeader className="p-5 pb-0">

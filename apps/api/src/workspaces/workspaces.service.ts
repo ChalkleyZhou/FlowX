@@ -25,6 +25,7 @@ export class WorkspacesService {
         },
         _count: {
           select: {
+            projects: true,
             requirements: true,
           },
         },
@@ -43,6 +44,7 @@ export class WorkspacesService {
         },
         _count: {
           select: {
+            projects: true,
             requirements: true,
           },
         },

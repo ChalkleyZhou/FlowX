@@ -1,6 +1,10 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsArray, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateRequirementDto {
+  @IsString()
+  @IsNotEmpty()
+  projectId!: string;
+
   @IsString()
   @IsNotEmpty()
   title!: string;
@@ -13,7 +17,8 @@ export class CreateRequirementDto {
   @IsNotEmpty()
   acceptanceCriteria!: string;
 
-  @IsString()
-  @IsNotEmpty()
-  workspaceId!: string;
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  repositoryIds?: string[];
 }

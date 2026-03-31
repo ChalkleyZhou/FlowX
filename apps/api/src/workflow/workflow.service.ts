@@ -85,29 +85,77 @@ export class WorkflowService {
         status: 'ACTIVE',
       },
       include: {
+        project: {
+          include: {
+            workspace: {
+              include: {
+                repositories: true,
+              },
+            },
+          },
+        },
         workspace: {
           include: {
             repositories: true,
           },
         },
+        requirementRepositories: {
+          include: {
+            repository: true,
+          },
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
       },
     });
+    const requestedRepositoryIds = Array.from(
+      new Set((dto.repositoryIds ?? []).map((value) => value.trim()).filter(Boolean)),
+    );
+    const workspaceRepositories = requirement.workspace?.repositories ?? [];
+    const workspaceRepositoryMap = new Map(
+      workspaceRepositories.map((repository) => [repository.id, repository]),
+    );
+    const defaultRepositories =
+      requirement.requirementRepositories.length > 0
+        ? requirement.requirementRepositories.map((entry) => entry.repository)
+        : workspaceRepositories;
+    const selectedRepositories =
+      requestedRepositoryIds.length > 0
+        ? requestedRepositoryIds.map((repositoryId) => {
+            const repository = workspaceRepositoryMap.get(repositoryId);
+            if (!repository) {
+              throw new NotFoundException('One or more selected repositories do not belong to the requirement workspace.');
+            }
+            return repository;
+          })
+        : defaultRepositories;
 
-    const existingActiveWorkflow = await this.prisma.workflowRun.findFirst({
+    const selectedRepositoryIds = new Set(selectedRepositories.map((repository) => repository.id));
+    const existingActiveWorkflows = await this.prisma.workflowRun.findMany({
       where: {
         requirementId: dto.requirementId,
         status: {
           notIn: ['DONE', 'FAILED'],
         },
       },
+      include: {
+        workflowRepositories: true,
+      },
       orderBy: {
         createdAt: 'desc',
       },
     });
 
-    if (existingActiveWorkflow) {
+    const conflictingWorkflow = existingActiveWorkflows.find((workflowRun) =>
+      workflowRun.workflowRepositories.some((repository) =>
+        repository.repositoryId ? selectedRepositoryIds.has(repository.repositoryId) : false,
+      ),
+    );
+
+    if (conflictingWorkflow) {
       throw new BadRequestException(
-        `该需求已有进行中的工作流：${existingActiveWorkflow.id}，请先完成或终止后再新建。`,
+        `该需求已有进行中的工作流 ${conflictingWorkflow.id} 与当前仓库范围冲突，请调整本次仓库选择后再启动。`,
       );
     }
 
@@ -123,9 +171,8 @@ export class WorkflowService {
         },
       });
 
-      const repositories = requirement.workspace?.repositories ?? [];
-      if (repositories.length > 0) {
-        const workflowRepositoryRecords = repositories.map((repository) => ({
+      if (selectedRepositories.length > 0) {
+        const workflowRepositoryRecords = selectedRepositories.map((repository) => ({
           repositoryId: repository.id,
           name: repository.name,
           url: repository.url,
@@ -1153,6 +1200,11 @@ export class WorkflowService {
     return {
       requirement: {
         include: {
+          project: {
+            include: {
+              workspace: true,
+            },
+          },
           workspace: {
             include: {
               repositories: true,

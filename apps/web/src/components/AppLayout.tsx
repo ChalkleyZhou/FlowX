@@ -6,6 +6,7 @@ import { Badge } from './ui/badge';
 
 const items = [
   { key: '/workspaces', label: '工作区' },
+  { key: '/projects', label: '项目' },
   { key: '/requirements', label: '需求' },
   { key: '/workflow-runs', label: '工作流' },
   { key: '/issues', label: '问题项' },

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { DingTalkAuthProvider } from './dingtalk.provider';
 import { AuthProvider } from './auth-provider.interface';
 
@@ -6,7 +6,10 @@ import { AuthProvider } from './auth-provider.interface';
 export class ProviderRegistryService {
   private readonly providers: Map<string, AuthProvider>;
 
-  constructor(dingTalkProvider: DingTalkAuthProvider) {
+  constructor(
+    @Inject(DingTalkAuthProvider)
+    dingTalkProvider: DingTalkAuthProvider,
+  ) {
     this.providers = new Map<string, AuthProvider>([[dingTalkProvider.name, dingTalkProvider]]);
   }
 
@@ -22,4 +25,3 @@ export class ProviderRegistryService {
     return provider;
   }
 }
-

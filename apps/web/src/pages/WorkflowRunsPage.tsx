@@ -10,8 +10,6 @@ import { SectionHeader } from '../components/SectionHeader';
 import { Badge } from '../components/ui/badge';
 import { Button as UiButton } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
-import { Spinner } from '../components/ui/spinner';
-import { useToast } from '../components/ui/toast';
 import {
   Select,
   SelectContent,
@@ -19,30 +17,59 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import type { WorkflowRun, Workspace, Requirement } from '../types';
+import { Spinner } from '../components/ui/spinner';
+import { useToast } from '../components/ui/toast';
+import type { Project, Requirement, WorkflowRun, Workspace } from '../types';
 import { formatWorkflowStatus } from '../utils/workflow-ui';
 
 export function WorkflowRunsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [workflowRuns, setWorkflowRuns] = useState<WorkflowRun[]>([]);
   const [loading, setLoading] = useState(false);
   const [deletingWorkflowId, setDeletingWorkflowId] = useState<string | null>(null);
   const toast = useToast();
   const workspaceId = searchParams.get('workspaceId') ?? '';
+  const projectId = searchParams.get('projectId') ?? '';
   const requirementId = searchParams.get('requirementId') ?? '';
 
-  const filteredRuns = useMemo(() => {
-    return workflowRuns.filter((run) => {
-      const matchWorkspace = workspaceId
-        ? run.requirement.workspace?.id === workspaceId
-        : true;
-      const matchRequirement = requirementId ? run.requirement.id === requirementId : true;
-      return matchWorkspace && matchRequirement;
-    });
-  }, [requirementId, workflowRuns, workspaceId]);
+  const visibleProjects = useMemo(
+    () => projects.filter((project) => !workspaceId || project.workspace.id === workspaceId),
+    [projects, workspaceId],
+  );
+  const visibleRequirements = useMemo(
+    () =>
+      requirements.filter((requirement) => {
+        if (workspaceId && requirement.project.workspace.id !== workspaceId) {
+          return false;
+        }
+        if (projectId && requirement.project.id !== projectId) {
+          return false;
+        }
+        return true;
+      }),
+    [projectId, requirements, workspaceId],
+  );
+
+  const filteredRuns = useMemo(
+    () =>
+      workflowRuns.filter((run) => {
+        if (workspaceId && run.requirement.project.workspace.id !== workspaceId) {
+          return false;
+        }
+        if (projectId && run.requirement.project.id !== projectId) {
+          return false;
+        }
+        if (requirementId && run.requirement.id !== requirementId) {
+          return false;
+        }
+        return true;
+      }),
+    [projectId, requirementId, workflowRuns, workspaceId],
+  );
 
   const workflowSummary = useMemo(() => {
     const runningCount = workflowRuns.filter((run) => run.status === 'EXECUTION_RUNNING').length;
@@ -58,12 +85,14 @@ export function WorkflowRunsPage() {
   async function refresh() {
     setLoading(true);
     try {
-      const [workspaceList, requirementList, runList] = await Promise.all([
+      const [workspaceList, projectList, requirementList, runList] = await Promise.all([
         api.getWorkspaces(),
+        api.getProjects(),
         api.getRequirements(),
         api.getWorkflowRuns(),
       ]);
       setWorkspaces(workspaceList);
+      setProjects(projectList);
       setRequirements(requirementList);
       setWorkflowRuns(runList);
     } catch (error) {
@@ -95,12 +124,20 @@ export function WorkflowRunsPage() {
     }
   }
 
+  function renderWorkflowRepositoryScope(run: WorkflowRun) {
+    if (run.workflowRepositories.length === 0) {
+      return '当前工作流没有记录仓库副本。';
+    }
+
+    return run.workflowRepositories.map((repository) => repository.name).join('、');
+  }
+
   return (
     <>
       <PageHeader
         eyebrow="Workflow Runs"
         title="工作流列表"
-        description="从工作区和需求维度查看流程推进情况，快速定位待确认、执行中和需要人工评审的工作流。"
+        description="从工作区、项目和需求三个维度查看流程推进情况，快速定位待确认、执行中和待人工评审的工作流。"
       />
       <div className="grid gap-5 md:grid-cols-4">
         <MetricCard label="工作流总数" value={workflowSummary.total} />
@@ -121,6 +158,8 @@ export function WorkflowRunsPage() {
                     const next = new URLSearchParams(searchParams);
                     if (value && value !== '__all__') {
                       next.set('workspaceId', value);
+                      next.delete('projectId');
+                      next.delete('requirementId');
                     } else {
                       next.delete('workspaceId');
                     }
@@ -135,6 +174,31 @@ export function WorkflowRunsPage() {
                     {workspaces.map((workspace) => (
                       <SelectItem key={workspace.id} value={workspace.id}>
                         {workspace.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={projectId || '__all__'}
+                  onValueChange={(value) => {
+                    const next = new URLSearchParams(searchParams);
+                    if (value && value !== '__all__') {
+                      next.set('projectId', value);
+                      next.delete('requirementId');
+                    } else {
+                      next.delete('projectId');
+                    }
+                    navigate(`/workflow-runs?${next.toString()}`);
+                  }}
+                >
+                  <SelectTrigger className="min-w-[220px]">
+                    <SelectValue placeholder="按项目查看" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">全部项目</SelectItem>
+                    {visibleProjects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -156,7 +220,7 @@ export function WorkflowRunsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">全部需求</SelectItem>
-                    {requirements.map((requirement) => (
+                    {visibleRequirements.map((requirement) => (
                       <SelectItem key={requirement.id} value={requirement.id}>
                         {requirement.title}
                       </SelectItem>
@@ -174,40 +238,47 @@ export function WorkflowRunsPage() {
             </div>
           ) : filteredRuns.length > 0 ? (
             <div className="record-list-stack">
-            {filteredRuns.map((item) => (
-              <RecordListItem
-                key={item.id}
-                interactive
-                title={<div className="text-base font-semibold leading-6 text-slate-950">{item.requirement.title}</div>}
-                badges={
-                  <>
-                    <Badge variant="default">
-                      {formatWorkflowStatus(item.status)}
-                    </Badge>
-                    <Badge variant="outline">{item.requirement.workspace?.name ?? '未绑定工作区'}</Badge>
-                  </>
-                }
-                details={<p className="text-sm leading-6 text-slate-500">{item.requirement.description}</p>}
-                actions={
-                  <div className="flex flex-wrap gap-2">
-                    <UiButton variant="outline" asChild>
-                      <Link to={`/workflow-runs/${item.id}`}>查看详情</Link>
-                    </UiButton>
-                    <UiButton
-                      variant="destructive"
-                      disabled={deletingWorkflowId === item.id}
-                      onClick={() => void handleDeleteWorkflow(item.id)}
-                    >
-                      {deletingWorkflowId === item.id ? '删除中...' : '删除工作流'}
-                    </UiButton>
-                  </div>
-                }
-              />
-            ))}
-          </div>
-        ) : (
-          <EmptyState description="当前筛选条件下还没有工作流，可先从需求页发起流程。" />
-        )}
+              {filteredRuns.map((item) => (
+                <RecordListItem
+                  key={item.id}
+                  interactive
+                  title={<div className="text-base font-semibold leading-6 text-slate-950">{item.requirement.title}</div>}
+                  badges={
+                    <>
+                      <Badge variant="default">{formatWorkflowStatus(item.status)}</Badge>
+                      <Badge variant="secondary">{item.requirement.project.name}</Badge>
+                      <Badge variant="outline">{item.requirement.project.workspace.name}</Badge>
+                      <Badge variant="outline">{item.workflowRepositories.length} 个执行仓库</Badge>
+                    </>
+                  }
+                  details={(
+                    <>
+                      <p className="text-sm leading-6 text-slate-500">{item.requirement.description}</p>
+                      <p className="text-sm leading-6 text-slate-500">
+                        执行范围：{renderWorkflowRepositoryScope(item)}
+                      </p>
+                    </>
+                  )}
+                  actions={
+                    <div className="flex flex-wrap gap-2">
+                      <UiButton variant="outline" asChild>
+                        <Link to={`/workflow-runs/${item.id}`}>查看详情</Link>
+                      </UiButton>
+                      <UiButton
+                        variant="destructive"
+                        disabled={deletingWorkflowId === item.id}
+                        onClick={() => void handleDeleteWorkflow(item.id)}
+                      >
+                        {deletingWorkflowId === item.id ? '删除中...' : '删除工作流'}
+                      </UiButton>
+                    </div>
+                  }
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState description="当前筛选条件下还没有工作流，可先从需求页发起流程。" />
+          )}
         </CardContent>
       </Card>
     </>

@@ -40,10 +40,12 @@ export function WorkspacesPage() {
 
   const workspaceSummary = useMemo(() => {
     const repositoryCount = workspaces.reduce((sum, workspace) => sum + workspace.repositories.length, 0);
+    const projectCount = workspaces.reduce((sum, workspace) => sum + (workspace._count?.projects ?? 0), 0);
     const requirementCount = workspaces.reduce((sum, workspace) => sum + (workspace._count?.requirements ?? 0), 0);
     return {
       workspaceCount: workspaces.length,
       repositoryCount,
+      projectCount,
       requirementCount,
     };
   }, [workspaces]);
@@ -331,11 +333,12 @@ export function WorkspacesPage() {
       <PageHeader
         eyebrow="Workspace"
         title="项目工作区与代码库"
-        description="统一管理项目上下文、仓库分支与本地副本，为后续需求和工作流提供稳定的研发基线。"
+        description="统一管理协作底座、仓库分支与本地副本，项目和需求会在这层之上继续拆分。"
       />
-      <div className="grid gap-5 md:grid-cols-3">
+      <div className="grid gap-5 md:grid-cols-4">
         <MetricCard label="工作区数量" value={workspaceSummary.workspaceCount} />
         <MetricCard label="代码库数量" value={workspaceSummary.repositoryCount} />
+        <MetricCard label="项目数量" value={workspaceSummary.projectCount} />
         <MetricCard label="关联需求数" value={workspaceSummary.requirementCount} />
       </div>
       <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -363,6 +366,7 @@ export function WorkspacesPage() {
                     <p className="mt-2 text-sm leading-6 text-slate-500">{workspace.description || '未填写描述'}</p>
                     <div className="mt-2 flex flex-wrap gap-3">
                       <Badge variant="warning">{workspace.repositories.length} 个代码库</Badge>
+                      <Badge variant="secondary">{workspace._count?.projects ?? 0} 个项目</Badge>
                       <Badge variant="default">{workspace._count?.requirements ?? 0} 条需求</Badge>
                     </div>
                   </div>
