@@ -27,6 +27,23 @@ compose_managed() {
   [ -n "${label}" ] && [ "${label}" != "<no value>" ]
 }
 
+compose_cmd() {
+  if docker compose version >/dev/null 2>&1; then
+    echo "docker compose"
+    return 0
+  fi
+
+  if command -v docker-compose >/dev/null 2>&1; then
+    echo "docker-compose"
+    return 0
+  fi
+
+  echo "Docker Compose is not available. Install Docker Compose plugin or docker-compose." >&2
+  exit 1
+}
+
+COMPOSE_CMD="$(compose_cmd)"
+
 echo "==> Updating FlowX in mode: ${MODE}"
 echo "==> Pulling latest code"
 git pull --ff-only
@@ -51,8 +68,8 @@ if [ "${MODE}" = "nginx" ]; then
     fi
   fi
   echo "==> Restarting with Docker Compose"
-  docker compose -f "${COMPOSE_FILE}" up -d --force-recreate
-  echo "==> Done. Verify with: docker compose -f ${COMPOSE_FILE} ps"
+  ${COMPOSE_CMD} -f "${COMPOSE_FILE}" up -d --force-recreate
+  echo "==> Done. Verify with: ${COMPOSE_CMD} -f ${COMPOSE_FILE} ps"
   exit 0
 fi
 

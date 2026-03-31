@@ -220,6 +220,12 @@ docker build \
 docker compose -f docker-compose.nginx.yml up -d
 ```
 
+如果你的服务器没有 `docker compose` 子命令，而是老版本的独立命令，就改用：
+
+```bash
+docker-compose -f docker-compose.nginx.yml up -d
+```
+
 启动后访问：
 
 - `http://YOUR_SERVER_IP/`
@@ -337,6 +343,11 @@ sh scripts/deploy-update.sh
 - `git pull --ff-only`
 - 重新 `docker build`
 - 执行 `docker compose -f docker-compose.nginx.yml up -d --force-recreate`
+
+脚本会自动兼容：
+
+- `docker compose`
+- `docker-compose`
 
 执行前建议先确认 `.env.docker` 已经存在并填写完成。
 
