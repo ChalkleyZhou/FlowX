@@ -69,6 +69,7 @@ flowchart LR
 ## Structure
 
 - `docs/system-design.md`: MVP system design
+- `docs/docker-deployment.md`: Docker 与 Nginx 部署指南
 - `apps/api`: backend service
 - `apps/web`: basic management UI
 - `prisma`: Prisma schema
@@ -106,6 +107,8 @@ pnpm dev
 ```
 
 ## Docker deployment
+
+完整部署说明见 [docs/docker-deployment.md](/Users/chalkley/workspace/FlowX/docs/docker-deployment.md)。
 
 This repo includes a multi-stage `Dockerfile` that builds both the API and the web app.
 
