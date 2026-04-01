@@ -344,11 +344,31 @@ export class RepositorySyncService {
     }
 
     const docsSnapshot = await this.buildDocsFirstSnapshot(localPath);
-    if (docsSnapshot) {
-      return docsSnapshot;
+    const structuralSnapshot = await this.buildStructuralSnapshot(localPath);
+
+    if (!docsSnapshot) {
+      return structuralSnapshot;
     }
 
-    return this.buildStructuralSnapshot(localPath);
+    const evidenceFiles = Array.from(
+      new Set([
+        ...(docsSnapshot.evidenceFiles ?? []),
+        ...(structuralSnapshot.evidenceFiles ?? []),
+      ]),
+    );
+
+    const summarySections = [
+      docsSnapshot.summary?.trim() ? docsSnapshot.summary.trim() : '',
+      structuralSnapshot.summary?.trim()
+        ? `补充仓库结构证据:\n${structuralSnapshot.summary.trim()}`
+        : '',
+    ].filter(Boolean);
+
+    return {
+      strategy: 'docs-and-structure',
+      summary: summarySections.join('\n\n'),
+      evidenceFiles,
+    };
   }
 
   private async buildDocsFirstSnapshot(localPath: string) {
