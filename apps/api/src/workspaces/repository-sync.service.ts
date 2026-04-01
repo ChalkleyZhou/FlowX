@@ -108,14 +108,14 @@ export class RepositorySyncService {
     }
   }
 
-  async generateWorkflowRepositorySnapshots(workflowRunId: string) {
+  async generateWorkflowRepositoryGrounding(workflowRunId: string) {
     const workflowRepositories = await this.prisma.workflowRepository.findMany({
       where: { workflowRunId },
       orderBy: { createdAt: 'asc' },
     });
 
     for (const workflowRepository of workflowRepositories) {
-      const snapshot = await this.buildWorkflowRepositorySnapshot(workflowRepository.localPath);
+      const snapshot = await this.buildWorkflowRepositoryGrounding(workflowRepository.localPath);
       await this.prisma.workflowRepository.update({
         where: { id: workflowRepository.id },
         data: {
@@ -338,7 +338,7 @@ export class RepositorySyncService {
     }
   }
 
-  private async buildWorkflowRepositorySnapshot(localPath?: string | null) {
+  private async buildWorkflowRepositoryGrounding(localPath?: string | null) {
     if (!localPath || !(await this.pathExists(localPath))) {
       return null;
     }

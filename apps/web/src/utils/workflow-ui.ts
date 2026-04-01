@@ -22,6 +22,7 @@ export function formatStageExecutionStatus(status: string) {
 export function formatWorkflowStatus(status: string) {
   const map: Record<string, string> = {
     CREATED: '已创建',
+    REPOSITORY_GROUNDING_PENDING: '待仓库 grounding',
     TASK_SPLIT_PENDING: '待任务拆解',
     TASK_SPLIT_WAITING_CONFIRMATION: '待确认任务拆解',
     TASK_SPLIT_CONFIRMED: '任务拆解已确认',

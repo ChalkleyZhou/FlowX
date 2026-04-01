@@ -27,7 +27,7 @@ import {
 } from '../utils/label-utils';
 import { formatStageExecutionStatus, formatWorkflowStatus, getStage } from '../utils/workflow-ui';
 
-const STAGE_SEQUENCE = ['TASK_SPLIT', 'TECHNICAL_PLAN', 'EXECUTION', 'AI_REVIEW'] as const;
+const STAGE_SEQUENCE = ['REPOSITORY_GROUNDING', 'TASK_SPLIT', 'TECHNICAL_PLAN', 'EXECUTION', 'AI_REVIEW'] as const;
 
 type WorkflowStageKey = (typeof STAGE_SEQUENCE)[number];
 type EditableStage = 'task-split' | 'plan' | 'execution' | 'review';
@@ -77,28 +77,34 @@ const stageMeta: Record<
   WorkflowStageKey,
   { title: string; stepLabel: string; stageNo: string; editableStage: EditableStage }
 > = {
+  REPOSITORY_GROUNDING: {
+    title: '仓库 Grounding',
+    stepLabel: '仓库 Grounding',
+    stageNo: '阶段 2',
+    editableStage: 'task-split',
+  },
   TASK_SPLIT: {
     title: '任务拆解',
     stepLabel: '任务拆解',
-    stageNo: '阶段 2',
+    stageNo: '阶段 3',
     editableStage: 'task-split',
   },
   TECHNICAL_PLAN: {
     title: '技术方案',
     stepLabel: '技术方案',
-    stageNo: '阶段 3',
+    stageNo: '阶段 4',
     editableStage: 'plan',
   },
   EXECUTION: {
     title: '开发执行',
     stepLabel: '开发执行',
-    stageNo: '阶段 4',
+    stageNo: '阶段 5',
     editableStage: 'execution',
   },
   AI_REVIEW: {
     title: 'AI 审查',
     stepLabel: 'AI 审查',
-    stageNo: '阶段 5',
+    stageNo: '阶段 6',
     editableStage: 'review',
   },
 };
@@ -140,6 +146,10 @@ function inferFocusedStage(run: WorkflowRun): WorkflowStageKey {
     if (stage?.status === 'RUNNING' || stage?.status === 'WAITING_CONFIRMATION' || stage?.status === 'FAILED') {
       return stageKey;
     }
+  }
+
+  if (run.status === 'REPOSITORY_GROUNDING_PENDING') {
+    return 'REPOSITORY_GROUNDING';
   }
 
   if (run.status === 'PLAN_PENDING' || run.status === 'PLAN_WAITING_CONFIRMATION' || run.status === 'PLAN_CONFIRMED') {
@@ -584,6 +594,7 @@ export function WorkflowRunDetailPage() {
       return null;
     }
 
+    const groundingStage = getStage(workflowRun, 'REPOSITORY_GROUNDING');
     const taskSplitStage = getStage(workflowRun, 'TASK_SPLIT');
     const planStage = getStage(workflowRun, 'TECHNICAL_PLAN');
     const executionStage = getStage(workflowRun, 'EXECUTION');
@@ -594,6 +605,15 @@ export function WorkflowRunDetailPage() {
     }));
 
     return {
+      REPOSITORY_GROUNDING: {
+        title: stageMeta.REPOSITORY_GROUNDING.stageNo,
+        subtitle: stageMeta.REPOSITORY_GROUNDING.title,
+        status: groundingStage?.status,
+        statusMessage: groundingStage?.statusMessage,
+        attempt: groundingStage?.attempt,
+        output: sanitizeDisplayValue(groundingStage?.output, repositoryPaths),
+        actions: [],
+      },
       TASK_SPLIT: {
         title: stageMeta.TASK_SPLIT.stageNo,
         subtitle: stageMeta.TASK_SPLIT.title,

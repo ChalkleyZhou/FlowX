@@ -2,7 +2,11 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { StageExecutionStatus, StageType, WorkflowRunStatus } from './enums';
 
 const workflowTransitions: Record<WorkflowRunStatus, WorkflowRunStatus[]> = {
-  [WorkflowRunStatus.CREATED]: [WorkflowRunStatus.TASK_SPLIT_PENDING],
+  [WorkflowRunStatus.CREATED]: [WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING],
+  [WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING]: [
+    WorkflowRunStatus.TASK_SPLIT_PENDING,
+    WorkflowRunStatus.FAILED,
+  ],
   [WorkflowRunStatus.TASK_SPLIT_PENDING]: [
     WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION,
     WorkflowRunStatus.FAILED,
@@ -86,6 +90,7 @@ export class WorkflowStateMachine {
   assertStageMatchesWorkflow(stage: StageType, status: WorkflowRunStatus): void {
     const allowed: Record<StageType, WorkflowRunStatus[]> = {
       [StageType.REQUIREMENT_INTAKE]: [WorkflowRunStatus.CREATED],
+      [StageType.REPOSITORY_GROUNDING]: [WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING],
       [StageType.TASK_SPLIT]: [
         WorkflowRunStatus.TASK_SPLIT_PENDING,
         WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION,

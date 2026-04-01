@@ -32,6 +32,7 @@ const execFile = promisify(execFileCallback);
 
 const workflowStatusMap: Record<WorkflowRunStatus, string> = {
   [WorkflowRunStatus.CREATED]: 'CREATED',
+  [WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING]: 'REPOSITORY_GROUNDING_PENDING',
   [WorkflowRunStatus.TASK_SPLIT_PENDING]: 'TASK_SPLIT_PENDING',
   [WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION]:
     'TASK_SPLIT_WAITING_CONFIRMATION',
@@ -62,6 +63,7 @@ const stageStatusMap: Record<StageExecutionStatus, string> = {
 
 const stageTypeMap: Record<StageType, string> = {
   [StageType.REQUIREMENT_INTAKE]: 'REQUIREMENT_INTAKE',
+  [StageType.REPOSITORY_GROUNDING]: 'REPOSITORY_GROUNDING',
   [StageType.TASK_SPLIT]: 'TASK_SPLIT',
   [StageType.TECHNICAL_PLAN]: 'TECHNICAL_PLAN',
   [StageType.EXECUTION]: 'EXECUTION',
@@ -232,7 +234,6 @@ export class WorkflowService {
 
     try {
       await this.repositorySyncService.prepareWorkflowRepositories(workflow.id);
-      await this.repositorySyncService.generateWorkflowRepositorySnapshots(workflow.id);
     } catch (error) {
       await this.prisma.workflowRun.update({
         where: { id: workflow.id },
@@ -243,17 +244,101 @@ export class WorkflowService {
       throw error;
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    const startedWorkflow = await this.prisma.$transaction(async (tx) => {
       await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.CREATED, {
-        to: WorkflowRunStatus.TASK_SPLIT_PENDING,
-        stage: StageType.TASK_SPLIT,
+        to: WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING,
+        stage: StageType.REPOSITORY_GROUNDING,
+      });
+
+      await this.createStageExecution(tx, workflow.id, StageType.REPOSITORY_GROUNDING, {
+        input: {
+          workflowRunId: workflow.id,
+          repositories: selectedRepositories.map((repository) => ({
+            id: repository.id,
+            name: repository.name,
+            url: repository.url,
+          })),
+        },
+        status: StageExecutionStatus.RUNNING,
+        statusMessage: '正在生成仓库 grounding 上下文',
+        startedAt: new Date(),
+      });
+
+      return tx.workflowRun.findUniqueOrThrow({
+        where: { id: workflow.id },
+        include: this.workflowInclude(),
       });
     });
 
-    return this.prisma.workflowRun.findUniqueOrThrow({
-      where: { id: workflow.id },
-      include: this.workflowInclude(),
+    this.runInBackground(`grounding:${workflow.id}`, async () => {
+      try {
+        await this.repositorySyncService.generateWorkflowRepositoryGrounding(workflow.id);
+        const groundedWorkflow = await this.getWorkflowOrThrow(workflow.id);
+        const groundingOutput = this.buildGroundingStageOutput(groundedWorkflow.workflowRepositories);
+
+        await this.prisma.$transaction(async (tx) => {
+          const groundingStage = await tx.stageExecution.findFirstOrThrow({
+            where: {
+              workflowRunId: workflow.id,
+              stage: stageTypeMap[StageType.REPOSITORY_GROUNDING],
+              status: 'RUNNING',
+            },
+            orderBy: { attempt: 'desc' },
+          });
+
+          await this.updateStageExecution(
+            tx,
+            groundingStage.id,
+            StageExecutionStatus.COMPLETED,
+            {
+              output: groundingOutput,
+              statusMessage: null,
+              finishedAt: new Date(),
+            },
+          );
+
+          await this.transitionWorkflow(
+            tx,
+            workflow.id,
+            WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING,
+            {
+              to: WorkflowRunStatus.TASK_SPLIT_PENDING,
+              stage: StageType.TASK_SPLIT,
+            },
+          );
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Repository grounding failed';
+        await this.prisma.$transaction(async (tx) => {
+          const groundingStage = await tx.stageExecution.findFirst({
+            where: {
+              workflowRunId: workflow.id,
+              stage: stageTypeMap[StageType.REPOSITORY_GROUNDING],
+              status: 'RUNNING',
+            },
+            orderBy: { attempt: 'desc' },
+          });
+
+          if (groundingStage) {
+            await this.updateStageExecution(tx, groundingStage.id, StageExecutionStatus.FAILED, {
+              errorMessage: message,
+              statusMessage: '仓库 grounding 失败，请查看错误信息',
+              finishedAt: new Date(),
+            });
+          }
+
+          await tx.workflowRun.update({
+            where: { id: workflow.id },
+            data: {
+              status: workflowStatusMap[WorkflowRunStatus.FAILED],
+              currentStage: stageTypeMap[StageType.REPOSITORY_GROUNDING],
+            },
+          });
+        });
+      }
     });
+
+    return startedWorkflow;
   }
 
   async findAll() {
@@ -1370,6 +1455,29 @@ export class WorkflowService {
               syncStatus: repository.syncStatus,
               contextSnapshot: null,
             })),
+    };
+  }
+
+  private buildGroundingStageOutput(
+    workflowRepositories: WorkflowPayload['workflowRepositories'],
+  ) {
+    return {
+      repositories: workflowRepositories.map((repository) => ({
+        id: repository.id,
+        repositoryId: repository.repositoryId,
+        name: repository.name,
+        url: repository.url,
+        baseBranch: repository.baseBranch,
+        workingBranch: repository.workingBranch,
+        localPath: repository.localPath,
+        status: repository.status,
+        contextSnapshot:
+          (repository.contextSnapshot as {
+            strategy?: string;
+            summary?: string;
+            evidenceFiles?: string[];
+          } | null) ?? null,
+      })),
     };
   }
 
