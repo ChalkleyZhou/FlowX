@@ -410,6 +410,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     const outputPath = join(tempDir, `${stageName.replace(/\s+/g, '-')}.json`);
     const schemaPath = join(this.schemaDir, schemaFile);
     const addDirArgs = addDirs.flatMap((dir) => ['--add-dir', dir]);
+    const codexCwd = addDirs[0] ?? process.cwd();
 
     try {
       const { stderr } = await execFile(
@@ -422,6 +423,8 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
           '--color',
           'never',
           '--ephemeral',
+          '-C',
+          codexCwd,
           ...addDirArgs,
           '--output-schema',
           schemaPath,
@@ -430,7 +433,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
           prompt,
         ],
         {
-          cwd: process.cwd(),
+          cwd: codexCwd,
           env: process.env,
           maxBuffer: 1024 * 1024 * 8,
         },
