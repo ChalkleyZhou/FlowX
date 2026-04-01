@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { promisify } from 'util';
 import { execFile as execFileCallback } from 'child_process';
-import { mkdtemp, readFile, rm } from 'fs/promises';
+import { mkdtemp, readdir, readFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -29,9 +29,10 @@ export class CodexAiExecutor implements AIExecutor {
   private readonly schemaDir = join(process.cwd(), 'apps/api/src/ai');
 
   async splitTasks(input: SplitTasksInput): Promise<SplitTasksOutput> {
+    const prompt = await this.buildTaskSplitPrompt(input);
     const parsed = await this.runCodexJson<SplitTasksOutput>(
       'task-split.output.schema.json',
-      this.buildTaskSplitPrompt(input),
+      prompt,
       'task split',
       this.getReadableRepositoryDirs(input.workspace?.repositories),
     );
@@ -40,9 +41,10 @@ export class CodexAiExecutor implements AIExecutor {
   }
 
   async generatePlan(input: GeneratePlanInput): Promise<GeneratePlanOutput> {
+    const prompt = await this.buildTechnicalPlanPrompt(input);
     return this.runCodexJson<GeneratePlanOutput>(
       'technical-plan.output.schema.json',
-      this.buildTechnicalPlanPrompt(input),
+      prompt,
       'technical plan',
       this.getReadableRepositoryDirs(input.workspace?.repositories),
     );
@@ -86,8 +88,8 @@ export class CodexAiExecutor implements AIExecutor {
     );
   }
 
-  private buildTaskSplitPrompt(input: SplitTasksInput) {
-    const workspaceSection = this.buildWorkspaceSection(input.workspace);
+  private async buildTaskSplitPrompt(input: SplitTasksInput) {
+    const workspaceSection = await this.buildWorkspaceSection(input.workspace);
     const revisionSection = input.humanFeedback
       ? `
 
@@ -106,6 +108,9 @@ ${JSON.stringify(input.previousOutput ?? {}, null, 2)}
 
 ${taskSplitPrompt.user}
 
+你必须基于“实际仓库上下文”拆分任务，优先参考下方给出的真实目录结构和关键文件摘要。
+如果仓库证据不足，应该在 ambiguities 中明确说明，而不是凭常见 React/Umi 目录结构自行脑补文件路径。
+
 需求信息:
 - 标题: ${input.requirement.title}
 - 描述: ${input.requirement.description}
@@ -120,8 +125,8 @@ ${revisionSection}
 `;
   }
 
-  private buildTechnicalPlanPrompt(input: GeneratePlanInput) {
-    const workspaceSection = this.buildWorkspaceSection(input.workspace);
+  private async buildTechnicalPlanPrompt(input: GeneratePlanInput) {
+    const workspaceSection = await this.buildWorkspaceSection(input.workspace);
     const revisionSection = input.humanFeedback
       ? `
 
@@ -141,6 +146,10 @@ ${JSON.stringify(input.previousOutput ?? {}, null, 2)}
 不要输出 FlowX 编排系统文件、绝对路径、本地工作目录路径或临时目录路径。
 
 ${technicalPlanPrompt.user}
+
+你必须严格依据下方给出的真实仓库结构来生成方案。
+不要假设项目一定存在 src/app.tsx、src/layouts、src/pages 等常见前端目录。
+如果目标文件在仓库证据中无法成立，请调整方案，或者把不确定点写进风险与说明中。
 
 需求信息:
 - 标题: ${input.requirement.title}
@@ -293,7 +302,7 @@ ${diffSection}
 `;
   }
 
-  private buildWorkspaceSection(workspace?: {
+  private async buildWorkspaceSection(workspace?: {
     name: string;
     description?: string | null;
     repositories: RepositoryContext[];
@@ -302,13 +311,16 @@ ${diffSection}
       return '\n工作区上下文:\n- 未提供工作区信息';
     }
 
-    const repositories = workspace.repositories.length
-      ? workspace.repositories
-          .map(
-            (repository) =>
-              `  - ${repository.name} | URL: ${repository.url} | 默认分支: ${repository.defaultBranch ?? '未设置'} | 当前分支: ${repository.currentBranch ?? repository.defaultBranch ?? '未设置'}\n    同步状态: ${repository.syncStatus ?? '未知'}`,
-          )
-          .join('\n')
+    const repositorySections = workspace.repositories.length
+      ? await Promise.all(
+          workspace.repositories.map(async (repository) => {
+            const baseLine =
+              `  - ${repository.name} | URL: ${repository.url} | 默认分支: ${repository.defaultBranch ?? '未设置'} | 当前分支: ${repository.currentBranch ?? repository.defaultBranch ?? '未设置'}\n` +
+              `    同步状态: ${repository.syncStatus ?? '未知'}`;
+            const snapshot = await this.buildRepositorySnapshot(repository);
+            return `${baseLine}\n${snapshot}`;
+          }),
+        )
       : '  - 当前工作区未登记代码库';
 
     return `
@@ -316,7 +328,78 @@ ${diffSection}
 - 名称: ${workspace.name}
 - 描述: ${workspace.description ?? '无'}
 - 代码库:
-${repositories}`;
+${Array.isArray(repositorySections) ? repositorySections.join('\n') : repositorySections}`;
+  }
+
+  private async buildRepositorySnapshot(repository: RepositoryContext) {
+    if (!repository.localPath || repository.syncStatus !== 'READY') {
+      return '    仓库快照: 未提供可读的本地副本';
+    }
+
+    try {
+      const rootEntries = await this.readDirectoryEntries(repository.localPath, 24);
+      const focusDirectories = ['src', 'app', 'pages', 'layouts', 'components', 'tests', 'test'];
+      const focusSections = await Promise.all(
+        focusDirectories.map(async (dir) => {
+          const entries = await this.readDirectoryEntries(join(repository.localPath!, dir), 16);
+          return entries.length > 0 ? `    ${dir}/:\n${entries.map((entry) => `      - ${entry}`).join('\n')}` : '';
+        }),
+      );
+
+      const packageSummary = await this.readPackageJsonSummary(repository.localPath);
+
+      return [
+        rootEntries.length > 0
+          ? `    仓库根目录:\n${rootEntries.map((entry) => `      - ${entry}`).join('\n')}`
+          : '    仓库根目录: 无法读取',
+        packageSummary ? `    package.json 摘要:\n${packageSummary}` : '',
+        ...focusSections.filter(Boolean),
+      ]
+        .filter(Boolean)
+        .join('\n');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown snapshot error';
+      return `    仓库快照读取失败: ${message}`;
+    }
+  }
+
+  private async readDirectoryEntries(path: string, limit: number) {
+    try {
+      const entries = await readdir(path, { withFileTypes: true });
+      return entries
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .slice(0, limit)
+        .map((entry) => `${entry.isDirectory() ? '[D]' : '[F]'} ${entry.name}`);
+    } catch {
+      return [];
+    }
+  }
+
+  private async readPackageJsonSummary(localPath: string) {
+    try {
+      const packageJson = JSON.parse(await readFile(join(localPath, 'package.json'), 'utf8')) as {
+        name?: string;
+        scripts?: Record<string, string>;
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+
+      const scriptNames = Object.keys(packageJson.scripts ?? {}).slice(0, 12);
+      const dependencyNames = [
+        ...Object.keys(packageJson.dependencies ?? {}),
+        ...Object.keys(packageJson.devDependencies ?? {}),
+      ].slice(0, 20);
+
+      return [
+        packageJson.name ? `      - name: ${packageJson.name}` : '',
+        scriptNames.length > 0 ? `      - scripts: ${scriptNames.join(', ')}` : '',
+        dependencyNames.length > 0 ? `      - dependencies: ${dependencyNames.join(', ')}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+    } catch {
+      return '';
+    }
   }
 
   private assertSplitTasksOutput(output: SplitTasksOutput) {

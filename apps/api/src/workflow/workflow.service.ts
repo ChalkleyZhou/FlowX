@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { execFile as execFileCallback } from 'child_process';
+import { access } from 'fs/promises';
 import { Prisma } from '@prisma/client';
 import { promisify } from 'util';
 import { AI_EXECUTOR, AIExecutor } from '../ai/ai-executor';
@@ -20,7 +21,7 @@ import {
   ReviewCodeOutput,
   SplitTasksOutput,
 } from '../common/types';
-import { sep } from 'path';
+import { dirname, join, sep } from 'path';
 import { WorkflowStateMachine } from '../common/workflow-state-machine';
 import { DingTalkNotificationService } from '../notifications/dingtalk-notification.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -561,6 +562,7 @@ export class WorkflowService {
           previousOutput: (previousStage?.output as GeneratePlanOutput | null) ?? null,
         });
         const output = this.sanitizePlanOutputPaths(rawOutput, workflow.workflowRepositories);
+        await this.assertPlanMatchesRepositories(output, workflow.workflowRepositories);
 
         await this.prisma.$transaction(async (tx) => {
           const planStage = await tx.stageExecution.findFirstOrThrow({
@@ -1371,6 +1373,102 @@ export class WorkflowService {
       filesToModify: this.sanitizeFileReferenceList(output.filesToModify, repositories),
       newFiles: this.sanitizeFileReferenceList(output.newFiles, repositories),
     };
+  }
+
+  private async assertPlanMatchesRepositories(
+    output: GeneratePlanOutput,
+    repositories?: WorkflowPayload['workflowRepositories'],
+  ) {
+    const invalidFilesToModify: string[] = [];
+    const invalidNewFiles: string[] = [];
+
+    for (const file of output.filesToModify) {
+      if (!(await this.planPathExistsInRepositories(file, repositories, false))) {
+        invalidFilesToModify.push(file);
+      }
+    }
+
+    for (const file of output.newFiles) {
+      if (!(await this.planPathExistsInRepositories(file, repositories, true))) {
+        invalidNewFiles.push(file);
+      }
+    }
+
+    if (invalidFilesToModify.length === 0 && invalidNewFiles.length === 0) {
+      return;
+    }
+
+    const repositorySummaries = (repositories ?? [])
+      .map((repository) => {
+        const label = repository.name;
+        const branch = repository.workingBranch ?? repository.baseBranch ?? '未设置';
+        const localPath = repository.localPath ?? '未提供';
+        return `${label}(${branch}) => ${localPath}`;
+      })
+      .join(' | ');
+
+    const parts = ['技术方案与真实仓库结构不匹配。'];
+    if (invalidFilesToModify.length > 0) {
+      parts.push(`filesToModify 中这些路径不存在：${invalidFilesToModify.join('，')}`);
+    }
+    if (invalidNewFiles.length > 0) {
+      parts.push(`newFiles 中这些路径的父目录不存在：${invalidNewFiles.join('，')}`);
+    }
+    parts.push(`当前 workflow 仓库：${repositorySummaries || '无可用仓库'}`);
+    parts.push('请重新生成技术方案，并严格基于仓库真实目录结构。');
+
+    throw new Error(parts.join(' '));
+  }
+
+  private async planPathExistsInRepositories(
+    value: string,
+    repositories: WorkflowPayload['workflowRepositories'] | undefined,
+    allowParentDirectory: boolean,
+  ) {
+    const candidates = this.resolveRepositoryPathCandidates(value, repositories, allowParentDirectory);
+
+    for (const candidate of candidates) {
+      try {
+        await access(candidate);
+        return true;
+      } catch {
+        continue;
+      }
+    }
+
+    return false;
+  }
+
+  private resolveRepositoryPathCandidates(
+    value: string,
+    repositories: WorkflowPayload['workflowRepositories'] | undefined,
+    allowParentDirectory: boolean,
+  ) {
+    const normalized = String(value ?? '').trim().replace(/\\/g, '/');
+    if (!normalized) {
+      return [];
+    }
+
+    const availableRepositories = (repositories ?? []).filter((repository) => repository.localPath);
+    const hasExplicitRepository = normalized.includes(':');
+
+    if (hasExplicitRepository) {
+      const [repositoryName, ...rest] = normalized.split(':');
+      const relativePath = rest.join(':').replace(/^\/+/, '');
+      const matchedRepository = availableRepositories.find((repository) => repository.name === repositoryName);
+      if (!matchedRepository?.localPath || !relativePath) {
+        return [];
+      }
+
+      const targetPath = join(matchedRepository.localPath, relativePath);
+      return [allowParentDirectory ? dirname(targetPath) : targetPath];
+    }
+
+    return availableRepositories
+      .map((repository) => {
+        const targetPath = join(repository.localPath!, normalized);
+        return allowParentDirectory ? dirname(targetPath) : targetPath;
+      });
   }
 
   private sanitizeExecutionOutputPaths(
