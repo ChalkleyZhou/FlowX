@@ -563,6 +563,7 @@ export class WorkflowService {
           previousOutput: (previousStage?.output as GeneratePlanOutput | null) ?? null,
         });
         const output = this.sanitizePlanOutputPaths(rawOutput, workflow.workflowRepositories);
+        this.assertPlanHasConcreteFiles(output);
         await this.assertPlanMatchesRepositories(output, workflow.workflowRepositories);
 
         await this.prisma.$transaction(async (tx) => {
@@ -1381,6 +1382,19 @@ export class WorkflowService {
       filesToModify: this.sanitizeFileReferenceList(output.filesToModify, repositories),
       newFiles: this.sanitizeFileReferenceList(output.newFiles, repositories),
     };
+  }
+
+  private assertPlanHasConcreteFiles(output: GeneratePlanOutput) {
+    const filesToModify = output.filesToModify.filter((item) => item.trim().length > 0);
+    const newFiles = output.newFiles.filter((item) => item.trim().length > 0);
+
+    if (filesToModify.length > 0 || newFiles.length > 0) {
+      return;
+    }
+
+    throw new Error(
+      '技术方案未给出任何明确文件落点。请基于当前 workflow 仓库副本的实时结构，输出至少一个 filesToModify 或 newFiles 项后再继续。',
+    );
   }
 
   private async assertPlanMatchesRepositories(
