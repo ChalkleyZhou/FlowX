@@ -23,6 +23,20 @@ import { AIExecutor } from './ai-executor';
 
 const execFile = promisify(execFileCallback);
 
+interface RepositoryPlanAnalysis {
+  repository: string;
+  summary: string;
+  candidateFiles: string[];
+  relevantDirectories: string[];
+  entryPoints: string[];
+  unknowns: string[];
+}
+
+interface PlanAnalysisOutput {
+  repositories: RepositoryPlanAnalysis[];
+  crossRepoNotes: string[];
+}
+
 @Injectable()
 export class CodexAiExecutor implements AIExecutor {
   private readonly logger = new Logger(CodexAiExecutor.name);
@@ -41,7 +55,8 @@ export class CodexAiExecutor implements AIExecutor {
   }
 
   async generatePlan(input: GeneratePlanInput): Promise<GeneratePlanOutput> {
-    const prompt = await this.buildTechnicalPlanPrompt(input);
+    const repoAnalysis = await this.analyzeRepositoriesForPlan(input);
+    const prompt = await this.buildTechnicalPlanPrompt(input, repoAnalysis);
     return this.runCodexJson<GeneratePlanOutput>(
       'technical-plan.output.schema.json',
       prompt,
@@ -125,7 +140,10 @@ ${revisionSection}
 `;
   }
 
-  private async buildTechnicalPlanPrompt(input: GeneratePlanInput) {
+  private async buildTechnicalPlanPrompt(
+    input: GeneratePlanInput,
+    repoAnalysis: PlanAnalysisOutput,
+  ) {
     const workspaceSection = await this.buildWorkspaceSection(input.workspace, 'live');
     const revisionSection = input.humanFeedback
       ? `
@@ -161,39 +179,9 @@ ${revisionSection}
 
 已确认任务:
 ${input.tasks.map((task, index) => `${index + 1}. ${task.title}: ${task.description}`).join('\n')}
-`;
-  }
 
-  private buildExecutionPrompt(input: ExecuteTaskInput) {
-    const workspaceSection = this.buildWorkspaceSection(input.workspace);
-
-    return `${executionPrompt.system}
-
-你必须只返回符合 JSON Schema 的 JSON，不要输出解释文字或 Markdown。
-所有涉及文件的描述都必须使用“目标代码仓库根目录下的相对路径”。
-不要输出 FlowX 编排系统文件、绝对路径、本地工作目录路径或临时目录路径。
-
-${executionPrompt.user}
-
-需求信息:
-- 标题: ${input.requirement.title}
-- 描述: ${input.requirement.description}
-- 验收标准: ${input.requirement.acceptanceCriteria}
-${workspaceSection}
-
-任务:
-${input.tasks.map((task, index) => `${index + 1}. ${task.title}: ${task.description}`).join('\n')}
-
-已确认技术方案:
-- 摘要: ${input.plan.summary}
-- 实施步骤:
-${input.plan.implementationPlan.map((item, index) => `${index + 1}. ${item}`).join('\n')}
-- 修改文件:
-${input.plan.filesToModify.map((item) => `  - ${item}`).join('\n') || '  - 无'}
-- 新增文件:
-${input.plan.newFiles.map((item) => `  - ${item}`).join('\n') || '  - 无'}
-- 风险点:
-${input.plan.riskPoints.map((item) => `  - ${item}`).join('\n') || '  - 无'}
+仓库分析结论:
+${this.formatPlanAnalysis(repoAnalysis)}
 `;
   }
 
@@ -302,6 +290,77 @@ ${input.execution.codeChanges
   .join('\n')}
 ${diffSection}
 `;
+  }
+
+  private async analyzeRepositoriesForPlan(
+    input: GeneratePlanInput,
+  ): Promise<PlanAnalysisOutput> {
+    const prompt = await this.buildRepositoryAnalysisPrompt(input);
+    const analysis = await this.runCodexJson<PlanAnalysisOutput>(
+      'repo-analysis.output.schema.json',
+      prompt,
+      'technical plan repository analysis',
+      this.getReadableRepositoryDirs(input.workspace?.repositories),
+    );
+
+    return {
+      repositories: Array.isArray(analysis.repositories) ? analysis.repositories : [],
+      crossRepoNotes: Array.isArray(analysis.crossRepoNotes) ? analysis.crossRepoNotes : [],
+    };
+  }
+
+  private async buildRepositoryAnalysisPrompt(input: GeneratePlanInput) {
+    const workspaceSection = await this.buildWorkspaceSection(input.workspace, 'live');
+
+    return `你是一名严谨的软件架构师。你的唯一任务是先阅读当前 workflow 仓库副本，再输出“技术方案前的仓库分析”。
+
+你必须只返回符合 JSON Schema 的 JSON，不要输出解释文字或 Markdown。
+你必须优先通过真实仓库中的目录、源码、配置、说明文件来定位候选修改点，而不是凭常见项目结构猜测。
+如果仓库证据不足，请把不确定点写入 unknowns，不要虚构文件路径。
+candidateFiles / relevantDirectories / entryPoints 都必须使用目标代码仓库根目录下的相对路径。
+
+需求信息:
+- 标题: ${input.requirement.title}
+- 描述: ${input.requirement.description}
+- 验收标准: ${input.requirement.acceptanceCriteria}
+
+工作区仓库上下文:
+${workspaceSection}
+
+已确认任务:
+${input.tasks.map((task, index) => `${index + 1}. ${task.title}: ${task.description}`).join('\n')}
+
+请输出:
+1. repositories: 每个仓库分别给出
+   - summary: 该仓库与本需求最相关的实现面
+   - candidateFiles: 最值得优先检查或修改的现有文件
+   - relevantDirectories: 与需求最相关的目录
+   - entryPoints: 入口、布局、路由、启动点、主服务或关键模块文件
+   - unknowns: 当前仍不能确认的关键问题
+2. crossRepoNotes: 需要跨仓库协同或目前仍不明确的整体说明`;
+  }
+
+  private formatPlanAnalysis(analysis: PlanAnalysisOutput) {
+    const repositoryLines = analysis.repositories.length
+      ? analysis.repositories
+          .map((repository) =>
+            [
+              `- ${repository.repository}`,
+              `  - summary: ${repository.summary || '无'}`,
+              `  - candidateFiles: ${repository.candidateFiles.join(', ') || '无'}`,
+              `  - relevantDirectories: ${repository.relevantDirectories.join(', ') || '无'}`,
+              `  - entryPoints: ${repository.entryPoints.join(', ') || '无'}`,
+              `  - unknowns: ${repository.unknowns.join(' | ') || '无'}`,
+            ].join('\n'),
+          )
+          .join('\n')
+      : '- 无仓库分析结果';
+
+    const crossRepoNotes = analysis.crossRepoNotes.length
+      ? analysis.crossRepoNotes.map((note) => `  - ${note}`).join('\n')
+      : '  - 无';
+
+    return `${repositoryLines}\n跨仓库说明:\n${crossRepoNotes}`;
   }
 
   private async buildWorkspaceSection(workspace?: {

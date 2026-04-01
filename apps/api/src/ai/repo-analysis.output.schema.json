@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["repositories", "crossRepoNotes"],
+  "properties": {
+    "repositories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repository",
+          "summary",
+          "candidateFiles",
+          "relevantDirectories",
+          "entryPoints",
+          "unknowns"
+        ],
+        "properties": {
+          "repository": { "type": "string", "minLength": 1 },
+          "summary": { "type": "string", "minLength": 1 },
+          "candidateFiles": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "relevantDirectories": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "entryPoints": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "unknowns": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "crossRepoNotes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}
