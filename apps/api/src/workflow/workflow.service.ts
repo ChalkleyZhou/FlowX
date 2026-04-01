@@ -563,7 +563,7 @@ export class WorkflowService {
           previousOutput: (previousStage?.output as GeneratePlanOutput | null) ?? null,
         });
         const output = this.sanitizePlanOutputPaths(rawOutput, workflow.workflowRepositories);
-        this.assertPlanHasConcreteFiles(output);
+        this.assertPlanHasConcreteFiles(rawOutput, output);
         await this.assertPlanMatchesRepositories(output, workflow.workflowRepositories);
 
         await this.prisma.$transaction(async (tx) => {
@@ -1384,7 +1384,12 @@ export class WorkflowService {
     };
   }
 
-  private assertPlanHasConcreteFiles(output: GeneratePlanOutput) {
+  private assertPlanHasConcreteFiles(
+    rawOutput: GeneratePlanOutput,
+    output: GeneratePlanOutput,
+  ) {
+    const rawFilesToModify = rawOutput.filesToModify.filter((item) => item.trim().length > 0);
+    const rawNewFiles = rawOutput.newFiles.filter((item) => item.trim().length > 0);
     const filesToModify = output.filesToModify.filter((item) => item.trim().length > 0);
     const newFiles = output.newFiles.filter((item) => item.trim().length > 0);
 
@@ -1392,8 +1397,26 @@ export class WorkflowService {
       return;
     }
 
+    if (rawFilesToModify.length > 0 || rawNewFiles.length > 0) {
+      throw new Error(
+        [
+          '技术方案原始输出包含文件落点，但经过路径清洗后为空。',
+          `raw filesToModify: ${rawFilesToModify.join('，') || '无'}`,
+          `raw newFiles: ${rawNewFiles.join('，') || '无'}`,
+          `sanitized filesToModify: ${filesToModify.join('，') || '无'}`,
+          `sanitized newFiles: ${newFiles.join('，') || '无'}`,
+          '请检查模型是否输出了绝对路径、FlowX 工作目录路径，或非仓库相对路径。',
+        ].join(' '),
+      );
+    }
+
     throw new Error(
-      '技术方案未给出任何明确文件落点。请基于当前 workflow 仓库副本的实时结构，输出至少一个 filesToModify 或 newFiles 项后再继续。',
+      [
+        '技术方案未给出任何明确文件落点。',
+        `raw filesToModify: ${rawFilesToModify.join('，') || '无'}`,
+        `raw newFiles: ${rawNewFiles.join('，') || '无'}`,
+        '请基于当前 workflow 仓库副本的实时结构，输出至少一个 filesToModify 或 newFiles 项后再继续。',
+      ].join(' '),
     );
   }
 
