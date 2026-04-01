@@ -62,7 +62,7 @@ export class CodexAiExecutor implements AIExecutor {
     for (const repository of repositories) {
       await this.runCodexMutation(
         repository.localPath!,
-        this.buildRepositoryExecutionPrompt(input, repository),
+        await this.buildRepositoryExecutionPrompt(input, repository),
         `execution-${repository.name}`,
       );
     }
@@ -82,14 +82,14 @@ export class CodexAiExecutor implements AIExecutor {
 
     return this.runCodexJson<ReviewCodeOutput>(
       'review.output.schema.json',
-      this.buildReviewPrompt(input, repositoryDiffSection),
+      await this.buildReviewPrompt(input, repositoryDiffSection),
       'review',
       this.getReadableRepositoryDirs(input.workspace?.repositories),
     );
   }
 
   private async buildTaskSplitPrompt(input: SplitTasksInput) {
-    const workspaceSection = await this.buildWorkspaceSection(input.workspace);
+    const workspaceSection = await this.buildWorkspaceSection(input.workspace, 'snapshot');
     const revisionSection = input.humanFeedback
       ? `
 
@@ -126,7 +126,7 @@ ${revisionSection}
   }
 
   private async buildTechnicalPlanPrompt(input: GeneratePlanInput) {
-    const workspaceSection = await this.buildWorkspaceSection(input.workspace);
+    const workspaceSection = await this.buildWorkspaceSection(input.workspace, 'live');
     const revisionSection = input.humanFeedback
       ? `
 
@@ -147,7 +147,8 @@ ${JSON.stringify(input.previousOutput ?? {}, null, 2)}
 
 ${technicalPlanPrompt.user}
 
-你必须严格依据下方给出的真实仓库结构来生成方案。
+你必须严格依据下方给出的当前 workflow 仓库副本实时结构来生成方案。
+不要只依赖仓库摘要或高层说明，必须根据实时目录、现有文件和可验证入口来确定修改点。
 不要假设项目一定存在 src/app.tsx、src/layouts、src/pages 等常见前端目录。
 如果目标文件在仓库证据中无法成立，请调整方案，或者把不确定点写进风险与说明中。
 
@@ -196,10 +197,11 @@ ${input.plan.riskPoints.map((item) => `  - ${item}`).join('\n') || '  - 无'}
 `;
   }
 
-  private buildRepositoryExecutionPrompt(
+  private async buildRepositoryExecutionPrompt(
     input: ExecuteTaskInput,
     repository: RepositoryContext,
   ) {
+    const workspaceSection = await this.buildWorkspaceSection(input.workspace, 'live');
     const revisionSection = input.humanFeedback
       ? `
 
@@ -236,7 +238,7 @@ ${executionPrompt.user}
 - 验收标准: ${input.requirement.acceptanceCriteria}
 
 工作区仓库上下文:
-${this.buildWorkspaceSection(input.workspace)}
+${workspaceSection}
 ${revisionSection}
 
 任务:
@@ -255,8 +257,8 @@ ${input.plan.riskPoints.map((item) => `  - ${item}`).join('\n') || '  - 无'}
 `;
   }
 
-  private buildReviewPrompt(input: ReviewCodeInput, repositoryDiffSection: string) {
-    const workspaceSection = this.buildWorkspaceSection(input.workspace);
+  private async buildReviewPrompt(input: ReviewCodeInput, repositoryDiffSection: string) {
+    const workspaceSection = await this.buildWorkspaceSection(input.workspace, 'live');
     const diffSection = repositoryDiffSection
       ? `\n工作流代码差异:\n${repositoryDiffSection}`
       : '';
@@ -306,7 +308,7 @@ ${diffSection}
     name: string;
     description?: string | null;
     repositories: RepositoryContext[];
-  } | null) {
+  } | null, mode: 'snapshot' | 'live' = 'snapshot') {
     if (!workspace) {
       return '\n工作区上下文:\n- 未提供工作区信息';
     }
@@ -317,13 +319,7 @@ ${diffSection}
             const baseLine =
               `  - ${repository.name} | URL: ${repository.url} | 默认分支: ${repository.defaultBranch ?? '未设置'} | 当前分支: ${repository.currentBranch ?? repository.defaultBranch ?? '未设置'}\n` +
               `    同步状态: ${repository.syncStatus ?? '未知'}`;
-            const snapshot =
-              repository.contextSnapshot?.summary
-                ? `    预生成仓库证据(${repository.contextSnapshot.strategy ?? 'unknown'}):\n${repository.contextSnapshot.summary
-                    .split('\n')
-                    .map((line) => `      ${line}`)
-                    .join('\n')}`
-                : await this.buildRepositorySnapshot(repository);
+            const snapshot = await this.buildRepositoryContextNarrative(repository, mode);
             return `${baseLine}\n${snapshot}`;
           }),
         )
@@ -337,6 +333,20 @@ ${diffSection}
 ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repositorySections}`;
   }
 
+  private async buildRepositoryContextNarrative(
+    repository: RepositoryContext,
+    mode: 'snapshot' | 'live',
+  ) {
+    if (mode === 'snapshot' && repository.contextSnapshot?.summary) {
+      return `    预生成仓库证据(${repository.contextSnapshot.strategy ?? 'unknown'}):\n${repository.contextSnapshot.summary
+        .split('\n')
+        .map((line) => `      ${line}`)
+        .join('\n')}`;
+    }
+
+    return this.buildRepositorySnapshot(repository);
+  }
+
   private async buildRepositorySnapshot(repository: RepositoryContext) {
     if (!repository.localPath || repository.syncStatus !== 'READY') {
       return '    仓库快照: 未提供可读的本地副本';
@@ -344,7 +354,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
 
     try {
       const rootEntries = await this.readDirectoryEntries(repository.localPath, 24);
-      const focusDirectories = ['src', 'app', 'pages', 'layouts', 'components', 'tests', 'test'];
+      const focusDirectories = ['apps', 'packages', 'services', 'cmd', 'src', 'internal', 'api', 'web', 'client', 'server', 'pages', 'layouts', 'components', 'tests', 'test'];
       const focusSections = await Promise.all(
         focusDirectories.map(async (dir) => {
           const entries = await this.readDirectoryEntries(join(repository.localPath!, dir), 16);
@@ -355,9 +365,10 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
       const packageSummary = await this.readPackageJsonSummary(repository.localPath);
 
       return [
+        '    实时仓库结构快照:',
         rootEntries.length > 0
-          ? `    仓库根目录:\n${rootEntries.map((entry) => `      - ${entry}`).join('\n')}`
-          : '    仓库根目录: 无法读取',
+          ? `${rootEntries.map((entry) => `      - ${entry}`).join('\n')}`
+          : '      - 无法读取根目录',
         packageSummary ? `    package.json 摘要:\n${packageSummary}` : '',
         ...focusSections.filter(Boolean),
       ]
