@@ -15,6 +15,11 @@ export interface RepositoryContext {
   currentBranch?: string | null;
   localPath?: string | null;
   syncStatus?: string | null;
+  contextSnapshot?: {
+    strategy?: string;
+    summary?: string;
+    evidenceFiles?: string[];
+  } | null;
 }
 
 export interface WorkspaceContext {

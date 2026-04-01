@@ -1,6 +1,6 @@
 import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { access, mkdir, rm } from 'fs/promises';
+import { access, mkdir, readdir, readFile, rm } from 'fs/promises';
 import { promisify } from 'util';
 import { execFile as execFileCallback } from 'child_process';
 import { basename, join } from 'path';
@@ -105,6 +105,24 @@ export class RepositorySyncService {
 
     for (const workflowRepository of workflowRepositories) {
       await this.prepareWorkflowRepository(workflowRepository.id);
+    }
+  }
+
+  async generateWorkflowRepositorySnapshots(workflowRunId: string) {
+    const workflowRepositories = await this.prisma.workflowRepository.findMany({
+      where: { workflowRunId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    for (const workflowRepository of workflowRepositories) {
+      const snapshot = await this.buildWorkflowRepositorySnapshot(workflowRepository.localPath);
+      await this.prisma.workflowRepository.update({
+        where: { id: workflowRepository.id },
+        data: {
+          contextSnapshot: snapshot as never,
+          contextGeneratedAt: snapshot ? new Date() : null,
+        },
+      });
     }
   }
 
@@ -318,5 +336,155 @@ export class RepositorySyncService {
     } catch {
       return false;
     }
+  }
+
+  private async buildWorkflowRepositorySnapshot(localPath?: string | null) {
+    if (!localPath || !(await this.pathExists(localPath))) {
+      return null;
+    }
+
+    const docsSnapshot = await this.buildDocsFirstSnapshot(localPath);
+    if (docsSnapshot) {
+      return docsSnapshot;
+    }
+
+    return this.buildStructuralSnapshot(localPath);
+  }
+
+  private async buildDocsFirstSnapshot(localPath: string) {
+    const candidateFiles = [
+      'AGENTS.md',
+      'AGENT.md',
+      'README.md',
+      'README',
+      'README.zh-CN.md',
+      'README.zh.md',
+      'CONTRIBUTING.md',
+      'docs/README.md',
+    ];
+
+    const matchedSections: string[] = [];
+    const evidenceFiles: string[] = [];
+
+    for (const relativePath of candidateFiles) {
+      const absolutePath = join(localPath, relativePath);
+      if (!(await this.pathExists(absolutePath))) {
+        continue;
+      }
+
+      const content = (await readFile(absolutePath, 'utf8')).trim();
+      if (!content) {
+        continue;
+      }
+
+      evidenceFiles.push(relativePath);
+      matchedSections.push(`- ${relativePath}\n${this.truncateText(content, 3200)}`);
+
+      if (evidenceFiles.length >= 3) {
+        break;
+      }
+    }
+
+    if (matchedSections.length === 0) {
+      return null;
+    }
+
+    return {
+      strategy: 'docs-first',
+      summary: `优先依据仓库说明文件理解项目上下文：\n${matchedSections.join('\n\n')}`,
+      evidenceFiles,
+    };
+  }
+
+  private async buildStructuralSnapshot(localPath: string) {
+    const rootEntries = await this.readDirectoryEntries(localPath, 30);
+    const manifestFiles = [
+      'package.json',
+      'pnpm-workspace.yaml',
+      'turbo.json',
+      'go.mod',
+      'Cargo.toml',
+      'pyproject.toml',
+      'requirements.txt',
+      'pom.xml',
+      'build.gradle',
+      'Makefile',
+    ];
+    const presentManifestFiles: string[] = [];
+    for (const file of manifestFiles) {
+      if (await this.pathExists(join(localPath, file))) {
+        presentManifestFiles.push(file);
+      }
+    }
+
+    const focusDirs = ['apps', 'packages', 'services', 'cmd', 'src', 'internal', 'api', 'web', 'client', 'server', 'docs', 'tests', 'test'];
+    const focusSections: string[] = [];
+    for (const dir of focusDirs) {
+      const entries = await this.readDirectoryEntries(join(localPath, dir), 20);
+      if (entries.length > 0) {
+        focusSections.push(`${dir}/:\n${entries.map((entry) => `  - ${entry}`).join('\n')}`);
+      }
+    }
+
+    const packageSummary = await this.readPackageJsonSummary(localPath);
+    const summarySections = [
+      rootEntries.length > 0 ? `仓库根目录:\n${rootEntries.map((entry) => `  - ${entry}`).join('\n')}` : '',
+      presentManifestFiles.length > 0 ? `可识别构建/包管理文件:\n${presentManifestFiles.map((file) => `  - ${file}`).join('\n')}` : '',
+      packageSummary ? `package.json 摘要:\n${packageSummary}` : '',
+      ...focusSections,
+    ].filter(Boolean);
+
+    return {
+      strategy: 'structural-scan',
+      summary: summarySections.join('\n\n'),
+      evidenceFiles: presentManifestFiles,
+    };
+  }
+
+  private async readDirectoryEntries(path: string, limit: number) {
+    try {
+      const entries = await readdir(path, { withFileTypes: true });
+      return entries
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .slice(0, limit)
+        .map((entry) => `${entry.isDirectory() ? '[D]' : '[F]'} ${entry.name}`);
+    } catch {
+      return [];
+    }
+  }
+
+  private async readPackageJsonSummary(localPath: string) {
+    try {
+      const packageJson = JSON.parse(await readFile(join(localPath, 'package.json'), 'utf8')) as {
+        name?: string;
+        scripts?: Record<string, string>;
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+
+      const scriptNames = Object.keys(packageJson.scripts ?? {}).slice(0, 12);
+      const dependencyNames = [
+        ...Object.keys(packageJson.dependencies ?? {}),
+        ...Object.keys(packageJson.devDependencies ?? {}),
+      ].slice(0, 20);
+
+      return [
+        packageJson.name ? `  - name: ${packageJson.name}` : '',
+        scriptNames.length > 0 ? `  - scripts: ${scriptNames.join(', ')}` : '',
+        dependencyNames.length > 0 ? `  - dependencies: ${dependencyNames.join(', ')}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+    } catch {
+      return '';
+    }
+  }
+
+  private truncateText(value: string, maxLength: number) {
+    if (value.length <= maxLength) {
+      return value;
+    }
+
+    return `${value.slice(0, maxLength)}\n...[truncated]`;
   }
 }

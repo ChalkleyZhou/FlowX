@@ -214,6 +214,8 @@ model WorkflowRepository {
   baseBranch    String
   workingBranch String
   localPath     String?
+  contextSnapshot Json?
+  contextGeneratedAt DateTime?
   status        String      @default("PENDING")
   syncError     String?
   preparedAt    DateTime?

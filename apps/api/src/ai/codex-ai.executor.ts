@@ -317,7 +317,13 @@ ${diffSection}
             const baseLine =
               `  - ${repository.name} | URL: ${repository.url} | 默认分支: ${repository.defaultBranch ?? '未设置'} | 当前分支: ${repository.currentBranch ?? repository.defaultBranch ?? '未设置'}\n` +
               `    同步状态: ${repository.syncStatus ?? '未知'}`;
-            const snapshot = await this.buildRepositorySnapshot(repository);
+            const snapshot =
+              repository.contextSnapshot?.summary
+                ? `    预生成仓库证据(${repository.contextSnapshot.strategy ?? 'unknown'}):\n${repository.contextSnapshot.summary
+                    .split('\n')
+                    .map((line) => `      ${line}`)
+                    .join('\n')}`
+                : await this.buildRepositorySnapshot(repository);
             return `${baseLine}\n${snapshot}`;
           }),
         )

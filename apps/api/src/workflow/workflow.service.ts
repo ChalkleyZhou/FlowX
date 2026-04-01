@@ -232,6 +232,7 @@ export class WorkflowService {
 
     try {
       await this.repositorySyncService.prepareWorkflowRepositories(workflow.id);
+      await this.repositorySyncService.generateWorkflowRepositorySnapshots(workflow.id);
     } catch (error) {
       await this.prisma.workflowRun.update({
         where: { id: workflow.id },
@@ -1351,6 +1352,12 @@ export class WorkflowService {
               currentBranch: repository.workingBranch,
               localPath: repository.localPath,
               syncStatus: repository.status,
+              contextSnapshot:
+                (repository.contextSnapshot as {
+                  strategy?: string;
+                  summary?: string;
+                  evidenceFiles?: string[];
+                } | null) ?? null,
             }))
           : workspace.repositories.map((repository) => ({
               id: repository.id,
@@ -1360,6 +1367,7 @@ export class WorkflowService {
               currentBranch: repository.currentBranch,
               localPath: repository.localPath,
               syncStatus: repository.syncStatus,
+              contextSnapshot: null,
             })),
     };
   }
