@@ -5,7 +5,7 @@
   "packageManager": "pnpm@10.12.1",
   "scripts": {
     "dev": "pnpm -r --parallel --filter flowx-api --filter flowx-web dev",
-    "dev:api": "pnpm --filter flowx-api start:dev",
+    "dev:api": "pnpm --filter flowx-api build && HOST=127.0.0.1 node apps/api/dist/main.js",
     "dev:web": "pnpm --filter flowx-web dev",
     "build": "pnpm -r --filter flowx-api --filter flowx-web build",
     "build:api": "pnpm --filter flowx-api build",
@@ -17,6 +17,7 @@
     "prisma": "6.19.2"
   },
   "dependencies": {
+    "@openai/codex": "^0.118.0",
     "@prisma/client": "6.19.2"
   }
 }

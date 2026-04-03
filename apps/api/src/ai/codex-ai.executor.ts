@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { promisify } from 'util';
-import { execFile as execFileCallback } from 'child_process';
-import { mkdtemp, readdir, readFile, rm } from 'fs/promises';
+import { execFile as execFileCallback, spawn } from 'child_process';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -22,6 +22,8 @@ import { technicalPlanPrompt } from '../prompts/technical-plan.prompt';
 import { AIExecutor } from './ai-executor';
 
 const execFile = promisify(execFileCallback);
+const CODEX_TIMEOUT_MS = 120_000;
+const CODEX_DEBUG_ROOT = join(process.cwd(), '.flowx-data', 'codex-debug');
 
 @Injectable()
 export class CodexAiExecutor implements AIExecutor {
@@ -413,8 +415,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     const codexCwd = addDirs[0] ?? process.cwd();
 
     try {
-      const { stderr } = await execFile(
-        'codex',
+      const { stderr } = await this.runCodexProcess(
         [
           'exec',
           '--skip-git-repo-check',
@@ -432,11 +433,9 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
           outputPath,
           prompt,
         ],
-        {
-          cwd: codexCwd,
-          env: process.env,
-          maxBuffer: 1024 * 1024 * 8,
-        },
+        codexCwd,
+        stageName,
+        prompt,
       );
 
       const rawOutput = (await readFile(outputPath, 'utf8')).trim();
@@ -456,8 +455,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
 
   private async runCodexMutation(cwd: string, prompt: string, stageName: string) {
     try {
-      await execFile(
-        'codex',
+      await this.runCodexProcess(
         [
           'exec',
           '--skip-git-repo-check',
@@ -470,17 +468,146 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
           cwd,
           prompt,
         ],
-        {
-          cwd,
-          env: process.env,
-          maxBuffer: 1024 * 1024 * 8,
-        },
+        cwd,
+        stageName,
+        prompt,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown Codex mutation error';
       this.logger.error(`Codex ${stageName} failed: ${message}`);
       throw new Error(`Codex ${stageName} failed: ${message}`);
     }
+  }
+
+  private runCodexProcess(
+    args: string[],
+    cwd: string,
+    stageName: string,
+    prompt?: string,
+  ) {
+    return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+      let stdout = '';
+      let stderr = '';
+      let finished = false;
+      const createdAt = new Date().toISOString();
+      const timestamp = createdAt.replace(/[:.]/g, '-');
+      const stageSlug = stageName.replace(/[^a-z0-9-_]+/gi, '-');
+      const artifactPath = join(CODEX_DEBUG_ROOT, `${timestamp}-${stageSlug}.json`);
+      const persistArtifact = (payload: Record<string, unknown>) =>
+        this.persistCodexDebugArtifact(artifactPath, {
+          stageName,
+          cwd,
+          args,
+          prompt,
+          createdAt,
+          ...payload,
+        });
+
+      void persistArtifact({ status: 'STARTED' }).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Failed to persist Codex debug artifact: ${message}`);
+      });
+
+      const child = spawn('codex', args, {
+        cwd,
+        env: process.env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      const timeout = setTimeout(() => {
+        if (finished) {
+          return;
+        }
+        child.kill('SIGTERM');
+        void persistArtifact({
+          status: 'TIMED_OUT',
+          finishedAt: new Date().toISOString(),
+          stdout,
+          stderr,
+          errorMessage: `Codex ${stageName} timed out after ${CODEX_TIMEOUT_MS}ms.`,
+        }).catch((error) => {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.warn(`Failed to persist timed out Codex artifact: ${message}`);
+        });
+        reject(new Error(`Codex ${stageName} timed out after ${CODEX_TIMEOUT_MS}ms.`));
+      }, CODEX_TIMEOUT_MS);
+
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk.toString();
+      });
+
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
+
+      child.on('error', (error) => {
+        if (finished) {
+          return;
+        }
+        finished = true;
+        clearTimeout(timeout);
+        void persistArtifact({
+          status: 'ERROR',
+          finishedAt: new Date().toISOString(),
+          stdout,
+          stderr,
+          errorMessage: error.message,
+        }).catch((persistError) => {
+          const message =
+            persistError instanceof Error ? persistError.message : String(persistError);
+          this.logger.warn(`Failed to persist errored Codex artifact: ${message}`);
+        });
+        reject(error);
+      });
+
+      child.on('close', (code) => {
+        if (finished) {
+          return;
+        }
+        finished = true;
+        clearTimeout(timeout);
+        if (code === 0) {
+          void persistArtifact({
+            status: 'COMPLETED',
+            finishedAt: new Date().toISOString(),
+            exitCode: code,
+            stdout,
+            stderr,
+          }).catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            this.logger.warn(`Failed to persist completed Codex artifact: ${message}`);
+          });
+          resolve({ stdout, stderr });
+          return;
+        }
+        void persistArtifact({
+          status: 'FAILED',
+          finishedAt: new Date().toISOString(),
+          exitCode: code,
+          stdout,
+          stderr,
+          errorMessage: `Codex process exited with code ${code}. stderr=${stderr.trim() || 'empty'}`,
+        }).catch((error) => {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.warn(`Failed to persist failed Codex artifact: ${message}`);
+        });
+        reject(
+          new Error(
+            `Codex process exited with code ${code}. stderr=${stderr.trim() || 'empty'}`,
+          ),
+        );
+      });
+
+      child.stdin.end();
+    });
+  }
+
+  private async persistCodexDebugArtifact(
+    artifactPath: string,
+    payload: Record<string, unknown>,
+  ) {
+    await mkdir(CODEX_DEBUG_ROOT, { recursive: true });
+    await writeFile(artifactPath, JSON.stringify(payload, null, 2), 'utf8');
   }
 
   private async collectExecutionOutput(repositories: RepositoryContext[]): Promise<ExecuteTaskOutput> {
