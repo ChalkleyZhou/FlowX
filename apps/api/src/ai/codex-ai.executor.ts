@@ -24,6 +24,8 @@ import { AIExecutor } from './ai-executor';
 const execFile = promisify(execFileCallback);
 const CODEX_TIMEOUT_MS = 120_000;
 const CODEX_DEBUG_ROOT = join(process.cwd(), '.flowx-data', 'codex-debug');
+const CODEX_READ_SANDBOX = process.env.CODEX_READ_SANDBOX?.trim() || 'read-only';
+const CODEX_WRITE_SANDBOX = process.env.CODEX_WRITE_SANDBOX?.trim() || 'workspace-write';
 
 @Injectable()
 export class CodexAiExecutor implements AIExecutor {
@@ -420,7 +422,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
           'exec',
           '--skip-git-repo-check',
           '--sandbox',
-          'read-only',
+          CODEX_READ_SANDBOX,
           '--color',
           'never',
           '--ephemeral',
@@ -460,7 +462,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
           'exec',
           '--skip-git-repo-check',
           '--sandbox',
-          'workspace-write',
+          CODEX_WRITE_SANDBOX,
           '--color',
           'never',
           '--ephemeral',

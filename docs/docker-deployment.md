@@ -53,6 +53,8 @@ FlowX 容器内部包含两个服务：
 | `DATABASE_URL` | SQLite 数据库路径 | 是 |
 | `AI_EXECUTOR_PROVIDER` | `mock` 或 `codex` | 是 |
 | `CODEX_HOME` | Codex CLI 登录态目录 | `codex` 时建议设置 |
+| `CODEX_READ_SANDBOX` | Codex 只读阶段沙箱模式，默认 `read-only`；仅在 Docker 内核不支持 `bwrap` 时临时改为 `danger-full-access` | 否 |
+| `CODEX_WRITE_SANDBOX` | Codex 写入阶段沙箱模式，默认 `workspace-write` | 否 |
 | `OPENAI_API_KEY` | Codex/API 认证方式之一 | 否 |
 | `FRONTEND_BUILD_MODE` | 前端构建模式：`nginx`、`direct`、`auto` | 建议填写 |
 | `DIRECT_API_BASE_URL` | 直连模式下前端访问 API 的地址 | `direct` 时建议填写 |
@@ -266,6 +268,8 @@ Nginx 规则现在是：
 ```yaml
 AI_EXECUTOR_PROVIDER: "codex"
 CODEX_HOME: "/data/.codex"
+CODEX_READ_SANDBOX: "read-only"
+CODEX_WRITE_SANDBOX: "workspace-write"
 ```
 
 那么启动之后，执行一次：
