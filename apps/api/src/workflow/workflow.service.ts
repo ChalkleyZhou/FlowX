@@ -1102,6 +1102,8 @@ export class WorkflowService {
       branch: string;
       commitSha: string;
       pushed: boolean;
+      verified: boolean;
+      remoteUrl: string;
     }> = [];
 
     for (const repository of repositories) {
@@ -1122,6 +1124,13 @@ export class WorkflowService {
       );
       await this.runGit(['checkout', '-B', publishBranch], cwd);
       await this.runGit(['push', '-u', 'origin', publishBranch], cwd);
+      const remoteUrl = await this.getRemoteUrl(cwd, 'origin');
+      const verified = await this.remoteBranchExists(cwd, 'origin', publishBranch);
+      if (!verified) {
+        throw new BadRequestException(
+          `代码库 ${repository.repository} 推送后未在远端校验到分支 ${publishBranch}。远端：${remoteUrl}`,
+        );
+      }
       await this.runGit(['checkout', repository.workingBranch], cwd);
 
       publishedRepositories.push({
@@ -1129,6 +1138,8 @@ export class WorkflowService {
         branch: publishBranch,
         commitSha: await this.getHeadSha(cwd),
         pushed: true,
+        verified: true,
+        remoteUrl,
       });
     }
 
@@ -2071,6 +2082,16 @@ export class WorkflowService {
   private async getHeadSha(cwd: string) {
     const { stdout } = await this.runGit(['rev-parse', 'HEAD'], cwd);
     return stdout;
+  }
+
+  private async getRemoteUrl(cwd: string, remoteName: string) {
+    const { stdout } = await this.runGit(['remote', 'get-url', remoteName], cwd);
+    return stdout;
+  }
+
+  private async remoteBranchExists(cwd: string, remoteName: string, branchName: string) {
+    const { stdout } = await this.runGit(['ls-remote', '--heads', remoteName, branchName], cwd);
+    return stdout.trim().length > 0;
   }
 
   private async markRunningStageFailed(

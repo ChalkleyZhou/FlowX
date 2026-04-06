@@ -179,6 +179,8 @@ export const api = {
         branch: string;
         commitSha: string;
         pushed: boolean;
+        verified: boolean;
+        remoteUrl: string;
       }>;
     }>(`/workflow-runs/${id}/git/publish`, { method: 'POST' }),
   createWorkflowRun: (requirementId: string, repositoryIds?: string[]) =>

@@ -579,8 +579,11 @@ export function WorkflowRunDetailPage() {
     try {
       const result = await api.publishWorkflowGitChanges(workflowRun.id);
       await refresh({ silent: true });
+      const branchSummary = result.repositories
+        .map((item) => `${item.repository}: ${item.branch} @ ${item.remoteUrl}`)
+        .join('；');
       toast.success(
-        `已推送 ${result.repositories.length} 个代码库到发布分支，提交信息：${result.message}`,
+        `已推送并校验 ${result.repositories.length} 个代码库。${branchSummary}。提交信息：${result.message}`,
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '提交远程失败');
