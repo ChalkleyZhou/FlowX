@@ -785,7 +785,12 @@ export class WorkflowService {
     const recipient = this.toNotificationRecipient(notifyRecipient);
     if (
       workflow.status !== 'EXECUTION_PENDING' &&
-      !((workflow.status === 'REVIEW_PENDING' || workflow.status === 'HUMAN_REVIEW_PENDING') && humanFeedback)
+      !(
+        (workflow.status === 'REVIEW_PENDING' ||
+          workflow.status === 'HUMAN_REVIEW_PENDING' ||
+          workflow.status === 'DONE') &&
+        humanFeedback
+      )
     ) {
       throw new BadRequestException('Execution can only run after plan confirmation.');
     }
@@ -795,7 +800,11 @@ export class WorkflowService {
     const confirmedPlan = workflow.plan;
 
     const startedWorkflow = await this.prisma.$transaction(async (tx) => {
-      if (workflow.status === 'REVIEW_PENDING' || workflow.status === 'HUMAN_REVIEW_PENDING') {
+      if (
+        workflow.status === 'REVIEW_PENDING' ||
+        workflow.status === 'HUMAN_REVIEW_PENDING' ||
+        workflow.status === 'DONE'
+      ) {
         await this.transitionWorkflow(tx, id, this.fromPrismaWorkflowStatus(workflow.status), {
           to: WorkflowRunStatus.EXECUTION_PENDING,
           stage: StageType.EXECUTION,
@@ -919,7 +928,10 @@ export class WorkflowService {
     const recipient = this.toNotificationRecipient(notifyRecipient);
     if (
       workflow.status !== 'REVIEW_PENDING' &&
-      !(workflow.status === 'HUMAN_REVIEW_PENDING' && humanFeedback)
+      !(
+        (workflow.status === 'HUMAN_REVIEW_PENDING' || workflow.status === 'DONE') &&
+        humanFeedback
+      )
     ) {
       throw new BadRequestException('Review can only run after execution completes.');
     }
@@ -930,12 +942,17 @@ export class WorkflowService {
     const executionResult = workflow.codeExecution;
 
     const previousStage =
-      workflow.status === 'HUMAN_REVIEW_PENDING'
+      workflow.status === 'HUMAN_REVIEW_PENDING' || workflow.status === 'DONE'
         ? this.getLatestStageOrThrow(workflow, StageType.AI_REVIEW)
         : null;
     const startedWorkflow = await this.prisma.$transaction(async (tx) => {
       if (workflow.status === 'HUMAN_REVIEW_PENDING') {
         await this.transitionWorkflow(tx, id, WorkflowRunStatus.HUMAN_REVIEW_PENDING, {
+          to: WorkflowRunStatus.REVIEW_PENDING,
+          stage: StageType.AI_REVIEW,
+        });
+      } else if (workflow.status === 'DONE') {
+        await this.transitionWorkflow(tx, id, WorkflowRunStatus.DONE, {
           to: WorkflowRunStatus.REVIEW_PENDING,
           stage: StageType.AI_REVIEW,
         });
@@ -1060,7 +1077,7 @@ export class WorkflowService {
     notifyRecipient?: WorkflowNotificationSession,
   ) {
     const workflow = await this.getWorkflowOrThrow(id);
-    if (workflow.status !== 'HUMAN_REVIEW_PENDING') {
+    if (workflow.status !== 'HUMAN_REVIEW_PENDING' && workflow.status !== 'DONE') {
       throw new BadRequestException('只有在 AI 审查完成后，才能基于审查结果继续修复。');
     }
 

@@ -744,7 +744,9 @@ export function WorkflowRunDetailPage() {
               setFeedbackModal({ stage: 'execution', title: '开发执行意见' });
               setFeedbackText('');
             },
-            disabled: workflowRun.status !== 'REVIEW_PENDING' || busyStage !== null,
+            disabled:
+              (workflowRun.status !== 'REVIEW_PENDING' && workflowRun.status !== 'DONE') ||
+              busyStage !== null,
           },
           {
             key: 'edit',
@@ -756,7 +758,7 @@ export function WorkflowRunDetailPage() {
             },
             disabled:
               !workflowRun.codeExecution ||
-              (workflowRun.status !== 'REVIEW_PENDING' && workflowRun.status !== 'HUMAN_REVIEW_PENDING') ||
+              !['REVIEW_PENDING', 'HUMAN_REVIEW_PENDING', 'DONE'].includes(workflowRun.status) ||
               busyStage !== null,
           },
         ],
@@ -773,7 +775,9 @@ export function WorkflowRunDetailPage() {
             key: 'run',
             label: workflowRun.reviewReport ? '重新执行 AI 审查' : '执行 AI 审查',
             onClick: () => void runAction('AI_REVIEW', () => api.runReview(workflowRun.id), 'AI 审查已启动'),
-            disabled: workflowRun.status !== 'REVIEW_PENDING' || busyStage !== null,
+            disabled:
+              (workflowRun.status !== 'REVIEW_PENDING' && workflowRun.status !== 'DONE') ||
+              busyStage !== null,
             loading: busyStage === 'AI_REVIEW',
             variant: 'primary' as const,
           },
@@ -806,7 +810,9 @@ export function WorkflowRunDetailPage() {
               setFeedbackModal({ stage: 'review', title: 'AI 审查意见' });
               setFeedbackText('');
             },
-            disabled: workflowRun.status !== 'HUMAN_REVIEW_PENDING' || busyStage !== null,
+            disabled:
+              (workflowRun.status !== 'HUMAN_REVIEW_PENDING' && workflowRun.status !== 'DONE') ||
+              busyStage !== null,
           },
           {
             key: 'edit',
@@ -816,7 +822,9 @@ export function WorkflowRunDetailPage() {
               setEditOutputText(JSON.stringify(output, null, 2));
               setEditModal({ stage: 'review', title: '人工修改 AI 审查结果', initialOutput: output });
             },
-            disabled: workflowRun.status !== 'HUMAN_REVIEW_PENDING' || busyStage !== null,
+            disabled:
+              (workflowRun.status !== 'HUMAN_REVIEW_PENDING' && workflowRun.status !== 'DONE') ||
+              busyStage !== null,
           },
         ],
       },
@@ -1207,7 +1215,10 @@ export function WorkflowRunDetailPage() {
                                   () => api.fixReviewFinding(workflowRun.id, finding.id),
                                   '已开始基于该审查结果继续修复，请检查代码变更后再执行 AI 审查',
                                 ),
-                              disabled: busyFindingId !== null || workflowRun.status !== 'HUMAN_REVIEW_PENDING',
+                              disabled:
+                                busyFindingId !== null ||
+                                (workflowRun.status !== 'HUMAN_REVIEW_PENDING' &&
+                                  workflowRun.status !== 'DONE'),
                             },
                             {
                               key: 'issue',
@@ -1217,7 +1228,8 @@ export function WorkflowRunDetailPage() {
                                 void runFindingAction(finding.id, () => api.convertReviewFindingToIssue(finding.id), '已录入为问题项'),
                               disabled:
                                 busyFindingId !== null ||
-                                workflowRun.status !== 'HUMAN_REVIEW_PENDING' ||
+                                (workflowRun.status !== 'HUMAN_REVIEW_PENDING' &&
+                                  workflowRun.status !== 'DONE') ||
                                 !!finding.convertedIssueId ||
                                 !!finding.convertedBugId,
                             },
@@ -1228,7 +1240,8 @@ export function WorkflowRunDetailPage() {
                                 void runFindingAction(finding.id, () => api.convertReviewFindingToBug(finding.id), '已录入为缺陷'),
                               disabled:
                                 busyFindingId !== null ||
-                                workflowRun.status !== 'HUMAN_REVIEW_PENDING' ||
+                                (workflowRun.status !== 'HUMAN_REVIEW_PENDING' &&
+                                  workflowRun.status !== 'DONE') ||
                                 !!finding.convertedIssueId ||
                                 !!finding.convertedBugId,
                             },
