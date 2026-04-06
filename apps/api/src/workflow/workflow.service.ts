@@ -1123,9 +1123,12 @@ export class WorkflowService {
         repository.repository,
       );
       await this.runGit(['checkout', '-B', publishBranch], cwd);
-      await this.runGit(['push', '-u', 'origin', publishBranch], cwd);
-      const remoteUrl = await this.getRemoteUrl(cwd, 'origin');
-      const verified = await this.remoteBranchExists(cwd, 'origin', publishBranch);
+      const remoteUrl = await this.resolvePublishRemoteUrl(repository);
+      await this.runGit(
+        ['push', '--set-upstream', remoteUrl, `${publishBranch}:refs/heads/${publishBranch}`],
+        cwd,
+      );
+      const verified = await this.remoteBranchExists(cwd, remoteUrl, publishBranch);
       if (!verified) {
         throw new BadRequestException(
           `代码库 ${repository.repository} 推送后未在远端校验到分支 ${publishBranch}。远端：${remoteUrl}`,
@@ -1160,6 +1163,7 @@ export class WorkflowService {
         repository: repository.name,
         workingBranch: repository.workingBranch,
         localPath: repository.localPath as string,
+        remoteUrl: repository.url,
       }));
 
     if (workflowRepositories.length > 0) {
@@ -1172,7 +1176,7 @@ export class WorkflowService {
 
     const deduplicated = new Map<
       string,
-      { repository: string; workingBranch: string; localPath: string }
+      { repository: string; workingBranch: string; localPath: string; remoteUrl?: string }
     >();
 
     for (const artifact of legacyArtifacts) {
@@ -2089,9 +2093,43 @@ export class WorkflowService {
     return stdout;
   }
 
-  private async remoteBranchExists(cwd: string, remoteName: string, branchName: string) {
-    const { stdout } = await this.runGit(['ls-remote', '--heads', remoteName, branchName], cwd);
+  private async remoteBranchExists(cwd: string, remote: string, branchName: string) {
+    const { stdout } = await this.runGit(['ls-remote', '--heads', remote, branchName], cwd);
     return stdout.trim().length > 0;
+  }
+
+  private async resolvePublishRemoteUrl(repository: {
+    repository: string;
+    localPath: string;
+    remoteUrl?: string | null;
+  }) {
+    const candidate = repository.remoteUrl?.trim();
+    if (candidate && !this.isLocalGitRemote(candidate)) {
+      return candidate;
+    }
+
+    const originUrl = await this.getRemoteUrl(repository.localPath, 'origin');
+    if (this.isLocalGitRemote(originUrl)) {
+      throw new BadRequestException(
+        `代码库 ${repository.repository} 的 origin 指向本地镜像路径 ${originUrl}，且工作流记录中没有可用的真实远端地址。`,
+      );
+    }
+
+    return originUrl;
+  }
+
+  private isLocalGitRemote(remote: string) {
+    const value = remote.trim();
+    if (!value) {
+      return true;
+    }
+
+    return (
+      value.startsWith('/') ||
+      value.startsWith('./') ||
+      value.startsWith('../') ||
+      value.startsWith('file://')
+    );
   }
 
   private async markRunningStageFailed(
