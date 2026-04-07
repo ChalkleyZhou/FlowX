@@ -17,11 +17,12 @@ import { Badge } from '../components/ui/badge';
 import { Button as UiButton } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Input as UiInput } from '../components/ui/input';
 import { Spinner } from '../components/ui/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Textarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
-import type { WorkflowRun } from '../types';
+import type { RepositoryDeployConfig, WorkflowRun } from '../types';
 import {
   formatWorkflowRepositoryStatus,
 } from '../utils/label-utils';
@@ -71,6 +72,26 @@ interface DiffFileView {
 interface RepositoryPathContext {
   name: string;
   localPath?: string | null;
+}
+
+interface PublishRepositorySummary {
+  repository: string;
+  branch: string;
+  commitSha: string;
+  pushed: boolean;
+  verified: boolean;
+  remoteUrl: string;
+}
+
+interface DeployDraft {
+  repositoryId: string;
+  repositoryName: string;
+  env: string;
+  branch: string;
+  commit: string;
+  version: string;
+  versionImage: string;
+  image: string;
 }
 
 const stageMeta: Record<
@@ -264,6 +285,22 @@ export function WorkflowRunDetailPage() {
   const [editOutputText, setEditOutputText] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [deployModalOpen, setDeployModalOpen] = useState(false);
+  const [deployLoading, setDeployLoading] = useState(false);
+  const [deploySubmitting, setDeploySubmitting] = useState(false);
+  const [deployConfig, setDeployConfig] = useState<RepositoryDeployConfig | null>(null);
+  const [deployTargetRepositoryId, setDeployTargetRepositoryId] = useState<string | null>(null);
+  const [lastPublishedRepositories, setLastPublishedRepositories] = useState<PublishRepositorySummary[]>([]);
+  const [deployDraft, setDeployDraft] = useState<DeployDraft>({
+    repositoryId: '',
+    repositoryName: '',
+    env: '',
+    branch: '',
+    commit: '',
+    version: '',
+    versionImage: '',
+    image: '',
+  });
   const toast = useToast();
   const lastWorkflowSnapshotRef = useRef<string>('');
   const hasInitializedStageSelectionRef = useRef(false);
@@ -578,6 +615,7 @@ export function WorkflowRunDetailPage() {
     setPublishing(true);
     try {
       const result = await api.publishWorkflowGitChanges(workflowRun.id);
+      setLastPublishedRepositories(result.repositories);
       await refresh({ silent: true });
       const branchSummary = result.repositories
         .map((item) => `${item.repository}: ${item.branch} @ ${item.remoteUrl}`)
@@ -589,6 +627,100 @@ export function WorkflowRunDetailPage() {
       toast.error(error instanceof Error ? error.message : '提交远程失败');
     } finally {
       setPublishing(false);
+    }
+  }
+
+  async function handleOpenDeployModal(repositoryId?: string) {
+    if (!workflowRun) {
+      return;
+    }
+
+    setDeployLoading(true);
+    try {
+      const matchedRepository =
+        workflowRun.workflowRepositories.find((repository) => repository.repositoryId === repositoryId) ??
+        workflowRun.workflowRepositories[0] ??
+        null;
+
+      if (!matchedRepository) {
+        toast.error('当前工作流没有可部署的仓库');
+        return;
+      }
+
+      if (!matchedRepository.repositoryId) {
+        toast.error('当前工作流仓库没有关联到工作区仓库记录，暂时无法触发部署。');
+        return;
+      }
+
+      const config = await api.getRepositoryDeployConfig(matchedRepository.repositoryId);
+      setDeployConfig(config);
+      setDeployTargetRepositoryId(matchedRepository.repositoryId);
+
+      if (!config.enabled) {
+        toast.error('当前仓库还没有启用部署配置，请先在工作区的仓库管理里维护部署模板。');
+        return;
+      }
+
+      const primaryRepository =
+        lastPublishedRepositories.find((item) => item.repository === matchedRepository.name) ??
+        null;
+      const configJson =
+        config.configJson && typeof config.configJson === 'object'
+          ? config.configJson
+          : {};
+
+      setDeployDraft({
+        repositoryId: matchedRepository.repositoryId,
+        repositoryName: matchedRepository.name,
+        env: typeof configJson.env === 'string' ? configJson.env : '',
+        branch: primaryRepository?.branch ?? matchedRepository.workingBranch ?? '',
+        commit: primaryRepository?.commitSha ?? '',
+        version: '',
+        versionImage: '',
+        image: typeof configJson.image === 'string' ? configJson.image : '',
+      });
+      setDeployModalOpen(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '读取部署配置失败');
+    } finally {
+      setDeployLoading(false);
+    }
+  }
+
+  async function handleCreateDeployJob(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!workflowRun) {
+      return;
+    }
+
+    if (!deployTargetRepositoryId) {
+      toast.error('缺少目标仓库，无法触发部署');
+      return;
+    }
+
+    if (!deployDraft.branch.trim()) {
+      toast.error('请填写要发布的分支');
+      return;
+    }
+
+    setDeploySubmitting(true);
+    try {
+      const result = await api.createRepositoryDeployJob(deployTargetRepositoryId, {
+        workflowRunId: workflowRun.id,
+        projectId: workflowRun.requirement.project.id,
+        env: deployDraft.env.trim() || undefined,
+        branch: deployDraft.branch.trim(),
+        commit: deployDraft.commit.trim() || undefined,
+        version: deployDraft.version.trim() || undefined,
+        versionImage: deployDraft.versionImage.trim() || undefined,
+        image: deployDraft.image.trim() || undefined,
+      });
+      setDeployModalOpen(false);
+      toast.success(`${result.message} 记录号：${result.job.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '触发部署失败');
+    } finally {
+      setDeploySubmitting(false);
     }
   }
 
@@ -907,6 +1039,99 @@ export function WorkflowRunDetailPage() {
           </form>
         </DialogContent>
       </Dialog>
+      <Dialog
+        open={deployModalOpen}
+        onOpenChange={(open) => {
+          setDeployModalOpen(open);
+          if (!open) {
+            setDeploySubmitting(false);
+            setDeployTargetRepositoryId(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>触发部署</DialogTitle>
+            <DialogDescription>
+              这一步会调用仓库绑定的 CI/CD provider。建议先完成“提交并推送到远程”，再基于已推送分支触发 OPS。
+            </DialogDescription>
+          </DialogHeader>
+          <form className="flex flex-col gap-4" onSubmit={(event) => void handleCreateDeployJob(event)}>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+              目标仓库：{deployDraft.repositoryName || '未选择'}
+            </div>
+            {lastPublishedRepositories.length > 1 ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                当前工作流刚刚推送了 {lastPublishedRepositories.length} 个仓库。当前部署接口只会提交一组发布参数，请确认这里填写的是目标仓库对应的分支和 commit。
+              </div>
+            ) : null}
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-[var(--text)]" htmlFor="deploy-env">环境</label>
+                <UiInput
+                  id="deploy-env"
+                  value={deployDraft.env}
+                  onChange={(event) => setDeployDraft((current) => ({ ...current, env: event.target.value }))}
+                  placeholder="例如 dev"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-[var(--text)]" htmlFor="deploy-branch">分支</label>
+                <UiInput
+                  id="deploy-branch"
+                  value={deployDraft.branch}
+                  onChange={(event) => setDeployDraft((current) => ({ ...current, branch: event.target.value }))}
+                  placeholder="例如 feature_2.1.7"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-[var(--text)]" htmlFor="deploy-commit">Commit</label>
+                <UiInput
+                  id="deploy-commit"
+                  value={deployDraft.commit}
+                  onChange={(event) => setDeployDraft((current) => ({ ...current, commit: event.target.value }))}
+                  placeholder="可选，优先带上已推送 commit"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-[var(--text)]" htmlFor="deploy-version">版本号</label>
+                <UiInput
+                  id="deploy-version"
+                  value={deployDraft.version}
+                  onChange={(event) => setDeployDraft((current) => ({ ...current, version: event.target.value }))}
+                  placeholder="例如 2.1.7"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-[var(--text)]" htmlFor="deploy-version-image">镜像版本</label>
+                <UiInput
+                  id="deploy-version-image"
+                  value={deployDraft.versionImage}
+                  onChange={(event) => setDeployDraft((current) => ({ ...current, versionImage: event.target.value }))}
+                  placeholder="例如 2.1.7-build.3"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-[var(--text)]" htmlFor="deploy-image">镜像地址</label>
+                <UiInput
+                  id="deploy-image"
+                  value={deployDraft.image}
+                  onChange={(event) => setDeployDraft((current) => ({ ...current, image: event.target.value }))}
+                  placeholder="例如 registry/app:tag"
+                />
+              </div>
+            </div>
+            {deployConfig ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+                当前 provider：{deployConfig.provider}。未填写的字段会继续使用该仓库的默认部署模板。
+              </div>
+            ) : null}
+            <UiButton type="submit" disabled={deploySubmitting}>
+              {deploySubmitting ? '触发中...' : '确认触发部署'}
+            </UiButton>
+          </form>
+        </DialogContent>
+      </Dialog>
       {workflowRun ? (
         <div className="flex flex-col gap-[18px]">
           <DetailHeader
@@ -916,6 +1141,11 @@ export function WorkflowRunDetailPage() {
             badges={[
               { key: 'workspace', label: workflowRun.requirement.project.workspace.name, variant: 'default' },
               { key: 'project', label: workflowRun.requirement.project.name, variant: 'outline' },
+              {
+                key: 'provider',
+                label: workflowRun.aiProvider === 'cursor' ? 'Cursor CLI' : 'Codex',
+                variant: 'outline',
+              },
               { key: 'id', label: workflowRun.id, variant: 'outline' },
               { key: 'status', label: formatWorkflowStatus(workflowRun.status), variant: 'secondary' },
             ]}
@@ -1067,6 +1297,18 @@ export function WorkflowRunDetailPage() {
                         }
                         description="已为本次工作流准备独立工作分支。"
                         error={repository.syncError ? `分支准备失败：${repository.syncError}` : undefined}
+                        action={
+                          workflowRun.status === 'DONE' ? (
+                            <UiButton
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => void handleOpenDeployModal(repository.repositoryId ?? undefined)}
+                              disabled={deployLoading || !repository.repositoryId}
+                            >
+                              部署
+                            </UiButton>
+                          ) : null
+                        }
                       />
                     ))}
                   </div>
@@ -1275,10 +1517,27 @@ export function WorkflowRunDetailPage() {
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
                     这个动作会自动完成 git add、git commit 和 git push。推送时不会直接复用工作分支，而是生成唯一的发布分支，避免与远端已有分支冲突。
                   </div>
-                  <div>
-                    <UiButton onClick={() => void handlePublishGitChanges()} disabled={publishing}>
+                  <div className="flex flex-wrap gap-3">
+                    <UiButton onClick={() => void handlePublishGitChanges()} disabled={publishing || deployLoading}>
                       {publishing ? '处理中...' : '提交并推送到远程'}
                     </UiButton>
+                    <UiButton variant="outline" onClick={() => void handleOpenDeployModal()} disabled={publishing || deployLoading}>
+                      {deployLoading ? '读取配置中...' : '按仓库触发部署'}
+                    </UiButton>
+                  </div>
+                  {lastPublishedRepositories.length > 0 ? (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-900">
+                      最近一次推送：{lastPublishedRepositories.map((item) => `${item.repository} / ${item.branch} / ${item.commitSha}`).join('；')}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+                      建议先执行“提交并推送到远程”，这样部署弹窗可以自动带出对应仓库的最新发布分支和 commit。
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-sm leading-6 text-slate-500">
+                      部署模板现在跟着仓库走。你可以先去工作区里的仓库管理维护默认参数，再回到这里基于某个已推送仓库触发发布。
+                    </p>
                   </div>
                 </CardContent>
               </Card>

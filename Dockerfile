@@ -39,15 +39,22 @@ ENV PORT="3000"
 ENV WEB_PORT="4173"
 ENV DATABASE_URL="file:/data/dev.db"
 ENV AI_EXECUTOR_PROVIDER="mock"
+ENV AI_EXECUTOR_DEFAULT_PROVIDER="codex"
 ENV OPENAI_API_KEY=""
+ENV CURSOR_API_KEY=""
 ENV CODEX_HOME="/data/.codex"
+ENV PATH="/root/.local/bin:${PATH}"
 ENV GIT_AUTHOR_NAME=""
 ENV GIT_AUTHOR_EMAIL=""
 ENV GIT_COMMITTER_NAME=""
 ENV GIT_COMMITTER_EMAIL=""
 
 RUN corepack enable \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends curl \
+  && rm -rf /var/lib/apt/lists/* \
   && npm install -g @openai/codex serve@14.2.4 \
+  && curl https://cursor.com/install -fsS | bash \
   && mkdir -p /data /data/.codex
 
 COPY --from=deps /app/node_modules ./node_modules

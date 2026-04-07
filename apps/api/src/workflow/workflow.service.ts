@@ -9,7 +9,12 @@ import { execFile as execFileCallback } from 'child_process';
 import { access } from 'fs/promises';
 import { Prisma } from '@prisma/client';
 import { promisify } from 'util';
-import { AI_EXECUTOR, AIExecutor } from '../ai/ai-executor';
+import {
+  AI_EXECUTOR_REGISTRY,
+  type AIExecutor,
+  type AIExecutorProvider,
+  type AIExecutorRegistry,
+} from '../ai/ai-executor';
 import {
   HumanReviewDecision,
   StageExecutionStatus,
@@ -81,16 +86,20 @@ type WorkflowNotificationRecipient = {
 @Injectable()
 export class WorkflowService {
   private readonly logger = new Logger(WorkflowService.name);
+  private readonly configuredDefaultAiProvider = this.parseAiProvider(
+    process.env.AI_EXECUTOR_DEFAULT_PROVIDER ?? process.env.AI_EXECUTOR_PROVIDER,
+  ) ?? 'codex';
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly stateMachine: WorkflowStateMachine,
     private readonly repositorySyncService: RepositorySyncService,
     private readonly dingTalkNotificationService: DingTalkNotificationService,
-    @Inject(AI_EXECUTOR) private readonly aiExecutor: AIExecutor,
+    @Inject(AI_EXECUTOR_REGISTRY) private readonly aiExecutorRegistry: AIExecutorRegistry,
   ) {}
 
   async createWorkflowRun(dto: CreateWorkflowRunDto) {
+    const aiProvider = this.normalizeAiProvider(dto.aiProvider);
     const requirement = await this.prisma.requirement.findFirstOrThrow({
       where: {
         id: dto.requirementId,
@@ -180,6 +189,7 @@ export class WorkflowService {
         data: {
           requirementId: dto.requirementId,
           status: 'CREATED',
+          aiProvider,
         },
       });
 
@@ -341,6 +351,16 @@ export class WorkflowService {
     return startedWorkflow;
   }
 
+  listAiProviders() {
+    return {
+      defaultProvider: this.configuredDefaultAiProvider,
+      providers: this.aiExecutorRegistry.list().map((provider) => ({
+        id: provider,
+        label: provider === 'cursor' ? 'Cursor CLI' : 'Codex',
+      })),
+    };
+  }
+
   async findAll() {
     return this.prisma.workflowRun.findMany({
       orderBy: { createdAt: 'desc' },
@@ -420,6 +440,8 @@ export class WorkflowService {
     notifyRecipient?: WorkflowNotificationSession,
   ) {
     const workflow = await this.getWorkflowOrThrow(id);
+    const aiExecutor = this.resolveAiExecutor(workflow.aiProvider);
+    const aiProviderLabel = this.getAiProviderLabel(workflow.aiProvider);
     this.assertStageNotRunning(workflow, StageType.TASK_SPLIT);
     const workflowStatus = this.fromPrismaWorkflowStatus(workflow.status);
     if (
@@ -450,7 +472,7 @@ export class WorkflowService {
           notifier: recipient,
         },
         status: StageExecutionStatus.RUNNING,
-        statusMessage: '正在调用 Codex 进行任务拆解',
+        statusMessage: `正在调用 ${aiProviderLabel} 进行任务拆解`,
         startedAt: new Date(),
       });
 
@@ -462,7 +484,7 @@ export class WorkflowService {
 
     this.runInBackground(`task-split:${id}`, async () => {
       try {
-        const splitOutput = await this.aiExecutor.splitTasks({
+        const splitOutput = await aiExecutor.splitTasks({
           requirement: {
             id: requirement.id,
             title: requirement.title,
@@ -589,6 +611,8 @@ export class WorkflowService {
     notifyRecipient?: WorkflowNotificationSession,
   ) {
     const workflow = await this.getWorkflowOrThrow(id);
+    const aiExecutor = this.resolveAiExecutor(workflow.aiProvider);
+    const aiProviderLabel = this.getAiProviderLabel(workflow.aiProvider);
     this.assertStageNotRunning(workflow, StageType.TECHNICAL_PLAN);
     if (
       workflow.status !== 'PLAN_PENDING' &&
@@ -623,7 +647,7 @@ export class WorkflowService {
           notifier: recipient,
         },
         status: StageExecutionStatus.RUNNING,
-        statusMessage: '正在调用 Codex 生成技术方案',
+        statusMessage: `正在调用 ${aiProviderLabel} 生成技术方案`,
         startedAt: new Date(),
       });
 
@@ -635,7 +659,7 @@ export class WorkflowService {
 
     this.runInBackground(`plan:${id}`, async () => {
       try {
-        const rawOutput = await this.aiExecutor.generatePlan({
+        const rawOutput = await aiExecutor.generatePlan({
           requirement: {
             id: workflow.requirement.id,
             title: workflow.requirement.title,
@@ -781,6 +805,8 @@ export class WorkflowService {
     notifyRecipient?: WorkflowNotificationSession,
   ) {
     const workflow = await this.getWorkflowOrThrow(id);
+    const aiExecutor = this.resolveAiExecutor(workflow.aiProvider);
+    const aiProviderLabel = this.getAiProviderLabel(workflow.aiProvider);
     this.assertStageNotRunning(workflow, StageType.EXECUTION);
     const recipient = this.toNotificationRecipient(notifyRecipient);
     if (
@@ -829,7 +855,7 @@ export class WorkflowService {
         statusMessage:
           trigger?.triggerType === 'review_finding_fix'
             ? '正在根据 AI 审查结果修复代码'
-            : '正在调用 Codex 执行开发',
+            : `正在调用 ${aiProviderLabel} 执行开发`,
         startedAt: new Date(),
       });
 
@@ -841,7 +867,7 @@ export class WorkflowService {
 
     this.runInBackground(`execution:${id}`, async () => {
       try {
-        const rawOutput = await this.aiExecutor.executeTask({
+        const rawOutput = await aiExecutor.executeTask({
           requirement: {
             id: workflow.requirement.id,
             title: workflow.requirement.title,
@@ -924,6 +950,8 @@ export class WorkflowService {
     notifyRecipient?: WorkflowNotificationSession,
   ) {
     const workflow = await this.getWorkflowOrThrow(id);
+    const aiExecutor = this.resolveAiExecutor(workflow.aiProvider);
+    const aiProviderLabel = this.getAiProviderLabel(workflow.aiProvider);
     this.assertStageNotRunning(workflow, StageType.AI_REVIEW);
     const recipient = this.toNotificationRecipient(notifyRecipient);
     if (
@@ -966,7 +994,7 @@ export class WorkflowService {
           notifier: recipient,
         },
         status: StageExecutionStatus.RUNNING,
-        statusMessage: '正在调用 Codex 执行 AI 审查',
+        statusMessage: `正在调用 ${aiProviderLabel} 执行 AI 审查`,
         startedAt: new Date(),
       });
 
@@ -978,7 +1006,7 @@ export class WorkflowService {
 
     this.runInBackground(`review:${id}`, async () => {
       try {
-        const output = await this.aiExecutor.reviewCode({
+        const output = await aiExecutor.reviewCode({
           requirement: {
             id: workflow.requirement.id,
             title: workflow.requirement.title,
@@ -1957,6 +1985,33 @@ export class WorkflowService {
       throw new BadRequestException(`Unsupported stage status: ${status}`);
     }
     return entry[0] as StageExecutionStatus;
+  }
+
+  private normalizeAiProvider(provider?: string | null): AIExecutorProvider {
+    const parsed = this.parseAiProvider(provider);
+    if (parsed) {
+      return parsed;
+    }
+    return this.configuredDefaultAiProvider ?? 'codex';
+  }
+
+  private parseAiProvider(provider?: string | null): AIExecutorProvider | null {
+    const candidate = provider?.trim().toLowerCase();
+    if (candidate === 'cursor') {
+      return 'cursor';
+    }
+    if (candidate === 'codex') {
+      return 'codex';
+    }
+    return null;
+  }
+
+  private resolveAiExecutor(provider?: string | null): AIExecutor {
+    return this.aiExecutorRegistry.get(this.normalizeAiProvider(provider));
+  }
+
+  private getAiProviderLabel(provider?: string | null) {
+    return this.normalizeAiProvider(provider) === 'cursor' ? 'Cursor' : 'Codex';
   }
 
   private buildWorkflowBranchName(requirementTitle: string, workflowId: string, repositoryName: string) {

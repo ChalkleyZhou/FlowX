@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { promisify } from 'util';
 import { execFile as execFileCallback, spawn } from 'child_process';
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'fs/promises';
+import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -22,7 +22,7 @@ import { technicalPlanPrompt } from '../prompts/technical-plan.prompt';
 import { AIExecutor } from './ai-executor';
 
 const execFile = promisify(execFileCallback);
-const CODEX_TIMEOUT_MS = 120_000;
+const CODEX_TIMEOUT_MS = Number(process.env.CODEX_TIMEOUT_MS?.trim()) || 600_000;
 const CODEX_DEBUG_ROOT = join(process.cwd(), '.flowx-data', 'codex-debug');
 const CODEX_READ_SANDBOX = process.env.CODEX_READ_SANDBOX?.trim() || 'read-only';
 const CODEX_WRITE_SANDBOX = process.env.CODEX_WRITE_SANDBOX?.trim() || 'workspace-write';
@@ -30,11 +30,13 @@ const CODEX_WRITE_SANDBOX = process.env.CODEX_WRITE_SANDBOX?.trim() || 'workspac
 @Injectable()
 export class CodexAiExecutor implements AIExecutor {
   private readonly logger = new Logger(CodexAiExecutor.name);
-  private readonly schemaDir = join(process.cwd(), 'apps/api/src/ai');
+  protected readonly providerName: string = 'codex';
+  protected readonly providerLabel: string = 'Codex';
+  protected readonly debugRoot: string = CODEX_DEBUG_ROOT;
 
   async splitTasks(input: SplitTasksInput): Promise<SplitTasksOutput> {
     const prompt = await this.buildTaskSplitPrompt(input);
-    const parsed = await this.runCodexJson<SplitTasksOutput>(
+    const parsed = await this.runJsonStage<SplitTasksOutput>(
       'task-split.output.schema.json',
       prompt,
       'task split',
@@ -46,7 +48,7 @@ export class CodexAiExecutor implements AIExecutor {
 
   async generatePlan(input: GeneratePlanInput): Promise<GeneratePlanOutput> {
     const prompt = await this.buildTechnicalPlanPrompt(input);
-    return this.runCodexJson<GeneratePlanOutput>(
+    return this.runJsonStage<GeneratePlanOutput>(
       'technical-plan.output.schema.json',
       prompt,
       'technical plan',
@@ -64,7 +66,7 @@ export class CodexAiExecutor implements AIExecutor {
     }
 
     for (const repository of repositories) {
-      await this.runCodexMutation(
+      await this.runMutationStage(
         repository.localPath!,
         await this.buildRepositoryExecutionPrompt(input, repository),
         `execution-${repository.name}`,
@@ -84,7 +86,7 @@ export class CodexAiExecutor implements AIExecutor {
       input.execution.diffArtifacts,
     );
 
-    return this.runCodexJson<ReviewCodeOutput>(
+    return this.runJsonStage<ReviewCodeOutput>(
       'review.output.schema.json',
       await this.buildReviewPrompt(input, repositoryDiffSection),
       'review',
@@ -92,7 +94,7 @@ export class CodexAiExecutor implements AIExecutor {
     );
   }
 
-  private async buildTaskSplitPrompt(input: SplitTasksInput) {
+  protected async buildTaskSplitPrompt(input: SplitTasksInput) {
     const workspaceSection = await this.buildWorkspaceSection(input.workspace, 'snapshot');
     const revisionSection = input.humanFeedback
       ? `
@@ -129,7 +131,7 @@ ${revisionSection}
 `;
   }
 
-  private async buildTechnicalPlanPrompt(input: GeneratePlanInput) {
+  protected async buildTechnicalPlanPrompt(input: GeneratePlanInput) {
     const groundingSection = await this.buildWorkspaceSection(input.workspace, 'snapshot');
     const liveWorkspaceSection = await this.buildWorkspaceSection(input.workspace, 'live');
     const revisionSection = input.humanFeedback
@@ -173,7 +175,7 @@ ${input.tasks.map((task, index) => `${index + 1}. ${task.title}: ${task.descript
 `;
   }
 
-  private async buildRepositoryExecutionPrompt(
+  protected async buildRepositoryExecutionPrompt(
     input: ExecuteTaskInput,
     repository: RepositoryContext,
   ) {
@@ -233,7 +235,7 @@ ${input.plan.riskPoints.map((item) => `  - ${item}`).join('\n') || '  - 无'}
 `;
   }
 
-  private async buildReviewPrompt(input: ReviewCodeInput, repositoryDiffSection: string) {
+  protected async buildReviewPrompt(input: ReviewCodeInput, repositoryDiffSection: string) {
     const workspaceSection = await this.buildWorkspaceSection(input.workspace, 'live');
     const diffSection = repositoryDiffSection
       ? `\n工作流代码差异:\n${repositoryDiffSection}`
@@ -395,16 +397,16 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     }
   }
 
-  private assertSplitTasksOutput(output: SplitTasksOutput) {
+  protected assertSplitTasksOutput(output: SplitTasksOutput) {
     if (!Array.isArray(output.tasks) || output.tasks.length === 0) {
-      throw new Error('Codex did not return any tasks.');
+      throw new Error(`${this.providerLabel} did not return any tasks.`);
     }
     if (!Array.isArray(output.ambiguities) || !Array.isArray(output.risks)) {
-      throw new Error('Codex output shape is invalid.');
+      throw new Error(`${this.providerLabel} output shape is invalid.`);
     }
   }
 
-  private async runCodexJson<T>(
+  protected async runJsonStage<T>(
     schemaFile: string,
     prompt: string,
     stageName: string,
@@ -412,12 +414,12 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
   ): Promise<T> {
     const tempDir = await mkdtemp(join(tmpdir(), 'flowx-codex-'));
     const outputPath = join(tempDir, `${stageName.replace(/\s+/g, '-')}.json`);
-    const schemaPath = join(this.schemaDir, schemaFile);
+    const schemaPath = await this.resolveSchemaPath(schemaFile);
     const addDirArgs = addDirs.flatMap((dir) => ['--add-dir', dir]);
     const codexCwd = addDirs[0] ?? process.cwd();
 
     try {
-      const { stderr } = await this.runCodexProcess(
+      const { stderr } = await this.runCliProcess(
         [
           'exec',
           '--skip-git-repo-check',
@@ -442,22 +444,46 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
 
       const rawOutput = (await readFile(outputPath, 'utf8')).trim();
       if (!rawOutput) {
-        throw new Error(`Codex returned empty output. stderr=${stderr}`);
+        throw new Error(`${this.providerLabel} returned empty output. stderr=${stderr}`);
       }
 
       return JSON.parse(rawOutput) as T;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown Codex error';
-      this.logger.error(`Codex ${stageName} failed: ${message}`);
-      throw new Error(`Codex ${stageName} failed: ${message}`);
+      const message = error instanceof Error ? error.message : `Unknown ${this.providerLabel} error`;
+      this.logger.error(`${this.providerLabel} ${stageName} failed: ${message}`);
+      throw new Error(`${this.providerLabel} ${stageName} failed: ${message}`);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
   }
 
-  private async runCodexMutation(cwd: string, prompt: string, stageName: string) {
+  private async resolveSchemaPath(schemaFile: string) {
+    const candidates = [
+      join(__dirname, schemaFile),
+      join(__dirname, '../../src/ai', schemaFile),
+      join(process.cwd(), 'src/ai', schemaFile),
+      join(process.cwd(), 'dist/ai', schemaFile),
+      join(process.cwd(), 'apps/api/src/ai', schemaFile),
+      join(process.cwd(), 'apps/api/dist/ai', schemaFile),
+    ];
+
+    for (const candidate of candidates) {
+      try {
+        await access(candidate);
+        return candidate;
+      } catch {
+        continue;
+      }
+    }
+
+    throw new Error(
+      `Failed to locate output schema file ${schemaFile}. Checked: ${candidates.join(', ')}`,
+    );
+  }
+
+  protected async runMutationStage(cwd: string, prompt: string, stageName: string) {
     try {
-      await this.runCodexProcess(
+      await this.runCliProcess(
         [
           'exec',
           '--skip-git-repo-check',
@@ -475,13 +501,14 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
         prompt,
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown Codex mutation error';
-      this.logger.error(`Codex ${stageName} failed: ${message}`);
-      throw new Error(`Codex ${stageName} failed: ${message}`);
+      const message =
+        error instanceof Error ? error.message : `Unknown ${this.providerLabel} mutation error`;
+      this.logger.error(`${this.providerLabel} ${stageName} failed: ${message}`);
+      throw new Error(`${this.providerLabel} ${stageName} failed: ${message}`);
     }
   }
 
-  private runCodexProcess(
+  protected runCliProcess(
     args: string[],
     cwd: string,
     stageName: string,
@@ -494,9 +521,10 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
       const createdAt = new Date().toISOString();
       const timestamp = createdAt.replace(/[:.]/g, '-');
       const stageSlug = stageName.replace(/[^a-z0-9-_]+/gi, '-');
-      const artifactPath = join(CODEX_DEBUG_ROOT, `${timestamp}-${stageSlug}.json`);
+      const artifactPath = join(this.debugRoot, `${timestamp}-${stageSlug}.json`);
       const persistArtifact = (payload: Record<string, unknown>) =>
-        this.persistCodexDebugArtifact(artifactPath, {
+        this.persistDebugArtifact(artifactPath, {
+          provider: this.providerName,
           stageName,
           cwd,
           args,
@@ -507,7 +535,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
 
       void persistArtifact({ status: 'STARTED' }).catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
-        this.logger.warn(`Failed to persist Codex debug artifact: ${message}`);
+        this.logger.warn(`Failed to persist ${this.providerLabel} debug artifact: ${message}`);
       });
 
       const child = spawn('codex', args, {
@@ -520,18 +548,19 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
         if (finished) {
           return;
         }
+        finished = true;
         child.kill('SIGTERM');
         void persistArtifact({
           status: 'TIMED_OUT',
           finishedAt: new Date().toISOString(),
           stdout,
           stderr,
-          errorMessage: `Codex ${stageName} timed out after ${CODEX_TIMEOUT_MS}ms.`,
+          errorMessage: `${this.providerLabel} ${stageName} timed out after ${CODEX_TIMEOUT_MS}ms.`,
         }).catch((error) => {
           const message = error instanceof Error ? error.message : String(error);
-          this.logger.warn(`Failed to persist timed out Codex artifact: ${message}`);
+          this.logger.warn(`Failed to persist timed out ${this.providerLabel} artifact: ${message}`);
         });
-        reject(new Error(`Codex ${stageName} timed out after ${CODEX_TIMEOUT_MS}ms.`));
+        reject(new Error(`${this.providerLabel} ${stageName} timed out after ${CODEX_TIMEOUT_MS}ms.`));
       }, CODEX_TIMEOUT_MS);
 
       child.stdout.on('data', (chunk) => {
@@ -557,7 +586,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
         }).catch((persistError) => {
           const message =
             persistError instanceof Error ? persistError.message : String(persistError);
-          this.logger.warn(`Failed to persist errored Codex artifact: ${message}`);
+          this.logger.warn(`Failed to persist errored ${this.providerLabel} artifact: ${message}`);
         });
         reject(error);
       });
@@ -577,7 +606,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
             stderr,
           }).catch((error) => {
             const message = error instanceof Error ? error.message : String(error);
-            this.logger.warn(`Failed to persist completed Codex artifact: ${message}`);
+            this.logger.warn(`Failed to persist completed ${this.providerLabel} artifact: ${message}`);
           });
           resolve({ stdout, stderr });
           return;
@@ -588,14 +617,14 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
           exitCode: code,
           stdout,
           stderr,
-          errorMessage: `Codex process exited with code ${code}. stderr=${stderr.trim() || 'empty'}`,
+          errorMessage: `${this.providerLabel} process exited with code ${code}. stderr=${stderr.trim() || 'empty'}`,
         }).catch((error) => {
           const message = error instanceof Error ? error.message : String(error);
-          this.logger.warn(`Failed to persist failed Codex artifact: ${message}`);
+          this.logger.warn(`Failed to persist failed ${this.providerLabel} artifact: ${message}`);
         });
         reject(
           new Error(
-            `Codex process exited with code ${code}. stderr=${stderr.trim() || 'empty'}`,
+            `${this.providerLabel} process exited with code ${code}. stderr=${stderr.trim() || 'empty'}`,
           ),
         );
       });
@@ -604,15 +633,15 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     });
   }
 
-  private async persistCodexDebugArtifact(
+  protected async persistDebugArtifact(
     artifactPath: string,
     payload: Record<string, unknown>,
   ) {
-    await mkdir(CODEX_DEBUG_ROOT, { recursive: true });
+    await mkdir(this.debugRoot, { recursive: true });
     await writeFile(artifactPath, JSON.stringify(payload, null, 2), 'utf8');
   }
 
-  private async collectExecutionOutput(repositories: RepositoryContext[]): Promise<ExecuteTaskOutput> {
+  protected async collectExecutionOutput(repositories: RepositoryContext[]): Promise<ExecuteTaskOutput> {
     const changedFiles: string[] = [];
     const codeChanges: ExecuteTaskOutput['codeChanges'] = [];
     const summaryLines: string[] = [];
@@ -678,7 +707,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     };
   }
 
-  private buildNoChangeDiagnostic(
+  protected buildNoChangeDiagnostic(
     input: ExecuteTaskInput,
     repositories: RepositoryContext[],
     diffArtifacts: ExecuteTaskOutput['diffArtifacts'],
@@ -699,7 +728,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     });
 
     return [
-      'Codex execution finished without producing any code changes.',
+      `${this.providerLabel} execution finished without producing any code changes.`,
       `Plan filesToModify: ${input.plan.filesToModify.join(', ') || '无'}`,
       `Plan newFiles: ${input.plan.newFiles.join(', ') || '无'}`,
       `Plan implementation steps: ${input.plan.implementationPlan.join(' | ') || '无'}`,
@@ -709,7 +738,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     ].join(' ');
   }
 
-  private async getRepositoryStatus(localPath: string) {
+  protected async getRepositoryStatus(localPath: string) {
     const { stdout } = await execFile(
       'git',
       ['status', '--porcelain=v1', '-uall'],
@@ -738,7 +767,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
       });
   }
 
-  private buildExecutionArtifactSection(
+  protected buildExecutionArtifactSection(
     artifacts: ExecuteTaskOutput['diffArtifacts'],
   ) {
     return artifacts

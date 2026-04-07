@@ -1,4 +1,4 @@
-import { IsArray, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateWorkflowRunDto {
   @IsString()
@@ -9,4 +9,9 @@ export class CreateWorkflowRunDto {
   @IsArray()
   @IsString({ each: true })
   repositoryIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['codex', 'cursor'])
+  aiProvider?: string;
 }

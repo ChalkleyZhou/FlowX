@@ -51,10 +51,54 @@ model Project {
   code         String?
   description  String?
   requirements Requirement[]
+  legacyDeployConfig ProjectDeployConfig?
+  deployJobs   DeployJobRecord[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
   @@index([workspaceId, createdAt])
+}
+
+model ProjectDeployConfig {
+  id         String   @id @default(cuid())
+  projectId  String   @unique
+  project    Project  @relation(fields: [projectId], references: [id])
+  enabled    Boolean  @default(false)
+  provider   String   @default("noop")
+  configJson Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model DeployJobRecord {
+  id              String   @id @default(cuid())
+  projectId       String?
+  project         Project? @relation(fields: [projectId], references: [id])
+  repositoryId    String?
+  repository      Repository? @relation(fields: [repositoryId], references: [id])
+  workflowRunId   String?
+  workflowRun     WorkflowRun? @relation(fields: [workflowRunId], references: [id])
+  provider        String
+  status          String   @default("PENDING")
+  targetEnv       String?
+  branch          String?
+  commitSha       String?
+  version         String?
+  versionImage    String?
+  image           String?
+  requestedBy     String?
+  requestPayload  Json?
+  responsePayload Json?
+  externalJobId   String?
+  externalJobUrl  String?
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([projectId, createdAt])
+  @@index([repositoryId, createdAt])
+  @@index([workflowRunId, createdAt])
+  @@index([provider, createdAt])
 }
 
 model Repository {
@@ -72,10 +116,23 @@ model Repository {
   lastSyncedAt            DateTime?
   requirementRepositories RequirementRepository[]
   workflowRepositories    WorkflowRepository[]
+  deployConfig            RepositoryDeployConfig?
+  deployJobs              DeployJobRecord[]
   issues                  Issue[]
   bugs                    Bug[]
   createdAt               DateTime                @default(now())
   updatedAt               DateTime                @updatedAt
+}
+
+model RepositoryDeployConfig {
+  id         String     @id @default(cuid())
+  repositoryId String   @unique
+  repository Repository @relation(fields: [repositoryId], references: [id])
+  enabled    Boolean    @default(false)
+  provider   String     @default("noop")
+  configJson Json?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
 }
 
 model User {
@@ -188,6 +245,7 @@ model WorkflowRun {
   id                   String               @id @default(cuid())
   status               String               @default("CREATED")
   currentStage         String?
+  aiProvider           String               @default("codex")
   requirementId        String
   requirement          Requirement          @relation(fields: [requirementId], references: [id])
   stageExecutions      StageExecution[]
@@ -196,6 +254,7 @@ model WorkflowRun {
   codeExecution        CodeExecution?
   reviewReport         ReviewReport?
   workflowRepositories WorkflowRepository[]
+  deployJobs           DeployJobRecord[]
   reviewFindings       ReviewFinding[]
   issues               Issue[]
   bugs                 Bug[]

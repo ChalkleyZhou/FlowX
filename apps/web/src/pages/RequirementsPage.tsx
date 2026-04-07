@@ -30,6 +30,8 @@ import { Textarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
 import type { Project, Requirement, Workspace } from '../types';
 
+const AI_PROVIDER_STORAGE_KEY = 'flowx-default-ai-provider';
+
 export function RequirementsPage() {
   const navigate = useNavigate();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -41,6 +43,12 @@ export function RequirementsPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [launchModalRequirement, setLaunchModalRequirement] = useState<Requirement | null>(null);
   const [launchRepositoryIds, setLaunchRepositoryIds] = useState<string[]>([]);
+  const [launchAiProvider, setLaunchAiProvider] = useState<'codex' | 'cursor'>('codex');
+  const [defaultAiProvider, setDefaultAiProvider] = useState<'codex' | 'cursor'>('codex');
+  const [availableAiProviders, setAvailableAiProviders] = useState<Array<{ id: 'codex' | 'cursor'; label: string }>>([
+    { id: 'codex', label: 'Codex' },
+    { id: 'cursor', label: 'Cursor CLI' },
+  ]);
   const [launchSubmitting, setLaunchSubmitting] = useState(false);
   const [createDraft, setCreateDraft] = useState({
     projectId: '',
@@ -89,14 +97,26 @@ export function RequirementsPage() {
   async function refresh() {
     setLoading(true);
     try {
-      const [workspaceList, projectList, requirementList] = await Promise.all([
+      const [workspaceList, projectList, requirementList, workflowProviderConfig] = await Promise.all([
         api.getWorkspaces(),
         api.getProjects(),
         api.getRequirements(),
+        api.getWorkflowProviders(),
       ]);
       setWorkspaces(workspaceList);
       setProjects(projectList);
       setRequirements(requirementList);
+      setAvailableAiProviders(workflowProviderConfig.providers);
+      const storedProvider =
+        typeof window !== 'undefined'
+          ? window.localStorage.getItem(AI_PROVIDER_STORAGE_KEY)
+          : null;
+      const preferredProvider =
+        storedProvider === 'cursor' || storedProvider === 'codex'
+          ? storedProvider
+          : workflowProviderConfig.defaultProvider;
+      setDefaultAiProvider(preferredProvider);
+      setLaunchAiProvider(preferredProvider);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '加载需求失败');
     } finally {
@@ -139,15 +159,25 @@ export function RequirementsPage() {
       const run = await api.createWorkflowRun(
         requirementId,
         launchRepositoryIds.length > 0 ? launchRepositoryIds : undefined,
+        launchAiProvider,
       );
       toast.success('工作流已启动');
       setLaunchModalRequirement(null);
       setLaunchRepositoryIds([]);
+      setLaunchAiProvider(defaultAiProvider);
       navigate(`/workflow-runs/${run.id}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '启动工作流失败');
     } finally {
       setLaunchSubmitting(false);
+    }
+  }
+
+  function updateDefaultAiProvider(nextProvider: 'codex' | 'cursor') {
+    setDefaultAiProvider(nextProvider);
+    setLaunchAiProvider(nextProvider);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(AI_PROVIDER_STORAGE_KEY, nextProvider);
     }
   }
 
@@ -238,6 +268,7 @@ export function RequirementsPage() {
           if (!open) {
             setLaunchModalRequirement(null);
             setLaunchRepositoryIds([]);
+            setLaunchAiProvider(defaultAiProvider);
           }
         }}
       >
@@ -257,6 +288,27 @@ export function RequirementsPage() {
                 </div>
               </div>
               <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-semibold text-[var(--text)]">AI 执行器</label>
+                  <Select
+                    value={launchAiProvider}
+                    onValueChange={(value: 'codex' | 'cursor') => setLaunchAiProvider(value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="选择执行器" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableAiProviders.map((provider) => (
+                        <SelectItem key={provider.id} value={provider.id}>
+                          {provider.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs leading-5 text-slate-500">
+                    Codex 适合当前默认链路；Cursor 会通过服务器上的 `cursor-agent` 执行。
+                  </p>
+                </div>
                 <div className="flex items-center justify-between gap-3">
                   <label className="text-sm font-semibold text-[var(--text)]">本次工作流仓库范围</label>
                   <span className="text-xs leading-5 text-slate-500">不选则按默认范围启动</span>
@@ -284,6 +336,7 @@ export function RequirementsPage() {
                   onClick={() => {
                     setLaunchModalRequirement(null);
                     setLaunchRepositoryIds([]);
+                    setLaunchAiProvider(defaultAiProvider);
                   }}
                 >
                   取消
@@ -426,6 +479,21 @@ export function RequirementsPage() {
             title="需求列表"
             extra={
               <FilterBar className="border-0 bg-transparent p-0">
+                <Select
+                  value={defaultAiProvider}
+                  onValueChange={(value: 'codex' | 'cursor') => updateDefaultAiProvider(value)}
+                >
+                  <SelectTrigger className="min-w-[220px]">
+                    <SelectValue placeholder="默认执行器" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableAiProviders.map((provider) => (
+                      <SelectItem key={provider.id} value={provider.id}>
+                        默认执行器：{provider.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Select
                   value={selectedWorkspaceId ?? '__all__'}
                   onValueChange={(value) => {

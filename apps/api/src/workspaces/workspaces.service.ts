@@ -21,6 +21,9 @@ export class WorkspacesService {
       },
       include: {
         repositories: {
+          include: {
+            deployConfig: true,
+          },
           orderBy: { createdAt: 'asc' },
         },
         _count: {
@@ -40,6 +43,9 @@ export class WorkspacesService {
       },
       include: {
         repositories: {
+          include: {
+            deployConfig: true,
+          },
           orderBy: { createdAt: 'asc' },
         },
         _count: {
@@ -67,6 +73,9 @@ export class WorkspacesService {
         url: dto.url,
         defaultBranch: dto.defaultBranch?.trim() || null,
         currentBranch: dto.defaultBranch?.trim() || null,
+      },
+      include: {
+        deployConfig: true,
       },
     });
 
@@ -106,6 +115,9 @@ export class WorkspacesService {
         name: dto.name.trim(),
         defaultBranch: dto.defaultBranch?.trim() || null,
       },
+      include: {
+        deployConfig: true,
+      },
     });
   }
 
@@ -128,6 +140,9 @@ export class WorkspacesService {
       where: { id: repositoryId },
       data: {
         currentBranch: dto.currentBranch.trim(),
+      },
+      include: {
+        deployConfig: true,
       },
     });
 

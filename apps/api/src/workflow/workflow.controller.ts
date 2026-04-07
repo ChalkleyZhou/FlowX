@@ -14,6 +14,11 @@ export class WorkflowController {
     return this.workflowService.createWorkflowRun(dto);
   }
 
+  @Get('providers')
+  listProviders() {
+    return this.workflowService.listAiProviders();
+  }
+
   @Get()
   findAll() {
     return this.workflowService.findAll();

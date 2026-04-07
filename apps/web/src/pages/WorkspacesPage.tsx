@@ -11,6 +11,13 @@ import { Button as UiButton } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Input as UiInput } from '../components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
 import { Textarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
@@ -23,6 +30,7 @@ export function WorkspacesPage() {
   const [repositoryModalOpen, setRepositoryModalOpen] = useState(false);
   const [editRepositoryModalOpen, setEditRepositoryModalOpen] = useState(false);
   const [branchModalOpen, setBranchModalOpen] = useState(false);
+  const [deployConfigModalOpen, setDeployConfigModalOpen] = useState(false);
   const [repositoryWorkspaceId, setRepositoryWorkspaceId] = useState('');
   const [editingRepositoryMeta, setEditingRepositoryMeta] = useState<{
     workspaceId: string;
@@ -32,10 +40,22 @@ export function WorkspacesPage() {
     workspaceId: string;
     repository: Repository;
   } | null>(null);
+  const [deployConfigRepository, setDeployConfigRepository] = useState<{
+    workspaceId: string;
+    repository: Repository;
+  } | null>(null);
   const [workspaceDraft, setWorkspaceDraft] = useState({ name: '', description: '' });
   const [repositoryDraft, setRepositoryDraft] = useState({ name: '', url: '', defaultBranch: '' });
   const [repositoryEditDraft, setRepositoryEditDraft] = useState({ name: '', defaultBranch: '' });
   const [branchDraft, setBranchDraft] = useState({ currentBranch: '' });
+  const [deployConfigDraft, setDeployConfigDraft] = useState({
+    enabled: false,
+    provider: 'noop',
+    configText: '{}',
+  });
+  const [deployProviders, setDeployProviders] = useState<Array<{ id: string; label: string }>>([]);
+  const [deployConfigLoading, setDeployConfigLoading] = useState(false);
+  const [deployConfigSaving, setDeployConfigSaving] = useState(false);
   const toast = useToast();
 
   const workspaceSummary = useMemo(() => {
@@ -119,6 +139,79 @@ export function WorkspacesPage() {
       toast.success('代码库信息已更新');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '更新代码库失败');
+    }
+  }
+
+  async function openDeployConfig(workspaceId: string, repository: Repository) {
+    setDeployConfigLoading(true);
+    try {
+      const [config, providers] = await Promise.all([
+        api.getRepositoryDeployConfig(repository.id),
+        api.getDeployProviders().catch(() => ({
+          defaultProvider: 'noop',
+          providers: [],
+        })),
+      ]);
+
+      const availableProviders = [
+        ...providers.providers,
+        { id: 'noop', label: 'No-op Deploy' },
+        { id: 'rokid-ops', label: 'Rokid OPS' },
+      ];
+      setDeployProviders(
+        availableProviders.filter(
+          (provider, index, array) =>
+            array.findIndex((entry) => entry.id === provider.id) === index,
+        ),
+      );
+      setDeployConfigRepository({ workspaceId, repository });
+      setDeployConfigDraft({
+        enabled: config.enabled,
+        provider: config.provider || providers.defaultProvider || 'noop',
+        configText: JSON.stringify(config.configJson ?? {}, null, 2),
+      });
+      setDeployConfigModalOpen(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '读取部署配置失败');
+    } finally {
+      setDeployConfigLoading(false);
+    }
+  }
+
+  async function saveDeployConfig(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!deployConfigRepository) {
+      return;
+    }
+
+    let parsedConfig: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(deployConfigDraft.configText);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        toast.error('部署模板必须是 JSON 对象');
+        return;
+      }
+      parsedConfig = parsed as Record<string, unknown>;
+    } catch {
+      toast.error('部署模板不是合法 JSON');
+      return;
+    }
+
+    setDeployConfigSaving(true);
+    try {
+      await api.updateRepositoryDeployConfig(deployConfigRepository.repository.id, {
+        enabled: deployConfigDraft.enabled,
+        provider: deployConfigDraft.provider,
+        config: parsedConfig,
+      });
+      setDeployConfigModalOpen(false);
+      setDeployConfigRepository(null);
+      await refresh();
+      toast.success('仓库部署模板已保存');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '保存部署配置失败');
+    } finally {
+      setDeployConfigSaving(false);
     }
   }
 
@@ -344,6 +437,73 @@ export function WorkspacesPage() {
           </form>
         </DialogContent>
       </Dialog>
+      <Dialog
+        open={deployConfigModalOpen}
+        onOpenChange={(open) => {
+          setDeployConfigModalOpen(open);
+          if (!open) {
+            setDeployConfigRepository(null);
+            setDeployConfigDraft({ enabled: false, provider: 'noop', configText: '{}' });
+            setDeployConfigSaving(false);
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>仓库部署配置</DialogTitle>
+            <DialogDescription>
+              模板跟着仓库走。这里维护仓库对应的 CI/CD provider 和默认发布参数，工作流完成后再按仓库触发部署。
+            </DialogDescription>
+          </DialogHeader>
+          <form className="flex flex-col gap-4" onSubmit={(event) => void saveDeployConfig(event)}>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+              当前仓库：{deployConfigRepository?.repository.name ?? '未选择'}。推荐把 `env / ops / k8s_name / project_name / jenkins / id / folder` 这些默认值维护在这里。
+            </div>
+            <label className="flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={deployConfigDraft.enabled}
+                onChange={(event) => setDeployConfigDraft((current) => ({ ...current, enabled: event.target.checked }))}
+              />
+              启用该仓库的部署模板
+            </label>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-[var(--text)]">Deploy Provider</label>
+              <Select
+                value={deployConfigDraft.provider}
+                onValueChange={(value) => setDeployConfigDraft((current) => ({ ...current, provider: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="选择部署 Provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  {deployProviders.map((provider) => (
+                    <SelectItem key={provider.id} value={provider.id}>
+                      {provider.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="repository-deploy-config">部署模板 JSON</label>
+              <Textarea
+                id="repository-deploy-config"
+                rows={16}
+                spellCheck={false}
+                value={deployConfigDraft.configText}
+                onChange={(event) => setDeployConfigDraft((current) => ({ ...current, configText: event.target.value }))}
+                placeholder='{"env":"dev","ops":"prod"}'
+              />
+            </div>
+            <DialogFooter className="border-t border-slate-200 pt-4">
+              <UiButton type="submit" disabled={deployConfigSaving}>
+                {deployConfigSaving ? '保存中...' : '保存部署模板'}
+              </UiButton>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <PageHeader
         eyebrow="Workspace"
@@ -427,6 +587,14 @@ export function WorkspacesPage() {
                               }}
                             >
                               编辑
+                            </UiButton>
+                            <UiButton
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => void openDeployConfig(workspace.id, repository)}
+                              disabled={deployConfigLoading}
+                            >
+                              部署配置
                             </UiButton>
                             <UiButton
                               variant="secondary"

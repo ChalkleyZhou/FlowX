@@ -1,4 +1,17 @@
-import type { AuthOrganization, AuthSession, Bug, Issue, Project, Requirement, ReviewFinding, WorkflowRun, Workspace, Repository } from './types';
+import type {
+  AuthOrganization,
+  AuthSession,
+  Bug,
+  DeployJobRecord,
+  Issue,
+  Project,
+  RepositoryDeployConfig,
+  Repository,
+  Requirement,
+  ReviewFinding,
+  WorkflowRun,
+  Workspace,
+} from './types';
 
 const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
 const API_BASE_URL = configuredApiBaseUrl
@@ -73,6 +86,16 @@ export const apiBaseUrl = API_BASE_URL;
 export const toApiUrl = buildApiUrl;
 
 export const api = {
+  getWorkflowProviders: () =>
+    request<{
+      defaultProvider: 'codex' | 'cursor';
+      providers: Array<{ id: 'codex' | 'cursor'; label: string }>;
+    }>('/workflow-runs/providers'),
+  getDeployProviders: () =>
+    request<{
+      defaultProvider: string;
+      providers: Array<{ id: string; label: string }>;
+    }>('/deploy/providers'),
   getAuthProviders: () => request<Array<{ name: string }>>('/auth/providers'),
   getDingTalkAuthorizeUrl: (redirectUri: string) =>
     request<{ provider: string; state: string; url: string }>(
@@ -130,6 +153,63 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  getRepositoryDeployConfig: (repositoryId: string) =>
+    request<RepositoryDeployConfig>(`/repositories/${repositoryId}/deploy-config`),
+  updateRepositoryDeployConfig: (
+    repositoryId: string,
+    payload: { enabled?: boolean; provider?: string; config?: Record<string, unknown> },
+  ) =>
+    request<RepositoryDeployConfig>(`/repositories/${repositoryId}/deploy-config`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  previewRepositoryDeployJob: (
+    repositoryId: string,
+    payload: {
+      workflowRunId?: string;
+      projectId?: string;
+      env?: string;
+      branch?: string;
+      commit?: string;
+      version?: string;
+      versionImage?: string;
+      image?: string;
+      overrides?: Record<string, unknown>;
+    },
+  ) =>
+    request<{
+      projectId: string;
+      provider: string;
+      enabled: boolean;
+      preview: {
+        provider: string;
+        payload: Record<string, unknown>;
+      };
+    }>(`/repositories/${repositoryId}/deploy/preview`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  createRepositoryDeployJob: (
+    repositoryId: string,
+    payload: {
+      workflowRunId?: string;
+      projectId?: string;
+      env?: string;
+      branch?: string;
+      commit?: string;
+      version?: string;
+      versionImage?: string;
+      image?: string;
+      overrides?: Record<string, unknown>;
+    },
+  ) =>
+    request<{
+      message: string;
+      job: DeployJobRecord;
+    }>(`/repositories/${repositoryId}/deploy/jobs`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   addRepositoryToWorkspace: (
     workspaceId: string,
     payload: { name: string; url: string; defaultBranch?: string },
@@ -183,10 +263,14 @@ export const api = {
         remoteUrl: string;
       }>;
     }>(`/workflow-runs/${id}/git/publish`, { method: 'POST' }),
-  createWorkflowRun: (requirementId: string, repositoryIds?: string[]) =>
+  createWorkflowRun: (
+    requirementId: string,
+    repositoryIds?: string[],
+    aiProvider?: 'codex' | 'cursor',
+  ) =>
     request<WorkflowRun>('/workflow-runs', {
       method: 'POST',
-      body: JSON.stringify({ requirementId, repositoryIds }),
+      body: JSON.stringify({ requirementId, repositoryIds, aiProvider }),
     }),
   runTaskSplit: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/task-split/run`, { method: 'POST' }),

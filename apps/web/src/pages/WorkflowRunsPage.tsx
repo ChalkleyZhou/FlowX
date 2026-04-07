@@ -246,6 +246,7 @@ export function WorkflowRunsPage() {
                   badges={
                     <>
                       <Badge variant="default">{formatWorkflowStatus(item.status)}</Badge>
+                      <Badge variant="outline">{item.aiProvider === 'cursor' ? 'Cursor CLI' : 'Codex'}</Badge>
                       <Badge variant="secondary">{item.requirement.project.name}</Badge>
                       <Badge variant="outline">{item.requirement.project.workspace.name}</Badge>
                       <Badge variant="outline">{item.workflowRepositories.length} 个执行仓库</Badge>

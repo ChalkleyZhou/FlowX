@@ -5,6 +5,7 @@ API_PORT="${PORT:-3000}"
 WEB_PORT="${WEB_PORT:-4173}"
 AI_PROVIDER="${AI_EXECUTOR_PROVIDER:-mock}"
 CODEX_HOME_DIR="${CODEX_HOME:-/data/.codex}"
+export PATH="${HOME}/.local/bin:${PATH}"
 
 mkdir -p "${CODEX_HOME_DIR}"
 
@@ -17,6 +18,18 @@ if [ "${AI_PROVIDER}" = "codex" ]; then
   if [ -z "${OPENAI_API_KEY:-}" ]; then
     echo "OPENAI_API_KEY is empty. FlowX will rely on Codex CLI login state in ${CODEX_HOME_DIR}." >&2
     echo "If this is a fresh server, run 'codex login' inside the container once before using AI stages." >&2
+  fi
+fi
+
+if [ "${AI_PROVIDER}" = "cursor" ]; then
+  if ! command -v cursor-agent >/dev/null 2>&1; then
+    echo "Cursor CLI is not installed in the image, but AI_EXECUTOR_PROVIDER=cursor." >&2
+    exit 1
+  fi
+
+  if [ -z "${CURSOR_API_KEY:-}" ]; then
+    echo "CURSOR_API_KEY is empty. FlowX will rely on existing cursor-agent login state." >&2
+    echo "For server automation, setting CURSOR_API_KEY is recommended." >&2
   fi
 fi
 

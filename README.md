@@ -70,6 +70,7 @@ flowchart LR
 
 - `docs/system-design.md`: MVP system design
 - `docs/docker-deployment.md`: Docker 与 Nginx 部署指南
+- `docs/deploy-integration-design.md`: 部署集成设计与扩展方案
 - `apps/api`: backend service
 - `apps/web`: basic management UI
 - `prisma`: Prisma schema
@@ -104,6 +105,23 @@ pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma
 
 ```bash
 pnpm dev
+```
+
+## Deploy integration
+
+FlowX now includes an isolated deploy integration module for repository-level CI/CD adapters.
+
+- Provider abstraction lives under [apps/api/src/deploy](/Users/chalkley/workspace/FlowX/apps/api/src/deploy)
+- Design document: [docs/deploy-integration-design.md](/Users/chalkley/workspace/FlowX/docs/deploy-integration-design.md)
+- Default provider is `noop`
+- Real providers can be selected with `DEPLOY_PROVIDER`
+
+Example API environment variables for Rokid OPS:
+
+```env
+DEPLOY_PROVIDER=rokid-ops
+DEPLOY_ROKID_OPS_CREATE_JOB_URL=http://ops-manage.rokid-inc.com/api/cicd/app/createJob
+DEPLOY_PROVIDER_TIMEOUT_MS=10000
 ```
 
 ## Docker deployment
@@ -147,9 +165,11 @@ Notes:
 - Web runs on `4173`
 - SQLite data is stored in `/data/dev.db`, so mounting `/data` is recommended
 - The container startup script will run `prisma db push` automatically before starting services
-- The runtime image now installs Codex CLI via the official npm package `@openai/codex`
+- The runtime image now installs both Codex CLI and Cursor CLI
 - Codex login state is stored under `/data/.codex` by default, so mounting `/data` will persist `codex login`
+- `AI_EXECUTOR_DEFAULT_PROVIDER` can be set to `codex` or `cursor` as the default provider for new workflows
 - If you want to use `AI_EXECUTOR_PROVIDER="codex"`, set `OPENAI_API_KEY` in the container
+- If you want to use Cursor on the server, set `CURSOR_API_KEY` in the container and choose `Cursor CLI` when starting a workflow
 - If you want workflow `提交并推送到远程` to work, the container must have:
   - reachable git remote credentials (SSH key or HTTPS token)
   - git identity configured, e.g. `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL`

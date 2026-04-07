@@ -10,6 +10,9 @@ import {
 } from '../common/types';
 
 export const AI_EXECUTOR = Symbol('AI_EXECUTOR');
+export const AI_EXECUTOR_REGISTRY = Symbol('AI_EXECUTOR_REGISTRY');
+
+export type AIExecutorProvider = 'codex' | 'cursor';
 
 export interface AIExecutor {
   splitTasks(input: SplitTasksInput): Promise<SplitTasksOutput>;
@@ -18,3 +21,7 @@ export interface AIExecutor {
   reviewCode(input: ReviewCodeInput): Promise<ReviewCodeOutput>;
 }
 
+export interface AIExecutorRegistry {
+  get(provider: AIExecutorProvider): AIExecutor;
+  list(): AIExecutorProvider[];
+}
