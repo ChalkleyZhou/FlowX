@@ -6,6 +6,7 @@
     "dev": "pnpm start:dev",
     "build": "tsc -p tsconfig.build.json && node scripts/copy-ai-schemas.mjs",
     "start:dev": "HOST=127.0.0.1 pnpm build && HOST=127.0.0.1 node dist/main.js",
+    "test": "vitest run",
     "prisma:generate": "prisma generate --schema ../../prisma/schema.prisma",
     "prisma:migrate": "prisma migrate dev --schema ../../prisma/schema.prisma"
   },
@@ -24,6 +25,7 @@
     "@types/node": "^22.13.10",
     "prisma": "^6.5.0",
     "tsx": "^4.19.3",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vitest": "^3.2.4"
   }
 }

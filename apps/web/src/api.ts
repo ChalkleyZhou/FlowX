@@ -247,6 +247,39 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  getRequirement: (id: string) => request<Requirement>(`/requirements/${id}`),
+  startBrainstorm: (requirementId: string, hint?: string) =>
+    request<Requirement>(`/requirements/${requirementId}/brainstorm/run`, {
+      method: 'POST',
+      body: JSON.stringify({ humanHint: hint }),
+    }),
+  reviseBrainstorm: (requirementId: string, feedback: string) =>
+    request<Requirement>(`/requirements/${requirementId}/brainstorm/revise`, {
+      method: 'POST',
+      body: JSON.stringify({ feedback }),
+    }),
+  confirmBrainstorm: (requirementId: string) =>
+    request<Requirement>(`/requirements/${requirementId}/brainstorm/confirm`, {
+      method: 'POST',
+    }),
+  startDesign: (requirementId: string, hint?: string) =>
+    request<Requirement>(`/requirements/${requirementId}/design/run`, {
+      method: 'POST',
+      body: JSON.stringify({ humanHint: hint }),
+    }),
+  reviseDesign: (requirementId: string, feedback: string) =>
+    request<Requirement>(`/requirements/${requirementId}/design/revise`, {
+      method: 'POST',
+      body: JSON.stringify({ feedback }),
+    }),
+  confirmDesign: (requirementId: string) =>
+    request<Requirement>(`/requirements/${requirementId}/design/confirm`, {
+      method: 'POST',
+    }),
+  finalizeIdeation: (requirementId: string) =>
+    request<Requirement>(`/requirements/${requirementId}/ideation/finalize`, {
+      method: 'POST',
+    }),
   getWorkflowRuns: () => request<WorkflowRun[]>('/workflow-runs'),
   getWorkflowRun: (id: string) => request<WorkflowRun>(`/workflow-runs/${id}`),
   deleteWorkflowRun: (id: string) =>

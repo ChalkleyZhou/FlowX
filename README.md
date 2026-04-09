@@ -66,6 +66,12 @@ flowchart LR
 - Frontend: React + shadcn/ui + Tailwind + Vite
 - AI integration: provider abstraction with Codex / Mock executor
 
+## Engineering guardrails
+
+- Agent rules: `AGENTS.md`
+- AI maintainability guide: `docs/architecture/ai-maintainability.md`
+- Validation command: `pnpm check`
+
 ## Structure
 
 - `docs/system-design.md`: MVP system design

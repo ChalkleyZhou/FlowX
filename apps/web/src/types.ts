@@ -45,8 +45,11 @@ export interface Requirement {
   title: string;
   description: string;
   acceptanceCriteria: string;
+  ideationStatus: string;
   project: Project;
   workspace?: Workspace | null;
+  ideationSessions?: IdeationSession[];
+  ideationArtifacts?: IdeationArtifact[];
   workflowRuns?: Array<{
     id: string;
     status: string;
@@ -113,7 +116,14 @@ export interface WorkflowRun {
     syncError?: string | null;
     preparedAt?: string | null;
   }>;
-  tasks: Array<{ id: string; title: string; description: string; status: string }>;
+  tasks: Array<{
+    id: string;
+    title: string;
+    description: string;
+    surface?: string | null;
+    repositoryNames?: string[];
+    status: string;
+  }>;
   plan?: {
     summary: string;
     implementationPlan: string[];
@@ -233,4 +243,26 @@ export interface AuthSession {
   expiresAt: string;
   user: AuthUser;
   organization: AuthOrganization | null;
+}
+
+export interface IdeationSession {
+  id: string;
+  stage: 'BRAINSTORM' | 'DESIGN';
+  attempt: number;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'WAITING_CONFIRMATION';
+  statusMessage?: string | null;
+  input: unknown;
+  output: unknown;
+  errorMessage?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  createdAt: string;
+}
+
+export interface IdeationArtifact {
+  id: string;
+  type: 'BRAINSTORM_BRIEF' | 'DESIGN_SPEC';
+  content: unknown;
+  version: number;
+  createdAt: string;
 }

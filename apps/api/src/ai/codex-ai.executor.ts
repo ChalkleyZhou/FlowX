@@ -5,8 +5,12 @@ import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'fs/pro
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
+  BrainstormInput,
+  BrainstormOutput,
   ExecuteTaskInput,
   ExecuteTaskOutput,
+  GenerateDesignInput,
+  GenerateDesignOutput,
   GeneratePlanInput,
   GeneratePlanOutput,
   RepositoryContext,
@@ -15,6 +19,8 @@ import {
   SplitTasksInput,
   SplitTasksOutput,
 } from '../common/types';
+import { brainstormPrompt } from '../prompts/brainstorm.prompt';
+import { designGenerationPrompt } from '../prompts/design-generation.prompt';
 import { executionPrompt } from '../prompts/execution.prompt';
 import { reviewPrompt } from '../prompts/review.prompt';
 import { taskSplitPrompt } from '../prompts/task-split.prompt';
@@ -33,6 +39,24 @@ export class CodexAiExecutor implements AIExecutor {
   protected readonly providerName: string = 'codex';
   protected readonly providerLabel: string = 'Codex';
   protected readonly debugRoot: string = CODEX_DEBUG_ROOT;
+
+  async brainstorm(input: BrainstormInput): Promise<BrainstormOutput> {
+    const prompt = this.buildBrainstormPrompt(input);
+    return this.runJsonStage<BrainstormOutput>(
+      'brainstorm.output.schema.json',
+      prompt,
+      'brainstorm',
+    );
+  }
+
+  async generateDesign(input: GenerateDesignInput): Promise<GenerateDesignOutput> {
+    const prompt = this.buildDesignGenerationPrompt(input);
+    return this.runJsonStage<GenerateDesignOutput>(
+      'design-generation.output.schema.json',
+      prompt,
+      'design generation',
+    );
+  }
 
   async splitTasks(input: SplitTasksInput): Promise<SplitTasksOutput> {
     const prompt = await this.buildTaskSplitPrompt(input);
@@ -114,8 +138,14 @@ ${JSON.stringify(input.previousOutput ?? {}, null, 2)}
 
 ${taskSplitPrompt.user}
 
-你必须基于“实际仓库上下文”拆分任务，优先参考下方给出的真实目录结构和关键文件摘要。
-如果仓库证据不足，应该在 ambiguities 中明确说明，而不是凭常见 React/Umi 目录结构自行脑补文件路径。
+这一阶段的目标是先做“功能层面的需求拆解”，而不是技术实现拆解。
+tasks 必须描述产品功能、用户流程、业务能力、交互结果或验收视角下的工作项，不要直接写成接口开发、表设计、组件改造、模块重构、文件修改之类的技术任务。
+你可以参考下方工作区信息理解业务边界与现有系统范围，但不要在这一阶段输出具体文件路径、代码目录、技术模块分工或仓库改动方案。
+如果仓库证据不足，只能帮助你判断产品边界或系统归属；不能因此脑补技术实现。真正的仓库落地方案留到 technical plan 阶段。
+每个 task 还必须补充:
+- surface: 该任务主要属于哪个产品端或协作面，例如 web、api、admin、mobile、ops；保持简洁，不要混合多个端
+- repositoryNames: 与该任务最相关的仓库名称数组，用于后续任务分配铺垫；只列最关键的 1 到 2 个仓库，避免泛化到整个工作区
+任务数量保持克制，优先输出少量但边界清晰的功能任务，不要为了覆盖仓库而过度拆分。
 
 需求信息:
 - 标题: ${input.requirement.title}
@@ -125,7 +155,8 @@ ${workspaceSection}
 ${revisionSection}
 
 请输出:
-1. tasks: 面向当前工作区代码库的可执行研发任务，尽量具体到模块或改动方向
+1. tasks: 面向产品功能和业务目标的任务拆解，每个任务都应该能表达一个独立的功能点、用户价值或业务能力
+   - 每个 task 必须包含 title、description、surface、repositoryNames
 2. ambiguities: 仍待人工确认的关键不明确点
 3. risks: 该需求实施过程中的主要风险
 `;
@@ -154,6 +185,7 @@ ${JSON.stringify(input.previousOutput ?? {}, null, 2)}
 
 ${technicalPlanPrompt.user}
 
+这一阶段才进入技术实现设计。你需要基于“已确认的功能任务”结合真实仓库上下文，把功能目标映射为技术落地方案。
 你必须严格依据下方给出的 repository grounding 结果和当前 workflow 仓库副本实时结构来生成方案。
 grounding 结果用于告诉你仓库职责、说明文件、候选入口与证据文件；实时结构用于确认当前目录与文件现状。
 不要假设项目一定存在 src/app.tsx、src/layouts、src/pages 等常见前端目录。
@@ -279,6 +311,95 @@ ${input.execution.codeChanges
   .map((item, index) => `${index + 1}. ${item.file} | ${item.changeType} | ${item.summary}`)
   .join('\n')}
 ${diffSection}
+`;
+  }
+
+  protected buildBrainstormPrompt(input: BrainstormInput) {
+    const revisionSection = input.humanFeedback
+      ? `
+
+人工反馈:
+${input.humanFeedback}
+
+上一次头脑风暴结果:
+${input.previousBriefs?.length ? JSON.stringify(input.previousBriefs[input.previousBriefs.length - 1], null, 2) : ''}
+
+请根据人工反馈修正产品简报，保留仍然合理的部分。`
+      : '';
+
+    const workspaceSection = input.workspaceContext
+      ? `\n工作区上下文:\n${input.workspaceContext}`
+      : '';
+
+    return `${brainstormPrompt.system}
+
+你必须只返回符合 JSON Schema 的 JSON，不要输出解释文字或 Markdown。
+
+${brainstormPrompt.user}
+
+这一阶段的目标是将简短的需求扩展为完整的产品简报，帮助你从"一句话想法"过渡到"可执行的产品定义"。
+不要涉及技术实现细节，专注于产品功能、用户价值和业务逻辑。
+
+需求信息:
+- 标题: ${input.requirementTitle}
+- 描述: ${input.requirementDescription}
+${workspaceSection}
+${revisionSection}
+
+请输出:
+1. expandedDescription: 详细的产品描述（2-3 段），从用户视角说明功能价值
+2. userStories: 至少 3 个用户故事，每个包含 role、action、benefit
+3. edgeCases: 至少 3 个边界情况
+4. successMetrics: 可衡量的成功指标
+5. openQuestions: 需要利益相关方确认的问题
+6. assumptions: 你所做的假设
+7. outOfScope: 明确不在范围内的内容
+`;
+  }
+
+  protected buildDesignGenerationPrompt(input: GenerateDesignInput) {
+    const revisionSection = input.humanFeedback
+      ? `
+
+人工反馈:
+${input.humanFeedback}
+
+上一次设计方案:
+${input.previousDesigns?.length ? JSON.stringify(input.previousDesigns[input.previousDesigns.length - 1], null, 2) : ''}
+
+请根据人工反馈修正设计方案，保留仍然合理的部分。`
+      : '';
+
+    return `${designGenerationPrompt.system}
+
+你必须只返回符合 JSON Schema 的 JSON，不要输出解释文字或 Markdown。
+
+${designGenerationPrompt.user}
+
+基于以下已确认的产品简报，生成 UI 设计规格和 Demo 场景脚本。
+wireframe 使用文字描述布局结构（如 [顶部导航] [侧边栏] [主内容区] [操作栏] 等），
+描述需要足够详细，让开发人员可以直接依据它进行开发。
+
+需求信息:
+- 标题: ${input.requirementTitle}
+- 描述: ${input.requirementDescription}
+
+已确认产品简报:
+${JSON.stringify(input.confirmedBrief, null, 2)}
+${revisionSection}
+
+请输出:
+1. overview: 高层设计思路
+2. pages: 页面/视图列表，每个包含:
+   - name: 页面名称
+   - route: URL 路由
+   - layout: 文字线框图描述布局结构
+   - keyComponents: 页面上的关键 UI 组件
+   - interactions: 关键用户交互和状态变化
+3. demoScenario: 逐步演示场景脚本
+4. dataModels: 关键数据实体和关系
+5. apiEndpoints: 关键 API 端点（method、path、purpose）
+6. designRationale: 为什么选择这个设计方向
 `;
   }
 

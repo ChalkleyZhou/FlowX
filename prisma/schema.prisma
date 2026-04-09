@@ -17,7 +17,10 @@ model Requirement {
   project                 Project                 @relation(fields: [projectId], references: [id])
   workspaceId             String?
   workspace               Workspace?              @relation(fields: [workspaceId], references: [id])
+  ideationStatus          String                  @default("NONE")
   requirementRepositories RequirementRepository[]
+  ideationSessions        IdeationSession[]
+  ideationArtifacts       IdeationArtifact[]
   workflowRuns            WorkflowRun[]
   issues                  Issue[]
   bugs                    Bug[]                   @relation("BugSourceRequirement")
@@ -323,6 +326,8 @@ model Task {
   workflowRun   WorkflowRun @relation(fields: [workflowRunId], references: [id])
   title         String
   description   String
+  surface       String?
+  repositoryNames Json?
   order         Int
   status        String      @default("DRAFT")
   createdAt     DateTime    @default(now())
@@ -427,6 +432,38 @@ model Issue {
 
   @@index([workspaceId, status, priority])
   @@index([workflowRunId, createdAt])
+}
+
+model IdeationSession {
+  id             String   @id @default(cuid())
+  requirementId  String
+  requirement    Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  stage          String
+  attempt        Int      @default(1)
+  status         String   @default("PENDING")
+  statusMessage  String?
+  input          Json?
+  output         Json?
+  errorMessage   String?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([requirementId])
+}
+
+model IdeationArtifact {
+  id             String   @id @default(cuid())
+  requirementId  String
+  requirement    Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  type           String
+  content        Json
+  version        Int      @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([requirementId])
 }
 
 model Bug {

@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import {
+  BrainstormInput,
+  BrainstormOutput,
   ExecuteTaskInput,
   ExecuteTaskOutput,
+  GenerateDesignInput,
+  GenerateDesignOutput,
   GeneratePlanInput,
   GeneratePlanOutput,
   ReviewCodeInput,
@@ -15,22 +19,107 @@ import { AIExecutor } from './ai-executor';
 function createBaselineTasks(title: string): SplitTaskItem[] {
   return [
     {
-      title: `Design domain model for ${title}`,
-      description: 'Define entities, statuses, and persistence fields for the workflow.',
+      title: `Clarify requirement intake experience for ${title}`,
+      description: 'Define what information users need to submit, review, and confirm so the requirement can enter the workflow clearly.',
+      surface: 'web',
+      repositoryNames: ['flowx-web'],
     },
     {
-      title: `Build staged orchestration APIs for ${title}`,
-      description: 'Implement requirement intake, task split, planning, and confirmation APIs.',
+      title: `Define the staged collaboration flow for ${title}`,
+      description: 'Describe how users move from task split to technical plan, execution, and review with clear confirmation checkpoints.',
+      surface: 'api',
+      repositoryNames: ['flowx-api'],
     },
     {
-      title: `Prepare basic operator UI for ${title}`,
-      description: 'Provide simple pages to inspect stage output and trigger human confirmation.',
+      title: `Provide workflow visibility and confirmation for ${title}`,
+      description: 'Ensure operators can inspect stage outputs, understand progress, and make confirmation decisions at each key step.',
+      surface: 'web',
+      repositoryNames: ['flowx-web'],
     },
   ];
 }
 
 @Injectable()
 export class MockAiExecutor implements AIExecutor {
+  async brainstorm(input: BrainstormInput): Promise<BrainstormOutput> {
+    return {
+      brief: {
+        expandedDescription: `针对"${input.requirementTitle}"的详细产品描述：\n\n该功能旨在让用户能够高效地完成核心操作流程。通过直观的界面设计和合理的交互逻辑，用户可以快速上手并持续使用。\n\n在业务层面，该功能将提升团队协作效率，减少手动操作带来的错误，并通过数据可视化提供决策支持。\n\n用户体验上，重点在于操作的简洁性和反馈的及时性，确保每一步操作都有明确的结果和引导。`,
+        userStories: [
+          { role: '普通用户', action: '可以执行核心操作并查看结果', benefit: '快速完成日常任务，提升工作效率' },
+          { role: '管理员', action: '可以配置功能参数和管理权限', benefit: '灵活控制系统行为，保障数据安全' },
+          { role: '访客', action: '可以浏览公开内容但无法修改', benefit: '了解产品价值，促成转化' },
+        ],
+        edgeCases: [
+          '数据为空时的空状态展示',
+          '并发操作导致的数据冲突',
+          '大数量数据下的性能表现',
+        ],
+        successMetrics: [
+          '任务完成率 > 80%',
+          '平均操作耗时 < 30 秒',
+          '用户满意度评分 > 4/5',
+        ],
+        openQuestions: [
+          '是否需要支持离线模式？',
+          '预期的用户规模和数据量级是多少？',
+        ],
+        assumptions: [
+          '用户具备基本的技术操作能力',
+          '网络连接稳定可用',
+        ],
+        outOfScope: [
+          '原生移动端应用',
+          '国际化多语言支持',
+        ],
+      },
+    };
+  }
+
+  async generateDesign(input: GenerateDesignInput): Promise<GenerateDesignOutput> {
+    return {
+      design: {
+        overview: '采用简洁直观的界面设计，遵循现有设计系统规范，确保一致性和低学习成本。',
+        pages: [
+          {
+            name: '列表页',
+            route: '/feature',
+            layout: '[顶部导航栏]\n[搜索栏 | 筛选器]\n[数据表格 / 卡片列表]\n[分页器]',
+            keyComponents: ['DataTable', 'SearchBar', 'FilterPanel', 'Pagination'],
+            interactions: [
+              '输入搜索关键词实时过滤列表',
+              '点击行项进入详情页',
+              '切换筛选条件刷新数据',
+            ],
+          },
+          {
+            name: '详情页',
+            route: '/feature/:id',
+            layout: '[顶部导航栏 | 返回按钮]\n[详情头部: 标题 + 状态标签]\n[标签页: 基本信息 | 操作记录]\n[操作栏: 编辑 | 删除]',
+            keyComponents: ['DetailHeader', 'TabPanel', 'ActionToolbar'],
+            interactions: [
+              '切换标签页查看不同信息区域',
+              '点击编辑进入编辑模式',
+              '删除前弹出确认对话框',
+            ],
+          },
+        ],
+        demoScenario: '1. 进入列表页，查看所有数据项\n2. 在搜索栏输入关键词，观察列表实时过滤\n3. 点击某一项进入详情页\n4. 在详情页查看完整信息\n5. 返回列表页',
+        dataModels: [
+          'Feature: { id, name, status, createdAt, updatedAt }',
+          'FeatureDetail: { id, featureId, description, metadata }',
+        ],
+        apiEndpoints: [
+          { method: 'GET', path: '/api/features', purpose: '获取功能列表（支持搜索和分页）' },
+          { method: 'GET', path: '/api/features/:id', purpose: '获取功能详情' },
+          { method: 'POST', path: '/api/features', purpose: '创建新功能' },
+          { method: 'PATCH', path: '/api/features/:id', purpose: '更新功能信息' },
+        ],
+        designRationale: '采用列表-详情的经典布局模式，与系统现有页面保持一致。搜索和筛选放在列表上方便于快速定位，详情页使用标签页组织信息避免页面过长。',
+      },
+    };
+  }
+
   async splitTasks(input: SplitTasksInput): Promise<SplitTasksOutput> {
     const workspaceName = input.workspace?.name;
     return {

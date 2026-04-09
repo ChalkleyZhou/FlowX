@@ -10,6 +10,8 @@
     "build": "pnpm -r --filter flowx-api --filter flowx-web build",
     "build:api": "pnpm --filter flowx-api build",
     "build:web": "pnpm --filter flowx-web build",
+    "test": "pnpm -r --if-present test",
+    "check": "pnpm build && pnpm test",
     "prisma:generate": "pnpm --filter flowx-api prisma:generate",
     "prisma:migrate": "pnpm --filter flowx-api prisma:migrate"
   },

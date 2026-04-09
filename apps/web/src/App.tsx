@@ -5,6 +5,7 @@ import { BugDetailPage } from './pages/BugDetailPage';
 import { IssuesPage } from './pages/IssuesPage';
 import { IssueDetailPage } from './pages/IssueDetailPage';
 import { ProjectsPage } from './pages/ProjectsPage';
+import { RequirementDetailPage } from './pages/RequirementDetailPage';
 import { RequirementsPage } from './pages/RequirementsPage';
 import { WorkflowRunDetailPage } from './pages/WorkflowRunDetailPage';
 import { WorkflowRunsPage } from './pages/WorkflowRunsPage';
@@ -29,6 +30,7 @@ export default function App() {
             <Route path="/workspaces" element={<WorkspacesPage />} />
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/requirements" element={<RequirementsPage />} />
+            <Route path="/requirements/:id" element={<RequirementDetailPage />} />
             <Route path="/workflow-runs" element={<WorkflowRunsPage />} />
             <Route path="/workflow-runs/:workflowRunId" element={<WorkflowRunDetailPage />} />
             <Route path="/issues" element={<IssuesPage />} />

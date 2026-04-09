@@ -574,6 +574,12 @@ export function RequirementsPage() {
                     <>
                       <UiButton
                         variant="outline"
+                        onClick={() => navigate(`/requirements/${item.id}`)}
+                      >
+                        构思
+                      </UiButton>
+                      <UiButton
+                        variant="outline"
                         onClick={() => {
                           setLaunchModalRequirement(item);
                           setLaunchRepositoryIds([]);

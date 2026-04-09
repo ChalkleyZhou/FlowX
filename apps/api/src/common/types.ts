@@ -44,6 +44,8 @@ export interface SplitTasksInput {
 export interface SplitTaskItem {
   title: string;
   description: string;
+  surface: string;
+  repositoryNames: string[];
 }
 
 export interface SplitTasksOutput {
@@ -130,4 +132,63 @@ export interface StageHistoryRecord {
 
 export interface HumanReviewDecisionInput {
   decision: HumanReviewDecision;
+}
+
+// Ideation types
+
+export interface BrainstormInput {
+  requirementTitle: string;
+  requirementDescription: string;
+  previousBriefs?: BrainstormBrief[];
+  humanFeedback?: string;
+  workspaceContext?: string;
+}
+
+export interface BrainstormBrief {
+  expandedDescription: string;
+  userStories: Array<{
+    role: string;
+    action: string;
+    benefit: string;
+  }>;
+  edgeCases: string[];
+  successMetrics: string[];
+  openQuestions: string[];
+  assumptions: string[];
+  outOfScope: string[];
+}
+
+export interface BrainstormOutput {
+  brief: BrainstormBrief;
+}
+
+export interface GenerateDesignInput {
+  requirementTitle: string;
+  requirementDescription: string;
+  confirmedBrief: BrainstormBrief;
+  previousDesigns?: DesignSpec[];
+  humanFeedback?: string;
+}
+
+export interface DesignSpec {
+  overview: string;
+  pages: Array<{
+    name: string;
+    route: string;
+    layout: string;
+    keyComponents: string[];
+    interactions: string[];
+  }>;
+  demoScenario: string;
+  dataModels: string[];
+  apiEndpoints: Array<{
+    method: string;
+    path: string;
+    purpose: string;
+  }>;
+  designRationale: string;
+}
+
+export interface GenerateDesignOutput {
+  design: DesignSpec;
 }

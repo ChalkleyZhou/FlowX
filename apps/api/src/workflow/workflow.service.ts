@@ -508,6 +508,8 @@ export class WorkflowService {
               workflowRunId: id,
               title: task.title,
               description: task.description,
+              surface: task.surface,
+              repositoryNames: task.repositoryNames,
               order: index,
               status: 'DRAFT',
             })),
@@ -625,6 +627,10 @@ export class WorkflowService {
     const tasks = workflow.tasks.map((task) => ({
       title: task.title,
       description: task.description,
+      surface: task.surface ?? 'unknown',
+      repositoryNames: Array.isArray(task.repositoryNames)
+        ? task.repositoryNames.map(String)
+        : [],
     }));
 
     const previousStage =
@@ -877,6 +883,10 @@ export class WorkflowService {
           tasks: workflow.tasks.map((task) => ({
             title: task.title,
             description: task.description,
+            surface: task.surface ?? 'unknown',
+            repositoryNames: Array.isArray(task.repositoryNames)
+              ? task.repositoryNames.map(String)
+              : [],
           })),
           plan: {
             summary: confirmedPlan.summary,
@@ -1313,6 +1323,10 @@ export class WorkflowService {
           workflowRunId: id,
           title: String((task as { title?: unknown }).title ?? `Task ${index + 1}`),
           description: String((task as { description?: unknown }).description ?? ''),
+          surface: String((task as { surface?: unknown }).surface ?? 'unknown'),
+          repositoryNames: Array.isArray((task as { repositoryNames?: unknown }).repositoryNames)
+            ? ((task as { repositoryNames: unknown[] }).repositoryNames ?? []).map(String)
+            : [],
           order: index,
           status: 'DRAFT',
         })),
