@@ -11,13 +11,13 @@ interface MetricCardProps {
 
 export function MetricCard({ label, value, helpText, className }: MetricCardProps) {
   return (
-    <Card className={cn('rounded-2xl border-slate-200 bg-white shadow-sm', className)}>
+    <Card className={cn('rounded-2xl border-border bg-card shadow-sm', className)}>
       <CardHeader className="space-y-2 p-5 pb-0">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</div>
-        <CardTitle className="text-3xl font-semibold tracking-tight text-slate-950">{value}</CardTitle>
+        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
+        <CardTitle className="text-3xl font-semibold tracking-tight text-foreground">{value}</CardTitle>
       </CardHeader>
       <CardContent className="p-5 pt-2">
-        {helpText ? <CardDescription className="text-sm leading-6 text-slate-600">{helpText}</CardDescription> : null}
+        {helpText ? <CardDescription className="text-sm leading-6 text-muted-foreground">{helpText}</CardDescription> : null}
       </CardContent>
     </Card>
   );

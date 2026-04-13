@@ -12,16 +12,16 @@ interface ContextPanelProps {
 
 export function ContextPanel({ eyebrow, title, description, children, className }: ContextPanelProps) {
   return (
-    <Card className={cn('border-slate-200 bg-white shadow-sm', className)}>
+    <Card className={cn('border-border bg-card shadow-sm', className)}>
       <CardHeader className="p-5">
         <div className="space-y-2">
           {eyebrow ? (
-            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">{eyebrow}</div>
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">{eyebrow}</div>
           ) : null}
           <div className="space-y-1.5">
             <CardTitle className="text-lg">{title}</CardTitle>
             {description ? (
-              <CardDescription className="max-w-none text-sm leading-6 text-slate-600">{description}</CardDescription>
+              <CardDescription className="max-w-none text-sm leading-6 text-muted-foreground">{description}</CardDescription>
             ) : null}
           </div>
         </div>

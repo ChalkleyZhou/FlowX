@@ -13,11 +13,13 @@ import { WorkspacesPage } from './pages/WorkspacesPage';
 import { ProtectedLayout, ProtectedRoute } from './routes/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
 import { ToastProvider } from './components/ui/toast';
+import { ThemeProvider } from './components/theme-provider';
 
 export default function App() {
   return (
     <AuthProvider>
-      <ToastProvider>
+      <ThemeProvider>
+        <ToastProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route
@@ -41,6 +43,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </ToastProvider>
+      </ThemeProvider>
     </AuthProvider>
   );
 }

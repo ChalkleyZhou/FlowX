@@ -43,12 +43,29 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="toast-viewport">
+      <div className="fixed right-5 top-5 z-80 flex max-w-[min(360px,calc(100vw-24px))] flex-col gap-2.5">
         {toasts.map((toast) => (
-          <div key={toast.id} className={`toast-item toast-item-${toast.variant}`}>
-            <div className="toast-icon">{getToastIcon(toast.variant)}</div>
-            <div className="toast-copy">{toast.title}</div>
-            <button type="button" className="toast-close" onClick={() => removeToast(toast.id)} aria-label="关闭提示">
+          <div
+            key={toast.id}
+            className={[
+              'flex items-center gap-3 rounded-md border border-border bg-surface/94 px-3.5 py-3 shadow-md backdrop-blur-[10px]',
+              toast.variant === 'success' && 'border-success/18',
+              toast.variant === 'error' && 'border-danger/18',
+            ].filter(Boolean).join(' ')}
+          >
+            <div className={[
+              'grid shrink-0 place-items-center',
+              toast.variant === 'success' && 'text-success',
+              toast.variant === 'error' && 'text-danger',
+              toast.variant !== 'success' && toast.variant !== 'error' && 'text-primary',
+            ].filter(Boolean).join(' ')}>{getToastIcon(toast.variant)}</div>
+            <div className="min-w-0 flex-1 text-base leading-6 text-foreground">{toast.title}</div>
+            <button
+              type="button"
+              className="grid h-7 w-7 place-items-center rounded-full bg-transparent text-muted-foreground hover:bg-surface-subtle hover:text-foreground"
+              onClick={() => removeToast(toast.id)}
+              aria-label="关闭提示"
+            >
               <X className="h-4 w-4" />
             </button>
           </div>

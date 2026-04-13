@@ -17,7 +17,7 @@ export function DiffViewerPanel({
   diffText,
 }: DiffViewerPanelProps) {
   return (
-    <Card className="rounded-2xl border-slate-200 bg-slate-50 shadow-none">
+    <Card className="rounded-2xl border-border bg-muted shadow-none">
       <CardHeader className="p-4 pb-0">
         <div>
           <CardTitle className="text-sm">

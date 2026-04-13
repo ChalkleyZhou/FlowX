@@ -24,8 +24,8 @@ export function RecordListItem({
   return (
     <Card
       className={cn(
-        'rounded-2xl border-slate-200 bg-white shadow-sm',
-        interactive && 'transition-all hover:border-slate-300 hover:bg-slate-50/40',
+        'rounded-2xl border-border bg-card shadow-sm',
+        interactive && 'transition-all hover:border-border-strong hover:bg-muted/40',
         className,
       )}
     >
@@ -38,8 +38,8 @@ export function RecordListItem({
       </CardHeader>
       {(description || details) ? (
         <CardContent className="space-y-2 p-5 pt-0">
-          {description ? <div className="flex min-w-0 flex-col gap-1 text-sm leading-6 text-slate-600">{description}</div> : null}
-          {details ? <div className="flex min-w-0 flex-col gap-1 text-sm leading-6 text-slate-500">{details}</div> : null}
+          {description ? <div className="flex min-w-0 flex-col gap-1 text-sm leading-6 text-muted-foreground">{description}</div> : null}
+          {details ? <div className="flex min-w-0 flex-col gap-1 text-sm leading-6 text-muted-foreground">{details}</div> : null}
         </CardContent>
       ) : null}
     </Card>

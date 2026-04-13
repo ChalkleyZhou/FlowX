@@ -119,7 +119,7 @@ export function ProjectsPage() {
           </DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={(event) => void handleCreateProject(event)}>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]">所属工作区</label>
+              <label className="text-sm font-semibold text-foreground">所属工作区</label>
               <Select
                 value={createDraft.workspaceId || undefined}
                 onValueChange={(value) => setCreateDraft((current) => ({ ...current, workspaceId: value }))}
@@ -137,7 +137,7 @@ export function ProjectsPage() {
               </Select>
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="project-name">项目名称</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="project-name">项目名称</label>
               <UiInput
                 id="project-name"
                 value={createDraft.name}
@@ -146,7 +146,7 @@ export function ProjectsPage() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="project-code">项目代号</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="project-code">项目代号</label>
               <UiInput
                 id="project-code"
                 value={createDraft.code}
@@ -155,7 +155,7 @@ export function ProjectsPage() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="project-description">描述</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="project-description">描述</label>
               <Textarea
                 id="project-description"
                 rows={4}
@@ -180,7 +180,7 @@ export function ProjectsPage() {
         <MetricCard label="涉及工作区" value={summary.workspaceCount} />
         <MetricCard label="需求数量" value={summary.requirementCount} />
       </div>
-      <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="pb-4">
           <SectionHeader
             eyebrow="Projects"
@@ -214,11 +214,11 @@ export function ProjectsPage() {
               <Spinner className="h-7 w-7" />
             </div>
           ) : filteredProjects.length > 0 ? (
-            <div className="record-list-stack">
+            <div className="flex flex-col gap-3.5">
               {filteredProjects.map((project) => (
                 <RecordListItem
                   key={project.id}
-                  title={<div className="text-base font-semibold leading-6 text-slate-950">{project.name}</div>}
+                  title={<div className="text-base font-semibold leading-6 text-foreground">{project.name}</div>}
                   badges={
                     <>
                       <Badge variant="outline">{project.workspace.name}</Badge>
@@ -227,7 +227,7 @@ export function ProjectsPage() {
                     </>
                   }
                   details={
-                    <p className="text-sm leading-6 text-slate-500">
+                    <p className="text-sm leading-6 text-muted-foreground">
                       {project.description?.trim() || '这个项目还没有补充描述。'}
                     </p>
                   }

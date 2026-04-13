@@ -110,7 +110,7 @@ export function BugsPage() {
         <MetricCard label="开放中" value={bugSummary.openCount} />
         <MetricCard label="严重缺陷" value={bugSummary.criticalCount} />
       </div>
-      <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="Bug Registry" title="缺陷列表" />
         </CardHeader>
@@ -121,7 +121,7 @@ export function BugsPage() {
             </div>
           ) : (
             <>
-        <div className="mb-[18px] grid gap-[10px] rounded-2xl border border-slate-200 bg-slate-50 p-[14px] max-[1440px]:p-3 [grid-template-columns:repeat(3,minmax(0,1fr))] max-[1180px]:[grid-template-columns:repeat(2,minmax(0,1fr))]">
+        <div className="mb-[18px] grid gap-[10px] rounded-2xl border border-border bg-muted p-[14px] max-[1440px]:p-3 [grid-template-columns:repeat(3,minmax(0,1fr))] max-[1180px]:[grid-template-columns:repeat(2,minmax(0,1fr))]">
           <div className="col-[1/-1] w-full">
             <UiInput
               placeholder="搜索标题、描述、需求、工作区"
@@ -198,11 +198,11 @@ export function BugsPage() {
         </div>
         {pagedBugs.length > 0 ? (
           <>
-            <div className="record-list-stack">
+            <div className="flex flex-col gap-3.5">
               {pagedBugs.map((item) => (
               <RecordListItem
                 key={item.id}
-                title={<div className="text-base font-semibold leading-6 text-slate-950">{item.title}</div>}
+                title={<div className="text-base font-semibold leading-6 text-foreground">{item.title}</div>}
                 badges={
                   <>
                     <Badge variant="destructive">{formatSeverityLabel(item.severity)}</Badge>
@@ -216,8 +216,8 @@ export function BugsPage() {
                 description={<p className="leading-6">{item.description}</p>}
                 details={
                   <>
-                    <p className="text-sm leading-6 text-slate-500">来源需求：{item.requirement?.title ?? '未关联需求'}</p>
-                    <p className="text-sm leading-6 text-slate-500">分支：{item.branchName ?? '未记录分支'}</p>
+                    <p className="text-sm leading-6 text-muted-foreground">来源需求：{item.requirement?.title ?? '未关联需求'}</p>
+                    <p className="text-sm leading-6 text-muted-foreground">分支：{item.branchName ?? '未记录分支'}</p>
                   </>
                 }
                 actions={
@@ -235,13 +235,13 @@ export function BugsPage() {
               />
               ))}
             </div>
-            <div className="pagination-bar">
-              <span className="pagination-copy">共 {filteredBugs.length} 条</span>
-              <div className="pagination-actions">
+            <div className="flex items-center justify-between gap-3 mt-4 border-t border-border pt-4">
+              <span className="text-sm text-muted-foreground">共 {filteredBugs.length} 条</span>
+              <div className="flex items-center gap-2.5">
                 <UiButton variant="outline" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>
                   上一页
                 </UiButton>
-                <span className="pagination-copy">第 {page} / {totalPages} 页</span>
+                <span className="text-sm text-muted-foreground">第 {page} / {totalPages} 页</span>
                 <UiButton variant="outline" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>
                   下一页
                 </UiButton>

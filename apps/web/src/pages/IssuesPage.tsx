@@ -102,7 +102,7 @@ export function IssuesPage() {
         <MetricCard label="开放中" value={issueSummary.openCount} />
         <MetricCard label="处理中" value={issueSummary.inProgressCount} />
       </div>
-      <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="Issue Registry" title="问题项列表" />
         </CardHeader>
@@ -113,7 +113,7 @@ export function IssuesPage() {
             </div>
           ) : (
             <>
-        <div className="mb-[18px] grid gap-[10px] rounded-2xl border border-slate-200 bg-slate-50 p-[14px] max-[1440px]:p-3 [grid-template-columns:repeat(3,minmax(0,1fr))] max-[1180px]:[grid-template-columns:repeat(2,minmax(0,1fr))]">
+        <div className="mb-[18px] grid gap-[10px] rounded-2xl border border-border bg-muted p-[14px] max-[1440px]:p-3 [grid-template-columns:repeat(3,minmax(0,1fr))] max-[1180px]:[grid-template-columns:repeat(2,minmax(0,1fr))]">
           <div className="col-[1/-1] w-full">
             <UiInput
               placeholder="搜索标题、描述、需求、工作区"
@@ -173,12 +173,12 @@ export function IssuesPage() {
         </div>
         {pagedIssues.length > 0 ? (
           <>
-            <div className="record-list-stack">
+            <div className="flex flex-col gap-3.5">
               {pagedIssues.map((item) => (
               <RecordListItem
                 key={item.id}
                 className="shadow-none"
-                title={<div className="text-base font-semibold leading-6 text-slate-950">{item.title}</div>}
+                title={<div className="text-base font-semibold leading-6 text-foreground">{item.title}</div>}
                 badges={
                   <>
                     <Badge variant="secondary">{formatIssueStatus(item.status)}</Badge>
@@ -187,7 +187,7 @@ export function IssuesPage() {
                   </>
                 }
                 description={
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                     <span>来源需求：{item.requirement?.title ?? '未关联需求'}</span>
                     {item.workflowRun?.id ? (
                       <Link className="text-primary hover:underline" to={`/workflow-runs/${item.workflowRun.id}`}>
@@ -197,7 +197,7 @@ export function IssuesPage() {
                   </div>
                 }
                 details={
-                  item.branchName ? <span className="text-xs text-slate-400">分支：{item.branchName}</span> : null
+                  item.branchName ? <span className="text-xs text-muted-foreground">分支：{item.branchName}</span> : null
                 }
                 actions={
                   <UiButton variant="outline" asChild>
@@ -207,13 +207,13 @@ export function IssuesPage() {
               />
               ))}
             </div>
-            <div className="pagination-bar">
-              <span className="pagination-copy">共 {filteredIssues.length} 条</span>
-              <div className="pagination-actions">
+            <div className="flex items-center justify-between gap-3 mt-4 border-t border-border pt-4">
+              <span className="text-sm text-muted-foreground">共 {filteredIssues.length} 条</span>
+              <div className="flex items-center gap-2.5">
                 <UiButton variant="outline" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>
                   上一页
                 </UiButton>
-                <span className="pagination-copy">第 {page} / {totalPages} 页</span>
+                <span className="text-sm text-muted-foreground">第 {page} / {totalPages} 页</span>
                 <UiButton variant="outline" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>
                   下一页
                 </UiButton>

@@ -4,31 +4,193 @@
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222.2 47.4% 11.2%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 47.4% 11.2%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 47.4% 11.2%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 72.2% 50.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 217.2 91.2% 59.8%;
+    /* ========== DTCG 颜色令牌 ========== */
+
+    /* Primary */
+    --color-primary-default: 217.2 91.2% 59.8%;
+    --color-primary-foreground: 210 40% 98%;
+    --color-primary-hover: 217.2 91.2% 48%;
+    --color-primary-soft: 217.2 91.2% 94%;
+
+    /* Secondary */
+    --color-secondary-default: 210 40% 96.1%;
+    --color-secondary-foreground: 222.2 47.4% 11.2%;
+
+    /* Destructive / Danger */
+    --color-danger-default: 0 72.2% 50.6%;
+    --color-danger-foreground: 210 40% 98%;
+
+    /* Success */
+    --color-success-default: 142 71% 45%;
+    --color-success-foreground: 210 40% 98%;
+
+    /* Warning */
+    --color-warning-default: 38 92% 50%;
+    --color-warning-foreground: 222.2 47.4% 11.2%;
+
+    /* Muted */
+    --color-muted-default: 210 40% 96.1%;
+    --color-muted-foreground: 215.4 16.3% 46.9%;
+
+    /* Accent */
+    --color-accent-default: 210 40% 96.1%;
+    --color-accent-foreground: 222.2 47.4% 11.2%;
+
+    /* Background / Foreground */
+    --color-background: 210 40% 98%;
+    --color-foreground: 222.2 47.4% 11.2%;
+
+    /* Surface */
+    --color-surface-default: 0 0% 100%;
+    --color-surface-foreground: 222.2 47.4% 11.2%;
+    --color-surface-subtle: 210 40% 99%;
+
+    /* Card */
+    --color-card-default: 0 0% 100%;
+    --color-card-foreground: 222.2 47.4% 11.2%;
+
+    /* Popover */
+    --color-popover-default: 0 0% 100%;
+    --color-popover-foreground: 222.2 47.4% 11.2%;
+
+    /* Border / Input / Ring */
+    --color-border: 214.3 31.8% 91.4%;
+    --color-border-strong: 214.3 31.8% 80%;
+    --color-input: 214.3 31.8% 91.4%;
+    --color-ring: 217.2 91.2% 59.8%;
+
+    /* ========== shadcn/ui 扁平别名 ========== */
+
+    --primary: var(--color-primary-default);
+    --primary-foreground: var(--color-primary-foreground);
+    --secondary: var(--color-secondary-default);
+    --secondary-foreground: var(--color-secondary-foreground);
+    --destructive: var(--color-danger-default);
+    --destructive-foreground: var(--color-danger-foreground);
+    --muted: var(--color-muted-default);
+    --muted-foreground: var(--color-muted-foreground);
+    --accent: var(--color-accent-default);
+    --accent-foreground: var(--color-accent-foreground);
+    --background: var(--color-background);
+    --foreground: var(--color-foreground);
+    --card: var(--color-card-default);
+    --card-foreground: var(--color-card-foreground);
+    --popover: var(--color-popover-default);
+    --popover-foreground: var(--color-popover-foreground);
+    --border: var(--color-border);
+    --input: var(--color-input);
+    --ring: var(--color-ring);
+
+    /* ========== 排版令牌 ========== */
+
+    --font-size-xs: 12px;
+    --font-size-xs--line-height: 16px;
+    --font-size-sm: 13px;
+    --font-size-sm--line-height: 18px;
+    --font-size-base: 14px;
+    --font-size-base--line-height: 20px;
+    --font-size-lg: 16px;
+    --font-size-lg--line-height: 24px;
+    --font-size-xl: 18px;
+    --font-size-xl--line-height: 28px;
+    --font-size-2xl: 24px;
+    --font-size-2xl--line-height: 32px;
+
+    /* ========== 间距令牌 ========== */
+
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-7: 28px;
+    --space-8: 32px;
+    --space-9: 36px;
+    --space-10: 40px;
+    --space-11: 44px;
+    --space-12: 48px;
+    --space-13: 52px;
+    --space-14: 56px;
+    --space-15: 60px;
+    --space-16: 64px;
+
+    /* ========== 圆角令牌 ========== */
+
     --radius-sm: 10px;
     --radius-md: 14px;
     --radius-lg: 18px;
+
+    /* ========== 阴影令牌（亮色） ========== */
+
     --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
     --shadow-md: 0 12px 32px rgba(15, 23, 42, 0.06);
     --shadow-lg: 0 24px 48px rgba(15, 23, 42, 0.08);
+
+    /* ========== 过渡令牌 ========== */
+
+    --transition-theme: 150ms ease;
+  }
+
+  /* ========== 暗色主题 ========== */
+  .dark {
+    /* Primary */
+    --color-primary-default: 217.2 91.2% 68%;
+    --color-primary-foreground: 222.2 47.4% 11.2%;
+    --color-primary-hover: 217.2 91.2% 74%;
+    --color-primary-soft: 217.2 91.2% 18%;
+
+    /* Secondary */
+    --color-secondary-default: 217.2 33% 17%;
+    --color-secondary-foreground: 210 40% 98%;
+
+    /* Destructive / Danger */
+    --color-danger-default: 0 62% 55%;
+    --color-danger-foreground: 210 40% 98%;
+
+    /* Success */
+    --color-success-default: 142 71% 52%;
+    --color-success-foreground: 210 40% 98%;
+
+    /* Warning */
+    --color-warning-default: 38 92% 56%;
+    --color-warning-foreground: 222.2 47.4% 11.2%;
+
+    /* Muted */
+    --color-muted-default: 217.2 33% 17%;
+    --color-muted-foreground: 215.4 16.3% 63%;
+
+    /* Accent */
+    --color-accent-default: 217.2 33% 17%;
+    --color-accent-foreground: 210 40% 98%;
+
+    /* Background / Foreground */
+    --color-background: 222.2 47.4% 7%;
+    --color-foreground: 210 40% 98%;
+
+    /* Surface */
+    --color-surface-default: 222.2 47.4% 10%;
+    --color-surface-foreground: 210 40% 98%;
+    --color-surface-subtle: 222.2 47.4% 12%;
+
+    /* Card */
+    --color-card-default: 222.2 47.4% 10%;
+    --color-card-foreground: 210 40% 98%;
+
+    /* Popover */
+    --color-popover-default: 222.2 47.4% 10%;
+    --color-popover-foreground: 210 40% 98%;
+
+    /* Border / Input / Ring */
+    --color-border: 217.2 33% 17%;
+    --color-border-strong: 217.2 33% 25%;
+    --color-input: 217.2 33% 17%;
+    --color-ring: 217.2 91.2% 68%;
+
+    /* 阴影令牌（暗色） */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 24px 48px rgba(0, 0, 0, 0.4);
   }
 
   * {

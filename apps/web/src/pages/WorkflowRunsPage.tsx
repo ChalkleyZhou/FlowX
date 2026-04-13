@@ -145,7 +145,7 @@ export function WorkflowRunsPage() {
         <MetricCard label="执行中" value={workflowSummary.running} />
         <MetricCard label="待处理" value={workflowSummary.pending} />
       </div>
-      <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="pb-4">
           <SectionHeader
             eyebrow="Workflow Runs"
@@ -237,12 +237,12 @@ export function WorkflowRunsPage() {
               <Spinner className="h-7 w-7" />
             </div>
           ) : filteredRuns.length > 0 ? (
-            <div className="record-list-stack">
+            <div className="flex flex-col gap-3.5">
               {filteredRuns.map((item) => (
                 <RecordListItem
                   key={item.id}
                   interactive
-                  title={<div className="text-base font-semibold leading-6 text-slate-950">{item.requirement.title}</div>}
+                  title={<div className="text-base font-semibold leading-6 text-foreground">{item.requirement.title}</div>}
                   badges={
                     <>
                       <Badge variant="default">{formatWorkflowStatus(item.status)}</Badge>
@@ -254,8 +254,8 @@ export function WorkflowRunsPage() {
                   }
                   details={(
                     <>
-                      <p className="text-sm leading-6 text-slate-500">{item.requirement.description}</p>
-                      <p className="text-sm leading-6 text-slate-500">
+                      <p className="text-sm leading-6 text-muted-foreground">{item.requirement.description}</p>
+                      <p className="text-sm leading-6 text-muted-foreground">
                         执行范围：{renderWorkflowRepositoryScope(item)}
                       </p>
                     </>

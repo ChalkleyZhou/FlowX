@@ -130,18 +130,18 @@ function TreeFileRow({
     <button
       type="button"
       className={cn(
-        'flex w-full items-center justify-between gap-4 rounded-md border-l-2 border-transparent px-3 py-1.5 text-left transition-colors',
-        'hover:bg-slate-50',
-        file.key === activeKey && 'border-l-blue-500 bg-blue-50/70 text-slate-950',
+        'flex w-full items-center justify-between gap-4 rounded-md border-l-2 border-transparent px-3 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'hover:bg-muted',
+        file.key === activeKey && 'border-l-blue-500 bg-blue-50/70 text-foreground',
       )}
       style={{ paddingLeft: `${12 + depth * 18}px` }}
       onClick={() => onSelect(file.key)}
     >
       <div className="flex min-w-0 items-center gap-2">
-        <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-        <div className="min-w-0 whitespace-nowrap text-sm font-medium text-slate-900">{file.name}</div>
+        <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <div className="min-w-0 whitespace-nowrap text-sm font-medium text-foreground">{file.name}</div>
       </div>
-      <Badge variant={file.kind === 'untracked' ? 'warning' : 'outline'} className="shrink-0 rounded-md px-2 py-0.5 text-[11px]">
+      <Badge variant={file.kind === 'untracked' ? 'warning' : 'outline'} className="shrink-0 rounded-md px-2 py-0.5 text-xs">
         {file.kind === 'untracked' ? '未跟踪' : '已修改'}
       </Badge>
     </button>
@@ -181,7 +181,7 @@ function TreeDirectory({
     <div className="space-y-1">
       <button
         type="button"
-        className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-xs font-semibold tracking-[0.02em] text-slate-500 transition-colors hover:bg-slate-50"
+        className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-xs font-semibold tracking-[0.02em] text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         style={{ paddingLeft: `${12 + depth * 18}px` }}
         onClick={() => setExpanded((value) => !value)}
       >
@@ -225,10 +225,10 @@ export function DiffFileListPanel({
   const treeRoots = buildFileTree(files);
 
   return (
-    <Card className="rounded-2xl border-slate-200 bg-white shadow-none">
+    <Card className="rounded-2xl border-border bg-card shadow-none">
       <CardHeader className="flex flex-row items-start justify-between gap-3 p-4 pb-0">
         <CardTitle className="text-sm">变更文件</CardTitle>
-        <span className="text-sm leading-6 text-slate-500">{count} 个文件</span>
+        <span className="text-sm leading-6 text-muted-foreground">{count} 个文件</span>
       </CardHeader>
       <CardContent className="p-4">
         <ScrollArea className="h-[28rem]">

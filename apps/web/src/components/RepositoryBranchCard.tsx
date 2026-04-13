@@ -24,7 +24,7 @@ export function RepositoryBranchCard({
   action,
 }: RepositoryBranchCardProps) {
   return (
-    <Card className="rounded-2xl border-slate-200 bg-slate-50 shadow-none">
+    <Card className="rounded-2xl border-border bg-muted shadow-none">
       <CardHeader className="flex flex-row items-start justify-between gap-4 p-4 pb-0">
         <div className="min-w-0">
           <CardTitle className="text-sm">{name}</CardTitle>
@@ -37,7 +37,7 @@ export function RepositoryBranchCard({
           {secondaryMeta ? <Badge variant="default">{secondaryMeta}</Badge> : null}
           {statusLabel ? <Badge variant={statusVariant}>{statusLabel}</Badge> : null}
         </div>
-        {description ? <div className="mt-2 text-sm leading-6 text-slate-600">{description}</div> : null}
+        {description ? <div className="mt-2 text-sm leading-6 text-muted-foreground">{description}</div> : null}
         {error ? <div className="mt-2 text-sm leading-6 text-red-600">{error}</div> : null}
       </CardContent>
     </Card>

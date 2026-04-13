@@ -38,7 +38,7 @@ export function ReviewFindingCard({
   footer,
 }: ReviewFindingCardProps) {
   return (
-    <Card className="rounded-2xl border-slate-200 bg-slate-50 shadow-none">
+    <Card className="rounded-2xl border-border bg-muted shadow-none">
       <CardHeader className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <CardTitle className="text-sm">{title}</CardTitle>
@@ -48,12 +48,12 @@ export function ReviewFindingCard({
             <Badge variant="secondary">{formatReviewFindingStatus(status)}</Badge>
           </div>
         </div>
-        <div className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">
+        <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
           #{id.slice(-6).toUpperCase()}
         </div>
       </CardHeader>
       <CardContent className="p-4 pt-0">
-      <p className="text-sm leading-6 text-slate-600">{description}</p>
+      <p className="text-sm leading-6 text-muted-foreground">{description}</p>
 
       {impactScope && impactScope.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">

@@ -188,7 +188,7 @@ export function IdeationBrainstormPanel({ requirementId, ideationStatus, session
           <button
             onClick={handleRun}
             disabled={loading}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {loading ? '处理中...' : '启动头脑风暴'}
           </button>
@@ -207,14 +207,14 @@ export function IdeationBrainstormPanel({ requirementId, ideationStatus, session
               <button
                 onClick={handleConfirm}
                 disabled={loading}
-                className="rounded-md bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700 disabled:opacity-50"
+                className="rounded-md bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {loading ? '处理中...' : '确认简报'}
               </button>
               <button
                 onClick={handleRevise}
                 disabled={loading || !feedback.trim()}
-                className="rounded-md bg-yellow-500 px-4 py-2 text-sm text-white hover:bg-yellow-600 disabled:opacity-50"
+                className="rounded-md bg-yellow-500 px-4 py-2 text-sm text-white hover:bg-yellow-600 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {loading ? '处理中...' : '修改并重新生成'}
               </button>

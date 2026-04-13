@@ -206,7 +206,7 @@ export function BugDetailPage() {
 
         <div className="grid items-start gap-5 min-[1281px]:grid-cols-[minmax(0,1.5fr)_360px] max-[1280px]:grid-cols-1">
           <div className="flex flex-col gap-[18px]">
-            <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <Card className="rounded-2xl border border-border bg-card shadow-sm">
               <CardHeader className="pb-4">
                 <SectionHeader eyebrow="Edit Bug" title="编辑缺陷" />
               </CardHeader>
@@ -224,7 +224,7 @@ export function BugDetailPage() {
                   </Alert>
                 ) : null}
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="bug-title">标题</label>
+                  <label className="text-sm font-semibold text-foreground" htmlFor="bug-title">标题</label>
                   <UiInput
                     id="bug-title"
                     value={draft.title}
@@ -232,7 +232,7 @@ export function BugDetailPage() {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="bug-description">描述</label>
+                  <label className="text-sm font-semibold text-foreground" htmlFor="bug-description">描述</label>
                   <Textarea
                     id="bug-description"
                     rows={5}
@@ -240,9 +240,9 @@ export function BugDetailPage() {
                     onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
                   />
                 </div>
-                <div className="inline-filter-group">
+                <div className="flex flex-wrap gap-3">
                   <div className="flex min-w-[220px] flex-1 flex-col gap-2">
-                    <label className="text-sm font-semibold text-[var(--text)]">状态</label>
+                    <label className="text-sm font-semibold text-foreground">状态</label>
                     <Select value={draft.status} onValueChange={(value) => setDraft((current) => ({ ...current, status: value }))}>
                       <SelectTrigger>
                         <SelectValue />
@@ -259,7 +259,7 @@ export function BugDetailPage() {
                     </Select>
                   </div>
                   <div className="flex min-w-[220px] flex-1 flex-col gap-2">
-                    <label className="text-sm font-semibold text-[var(--text)]">严重级别</label>
+                    <label className="text-sm font-semibold text-foreground">严重级别</label>
                     <Select value={draft.severity} onValueChange={(value) => setDraft((current) => ({ ...current, severity: value }))}>
                       <SelectTrigger>
                         <SelectValue />
@@ -273,7 +273,7 @@ export function BugDetailPage() {
                     </Select>
                   </div>
                   <div className="flex min-w-[220px] flex-1 flex-col gap-2">
-                    <label className="text-sm font-semibold text-[var(--text)]">优先级</label>
+                    <label className="text-sm font-semibold text-foreground">优先级</label>
                     <Select value={draft.priority} onValueChange={(value) => setDraft((current) => ({ ...current, priority: value }))}>
                       <SelectTrigger>
                         <SelectValue />
@@ -288,7 +288,7 @@ export function BugDetailPage() {
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="bug-branch">分支</label>
+                  <label className="text-sm font-semibold text-foreground" htmlFor="bug-branch">分支</label>
                   <UiInput
                     id="bug-branch"
                     value={draft.branchName}
@@ -296,7 +296,7 @@ export function BugDetailPage() {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="bug-expected">预期行为</label>
+                  <label className="text-sm font-semibold text-foreground" htmlFor="bug-expected">预期行为</label>
                   <Textarea
                     id="bug-expected"
                     rows={3}
@@ -305,7 +305,7 @@ export function BugDetailPage() {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="bug-actual">实际行为</label>
+                  <label className="text-sm font-semibold text-foreground" htmlFor="bug-actual">实际行为</label>
                   <Textarea
                     id="bug-actual"
                     rows={3}
@@ -314,7 +314,7 @@ export function BugDetailPage() {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="bug-reproduction">复现步骤</label>
+                  <label className="text-sm font-semibold text-foreground" htmlFor="bug-reproduction">复现步骤</label>
                   <Textarea
                     id="bug-reproduction"
                     rows={5}
@@ -324,7 +324,7 @@ export function BugDetailPage() {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="bug-resolution">处理结论</label>
+                  <label className="text-sm font-semibold text-foreground" htmlFor="bug-resolution">处理结论</label>
                   <Textarea
                     id="bug-resolution"
                     rows={4}
@@ -348,21 +348,21 @@ export function BugDetailPage() {
               description="回看当前缺陷对应的原始需求、分支以及 AI 审查结论。"
             >
               <div className="space-y-4">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">来源需求</div>
-                  <div className="break-words text-sm font-medium text-slate-900">{bug?.requirement?.title ?? '未关联需求'}</div>
+                <div className="rounded-lg border border-border bg-muted p-4">
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">来源需求</div>
+                  <div className="break-words text-sm font-medium text-foreground">{bug?.requirement?.title ?? '未关联需求'}</div>
                 </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">来源分支</div>
-                  <div className="break-all text-sm font-medium text-slate-900">{bug?.branchName ?? '未记录分支'}</div>
+                <div className="rounded-lg border border-border bg-muted p-4">
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">来源分支</div>
+                  <div className="break-all text-sm font-medium text-foreground">{bug?.branchName ?? '未记录分支'}</div>
                 </div>
               {bug?.reviewFinding ? (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="rounded-lg border border-border bg-muted p-4">
                   <div className="mb-3 flex flex-wrap gap-2">
                     <Badge variant="default">{formatReviewFindingType(bug.reviewFinding.type)}</Badge>
                     <Badge variant="outline">{formatSeverity(bug.reviewFinding.severity)}</Badge>
                   </div>
-                  <p className="break-words text-sm leading-6 text-slate-600">{bug.reviewFinding.description}</p>
+                  <p className="break-words text-sm leading-6 text-muted-foreground">{bug.reviewFinding.description}</p>
                 </div>
               ) : null}
               </div>

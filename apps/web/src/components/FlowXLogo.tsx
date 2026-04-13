@@ -9,10 +9,10 @@ type FlowXLogoProps = {
   size?: 'sm' | 'md' | 'lg';
 };
 
-const sizeClassMap = {
-  sm: 'flowx-logo-sm',
-  md: 'flowx-logo-md',
-  lg: 'flowx-logo-lg',
+const sizeMap = {
+  sm: { icon: 'w-[34px] h-[34px]', word: 'text-lg', tagline: 'text-[10px]' },
+  md: { icon: 'w-10 h-10', word: 'text-lg', tagline: 'text-xs' },
+  lg: { icon: 'w-14 h-14', word: 'text-[28px]', tagline: 'text-xs' },
 } as const;
 
 export function FlowXLogo({
@@ -23,12 +23,13 @@ export function FlowXLogo({
   theme = 'light',
   size = 'md',
 }: FlowXLogoProps) {
+  const s = sizeMap[size];
   return (
-    <div className={cn('flowx-logo', sizeClassMap[size], theme === 'dark' ? 'flowx-logo-dark' : '', className)}>
+    <div className={cn('inline-flex min-w-0 items-center gap-3', size === 'lg' && 'gap-4', className)}>
       <svg
         viewBox="0 0 96 96"
         aria-hidden="true"
-        className={cn('flowx-logo-icon', iconClassName)}
+        className={cn('shrink-0 drop-shadow-[0_10px_20px_rgba(37,99,235,0.14)]', s.icon, iconClassName)}
         role="img"
       >
         <defs>
@@ -76,9 +77,21 @@ export function FlowXLogo({
         <circle cx="21" cy="67" r="4" fill="#67e8f9" />
       </svg>
       {showWordmark ? (
-        <div className={cn('flowx-logo-copy', labelClassName)}>
-          <div className="flowx-logo-wordmark">FlowX</div>
-          <div className="flowx-logo-tagline">AI Delivery Workspace</div>
+        <div className={cn('min-w-0', labelClassName)}>
+          <div className={cn(
+            'leading-none font-extrabold tracking-tight',
+            s.word,
+            theme === 'dark' ? 'text-slate-50' : 'text-foreground',
+          )}>
+            FlowX
+          </div>
+          <div className={cn(
+            'mt-[5px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap',
+            s.tagline,
+            theme === 'dark' ? 'text-slate-300/72' : 'text-muted-foreground',
+          )}>
+            AI Delivery Workspace
+          </div>
         </div>
       ) : null}
     </div>

@@ -993,7 +993,7 @@ export function WorkflowRunDetailPage() {
             void submitFeedback();
           }}>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="workflow-feedback">意见说明</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="workflow-feedback">意见说明</label>
               <Textarea
                 id="workflow-feedback"
                 rows={6}
@@ -1026,7 +1026,7 @@ export function WorkflowRunDetailPage() {
             void submitManualEdit();
           }}>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="workflow-edit-output">阶段产出 JSON</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="workflow-edit-output">阶段产出 JSON</label>
               <Textarea
                 id="workflow-edit-output"
                 rows={18}
@@ -1057,7 +1057,7 @@ export function WorkflowRunDetailPage() {
             </DialogDescription>
           </DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={(event) => void handleCreateDeployJob(event)}>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+            <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
               目标仓库：{deployDraft.repositoryName || '未选择'}
             </div>
             {lastPublishedRepositories.length > 1 ? (
@@ -1067,7 +1067,7 @@ export function WorkflowRunDetailPage() {
             ) : null}
             <div className="grid gap-4 md:grid-cols-2">
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-[var(--text)]" htmlFor="deploy-env">环境</label>
+                <label className="text-sm font-semibold text-foreground" htmlFor="deploy-env">环境</label>
                 <UiInput
                   id="deploy-env"
                   value={deployDraft.env}
@@ -1076,7 +1076,7 @@ export function WorkflowRunDetailPage() {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-[var(--text)]" htmlFor="deploy-branch">分支</label>
+                <label className="text-sm font-semibold text-foreground" htmlFor="deploy-branch">分支</label>
                 <UiInput
                   id="deploy-branch"
                   value={deployDraft.branch}
@@ -1085,7 +1085,7 @@ export function WorkflowRunDetailPage() {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-[var(--text)]" htmlFor="deploy-commit">Commit</label>
+                <label className="text-sm font-semibold text-foreground" htmlFor="deploy-commit">Commit</label>
                 <UiInput
                   id="deploy-commit"
                   value={deployDraft.commit}
@@ -1094,7 +1094,7 @@ export function WorkflowRunDetailPage() {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-[var(--text)]" htmlFor="deploy-version">版本号</label>
+                <label className="text-sm font-semibold text-foreground" htmlFor="deploy-version">版本号</label>
                 <UiInput
                   id="deploy-version"
                   value={deployDraft.version}
@@ -1103,7 +1103,7 @@ export function WorkflowRunDetailPage() {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-[var(--text)]" htmlFor="deploy-version-image">镜像版本</label>
+                <label className="text-sm font-semibold text-foreground" htmlFor="deploy-version-image">镜像版本</label>
                 <UiInput
                   id="deploy-version-image"
                   value={deployDraft.versionImage}
@@ -1112,7 +1112,7 @@ export function WorkflowRunDetailPage() {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-[var(--text)]" htmlFor="deploy-image">镜像地址</label>
+                <label className="text-sm font-semibold text-foreground" htmlFor="deploy-image">镜像地址</label>
                 <UiInput
                   id="deploy-image"
                   value={deployDraft.image}
@@ -1122,7 +1122,7 @@ export function WorkflowRunDetailPage() {
               </div>
             </div>
             {deployConfig ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+              <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
                 当前 provider：{deployConfig.provider}。未填写的字段会继续使用该仓库的默认部署模板。
               </div>
             ) : null}
@@ -1151,7 +1151,7 @@ export function WorkflowRunDetailPage() {
             ]}
             actions={
               <>
-                <span className="workflow-criteria">{workflowRun.requirement.acceptanceCriteria}</span>
+                <span className="text-muted-foreground">{workflowRun.requirement.acceptanceCriteria}</span>
                 <UiButton variant="destructive" disabled={deleting || hasRunningStage} onClick={() => void handleDeleteWorkflow()}>
                   {deleting ? '删除中...' : '删除工作流'}
                 </UiButton>
@@ -1205,17 +1205,17 @@ export function WorkflowRunDetailPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm leading-6 text-slate-500">当前需求没有单独指定仓库范围。</p>
+              <p className="text-sm leading-6 text-muted-foreground">当前需求没有单独指定仓库范围。</p>
             )}
           </ContextPanel>
 
-          <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
+          <Card className="rounded-2xl border-border bg-card shadow-sm">
             <CardHeader className="p-5 pb-0">
               <SectionHeader
                 eyebrow="Workflow Steps"
                 title="按阶段查看流程与产物"
-                className="workflow-steps-heading"
-                extra={<span className="text-sm leading-6 text-slate-500">点击步骤切换详情，产物仅在下方显示</span>}
+                className="flex flex-wrap items-start justify-between gap-3"
+                extra={<span className="text-sm leading-6 text-muted-foreground">点击步骤切换详情，产物仅在下方显示</span>}
               />
             </CardHeader>
             <CardContent className="p-5 pt-4">
@@ -1270,7 +1270,7 @@ export function WorkflowRunDetailPage() {
                 actions={selectedStageContent.actions}
               />
             ) : (
-              <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <Card className="rounded-2xl border border-border bg-card shadow-sm">
                 <CardContent className="p-5">
                   <EmptyState description="当前阶段还没有可展示的详情产物。" />
                 </CardContent>
@@ -1317,7 +1317,7 @@ export function WorkflowRunDetailPage() {
             </div>
 
             {diffReviewData.length > 0 && (selectedStage === 'EXECUTION' || selectedStage === 'AI_REVIEW') ? (
-              <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
+              <Card className="rounded-2xl border-border bg-card shadow-sm">
                 <CardHeader className="space-y-4 p-5">
                   <div className="flex items-start justify-between gap-4 max-[1180px]:flex-col">
                     <SectionHeader
@@ -1356,7 +1356,7 @@ export function WorkflowRunDetailPage() {
                             className="flex min-w-[180px] flex-col items-start justify-start gap-1"
                           >
                             <span className="text-sm font-semibold">{artifact.repository}</span>
-                            <span className="text-xs text-slate-500">{artifact.branch}</span>
+                            <span className="text-xs text-muted-foreground">{artifact.branch}</span>
                           </TabsTrigger>
                         ))}
                       </TabsList>
@@ -1402,7 +1402,7 @@ export function WorkflowRunDetailPage() {
             ) : null}
 
             {selectedStage === 'AI_REVIEW' ? (
-              <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
+              <Card className="rounded-2xl border-border bg-card shadow-sm">
                 <CardHeader className="p-5">
                   <div className="mb-4 flex items-start justify-between gap-4 max-[960px]:flex-col">
                     <SectionHeader
@@ -1505,7 +1505,7 @@ export function WorkflowRunDetailPage() {
             ) : null}
 
             {workflowRun.status === 'DONE' ? (
-              <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
+              <Card className="rounded-2xl border-border bg-card shadow-sm">
                 <CardHeader className="p-5">
                   <SectionHeader
                     eyebrow="Git Publish"
@@ -1514,7 +1514,7 @@ export function WorkflowRunDetailPage() {
                   />
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4 p-5 pt-0">
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+                  <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
                     这个动作会自动完成 git add、git commit 和 git push。推送时不会直接复用工作分支，而是生成唯一的发布分支，避免与远端已有分支冲突。
                   </div>
                   <div className="flex flex-wrap gap-3">
@@ -1530,12 +1530,12 @@ export function WorkflowRunDetailPage() {
                       最近一次推送：{lastPublishedRepositories.map((item) => `${item.repository} / ${item.branch} / ${item.commitSha}`).join('；')}
                     </div>
                   ) : (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+                    <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
                       建议先执行“提交并推送到远程”，这样部署弹窗可以自动带出对应仓库的最新发布分支和 commit。
                     </div>
                   )}
                   <div>
-                    <p className="text-sm leading-6 text-slate-500">
+                    <p className="text-sm leading-6 text-muted-foreground">
                       部署模板现在跟着仓库走。你可以先去工作区里的仓库管理维护默认参数，再回到这里基于某个已推送仓库触发发布。
                     </p>
                   </div>
@@ -1545,7 +1545,7 @@ export function WorkflowRunDetailPage() {
           </div>
         </div>
       ) : (
-        <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <Card className="rounded-2xl border border-border bg-card shadow-sm">
           <CardContent className="p-5">
             {loading ? (
               <div className="flex min-h-40 items-center justify-center">

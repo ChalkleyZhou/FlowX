@@ -183,7 +183,7 @@ export function IssueDetailPage() {
 
         <div className="grid items-start gap-5 min-[1281px]:grid-cols-[minmax(0,1.5fr)_360px] max-[1280px]:grid-cols-1">
           <div className="flex flex-col gap-[18px]">
-            <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <Card className="rounded-2xl border border-border bg-card shadow-sm">
               <CardHeader className="pb-4">
                 <SectionHeader eyebrow="Edit Issue" title="编辑问题项" />
               </CardHeader>
@@ -201,7 +201,7 @@ export function IssueDetailPage() {
                   </Alert>
                 ) : null}
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="issue-title">标题</label>
+                  <label className="text-sm font-semibold text-foreground" htmlFor="issue-title">标题</label>
                   <UiInput
                     id="issue-title"
                     value={draft.title}
@@ -209,7 +209,7 @@ export function IssueDetailPage() {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="issue-description">描述</label>
+                  <label className="text-sm font-semibold text-foreground" htmlFor="issue-description">描述</label>
                   <Textarea
                     id="issue-description"
                     rows={6}
@@ -217,9 +217,9 @@ export function IssueDetailPage() {
                     onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
                   />
                 </div>
-                <div className="inline-filter-group">
+                <div className="flex flex-wrap gap-3">
                   <div className="flex min-w-[220px] flex-1 flex-col gap-2">
-                    <label className="text-sm font-semibold text-[var(--text)]">状态</label>
+                    <label className="text-sm font-semibold text-foreground">状态</label>
                     <Select value={draft.status} onValueChange={(value) => setDraft((current) => ({ ...current, status: value }))}>
                       <SelectTrigger>
                         <SelectValue />
@@ -234,7 +234,7 @@ export function IssueDetailPage() {
                     </Select>
                   </div>
                   <div className="flex min-w-[220px] flex-1 flex-col gap-2">
-                    <label className="text-sm font-semibold text-[var(--text)]">优先级</label>
+                    <label className="text-sm font-semibold text-foreground">优先级</label>
                     <Select value={draft.priority} onValueChange={(value) => setDraft((current) => ({ ...current, priority: value }))}>
                       <SelectTrigger>
                         <SelectValue />
@@ -249,7 +249,7 @@ export function IssueDetailPage() {
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="issue-branch">分支</label>
+                  <label className="text-sm font-semibold text-foreground" htmlFor="issue-branch">分支</label>
                   <UiInput
                     id="issue-branch"
                     value={draft.branchName}
@@ -257,7 +257,7 @@ export function IssueDetailPage() {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-[var(--text)]" htmlFor="issue-resolution">处理结论</label>
+                  <label className="text-sm font-semibold text-foreground" htmlFor="issue-resolution">处理结论</label>
                   <Textarea
                     id="issue-resolution"
                     rows={4}
@@ -281,21 +281,21 @@ export function IssueDetailPage() {
               description="回看当前问题项来自哪条需求、哪个分支以及哪一条审查结论。"
             >
               <div className="space-y-4">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">来源需求</div>
-                  <div className="break-words text-sm font-medium text-slate-900">{issue?.requirement?.title ?? '未关联需求'}</div>
+                <div className="rounded-lg border border-border bg-muted p-4">
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">来源需求</div>
+                  <div className="break-words text-sm font-medium text-foreground">{issue?.requirement?.title ?? '未关联需求'}</div>
                 </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">来源分支</div>
-                  <div className="break-all text-sm font-medium text-slate-900">{issue?.branchName ?? '未记录分支'}</div>
+                <div className="rounded-lg border border-border bg-muted p-4">
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">来源分支</div>
+                  <div className="break-all text-sm font-medium text-foreground">{issue?.branchName ?? '未记录分支'}</div>
                 </div>
               {issue?.reviewFinding ? (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="rounded-lg border border-border bg-muted p-4">
                   <div className="mb-3 flex flex-wrap gap-2">
                     <Badge variant="default">{formatReviewFindingType(issue.reviewFinding.type)}</Badge>
                     <Badge variant="outline">{formatSeverity(issue.reviewFinding.severity)}</Badge>
                   </div>
-                  <p className="break-words text-sm leading-6 text-slate-600">{issue.reviewFinding.description}</p>
+                  <p className="break-words text-sm leading-6 text-muted-foreground">{issue.reviewFinding.description}</p>
                 </div>
               ) : null}
               </div>

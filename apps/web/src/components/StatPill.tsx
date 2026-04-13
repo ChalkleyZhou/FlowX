@@ -10,10 +10,10 @@ interface StatPillProps {
 
 export function StatPill({ label, value, className }: StatPillProps) {
   return (
-    <Card className={cn('rounded-xl border-slate-200 bg-slate-50 shadow-none', className)}>
+    <Card className={cn('rounded-xl border-border bg-muted shadow-none', className)}>
       <CardContent className="px-4 py-3">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</div>
-        <div className="mt-1 text-sm font-semibold text-slate-950">{value}</div>
+        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
+        <div className="mt-1 text-sm font-semibold text-foreground">{value}</div>
       </CardContent>
     </Card>
   );

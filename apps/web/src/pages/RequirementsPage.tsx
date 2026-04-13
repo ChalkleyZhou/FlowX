@@ -281,15 +281,15 @@ export function RequirementsPage() {
           </DialogHeader>
           {launchModalRequirement ? (
             <div className="flex flex-col gap-4">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="text-sm font-semibold text-slate-900">{launchModalRequirement.title}</div>
-                <div className="mt-1 text-sm leading-6 text-slate-600">
+              <div className="rounded-xl border border-border bg-muted px-4 py-3">
+                <div className="text-sm font-semibold text-foreground">{launchModalRequirement.title}</div>
+                <div className="mt-1 text-sm leading-6 text-muted-foreground">
                   默认范围：{renderRepositoryScope(launchModalRequirement)}
                 </div>
               </div>
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-[var(--text)]">AI 执行器</label>
+                  <label className="text-sm font-semibold text-foreground">AI 执行器</label>
                   <Select
                     value={launchAiProvider}
                     onValueChange={(value: 'codex' | 'cursor') => setLaunchAiProvider(value)}
@@ -305,13 +305,13 @@ export function RequirementsPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs leading-5 text-slate-500">
+                  <p className="text-xs leading-5 text-muted-foreground">
                     Codex 适合当前默认链路；Cursor 会通过服务器上的 `cursor-agent` 执行。
                   </p>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <label className="text-sm font-semibold text-[var(--text)]">本次工作流仓库范围</label>
-                  <span className="text-xs leading-5 text-slate-500">不选则按默认范围启动</span>
+                  <label className="text-sm font-semibold text-foreground">本次工作流仓库范围</label>
+                  <span className="text-xs leading-5 text-muted-foreground">不选则按默认范围启动</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {getRequirementDefaultRepositories(launchModalRequirement).map((repository) => {
@@ -374,7 +374,7 @@ export function RequirementsPage() {
           </DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={(event) => void handleCreateRequirement(event)}>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]">所属项目</label>
+              <label className="text-sm font-semibold text-foreground">所属项目</label>
               <Select
                 value={createDraft.projectId || undefined}
                 onValueChange={(value) =>
@@ -397,7 +397,7 @@ export function RequirementsPage() {
               </Select>
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="requirement-title">需求标题</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="requirement-title">需求标题</label>
               <UiInput
                 id="requirement-title"
                 value={createDraft.title}
@@ -406,7 +406,7 @@ export function RequirementsPage() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="requirement-description">需求描述</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="requirement-description">需求描述</label>
               <Textarea
                 id="requirement-description"
                 rows={4}
@@ -416,7 +416,7 @@ export function RequirementsPage() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="requirement-acceptance">验收标准</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="requirement-acceptance">验收标准</label>
               <Textarea
                 id="requirement-acceptance"
                 rows={4}
@@ -427,8 +427,8 @@ export function RequirementsPage() {
             </div>
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-3">
-                <label className="text-sm font-semibold text-[var(--text)]">影响仓库范围</label>
-                <span className="text-xs leading-5 text-slate-500">不选则默认继承项目工作区全部仓库</span>
+                <label className="text-sm font-semibold text-foreground">影响仓库范围</label>
+                <span className="text-xs leading-5 text-muted-foreground">不选则默认继承项目工作区全部仓库</span>
               </div>
               {selectedProject ? (
                 availableRepositories.length > 0 ? (
@@ -449,10 +449,10 @@ export function RequirementsPage() {
                     })}
                   </div>
                 ) : (
-                  <p className="text-sm leading-6 text-slate-500">当前项目所在工作区还没有可选仓库。</p>
+                  <p className="text-sm leading-6 text-muted-foreground">当前项目所在工作区还没有可选仓库。</p>
                 )
               ) : (
-                <p className="text-sm leading-6 text-slate-500">先选择项目，再指定这条需求实际影响的仓库。</p>
+                <p className="text-sm leading-6 text-muted-foreground">先选择项目，再指定这条需求实际影响的仓库。</p>
               )}
             </div>
             <UiButton type="submit" className="mt-2">
@@ -472,7 +472,7 @@ export function RequirementsPage() {
         <MetricCard label="涉及工作区" value={requirementSummary.workspaceCount} />
         <MetricCard label="涉及项目" value={requirementSummary.projectCount} />
       </div>
-      <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="pb-4">
           <SectionHeader
             eyebrow="Requirement Pool"
@@ -542,11 +542,11 @@ export function RequirementsPage() {
               <Spinner className="h-7 w-7" />
             </div>
           ) : filteredRequirements.length > 0 ? (
-            <div className="record-list-stack">
+            <div className="flex flex-col gap-3.5">
               {filteredRequirements.map((item) => (
                 <RecordListItem
                   key={item.id}
-                  title={<div className="text-base font-semibold leading-6 text-slate-950">{item.title}</div>}
+                  title={<div className="text-base font-semibold leading-6 text-foreground">{item.title}</div>}
                   badges={
                     <>
                       <Badge variant="secondary">{item.project.name}</Badge>
@@ -565,9 +565,9 @@ export function RequirementsPage() {
                   description={<p className="leading-6">{item.description}</p>}
                   details={(
                     <>
-                      <p className="text-sm leading-6 text-slate-500">{item.acceptanceCriteria}</p>
-                      <p className="text-sm leading-6 text-slate-500">仓库范围：{renderRepositoryScope(item)}</p>
-                      <p className="text-sm leading-6 text-slate-500">并行占用：{renderActiveWorkflowScope(item)}</p>
+                      <p className="text-sm leading-6 text-muted-foreground">{item.acceptanceCriteria}</p>
+                      <p className="text-sm leading-6 text-muted-foreground">仓库范围：{renderRepositoryScope(item)}</p>
+                      <p className="text-sm leading-6 text-muted-foreground">并行占用：{renderActiveWorkflowScope(item)}</p>
                     </>
                   )}
                   actions={

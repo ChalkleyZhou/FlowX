@@ -70,27 +70,27 @@ function isRecord(value: unknown): value is Record<string, JsonLike> {
 }
 
 function renderPrimitive(value: JsonLike) {
-  return <span className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">{String(value)}</span>;
+  return <span className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">{String(value)}</span>;
 }
 
 function renderArray(values: JsonLike[]) {
   if (values.length === 0) {
-    return <span className="text-sm text-slate-500">暂无内容</span>;
+    return <span className="text-sm text-muted-foreground">暂无内容</span>;
   }
 
   const simpleValues = values.every((item) => typeof item !== 'object' || item === null);
   if (simpleValues) {
     return (
-      <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white">
+      <div className="overflow-hidden rounded-xl border border-border/80 bg-card">
         {values.map((item, index) => (
           <div
             key={`${String(item)}-${index}`}
-            className="flex items-start gap-3 border-b border-slate-200/80 px-4 py-3 last:border-b-0"
+            className="flex items-start gap-3 border-b border-border/80 px-4 py-3 last:border-b-0"
           >
-            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-slate-100 text-[11px] font-semibold text-slate-500">
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
               {index + 1}
             </span>
-            <span className="min-w-0 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
+            <span className="min-w-0 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
               {String(item)}
             </span>
           </div>
@@ -102,7 +102,7 @@ function renderArray(values: JsonLike[]) {
   return (
     <div className="space-y-3">
       {values.map((item, index) => (
-        <div key={index} className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-4 py-3">
+        <div key={index} className="rounded-xl border border-border/80 bg-muted/70 px-4 py-3">
           {renderStructuredValue(item)}
         </div>
       ))}
@@ -113,15 +113,15 @@ function renderArray(values: JsonLike[]) {
 function renderObject(record: Record<string, JsonLike>) {
   const entries = Object.entries(record);
   if (entries.length === 0) {
-    return <span className="text-sm text-slate-500">暂无内容</span>;
+    return <span className="text-sm text-muted-foreground">暂无内容</span>;
   }
 
   return (
     <div className="divide-y divide-slate-200">
       {entries.map(([key, value]) => (
         <section key={key} className="space-y-3 py-4 first:pt-0 last:pb-0">
-          <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">{formatOutputLabel(key)}</div>
-          <div className="min-w-0 overflow-hidden text-sm leading-6 text-slate-700">{renderStructuredValue(value)}</div>
+          <div className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">{formatOutputLabel(key)}</div>
+          <div className="min-w-0 overflow-hidden text-sm leading-6 text-foreground">{renderStructuredValue(value)}</div>
         </section>
       ))}
     </div>
@@ -130,20 +130,20 @@ function renderObject(record: Record<string, JsonLike>) {
 
 function renderStageOutput(value: unknown) {
   if (value === null || value === undefined) {
-    return <span className="text-sm text-slate-500">暂无输出</span>;
+    return <span className="text-sm text-muted-foreground">暂无输出</span>;
   }
 
   if (isRecord(value)) {
     const entries = Object.entries(value);
     if (entries.length === 0) {
-      return <span className="text-sm text-slate-500">暂无输出</span>;
+      return <span className="text-sm text-muted-foreground">暂无输出</span>;
     }
 
     return (
       <div className="space-y-1">
         {entries.map(([key, entryValue]) => (
-          <section key={key} className="rounded-xl border border-slate-200/80 bg-slate-50/40 px-4 py-4">
-            <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">
+          <section key={key} className="rounded-xl border border-border/80 bg-muted/40 px-4 py-4">
+            <div className="mb-3 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
               {formatOutputLabel(key)}
             </div>
             <div className="min-w-0 overflow-hidden">{renderStructuredValue(entryValue)}</div>
@@ -154,7 +154,7 @@ function renderStageOutput(value: unknown) {
   }
 
   return (
-    <div className="rounded-xl border border-slate-200/80 bg-slate-50/40 px-4 py-4">
+    <div className="rounded-xl border border-border/80 bg-muted/40 px-4 py-4">
       {renderStructuredValue(value)}
     </div>
   );
@@ -162,7 +162,7 @@ function renderStageOutput(value: unknown) {
 
 function renderStructuredValue(value: unknown): ReactNode {
   if (value === null || value === undefined) {
-    return <span className="text-sm text-slate-500">暂无内容</span>;
+    return <span className="text-sm text-muted-foreground">暂无内容</span>;
   }
 
   if (Array.isArray(value)) {
@@ -181,20 +181,20 @@ export function StageCard(props: StageCardProps) {
     !!props.statusMessage && (props.status === 'RUNNING' || props.status === 'FAILED');
 
   return (
-    <Card className="border-slate-200 bg-white shadow-sm">
+    <Card className="border-border bg-card shadow-sm">
       <CardHeader className="space-y-5 p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-primary">{props.title}</div>
-            <div className="mt-1 text-[28px] font-bold leading-none tracking-tight text-slate-950">
+            <div className="text-xs font-bold uppercase tracking-[0.08em] text-primary">{props.title}</div>
+            <div className="mt-1 text-[28px] font-bold leading-none tracking-tight text-foreground">
               {props.subtitle}
             </div>
           </div>
           <div className="flex flex-wrap gap-2 lg:justify-end">
             {props.metaItems?.map((item) => (
-              <div key={item.key} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                <div className="mb-0.5 text-[11px] font-semibold text-slate-400">{item.label}</div>
-                <div className="text-sm font-semibold text-slate-950">{item.value}</div>
+              <div key={item.key} className="rounded-xl border border-border bg-muted px-3 py-2">
+                <div className="mb-0.5 text-xs font-semibold text-muted-foreground">{item.label}</div>
+                <div className="text-sm font-semibold text-foreground">{item.value}</div>
               </div>
             ))}
             {props.attempt ? (
@@ -220,15 +220,15 @@ export function StageCard(props: StageCardProps) {
         </div>
       </CardHeader>
       <CardContent className="space-y-4 p-5 pt-0">
-        <div className="text-xs font-bold uppercase tracking-[0.08em] text-slate-400">阶段产出</div>
+        <div className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">阶段产出</div>
         {shouldShowStatusMessage ? (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+          <div className="rounded-xl border border-border bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
             {props.statusMessage}
           </div>
         ) : null}
 
         <div className="space-y-3">
-          {props.output ? renderStageOutput(props.output) : <span className="text-sm text-slate-500">暂无输出</span>}
+          {props.output ? renderStageOutput(props.output) : <span className="text-sm text-muted-foreground">暂无输出</span>}
         </div>
 
         <div className="flex flex-wrap gap-3">
@@ -244,7 +244,7 @@ export function StageCard(props: StageCardProps) {
               </Button>
             ))
           ) : (
-            <span className="text-sm text-slate-500">当前阶段暂无可用操作</span>
+            <span className="text-sm text-muted-foreground">当前阶段暂无可用操作</span>
           )}
         </div>
       </CardContent>

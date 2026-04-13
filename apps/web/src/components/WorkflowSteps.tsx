@@ -40,12 +40,12 @@ export function WorkflowSteps({ current, items, onChange, className }: WorkflowS
           <button
             key={item.key}
             type="button"
-            className="text-left"
+            className="rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => onChange?.(index)}
           >
             <Card
               className={cn(
-                'rounded-2xl border-slate-200 bg-slate-50 text-left shadow-none transition-all hover:border-slate-300 hover:bg-white',
+                'rounded-2xl border-border bg-muted text-left shadow-none transition-all hover:border-border-strong hover:bg-card',
                 isActive && 'border-primary/30 bg-primary/5 shadow-sm',
                 item.status === 'finish' && 'border-emerald-200/80 bg-emerald-50/70',
                 item.status === 'process' && 'border-amber-200/80 bg-amber-50/70',
@@ -56,7 +56,7 @@ export function WorkflowSteps({ current, items, onChange, className }: WorkflowS
                 <div className="flex shrink-0 flex-col items-center gap-2">
                   <span
                     className={cn(
-                      'grid h-8 w-8 place-items-center rounded-full border bg-white text-slate-400',
+                      'grid h-8 w-8 place-items-center rounded-full border bg-card text-muted-foreground',
                       item.status === 'finish' && 'border-emerald-200 text-emerald-600',
                       item.status === 'process' && 'border-amber-200 text-amber-600',
                       item.status === 'error' && 'border-red-200 text-red-600',
@@ -64,11 +64,11 @@ export function WorkflowSteps({ current, items, onChange, className }: WorkflowS
                   >
                     {getStepIcon(item.status)}
                   </span>
-                  <span className="text-[11px] font-bold tracking-[0.08em] text-slate-400">{index + 1}</span>
+                  <span className="text-xs font-bold tracking-[0.08em] text-muted-foreground">{index + 1}</span>
                 </div>
                 <div className="min-w-0 space-y-1">
                   <CardTitle className="text-sm leading-5">{item.title}</CardTitle>
-                  <CardDescription className="break-words text-xs leading-5 text-slate-500">
+                  <CardDescription className="break-words text-xs leading-5 text-muted-foreground">
                     {item.description ?? '尚未开始'}
                   </CardDescription>
                 </div>

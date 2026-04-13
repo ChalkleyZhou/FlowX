@@ -228,7 +228,7 @@ export function LoginPage() {
             {organizations.map((organization) => (
               <div key={organization.id} className="flex items-center justify-between gap-4 rounded-[14px] border border-[var(--border)] bg-[var(--surface-muted)] p-[14px]">
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-[var(--text)]">{organization.name}</div>
+                  <div className="text-sm font-semibold text-foreground">{organization.name}</div>
                   <div className="mt-1 overflow-wrap-anywhere text-xs text-[var(--text-tertiary)]">{organization.id}</div>
                 </div>
                 <Button disabled={submitting} onClick={() => void confirmOrganization(organization.id)}>
@@ -253,33 +253,33 @@ export function LoginPage() {
             面向标准产品研发团队，把需求拆解、方案确认、执行审查和人工决策放进同一条可中断工作流。
           </p>
           <div className="mt-[22px] flex flex-wrap gap-[10px]">
-            <span className="rounded-full bg-white/10 px-3 py-2 text-[13px] text-slate-50/85">阶段式工作流</span>
-            <span className="rounded-full bg-white/10 px-3 py-2 text-[13px] text-slate-50/85">人机确认节点</span>
-            <span className="rounded-full bg-white/10 px-3 py-2 text-[13px] text-slate-50/85">可替换 AI 执行器</span>
+            <span className="rounded-full bg-white/10 px-3 py-2 text-sm text-slate-50/85">阶段式工作流</span>
+            <span className="rounded-full bg-white/10 px-3 py-2 text-sm text-slate-50/85">人机确认节点</span>
+            <span className="rounded-full bg-white/10 px-3 py-2 text-sm text-slate-50/85">可替换 AI 执行器</span>
           </div>
           <div className="mt-7 grid gap-[14px] [grid-template-columns:repeat(3,minmax(0,1fr))] max-[1280px]:grid-cols-1">
             <div className="rounded-[var(--radius-md)] border border-white/10 bg-white/5 p-[18px]">
-              <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-sky-300">Stage Control</span>
+              <span className="text-xs font-bold uppercase tracking-[0.12em] text-sky-300">Stage Control</span>
               <h3 className="mt-[10px] text-lg font-bold leading-[1.35] text-slate-50">每个阶段都有输入、输出和确认点</h3>
               <p className="mt-[10px] leading-[1.6] text-slate-50/70">从 Requirement 到 Review，每次推进都基于上一步的确认结果。</p>
             </div>
             <div className="rounded-[var(--radius-md)] border border-white/10 bg-white/5 p-[18px]">
-              <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-sky-300">Structured Output</span>
+              <span className="text-xs font-bold uppercase tracking-[0.12em] text-sky-300">Structured Output</span>
               <h3 className="mt-[10px] text-lg font-bold leading-[1.35] text-slate-50">AI 产出默认结构化沉淀</h3>
               <p className="mt-[10px] leading-[1.6] text-slate-50/70">任务拆解、技术方案、代码执行和审查结果都能复用，不是一次性对话。</p>
             </div>
             <div className="rounded-[var(--radius-md)] border border-white/10 bg-white/5 p-[18px]">
-              <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-sky-300">Human In Loop</span>
+              <span className="text-xs font-bold uppercase tracking-[0.12em] text-sky-300">Human In Loop</span>
               <h3 className="mt-[10px] text-lg font-bold leading-[1.35] text-slate-50">关键推进节点永远保留人工决策</h3>
               <p className="mt-[10px] leading-[1.6] text-slate-50/70">确认、驳回、返工、回滚都在流程里，而不是散落在聊天记录中。</p>
             </div>
           </div>
         </section>
 
-        <Card className="w-full rounded-3xl border border-slate-200 bg-white shadow-[var(--shadow-lg)]">
+        <Card className="w-full rounded-3xl border border-border bg-card shadow-[var(--shadow-lg)]">
           <CardHeader className="mb-[18px] p-6 pb-0">
-            <span className="eyebrow">认证中心</span>
-            <h2 className="mt-[10px] text-[28px] font-bold leading-[1.2] text-[var(--text)]">进入研发调度台</h2>
+            <span className="inline-block mb-1.5 text-primary text-xs font-bold tracking-[0.08em] uppercase">认证中心</span>
+            <h2 className="mt-[10px] text-2xl font-bold leading-[1.2] text-foreground">进入研发调度台</h2>
             <p className="mt-[10px] text-[var(--text-secondary)] leading-[1.65]">
               账号密码适合日常访问，钉钉登录适合企业身份接入与组织上下文绑定。
             </p>
@@ -298,8 +298,8 @@ export function LoginPage() {
               type="button"
               className={cn(
                 'h-10 rounded-[10px] border-0 bg-transparent text-sm font-semibold text-[var(--text-secondary)] transition-[background-color,color,box-shadow] duration-150',
-                'hover:text-[var(--text)]',
-                loginMode === 'password' && 'bg-[var(--surface)] text-[var(--text)] shadow-[var(--shadow-sm)]',
+                'hover:text-foreground',
+                loginMode === 'password' && 'bg-[var(--surface)] text-foreground shadow-[var(--shadow-sm)]',
               )}
               onClick={() => setLoginMode('password')}
             >
@@ -309,8 +309,8 @@ export function LoginPage() {
               type="button"
               className={cn(
                 'h-10 rounded-[10px] border-0 bg-transparent text-sm font-semibold text-[var(--text-secondary)] transition-[background-color,color,box-shadow] duration-150',
-                'hover:text-[var(--text)]',
-                loginMode === 'register' && 'bg-[var(--surface)] text-[var(--text)] shadow-[var(--shadow-sm)]',
+                'hover:text-foreground',
+                loginMode === 'register' && 'bg-[var(--surface)] text-foreground shadow-[var(--shadow-sm)]',
               )}
               onClick={() => setLoginMode('register')}
             >
@@ -320,7 +320,7 @@ export function LoginPage() {
 
           <form className="mt-5 flex flex-col gap-[14px]" onSubmit={(event) => void handlePasswordSubmit(event)}>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="login-account">账号</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="login-account">账号</label>
               <UiInput
                 id="login-account"
                 value={account}
@@ -331,7 +331,7 @@ export function LoginPage() {
             </div>
             {loginMode === 'register' ? (
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-[var(--text)]" htmlFor="login-display-name">显示名称</label>
+                <label className="text-sm font-semibold text-foreground" htmlFor="login-display-name">显示名称</label>
                 <UiInput
                   id="login-display-name"
                   value={displayName}
@@ -341,7 +341,7 @@ export function LoginPage() {
               </div>
             ) : null}
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="login-password">密码</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="login-password">密码</label>
               <UiInput
                 id="login-password"
                 type="password"

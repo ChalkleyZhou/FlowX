@@ -7,9 +7,9 @@ const alertVariants = cva(
   {
     variants: {
       variant: {
-        default: 'border-slate-200 bg-white text-slate-950',
+        default: 'border-border bg-card text-foreground',
         destructive:
-          'border-red-200 bg-red-50 text-red-950 [&_svg]:text-red-600 [&_[data-slot=alert-description]]:text-red-800/90',
+          'border-danger/30 bg-danger/10 text-danger [&_svg]:text-danger [&_[data-slot=alert-description]]:text-danger/80',
       },
     },
     defaultVariants: {
@@ -38,7 +38,7 @@ const AlertDescription = React.forwardRef<HTMLParagraphElement, React.HTMLAttrib
     <div
       ref={ref}
       data-slot="alert-description"
-      className={cn('text-sm leading-6 text-slate-600 [&_p]:leading-6', className)}
+      className={cn('text-sm leading-6 text-muted-foreground [&_p]:leading-6', className)}
       {...props}
     />
   ),

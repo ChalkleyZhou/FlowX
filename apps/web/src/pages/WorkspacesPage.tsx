@@ -294,7 +294,7 @@ export function WorkspacesPage() {
           </DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={(event) => void handleCreateWorkspace(event)}>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="workspace-name">工作区名称</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="workspace-name">工作区名称</label>
               <UiInput
                 id="workspace-name"
                 value={workspaceDraft.name}
@@ -303,7 +303,7 @@ export function WorkspacesPage() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="workspace-description">描述</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="workspace-description">描述</label>
               <Textarea
                 id="workspace-description"
                 rows={3}
@@ -333,7 +333,7 @@ export function WorkspacesPage() {
           </DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={(event) => void handleAddRepository(event)}>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="repository-name">代码库名称</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="repository-name">代码库名称</label>
               <UiInput
                 id="repository-name"
                 value={repositoryDraft.name}
@@ -342,7 +342,7 @@ export function WorkspacesPage() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="repository-url">仓库地址</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="repository-url">仓库地址</label>
               <UiInput
                 id="repository-url"
                 value={repositoryDraft.url}
@@ -351,7 +351,7 @@ export function WorkspacesPage() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="repository-default-branch">默认分支</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="repository-default-branch">默认分支</label>
               <UiInput
                 id="repository-default-branch"
                 value={repositoryDraft.defaultBranch}
@@ -380,7 +380,7 @@ export function WorkspacesPage() {
           </DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={(event) => void handleUpdateRepositoryMeta(event)}>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="repository-edit-name">代码库名称</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="repository-edit-name">代码库名称</label>
               <UiInput
                 id="repository-edit-name"
                 value={repositoryEditDraft.name}
@@ -389,7 +389,7 @@ export function WorkspacesPage() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="repository-edit-default-branch">默认分支</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="repository-edit-default-branch">默认分支</label>
               <UiInput
                 id="repository-edit-default-branch"
                 value={repositoryEditDraft.defaultBranch}
@@ -397,10 +397,10 @@ export function WorkspacesPage() {
                 placeholder="main / master / develop"
               />
             </div>
-            <DialogFooter className="border-t border-slate-200 pt-4">
+            <DialogFooter className="border-t border-border pt-4">
               <UiButton
                 type="submit"
-                className="min-w-[140px] bg-slate-900 text-white hover:bg-slate-800"
+                className="min-w-[140px]"
               >
                 保存代码库信息
               </UiButton>
@@ -425,7 +425,7 @@ export function WorkspacesPage() {
           </DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={(event) => void handleUpdateBranch(event)}>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="repository-current-branch">当前分支</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="repository-current-branch">当前分支</label>
               <UiInput
                 id="repository-current-branch"
                 value={branchDraft.currentBranch}
@@ -456,10 +456,10 @@ export function WorkspacesPage() {
             </DialogDescription>
           </DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={(event) => void saveDeployConfig(event)}>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+            <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
               当前仓库：{deployConfigRepository?.repository.name ?? '未选择'}。推荐把 `env / ops / k8s_name / project_name / jenkins / id / folder` 这些默认值维护在这里。
             </div>
-            <label className="flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700">
+            <label className="flex items-center gap-3 rounded-2xl border border-border px-4 py-3 text-sm text-foreground">
               <input
                 type="checkbox"
                 checked={deployConfigDraft.enabled}
@@ -468,7 +468,7 @@ export function WorkspacesPage() {
               启用该仓库的部署模板
             </label>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]">Deploy Provider</label>
+              <label className="text-sm font-semibold text-foreground">Deploy Provider</label>
               <Select
                 value={deployConfigDraft.provider}
                 onValueChange={(value) => setDeployConfigDraft((current) => ({ ...current, provider: value }))}
@@ -486,7 +486,7 @@ export function WorkspacesPage() {
               </Select>
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-[var(--text)]" htmlFor="repository-deploy-config">部署模板 JSON</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="repository-deploy-config">部署模板 JSON</label>
               <Textarea
                 id="repository-deploy-config"
                 rows={16}
@@ -496,7 +496,7 @@ export function WorkspacesPage() {
                 placeholder='{"env":"dev","ops":"prod"}'
               />
             </div>
-            <DialogFooter className="border-t border-slate-200 pt-4">
+            <DialogFooter className="border-t border-border pt-4">
               <UiButton type="submit" disabled={deployConfigSaving}>
                 {deployConfigSaving ? '保存中...' : '保存部署模板'}
               </UiButton>
@@ -516,7 +516,7 @@ export function WorkspacesPage() {
         <MetricCard label="项目数量" value={workspaceSummary.projectCount} />
         <MetricCard label="关联需求数" value={workspaceSummary.requirementCount} />
       </div>
-      <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="pb-4">
           <SectionHeader
             eyebrow="Project Space"
@@ -532,13 +532,13 @@ export function WorkspacesPage() {
               <Spinner className="h-7 w-7" />
             </div>
           ) : workspaces.length > 0 ? (
-            <div className="record-list-stack">
+            <div className="flex flex-col gap-3.5">
             {workspaces.map((workspace) => (
-              <div key={workspace.id} className="border-b border-slate-200 py-4 last:border-b-0">
+              <div key={workspace.id} className="border-b border-border py-4 last:border-b-0">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <div className="text-base font-semibold leading-6 text-slate-950">{workspace.name}</div>
-                    <p className="mt-2 text-sm leading-6 text-slate-500">{workspace.description || '未填写描述'}</p>
+                    <div className="text-base font-semibold leading-6 text-foreground">{workspace.name}</div>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{workspace.description || '未填写描述'}</p>
                     <div className="mt-2 flex flex-wrap gap-3">
                       <Badge variant="warning">{workspace.repositories.length} 个代码库</Badge>
                       <Badge variant="secondary">{workspace._count?.projects ?? 0} 个项目</Badge>

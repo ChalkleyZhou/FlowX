@@ -132,7 +132,7 @@ export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, o
                   <div key={i} className="rounded border bg-gray-50">
                     <button
                       onClick={() => setExpandedPage(expandedPage === i ? null : i)}
-                      className="flex w-full items-center justify-between p-2 text-left text-sm font-medium text-gray-700 hover:bg-gray-100"
+                      className="flex w-full items-center justify-between p-2 text-left text-sm font-medium text-gray-700 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       <span>{page.name} <span className="font-normal text-gray-400">{page.route}</span></span>
                       <span className="text-gray-400">{expandedPage === i ? '▲' : '▼'}</span>
@@ -141,7 +141,7 @@ export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, o
                       <div className="space-y-2 border-t p-3">
                         <div>
                           <p className="mb-1 text-xs font-medium text-gray-500">布局线框</p>
-                          <pre className="whitespace-pre-wrap rounded bg-white p-2 text-xs text-gray-600 border font-mono">
+                          <pre className="whitespace-pre-wrap rounded bg-muted p-2 text-xs text-gray-600 border font-mono">
                             {page.layout}
                           </pre>
                         </div>
@@ -231,7 +231,7 @@ export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, o
           <button
             onClick={handleRun}
             disabled={loading}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {loading ? '处理中...' : '生成设计方案'}
           </button>
@@ -250,14 +250,14 @@ export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, o
               <button
                 onClick={handleConfirm}
                 disabled={loading}
-                className="rounded-md bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700 disabled:opacity-50"
+                className="rounded-md bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {loading ? '处理中...' : '确认设计'}
               </button>
               <button
                 onClick={handleRevise}
                 disabled={loading || !feedback.trim()}
-                className="rounded-md bg-yellow-500 px-4 py-2 text-sm text-white hover:bg-yellow-600 disabled:opacity-50"
+                className="rounded-md bg-yellow-500 px-4 py-2 text-sm text-white hover:bg-yellow-600 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {loading ? '处理中...' : '修改并重新生成'}
               </button>

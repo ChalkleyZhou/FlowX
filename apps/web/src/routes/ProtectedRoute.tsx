@@ -10,7 +10,7 @@ export function ProtectedRoute({ children }: { children: ReactElement }) {
 
   if (loading) {
     return (
-      <div className="page-loading">
+      <div className="flex min-h-screen items-center justify-center">
         <Spinner className="h-10 w-10" />
       </div>
     );
@@ -29,7 +29,7 @@ export function ProtectedLayout() {
 
   if (loading) {
     return (
-      <div className="page-loading">
+      <div className="flex min-h-screen items-center justify-center">
         <Spinner className="h-10 w-10" />
       </div>
     );
