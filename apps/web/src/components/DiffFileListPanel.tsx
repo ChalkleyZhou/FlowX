@@ -132,7 +132,7 @@ function TreeFileRow({
       className={cn(
         'flex w-full items-center justify-between gap-4 rounded-md border-l-2 border-transparent px-3 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         'hover:bg-muted',
-        file.key === activeKey && 'border-l-blue-500 bg-blue-50/70 text-foreground',
+        file.key === activeKey && 'border-l-primary bg-primary/5 text-foreground',
       )}
       style={{ paddingLeft: `${12 + depth * 18}px` }}
       onClick={() => onSelect(file.key)}

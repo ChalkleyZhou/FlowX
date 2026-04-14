@@ -117,6 +117,23 @@ export class MockAiExecutor implements AIExecutor {
         ],
         designRationale: '采用列表-详情的经典布局模式，与系统现有页面保持一致。搜索和筛选放在列表上方便于快速定位，详情页使用标签页组织信息避免页面过长。',
       },
+      demoPages: input.repositoryComponentContext
+        ? [
+            {
+              route: '/flowx-demo/feature-list',
+              componentName: 'FeatureListDemoPage',
+              componentCode: `import React from 'react';\nimport { PageHeader } from '../components/PageHeader';\nimport { Card, CardContent, CardHeader } from '../components/ui/card';\nimport { Button } from '../components/ui/button';\nimport { Badge } from '../components/ui/badge';\nimport { Input } from '../components/ui/input';\n\nexport function FeatureListDemoPage() {\n  const features = mockData.features;\n  return (\n    <div className="flex flex-col gap-6 p-6">\n      <PageHeader eyebrow="Features" title="功能列表" description="管理所有功能" />\n      <Card>\n        <CardHeader><Input placeholder="搜索功能..." /></CardHeader>\n        <CardContent>\n          {features.map((f: any) => (\n            <div key={f.id} className="flex items-center justify-between border-b py-3">\n              <div>\n                <p className="font-medium">{f.name}</p>\n                <p className="text-sm text-muted-foreground">{f.description}</p>\n              </div>\n              <Badge>{f.status}</Badge>\n            </div>\n          ))}\n        </CardContent>\n      </Card>\n    </div>\n  );\n}\n`,
+              mockData: {
+                features: [
+                  { id: '1', name: '用户管理', description: '管理用户账号和权限', status: 'active' },
+                  { id: '2', name: '数据导出', description: '支持 CSV 和 Excel 导出', status: 'draft' },
+                  { id: '3', name: '通知中心', description: '站内消息和推送通知', status: 'active' },
+                ],
+              },
+              filePath: 'src/pages/FeatureListDemoPage.tsx',
+            },
+          ]
+        : undefined,
     };
   }
 

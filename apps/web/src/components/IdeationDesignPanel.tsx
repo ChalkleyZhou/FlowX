@@ -1,6 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import type { IdeationSession } from '../types';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { Card, CardContent } from './ui/card';
+import { Textarea } from './ui/textarea';
+import type { DemoPage, IdeationSession, Repository } from '../types';
 
 interface DesignSpec {
   overview: string;
@@ -25,13 +29,32 @@ interface Props {
   requirementId: string;
   ideationStatus: string;
   sessions: IdeationSession[];
+  repositories?: Array<{ id: string; repository: Repository }>;
   onUpdated: () => void;
 }
 
-export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, onUpdated }: Props) {
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{children}</p>;
+}
+
+const methodBadgeVariant: Record<string, 'success' | 'default' | 'warning' | 'destructive' | 'outline'> = {
+  GET: 'success',
+  POST: 'default',
+  PUT: 'warning',
+  PATCH: 'warning',
+  DELETE: 'destructive',
+};
+
+type PreviewState = 'idle' | 'deploying' | 'ready' | 'failed' | 'no_config';
+
+export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, repositories, onUpdated }: Props) {
   const [feedback, setFeedback] = useState('');
   const [loading, setLoading] = useState(false);
   const [expandedPage, setExpandedPage] = useState<number | null>(null);
+  const [previewState, setPreviewState] = useState<PreviewState>('idle');
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollingStartRef = useRef<number>(0);
 
   const designSessions = sessions.filter((s) => s.stage === 'DESIGN');
   const latestSession = designSessions[designSessions.length - 1];
@@ -45,8 +68,71 @@ export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, o
     ? (latestSession.output as { design?: DesignSpec }).design ?? null
     : null;
 
+  const demoPages: DemoPage[] | null = latestSession?.output
+    ? (latestSession.output as { demoPages?: DemoPage[] }).demoPages ?? null
+    : null;
+
+  // Clear polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, []);
+
+  // Start polling when design session completes with demo pages
+  useEffect(() => {
+    if (isWaitingConfirmation && demoPages && demoPages.length > 0 && previewState === 'idle') {
+      startPolling();
+    }
+  }, [isWaitingConfirmation, demoPages]);
+
+  function startPolling() {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+    }
+
+    setPreviewState('deploying');
+    pollingStartRef.current = Date.now();
+
+    pollingRef.current = setInterval(async () => {
+      // Timeout after 5 minutes
+      if (Date.now() - pollingStartRef.current > 5 * 60 * 1000) {
+        if (pollingRef.current) clearInterval(pollingRef.current);
+        setPreviewState('failed');
+        return;
+      }
+
+      try {
+        const firstRepo = repositories?.[0]?.repository;
+        if (!firstRepo) {
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          setPreviewState('no_config');
+          return;
+        }
+
+        const jobs = await api.getDemoDeployStatus(firstRepo.id);
+        const latestJob = jobs[0];
+
+        if (latestJob?.externalJobUrl) {
+          setPreviewUrl(latestJob.externalJobUrl);
+          setPreviewState('ready');
+          if (pollingRef.current) clearInterval(pollingRef.current);
+        } else if (latestJob?.status === 'FAILED') {
+          setPreviewState('failed');
+          if (pollingRef.current) clearInterval(pollingRef.current);
+        }
+      } catch {
+        // Continue polling on transient errors
+      }
+    }, 3000);
+  }
+
   async function handleRun() {
     setLoading(true);
+    setPreviewState('idle');
+    setPreviewUrl(null);
     try {
       await api.startDesign(requirementId);
       onUpdated();
@@ -60,6 +146,8 @@ export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, o
   async function handleRevise() {
     if (!feedback.trim()) return;
     setLoading(true);
+    setPreviewState('idle');
+    setPreviewUrl(null);
     try {
       await api.reviseDesign(requirementId, feedback);
       setFeedback('');
@@ -83,188 +171,239 @@ export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, o
     }
   }
 
-  const methodColors: Record<string, string> = {
-    GET: 'bg-green-100 text-green-800',
-    POST: 'bg-blue-100 text-blue-800',
-    PUT: 'bg-yellow-100 text-yellow-800',
-    PATCH: 'bg-orange-100 text-orange-800',
-    DELETE: 'bg-red-100 text-red-800',
-  };
-
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-5">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">UI 设计 & Demo</h3>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">UI Design</p>
+          <h3 className="text-xl font-bold tracking-tight text-foreground">UI 设计 & Demo</h3>
+        </div>
         <div className="flex items-center gap-2">
           {isRunning && (
-            <span className="flex items-center gap-1 text-sm text-blue-600">
-              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-blue-500" />
-              AI 生成中...
-            </span>
+            <Badge variant="outline" className="gap-1.5">
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary" />
+              AI 生成中
+            </Badge>
           )}
           {isWaitingConfirmation && (
-            <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">待确认</span>
+            <Badge variant="warning">待确认</Badge>
           )}
           {isConfirmed && (
-            <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">已确认</span>
+            <Badge variant="success">已确认</Badge>
           )}
         </div>
       </div>
 
+      {/* Empty state */}
       {canStart && !design && (
-        <p className="text-sm text-gray-500">
-          确认产品简报后，点击下方按钮生成 UI 设计规格和 Demo 场景。
+        <p className="text-sm text-muted-foreground">
+          确认产品简报后，点击下方按钮生成 UI 设计规格和 Demo 页面。
         </p>
       )}
 
-      {design && (
-        <div className="space-y-3 rounded-md border p-4">
-          <div>
-            <h4 className="mb-1 text-sm font-medium text-gray-700">设计概述</h4>
-            <p className="whitespace-pre-line text-sm text-gray-600">{design.overview}</p>
-          </div>
+      {/* Demo Preview */}
+      {demoPages && demoPages.length > 0 && (
+        <Card className="border-border shadow-sm">
+          <CardContent className="flex flex-col gap-3 p-5">
+            <SectionLabel>Demo 预览</SectionLabel>
 
-          {design.pages.length > 0 && (
-            <div>
-              <h4 className="mb-2 text-sm font-medium text-gray-700">页面设计</h4>
-              <div className="space-y-2">
-                {design.pages.map((page, i) => (
-                  <div key={i} className="rounded border bg-gray-50">
-                    <button
-                      onClick={() => setExpandedPage(expandedPage === i ? null : i)}
-                      className="flex w-full items-center justify-between p-2 text-left text-sm font-medium text-gray-700 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <span>{page.name} <span className="font-normal text-gray-400">{page.route}</span></span>
-                      <span className="text-gray-400">{expandedPage === i ? '▲' : '▼'}</span>
-                    </button>
-                    {expandedPage === i && (
-                      <div className="space-y-2 border-t p-3">
-                        <div>
-                          <p className="mb-1 text-xs font-medium text-gray-500">布局线框</p>
-                          <pre className="whitespace-pre-wrap rounded bg-muted p-2 text-xs text-gray-600 border font-mono">
-                            {page.layout}
-                          </pre>
-                        </div>
-                        {page.keyComponents.length > 0 && (
-                          <div>
-                            <p className="mb-1 text-xs font-medium text-gray-500">关键组件</p>
-                            <div className="flex flex-wrap gap-1">
-                              {page.keyComponents.map((comp, j) => (
-                                <span key={j} className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">{comp}</span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {page.interactions.length > 0 && (
-                          <div>
-                            <p className="mb-1 text-xs font-medium text-gray-500">交互</p>
-                            <ul className="list-inside list-disc space-y-0.5">
-                              {page.interactions.map((interaction, j) => (
-                                <li key={j} className="text-xs text-gray-600">{interaction}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    )}
+            {previewState === 'ready' && previewUrl && (
+              <div className="flex flex-col gap-2">
+                <div className="overflow-hidden rounded-md border border-border" style={{ height: 480 }}>
+                  <iframe
+                    src={previewUrl}
+                    className="h-full w-full"
+                    title="Demo 预览"
+                    sandbox="allow-scripts allow-same-origin"
+                  />
+                </div>
+                <a
+                  href={previewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  新窗口打开 ↗
+                </a>
+              </div>
+            )}
+
+            {previewState === 'deploying' && (
+              <div className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-4 py-8 text-sm text-muted-foreground">
+                <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-primary" />
+                Demo 部署中，请稍候...
+              </div>
+            )}
+
+            {previewState === 'failed' && (
+              <div className="flex flex-col gap-2 rounded-md border border-danger/30 bg-danger/10 px-4 py-4 text-sm text-danger">
+                <p>部署超时或失败，请稍后手动查看。</p>
+                <Button variant="outline" size="sm" onClick={startPolling}>
+                  重试
+                </Button>
+              </div>
+            )}
+
+            {previewState === 'no_config' && (
+              <div className="rounded-md border border-warning/30 bg-warning/10 px-4 py-4 text-sm text-warning">
+                仓库未配置部署，无法预览 Demo。请联系管理员配置 RepositoryDeployConfig。
+              </div>
+            )}
+
+            {(previewState === 'idle' || previewState === 'failed' || previewState === 'no_config') && !previewUrl && (
+              <div className="flex flex-col gap-2">
+                <SectionLabel>Demo 页面代码</SectionLabel>
+                {demoPages.map((page, i) => (
+                  <div key={i} className="overflow-hidden rounded-md border border-border">
+                    <div className="flex items-center justify-between bg-muted/50 px-3 py-1.5">
+                      <span className="text-xs font-medium text-foreground">{page.componentName}</span>
+                      <span className="font-mono text-xs text-muted-foreground">{page.route}</span>
+                    </div>
+                    <pre className="max-h-64 overflow-auto bg-card px-3 py-2 font-mono text-xs leading-5 text-foreground">
+                      {page.componentCode}
+                    </pre>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {design.demoScenario && (
-            <div>
-              <h4 className="mb-1 text-sm font-medium text-gray-700">Demo 场景</h4>
-              <pre className="whitespace-pre-wrap rounded bg-gray-50 p-2 text-sm text-gray-600 border font-mono">
-                {design.demoScenario}
-              </pre>
-            </div>
-          )}
-
-          {design.dataModels.length > 0 && (
-            <div>
-              <h4 className="mb-1 text-sm font-medium text-gray-700">数据模型</h4>
-              <ul className="list-inside list-disc space-y-0.5">
-                {design.dataModels.map((model, i) => (
-                  <li key={i} className="font-mono text-xs text-gray-600">{model}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {design.apiEndpoints.length > 0 && (
-            <div>
-              <h4 className="mb-1 text-sm font-medium text-gray-700">API 端点</h4>
-              <div className="space-y-1">
-                {design.apiEndpoints.map((endpoint, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs">
-                    <span className={`rounded px-1.5 py-0.5 font-mono ${methodColors[endpoint.method] ?? 'bg-gray-100 text-gray-800'}`}>
-                      {endpoint.method}
-                    </span>
-                    <span className="font-mono text-gray-600">{endpoint.path}</span>
-                    <span className="text-gray-400">— {endpoint.purpose}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {design.designRationale && (
-            <div>
-              <h4 className="mb-1 text-sm font-medium text-gray-700">设计理由</h4>
-              <p className="text-sm text-gray-600">{design.designRationale}</p>
-            </div>
-          )}
-        </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
+      {/* Design content */}
+      {design && (
+        <Card className="border-border shadow-sm">
+          <CardContent className="flex flex-col gap-5 p-5">
+            <div>
+              <SectionLabel>设计概述</SectionLabel>
+              <p className="whitespace-pre-line text-sm leading-6 text-foreground">{design.overview}</p>
+            </div>
+
+            {design.pages.length > 0 && (
+              <div>
+                <SectionLabel>页面设计</SectionLabel>
+                <div className="flex flex-col gap-2">
+                  {design.pages.map((page, i) => (
+                    <div key={i} className="overflow-hidden rounded-md border border-border">
+                      <button
+                        onClick={() => setExpandedPage(expandedPage === i ? null : i)}
+                        className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <span>{page.name} <span className="font-normal text-muted-foreground">{page.route}</span></span>
+                        <span className="text-muted-foreground">{expandedPage === i ? '▲' : '▼'}</span>
+                      </button>
+                      {expandedPage === i && (
+                        <div className="flex flex-col gap-3 border-t border-border bg-muted/50 p-4">
+                          <div>
+                            <SectionLabel>布局线框</SectionLabel>
+                            <pre className="whitespace-pre-wrap rounded-md border border-border bg-card px-3 py-2 font-mono text-xs leading-5 text-foreground">{page.layout}</pre>
+                          </div>
+                          {page.keyComponents.length > 0 && (
+                            <div>
+                              <SectionLabel>关键组件</SectionLabel>
+                              <div className="flex flex-wrap gap-1.5">
+                                {page.keyComponents.map((comp, j) => (
+                                  <Badge key={j} variant="secondary">{comp}</Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {page.interactions.length > 0 && (
+                            <div>
+                              <SectionLabel>交互</SectionLabel>
+                              <ul className="list-inside list-disc space-y-0.5">
+                                {page.interactions.map((interaction, j) => (
+                                  <li key={j} className="text-xs text-foreground">{interaction}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {design.demoScenario && (
+              <div>
+                <SectionLabel>Demo 场景</SectionLabel>
+                <pre className="whitespace-pre-wrap rounded-md border border-border bg-muted px-3 py-2 font-mono text-sm leading-6 text-foreground">{design.demoScenario}</pre>
+              </div>
+            )}
+
+            {design.dataModels.length > 0 && (
+              <div>
+                <SectionLabel>数据模型</SectionLabel>
+                <ul className="list-inside list-disc space-y-0.5">
+                  {design.dataModels.map((model, i) => (
+                    <li key={i} className="font-mono text-xs text-foreground">{model}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {design.apiEndpoints.length > 0 && (
+              <div>
+                <SectionLabel>API 端点</SectionLabel>
+                <div className="flex flex-col gap-1.5">
+                  {design.apiEndpoints.map((endpoint, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <Badge variant={methodBadgeVariant[endpoint.method] ?? 'outline'} className="font-mono px-1.5 py-0.5">
+                        {endpoint.method}
+                      </Badge>
+                      <span className="font-mono text-foreground">{endpoint.path}</span>
+                      <span className="text-muted-foreground">— {endpoint.purpose}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {design.designRationale && (
+              <div>
+                <SectionLabel>设计理由</SectionLabel>
+                <p className="text-sm text-foreground">{design.designRationale}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Error */}
       {latestSession?.status === 'FAILED' && latestSession.errorMessage && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
           {latestSession.errorMessage}
         </div>
       )}
 
       {/* Actions */}
-      <div className="flex flex-col gap-2">
-        {canStart && (
-          <button
-            onClick={handleRun}
-            disabled={loading}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {loading ? '处理中...' : '生成设计方案'}
-          </button>
-        )}
+      {canStart && (
+        <Button onClick={handleRun} disabled={loading}>
+          {loading ? '处理中...' : '生成设计方案'}
+        </Button>
+      )}
 
-        {canRevise && isWaitingConfirmation && (
-          <>
-            <textarea
-              value={feedback}
-              onChange={(e) => setFeedback(e.target.value)}
-              placeholder="输入修改意见，AI 将据此重新生成..."
-              className="w-full rounded-md border p-2 text-sm"
-              rows={3}
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={handleConfirm}
-                disabled={loading}
-                className="rounded-md bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {loading ? '处理中...' : '确认设计'}
-              </button>
-              <button
-                onClick={handleRevise}
-                disabled={loading || !feedback.trim()}
-                className="rounded-md bg-yellow-500 px-4 py-2 text-sm text-white hover:bg-yellow-600 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {loading ? '处理中...' : '修改并重新生成'}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+      {canRevise && isWaitingConfirmation && (
+        <div className="flex flex-col gap-3">
+          <Textarea
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            placeholder="输入修改意见，AI 将据此重新生成..."
+            rows={3}
+          />
+          <div className="flex gap-2">
+            <Button onClick={handleConfirm} disabled={loading}>
+              {loading ? '处理中...' : '确认设计'}
+            </Button>
+            <Button variant="outline" onClick={handleRevise} disabled={loading || !feedback.trim()}>
+              {loading ? '处理中...' : '修改并重新生成'}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

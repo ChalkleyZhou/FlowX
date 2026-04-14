@@ -47,9 +47,9 @@ export function WorkflowSteps({ current, items, onChange, className }: WorkflowS
               className={cn(
                 'rounded-2xl border-border bg-muted text-left shadow-none transition-all hover:border-border-strong hover:bg-card',
                 isActive && 'border-primary/30 bg-primary/5 shadow-sm',
-                item.status === 'finish' && 'border-emerald-200/80 bg-emerald-50/70',
-                item.status === 'process' && 'border-amber-200/80 bg-amber-50/70',
-                item.status === 'error' && 'border-red-200/80 bg-red-50/70',
+                item.status === 'finish' && 'border-success/30 bg-success/5',
+                item.status === 'process' && 'border-warning/30 bg-warning/5',
+                item.status === 'error' && 'border-danger/30 bg-danger/5',
               )}
             >
               <CardContent className="flex min-w-0 items-start gap-3 p-4">
@@ -57,9 +57,9 @@ export function WorkflowSteps({ current, items, onChange, className }: WorkflowS
                   <span
                     className={cn(
                       'grid h-8 w-8 place-items-center rounded-full border bg-card text-muted-foreground',
-                      item.status === 'finish' && 'border-emerald-200 text-emerald-600',
-                      item.status === 'process' && 'border-amber-200 text-amber-600',
-                      item.status === 'error' && 'border-red-200 text-red-600',
+                      item.status === 'finish' && 'border-success/40 text-success',
+                      item.status === 'process' && 'border-warning/40 text-warning',
+                      item.status === 'error' && 'border-danger/40 text-danger',
                     )}
                   >
                     {getStepIcon(item.status)}

@@ -4,22 +4,30 @@
   "additionalProperties": false,
   "required": ["summary", "implementationPlan", "filesToModify", "newFiles", "riskPoints"],
   "properties": {
-    "summary": { "type": "string", "minLength": 1 },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A concise plain-language summary of the technical plan. Do not include markdown headings."
+    },
     "implementationPlan": {
       "type": "array",
       "minItems": 1,
+      "description": "Ordered executable implementation steps. Each item must be a concrete action sentence, not a section title or document heading.",
       "items": { "type": "string", "minLength": 1 }
     },
     "filesToModify": {
       "type": "array",
+      "description": "Existing repository-relative file paths that should be modified.",
       "items": { "type": "string", "minLength": 1 }
     },
     "newFiles": {
       "type": "array",
+      "description": "Repository-relative file paths that should be newly created. Output the final file path, not a directory path.",
       "items": { "type": "string", "minLength": 1 }
     },
     "riskPoints": {
       "type": "array",
+      "description": "Short plain-language risks or unresolved technical concerns.",
       "items": { "type": "string", "minLength": 1 }
     }
   }

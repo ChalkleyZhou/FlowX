@@ -39,6 +39,7 @@ export interface SplitTasksInput {
   workspace?: WorkspaceContext | null;
   humanFeedback?: string | null;
   previousOutput?: SplitTasksOutput | null;
+  demoPageContext?: unknown | null;
 }
 
 export interface SplitTaskItem {
@@ -60,6 +61,7 @@ export interface GeneratePlanInput {
   workspace?: WorkspaceContext | null;
   humanFeedback?: string | null;
   previousOutput?: GeneratePlanOutput | null;
+  demoPageContext?: unknown | null;
 }
 
 export interface GeneratePlanOutput {
@@ -168,6 +170,7 @@ export interface GenerateDesignInput {
   confirmedBrief: BrainstormBrief;
   previousDesigns?: DesignSpec[];
   humanFeedback?: string;
+  repositoryComponentContext?: RepositoryComponentContext;
 }
 
 export interface DesignSpec {
@@ -189,6 +192,22 @@ export interface DesignSpec {
   designRationale: string;
 }
 
+export interface DemoPage {
+  route: string;
+  componentName: string;
+  componentCode: string;
+  mockData: Record<string, unknown>;
+  filePath: string;
+}
+
+export interface RepositoryComponentContext {
+  componentFiles: string[];
+  propTypes: Array<{ name: string; props: string }>;
+  pageExamples: Array<{ path: string; code: string }>;
+  designTokens?: string;
+}
+
 export interface GenerateDesignOutput {
   design: DesignSpec;
+  demoPages?: DemoPage[];
 }

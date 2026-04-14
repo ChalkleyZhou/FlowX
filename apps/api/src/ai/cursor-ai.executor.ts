@@ -1,12 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { spawn } from 'child_process';
-import { mkdir, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { access, mkdir, writeFile } from 'fs/promises';
+import { delimiter, join } from 'path';
 import { CodexAiExecutor } from './codex-ai.executor';
 
 const CURSOR_TIMEOUT_MS = Number(process.env.CURSOR_TIMEOUT_MS?.trim()) || 600_000;
 const CURSOR_DEBUG_ROOT = join(process.cwd(), '.flowx-data', 'cursor-debug');
 const CURSOR_MODEL = process.env.CURSOR_MODEL?.trim();
+const CURSOR_AUTH_ERROR_PATTERNS = [
+  /starting login process/i,
+  /secitemcopymatching failed/i,
+  /not authenticated/i,
+  /authentication failed/i,
+  /run .*login/i,
+];
 
 @Injectable()
 export class CursorAiExecutor extends CodexAiExecutor {
@@ -22,7 +29,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
     addDirs: string[] = [],
   ): Promise<T> {
     const cursorCwd = addDirs[0] ?? process.cwd();
-    const args = ['-p', '--output-format', 'json'];
+    const args = ['-p', '--trust', '--output-format', 'json'];
     if (CURSOR_MODEL) {
       args.push('--model', CURSOR_MODEL);
     }
@@ -40,7 +47,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
         throw new Error(`Cursor returned invalid JSON envelope. stderr=${stderr}`);
       }
 
-      return JSON.parse(payload.result) as T;
+      return this.parseCursorJsonResult<T>(payload.result);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown Cursor error';
       this.cursorLogger.error(`Cursor ${stageName} failed: ${message}`);
@@ -49,7 +56,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
   }
 
   protected override async runMutationStage(cwd: string, prompt: string, stageName: string) {
-    const args = ['-p', '--force', '--output-format', 'text'];
+    const args = ['-p', '--trust', '--force', '--output-format', 'text'];
     if (CURSOR_MODEL) {
       args.push('--model', CURSOR_MODEL);
     }
@@ -64,12 +71,14 @@ export class CursorAiExecutor extends CodexAiExecutor {
     }
   }
 
-  private runCursorProcess(
+  private async runCursorProcess(
     args: string[],
     cwd: string,
     stageName: string,
     prompt?: string,
   ) {
+    const invocation = await this.resolveCursorInvocation();
+
     return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
       let stdout = '';
       let stderr = '';
@@ -83,7 +92,8 @@ export class CursorAiExecutor extends CodexAiExecutor {
           provider: this.providerName,
           stageName,
           cwd,
-          args,
+          command: invocation.command,
+          args: [...invocation.prefixArgs, ...args],
           prompt,
           createdAt,
           ...payload,
@@ -94,7 +104,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
         this.cursorLogger.warn(`Failed to persist Cursor debug artifact: ${message}`);
       });
 
-      const child = spawn('cursor-agent', args, {
+      const child = spawn(invocation.command, [...invocation.prefixArgs, ...args], {
         cwd,
         env: process.env,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -124,7 +134,29 @@ export class CursorAiExecutor extends CodexAiExecutor {
       });
 
       child.stderr.on('data', (chunk) => {
-        stderr += chunk.toString();
+        const text = chunk.toString();
+        stderr += text;
+        if (this.isCursorAuthenticationError(stderr)) {
+          if (finished) {
+            return;
+          }
+          finished = true;
+          clearTimeout(timeout);
+          child.kill('SIGTERM');
+          const errorMessage =
+            'Cursor authentication failed. Re-run `cursor agent login` on the server or provide CURSOR_API_KEY.';
+          void persistArtifact({
+            status: 'FAILED',
+            finishedAt: new Date().toISOString(),
+            stdout,
+            stderr,
+            errorMessage,
+          }).catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            this.cursorLogger.warn(`Failed to persist auth failure Cursor artifact: ${message}`);
+          });
+          reject(new Error(errorMessage));
+        }
       });
 
       child.on('error', (error) => {
@@ -187,6 +219,115 @@ export class CursorAiExecutor extends CodexAiExecutor {
         );
       });
     });
+  }
+
+  private async resolveCursorInvocation() {
+    if (await this.commandExists('cursor-agent')) {
+      return { command: 'cursor-agent', prefixArgs: [] as string[] };
+    }
+
+    if (await this.commandExists('cursor')) {
+      return { command: 'cursor', prefixArgs: ['agent'] };
+    }
+
+    throw new Error(
+      'Cursor CLI is not installed. Expected either `cursor-agent` or `cursor` to be available in PATH.',
+    );
+  }
+
+  private async commandExists(command: string) {
+    const pathValue = process.env.PATH ?? '';
+    const candidates = pathValue
+      .split(delimiter)
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((entry) => join(entry, command));
+
+    for (const candidate of candidates) {
+      try {
+        await access(candidate);
+        return true;
+      } catch {
+        continue;
+      }
+    }
+
+    return false;
+  }
+
+  private isCursorAuthenticationError(stderr: string) {
+    return CURSOR_AUTH_ERROR_PATTERNS.some((pattern) => pattern.test(stderr));
+  }
+
+  private parseCursorJsonResult<T>(result: string): T {
+    const trimmed = result.trim();
+    try {
+      return JSON.parse(trimmed) as T;
+    } catch {
+      const candidates = this.extractJsonCandidates(trimmed);
+      for (let index = candidates.length - 1; index >= 0; index -= 1) {
+        try {
+          return JSON.parse(candidates[index]!) as T;
+        } catch {
+          continue;
+        }
+      }
+
+      throw new Error(`Cursor result did not contain JSON. Result preview=${trimmed.slice(0, 200)}`);
+    }
+  }
+
+  private extractJsonCandidates(input: string) {
+    const candidates: string[] = [];
+    const stack: string[] = [];
+    let start = -1;
+    let inString = false;
+    let escaped = false;
+
+    for (let index = 0; index < input.length; index += 1) {
+      const char = input[index]!;
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === '\\') {
+          escaped = true;
+        } else if (char === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char === '"') {
+        inString = true;
+        continue;
+      }
+
+      if (char === '{' || char === '[') {
+        if (stack.length === 0) {
+          start = index;
+        }
+        stack.push(char);
+        continue;
+      }
+
+      if (char === '}' || char === ']') {
+        const expected = char === '}' ? '{' : '[';
+        if (stack[stack.length - 1] !== expected) {
+          stack.length = 0;
+          start = -1;
+          continue;
+        }
+
+        stack.pop();
+        if (stack.length === 0 && start !== -1) {
+          candidates.push(input.slice(start, index + 1));
+          start = -1;
+        }
+      }
+    }
+
+    return candidates;
   }
 
   protected override async persistDebugArtifact(

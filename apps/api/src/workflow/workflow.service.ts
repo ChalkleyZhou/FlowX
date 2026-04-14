@@ -484,6 +484,14 @@ export class WorkflowService {
 
     this.runInBackground(`task-split:${id}`, async () => {
       try {
+        // Fetch demo page artifacts for context
+        const demoArtifacts = await this.prisma.ideationArtifact.findMany({
+          where: { requirementId: requirement.id, type: 'DEMO_PAGE' },
+          orderBy: { version: 'desc' },
+          take: 1,
+        });
+        const demoContext = demoArtifacts[0]?.content ?? null;
+
         const splitOutput = await aiExecutor.splitTasks({
           requirement: {
             id: requirement.id,
@@ -494,6 +502,7 @@ export class WorkflowService {
           workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
           humanFeedback: humanFeedback ?? null,
           previousOutput: (previousStage?.output as SplitTasksOutput | null) ?? null,
+          demoPageContext: demoContext,
         });
 
         await this.prisma.$transaction(async (tx) => {
@@ -665,7 +674,15 @@ export class WorkflowService {
 
     this.runInBackground(`plan:${id}`, async () => {
       try {
-        const rawOutput = await aiExecutor.generatePlan({
+        // Fetch demo page artifacts for context
+        const demoArtifacts = await this.prisma.ideationArtifact.findMany({
+          where: { requirementId: workflow.requirement.id, type: 'DEMO_PAGE' },
+          orderBy: { version: 'desc' },
+          take: 1,
+        });
+        const demoContext = demoArtifacts[0]?.content ?? null;
+
+        const rawOutput = this.normalizePlanOutput((await aiExecutor.generatePlan({
           requirement: {
             id: workflow.requirement.id,
             title: workflow.requirement.title,
@@ -676,7 +693,8 @@ export class WorkflowService {
           workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
           humanFeedback: humanFeedback ?? null,
           previousOutput: (previousStage?.output as GeneratePlanOutput | null) ?? null,
-        });
+          demoPageContext: demoContext,
+        })) as unknown as Record<string, unknown>);
         const output = this.sanitizePlanOutputPaths(rawOutput, workflow.workflowRepositories);
         this.assertPlanHasConcreteFiles(rawOutput, output);
         await this.assertPlanMatchesRepositories(output, workflow.workflowRepositories);
@@ -1566,6 +1584,137 @@ export class WorkflowService {
     };
   }
 
+  private normalizePlanOutput(output: Record<string, unknown>): GeneratePlanOutput {
+    const summaryCandidates = [
+      output.summary,
+      output.overview,
+      output.objective,
+      output.planTitle,
+      output.requirementTitle,
+    ];
+    const summary =
+      summaryCandidates.find((value) => typeof value === 'string' && value.trim().length > 0)?.toString().trim() ??
+      '已生成技术方案，请查看 implementationPlan。';
+
+    const implementationPlan = this.collectPlanImplementationSteps(output);
+    const filesToModify = this.collectStringArray(
+      output.filesToModify,
+      output.aggregateFilesToModify,
+      ...this.collectStageFieldValues(output, 'filesToModify'),
+    );
+    const newFiles = this.collectStringArray(
+      output.newFiles,
+      output.aggregateNewFiles,
+      ...this.collectStageFieldValues(output, 'newFiles'),
+    );
+    const riskPoints = this.collectPlanRiskPoints(output);
+
+    return {
+      summary,
+      implementationPlan,
+      filesToModify,
+      newFiles,
+      riskPoints,
+    };
+  }
+
+  private collectPlanImplementationSteps(output: Record<string, unknown>): string[] {
+    const direct = this.collectStringArray(output.implementationPlan);
+    if (direct.length > 0) {
+      return direct;
+    }
+
+    const stages = Array.isArray(output.stages) ? output.stages : [];
+    const stageSteps = stages.flatMap((stage) => {
+      if (!stage || typeof stage !== 'object') {
+        return [];
+      }
+
+      const stageRecord = stage as Record<string, unknown>;
+      const stageName =
+        typeof stageRecord.name === 'string' && stageRecord.name.trim().length > 0
+          ? stageRecord.name.trim()
+          : typeof stageRecord.stage === 'string' && stageRecord.stage.trim().length > 0
+            ? stageRecord.stage.trim()
+            : '阶段';
+      const items = this.collectStringArray(
+        stageRecord.goals,
+        stageRecord.steps,
+        stageRecord.implementationSteps,
+        stageRecord.verification,
+        stageRecord.notes,
+      );
+
+      return items.map((item) => `${stageName}: ${item}`);
+    });
+
+    if (stageSteps.length > 0) {
+      return stageSteps;
+    }
+
+    return this.collectStringArray(output.confirmedTaskMapping, output.assumptionsAndUncertainties);
+  }
+
+  private collectPlanRiskPoints(output: Record<string, unknown>): string[] {
+    const direct = this.collectStringArray(output.riskPoints, output.risks);
+    if (direct.length > 0) {
+      return direct;
+    }
+
+    const riskEntries = Array.isArray(output.riskPointsDetailed)
+      ? output.riskPointsDetailed
+      : Array.isArray(output.riskPoints)
+        ? output.riskPoints
+        : [];
+
+    const objectRisks = riskEntries.flatMap((item: unknown) => {
+      if (!item || typeof item !== 'object') {
+        return [];
+      }
+
+      const record = item as Record<string, unknown>;
+      const parts = [record.description, record.mitigation]
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        .map((value) => value.trim());
+      return parts.length > 0 ? [parts.join(' ')] : [];
+    });
+
+    return objectRisks;
+  }
+
+  private collectStageFieldValues(output: Record<string, unknown>, fieldName: string): unknown[] {
+    const stages = Array.isArray(output.stages) ? output.stages : [];
+    return stages.map((stage) =>
+      stage && typeof stage === 'object' ? (stage as Record<string, unknown>)[fieldName] : undefined,
+    );
+  }
+
+  private collectStringArray(...values: unknown[]): string[] {
+    const flattened: string[] = values.flatMap((value): string[] => {
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        return trimmed.length > 0 ? [trimmed] : [];
+      }
+
+      if (Array.isArray(value)) {
+        return value.flatMap((item: unknown) => this.collectStringArray(item));
+      }
+
+      if (value && typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        return [
+          typeof record.summary === 'string' ? record.summary.trim() : null,
+          typeof record.technicalMapping === 'string' ? record.technicalMapping.trim() : null,
+          typeof record.technicalApproach === 'string' ? record.technicalApproach.trim() : null,
+        ].filter((item): item is string => Boolean(item && item.length > 0));
+      }
+
+      return [];
+    });
+
+    return Array.from(new Set(flattened));
+  }
+
   private assertPlanHasConcreteFiles(
     rawOutput: GeneratePlanOutput,
     output: GeneratePlanOutput,
@@ -1688,14 +1837,31 @@ export class WorkflowService {
       }
 
       const targetPath = join(matchedRepository.localPath, relativePath);
-      return [allowParentDirectory ? dirname(targetPath) : targetPath];
+      return allowParentDirectory
+        ? this.expandAncestorCandidates(dirname(targetPath), matchedRepository.localPath)
+        : [targetPath];
     }
 
     return availableRepositories
       .map((repository) => {
         const targetPath = join(repository.localPath!, normalized);
-        return allowParentDirectory ? dirname(targetPath) : targetPath;
-      });
+        return allowParentDirectory
+          ? this.expandAncestorCandidates(dirname(targetPath), repository.localPath!)
+          : [targetPath];
+      })
+      .flat();
+  }
+
+  private expandAncestorCandidates(targetDirectory: string, repositoryRoot: string) {
+    const candidates = [targetDirectory];
+    let cursor = targetDirectory;
+
+    while (cursor.startsWith(repositoryRoot) && cursor !== repositoryRoot) {
+      cursor = dirname(cursor);
+      candidates.push(cursor);
+    }
+
+    return Array.from(new Set(candidates));
   }
 
   private sanitizeExecutionOutputPaths(

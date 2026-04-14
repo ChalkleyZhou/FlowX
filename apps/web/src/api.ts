@@ -276,6 +276,8 @@ export const api = {
     request<Requirement>(`/requirements/${requirementId}/design/confirm`, {
       method: 'POST',
     }),
+  getDemoDeployStatus: (repositoryId: string) =>
+    request<DeployJobRecord[]>(`/repositories/${repositoryId}/deploy/jobs`),
   finalizeIdeation: (requirementId: string) =>
     request<Requirement>(`/requirements/${requirementId}/ideation/finalize`, {
       method: 'POST',

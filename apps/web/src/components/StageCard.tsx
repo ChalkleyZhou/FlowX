@@ -117,7 +117,7 @@ function renderObject(record: Record<string, JsonLike>) {
   }
 
   return (
-    <div className="divide-y divide-slate-200">
+    <div className="divide-y divide-border">
       {entries.map(([key, value]) => (
         <section key={key} className="space-y-3 py-4 first:pt-0 last:pb-0">
           <div className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">{formatOutputLabel(key)}</div>

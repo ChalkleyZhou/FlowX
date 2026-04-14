@@ -5,7 +5,6 @@ type FlowXLogoProps = {
   iconClassName?: string;
   labelClassName?: string;
   showWordmark?: boolean;
-  theme?: 'light' | 'dark';
   size?: 'sm' | 'md' | 'lg';
 };
 
@@ -20,7 +19,6 @@ export function FlowXLogo({
   iconClassName,
   labelClassName,
   showWordmark = true,
-  theme = 'light',
   size = 'md',
 }: FlowXLogoProps) {
   const s = sizeMap[size];
@@ -81,14 +79,14 @@ export function FlowXLogo({
           <div className={cn(
             'leading-none font-extrabold tracking-tight',
             s.word,
-            theme === 'dark' ? 'text-slate-50' : 'text-foreground',
+            'text-foreground',
           )}>
             FlowX
           </div>
           <div className={cn(
             'mt-[5px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap',
             s.tagline,
-            theme === 'dark' ? 'text-slate-300/72' : 'text-muted-foreground',
+            'text-muted-foreground',
           )}>
             AI Delivery Workspace
           </div>

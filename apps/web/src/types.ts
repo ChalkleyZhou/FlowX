@@ -259,9 +259,18 @@ export interface IdeationSession {
   createdAt: string;
 }
 
+export interface DemoPage {
+  route: string;
+  componentName: string;
+  componentCode: string;
+  mockData: Record<string, unknown>;
+  filePath: string;
+  previewUrl?: string;
+}
+
 export interface IdeationArtifact {
   id: string;
-  type: 'BRAINSTORM_BRIEF' | 'DESIGN_SPEC';
+  type: 'BRAINSTORM_BRIEF' | 'DESIGN_SPEC' | 'DEMO_PAGE';
   content: unknown;
   version: number;
   createdAt: string;

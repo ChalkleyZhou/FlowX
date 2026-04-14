@@ -242,7 +242,7 @@ export function LoginPage() {
 
       <div className="mx-auto grid w-full max-w-[1200px] items-center gap-6 [grid-template-columns:minmax(0,1.1fr)_440px] max-[1280px]:grid-cols-1">
         <section className="rounded-[28px] border border-slate-800 bg-slate-950 p-10 shadow-[var(--shadow-lg)] max-[780px]:p-5">
-          <FlowXLogo theme="dark" size="lg" className="mb-6" />
+          <FlowXLogo size="lg" className="mb-6" />
           <Badge className="mb-4" variant="outline">
             FlowX Orchestrator
           </Badge>

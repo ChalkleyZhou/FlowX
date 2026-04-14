@@ -1,9 +1,106 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
+import { ContextPanel } from '../components/ContextPanel';
+import { DetailHeader } from '../components/DetailHeader';
 import { IdeationBrainstormPanel } from '../components/IdeationBrainstormPanel';
 import { IdeationDesignPanel } from '../components/IdeationDesignPanel';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader } from '../components/ui/card';
+import { SectionHeading } from '../components/ui/section-heading';
+import { Spinner } from '../components/ui/spinner';
+import { cn } from '../lib/utils';
 import type { Requirement } from '../types';
+
+const ideationStatusLabels: Record<string, string> = {
+  NONE: '未开始',
+  BRAINSTORM_PENDING: '头脑风暴中',
+  BRAINSTORM_WAITING_CONFIRMATION: '头脑风暴待确认',
+  BRAINSTORM_CONFIRMED: '简报已确认',
+  DESIGN_PENDING: '设计生成中',
+  DESIGN_WAITING_CONFIRMATION: '设计待确认',
+  DESIGN_CONFIRMED: '设计已确认',
+  FINALIZED: '已定稿',
+};
+
+function getIdeationStatusVariant(status: string): 'default' | 'secondary' | 'success' | 'warning' | 'destructive' | 'outline' {
+  if (status === 'FINALIZED' || status === 'DESIGN_CONFIRMED' || status === 'BRAINSTORM_CONFIRMED') return 'success';
+  if (status === 'BRAINSTORM_WAITING_CONFIRMATION' || status === 'DESIGN_WAITING_CONFIRMATION') return 'warning';
+  if (status === 'NONE') return 'outline';
+  return 'default';
+}
+
+interface IdeationStep {
+  key: string;
+  label: string;
+  status: 'wait' | 'process' | 'finish';
+}
+
+function getIdeationSteps(ideationStatus: string): IdeationStep[] {
+  const isFinalized = ideationStatus === 'FINALIZED';
+  const designActive = ['DESIGN_PENDING', 'DESIGN_WAITING_CONFIRMATION', 'DESIGN_CONFIRMED', 'FINALIZED'].includes(ideationStatus);
+  const brainstormActive = ideationStatus !== 'NONE';
+
+  return [
+    {
+      key: 'brainstorm',
+      label: '头脑风暴',
+      status: isFinalized || (brainstormActive && designActive) ? 'finish' : brainstormActive ? 'process' : 'wait',
+    },
+    {
+      key: 'design',
+      label: 'UI 设计',
+      status: isFinalized ? 'finish' : designActive ? 'process' : 'wait',
+    },
+    {
+      key: 'finalize',
+      label: '定稿',
+      status: isFinalized ? 'finish' : 'wait',
+    },
+  ];
+}
+
+function StepIndicator({ steps }: { steps: IdeationStep[] }) {
+  return (
+    <div className="flex items-center gap-3">
+      {steps.map((step, i) => (
+        <div key={step.key} className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                'grid h-7 w-7 place-items-center rounded-full border text-xs font-semibold transition-colors',
+                step.status === 'finish' && 'border-success/40 bg-success/10 text-success',
+                step.status === 'process' && 'border-primary/40 bg-primary/10 text-primary',
+                step.status === 'wait' && 'border-border bg-muted text-muted-foreground',
+              )}
+            >
+              {step.status === 'finish' ? '\u2713' : i + 1}
+            </span>
+            <span
+              className={cn(
+                'text-sm transition-colors',
+                step.status === 'finish' && 'font-semibold text-success',
+                step.status === 'process' && 'font-semibold text-primary',
+                step.status === 'wait' && 'text-muted-foreground',
+              )}
+            >
+              {step.label}
+            </span>
+          </div>
+          {i < steps.length - 1 && (
+            <div
+              className={cn(
+                'h-px w-6 transition-colors',
+                step.status !== 'wait' ? 'bg-primary/30' : 'bg-border',
+              )}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function RequirementDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -65,143 +162,117 @@ export function RequirementDetailPage() {
   }
 
   if (loading) {
-    return <div className="p-6 text-gray-500">加载中...</div>;
+    return (
+      <div className="flex min-h-40 items-center justify-center">
+        <Spinner className="h-7 w-7" />
+      </div>
+    );
   }
 
   if (!requirement) {
-    return <div className="p-6 text-gray-500">需求未找到</div>;
+    return (
+      <Card className="border-border bg-card shadow-sm">
+        <CardContent className="p-5">
+          <p className="text-sm text-muted-foreground">需求未找到</p>
+        </CardContent>
+      </Card>
+    );
   }
 
   const ideationStatus = requirement.ideationStatus || 'NONE';
   const sessions = requirement.ideationSessions ?? [];
   const canFinalize = ideationStatus === 'DESIGN_CONFIRMED';
   const isFinalized = ideationStatus === 'FINALIZED';
-
-  const ideationStatusLabels: Record<string, string> = {
-    NONE: '未开始',
-    BRAINSTORM_PENDING: '头脑风暴中',
-    BRAINSTORM_WAITING_CONFIRMATION: '头脑风暴待确认',
-    BRAINSTORM_CONFIRMED: '简报已确认',
-    DESIGN_PENDING: '设计生成中',
-    DESIGN_WAITING_CONFIRMATION: '设计待确认',
-    DESIGN_CONFIRMED: '设计已确认',
-    FINALIZED: '已定稿',
-  };
-
-  const ideationSteps = [
-    { key: 'brainstorm', label: '头脑风暴', active: ideationStatus !== 'NONE' },
-    { key: 'design', label: 'UI 设计', active: ideationStatus === 'DESIGN_PENDING' || ideationStatus === 'DESIGN_WAITING_CONFIRMATION' || ideationStatus === 'DESIGN_CONFIRMED' || isFinalized },
-    { key: 'finalize', label: '定稿', active: isFinalized },
-  ];
+  const steps = getIdeationSteps(ideationStatus);
+  const showDesignPanel = ['BRAINSTORM_CONFIRMED', 'DESIGN_PENDING', 'DESIGN_WAITING_CONFIRMATION', 'DESIGN_CONFIRMED', 'FINALIZED'].includes(ideationStatus);
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
+    <div className="flex flex-col gap-5">
       {/* Header */}
-      <div className="mb-6">
-        <button
-          onClick={() => navigate('/requirements')}
-          className="mb-3 text-sm text-gray-500 hover:text-gray-700"
-        >
-          ← 返回需求列表
-        </button>
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">{requirement.title}</h1>
-            <div className="mt-1 flex items-center gap-2">
-              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-800">
-                {requirement.project?.name}
-              </span>
-              <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-800">
-                构思: {ideationStatusLabels[ideationStatus] ?? ideationStatus}
-              </span>
-            </div>
-          </div>
-          {isFinalized && (
-            <button
-              onClick={handleLaunchWorkflow}
-              className="rounded-md bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700"
-            >
-              启动研发工作流
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Requirement Info */}
-      <div className="mb-6 rounded-md border p-4 space-y-3">
-        <div>
-          <h3 className="mb-1 text-sm font-medium text-gray-700">需求描述</h3>
-          <p className="whitespace-pre-line text-sm text-gray-600">{requirement.description}</p>
-        </div>
-        <div>
-          <h3 className="mb-1 text-sm font-medium text-gray-700">验收标准</h3>
-          <p className="whitespace-pre-line text-sm text-gray-600">{requirement.acceptanceCriteria}</p>
-        </div>
-      </div>
-
-      {/* Ideation Steps Indicator */}
-      <div className="mb-6 flex items-center gap-2">
-        {ideationSteps.map((step, i) => (
-          <div key={step.key} className="flex items-center gap-2">
-            <div
-              className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium ${
-                step.active
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-500'
-              }`}
-            >
-              {i + 1}
-            </div>
-            <span className={`text-sm ${step.active ? 'font-medium text-gray-900' : 'text-gray-400'}`}>
-              {step.label}
-            </span>
-            {i < ideationSteps.length - 1 && (
-              <div className={`h-0.5 w-8 ${step.active ? 'bg-blue-600' : 'bg-gray-200'}`} />
+      <DetailHeader
+        eyebrow="Requirement Ideation"
+        title={requirement.title}
+        description={requirement.description}
+        badges={[
+          { key: 'project', label: requirement.project?.name ?? '', variant: 'default' },
+          { key: 'ideation', label: ideationStatusLabels[ideationStatus] ?? ideationStatus, variant: getIdeationStatusVariant(ideationStatus) },
+        ]}
+        actions={
+          <div className="flex items-center gap-3">
+            <Button variant="outline" asChild>
+              <Link to="/requirements">返回列表</Link>
+            </Button>
+            {isFinalized && (
+              <Button onClick={handleLaunchWorkflow}>启动研发工作流</Button>
             )}
           </div>
-        ))}
-      </div>
+        }
+      />
+
+      {/* Requirement info */}
+      <ContextPanel
+        eyebrow="Requirement"
+        title="需求详情"
+        description="原始需求描述和验收标准。定稿后，产品简报内容将合并到需求描述中。"
+      >
+        <div className="flex flex-col gap-4">
+          <div>
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">验收标准</div>
+            <p className="whitespace-pre-line text-sm leading-6 text-foreground">{requirement.acceptanceCriteria}</p>
+          </div>
+        </div>
+      </ContextPanel>
+
+      {/* Ideation Steps Indicator */}
+      <Card className="border-border bg-card shadow-sm">
+        <CardContent className="p-5">
+          <StepIndicator steps={steps} />
+        </CardContent>
+      </Card>
 
       {/* Brainstorm Panel */}
-      <div className="mb-6 rounded-md border p-4">
-        <IdeationBrainstormPanel
-          requirementId={id!}
-          ideationStatus={ideationStatus}
-          sessions={sessions}
-          onUpdated={fetchRequirement}
-        />
-      </div>
-
-      {/* Design Panel */}
-      {(ideationStatus === 'BRAINSTORM_CONFIRMED' ||
-        ideationStatus === 'DESIGN_PENDING' ||
-        ideationStatus === 'DESIGN_WAITING_CONFIRMATION' ||
-        ideationStatus === 'DESIGN_CONFIRMED' ||
-        isFinalized) && (
-        <div className="mb-6 rounded-md border p-4">
-          <IdeationDesignPanel
+      <Card className="border-border bg-card shadow-sm">
+        <CardContent className="p-5">
+          <IdeationBrainstormPanel
             requirementId={id!}
             ideationStatus={ideationStatus}
             sessions={sessions}
             onUpdated={fetchRequirement}
           />
-        </div>
+        </CardContent>
+      </Card>
+
+      {/* Design Panel */}
+      {showDesignPanel && (
+        <Card className="border-border bg-card shadow-sm">
+          <CardContent className="p-5">
+            <IdeationDesignPanel
+              requirementId={id!}
+              ideationStatus={ideationStatus}
+              sessions={sessions}
+              repositories={requirement.requirementRepositories}
+              onUpdated={fetchRequirement}
+            />
+          </CardContent>
+        </Card>
       )}
 
       {/* Finalize */}
       {canFinalize && (
-        <div className="mb-6 rounded-md border border-green-200 bg-green-50 p-4">
-          <p className="mb-3 text-sm text-green-800">
-            头脑风暴和设计方案已确认。点击定稿将产品简报内容合并到需求描述中，然后即可启动研发工作流。
-          </p>
-          <button
-            onClick={handleFinalize}
-            disabled={finalizing}
-            className="rounded-md bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700 disabled:opacity-50"
-          >
-            {finalizing ? '处理中...' : '定稿并合并到需求'}
-          </button>
-        </div>
+        <Card className="border-success/30 bg-success/5 shadow-sm">
+          <CardHeader className="p-5">
+            <SectionHeading
+              eyebrow="Finalize"
+              title="定稿"
+              description="头脑风暴和设计方案已确认。点击定稿将产品简报内容合并到需求描述中，然后即可启动研发工作流。"
+            />
+          </CardHeader>
+          <CardContent className="p-5 pt-0">
+            <Button onClick={handleFinalize} disabled={finalizing}>
+              {finalizing ? '处理中...' : '定稿并合并到需求'}
+            </Button>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

@@ -38,7 +38,7 @@ export function RepositoryBranchCard({
           {statusLabel ? <Badge variant={statusVariant}>{statusLabel}</Badge> : null}
         </div>
         {description ? <div className="mt-2 text-sm leading-6 text-muted-foreground">{description}</div> : null}
-        {error ? <div className="mt-2 text-sm leading-6 text-red-600">{error}</div> : null}
+        {error ? <div className="mt-2 text-sm leading-6 text-danger">{error}</div> : null}
       </CardContent>
     </Card>
   );

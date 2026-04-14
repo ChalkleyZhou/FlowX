@@ -22,13 +22,13 @@ if [ "${AI_PROVIDER}" = "codex" ]; then
 fi
 
 if [ "${AI_PROVIDER}" = "cursor" ]; then
-  if ! command -v cursor-agent >/dev/null 2>&1; then
+  if ! command -v cursor-agent >/dev/null 2>&1 && ! command -v cursor >/dev/null 2>&1; then
     echo "Cursor CLI is not installed in the image, but AI_EXECUTOR_PROVIDER=cursor." >&2
     exit 1
   fi
 
   if [ -z "${CURSOR_API_KEY:-}" ]; then
-    echo "CURSOR_API_KEY is empty. FlowX will rely on existing cursor-agent login state." >&2
+    echo "CURSOR_API_KEY is empty. FlowX will rely on existing Cursor CLI login state." >&2
     echo "For server automation, setting CURSOR_API_KEY is recommended." >&2
   fi
 fi

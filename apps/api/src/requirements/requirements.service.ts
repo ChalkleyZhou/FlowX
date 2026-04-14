@@ -1,7 +1,8 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AI_EXECUTOR_REGISTRY, type AIExecutor, type AIExecutorProvider, type AIExecutorRegistry } from '../ai/ai-executor';
 import { IdeationSessionStatus, IdeationStatus } from '../common/enums';
-import { BrainstormBrief, DesignSpec } from '../common/types';
+import { BrainstormBrief, DemoPage, DesignSpec } from '../common/types';
+import { DeployService } from '../deploy/deploy.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRequirementDto } from './dto/create-requirement.dto';
 
@@ -31,6 +32,7 @@ export class RequirementsService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(AI_EXECUTOR_REGISTRY) private readonly executorRegistry: AIExecutorRegistry,
+    private readonly deployService: DeployService,
   ) {}
 
   async create(dto: CreateRequirementDto) {
@@ -439,13 +441,21 @@ export class RequirementsService {
     });
 
     try {
+      const repositoryComponentContext = await this.buildRepositoryComponentContext(executor, requirement);
       const result = await executor.generateDesign({
         requirementTitle: requirement.title,
         requirementDescription: requirement.description,
         confirmedBrief,
         previousDesigns: previousDesigns.length > 0 ? previousDesigns : undefined,
         humanFeedback: hint || undefined,
+        repositoryComponentContext: repositoryComponentContext ?? undefined,
       });
+
+      // Write demo pages to repo working branch and trigger deploy
+      if (result.demoPages && result.demoPages.length > 0) {
+        await this.writeDemoPagesToRepo(result.demoPages, requirement);
+        await this.triggerDemoDeploy(requirement);
+      }
 
       await this.prisma.ideationSession.update({
         where: { id: session.id },
@@ -518,13 +528,21 @@ export class RequirementsService {
     });
 
     try {
+      const repositoryComponentContext = await this.buildRepositoryComponentContext(executor, requirement);
       const result = await executor.generateDesign({
         requirementTitle: requirement.title,
         requirementDescription: requirement.description,
         confirmedBrief,
         previousDesigns,
         humanFeedback: feedback,
+        repositoryComponentContext: repositoryComponentContext ?? undefined,
       });
+
+      // Write demo pages to repo working branch and trigger deploy
+      if (result.demoPages && result.demoPages.length > 0) {
+        await this.writeDemoPagesToRepo(result.demoPages, requirement);
+        await this.triggerDemoDeploy(requirement);
+      }
 
       await this.prisma.ideationSession.update({
         where: { id: session.id },
@@ -577,13 +595,23 @@ export class RequirementsService {
       .sort((a: { attempt: number }, b: { attempt: number }) => b.attempt - a.attempt)[0];
 
     if (lastSession?.output) {
-      const output = lastSession.output as { design?: DesignSpec };
+      const output = lastSession.output as { design?: DesignSpec; demoPages?: DemoPage[] };
       if (output.design) {
         await this.prisma.ideationArtifact.create({
           data: {
             requirementId,
             type: 'DESIGN_SPEC',
             content: output.design as any,
+          },
+        });
+      }
+
+      if (output.demoPages && output.demoPages.length > 0) {
+        await this.prisma.ideationArtifact.create({
+          data: {
+            requirementId,
+            type: 'DEMO_PAGE',
+            content: output.demoPages as any,
           },
         });
       }
@@ -684,5 +712,153 @@ export class RequirementsService {
       orderBy: { version: 'asc' },
     });
     return artifacts.map((a) => a.content as unknown as DesignSpec);
+  }
+
+  // ── Demo helpers ──
+
+  private async buildRepositoryComponentContext(
+    executor: AIExecutor,
+    requirement: Awaited<ReturnType<typeof this.findOne>>,
+  ): Promise<import('../common/types').RepositoryComponentContext | null> {
+    const repositories = requirement.requirementRepositories
+      ?.map((rr: { repository: { localPath: string | null; syncStatus: string | null; id: string; name: string; url: string; defaultBranch: string | null } }) => rr.repository)
+      .filter((r: { localPath: string | null; syncStatus: string | null }) => r.localPath && r.syncStatus === 'READY');
+
+    if (!repositories || repositories.length === 0) {
+      return null;
+    }
+
+    // Use the first ready repository as primary context source
+    const repo = repositories[0];
+    const repoContext: import('../common/types').RepositoryContext = {
+      id: repo.id,
+      name: repo.name,
+      url: repo.url,
+      defaultBranch: repo.defaultBranch,
+      localPath: repo.localPath,
+      syncStatus: repo.syncStatus,
+    };
+
+    if ('buildRepositoryComponentContext' in executor && typeof (executor as any).buildRepositoryComponentContext === 'function') {
+      return (executor as any).buildRepositoryComponentContext(repoContext);
+    }
+
+    return null;
+  }
+
+  private async writeDemoPagesToRepo(
+    demoPages: DemoPage[],
+    requirement: Awaited<ReturnType<typeof this.findOne>>,
+  ): Promise<void> {
+    const { execFile: execFileCb } = require('child_process');
+    const { promisify } = require('util');
+    const { writeFile: writeFileCb, mkdir: mkdirCb } = require('fs/promises');
+    const { join } = require('path');
+    const execFile = promisify(execFileCb);
+
+    const repositories = requirement.requirementRepositories
+      ?.map((rr: { repository: { localPath: string | null; syncStatus: string | null } }) => rr.repository)
+      .filter((r: { localPath: string | null; syncStatus: string | null }) => r.localPath && r.syncStatus === 'READY');
+
+    if (!repositories || repositories.length === 0) {
+      this.logger.warn(`No ready repositories found for requirement ${requirement.id}, skipping demo page write.`);
+      return;
+    }
+
+    const repo = repositories[0];
+
+    for (const page of demoPages) {
+      try {
+        const fullPath = join(repo.localPath, page.filePath);
+        const dir = require('path').dirname(fullPath);
+        await mkdirCb(dir, { recursive: true });
+        await writeFileCb(fullPath, page.componentCode, 'utf8');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'unknown write error';
+        this.logger.warn(`Failed to write demo page ${page.filePath}: ${message}`);
+      }
+    }
+
+    // Git commit
+    try {
+      await execFile('git', ['add', '.'], { cwd: repo.localPath });
+      await execFile('git', ['commit', '-m', `flowx: demo page for requirement ${requirement.id}`], { cwd: repo.localPath });
+      this.logger.log(`Demo pages committed for requirement ${requirement.id}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown git error';
+      this.logger.warn(`Failed to commit demo pages for requirement ${requirement.id}: ${message}`);
+    }
+  }
+
+  private async triggerDemoDeploy(
+    requirement: Awaited<ReturnType<typeof this.findOne>>,
+  ): Promise<void> {
+    const repositories = requirement.requirementRepositories
+      ?.map((rr: { repository: { id: string; localPath: string | null; syncStatus: string | null } }) => rr.repository)
+      .filter((r: { localPath: string | null; syncStatus: string | null }) => r.localPath && r.syncStatus === 'READY');
+
+    if (!repositories || repositories.length === 0) {
+      this.logger.warn(`No ready repositories found for requirement ${requirement.id}, skipping demo deploy.`);
+      return;
+    }
+
+    for (const repo of repositories) {
+      try {
+        // Check if deploy is configured and enabled
+        const config = await this.deployService.getRepositoryConfig(repo.id);
+        if (!config.enabled) {
+          this.logger.log(`Deploy not enabled for repository ${repo.id}, skipping demo deploy.`);
+          continue;
+        }
+
+        // Get current commit SHA
+        const { execFile: execFileCb } = require('child_process');
+        const { promisify } = require('util');
+        const execFile = promisify(execFileCb);
+        const { stdout } = await execFile('git', ['rev-parse', '--short', 'HEAD'], { cwd: repo.localPath });
+        const commitSha = stdout.trim();
+
+        // Get current branch
+        const { stdout: branchStdout } = await execFile('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repo.localPath });
+        const branch = branchStdout.trim();
+
+        const result = await this.deployService.createJob(repo.id, {
+          branch,
+          commit: commitSha,
+          env: 'preview',
+        });
+
+        // Update demo artifact with preview URL if available
+        if (result.job?.externalJobUrl) {
+          await this.updateDemoPreviewUrl(requirement.id, result.job.externalJobUrl);
+        }
+
+        this.logger.log(`Demo deploy triggered for repository ${repo.id}, job: ${result.job?.id}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'unknown deploy error';
+        this.logger.warn(`Failed to trigger demo deploy for repository ${repo.id}: ${message}`);
+      }
+    }
+  }
+
+  private async updateDemoPreviewUrl(requirementId: string, previewUrl: string): Promise<void> {
+    // Update the latest DEMO_PAGE artifact with the preview URL
+    const artifact = await this.prisma.ideationArtifact.findFirst({
+      where: { requirementId, type: 'DEMO_PAGE' },
+      orderBy: { version: 'desc' },
+    });
+
+    if (artifact) {
+      const content = artifact.content as any;
+      if (Array.isArray(content)) {
+        for (const page of content) {
+          page.previewUrl = previewUrl;
+        }
+        await this.prisma.ideationArtifact.update({
+          where: { id: artifact.id },
+          data: { content: content as any },
+        });
+      }
+    }
   }
 }

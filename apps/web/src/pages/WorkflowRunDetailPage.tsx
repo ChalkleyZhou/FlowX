@@ -1057,11 +1057,11 @@ export function WorkflowRunDetailPage() {
             </DialogDescription>
           </DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={(event) => void handleCreateDeployJob(event)}>
-            <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
+            <div className="rounded-md border border-border bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
               目标仓库：{deployDraft.repositoryName || '未选择'}
             </div>
             {lastPublishedRepositories.length > 1 ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+              <div className="rounded-md border border-warning/30 bg-warning/5 px-4 py-3 text-sm leading-6 text-warning">
                 当前工作流刚刚推送了 {lastPublishedRepositories.length} 个仓库。当前部署接口只会提交一组发布参数，请确认这里填写的是目标仓库对应的分支和 commit。
               </div>
             ) : null}
@@ -1122,7 +1122,7 @@ export function WorkflowRunDetailPage() {
               </div>
             </div>
             {deployConfig ? (
-              <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
+              <div className="rounded-md border border-border bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
                 当前 provider：{deployConfig.provider}。未填写的字段会继续使用该仓库的默认部署模板。
               </div>
             ) : null}
@@ -1133,11 +1133,10 @@ export function WorkflowRunDetailPage() {
         </DialogContent>
       </Dialog>
       {workflowRun ? (
-        <div className="flex flex-col gap-[18px]">
+        <div className="flex flex-col gap-5">
           <DetailHeader
             eyebrow="Workflow Detail"
             title={workflowRun.requirement.title}
-            description={workflowRun.requirement.description}
             badges={[
               { key: 'workspace', label: workflowRun.requirement.project.workspace.name, variant: 'default' },
               { key: 'project', label: workflowRun.requirement.project.name, variant: 'outline' },
@@ -1151,7 +1150,6 @@ export function WorkflowRunDetailPage() {
             ]}
             actions={
               <>
-                <span className="text-muted-foreground">{workflowRun.requirement.acceptanceCriteria}</span>
                 <UiButton variant="destructive" disabled={deleting || hasRunningStage} onClick={() => void handleDeleteWorkflow()}>
                   {deleting ? '删除中...' : '删除工作流'}
                 </UiButton>
@@ -1192,24 +1190,27 @@ export function WorkflowRunDetailPage() {
           ) : null}
 
           <ContextPanel
-            eyebrow="Requirement Scope"
-            title="需求定义的仓库范围"
-            description="如果这里为空，本次工作流会回退继承项目工作区的默认仓库集合。"
+            eyebrow="Workflow Context"
+            title="需求与验收信息"
+            description="集中查看本次工作流对应的需求背景与完成标准。"
           >
-            {workflowRun.requirement.requirementRepositories?.length ? (
-              <div className="flex flex-wrap gap-3">
-                {workflowRun.requirement.requirementRepositories.map((entry) => (
-                  <Badge key={entry.id} variant="outline">
-                    {entry.repository.name}
-                  </Badge>
-                ))}
+            <div className="flex flex-col gap-4">
+              <div>
+                <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">需求描述</div>
+                <p className="whitespace-pre-line text-sm leading-6 text-foreground">
+                  {workflowRun.requirement.description?.trim() || '当前需求尚未填写描述。'}
+                </p>
               </div>
-            ) : (
-              <p className="text-sm leading-6 text-muted-foreground">当前需求没有单独指定仓库范围。</p>
-            )}
+              <div>
+                <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">验收标准</div>
+                <p className="whitespace-pre-line text-sm leading-6 text-foreground">
+                  {workflowRun.requirement.acceptanceCriteria?.trim() || '当前需求尚未填写验收标准。'}
+                </p>
+              </div>
+            </div>
           </ContextPanel>
 
-          <Card className="rounded-2xl border-border bg-card shadow-sm">
+          <Card className="rounded-md border-border bg-card shadow-sm">
             <CardHeader className="p-5 pb-0">
               <SectionHeader
                 eyebrow="Workflow Steps"
@@ -1236,88 +1237,51 @@ export function WorkflowRunDetailPage() {
             </CardContent>
           </Card>
 
-          <div className="flex flex-col gap-[18px]">
-            {selectedStageContent ? (
-              <StageCard
-                title={selectedStageContent.title}
-                subtitle={selectedStageContent.subtitle}
-                status={selectedStageContent.status}
-                statusMessage={selectedStageContent.statusMessage}
-                attempt={selectedStageContent.attempt}
-                metaItems={[
-                  { key: 'step', label: '当前步骤', value: `${selectedStageIndex + 1}/${STAGE_SEQUENCE.length}` },
-                  {
-                    key: 'focus-status',
-                    label: '阶段状态',
-                    value: (
-                      <Badge
-                        variant={
-                          selectedStageContent.status === 'COMPLETED'
-                            ? 'success'
-                            : selectedStageContent.status === 'FAILED' || selectedStageContent.status === 'REJECTED'
-                              ? 'destructive'
-                              : selectedStageContent.status === 'WAITING_CONFIRMATION' || selectedStageContent.status === 'RUNNING'
-                                ? 'warning'
-                                : 'default'
-                        }
-                      >
-                        {selectedStageContent.status ? formatStageExecutionStatus(selectedStageContent.status) : '未开始'}
-                      </Badge>
-                    ),
-                  },
-                ]}
-                output={selectedStageContent.output}
-                actions={selectedStageContent.actions}
-              />
-            ) : (
-              <Card className="rounded-2xl border border-border bg-card shadow-sm">
-                <CardContent className="p-5">
-                  <EmptyState description="当前阶段还没有可展示的详情产物。" />
-                </CardContent>
-              </Card>
-            )}
+          <div className="grid items-start gap-5 min-[1281px]:grid-cols-[minmax(0,1.5fr)_360px] max-[1280px]:grid-cols-1">
+            {/* Left: main content */}
+            <div className="flex flex-col gap-5">
+              {selectedStageContent ? (
+                <StageCard
+                  title={selectedStageContent.title}
+                  subtitle={selectedStageContent.subtitle}
+                  status={selectedStageContent.status}
+                  statusMessage={selectedStageContent.statusMessage}
+                  attempt={selectedStageContent.attempt}
+                  metaItems={[
+                    { key: 'step', label: '当前步骤', value: `${selectedStageIndex + 1}/${STAGE_SEQUENCE.length}` },
+                    {
+                      key: 'focus-status',
+                      label: '阶段状态',
+                      value: (
+                        <Badge
+                          variant={
+                            selectedStageContent.status === 'COMPLETED'
+                              ? 'success'
+                              : selectedStageContent.status === 'FAILED' || selectedStageContent.status === 'REJECTED'
+                                ? 'destructive'
+                                : selectedStageContent.status === 'WAITING_CONFIRMATION' || selectedStageContent.status === 'RUNNING'
+                                  ? 'warning'
+                                  : 'default'
+                          }
+                        >
+                          {selectedStageContent.status ? formatStageExecutionStatus(selectedStageContent.status) : '未开始'}
+                        </Badge>
+                      ),
+                    },
+                  ]}
+                  output={selectedStageContent.output}
+                  actions={selectedStageContent.actions}
+                />
+              ) : (
+                <Card className="rounded-md border border-border bg-card shadow-sm">
+                  <CardContent className="p-5">
+                    <EmptyState description="当前阶段还没有可展示的详情产物。" />
+                  </CardContent>
+                </Card>
+              )}
 
-            <div className="grid gap-[18px] min-[1281px]:grid-cols-2 max-[1280px]:grid-cols-1 max-[1440px]:gap-[14px]">
-              {workflowRun.workflowRepositories.length > 0 ? (
-                <ContextPanel eyebrow="Workflow Branches" title="本次工作流使用的代码分支" description="每次工作流都会从基线仓库准备独立的工作分支，避免直接污染项目主分支。">
-                  <div className="flex flex-col gap-3">
-                    {workflowRun.workflowRepositories.map((repository) => (
-                      <RepositoryBranchCard
-                        key={repository.id}
-                        name={repository.name}
-                        primaryMeta={`基线分支 ${repository.baseBranch}`}
-                        secondaryMeta={`工作分支 ${repository.workingBranch}`}
-                        statusLabel={formatWorkflowRepositoryStatus(repository.status)}
-                        statusVariant={
-                          repository.status === 'READY'
-                            ? 'success'
-                            : repository.status === 'ERROR'
-                              ? 'destructive'
-                              : 'warning'
-                        }
-                        description="已为本次工作流准备独立工作分支。"
-                        error={repository.syncError ? `分支准备失败：${repository.syncError}` : undefined}
-                        action={
-                          workflowRun.status === 'DONE' ? (
-                            <UiButton
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => void handleOpenDeployModal(repository.repositoryId ?? undefined)}
-                              disabled={deployLoading || !repository.repositoryId}
-                            >
-                              部署
-                            </UiButton>
-                          ) : null
-                        }
-                      />
-                    ))}
-                  </div>
-                </ContextPanel>
-              ) : null}
-            </div>
-
-            {diffReviewData.length > 0 && (selectedStage === 'EXECUTION' || selectedStage === 'AI_REVIEW') ? (
-              <Card className="rounded-2xl border-border bg-card shadow-sm">
+              {diffReviewData.length > 0 && (selectedStage === 'EXECUTION' || selectedStage === 'AI_REVIEW') ? (
+              <Card className="rounded-md border-border bg-card shadow-sm">
                 <CardHeader className="space-y-4 p-5">
                   <div className="flex items-start justify-between gap-4 max-[1180px]:flex-col">
                     <SectionHeader
@@ -1402,7 +1366,7 @@ export function WorkflowRunDetailPage() {
             ) : null}
 
             {selectedStage === 'AI_REVIEW' ? (
-              <Card className="rounded-2xl border-border bg-card shadow-sm">
+              <Card className="rounded-md border-border bg-card shadow-sm">
                 <CardHeader className="p-5">
                   <div className="mb-4 flex items-start justify-between gap-4 max-[960px]:flex-col">
                     <SectionHeader
@@ -1420,7 +1384,7 @@ export function WorkflowRunDetailPage() {
                 </CardHeader>
                 <CardContent className="p-5 pt-0">
                   {workflowRun.status === 'REVIEW_PENDING' ? (
-                    <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                    <div className="mb-4 flex flex-col gap-3 rounded-md border border-warning/30 bg-warning/5 px-4 py-3 text-sm leading-6 text-warning">
                       <div>
                         当前展示的是上一轮 AI 审查结果。你已经继续修复或尚未重新发起审查，请在检查代码变更后再次执行 AI 审查获取最新结果。
                       </div>
@@ -1505,7 +1469,7 @@ export function WorkflowRunDetailPage() {
             ) : null}
 
             {workflowRun.status === 'DONE' ? (
-              <Card className="rounded-2xl border-border bg-card shadow-sm">
+              <Card className="rounded-md border-border bg-card shadow-sm">
                 <CardHeader className="p-5">
                   <SectionHeader
                     eyebrow="Git Publish"
@@ -1514,7 +1478,7 @@ export function WorkflowRunDetailPage() {
                   />
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4 p-5 pt-0">
-                  <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
+                  <div className="rounded-md border border-border bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
                     这个动作会自动完成 git add、git commit 和 git push。推送时不会直接复用工作分支，而是生成唯一的发布分支，避免与远端已有分支冲突。
                   </div>
                   <div className="flex flex-wrap gap-3">
@@ -1526,12 +1490,12 @@ export function WorkflowRunDetailPage() {
                     </UiButton>
                   </div>
                   {lastPublishedRepositories.length > 0 ? (
-                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-900">
+                    <div className="rounded-md border border-success/30 bg-success/5 px-4 py-3 text-sm leading-6 text-success">
                       最近一次推送：{lastPublishedRepositories.map((item) => `${item.repository} / ${item.branch} / ${item.commitSha}`).join('；')}
                     </div>
                   ) : (
-                    <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
-                      建议先执行“提交并推送到远程”，这样部署弹窗可以自动带出对应仓库的最新发布分支和 commit。
+                    <div className="rounded-md border border-border bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
+                      建议先执行"提交并推送到远程"，这样部署弹窗可以自动带出对应仓库的最新发布分支和 commit。
                     </div>
                   )}
                   <div>
@@ -1542,10 +1506,69 @@ export function WorkflowRunDetailPage() {
                 </CardContent>
               </Card>
             ) : null}
+            </div>
+
+            {/* Right: sidebar */}
+            <div className="flex flex-col gap-5">
+              <ContextPanel
+                eyebrow="Requirement Scope"
+                title="需求仓库范围"
+                description="如果这里为空，本次工作流会回退继承项目工作区的默认仓库集合。"
+              >
+                {workflowRun.requirement.requirementRepositories?.length ? (
+                  <div className="flex flex-wrap gap-3">
+                    {workflowRun.requirement.requirementRepositories.map((entry) => (
+                      <Badge key={entry.id} variant="outline">
+                        {entry.repository.name}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm leading-6 text-muted-foreground">当前需求没有单独指定仓库范围。</p>
+                )}
+              </ContextPanel>
+
+              {workflowRun.workflowRepositories.length > 0 ? (
+                <ContextPanel eyebrow="Workflow Branches" title="工作分支" description="每次工作流都会从基线仓库准备独立的工作分支，避免直接污染项目主分支。">
+                  <div className="flex flex-col gap-3">
+                    {workflowRun.workflowRepositories.map((repository) => (
+                      <RepositoryBranchCard
+                        key={repository.id}
+                        name={repository.name}
+                        primaryMeta={`基线分支 ${repository.baseBranch}`}
+                        secondaryMeta={`工作分支 ${repository.workingBranch}`}
+                        statusLabel={formatWorkflowRepositoryStatus(repository.status)}
+                        statusVariant={
+                          repository.status === 'READY'
+                            ? 'success'
+                            : repository.status === 'ERROR'
+                              ? 'destructive'
+                              : 'warning'
+                        }
+                        description="已为本次工作流准备独立工作分支。"
+                        error={repository.syncError ? `分支准备失败：${repository.syncError}` : undefined}
+                        action={
+                          workflowRun.status === 'DONE' ? (
+                            <UiButton
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => void handleOpenDeployModal(repository.repositoryId ?? undefined)}
+                              disabled={deployLoading || !repository.repositoryId}
+                            >
+                              部署
+                            </UiButton>
+                          ) : null
+                        }
+                      />
+                    ))}
+                  </div>
+                </ContextPanel>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : (
-        <Card className="rounded-2xl border border-border bg-card shadow-sm">
+        <Card className="rounded-md border border-border bg-card shadow-sm">
           <CardContent className="p-5">
             {loading ? (
               <div className="flex min-h-40 items-center justify-center">

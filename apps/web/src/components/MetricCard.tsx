@@ -11,7 +11,7 @@ interface MetricCardProps {
 
 export function MetricCard({ label, value, helpText, className }: MetricCardProps) {
   return (
-    <Card className={cn('rounded-2xl border-border bg-card shadow-sm', className)}>
+    <Card className={cn('rounded-md border-border bg-card shadow-sm', className)}>
       <CardHeader className="space-y-2 p-5 pb-0">
         <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
         <CardTitle className="text-3xl font-semibold tracking-tight text-foreground">{value}</CardTitle>
