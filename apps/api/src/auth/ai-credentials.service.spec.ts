@@ -34,7 +34,26 @@ describe('AiCredentialsService', () => {
 
     expect(encrypt).toHaveBeenCalledWith('cursor-key');
     expect(upsert).toHaveBeenCalledTimes(1);
+    expect(upsert.mock.calls[0]?.[0]).toMatchObject({
+      create: { provider: 'cursor' },
+      where: { userId_provider: { provider: 'cursor' } },
+    });
     expect(result.configured).toBe(true);
+  });
+
+  it('stores encrypted codex key per user', async () => {
+    encrypt.mockReturnValue('encrypted-value');
+    upsert.mockResolvedValue({ updatedAt: new Date('2026-04-14T11:22:33.000Z') });
+
+    const service = createService();
+    const result = await service.upsertCodexCredential('user-1', 'codex-key');
+
+    expect(encrypt).toHaveBeenCalledWith('codex-key');
+    expect(upsert.mock.calls[0]?.[0]).toMatchObject({
+      create: { provider: 'codex' },
+      where: { userId_provider: { provider: 'codex' } },
+    });
+    expect(result).toMatchObject({ provider: 'codex', configured: true });
   });
 
   it('returns configured status when key exists', async () => {
@@ -55,6 +74,17 @@ describe('AiCredentialsService', () => {
 
     await expect(service.getCursorApiKeyForUser('user-1')).resolves.toBe('decrypted-key');
     expect(decrypt).toHaveBeenCalledWith('encrypted-value');
+  });
+
+  it('decrypts stored codex key for runtime injection', async () => {
+    findUnique.mockResolvedValue({ encryptedSecret: 'encrypted-value' });
+    decrypt.mockReturnValue('decrypted-codex-key');
+    const service = createService();
+
+    await expect(service.getCodexApiKeyForUser('user-1')).resolves.toBe('decrypted-codex-key');
+    expect(findUnique.mock.calls[0]?.[0]).toMatchObject({
+      where: { userId_provider: { provider: 'codex' } },
+    });
   });
 
   it('deletes user cursor credential', async () => {

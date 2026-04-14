@@ -18,12 +18,15 @@ export const AI_EXECUTOR_REGISTRY = Symbol('AI_EXECUTOR_REGISTRY');
 
 export type AIExecutorProvider = 'codex' | 'cursor';
 export type CursorCredentialSource = 'user' | 'instance' | 'login-state';
+export type CodexCredentialSource = 'user' | 'instance' | 'login-state';
 
 export interface AIInvocationContext {
   requestUserId?: string;
   requestUserDisplayName?: string;
   cursorApiKey?: string;
   cursorCredentialSource?: CursorCredentialSource;
+  codexApiKey?: string;
+  codexCredentialSource?: CodexCredentialSource;
 }
 
 export interface AIExecutor {

@@ -33,6 +33,13 @@ const CODEX_TIMEOUT_MS = Number(process.env.CODEX_TIMEOUT_MS?.trim()) || 600_000
 const CODEX_DEBUG_ROOT = join(process.cwd(), '.flowx-data', 'codex-debug');
 const CODEX_READ_SANDBOX = process.env.CODEX_READ_SANDBOX?.trim() || 'read-only';
 const CODEX_WRITE_SANDBOX = process.env.CODEX_WRITE_SANDBOX?.trim() || 'workspace-write';
+const CODEX_AUTH_ERROR_PATTERNS = [
+  /invalid_api_key/i,
+  /authentication failed/i,
+  /not authenticated/i,
+  /401/i,
+  /unauthorized/i,
+];
 
 @Injectable()
 export class CodexAiExecutor implements AIExecutor {
@@ -688,7 +695,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     prompt: string,
     stageName: string,
     addDirs: string[] = [],
-    _context?: AIInvocationContext,
+    context?: AIInvocationContext,
   ): Promise<T> {
     const tempDir = await mkdtemp(join(tmpdir(), 'flowx-codex-'));
     const outputPath = join(tempDir, `${stageName.replace(/\s+/g, '-')}.json`);
@@ -718,6 +725,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
         codexCwd,
         stageName,
         prompt,
+        context,
       );
 
       const rawOutput = (await readFile(outputPath, 'utf8')).trim();
@@ -763,7 +771,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     cwd: string,
     prompt: string,
     stageName: string,
-    _context?: AIInvocationContext,
+    context?: AIInvocationContext,
   ) {
     try {
       await this.runCliProcess(
@@ -782,6 +790,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
         cwd,
         stageName,
         prompt,
+        context,
       );
     } catch (error) {
       const message =
@@ -796,6 +805,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     cwd: string,
     stageName: string,
     prompt?: string,
+    context?: AIInvocationContext,
   ) {
     return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
       let stdout = '';
@@ -823,7 +833,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
 
       const child = spawn('codex', args, {
         cwd,
-        env: process.env,
+        env: this.buildInvocationEnv(context),
         stdio: ['pipe', 'pipe', 'pipe'],
       });
 
@@ -851,7 +861,28 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
       });
 
       child.stderr.on('data', (chunk) => {
-        stderr += chunk.toString();
+        const text = chunk.toString();
+        stderr += text;
+        if (this.isCodexAuthenticationError(stderr)) {
+          if (finished) {
+            return;
+          }
+          finished = true;
+          clearTimeout(timeout);
+          child.kill('SIGTERM');
+          const errorMessage = this.buildCodexAuthErrorMessage(context);
+          void persistArtifact({
+            status: 'FAILED',
+            finishedAt: new Date().toISOString(),
+            stdout,
+            stderr,
+            errorMessage,
+          }).catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            this.logger.warn(`Failed to persist auth failure ${this.providerLabel} artifact: ${message}`);
+          });
+          reject(new Error(errorMessage));
+        }
       });
 
       child.on('error', (error) => {
@@ -1133,5 +1164,30 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     }
 
     return `${value.slice(0, maxLength)}\n...[truncated]`;
+  }
+
+  private buildInvocationEnv(context?: AIInvocationContext) {
+    if (!context?.codexApiKey) {
+      return process.env;
+    }
+
+    return {
+      ...process.env,
+      OPENAI_API_KEY: context.codexApiKey,
+    };
+  }
+
+  private isCodexAuthenticationError(stderr: string) {
+    return CODEX_AUTH_ERROR_PATTERNS.some((pattern) => pattern.test(stderr));
+  }
+
+  private buildCodexAuthErrorMessage(context?: AIInvocationContext) {
+    if (context?.codexCredentialSource === 'user') {
+      return 'CODEX_AUTH_INVALID_USER_KEY: Codex authentication failed for user-scoped credential. Please update your OpenAI API Key.';
+    }
+    if (context?.codexCredentialSource === 'instance') {
+      return 'CODEX_AUTH_INVALID_INSTANCE_KEY: Codex authentication failed for instance OPENAI_API_KEY. Please rotate server credential.';
+    }
+    return 'CODEX_AUTH_MISSING: Codex authentication failed. Re-run `codex login` on the server, or provide OPENAI_API_KEY.';
   }
 }

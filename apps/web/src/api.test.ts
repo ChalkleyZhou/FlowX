@@ -110,4 +110,22 @@ describe('api helpers', () => {
       }),
     );
   });
+
+  it('calls codex credential endpoint for updates', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ provider: 'codex', configured: true }),
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.upsertCodexCredential({ apiKey: 'openai-user-api-key' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3000/auth/ai-credentials/codex',
+      expect.objectContaining({
+        method: 'PUT',
+      }),
+    );
+  });
 });

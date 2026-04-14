@@ -245,8 +245,8 @@ export interface AuthSession {
   organization: AuthOrganization | null;
 }
 
-export interface CursorCredentialStatus {
-  provider: 'cursor';
+export interface AiCredentialStatus {
+  provider: 'cursor' | 'codex';
   configured: boolean;
   updatedAt?: string;
 }

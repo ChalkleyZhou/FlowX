@@ -21,6 +21,21 @@ export class AiCredentialsController {
     return this.aiCredentialsService.deleteCursorCredential(this.getUserId(req));
   }
 
+  @Get('codex')
+  getCodexCredentialStatus(@Req() req: AuthenticatedRequest) {
+    return this.aiCredentialsService.getCodexCredentialStatus(this.getUserId(req));
+  }
+
+  @Put('codex')
+  upsertCodexCredential(@Req() req: AuthenticatedRequest, @Body() dto: UpsertCursorCredentialDto) {
+    return this.aiCredentialsService.upsertCodexCredential(this.getUserId(req), dto.apiKey.trim());
+  }
+
+  @Delete('codex')
+  deleteCodexCredential(@Req() req: AuthenticatedRequest) {
+    return this.aiCredentialsService.deleteCodexCredential(this.getUserId(req));
+  }
+
   private getUserId(req: AuthenticatedRequest) {
     const userId = req.authSession?.user?.id?.trim();
     if (!userId) {

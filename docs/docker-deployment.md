@@ -60,6 +60,7 @@ FlowX 容器内部包含两个服务：
 | `CURSOR_API_KEY` | Cursor CLI 服务端认证 | `cursor` 时建议填写 |
 | `FLOWX_CREDENTIAL_MASTER_KEY` | 用户级 Cursor 凭据加密主密钥（BYO 模式） | 启用用户自有凭据时必填 |
 | `FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL` | 是否强制仅允许用户级 Cursor 凭据（禁用实例级/登录态回退） | 否，默认 `false` |
+| `FLOWX_CODEX_REQUIRE_USER_CREDENTIAL` | 是否强制仅允许用户级 Codex 凭据（禁用实例级/登录态回退） | 否，默认 `false` |
 | `FRONTEND_BUILD_MODE` | 前端构建模式：`nginx`、`direct`、`auto` | 建议填写 |
 | `DIRECT_API_BASE_URL` | 直连模式下前端访问 API 的地址 | `direct` 时建议填写 |
 | `DINGTALK_APP_ID` | 钉钉登录 App ID | 仅钉钉登录时必填 |
@@ -75,6 +76,7 @@ FlowX 容器内部包含两个服务：
 - 如果你要用手动 `codex login`，可以不填 `OPENAI_API_KEY`
 - 如果要启用“每个用户使用自己的 Cursor API Key”，必须设置 `FLOWX_CREDENTIAL_MASTER_KEY`，用于服务端加密存储用户凭据
 - 若希望彻底禁用共享身份回退，可设置 `FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL=true`
+- 若希望 Codex 也彻底禁用共享身份回退，可设置 `FLOWX_CODEX_REQUIRE_USER_CREDENTIAL=true`
 - `FRONTEND_BUILD_MODE=nginx` 表示前端走同源 `/api` 代理，不在构建时写死完整 API 域名
 - `FRONTEND_BUILD_MODE=direct` 表示前端直接请求 `DIRECT_API_BASE_URL`
 
@@ -315,6 +317,25 @@ http://YOUR_SERVER_HOST/api/auth/dingtalk/callback
 
 - 未配置用户凭据的请求会直接失败（返回 `CURSOR_USER_CREDENTIAL_REQUIRED`）
 - 不再回退实例级 `CURSOR_API_KEY` 或登录态
+
+### 6.5 启用用户自有 Codex 凭据（BYO）
+
+如果你希望每个登录用户都使用自己的 Codex/OpenAI API Key（而不是共享服务端 `OPENAI_API_KEY`）：
+
+1. 在 `.env.docker` 中设置 `FLOWX_CREDENTIAL_MASTER_KEY`（与 Cursor 共用加密主密钥）
+2. 重启服务
+3. 用户登录后进入“AI 凭据”页面，配置个人 Codex/OpenAI API Key
+
+执行优先级为：
+
+- 用户凭据
+- 实例级 `OPENAI_API_KEY`
+- 容器内 `codex login` 登录态
+
+若设置 `FLOWX_CODEX_REQUIRE_USER_CREDENTIAL=true`：
+
+- 未配置用户凭据的请求会直接失败（返回 `CODEX_USER_CREDENTIAL_REQUIRED`）
+- 不再回退实例级 `OPENAI_API_KEY` 或登录态
 
 ## 7. 数据库说明
 

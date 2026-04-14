@@ -94,6 +94,9 @@ export class WorkflowService {
   private readonly requireUserCursorCredential = this.parseBooleanEnv(
     process.env.FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL,
   );
+  private readonly requireUserCodexCredential = this.parseBooleanEnv(
+    process.env.FLOWX_CODEX_REQUIRE_USER_CREDENTIAL,
+  );
 
   constructor(
     private readonly prisma: PrismaService,
@@ -2381,7 +2384,12 @@ export class WorkflowService {
       requestUserDisplayName: recipient?.displayName,
     };
 
-    if (this.normalizeAiProvider(provider) !== 'cursor') {
+    const normalizedProvider = this.normalizeAiProvider(provider);
+    if (normalizedProvider === 'codex') {
+      return this.resolveCodexInvocationContext(context, recipient);
+    }
+
+    if (normalizedProvider !== 'cursor') {
       return context;
     }
 
@@ -2422,6 +2430,51 @@ export class WorkflowService {
     context.cursorCredentialSource = 'login-state';
     this.logger.log(
       `Cursor credential source=login-state for user ${recipient?.flowxUserId ?? 'unknown'}.`,
+    );
+    return context;
+  }
+
+  private async resolveCodexInvocationContext(
+    context: AIInvocationContext,
+    recipient?: WorkflowNotificationRecipient | null,
+  ): Promise<AIInvocationContext> {
+    if (recipient?.flowxUserId) {
+      try {
+        const userApiKey = await this.aiCredentialsService.getCodexApiKeyForUser(recipient.flowxUserId);
+        if (userApiKey) {
+          context.codexApiKey = userApiKey;
+          context.codexCredentialSource = 'user';
+          this.logger.log(`Codex credential source=user for user ${recipient.flowxUserId}.`);
+          return context;
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          `CODEX_CREDENTIAL_DECRYPT_FAILED user=${recipient.flowxUserId} message=${message}`,
+        );
+        throw new Error('CODEX_CREDENTIAL_DECRYPT_FAILED: Failed to decrypt user Codex credential.');
+      }
+    }
+
+    if (this.requireUserCodexCredential) {
+      const userId = recipient?.flowxUserId ?? 'unknown';
+      this.logger.warn(`CODEX_USER_CREDENTIAL_REQUIRED user=${userId}`);
+      throw new Error(
+        'CODEX_USER_CREDENTIAL_REQUIRED: This workspace requires per-user Codex credentials. Please configure your OpenAI API Key first.',
+      );
+    }
+
+    if (process.env.OPENAI_API_KEY?.trim()) {
+      context.codexCredentialSource = 'instance';
+      this.logger.log(
+        `Codex credential source=instance for user ${recipient?.flowxUserId ?? 'unknown'}.`,
+      );
+      return context;
+    }
+
+    context.codexCredentialSource = 'login-state';
+    this.logger.log(
+      `Codex credential source=login-state for user ${recipient?.flowxUserId ?? 'unknown'}.`,
     );
     return context;
   }

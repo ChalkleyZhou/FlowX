@@ -1,7 +1,7 @@
 import type {
   AuthOrganization,
   AuthSession,
-  CursorCredentialStatus,
+  AiCredentialStatus,
   Bug,
   DeployJobRecord,
   Issue,
@@ -290,14 +290,25 @@ export const api = {
     }),
   getCurrentSession: () => request<AuthSession>('/auth/session/me'),
   getCursorCredentialStatus: () =>
-    request<CursorCredentialStatus>('/auth/ai-credentials/cursor'),
+    request<AiCredentialStatus>('/auth/ai-credentials/cursor'),
   upsertCursorCredential: (payload: { apiKey: string }) =>
-    request<CursorCredentialStatus>('/auth/ai-credentials/cursor', {
+    request<AiCredentialStatus>('/auth/ai-credentials/cursor', {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
   deleteCursorCredential: () =>
-    request<CursorCredentialStatus>('/auth/ai-credentials/cursor', {
+    request<AiCredentialStatus>('/auth/ai-credentials/cursor', {
+      method: 'DELETE',
+    }),
+  getCodexCredentialStatus: () =>
+    request<AiCredentialStatus>('/auth/ai-credentials/codex'),
+  upsertCodexCredential: (payload: { apiKey: string }) =>
+    request<AiCredentialStatus>('/auth/ai-credentials/codex', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteCodexCredential: () =>
+    request<AiCredentialStatus>('/auth/ai-credentials/codex', {
       method: 'DELETE',
     }),
   getRequirements: () => request<Requirement[]>('/requirements'),

@@ -2,8 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CredentialCryptoService } from './credential-crypto.service';
 
+export type AiCredentialProvider = 'cursor' | 'codex';
+
 export type CredentialStatusResponse = {
-  provider: 'cursor';
+  provider: AiCredentialProvider;
   configured: boolean;
   updatedAt?: string;
 };
@@ -18,11 +20,46 @@ export class AiCredentialsService {
   ) {}
 
   async getCursorCredentialStatus(userId: string): Promise<CredentialStatusResponse> {
+    return this.getCredentialStatus(userId, 'cursor');
+  }
+
+  async getCodexCredentialStatus(userId: string): Promise<CredentialStatusResponse> {
+    return this.getCredentialStatus(userId, 'codex');
+  }
+
+  async upsertCursorCredential(userId: string, apiKey: string): Promise<CredentialStatusResponse> {
+    return this.upsertCredential(userId, 'cursor', apiKey);
+  }
+
+  async upsertCodexCredential(userId: string, apiKey: string): Promise<CredentialStatusResponse> {
+    return this.upsertCredential(userId, 'codex', apiKey);
+  }
+
+  async deleteCursorCredential(userId: string): Promise<CredentialStatusResponse> {
+    return this.deleteCredential(userId, 'cursor');
+  }
+
+  async deleteCodexCredential(userId: string): Promise<CredentialStatusResponse> {
+    return this.deleteCredential(userId, 'codex');
+  }
+
+  async getCursorApiKeyForUser(userId: string): Promise<string | null> {
+    return this.getApiKeyForUser(userId, 'cursor');
+  }
+
+  async getCodexApiKeyForUser(userId: string): Promise<string | null> {
+    return this.getApiKeyForUser(userId, 'codex');
+  }
+
+  private async getCredentialStatus(
+    userId: string,
+    provider: AiCredentialProvider,
+  ): Promise<CredentialStatusResponse> {
     const record = await this.prisma.userAiCredential.findUnique({
       where: {
         userId_provider: {
           userId,
-          provider: 'cursor',
+          provider,
         },
       },
       select: {
@@ -31,28 +68,32 @@ export class AiCredentialsService {
     });
 
     if (!record) {
-      return { provider: 'cursor', configured: false };
+      return { provider, configured: false };
     }
 
     return {
-      provider: 'cursor',
+      provider,
       configured: true,
       updatedAt: record.updatedAt.toISOString(),
     };
   }
 
-  async upsertCursorCredential(userId: string, apiKey: string): Promise<CredentialStatusResponse> {
+  private async upsertCredential(
+    userId: string,
+    provider: AiCredentialProvider,
+    apiKey: string,
+  ): Promise<CredentialStatusResponse> {
     const encryptedSecret = this.credentialCryptoService.encrypt(apiKey);
     const updated = await this.prisma.userAiCredential.upsert({
       where: {
         userId_provider: {
           userId,
-          provider: 'cursor',
+          provider,
         },
       },
       create: {
         userId,
-        provider: 'cursor',
+        provider,
         encryptedSecret,
         keyVersion: 1,
       },
@@ -65,37 +106,43 @@ export class AiCredentialsService {
       },
     });
 
-    this.logger.log(`Stored cursor credential for user ${userId}.`);
+    this.logger.log(`Stored ${provider} credential for user ${userId}.`);
 
     return {
-      provider: 'cursor',
+      provider,
       configured: true,
       updatedAt: updated.updatedAt.toISOString(),
     };
   }
 
-  async deleteCursorCredential(userId: string): Promise<CredentialStatusResponse> {
+  private async deleteCredential(
+    userId: string,
+    provider: AiCredentialProvider,
+  ): Promise<CredentialStatusResponse> {
     await this.prisma.userAiCredential.deleteMany({
       where: {
         userId,
-        provider: 'cursor',
+        provider,
       },
     });
 
-    this.logger.log(`Deleted cursor credential for user ${userId}.`);
+    this.logger.log(`Deleted ${provider} credential for user ${userId}.`);
 
     return {
-      provider: 'cursor',
+      provider,
       configured: false,
     };
   }
 
-  async getCursorApiKeyForUser(userId: string): Promise<string | null> {
+  private async getApiKeyForUser(
+    userId: string,
+    provider: AiCredentialProvider,
+  ): Promise<string | null> {
     const record = await this.prisma.userAiCredential.findUnique({
       where: {
         userId_provider: {
           userId,
-          provider: 'cursor',
+          provider,
         },
       },
       select: {

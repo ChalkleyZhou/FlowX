@@ -120,7 +120,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
 
       const child = spawn(invocation.command, [...invocation.prefixArgs, ...args], {
         cwd,
-        env: this.buildInvocationEnv(context),
+        env: this.buildCursorInvocationEnv(context),
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
@@ -276,7 +276,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
     return CURSOR_AUTH_ERROR_PATTERNS.some((pattern) => pattern.test(stderr));
   }
 
-  private buildInvocationEnv(context?: AIInvocationContext) {
+  private buildCursorInvocationEnv(context?: AIInvocationContext) {
     if (!context?.cursorApiKey) {
       return process.env;
     }
