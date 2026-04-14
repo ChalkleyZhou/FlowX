@@ -68,6 +68,7 @@ export function formatReviewFindingType(type?: string | null) {
 export function formatReviewFindingStatus(status?: string | null) {
   const map: Record<string, string> = {
     OPEN: '待处理',
+    FIXED_PENDING_REVIEW: '已修复待验证',
     ACCEPTED: '已接受',
     DISMISSED: '已忽略',
     CONVERTED_TO_ISSUE: '已转问题项',

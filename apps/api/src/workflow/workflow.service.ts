@@ -949,10 +949,23 @@ export class WorkflowService {
             finishedAt: new Date(),
           });
 
-          await this.transitionWorkflow(tx, id, WorkflowRunStatus.EXECUTION_RUNNING, {
-            to: WorkflowRunStatus.REVIEW_PENDING,
-            stage: StageType.AI_REVIEW,
-          });
+          const nextWorkflowStatus = this.getExecutionCompletionTargetStatus(trigger?.triggerType);
+
+          if (nextWorkflowStatus === WorkflowRunStatus.HUMAN_REVIEW_PENDING) {
+            await this.transitionWorkflow(tx, id, WorkflowRunStatus.EXECUTION_RUNNING, {
+              to: WorkflowRunStatus.REVIEW_PENDING,
+              stage: StageType.AI_REVIEW,
+            });
+            await this.transitionWorkflow(tx, id, WorkflowRunStatus.REVIEW_PENDING, {
+              to: WorkflowRunStatus.HUMAN_REVIEW_PENDING,
+              stage: StageType.HUMAN_REVIEW,
+            });
+          } else {
+            await this.transitionWorkflow(tx, id, WorkflowRunStatus.EXECUTION_RUNNING, {
+              to: nextWorkflowStatus,
+              stage: StageType.AI_REVIEW,
+            });
+          }
         });
 
         this.notifyStageCompleted({
@@ -961,7 +974,10 @@ export class WorkflowService {
           requirementTitle: workflow.requirement.title,
           stageName: '执行开发',
           result: '已完成',
-          nextStep: '可以开始 AI 审查阶段',
+          nextStep:
+            trigger?.triggerType === 'review_finding_fix'
+              ? '可继续修复其他审查结果，或按需重新执行 AI 审查'
+              : '可以开始 AI 审查阶段',
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Execution failed';
@@ -982,13 +998,7 @@ export class WorkflowService {
     const aiProviderLabel = this.getAiProviderLabel(workflow.aiProvider);
     this.assertStageNotRunning(workflow, StageType.AI_REVIEW);
     const recipient = this.toNotificationRecipient(notifyRecipient);
-    if (
-      workflow.status !== 'REVIEW_PENDING' &&
-      !(
-        (workflow.status === 'HUMAN_REVIEW_PENDING' || workflow.status === 'DONE') &&
-        humanFeedback
-      )
-    ) {
+    if (!this.canRunReviewFromStatus(workflow.status)) {
       throw new BadRequestException('Review can only run after execution completes.');
     }
     if (!workflow.plan || !workflow.codeExecution) {
@@ -1147,6 +1157,15 @@ export class WorkflowService {
     if (!finding) {
       throw new NotFoundException('Review finding not found.');
     }
+
+    if (finding.status === this.getReviewFindingStatusAfterFix()) {
+      throw new BadRequestException('该条审查结果已触发修复，等待重新审查后再继续处理。');
+    }
+
+    await this.prisma.reviewFinding.update({
+      where: { id: finding.id },
+      data: { status: this.getReviewFindingStatusAfterFix() },
+    });
 
     return this.runExecution(id, this.buildReviewFindingFixFeedback(finding), {
       triggerType: 'review_finding_fix',
@@ -2157,6 +2176,20 @@ export class WorkflowService {
       throw new BadRequestException(`Unsupported workflow status: ${status}`);
     }
     return entry[0] as WorkflowRunStatus;
+  }
+
+  private getExecutionCompletionTargetStatus(triggerType?: string): WorkflowRunStatus {
+    return triggerType === 'review_finding_fix'
+      ? WorkflowRunStatus.HUMAN_REVIEW_PENDING
+      : WorkflowRunStatus.REVIEW_PENDING;
+  }
+
+  private getReviewFindingStatusAfterFix(): string {
+    return 'FIXED_PENDING_REVIEW';
+  }
+
+  private canRunReviewFromStatus(status: string): boolean {
+    return status === 'REVIEW_PENDING' || status === 'HUMAN_REVIEW_PENDING' || status === 'DONE';
   }
 
   private fromPrismaStageStatus(status: string): StageExecutionStatus {

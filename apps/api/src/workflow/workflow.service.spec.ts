@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WorkflowService } from './workflow.service';
+import { WorkflowRunStatus } from '../common/enums';
 
 function createService() {
   return new WorkflowService(
@@ -79,5 +80,47 @@ describe('WorkflowService plan path validation', () => {
         true,
       ),
     ).resolves.toBe(true);
+  });
+});
+
+describe('WorkflowService review-finding execution flow', () => {
+  it('keeps the workflow in human review pending after fixing a finding', () => {
+    const service = createService();
+
+    const nextStatus = (service as unknown as {
+      getExecutionCompletionTargetStatus: (triggerType?: string) => WorkflowRunStatus;
+    }).getExecutionCompletionTargetStatus('review_finding_fix');
+
+    expect(nextStatus).toBe(WorkflowRunStatus.HUMAN_REVIEW_PENDING);
+  });
+
+  it('sends regular execution runs back to review pending', () => {
+    const service = createService();
+
+    const nextStatus = (service as unknown as {
+      getExecutionCompletionTargetStatus: (triggerType?: string) => WorkflowRunStatus;
+    }).getExecutionCompletionTargetStatus();
+
+    expect(nextStatus).toBe(WorkflowRunStatus.REVIEW_PENDING);
+  });
+
+  it('allows rerunning review from human review pending without extra feedback', () => {
+    const service = createService();
+
+    const canRunReview = (service as unknown as {
+      canRunReviewFromStatus: (status: string) => boolean;
+    }).canRunReviewFromStatus('HUMAN_REVIEW_PENDING');
+
+    expect(canRunReview).toBe(true);
+  });
+
+  it('marks a review finding as fixed pending review after triggering repair', () => {
+    const service = createService();
+
+    const nextStatus = (service as unknown as {
+      getReviewFindingStatusAfterFix: () => string;
+    }).getReviewFindingStatusAfterFix();
+
+    expect(nextStatus).toBe('FIXED_PENDING_REVIEW');
   });
 });

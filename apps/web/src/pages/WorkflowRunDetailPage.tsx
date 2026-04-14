@@ -305,10 +305,11 @@ export function WorkflowRunDetailPage() {
   const lastWorkflowSnapshotRef = useRef<string>('');
   const hasInitializedStageSelectionRef = useRef(false);
   const syncedReviewReportIdRef = useRef<string | null>(null);
+  const busyStageRef = useRef<string | null>(null);
 
   async function refresh(options?: { silent?: boolean }) {
     if (!workflowRunId) {
-      return;
+      return null;
     }
 
     if (!options?.silent) {
@@ -323,10 +324,13 @@ export function WorkflowRunDetailPage() {
         lastWorkflowSnapshotRef.current = nextSnapshot;
         setWorkflowRun(nextWorkflowRun);
       }
+
+      return nextWorkflowRun;
     } catch (error) {
       if (!options?.silent) {
         toast.error(error instanceof Error ? error.message : '加载工作流失败');
       }
+      return null;
     } finally {
       if (!options?.silent) {
         setLoading(false);
@@ -363,6 +367,14 @@ export function WorkflowRunDetailPage() {
   }, [workflowRun]);
 
   const hasRunningStage = workflowRun?.stageExecutions.some((item) => item.status === 'RUNNING') ?? false;
+  const stageActionsLocked = busyStage !== null || hasRunningStage;
+  const latestExecutionStage = workflowRun ? getStage(workflowRun, 'EXECUTION') : undefined;
+  const latestReviewStage = workflowRun ? getStage(workflowRun, 'AI_REVIEW') : undefined;
+  const hasStaleReviewResults =
+    !!workflowRun?.reviewReport &&
+    !!latestExecutionStage?.attempt &&
+    ((latestReviewStage?.attempt ?? 0) < latestExecutionStage.attempt ||
+      workflowRun.status === 'REVIEW_PENDING');
 
   useEffect(() => {
     const reviewReportId = workflowRun?.reviewReport?.id;
@@ -482,19 +494,29 @@ export function WorkflowRunDetailPage() {
     }
   }, [activeArtifact, activeDiffFile, selectedArtifactKey, selectedDiffFileKey]);
 
-  async function runAction(stage: string, action: () => Promise<unknown>, successText: string) {
-    if (busyStage) {
+  async function runAction(
+    stage: string,
+    action: () => Promise<unknown>,
+    successText: string,
+    options?: { focusNextStage?: boolean },
+  ) {
+    if (busyStageRef.current || hasRunningStage) {
       return;
     }
 
+    busyStageRef.current = stage;
     setBusyStage(stage);
     try {
       await action();
-      await refresh();
+      const nextWorkflowRun = await refresh();
+      if (options?.focusNextStage && nextWorkflowRun) {
+        setSelectedStage(inferFocusedStage(nextWorkflowRun));
+      }
       toast.success(successText);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '操作失败');
     } finally {
+      busyStageRef.current = null;
       setBusyStage(null);
     }
   }
@@ -761,22 +783,25 @@ export function WorkflowRunDetailPage() {
             key: 'run',
             label: '执行任务拆解',
             onClick: () => void runAction('TASK_SPLIT', () => api.runTaskSplit(workflowRun.id), '任务拆解已启动'),
-            disabled: workflowRun.status !== 'TASK_SPLIT_PENDING' || busyStage !== null,
+            disabled: workflowRun.status !== 'TASK_SPLIT_PENDING' || stageActionsLocked,
             loading: busyStage === 'TASK_SPLIT',
             variant: 'primary' as const,
           },
           {
             key: 'confirm',
             label: '确认',
-            onClick: () => void runAction('TASK_SPLIT', () => api.confirmTaskSplit(workflowRun.id), '任务拆解已确认'),
-            disabled: workflowRun.status !== 'TASK_SPLIT_WAITING_CONFIRMATION' || busyStage !== null,
+            onClick: () =>
+              void runAction('TASK_SPLIT', () => api.confirmTaskSplit(workflowRun.id), '任务拆解已确认', {
+                focusNextStage: true,
+              }),
+            disabled: workflowRun.status !== 'TASK_SPLIT_WAITING_CONFIRMATION' || stageActionsLocked,
             loading: busyStage === 'TASK_SPLIT',
           },
           {
             key: 'reject',
             label: '驳回',
             onClick: () => void runAction('TASK_SPLIT', () => api.rejectTaskSplit(workflowRun.id), '任务拆解已驳回'),
-            disabled: workflowRun.status !== 'TASK_SPLIT_WAITING_CONFIRMATION' || busyStage !== null,
+            disabled: workflowRun.status !== 'TASK_SPLIT_WAITING_CONFIRMATION' || stageActionsLocked,
             loading: busyStage === 'TASK_SPLIT',
             danger: true,
           },
@@ -787,7 +812,7 @@ export function WorkflowRunDetailPage() {
               setFeedbackModal({ stage: 'task-split', title: '任务拆解意见' });
               setFeedbackText('');
             },
-            disabled: workflowRun.status !== 'TASK_SPLIT_WAITING_CONFIRMATION' || busyStage !== null,
+            disabled: workflowRun.status !== 'TASK_SPLIT_WAITING_CONFIRMATION' || stageActionsLocked,
           },
           {
             key: 'edit',
@@ -797,7 +822,7 @@ export function WorkflowRunDetailPage() {
               setEditOutputText(JSON.stringify(output, null, 2));
               setEditModal({ stage: 'task-split', title: '人工修改任务拆解', initialOutput: output });
             },
-            disabled: workflowRun.status !== 'TASK_SPLIT_WAITING_CONFIRMATION' || busyStage !== null,
+            disabled: workflowRun.status !== 'TASK_SPLIT_WAITING_CONFIRMATION' || stageActionsLocked,
           },
         ],
       },
@@ -813,22 +838,25 @@ export function WorkflowRunDetailPage() {
             key: 'run',
             label: '生成技术方案',
             onClick: () => void runAction('TECHNICAL_PLAN', () => api.runPlan(workflowRun.id), '技术方案生成已启动'),
-            disabled: workflowRun.status !== 'PLAN_PENDING' || busyStage !== null,
+            disabled: workflowRun.status !== 'PLAN_PENDING' || stageActionsLocked,
             loading: busyStage === 'TECHNICAL_PLAN',
             variant: 'primary' as const,
           },
           {
             key: 'confirm',
             label: '确认',
-            onClick: () => void runAction('TECHNICAL_PLAN', () => api.confirmPlan(workflowRun.id), '技术方案已确认'),
-            disabled: workflowRun.status !== 'PLAN_WAITING_CONFIRMATION' || busyStage !== null,
+            onClick: () =>
+              void runAction('TECHNICAL_PLAN', () => api.confirmPlan(workflowRun.id), '技术方案已确认', {
+                focusNextStage: true,
+              }),
+            disabled: workflowRun.status !== 'PLAN_WAITING_CONFIRMATION' || stageActionsLocked,
             loading: busyStage === 'TECHNICAL_PLAN',
           },
           {
             key: 'reject',
             label: '驳回',
             onClick: () => void runAction('TECHNICAL_PLAN', () => api.rejectPlan(workflowRun.id), '技术方案已驳回'),
-            disabled: workflowRun.status !== 'PLAN_WAITING_CONFIRMATION' || busyStage !== null,
+            disabled: workflowRun.status !== 'PLAN_WAITING_CONFIRMATION' || stageActionsLocked,
             loading: busyStage === 'TECHNICAL_PLAN',
             danger: true,
           },
@@ -839,7 +867,7 @@ export function WorkflowRunDetailPage() {
               setFeedbackModal({ stage: 'plan', title: '技术方案意见' });
               setFeedbackText('');
             },
-            disabled: workflowRun.status !== 'PLAN_WAITING_CONFIRMATION' || busyStage !== null,
+            disabled: workflowRun.status !== 'PLAN_WAITING_CONFIRMATION' || stageActionsLocked,
           },
           {
             key: 'edit',
@@ -849,7 +877,7 @@ export function WorkflowRunDetailPage() {
               setEditOutputText(JSON.stringify(output, null, 2));
               setEditModal({ stage: 'plan', title: '人工修改技术方案', initialOutput: output });
             },
-            disabled: workflowRun.status !== 'PLAN_WAITING_CONFIRMATION' || busyStage !== null,
+            disabled: workflowRun.status !== 'PLAN_WAITING_CONFIRMATION' || stageActionsLocked,
           },
         ],
       },
@@ -865,7 +893,7 @@ export function WorkflowRunDetailPage() {
             key: 'run',
             label: '执行开发',
             onClick: () => void runAction('EXECUTION', () => api.runExecution(workflowRun.id), '开发执行已启动'),
-            disabled: workflowRun.status !== 'EXECUTION_PENDING' || busyStage !== null,
+            disabled: workflowRun.status !== 'EXECUTION_PENDING' || stageActionsLocked,
             loading: busyStage === 'EXECUTION',
             variant: 'primary' as const,
           },
@@ -878,7 +906,7 @@ export function WorkflowRunDetailPage() {
             },
             disabled:
               (workflowRun.status !== 'REVIEW_PENDING' && workflowRun.status !== 'DONE') ||
-              busyStage !== null,
+              stageActionsLocked,
           },
           {
             key: 'edit',
@@ -891,7 +919,7 @@ export function WorkflowRunDetailPage() {
             disabled:
               !workflowRun.codeExecution ||
               !['REVIEW_PENDING', 'HUMAN_REVIEW_PENDING', 'DONE'].includes(workflowRun.status) ||
-              busyStage !== null,
+              stageActionsLocked,
           },
         ],
       },
@@ -908,30 +936,33 @@ export function WorkflowRunDetailPage() {
             label: workflowRun.reviewReport ? '重新执行 AI 审查' : '执行 AI 审查',
             onClick: () => void runAction('AI_REVIEW', () => api.runReview(workflowRun.id), 'AI 审查已启动'),
             disabled:
-              (workflowRun.status !== 'REVIEW_PENDING' && workflowRun.status !== 'DONE') ||
-              busyStage !== null,
+              !['REVIEW_PENDING', 'HUMAN_REVIEW_PENDING', 'DONE'].includes(workflowRun.status) ||
+              stageActionsLocked,
             loading: busyStage === 'AI_REVIEW',
             variant: 'primary' as const,
           },
           {
             key: 'accept',
             label: '通过',
-            onClick: () => void runAction('AI_REVIEW', () => api.decideHumanReview(workflowRun.id, 'accept'), '工作流已通过'),
-            disabled: workflowRun.status !== 'HUMAN_REVIEW_PENDING' || busyStage !== null,
+            onClick: () =>
+              void runAction('AI_REVIEW', () => api.decideHumanReview(workflowRun.id, 'accept'), '工作流已通过', {
+                focusNextStage: true,
+              }),
+            disabled: workflowRun.status !== 'HUMAN_REVIEW_PENDING' || stageActionsLocked,
             loading: busyStage === 'AI_REVIEW',
           },
           {
             key: 'rework',
             label: '返工',
             onClick: () => void runAction('AI_REVIEW', () => api.decideHumanReview(workflowRun.id, 'rework'), '工作流已退回开发执行'),
-            disabled: workflowRun.status !== 'HUMAN_REVIEW_PENDING' || busyStage !== null,
+            disabled: workflowRun.status !== 'HUMAN_REVIEW_PENDING' || stageActionsLocked,
             loading: busyStage === 'AI_REVIEW',
           },
           {
             key: 'rollback',
             label: '回滚',
             onClick: () => void runAction('AI_REVIEW', () => api.decideHumanReview(workflowRun.id, 'rollback'), '工作流已回滚'),
-            disabled: workflowRun.status !== 'HUMAN_REVIEW_PENDING' || busyStage !== null,
+            disabled: workflowRun.status !== 'HUMAN_REVIEW_PENDING' || stageActionsLocked,
             loading: busyStage === 'AI_REVIEW',
             danger: true,
           },
@@ -944,7 +975,7 @@ export function WorkflowRunDetailPage() {
             },
             disabled:
               (workflowRun.status !== 'HUMAN_REVIEW_PENDING' && workflowRun.status !== 'DONE') ||
-              busyStage !== null,
+              stageActionsLocked,
           },
           {
             key: 'edit',
@@ -956,12 +987,12 @@ export function WorkflowRunDetailPage() {
             },
             disabled:
               (workflowRun.status !== 'HUMAN_REVIEW_PENDING' && workflowRun.status !== 'DONE') ||
-              busyStage !== null,
+              stageActionsLocked,
           },
         ],
       },
     };
-  }, [workflowRun, busyStage]);
+  }, [workflowRun, busyStage, stageActionsLocked]);
 
   if (!workflowRunId) {
     return <Navigate to="/workflow-runs" replace />;
@@ -1383,15 +1414,15 @@ export function WorkflowRunDetailPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="p-5 pt-0">
-                  {workflowRun.status === 'REVIEW_PENDING' ? (
+                  {hasStaleReviewResults ? (
                     <div className="mb-4 flex flex-col gap-3 rounded-md border border-warning/30 bg-warning/5 px-4 py-3 text-sm leading-6 text-warning">
                       <div>
-                        当前展示的是上一轮 AI 审查结果。你已经继续修复或尚未重新发起审查，请在检查代码变更后再次执行 AI 审查获取最新结果。
+                        当前展示的是上一轮 AI 审查结果。你可以继续逐条修复，也可以在任何时候重新执行 AI 审查来刷新结果。
                       </div>
                       <div>
                         <UiButton
                           onClick={() => void runAction('AI_REVIEW', () => api.runReview(workflowRun.id), 'AI 审查已启动')}
-                          disabled={busyStage !== null}
+                          disabled={stageActionsLocked}
                         >
                           {busyStage === 'AI_REVIEW' ? '处理中...' : '重新执行 AI 审查'}
                         </UiButton>
@@ -1423,6 +1454,7 @@ export function WorkflowRunDetailPage() {
                                 ),
                               disabled:
                                 busyFindingId !== null ||
+                                finding.status === 'FIXED_PENDING_REVIEW' ||
                                 (workflowRun.status !== 'HUMAN_REVIEW_PENDING' &&
                                   workflowRun.status !== 'DONE'),
                             },
