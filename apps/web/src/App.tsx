@@ -6,6 +6,7 @@ import { IssuesPage } from './pages/IssuesPage';
 import { IssueDetailPage } from './pages/IssueDetailPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { RequirementDetailPage } from './pages/RequirementDetailPage';
+import { AiCredentialsPage } from './pages/AiCredentialsPage';
 import { RequirementsPage } from './pages/RequirementsPage';
 import { WorkflowRunDetailPage } from './pages/WorkflowRunDetailPage';
 import { WorkflowRunsPage } from './pages/WorkflowRunsPage';
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="/issues/:issueId" element={<IssueDetailPage />} />
             <Route path="/bugs" element={<BugsPage />} />
             <Route path="/bugs/:bugId" element={<BugDetailPage />} />
+            <Route path="/settings/ai-credentials" element={<AiCredentialsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

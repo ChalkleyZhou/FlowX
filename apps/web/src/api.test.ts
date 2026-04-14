@@ -92,4 +92,22 @@ describe('api helpers', () => {
     expect(second).toEqual(payload);
     expect(third).toEqual(payload);
   });
+
+  it('calls cursor credential endpoint for updates', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ provider: 'cursor', configured: true }),
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.upsertCursorCredential({ apiKey: 'cursor-user-api-key' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3000/auth/ai-credentials/cursor',
+      expect.objectContaining({
+        method: 'PUT',
+      }),
+    );
+  });
 });

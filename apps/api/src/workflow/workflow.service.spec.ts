@@ -1,13 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { WorkflowService } from './workflow.service';
 import { WorkflowRunStatus } from '../common/enums';
 
-function createService() {
+function createService(overrides?: { aiCredentialsService?: { getCursorApiKeyForUser?: (userId: string) => Promise<string | null> } }) {
   return new WorkflowService(
     {} as never,
     {} as never,
     {} as never,
     {} as never,
+    (overrides?.aiCredentialsService ?? { getCursorApiKeyForUser: async () => null }) as never,
     { get: () => ({}) } as never,
   );
 }
@@ -122,5 +123,62 @@ describe('WorkflowService review-finding execution flow', () => {
     }).getReviewFindingStatusAfterFix();
 
     expect(nextStatus).toBe('FIXED_PENDING_REVIEW');
+  });
+});
+
+describe('WorkflowService cursor credential policy', () => {
+  const originalRequireUserCredential = process.env.FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL;
+  const originalCursorApiKey = process.env.CURSOR_API_KEY;
+
+  afterEach(() => {
+    if (originalRequireUserCredential === undefined) {
+      delete process.env.FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL;
+    } else {
+      process.env.FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL = originalRequireUserCredential;
+    }
+
+    if (originalCursorApiKey === undefined) {
+      delete process.env.CURSOR_API_KEY;
+    } else {
+      process.env.CURSOR_API_KEY = originalCursorApiKey;
+    }
+  });
+
+  it('blocks cursor execution when user credential is required but missing', async () => {
+    process.env.FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL = 'true';
+    delete process.env.CURSOR_API_KEY;
+    const service = createService({
+      aiCredentialsService: {
+        getCursorApiKeyForUser: async () => null,
+      },
+    });
+
+    await expect((service as unknown as {
+      resolveAiInvocationContext: (
+        provider: string,
+        recipient: { flowxUserId: string; displayName: string },
+      ) => Promise<unknown>;
+    }).resolveAiInvocationContext('cursor', { flowxUserId: 'user-1', displayName: 'User' })).rejects.toThrow(
+      /CURSOR_USER_CREDENTIAL_REQUIRED/,
+    );
+  });
+
+  it('keeps compatibility fallback when strict mode is disabled', async () => {
+    process.env.FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL = 'false';
+    process.env.CURSOR_API_KEY = 'instance-key';
+    const service = createService({
+      aiCredentialsService: {
+        getCursorApiKeyForUser: async () => null,
+      },
+    });
+
+    await expect((service as unknown as {
+      resolveAiInvocationContext: (
+        provider: string,
+        recipient: { flowxUserId: string; displayName: string },
+      ) => Promise<{ cursorCredentialSource?: string }>;
+    }).resolveAiInvocationContext('cursor', { flowxUserId: 'user-1', displayName: 'User' })).resolves.toMatchObject({
+      cursorCredentialSource: 'instance',
+    });
   });
 });

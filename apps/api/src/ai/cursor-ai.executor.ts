@@ -3,6 +3,7 @@ import { spawn } from 'child_process';
 import { access, mkdir, writeFile } from 'fs/promises';
 import { delimiter, join } from 'path';
 import { CodexAiExecutor } from './codex-ai.executor';
+import { type AIInvocationContext } from './ai-executor';
 
 const CURSOR_TIMEOUT_MS = Number(process.env.CURSOR_TIMEOUT_MS?.trim()) || 600_000;
 const CURSOR_DEBUG_ROOT = join(process.cwd(), '.flowx-data', 'cursor-debug');
@@ -27,6 +28,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
     prompt: string,
     stageName: string,
     addDirs: string[] = [],
+    context?: AIInvocationContext,
   ): Promise<T> {
     const cursorCwd = addDirs[0] ?? process.cwd();
     const args = ['-p', '--trust', '--output-format', 'json'];
@@ -36,7 +38,13 @@ export class CursorAiExecutor extends CodexAiExecutor {
     args.push(prompt);
 
     try {
-      const { stdout, stderr } = await this.runCursorProcess(args, cursorCwd, stageName, prompt);
+      const { stdout, stderr } = await this.runCursorProcess(
+        args,
+        cursorCwd,
+        stageName,
+        prompt,
+        context,
+      );
       const payload = JSON.parse(stdout.trim()) as {
         result?: string;
         subtype?: string;
@@ -55,7 +63,12 @@ export class CursorAiExecutor extends CodexAiExecutor {
     }
   }
 
-  protected override async runMutationStage(cwd: string, prompt: string, stageName: string) {
+  protected override async runMutationStage(
+    cwd: string,
+    prompt: string,
+    stageName: string,
+    context?: AIInvocationContext,
+  ) {
     const args = ['-p', '--trust', '--force', '--output-format', 'text'];
     if (CURSOR_MODEL) {
       args.push('--model', CURSOR_MODEL);
@@ -63,7 +76,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
     args.push(prompt);
 
     try {
-      await this.runCursorProcess(args, cwd, stageName, prompt);
+      await this.runCursorProcess(args, cwd, stageName, prompt, context);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown Cursor mutation error';
       this.cursorLogger.error(`Cursor ${stageName} failed: ${message}`);
@@ -76,6 +89,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
     cwd: string,
     stageName: string,
     prompt?: string,
+    context?: AIInvocationContext,
   ) {
     const invocation = await this.resolveCursorInvocation();
 
@@ -106,7 +120,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
 
       const child = spawn(invocation.command, [...invocation.prefixArgs, ...args], {
         cwd,
-        env: process.env,
+        env: this.buildInvocationEnv(context),
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
@@ -143,8 +157,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
           finished = true;
           clearTimeout(timeout);
           child.kill('SIGTERM');
-          const errorMessage =
-            'Cursor authentication failed. Re-run `agent login` (or `cursor agent login`) on the server, or provide CURSOR_API_KEY.';
+          const errorMessage = this.buildCursorAuthErrorMessage(context);
           void persistArtifact({
             status: 'FAILED',
             finishedAt: new Date().toISOString(),
@@ -261,6 +274,27 @@ export class CursorAiExecutor extends CodexAiExecutor {
 
   private isCursorAuthenticationError(stderr: string) {
     return CURSOR_AUTH_ERROR_PATTERNS.some((pattern) => pattern.test(stderr));
+  }
+
+  private buildInvocationEnv(context?: AIInvocationContext) {
+    if (!context?.cursorApiKey) {
+      return process.env;
+    }
+
+    return {
+      ...process.env,
+      CURSOR_API_KEY: context.cursorApiKey,
+    };
+  }
+
+  private buildCursorAuthErrorMessage(context?: AIInvocationContext) {
+    if (context?.cursorCredentialSource === 'user') {
+      return 'CURSOR_AUTH_INVALID_USER_KEY: Cursor authentication failed for user-scoped credential. Please update your Cursor API Key.';
+    }
+    if (context?.cursorCredentialSource === 'instance') {
+      return 'CURSOR_AUTH_INVALID_INSTANCE_KEY: Cursor authentication failed for instance CURSOR_API_KEY. Please rotate server credential.';
+    }
+    return 'CURSOR_AUTH_MISSING: Cursor authentication failed. Re-run `agent login` (or `cursor agent login`) on the server, or provide CURSOR_API_KEY.';
   }
 
   private parseCursorJsonResult<T>(result: string): T {

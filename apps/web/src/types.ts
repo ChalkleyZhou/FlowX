@@ -245,6 +245,12 @@ export interface AuthSession {
   organization: AuthOrganization | null;
 }
 
+export interface CursorCredentialStatus {
+  provider: 'cursor';
+  configured: boolean;
+  updatedAt?: string;
+}
+
 export interface IdeationSession {
   id: string;
   stage: 'BRAINSTORM' | 'DESIGN';

@@ -14,7 +14,7 @@ import {
   SplitTasksInput,
   SplitTasksOutput,
 } from '../common/types';
-import { AIExecutor } from './ai-executor';
+import { AIExecutor, type AIInvocationContext } from './ai-executor';
 
 function createBaselineTasks(title: string): SplitTaskItem[] {
   return [
@@ -41,7 +41,7 @@ function createBaselineTasks(title: string): SplitTaskItem[] {
 
 @Injectable()
 export class MockAiExecutor implements AIExecutor {
-  async brainstorm(input: BrainstormInput): Promise<BrainstormOutput> {
+  async brainstorm(input: BrainstormInput, _context?: AIInvocationContext): Promise<BrainstormOutput> {
     return {
       brief: {
         expandedDescription: `针对"${input.requirementTitle}"的详细产品描述：\n\n该功能旨在让用户能够高效地完成核心操作流程。通过直观的界面设计和合理的交互逻辑，用户可以快速上手并持续使用。\n\n在业务层面，该功能将提升团队协作效率，减少手动操作带来的错误，并通过数据可视化提供决策支持。\n\n用户体验上，重点在于操作的简洁性和反馈的及时性，确保每一步操作都有明确的结果和引导。`,
@@ -76,7 +76,10 @@ export class MockAiExecutor implements AIExecutor {
     };
   }
 
-  async generateDesign(input: GenerateDesignInput): Promise<GenerateDesignOutput> {
+  async generateDesign(
+    input: GenerateDesignInput,
+    _context?: AIInvocationContext,
+  ): Promise<GenerateDesignOutput> {
     return {
       design: {
         overview: '采用简洁直观的界面设计，遵循现有设计系统规范，确保一致性和低学习成本。',
@@ -137,7 +140,7 @@ export class MockAiExecutor implements AIExecutor {
     };
   }
 
-  async splitTasks(input: SplitTasksInput): Promise<SplitTasksOutput> {
+  async splitTasks(input: SplitTasksInput, _context?: AIInvocationContext): Promise<SplitTasksOutput> {
     const workspaceName = input.workspace?.name;
     return {
       tasks: createBaselineTasks(
@@ -154,7 +157,7 @@ export class MockAiExecutor implements AIExecutor {
     };
   }
 
-  async generatePlan(input: GeneratePlanInput): Promise<GeneratePlanOutput> {
+  async generatePlan(input: GeneratePlanInput, _context?: AIInvocationContext): Promise<GeneratePlanOutput> {
     const taskTitles = input.tasks.map((task) => task.title);
     return {
       summary: `Implement a staged workflow service for "${input.requirement.title}" with explicit confirmation gates.`,
@@ -181,7 +184,7 @@ export class MockAiExecutor implements AIExecutor {
     };
   }
 
-  async executeTask(input: ExecuteTaskInput): Promise<ExecuteTaskOutput> {
+  async executeTask(input: ExecuteTaskInput, _context?: AIInvocationContext): Promise<ExecuteTaskOutput> {
     return {
       patchSummary: `Execute approved plan for "${input.requirement.title}" across backend workflow orchestration and operator UI.`,
       changedFiles: [
@@ -221,7 +224,7 @@ export class MockAiExecutor implements AIExecutor {
     };
   }
 
-  async reviewCode(_input: ReviewCodeInput): Promise<ReviewCodeOutput> {
+  async reviewCode(_input: ReviewCodeInput, _context?: AIInvocationContext): Promise<ReviewCodeOutput> {
     return {
       issues: ['Execution result currently stores patch metadata instead of applying VCS patches.'],
       bugs: ['No retry policy is defined for transient AI provider failures.'],

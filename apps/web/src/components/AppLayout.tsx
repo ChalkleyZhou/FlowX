@@ -13,6 +13,7 @@ const items = [
   { key: '/workflow-runs', label: '工作流' },
   { key: '/issues', label: '问题项' },
   { key: '/bugs', label: '缺陷' },
+  { key: '/settings/ai-credentials', label: 'AI 凭据' },
 ];
 
 export function AppLayout({ children }: PropsWithChildren) {

@@ -146,6 +146,7 @@ model User {
   avatarUrl       String?
   status          String             @default("ACTIVE")
   localCredential LocalCredential?
+  aiCredentials   UserAiCredential[]
   identities      AuthIdentity[]
   sessions        UserSession[]
   memberships     UserOrganization[]
@@ -165,6 +166,19 @@ model LocalCredential {
   passwordHash String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+model UserAiCredential {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  provider        String
+  encryptedSecret String
+  keyVersion      Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, provider])
 }
 
 model AuthIdentity {

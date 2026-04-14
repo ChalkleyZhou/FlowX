@@ -1,6 +1,7 @@
 import type {
   AuthOrganization,
   AuthSession,
+  CursorCredentialStatus,
   Bug,
   DeployJobRecord,
   Issue,
@@ -288,6 +289,17 @@ export const api = {
       method: 'DELETE',
     }),
   getCurrentSession: () => request<AuthSession>('/auth/session/me'),
+  getCursorCredentialStatus: () =>
+    request<CursorCredentialStatus>('/auth/ai-credentials/cursor'),
+  upsertCursorCredential: (payload: { apiKey: string }) =>
+    request<CursorCredentialStatus>('/auth/ai-credentials/cursor', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteCursorCredential: () =>
+    request<CursorCredentialStatus>('/auth/ai-credentials/cursor', {
+      method: 'DELETE',
+    }),
   getRequirements: () => request<Requirement[]>('/requirements'),
   createRequirement: (payload: RequirementPayload) =>
     request<Requirement>('/requirements', {

@@ -26,7 +26,7 @@ import { executionPrompt } from '../prompts/execution.prompt';
 import { reviewPrompt } from '../prompts/review.prompt';
 import { taskSplitPrompt } from '../prompts/task-split.prompt';
 import { technicalPlanPrompt } from '../prompts/technical-plan.prompt';
-import { AIExecutor } from './ai-executor';
+import { AIExecutor, type AIInvocationContext } from './ai-executor';
 
 const execFile = promisify(execFileCallback);
 const CODEX_TIMEOUT_MS = Number(process.env.CODEX_TIMEOUT_MS?.trim()) || 600_000;
@@ -41,47 +41,56 @@ export class CodexAiExecutor implements AIExecutor {
   protected readonly providerLabel: string = 'Codex';
   protected readonly debugRoot: string = CODEX_DEBUG_ROOT;
 
-  async brainstorm(input: BrainstormInput): Promise<BrainstormOutput> {
+  async brainstorm(input: BrainstormInput, context?: AIInvocationContext): Promise<BrainstormOutput> {
     const prompt = this.buildBrainstormPrompt(input);
     return this.runJsonStage<BrainstormOutput>(
       'brainstorm.output.schema.json',
       prompt,
       'brainstorm',
+      [],
+      context,
     );
   }
 
-  async generateDesign(input: GenerateDesignInput): Promise<GenerateDesignOutput> {
+  async generateDesign(
+    input: GenerateDesignInput,
+    context?: AIInvocationContext,
+  ): Promise<GenerateDesignOutput> {
     const prompt = this.buildDesignGenerationPrompt(input);
     return this.runJsonStage<GenerateDesignOutput>(
       'design-generation.output.schema.json',
       prompt,
       'design generation',
+      [],
+      context,
     );
   }
 
-  async splitTasks(input: SplitTasksInput): Promise<SplitTasksOutput> {
+  async splitTasks(input: SplitTasksInput, context?: AIInvocationContext): Promise<SplitTasksOutput> {
     const prompt = await this.buildTaskSplitPrompt(input);
     const parsed = await this.runJsonStage<SplitTasksOutput>(
       'task-split.output.schema.json',
       prompt,
       'task split',
       this.getReadableRepositoryDirs(input.workspace?.repositories),
+      context,
     );
     this.assertSplitTasksOutput(parsed);
     return parsed;
   }
 
-  async generatePlan(input: GeneratePlanInput): Promise<GeneratePlanOutput> {
+  async generatePlan(input: GeneratePlanInput, context?: AIInvocationContext): Promise<GeneratePlanOutput> {
     const prompt = await this.buildTechnicalPlanPrompt(input);
     return this.runJsonStage<GeneratePlanOutput>(
       'technical-plan.output.schema.json',
       prompt,
       'technical plan',
       this.getReadableRepositoryDirs(input.workspace?.repositories),
+      context,
     );
   }
 
-  async executeTask(input: ExecuteTaskInput): Promise<ExecuteTaskOutput> {
+  async executeTask(input: ExecuteTaskInput, context?: AIInvocationContext): Promise<ExecuteTaskOutput> {
     const repositories = input.workspace?.repositories.filter(
       (repository) => repository.localPath && repository.syncStatus === 'READY',
     );
@@ -95,6 +104,7 @@ export class CodexAiExecutor implements AIExecutor {
         repository.localPath!,
         await this.buildRepositoryExecutionPrompt(input, repository),
         `execution-${repository.name}`,
+        context,
       );
     }
 
@@ -106,7 +116,7 @@ export class CodexAiExecutor implements AIExecutor {
     return executionOutput;
   }
 
-  async reviewCode(input: ReviewCodeInput): Promise<ReviewCodeOutput> {
+  async reviewCode(input: ReviewCodeInput, context?: AIInvocationContext): Promise<ReviewCodeOutput> {
     const repositoryDiffSection = this.buildExecutionArtifactSection(
       input.execution.diffArtifacts,
     );
@@ -116,6 +126,7 @@ export class CodexAiExecutor implements AIExecutor {
       await this.buildReviewPrompt(input, repositoryDiffSection),
       'review',
       this.getReadableRepositoryDirs(input.workspace?.repositories),
+      context,
     );
   }
 
@@ -677,6 +688,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     prompt: string,
     stageName: string,
     addDirs: string[] = [],
+    _context?: AIInvocationContext,
   ): Promise<T> {
     const tempDir = await mkdtemp(join(tmpdir(), 'flowx-codex-'));
     const outputPath = join(tempDir, `${stageName.replace(/\s+/g, '-')}.json`);
@@ -747,7 +759,12 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     );
   }
 
-  protected async runMutationStage(cwd: string, prompt: string, stageName: string) {
+  protected async runMutationStage(
+    cwd: string,
+    prompt: string,
+    stageName: string,
+    _context?: AIInvocationContext,
+  ) {
     try {
       await this.runCliProcess(
         [

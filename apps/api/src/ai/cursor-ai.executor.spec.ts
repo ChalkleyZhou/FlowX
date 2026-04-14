@@ -254,4 +254,44 @@ describe('CursorAiExecutor', () => {
       expect.objectContaining({ cwd: '/tmp/workspace' }),
     );
   });
+
+  it('injects per-invocation cursor api key into child env', async () => {
+    process.env.CURSOR_API_KEY = 'instance-key';
+    accessMock.mockImplementation(async (targetPath: string) => {
+      if (targetPath === '/mock/bin/agent') {
+        return;
+      }
+      throw new Error('missing');
+    });
+
+    spawnMock.mockImplementation((command: string, args: string[], options: { env?: Record<string, string> }) => {
+      const child = new FakeChildProcess();
+      queueMicrotask(() => {
+        child.stdout.emit(
+          'data',
+          Buffer.from(JSON.stringify({ subtype: 'success', is_error: false, result: '{"ok":true}' })),
+        );
+        child.emit('close', 0);
+      });
+      expect(options.env?.CURSOR_API_KEY).toBe('user-key');
+      return child;
+    });
+
+    const { CursorAiExecutor } = await import('./cursor-ai.executor');
+    const executor = new CursorAiExecutor();
+
+    await (executor as unknown as {
+      runJsonStage: <T>(
+        schemaFile: string,
+        prompt: string,
+        stageName: string,
+        addDirs?: string[],
+        context?: { cursorApiKey?: string },
+      ) => Promise<T>;
+    }).runJsonStage<{ ok: boolean }>('schema.json', 'hello', 'task split', ['/tmp/workspace'], {
+      cursorApiKey: 'user-key',
+    });
+
+    expect(process.env.CURSOR_API_KEY).toBe('instance-key');
+  });
 });

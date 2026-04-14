@@ -12,9 +12,11 @@ import { promisify } from 'util';
 import {
   AI_EXECUTOR_REGISTRY,
   type AIExecutor,
+  type AIInvocationContext,
   type AIExecutorProvider,
   type AIExecutorRegistry,
 } from '../ai/ai-executor';
+import { AiCredentialsService } from '../auth/ai-credentials.service';
 import {
   HumanReviewDecision,
   StageExecutionStatus,
@@ -89,12 +91,16 @@ export class WorkflowService {
   private readonly configuredDefaultAiProvider = this.parseAiProvider(
     process.env.AI_EXECUTOR_DEFAULT_PROVIDER ?? process.env.AI_EXECUTOR_PROVIDER,
   ) ?? 'codex';
+  private readonly requireUserCursorCredential = this.parseBooleanEnv(
+    process.env.FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL,
+  );
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly stateMachine: WorkflowStateMachine,
     private readonly repositorySyncService: RepositorySyncService,
     private readonly dingTalkNotificationService: DingTalkNotificationService,
+    private readonly aiCredentialsService: AiCredentialsService,
     @Inject(AI_EXECUTOR_REGISTRY) private readonly aiExecutorRegistry: AIExecutorRegistry,
   ) {}
 
@@ -484,6 +490,7 @@ export class WorkflowService {
 
     this.runInBackground(`task-split:${id}`, async () => {
       try {
+        const invocationContext = await this.resolveAiInvocationContext(workflow.aiProvider, recipient);
         // Fetch demo page artifacts for context
         const demoArtifacts = await this.prisma.ideationArtifact.findMany({
           where: { requirementId: requirement.id, type: 'DEMO_PAGE' },
@@ -492,18 +499,21 @@ export class WorkflowService {
         });
         const demoContext = demoArtifacts[0]?.content ?? null;
 
-        const splitOutput = await aiExecutor.splitTasks({
-          requirement: {
-            id: requirement.id,
-            title: requirement.title,
-            description: requirement.description,
-            acceptanceCriteria: requirement.acceptanceCriteria,
+        const splitOutput = await aiExecutor.splitTasks(
+          {
+            requirement: {
+              id: requirement.id,
+              title: requirement.title,
+              description: requirement.description,
+              acceptanceCriteria: requirement.acceptanceCriteria,
+            },
+            workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
+            humanFeedback: humanFeedback ?? null,
+            previousOutput: (previousStage?.output as SplitTasksOutput | null) ?? null,
+            demoPageContext: demoContext,
           },
-          workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
-          humanFeedback: humanFeedback ?? null,
-          previousOutput: (previousStage?.output as SplitTasksOutput | null) ?? null,
-          demoPageContext: demoContext,
-        });
+          invocationContext,
+        );
 
         await this.prisma.$transaction(async (tx) => {
           const stageExecution = await tx.stageExecution.findFirstOrThrow({
@@ -674,6 +684,7 @@ export class WorkflowService {
 
     this.runInBackground(`plan:${id}`, async () => {
       try {
+        const invocationContext = await this.resolveAiInvocationContext(workflow.aiProvider, recipient);
         // Fetch demo page artifacts for context
         const demoArtifacts = await this.prisma.ideationArtifact.findMany({
           where: { requirementId: workflow.requirement.id, type: 'DEMO_PAGE' },
@@ -682,19 +693,22 @@ export class WorkflowService {
         });
         const demoContext = demoArtifacts[0]?.content ?? null;
 
-        const rawOutput = this.normalizePlanOutput((await aiExecutor.generatePlan({
-          requirement: {
-            id: workflow.requirement.id,
-            title: workflow.requirement.title,
-            description: workflow.requirement.description,
-            acceptanceCriteria: workflow.requirement.acceptanceCriteria,
+        const rawOutput = this.normalizePlanOutput((await aiExecutor.generatePlan(
+          {
+            requirement: {
+              id: workflow.requirement.id,
+              title: workflow.requirement.title,
+              description: workflow.requirement.description,
+              acceptanceCriteria: workflow.requirement.acceptanceCriteria,
+            },
+            tasks,
+            workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
+            humanFeedback: humanFeedback ?? null,
+            previousOutput: (previousStage?.output as GeneratePlanOutput | null) ?? null,
+            demoPageContext: demoContext,
           },
-          tasks,
-          workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
-          humanFeedback: humanFeedback ?? null,
-          previousOutput: (previousStage?.output as GeneratePlanOutput | null) ?? null,
-          demoPageContext: demoContext,
-        })) as unknown as Record<string, unknown>);
+          invocationContext,
+        )) as unknown as Record<string, unknown>);
         const output = this.sanitizePlanOutputPaths(rawOutput, workflow.workflowRepositories);
         this.assertPlanHasConcreteFiles(rawOutput, output);
         await this.assertPlanMatchesRepositories(output, workflow.workflowRepositories);
@@ -891,31 +905,35 @@ export class WorkflowService {
 
     this.runInBackground(`execution:${id}`, async () => {
       try {
-        const rawOutput = await aiExecutor.executeTask({
-          requirement: {
-            id: workflow.requirement.id,
-            title: workflow.requirement.title,
-            description: workflow.requirement.description,
-            acceptanceCriteria: workflow.requirement.acceptanceCriteria,
+        const invocationContext = await this.resolveAiInvocationContext(workflow.aiProvider, recipient);
+        const rawOutput = await aiExecutor.executeTask(
+          {
+            requirement: {
+              id: workflow.requirement.id,
+              title: workflow.requirement.title,
+              description: workflow.requirement.description,
+              acceptanceCriteria: workflow.requirement.acceptanceCriteria,
+            },
+            tasks: workflow.tasks.map((task) => ({
+              title: task.title,
+              description: task.description,
+              surface: task.surface ?? 'unknown',
+              repositoryNames: Array.isArray(task.repositoryNames)
+                ? task.repositoryNames.map(String)
+                : [],
+            })),
+            plan: {
+              summary: confirmedPlan.summary,
+              implementationPlan: confirmedPlan.implementationPlan as string[],
+              filesToModify: confirmedPlan.filesToModify as string[],
+              newFiles: confirmedPlan.newFiles as string[],
+              riskPoints: confirmedPlan.riskPoints as string[],
+            },
+            workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
+            humanFeedback: humanFeedback ?? null,
           },
-          tasks: workflow.tasks.map((task) => ({
-            title: task.title,
-            description: task.description,
-            surface: task.surface ?? 'unknown',
-            repositoryNames: Array.isArray(task.repositoryNames)
-              ? task.repositoryNames.map(String)
-              : [],
-          })),
-          plan: {
-            summary: confirmedPlan.summary,
-            implementationPlan: confirmedPlan.implementationPlan as string[],
-            filesToModify: confirmedPlan.filesToModify as string[],
-            newFiles: confirmedPlan.newFiles as string[],
-            riskPoints: confirmedPlan.riskPoints as string[],
-          },
-          workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
-          humanFeedback: humanFeedback ?? null,
-        });
+          invocationContext,
+        );
         const output = this.sanitizeExecutionOutputPaths(rawOutput, workflow.workflowRepositories);
 
         await this.prisma.$transaction(async (tx) => {
@@ -1044,42 +1062,46 @@ export class WorkflowService {
 
     this.runInBackground(`review:${id}`, async () => {
       try {
-        const output = await aiExecutor.reviewCode({
-          requirement: {
-            id: workflow.requirement.id,
-            title: workflow.requirement.title,
-            description: workflow.requirement.description,
-            acceptanceCriteria: workflow.requirement.acceptanceCriteria,
+        const invocationContext = await this.resolveAiInvocationContext(workflow.aiProvider, recipient);
+        const output = await aiExecutor.reviewCode(
+          {
+            requirement: {
+              id: workflow.requirement.id,
+              title: workflow.requirement.title,
+              description: workflow.requirement.description,
+              acceptanceCriteria: workflow.requirement.acceptanceCriteria,
+            },
+            plan: {
+              summary: confirmedPlan.summary,
+              implementationPlan: confirmedPlan.implementationPlan as string[],
+              filesToModify: confirmedPlan.filesToModify as string[],
+              newFiles: confirmedPlan.newFiles as string[],
+              riskPoints: confirmedPlan.riskPoints as string[],
+            },
+            execution: {
+              patchSummary: executionResult.patchSummary,
+              changedFiles: executionResult.changedFiles as string[],
+              codeChanges: executionResult.codeChanges as Array<{
+                file: string;
+                changeType: 'create' | 'update';
+                summary: string;
+              }>,
+              diffArtifacts:
+                (executionResult.diffArtifacts as Array<{
+                  repository: string;
+                  branch: string;
+                  localPath: string;
+                  diffStat: string;
+                  diffText: string;
+                  untrackedFiles: string[];
+                }>) ?? [],
+            },
+            workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
+            humanFeedback: humanFeedback ?? null,
+            previousOutput: (previousStage?.output as ReviewCodeOutput | null) ?? null,
           },
-          plan: {
-            summary: confirmedPlan.summary,
-            implementationPlan: confirmedPlan.implementationPlan as string[],
-            filesToModify: confirmedPlan.filesToModify as string[],
-            newFiles: confirmedPlan.newFiles as string[],
-            riskPoints: confirmedPlan.riskPoints as string[],
-          },
-          execution: {
-            patchSummary: executionResult.patchSummary,
-            changedFiles: executionResult.changedFiles as string[],
-            codeChanges: executionResult.codeChanges as Array<{
-              file: string;
-              changeType: 'create' | 'update';
-              summary: string;
-            }>,
-            diffArtifacts:
-              (executionResult.diffArtifacts as Array<{
-                repository: string;
-                branch: string;
-                localPath: string;
-                diffStat: string;
-                diffText: string;
-                untrackedFiles: string[];
-              }>) ?? [],
-          },
-          workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
-          humanFeedback: humanFeedback ?? null,
-          previousOutput: (previousStage?.output as ReviewCodeOutput | null) ?? null,
-        });
+          invocationContext,
+        );
 
         await this.prisma.$transaction(async (tx) => {
           const reviewStage = await tx.stageExecution.findFirstOrThrow({
@@ -2348,6 +2370,69 @@ export class WorkflowService {
           ? candidate.organizationName
           : null,
     };
+  }
+
+  private async resolveAiInvocationContext(
+    provider?: string | null,
+    recipient?: WorkflowNotificationRecipient | null,
+  ): Promise<AIInvocationContext> {
+    const context: AIInvocationContext = {
+      requestUserId: recipient?.flowxUserId,
+      requestUserDisplayName: recipient?.displayName,
+    };
+
+    if (this.normalizeAiProvider(provider) !== 'cursor') {
+      return context;
+    }
+
+    if (recipient?.flowxUserId) {
+      try {
+        const userApiKey = await this.aiCredentialsService.getCursorApiKeyForUser(recipient.flowxUserId);
+        if (userApiKey) {
+          context.cursorApiKey = userApiKey;
+          context.cursorCredentialSource = 'user';
+          this.logger.log(`Cursor credential source=user for user ${recipient.flowxUserId}.`);
+          return context;
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          `CURSOR_CREDENTIAL_DECRYPT_FAILED user=${recipient.flowxUserId} message=${message}`,
+        );
+        throw new Error('CURSOR_CREDENTIAL_DECRYPT_FAILED: Failed to decrypt user Cursor credential.');
+      }
+    }
+
+    if (this.requireUserCursorCredential) {
+      const userId = recipient?.flowxUserId ?? 'unknown';
+      this.logger.warn(`CURSOR_USER_CREDENTIAL_REQUIRED user=${userId}`);
+      throw new Error(
+        'CURSOR_USER_CREDENTIAL_REQUIRED: This workspace requires per-user Cursor credentials. Please configure your Cursor API Key first.',
+      );
+    }
+
+    if (process.env.CURSOR_API_KEY?.trim()) {
+      context.cursorCredentialSource = 'instance';
+      this.logger.log(
+        `Cursor credential source=instance for user ${recipient?.flowxUserId ?? 'unknown'}.`,
+      );
+      return context;
+    }
+
+    context.cursorCredentialSource = 'login-state';
+    this.logger.log(
+      `Cursor credential source=login-state for user ${recipient?.flowxUserId ?? 'unknown'}.`,
+    );
+    return context;
+  }
+
+  private parseBooleanEnv(value?: string | null) {
+    if (!value) {
+      return false;
+    }
+
+    const normalized = value.trim().toLowerCase();
+    return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
   }
 
   private async runGit(args: string[], cwd: string) {
