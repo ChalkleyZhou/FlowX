@@ -70,8 +70,48 @@ describe('CursorAiExecutor', () => {
     );
   });
 
+  it('uses standalone `agent` command when available', async () => {
+    accessMock.mockImplementation(async (targetPath: string) => {
+      if (targetPath === '/mock/bin/agent') {
+        return;
+      }
+      throw new Error('missing');
+    });
+
+    spawnMock.mockImplementation((command: string, args: string[]) => {
+      const child = new FakeChildProcess();
+      queueMicrotask(() => {
+        child.stdout.emit(
+          'data',
+          Buffer.from(JSON.stringify({ subtype: 'success', is_error: false, result: '{"ok":true}' })),
+        );
+        child.emit('close', 0);
+      });
+      return child;
+    });
+
+    const { CursorAiExecutor } = await import('./cursor-ai.executor');
+    const executor = new CursorAiExecutor();
+
+    const result = await (executor as unknown as {
+      runJsonStage: <T>(schemaFile: string, prompt: string, stageName: string, addDirs?: string[]) => Promise<T>;
+    }).runJsonStage<{ ok: boolean }>('schema.json', 'hello', 'task split', ['/tmp/workspace']);
+
+    expect(result).toEqual({ ok: true });
+    expect(spawnMock).toHaveBeenCalledWith(
+      'agent',
+      ['-p', '--trust', '--output-format', 'json', 'hello'],
+      expect.objectContaining({ cwd: '/tmp/workspace' }),
+    );
+  });
+
   it('fails fast when Cursor reports an authentication error on stderr', async () => {
-    accessMock.mockResolvedValue(undefined);
+    accessMock.mockImplementation(async (targetPath: string) => {
+      if (targetPath === '/mock/bin/cursor-agent') {
+        return;
+      }
+      throw new Error('missing');
+    });
 
     const child = new FakeChildProcess();
     spawnMock.mockReturnValue(child);
@@ -186,7 +226,12 @@ describe('CursorAiExecutor', () => {
   });
 
   it('passes workspace trust flag for mutation stages too', async () => {
-    accessMock.mockResolvedValue(undefined);
+    accessMock.mockImplementation(async (targetPath: string) => {
+      if (targetPath === '/mock/bin/cursor-agent') {
+        return;
+      }
+      throw new Error('missing');
+    });
 
     spawnMock.mockImplementation((command: string, args: string[]) => {
       const child = new FakeChildProcess();

@@ -144,7 +144,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
           clearTimeout(timeout);
           child.kill('SIGTERM');
           const errorMessage =
-            'Cursor authentication failed. Re-run `cursor agent login` on the server or provide CURSOR_API_KEY.';
+            'Cursor authentication failed. Re-run `agent login` (or `cursor agent login`) on the server, or provide CURSOR_API_KEY.';
           void persistArtifact({
             status: 'FAILED',
             finishedAt: new Date().toISOString(),
@@ -222,6 +222,10 @@ export class CursorAiExecutor extends CodexAiExecutor {
   }
 
   private async resolveCursorInvocation() {
+    if (await this.commandExists('agent')) {
+      return { command: 'agent', prefixArgs: [] as string[] };
+    }
+
     if (await this.commandExists('cursor-agent')) {
       return { command: 'cursor-agent', prefixArgs: [] as string[] };
     }
@@ -231,7 +235,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
     }
 
     throw new Error(
-      'Cursor CLI is not installed. Expected either `cursor-agent` or `cursor` to be available in PATH.',
+      'Cursor CLI is not installed. Expected one of `agent`, `cursor-agent`, or `cursor` to be available in PATH.',
     );
   }
 

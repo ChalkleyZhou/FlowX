@@ -22,7 +22,9 @@ if [ "${AI_PROVIDER}" = "codex" ]; then
 fi
 
 if [ "${AI_PROVIDER}" = "cursor" ]; then
-  if ! command -v cursor-agent >/dev/null 2>&1 && ! command -v cursor >/dev/null 2>&1; then
+  if ! command -v agent >/dev/null 2>&1 \
+    && ! command -v cursor-agent >/dev/null 2>&1 \
+    && ! command -v cursor >/dev/null 2>&1; then
     echo "Cursor CLI is not installed in the image, but AI_EXECUTOR_PROVIDER=cursor." >&2
     exit 1
   fi
