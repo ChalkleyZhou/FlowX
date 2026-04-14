@@ -16,6 +16,8 @@ const items = [
   { key: '/settings/ai-credentials', label: 'AI 凭据' },
 ];
 
+const USER_MANUAL_PATH = '/user-manual.md';
+
 export function AppLayout({ children }: PropsWithChildren) {
   const { session, logout } = useAuth();
   const location = useLocation();
@@ -54,6 +56,15 @@ export function AppLayout({ children }: PropsWithChildren) {
               </Link>
             );
           })}
+          <a
+            href={USER_MANUAL_PATH}
+            target="_blank"
+            rel="noreferrer"
+            className="flex min-h-[46px] items-center justify-between rounded-md border border-transparent px-3.5 py-2.5 text-muted-foreground no-underline transition-colors hover:border-border/90 hover:bg-surface-subtle hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span>使用手册</span>
+            <Badge variant="outline" className="shrink-0">文档</Badge>
+          </a>
         </nav>
         {session ? (
           <div className="mt-auto border-t border-border/90 pt-3">
