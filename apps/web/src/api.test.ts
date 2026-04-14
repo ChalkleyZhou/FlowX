@@ -64,4 +64,32 @@ describe('api helpers', () => {
 
     await expect(api.getRequirements()).rejects.toThrow('first problem；second problem');
   });
+
+  it('deduplicates concurrent identical get requests', async () => {
+    const payload = [{ id: 'workspace-1' }];
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({
+              ok: true,
+              json: async () => payload,
+            });
+          }, 0);
+        }),
+    );
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    const [first, second, third] = await Promise.all([
+      api.getWorkspaces(),
+      api.getWorkspaces(),
+      api.getWorkspaces(),
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(first).toEqual(payload);
+    expect(second).toEqual(payload);
+    expect(third).toEqual(payload);
+  });
 });

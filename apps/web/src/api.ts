@@ -20,6 +20,7 @@ const API_BASE_URL = configuredApiBaseUrl
     ? `${window.location.origin}/api`
     : 'http://localhost:3000';
 const AUTH_TOKEN_STORAGE_KEY = 'flowx-auth-token';
+const pendingGetRequests = new Map<string, Promise<unknown>>();
 
 function buildApiUrl(path: string) {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
@@ -55,30 +56,76 @@ function clearAuthToken() {
   localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
 }
 
+function normalizeHeaders(headers?: HeadersInit) {
+  if (!headers) {
+    return '';
+  }
+
+  const normalizedHeaders = new Headers(headers);
+  const headerEntries: Array<[string, string]> = [];
+
+  normalizedHeaders.forEach((value, key) => {
+    headerEntries.push([key, value]);
+  });
+
+  return JSON.stringify(headerEntries.sort(([left], [right]) => left.localeCompare(right)));
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const token = getAuthToken();
-  const response = await fetch(buildApiUrl(path), {
+  const url = buildApiUrl(path);
+  const requestOptions = {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options?.headers ?? {}),
     },
     ...options,
-  });
+  };
+  const method = (requestOptions.method ?? 'GET').toUpperCase();
+  const requestKey =
+    method === 'GET'
+      ? JSON.stringify([url, token, normalizeHeaders(requestOptions.headers)])
+      : null;
 
-  if (!response.ok) {
-    const text = await response.text();
-    let parsedMessage = '';
-    try {
-      const data = JSON.parse(text) as { message?: string | string[] };
-      parsedMessage = Array.isArray(data.message) ? data.message.join('；') : data.message ?? '';
-    } catch {
-      // Ignore parse failures and fall back to raw text below.
+  if (requestKey) {
+    const pendingRequest = pendingGetRequests.get(requestKey);
+    if (pendingRequest) {
+      return pendingRequest as Promise<T>;
     }
-    throw new Error(parsedMessage || text || '请求失败');
   }
 
-  return response.json() as Promise<T>;
+  const requestPromise = (async () => {
+    const response = await fetch(url, requestOptions);
+
+    if (!response.ok) {
+      const text = await response.text();
+      let parsedMessage = '';
+      try {
+        const data = JSON.parse(text) as { message?: string | string[] };
+        parsedMessage = Array.isArray(data.message) ? data.message.join('；') : data.message ?? '';
+      } catch {
+        // Ignore parse failures and fall back to raw text below.
+      }
+      throw new Error(parsedMessage || text || '请求失败');
+    }
+
+    return response.json() as Promise<T>;
+  })();
+
+  if (requestKey) {
+    pendingGetRequests.set(requestKey, requestPromise);
+    requestPromise.then(
+      () => {
+        pendingGetRequests.delete(requestKey);
+      },
+      () => {
+        pendingGetRequests.delete(requestKey);
+      },
+    );
+  }
+
+  return requestPromise;
 }
 
 export const authTokenStorageKey = AUTH_TOKEN_STORAGE_KEY;

@@ -84,11 +84,11 @@ export function FlowXLogo({
             FlowX
           </div>
           <div className={cn(
-            'mt-[5px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap',
+            'mt-[5px] font-semibold tracking-[0.02em]',
             s.tagline,
             'text-muted-foreground',
           )}>
-            AI Delivery Workspace
+            AI 交付工作台
           </div>
         </div>
       ) : null}

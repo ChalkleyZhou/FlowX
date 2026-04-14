@@ -15,6 +15,11 @@ import type { AuthOrganization } from '../types';
 
 type LoginMode = 'password' | 'register';
 
+const handledOAuthCallbacks = new Set<string>();
+const pendingOAuthCallbackSessions = new Map<string, Promise<{ session: AuthOrganizationSession }>>();
+
+type AuthOrganizationSession = Awaited<ReturnType<typeof api.getCurrentSession>>;
+
 function readOAuthError(searchParams: URLSearchParams) {
   const error = searchParams.get('error');
   const description = searchParams.get('error_description');
@@ -65,24 +70,50 @@ export function LoginPage() {
     }
 
     if (token) {
+      const callbackKey = `token:${token}`;
       api.setAuthToken(token);
+
+      if (handledOAuthCallbacks.has(callbackKey)) {
+        return;
+      }
+
+      let active = true;
+      let request = pendingOAuthCallbackSessions.get(callbackKey);
+
+      if (!request) {
+        request = api.getCurrentSession().then((session) => ({ session }));
+        pendingOAuthCallbackSessions.set(callbackKey, request);
+      }
+
       void (async () => {
         setOauthProcessing(true);
         try {
-          const current = await api.getCurrentSession();
+          const { session: current } = await request;
+          pendingOAuthCallbackSessions.delete(callbackKey);
+
+          if (!active || handledOAuthCallbacks.has(callbackKey)) {
+            return;
+          }
+
+          handledOAuthCallbacks.add(callbackKey);
           applySession(current);
           toast.success('登录成功');
-          navigate(redirectPath, { replace: true });
         } catch (error) {
+          pendingOAuthCallbackSessions.delete(callbackKey);
           const nextError = error instanceof Error ? error.message : '登录失败';
           setErrorText(nextError);
           toast.error(nextError);
         } finally {
-          setOauthProcessing(false);
-          setSearchParams({}, { replace: true });
+          if (active) {
+            setOauthProcessing(false);
+            setSearchParams({}, { replace: true });
+          }
         }
       })();
-      return;
+
+      return () => {
+        active = false;
+      };
     }
 
     if (selectionTokenParam && organizationsParam) {
@@ -123,7 +154,6 @@ export function LoginPage() {
 
       applySession(result);
       toast.success(loginMode === 'password' ? '登录成功' : '注册成功');
-      navigate(redirectPath, { replace: true });
     } catch (error) {
       const nextError = error instanceof Error ? error.message : '登录失败';
       setErrorText(nextError);
@@ -197,7 +227,6 @@ export function LoginPage() {
       setSelectionToken('');
       setOrganizations([]);
       toast.success('组织选择成功');
-      navigate(redirectPath, { replace: true });
     } catch (error) {
       const nextError = error instanceof Error ? error.message : '组织选择失败';
       setErrorText(nextError);

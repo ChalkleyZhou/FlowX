@@ -9,6 +9,8 @@ import {
 import { api } from './api';
 import type { AuthSession } from './types';
 
+let pendingInitialSessionRefresh: Promise<AuthSession | null> | null = null;
+
 interface AuthContextValue {
   session: AuthSession | null;
   loading: boolean;
@@ -19,22 +21,43 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+function shouldSkipInitialSessionRefresh() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  if (window.location.pathname !== '/login') {
+    return false;
+  }
+
+  const searchParams = new URLSearchParams(window.location.search);
+  return [
+    'token',
+    'selectionToken',
+    'organizations',
+    'error',
+    'error_description',
+  ].some((key) => searchParams.has(key));
+}
+
+async function loadCurrentSession() {
+  try {
+    return await api.getCurrentSession();
+  } catch {
+    api.clearAuthToken();
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
 
   async function refreshSession() {
-    try {
-      const current = await api.getCurrentSession();
-      setSession(current);
-      return current;
-    } catch {
-      api.clearAuthToken();
-      setSession(null);
-      return null;
-    } finally {
-      setLoading(false);
-    }
+    const current = await loadCurrentSession();
+    setSession(current);
+    setLoading(false);
+    return current;
   }
 
   function applySession(nextSession: AuthSession) {
@@ -48,7 +71,31 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }
 
   useEffect(() => {
-    void refreshSession();
+    if (shouldSkipInitialSessionRefresh()) {
+      setLoading(false);
+      return;
+    }
+
+    let active = true;
+
+    if (!pendingInitialSessionRefresh) {
+      pendingInitialSessionRefresh = loadCurrentSession().finally(() => {
+        pendingInitialSessionRefresh = null;
+      });
+    }
+
+    void pendingInitialSessionRefresh.then((current) => {
+      if (!active) {
+        return;
+      }
+
+      setSession(current);
+      setLoading(false);
+    });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const value = useMemo<AuthContextValue>(
