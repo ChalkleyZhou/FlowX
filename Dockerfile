@@ -1,9 +1,12 @@
+## syntax=docker/dockerfile:1.7
 FROM node:20-bookworm-slim AS base
 
 ENV PNPM_HOME="/pnpm"
+ENV PNPM_STORE_DIR="/pnpm/store"
 ENV PATH="${PNPM_HOME}:${PATH}"
 
 RUN corepack enable \
+  && pnpm config set store-dir "${PNPM_STORE_DIR}" \
   && apt-get update \
   && apt-get install -y --no-install-recommends git ca-certificates openssh-client \
   && rm -rf /var/lib/apt/lists/*
@@ -15,7 +18,11 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=flowx-pnpm-store,target=/pnpm/store \
+  pnpm fetch --frozen-lockfile
+
+RUN --mount=type=cache,id=flowx-pnpm-store,target=/pnpm/store \
+  pnpm install --frozen-lockfile --offline
 
 FROM deps AS build
 WORKDIR /app

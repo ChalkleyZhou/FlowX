@@ -1,5 +1,8 @@
 services:
   flowx:
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: flowx:latest
     container_name: flowx
     restart: unless-stopped
