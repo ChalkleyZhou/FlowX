@@ -1182,8 +1182,8 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
   }
 
   private buildCodexAuthErrorMessage(context?: AIInvocationContext) {
-    if (context?.codexCredentialSource === 'user') {
-      return 'CODEX_AUTH_INVALID_USER_KEY: Codex authentication failed for user-scoped credential. Please update your OpenAI API Key.';
+    if (context?.codexCredentialSource === 'organization') {
+      return 'CODEX_AUTH_INVALID_ORG_KEY: Codex authentication failed for organization-scoped credential. Please update your organization OpenAI API Key.';
     }
     if (context?.codexCredentialSource === 'instance') {
       return 'CODEX_AUTH_INVALID_INSTANCE_KEY: Codex authentication failed for instance OPENAI_API_KEY. Please rotate server credential.';

@@ -4,8 +4,8 @@ import { WorkflowRunStatus } from '../common/enums';
 
 function createService(overrides?: {
   aiCredentialsService?: {
-    getCursorApiKeyForUser?: (userId: string) => Promise<string | null>;
-    getCodexApiKeyForUser?: (userId: string) => Promise<string | null>;
+    getCursorApiKeyForOrganization?: (organizationId: string) => Promise<string | null>;
+    getCodexApiKeyForOrganization?: (organizationId: string) => Promise<string | null>;
   };
 }) {
   return new WorkflowService(
@@ -14,8 +14,8 @@ function createService(overrides?: {
     {} as never,
     {} as never,
     (overrides?.aiCredentialsService ?? {
-      getCursorApiKeyForUser: async () => null,
-      getCodexApiKeyForUser: async () => null,
+      getCursorApiKeyForOrganization: async () => null,
+      getCodexApiKeyForOrganization: async () => null,
     }) as never,
     { get: () => ({}) } as never,
   );
@@ -171,7 +171,7 @@ describe('WorkflowService cursor credential policy', () => {
     delete process.env.CURSOR_API_KEY;
     const service = createService({
       aiCredentialsService: {
-        getCursorApiKeyForUser: async () => null,
+        getCursorApiKeyForOrganization: async () => null,
       },
     });
 
@@ -181,7 +181,7 @@ describe('WorkflowService cursor credential policy', () => {
         recipient: { flowxUserId: string; displayName: string },
       ) => Promise<unknown>;
     }).resolveAiInvocationContext('cursor', { flowxUserId: 'user-1', displayName: 'User' })).rejects.toThrow(
-      /CURSOR_USER_CREDENTIAL_REQUIRED/,
+      /CURSOR_ORGANIZATION_CREDENTIAL_REQUIRED/,
     );
   });
 
@@ -190,7 +190,7 @@ describe('WorkflowService cursor credential policy', () => {
     process.env.CURSOR_API_KEY = 'instance-key';
     const service = createService({
       aiCredentialsService: {
-        getCursorApiKeyForUser: async () => null,
+        getCursorApiKeyForOrganization: async () => null,
       },
     });
 
@@ -209,8 +209,8 @@ describe('WorkflowService cursor credential policy', () => {
     delete process.env.OPENAI_API_KEY;
     const service = createService({
       aiCredentialsService: {
-        getCursorApiKeyForUser: async () => null,
-        getCodexApiKeyForUser: async () => null,
+        getCursorApiKeyForOrganization: async () => null,
+        getCodexApiKeyForOrganization: async () => null,
       },
     });
 
@@ -220,28 +220,32 @@ describe('WorkflowService cursor credential policy', () => {
         recipient: { flowxUserId: string; displayName: string },
       ) => Promise<unknown>;
     }).resolveAiInvocationContext('codex', { flowxUserId: 'user-1', displayName: 'User' })).rejects.toThrow(
-      /CODEX_USER_CREDENTIAL_REQUIRED/,
+      /CODEX_ORGANIZATION_CREDENTIAL_REQUIRED/,
     );
   });
 
-  it('uses codex user credential before instance fallback', async () => {
+  it('uses codex organization credential before instance fallback', async () => {
     process.env.FLOWX_CODEX_REQUIRE_USER_CREDENTIAL = 'false';
     process.env.OPENAI_API_KEY = 'instance-openai-key';
     const service = createService({
       aiCredentialsService: {
-        getCursorApiKeyForUser: async () => null,
-        getCodexApiKeyForUser: async () => 'user-openai-key',
+        getCursorApiKeyForOrganization: async () => null,
+        getCodexApiKeyForOrganization: async () => 'org-openai-key',
       },
     });
 
     await expect((service as unknown as {
       resolveAiInvocationContext: (
         provider: string,
-        recipient: { flowxUserId: string; displayName: string },
+        recipient: { flowxUserId: string; flowxOrganizationId?: string; displayName: string },
       ) => Promise<{ codexApiKey?: string; codexCredentialSource?: string }>;
-    }).resolveAiInvocationContext('codex', { flowxUserId: 'user-1', displayName: 'User' })).resolves.toMatchObject({
-      codexApiKey: 'user-openai-key',
-      codexCredentialSource: 'user',
+    }).resolveAiInvocationContext('codex', {
+      flowxUserId: 'user-1',
+      flowxOrganizationId: 'org-1',
+      displayName: 'User',
+    })).resolves.toMatchObject({
+      codexApiKey: 'org-openai-key',
+      codexCredentialSource: 'organization',
     });
   });
 });

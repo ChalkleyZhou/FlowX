@@ -52,6 +52,11 @@ export function AppLayout({ children }: PropsWithChildren) {
       return;
     }
 
+    if (!session.organization?.id) {
+      setShowAiCredentialReminder(true);
+      return;
+    }
+
     let cancelled = false;
 
     async function checkAiCredentialStatus() {
@@ -69,7 +74,10 @@ export function AppLayout({ children }: PropsWithChildren) {
           setShowAiCredentialReminder(true);
         }
       } catch {
-        // Keep page navigation unblocked if credential probe fails.
+        // If probe fails (e.g. organization/session mismatch), still remind user to configure.
+        if (!cancelled) {
+          setShowAiCredentialReminder(true);
+        }
       }
     }
 
@@ -78,7 +86,7 @@ export function AppLayout({ children }: PropsWithChildren) {
     return () => {
       cancelled = true;
     };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, session?.organization?.id]);
 
   return (
     <>
@@ -146,7 +154,7 @@ export function AppLayout({ children }: PropsWithChildren) {
           <DialogHeader>
             <DialogTitle>请先配置 AI 凭据</DialogTitle>
             <DialogDescription>
-              未检测到当前账号的 Cursor/Codex 凭据，工作流将无法调用模型。请先前往「AI 凭据」页面完成配置。
+              未检测到当前组织的 Cursor/Codex 凭据，工作流将无法调用模型。请先前往「AI 凭据」页面完成配置。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

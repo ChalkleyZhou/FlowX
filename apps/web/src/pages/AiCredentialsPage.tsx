@@ -44,7 +44,7 @@ export function AiCredentialsPage() {
       const next = await api.upsertCursorCredential({ apiKey: cursorApiKey });
       setCursorStatus(next);
       setCursorApiKey('');
-      toast.success('已保存你的 Cursor API Key（服务端加密存储）');
+      toast.success('已保存组织 Cursor API Key（服务端加密存储）');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '保存 Cursor API Key 失败');
     } finally {
@@ -53,7 +53,7 @@ export function AiCredentialsPage() {
   }
 
   async function handleDeleteCursor() {
-    const confirmed = window.confirm('确认删除当前账号的 Cursor API Key 吗？');
+    const confirmed = window.confirm('确认删除当前组织的 Cursor API Key 吗？');
     if (!confirmed) {
       return;
     }
@@ -61,7 +61,7 @@ export function AiCredentialsPage() {
     try {
       const next = await api.deleteCursorCredential();
       setCursorStatus(next);
-      toast.success('已删除你的 Cursor API Key');
+      toast.success('已删除组织 Cursor API Key');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '删除 Cursor API Key 失败');
     } finally {
@@ -76,7 +76,7 @@ export function AiCredentialsPage() {
       const next = await api.upsertCodexCredential({ apiKey: codexApiKey });
       setCodexStatus(next);
       setCodexApiKey('');
-      toast.success('已保存你的 Codex/OpenAI API Key（服务端加密存储）');
+      toast.success('已保存组织 Codex/OpenAI API Key（服务端加密存储）');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '保存 Codex/OpenAI API Key 失败');
     } finally {
@@ -85,7 +85,7 @@ export function AiCredentialsPage() {
   }
 
   async function handleDeleteCodex() {
-    const confirmed = window.confirm('确认删除当前账号的 Codex/OpenAI API Key 吗？');
+    const confirmed = window.confirm('确认删除当前组织的 Codex/OpenAI API Key 吗？');
     if (!confirmed) {
       return;
     }
@@ -93,7 +93,7 @@ export function AiCredentialsPage() {
     try {
       const next = await api.deleteCodexCredential();
       setCodexStatus(next);
-      toast.success('已删除你的 Codex/OpenAI API Key');
+      toast.success('已删除组织 Codex/OpenAI API Key');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '删除 Codex/OpenAI API Key 失败');
     } finally {
@@ -106,7 +106,7 @@ export function AiCredentialsPage() {
       <PageHeader
         eyebrow="Credentials"
         title="AI 凭据设置"
-        description="为当前登录账号配置自己的 Cursor 与 Codex 凭据。工作流执行将优先使用你的用户凭据。"
+        description="为当前组织配置共享的 Cursor 与 Codex 凭据。工作流执行将使用组织级凭据。"
       />
       <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="space-y-2">

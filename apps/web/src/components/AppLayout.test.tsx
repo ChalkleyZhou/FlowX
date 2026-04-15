@@ -8,26 +8,36 @@ import { AppLayout } from './AppLayout';
 import { ThemeProvider } from './theme-provider';
 import { api } from '../api';
 
-const { logoutSpy, navigateSpy } = vi.hoisted(() => ({
-  logoutSpy: vi.fn(),
-  navigateSpy: vi.fn(),
-}));
+const { logoutSpy, navigateSpy, getSessionMock, setSessionOrganizationId } = vi.hoisted(() => {
+  const sessionMock = {
+    token: 'token-1',
+    expiresAt: '2026-04-15T00:00:00.000Z',
+    user: {
+      id: 'user-1',
+      displayName: 'Demo User',
+      avatarUrl: undefined,
+    },
+    organization: {
+      id: 'org-1',
+      name: 'FlowX Org',
+    },
+  };
+
+  return {
+    logoutSpy: vi.fn(),
+    navigateSpy: vi.fn(),
+    getSessionMock: () => sessionMock,
+    setSessionOrganizationId: (organizationId: string | null) => {
+      sessionMock.organization = organizationId
+        ? { id: organizationId, name: 'FlowX Org' }
+        : null;
+    },
+  };
+});
 
 vi.mock('../auth', () => ({
   useAuth: () => ({
-    session: {
-      token: 'token-1',
-      expiresAt: '2026-04-15T00:00:00.000Z',
-      user: {
-        id: 'user-1',
-        displayName: 'Demo User',
-        avatarUrl: undefined,
-      },
-      organization: {
-        id: 'org-1',
-        name: 'FlowX Org',
-      },
-    },
+    session: getSessionMock(),
     logout: logoutSpy,
   }),
 }));
@@ -69,6 +79,7 @@ describe('AppLayout', () => {
     root = createRoot(container);
     logoutSpy.mockReset();
     navigateSpy.mockReset();
+    setSessionOrganizationId('org-1');
     vi.mocked(api.getCursorCredentialStatus).mockResolvedValue({
       provider: 'cursor',
       configured: true,
@@ -178,7 +189,7 @@ describe('AppLayout', () => {
     expect(api.getCursorCredentialStatus).toHaveBeenCalledTimes(1);
     expect(api.getCodexCredentialStatus).toHaveBeenCalledTimes(1);
     expect(document.body.textContent).toContain('请先配置 AI 凭据');
-    expect(document.body.textContent).toContain('未检测到当前账号的 Cursor/Codex 凭据，工作流将无法调用模型。');
+    expect(document.body.textContent).toContain('未检测到当前组织的 Cursor/Codex 凭据，工作流将无法调用模型。');
     expect(document.body.textContent).toContain('去配置 AI 凭据');
   });
 
@@ -218,6 +229,30 @@ describe('AppLayout', () => {
     });
 
     expect(navigateSpy).toHaveBeenCalledWith('/settings/ai-credentials');
+  });
+
+  it('shows credential reminder when no organization is selected', async () => {
+    setSessionOrganizationId(null);
+
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/workspaces']}>
+          <ThemeProvider>
+            <AppLayout>
+              <div>content</div>
+            </AppLayout>
+          </ThemeProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(api.getCursorCredentialStatus).not.toHaveBeenCalled();
+    expect(api.getCodexCredentialStatus).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('请先配置 AI 凭据');
   });
 
   it('keeps sidebar scrollable when content exceeds viewport height', async () => {

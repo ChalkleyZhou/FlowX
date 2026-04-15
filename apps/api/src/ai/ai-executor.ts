@@ -17,8 +17,8 @@ export const AI_EXECUTOR = Symbol('AI_EXECUTOR');
 export const AI_EXECUTOR_REGISTRY = Symbol('AI_EXECUTOR_REGISTRY');
 
 export type AIExecutorProvider = 'codex' | 'cursor';
-export type CursorCredentialSource = 'user' | 'instance' | 'login-state';
-export type CodexCredentialSource = 'user' | 'instance' | 'login-state';
+export type CursorCredentialSource = 'organization' | 'instance' | 'login-state';
+export type CodexCredentialSource = 'organization' | 'instance' | 'login-state';
 
 export interface AIInvocationContext {
   requestUserId?: string;

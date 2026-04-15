@@ -80,6 +80,7 @@ const stageTypeMap: Record<StageType, string> = {
 
 type WorkflowNotificationRecipient = {
   flowxUserId: string;
+  flowxOrganizationId?: string | null;
   displayName: string;
   providerOrganizationId?: string | null;
   organizationName?: string | null;
@@ -2328,6 +2329,7 @@ export class WorkflowService {
 
     return {
       flowxUserId: session.user.id,
+      flowxOrganizationId: session.organization?.id ?? null,
       displayName: session.user.displayName,
       providerOrganizationId: session.organization?.providerOrganizationId ?? null,
       organizationName: session.organization?.name ?? null,
@@ -2363,6 +2365,10 @@ export class WorkflowService {
 
     return {
       flowxUserId,
+      flowxOrganizationId:
+        typeof candidate.flowxOrganizationId === 'string'
+          ? candidate.flowxOrganizationId
+          : null,
       displayName,
       providerOrganizationId:
         typeof candidate.providerOrganizationId === 'string'
@@ -2393,43 +2399,49 @@ export class WorkflowService {
       return context;
     }
 
-    if (recipient?.flowxUserId) {
+    if (recipient?.flowxOrganizationId) {
       try {
-        const userApiKey = await this.aiCredentialsService.getCursorApiKeyForUser(recipient.flowxUserId);
-        if (userApiKey) {
-          context.cursorApiKey = userApiKey;
-          context.cursorCredentialSource = 'user';
-          this.logger.log(`Cursor credential source=user for user ${recipient.flowxUserId}.`);
+        const organizationApiKey = await this.aiCredentialsService.getCursorApiKeyForOrganization(
+          recipient.flowxOrganizationId,
+        );
+        if (organizationApiKey) {
+          context.cursorApiKey = organizationApiKey;
+          context.cursorCredentialSource = 'organization';
+          this.logger.log(
+            `Cursor credential source=organization for organization ${recipient.flowxOrganizationId}.`,
+          );
           return context;
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         this.logger.error(
-          `CURSOR_CREDENTIAL_DECRYPT_FAILED user=${recipient.flowxUserId} message=${message}`,
+          `CURSOR_CREDENTIAL_DECRYPT_FAILED organization=${recipient.flowxOrganizationId} message=${message}`,
         );
-        throw new Error('CURSOR_CREDENTIAL_DECRYPT_FAILED: Failed to decrypt user Cursor credential.');
+        throw new Error(
+          'CURSOR_CREDENTIAL_DECRYPT_FAILED: Failed to decrypt organization Cursor credential.',
+        );
       }
     }
 
     if (this.requireUserCursorCredential) {
-      const userId = recipient?.flowxUserId ?? 'unknown';
-      this.logger.warn(`CURSOR_USER_CREDENTIAL_REQUIRED user=${userId}`);
+      const organizationId = recipient?.flowxOrganizationId ?? 'unknown';
+      this.logger.warn(`CURSOR_ORGANIZATION_CREDENTIAL_REQUIRED organization=${organizationId}`);
       throw new Error(
-        'CURSOR_USER_CREDENTIAL_REQUIRED: This workspace requires per-user Cursor credentials. Please configure your Cursor API Key first.',
+        'CURSOR_ORGANIZATION_CREDENTIAL_REQUIRED: This workspace requires organization-level Cursor credentials. Please configure your organization Cursor API Key first.',
       );
     }
 
     if (process.env.CURSOR_API_KEY?.trim()) {
       context.cursorCredentialSource = 'instance';
       this.logger.log(
-        `Cursor credential source=instance for user ${recipient?.flowxUserId ?? 'unknown'}.`,
+        `Cursor credential source=instance for organization ${recipient?.flowxOrganizationId ?? 'unknown'}.`,
       );
       return context;
     }
 
     context.cursorCredentialSource = 'login-state';
     this.logger.log(
-      `Cursor credential source=login-state for user ${recipient?.flowxUserId ?? 'unknown'}.`,
+      `Cursor credential source=login-state for organization ${recipient?.flowxOrganizationId ?? 'unknown'}.`,
     );
     return context;
   }
@@ -2438,43 +2450,49 @@ export class WorkflowService {
     context: AIInvocationContext,
     recipient?: WorkflowNotificationRecipient | null,
   ): Promise<AIInvocationContext> {
-    if (recipient?.flowxUserId) {
+    if (recipient?.flowxOrganizationId) {
       try {
-        const userApiKey = await this.aiCredentialsService.getCodexApiKeyForUser(recipient.flowxUserId);
-        if (userApiKey) {
-          context.codexApiKey = userApiKey;
-          context.codexCredentialSource = 'user';
-          this.logger.log(`Codex credential source=user for user ${recipient.flowxUserId}.`);
+        const organizationApiKey = await this.aiCredentialsService.getCodexApiKeyForOrganization(
+          recipient.flowxOrganizationId,
+        );
+        if (organizationApiKey) {
+          context.codexApiKey = organizationApiKey;
+          context.codexCredentialSource = 'organization';
+          this.logger.log(
+            `Codex credential source=organization for organization ${recipient.flowxOrganizationId}.`,
+          );
           return context;
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         this.logger.error(
-          `CODEX_CREDENTIAL_DECRYPT_FAILED user=${recipient.flowxUserId} message=${message}`,
+          `CODEX_CREDENTIAL_DECRYPT_FAILED organization=${recipient.flowxOrganizationId} message=${message}`,
         );
-        throw new Error('CODEX_CREDENTIAL_DECRYPT_FAILED: Failed to decrypt user Codex credential.');
+        throw new Error(
+          'CODEX_CREDENTIAL_DECRYPT_FAILED: Failed to decrypt organization Codex credential.',
+        );
       }
     }
 
     if (this.requireUserCodexCredential) {
-      const userId = recipient?.flowxUserId ?? 'unknown';
-      this.logger.warn(`CODEX_USER_CREDENTIAL_REQUIRED user=${userId}`);
+      const organizationId = recipient?.flowxOrganizationId ?? 'unknown';
+      this.logger.warn(`CODEX_ORGANIZATION_CREDENTIAL_REQUIRED organization=${organizationId}`);
       throw new Error(
-        'CODEX_USER_CREDENTIAL_REQUIRED: This workspace requires per-user Codex credentials. Please configure your OpenAI API Key first.',
+        'CODEX_ORGANIZATION_CREDENTIAL_REQUIRED: This workspace requires organization-level Codex credentials. Please configure your organization OpenAI API Key first.',
       );
     }
 
     if (process.env.OPENAI_API_KEY?.trim()) {
       context.codexCredentialSource = 'instance';
       this.logger.log(
-        `Codex credential source=instance for user ${recipient?.flowxUserId ?? 'unknown'}.`,
+        `Codex credential source=instance for organization ${recipient?.flowxOrganizationId ?? 'unknown'}.`,
       );
       return context;
     }
 
     context.codexCredentialSource = 'login-state';
     this.logger.log(
-      `Codex credential source=login-state for user ${recipient?.flowxUserId ?? 'unknown'}.`,
+      `Codex credential source=login-state for organization ${recipient?.flowxOrganizationId ?? 'unknown'}.`,
     );
     return context;
   }
@@ -2632,6 +2650,7 @@ type WorkflowNotificationSession = {
     displayName: string;
   };
   organization?: {
+    id?: string | null;
     providerOrganizationId?: string | null;
     name?: string | null;
   } | null;

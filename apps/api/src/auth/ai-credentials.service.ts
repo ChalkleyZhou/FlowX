@@ -19,46 +19,46 @@ export class AiCredentialsService {
     private readonly credentialCryptoService: CredentialCryptoService,
   ) {}
 
-  async getCursorCredentialStatus(userId: string): Promise<CredentialStatusResponse> {
-    return this.getCredentialStatus(userId, 'cursor');
+  async getCursorCredentialStatus(organizationId: string): Promise<CredentialStatusResponse> {
+    return this.getCredentialStatus(organizationId, 'cursor');
   }
 
-  async getCodexCredentialStatus(userId: string): Promise<CredentialStatusResponse> {
-    return this.getCredentialStatus(userId, 'codex');
+  async getCodexCredentialStatus(organizationId: string): Promise<CredentialStatusResponse> {
+    return this.getCredentialStatus(organizationId, 'codex');
   }
 
-  async upsertCursorCredential(userId: string, apiKey: string): Promise<CredentialStatusResponse> {
-    return this.upsertCredential(userId, 'cursor', apiKey);
+  async upsertCursorCredential(organizationId: string, apiKey: string): Promise<CredentialStatusResponse> {
+    return this.upsertCredential(organizationId, 'cursor', apiKey);
   }
 
-  async upsertCodexCredential(userId: string, apiKey: string): Promise<CredentialStatusResponse> {
-    return this.upsertCredential(userId, 'codex', apiKey);
+  async upsertCodexCredential(organizationId: string, apiKey: string): Promise<CredentialStatusResponse> {
+    return this.upsertCredential(organizationId, 'codex', apiKey);
   }
 
-  async deleteCursorCredential(userId: string): Promise<CredentialStatusResponse> {
-    return this.deleteCredential(userId, 'cursor');
+  async deleteCursorCredential(organizationId: string): Promise<CredentialStatusResponse> {
+    return this.deleteCredential(organizationId, 'cursor');
   }
 
-  async deleteCodexCredential(userId: string): Promise<CredentialStatusResponse> {
-    return this.deleteCredential(userId, 'codex');
+  async deleteCodexCredential(organizationId: string): Promise<CredentialStatusResponse> {
+    return this.deleteCredential(organizationId, 'codex');
   }
 
-  async getCursorApiKeyForUser(userId: string): Promise<string | null> {
-    return this.getApiKeyForUser(userId, 'cursor');
+  async getCursorApiKeyForOrganization(organizationId: string): Promise<string | null> {
+    return this.getApiKeyForOrganization(organizationId, 'cursor');
   }
 
-  async getCodexApiKeyForUser(userId: string): Promise<string | null> {
-    return this.getApiKeyForUser(userId, 'codex');
+  async getCodexApiKeyForOrganization(organizationId: string): Promise<string | null> {
+    return this.getApiKeyForOrganization(organizationId, 'codex');
   }
 
   private async getCredentialStatus(
-    userId: string,
+    organizationId: string,
     provider: AiCredentialProvider,
   ): Promise<CredentialStatusResponse> {
-    const record = await this.prisma.userAiCredential.findUnique({
+    const record = await this.prisma.organizationAiCredential.findUnique({
       where: {
-        userId_provider: {
-          userId,
+        organizationId_provider: {
+          organizationId,
           provider,
         },
       },
@@ -79,20 +79,20 @@ export class AiCredentialsService {
   }
 
   private async upsertCredential(
-    userId: string,
+    organizationId: string,
     provider: AiCredentialProvider,
     apiKey: string,
   ): Promise<CredentialStatusResponse> {
     const encryptedSecret = this.credentialCryptoService.encrypt(apiKey);
-    const updated = await this.prisma.userAiCredential.upsert({
+    const updated = await this.prisma.organizationAiCredential.upsert({
       where: {
-        userId_provider: {
-          userId,
+        organizationId_provider: {
+          organizationId,
           provider,
         },
       },
       create: {
-        userId,
+        organizationId,
         provider,
         encryptedSecret,
         keyVersion: 1,
@@ -106,7 +106,7 @@ export class AiCredentialsService {
       },
     });
 
-    this.logger.log(`Stored ${provider} credential for user ${userId}.`);
+    this.logger.log(`Stored ${provider} credential for organization ${organizationId}.`);
 
     return {
       provider,
@@ -116,17 +116,17 @@ export class AiCredentialsService {
   }
 
   private async deleteCredential(
-    userId: string,
+    organizationId: string,
     provider: AiCredentialProvider,
   ): Promise<CredentialStatusResponse> {
-    await this.prisma.userAiCredential.deleteMany({
+    await this.prisma.organizationAiCredential.deleteMany({
       where: {
-        userId,
+        organizationId,
         provider,
       },
     });
 
-    this.logger.log(`Deleted ${provider} credential for user ${userId}.`);
+    this.logger.log(`Deleted ${provider} credential for organization ${organizationId}.`);
 
     return {
       provider,
@@ -134,14 +134,14 @@ export class AiCredentialsService {
     };
   }
 
-  private async getApiKeyForUser(
-    userId: string,
+  private async getApiKeyForOrganization(
+    organizationId: string,
     provider: AiCredentialProvider,
   ): Promise<string | null> {
-    const record = await this.prisma.userAiCredential.findUnique({
+    const record = await this.prisma.organizationAiCredential.findUnique({
       where: {
-        userId_provider: {
-          userId,
+        organizationId_provider: {
+          organizationId,
           provider,
         },
       },

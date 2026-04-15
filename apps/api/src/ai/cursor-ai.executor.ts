@@ -288,8 +288,8 @@ export class CursorAiExecutor extends CodexAiExecutor {
   }
 
   private buildCursorAuthErrorMessage(context?: AIInvocationContext) {
-    if (context?.cursorCredentialSource === 'user') {
-      return 'CURSOR_AUTH_INVALID_USER_KEY: Cursor authentication failed for user-scoped credential. Please update your Cursor API Key.';
+    if (context?.cursorCredentialSource === 'organization') {
+      return 'CURSOR_AUTH_INVALID_ORG_KEY: Cursor authentication failed for organization-scoped credential. Please update your organization Cursor API Key.';
     }
     if (context?.cursorCredentialSource === 'instance') {
       return 'CURSOR_AUTH_INVALID_INSTANCE_KEY: Cursor authentication failed for instance CURSOR_API_KEY. Please rotate server credential.';
