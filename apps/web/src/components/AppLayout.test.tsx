@@ -219,4 +219,40 @@ describe('AppLayout', () => {
 
     expect(navigateSpy).toHaveBeenCalledWith('/settings/ai-credentials');
   });
+
+  it('keeps sidebar scrollable when content exceeds viewport height', async () => {
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/workspaces']}>
+          <ThemeProvider>
+            <AppLayout>
+              <div>content</div>
+            </AppLayout>
+          </ThemeProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    const sidebar = container.querySelector('aside');
+    expect(sidebar).toBeTruthy();
+    expect(sidebar?.className).toContain('overflow-y-auto');
+  });
+
+  it('uses compact settings entry in profile area', async () => {
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/workspaces']}>
+          <ThemeProvider>
+            <AppLayout>
+              <div>content</div>
+            </AppLayout>
+          </ThemeProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    const text = container.textContent ?? '';
+    expect(text).toContain('设置');
+    expect(text).not.toContain('设置与帮助');
+  });
 });

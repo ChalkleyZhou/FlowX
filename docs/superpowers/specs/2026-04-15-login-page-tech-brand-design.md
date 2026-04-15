@@ -53,9 +53,9 @@ Recommended and approved approach: balanced dark tech style with restrained effe
 2. Hero title (2-line value statement) centered on "AI Product R&D Efficiency Platform".
 3. Supporting paragraph describing end-to-end product R&D flow value.
 4. Three concise value points:
-   - End-to-end product/R&D collaboration
-   - Structured process assets
-   - Iterative closed-loop improvement
+  - End-to-end product/R&D collaboration
+  - Structured process assets
+  - Iterative closed-loop improvement
 5. Lightweight trust/support statement at bottom.
 
 ### Right auth panel structure
@@ -173,11 +173,11 @@ Potentially touched supporting styles/classes:
 ## Risks and Mitigations
 
 1. Risk: over-styling hurts readability.
-   - Mitigation: enforce restrained glow/contrast rules.
+  - Mitigation: enforce restrained glow/contrast rules.
 2. Risk: copy updates break brittle text assertions.
-   - Mitigation: update tests intentionally and keep semantic selectors stable.
+  - Mitigation: update tests intentionally and keep semantic selectors stable.
 3. Risk: mobile hero density pushes form too far down.
-   - Mitigation: auth-first stacking and reduced decorative payload on small screens.
+  - Mitigation: auth-first stacking and reduced decorative payload on small screens.
 
 ## Acceptance Criteria
 
@@ -185,4 +185,3 @@ Potentially touched supporting styles/classes:
 2. Visual style feels like a tech-brand website while remaining restrained.
 3. Existing auth flows and behavior remain functionally unchanged.
 4. Web tests pass after text assertion updates.
-

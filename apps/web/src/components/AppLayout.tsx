@@ -34,6 +34,7 @@ export function AppLayout({ children }: PropsWithChildren) {
   const location = useLocation();
   const navigate = useNavigate();
   const [showAiCredentialReminder, setShowAiCredentialReminder] = useState(false);
+  const [showSecondaryMenu, setShowSecondaryMenu] = useState(false);
 
   const selectedKey =
     [...primaryItems, ...secondaryItems].find((item) => location.pathname.startsWith(item.key))?.key ?? '/workspaces';
@@ -82,7 +83,7 @@ export function AppLayout({ children }: PropsWithChildren) {
   return (
     <>
       <div className="flex min-h-screen items-stretch gap-0 max-xl:flex-col">
-        <aside className="sticky top-0 flex h-screen w-[248px] min-w-[248px] flex-col gap-4 border-r border-border bg-gradient-to-b from-card/96 to-surface-subtle/98 px-3.5 py-[18px] transition-colors max-xl:static max-xl:h-auto max-xl:w-full max-xl:min-w-0 max-xl:flex-row max-xl:flex-wrap">
+        <aside className="sticky top-0 flex h-screen w-[248px] min-w-[248px] flex-col gap-4 overflow-y-auto border-r border-border bg-gradient-to-b from-card/96 to-surface-subtle/98 px-3.5 py-[18px] transition-colors max-xl:static max-xl:h-auto max-xl:w-full max-xl:min-w-0 max-xl:flex-row max-xl:flex-wrap">
         <div className="mb-4 flex items-center gap-3 border-b border-border/90 px-2.5 pb-3.5 pt-2">
           <FlowXLogo />
         </div>
@@ -108,30 +109,7 @@ export function AppLayout({ children }: PropsWithChildren) {
         </nav>
         {session ? (
           <div className="mt-auto border-t border-border/90 pt-3">
-            <div className="flex w-full min-w-0 flex-col items-stretch gap-3 rounded-lg border border-border bg-surface/78 px-3 py-2.5 shadow-sm backdrop-blur-[10px]">
-              <div className="border-b border-border/80 pb-2">
-                <ThemeToggle />
-              </div>
-              <div className="border-b border-border/80 pb-2">
-                <div className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">设置与帮助</div>
-                <div className="flex flex-col gap-1.5">
-                  {secondaryItems.map((item) => {
-                    const active = selectedKey === item.key;
-                    return (
-                      <Link
-                        key={item.key}
-                        to={item.key}
-                        className={[
-                          'flex min-h-[34px] items-center rounded-md border border-transparent px-2.5 py-1.5 text-sm text-muted-foreground no-underline transition-colors hover:border-border/90 hover:bg-surface-subtle hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                          active ? 'border-primary/25 bg-primary-soft/80 font-medium text-primary' : '',
-                        ].filter(Boolean).join(' ')}
-                      >
-                        {item.label}
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
+            <div className="flex w-full min-w-0 flex-col items-stretch gap-2.5 rounded-lg border border-border bg-surface/78 px-3 py-2.5 shadow-sm backdrop-blur-[10px]">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="grid h-[42px] w-[42px] shrink-0 place-items-center overflow-hidden rounded-md bg-primary-soft text-sm font-bold text-primary">
                   {session.user.avatarUrl ? (
@@ -147,9 +125,14 @@ export function AppLayout({ children }: PropsWithChildren) {
                   </div>
                 </div>
               </div>
-              <Button variant="outline" className="w-full" onClick={handleLogout}>
-                退出
-              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" className="w-full" onClick={() => setShowSecondaryMenu(true)}>
+                  设置
+                </Button>
+                <Button variant="outline" className="w-full" onClick={handleLogout}>
+                  退出
+                </Button>
+              </div>
             </div>
           </div>
         ) : null}
@@ -184,6 +167,29 @@ export function AppLayout({ children }: PropsWithChildren) {
               去配置 AI 凭据
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showSecondaryMenu} onOpenChange={setShowSecondaryMenu}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>设置与帮助</DialogTitle>
+            <DialogDescription>管理主题与常用入口。</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <ThemeToggle />
+            <div className="flex flex-col gap-1.5">
+              {secondaryItems.map((item) => (
+                <Link
+                  key={item.key}
+                  to={item.key}
+                  onClick={() => setShowSecondaryMenu(false)}
+                  className="flex min-h-[38px] items-center rounded-md border border-transparent px-2.5 py-1.5 text-sm text-muted-foreground no-underline transition-colors hover:border-border/90 hover:bg-surface-subtle hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </>
