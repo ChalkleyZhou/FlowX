@@ -8,11 +8,6 @@ import { AppLayout } from './AppLayout';
 import { ThemeProvider } from './theme-provider';
 import { api } from '../api';
 
-const { successToastSpy, errorToastSpy } = vi.hoisted(() => ({
-  successToastSpy: vi.fn(),
-  errorToastSpy: vi.fn(),
-}));
-
 const { logoutSpy, navigateSpy } = vi.hoisted(() => ({
   logoutSpy: vi.fn(),
   navigateSpy: vi.fn(),
@@ -42,13 +37,6 @@ vi.mock('../api', () => ({
     getCursorCredentialStatus: vi.fn(),
     getCodexCredentialStatus: vi.fn(),
   },
-}));
-
-vi.mock('./ui/toast', () => ({
-  useToast: () => ({
-    success: successToastSpy,
-    error: errorToastSpy,
-  }),
 }));
 
 vi.mock('react-router-dom', async () => {
@@ -81,8 +69,6 @@ describe('AppLayout', () => {
     root = createRoot(container);
     logoutSpy.mockReset();
     navigateSpy.mockReset();
-    successToastSpy.mockReset();
-    errorToastSpy.mockReset();
     vi.mocked(api.getCursorCredentialStatus).mockResolvedValue({
       provider: 'cursor',
       configured: true,
@@ -163,7 +149,7 @@ describe('AppLayout', () => {
     expect(navigateSpy).toHaveBeenCalledWith('/login', { replace: true });
   });
 
-  it('warns to configure AI credentials when both providers are missing', async () => {
+  it('shows centered modal when both AI credentials are missing', async () => {
     vi.mocked(api.getCursorCredentialStatus).mockResolvedValue({
       provider: 'cursor',
       configured: false,
@@ -191,6 +177,46 @@ describe('AppLayout', () => {
 
     expect(api.getCursorCredentialStatus).toHaveBeenCalledTimes(1);
     expect(api.getCodexCredentialStatus).toHaveBeenCalledTimes(1);
-    expect(errorToastSpy).toHaveBeenCalledWith('未检测到 Cursor/Codex 凭据，请先到“AI 凭据”页面配置，否则工作流无法调用模型。');
+    expect(document.body.textContent).toContain('请先配置 AI 凭据');
+    expect(document.body.textContent).toContain('未检测到当前账号的 Cursor/Codex 凭据，工作流将无法调用模型。');
+    expect(document.body.textContent).toContain('去配置 AI 凭据');
+  });
+
+  it('navigates to AI credential settings from the modal action', async () => {
+    vi.mocked(api.getCursorCredentialStatus).mockResolvedValue({
+      provider: 'cursor',
+      configured: false,
+    });
+    vi.mocked(api.getCodexCredentialStatus).mockResolvedValue({
+      provider: 'codex',
+      configured: false,
+    });
+
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/workspaces']}>
+          <ThemeProvider>
+            <AppLayout>
+              <div>content</div>
+            </AppLayout>
+          </ThemeProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const configureButton = Array.from(document.body.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '去配置 AI 凭据',
+    );
+    expect(configureButton).toBeTruthy();
+
+    await act(async () => {
+      configureButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(navigateSpy).toHaveBeenCalledWith('/settings/ai-credentials');
   });
 });

@@ -30,6 +30,6 @@ describe('FlowXLogo', () => {
       root?.render(<FlowXLogo />);
     });
 
-    expect(container.textContent).toContain('AI 交付工作台');
+    expect(container.textContent).toContain('AI 产研效能平台');
   });
 });

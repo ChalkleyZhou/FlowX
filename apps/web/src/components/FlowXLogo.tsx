@@ -88,7 +88,7 @@ export function FlowXLogo({
             s.tagline,
             'text-muted-foreground',
           )}>
-            AI 交付工作台
+            AI 产研效能平台
           </div>
         </div>
       ) : null}

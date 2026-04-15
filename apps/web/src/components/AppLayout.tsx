@@ -1,4 +1,4 @@
-import { useEffect, type PropsWithChildren } from 'react';
+import { useEffect, useState, type PropsWithChildren } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { api } from '../api';
@@ -6,7 +6,14 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { FlowXLogo } from './FlowXLogo';
 import { ThemeToggle } from './ThemeToggle';
-import { useToast } from './ui/toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
 
 const primaryItems = [
   { key: '/workspaces', label: '工作区' },
@@ -26,7 +33,7 @@ export function AppLayout({ children }: PropsWithChildren) {
   const { session, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const toast = useToast();
+  const [showAiCredentialReminder, setShowAiCredentialReminder] = useState(false);
 
   const selectedKey =
     [...primaryItems, ...secondaryItems].find((item) => location.pathname.startsWith(item.key))?.key ?? '/workspaces';
@@ -58,7 +65,7 @@ export function AppLayout({ children }: PropsWithChildren) {
         }
 
         if (!cursorStatus.configured && !codexStatus.configured) {
-          toast.error('未检测到 Cursor/Codex 凭据，请先到“AI 凭据”页面配置，否则工作流无法调用模型。');
+          setShowAiCredentialReminder(true);
         }
       } catch {
         // Keep page navigation unblocked if credential probe fails.
@@ -70,11 +77,12 @@ export function AppLayout({ children }: PropsWithChildren) {
     return () => {
       cancelled = true;
     };
-  }, [session?.user?.id, toast]);
+  }, [session?.user?.id]);
 
   return (
-    <div className="flex min-h-screen items-stretch gap-0 max-xl:flex-col">
-      <aside className="sticky top-0 flex h-screen w-[248px] min-w-[248px] flex-col gap-4 border-r border-border bg-gradient-to-b from-card/96 to-surface-subtle/98 px-3.5 py-[18px] transition-colors max-xl:static max-xl:h-auto max-xl:w-full max-xl:min-w-0 max-xl:flex-row max-xl:flex-wrap">
+    <>
+      <div className="flex min-h-screen items-stretch gap-0 max-xl:flex-col">
+        <aside className="sticky top-0 flex h-screen w-[248px] min-w-[248px] flex-col gap-4 border-r border-border bg-gradient-to-b from-card/96 to-surface-subtle/98 px-3.5 py-[18px] transition-colors max-xl:static max-xl:h-auto max-xl:w-full max-xl:min-w-0 max-xl:flex-row max-xl:flex-wrap">
         <div className="mb-4 flex items-center gap-3 border-b border-border/90 px-2.5 pb-3.5 pt-2">
           <FlowXLogo />
         </div>
@@ -145,10 +153,39 @@ export function AppLayout({ children }: PropsWithChildren) {
             </div>
           </div>
         ) : null}
-      </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <main className="mx-auto flex w-full min-[1440px]:w-[min(1440px,100%)] flex-col gap-7 px-7 pb-10 pt-6 max-[1440px]:px-6 max-[1440px]:pb-8 max-[960px]:gap-5 max-[960px]:px-5 max-[960px]:pb-7 max-[780px]:gap-4 max-[780px]:px-3.5 max-[780px]:pb-6">{children}</main>
+        </aside>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <main className="mx-auto flex w-full min-[1440px]:w-[min(1440px,100%)] flex-col gap-7 px-7 pb-10 pt-6 max-[1440px]:px-6 max-[1440px]:pb-8 max-[960px]:gap-5 max-[960px]:px-5 max-[960px]:pb-7 max-[780px]:gap-4 max-[780px]:px-3.5 max-[780px]:pb-6">{children}</main>
+        </div>
       </div>
-    </div>
+      <Dialog open={showAiCredentialReminder} onOpenChange={setShowAiCredentialReminder}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>请先配置 AI 凭据</DialogTitle>
+            <DialogDescription>
+              未检测到当前账号的 Cursor/Codex 凭据，工作流将无法调用模型。请先前往「AI 凭据」页面完成配置。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowAiCredentialReminder(false)}
+            >
+              暂不处理
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setShowAiCredentialReminder(false);
+                navigate('/settings/ai-credentials');
+              }}
+            >
+              去配置 AI 凭据
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
