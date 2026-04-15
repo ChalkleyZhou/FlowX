@@ -152,6 +152,34 @@ describe('LoginPage', () => {
     expect(container.textContent).toContain('workspaces-page');
   });
 
+  it('renders tech-brand hero copy for AI product R&D efficiency platform', async () => {
+    const { api } = await import('../api');
+    vi.mocked(api.getCurrentSession).mockRejectedValue(new Error('unauthorized'));
+
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/login']}>
+          <AuthProvider>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/" element={<Navigate to="/workspaces" replace />} />
+              <Route path="/workspaces" element={<HomePageProbe />} />
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const text = container.textContent ?? '';
+    expect(text).toContain('AI 产研效能平台');
+    expect(text).toContain('让需求、研发与审查在同一条可控流程中协同');
+    expect(text).toContain('进入 AI 产研效能平台');
+  });
+
   it('processes oauth callback only once in strict mode', async () => {
     const { StrictMode } = await import('react');
     const { api } = await import('../api');
