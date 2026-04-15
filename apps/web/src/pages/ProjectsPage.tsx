@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { EmptyState } from '../components/EmptyState';
-import { FilterBar } from '../components/FilterBar';
+import { ListToolbar } from '../components/ListToolbar';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
 import { RecordListItem } from '../components/RecordListItem';
@@ -185,30 +185,30 @@ export function ProjectsPage() {
           <SectionHeader
             eyebrow="Projects"
             title="项目列表"
-            extra={
-              <FilterBar className="border-0 bg-transparent p-0">
-                <Select
-                  value={selectedWorkspaceId ?? '__all__'}
-                  onValueChange={(value) => setSelectedWorkspaceId(value === '__all__' ? undefined : value)}
-                >
-                  <SelectTrigger className="min-w-[220px]">
-                    <SelectValue placeholder="按工作区筛选" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">全部工作区</SelectItem>
-                    {workspaces.map((workspace) => (
-                      <SelectItem key={workspace.id} value={workspace.id}>
-                        {workspace.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <UiButton onClick={() => setCreateModalOpen(true)}>新增项目</UiButton>
-              </FilterBar>
-            }
+            extra={<UiButton onClick={() => setCreateModalOpen(true)}>新增项目</UiButton>}
           />
         </CardHeader>
         <CardContent className="p-5 pt-0">
+          <ListToolbar
+            filters={(
+              <Select
+                value={selectedWorkspaceId ?? '__all__'}
+                onValueChange={(value) => setSelectedWorkspaceId(value === '__all__' ? undefined : value)}
+              >
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue placeholder="按工作区筛选" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">全部工作区</SelectItem>
+                  {workspaces.map((workspace) => (
+                    <SelectItem key={workspace.id} value={workspace.id}>
+                      {workspace.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
           {loading ? (
             <div className="flex min-h-40 items-center justify-center">
               <Spinner className="h-7 w-7" />

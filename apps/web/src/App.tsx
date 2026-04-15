@@ -11,6 +11,7 @@ import { RequirementsPage } from './pages/RequirementsPage';
 import { WorkflowRunDetailPage } from './pages/WorkflowRunDetailPage';
 import { WorkflowRunsPage } from './pages/WorkflowRunsPage';
 import { WorkspacesPage } from './pages/WorkspacesPage';
+import { UserManualPage } from './pages/UserManualPage';
 import { ProtectedLayout, ProtectedRoute } from './routes/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
 import { ToastProvider } from './components/ui/toast';
@@ -40,6 +41,7 @@ export default function App() {
             <Route path="/issues/:issueId" element={<IssueDetailPage />} />
             <Route path="/bugs" element={<BugsPage />} />
             <Route path="/bugs/:bugId" element={<BugDetailPage />} />
+            <Route path="/user-manual" element={<UserManualPage />} />
             <Route path="/settings/ai-credentials" element={<AiCredentialsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -6,17 +6,19 @@ import { Badge } from './ui/badge';
 import { FlowXLogo } from './FlowXLogo';
 import { ThemeToggle } from './ThemeToggle';
 
-const items = [
+const primaryItems = [
   { key: '/workspaces', label: '工作区' },
   { key: '/projects', label: '项目' },
   { key: '/requirements', label: '需求' },
   { key: '/workflow-runs', label: '工作流' },
   { key: '/issues', label: '问题项' },
   { key: '/bugs', label: '缺陷' },
-  { key: '/settings/ai-credentials', label: 'AI 凭据' },
 ];
 
-const USER_MANUAL_PATH = '/user-manual.md';
+const secondaryItems = [
+  { key: '/user-manual', label: '使用手册' },
+  { key: '/settings/ai-credentials', label: 'AI 凭据' },
+];
 
 export function AppLayout({ children }: PropsWithChildren) {
   const { session, logout } = useAuth();
@@ -24,9 +26,12 @@ export function AppLayout({ children }: PropsWithChildren) {
   const navigate = useNavigate();
 
   const selectedKey =
-    items.find((item) => location.pathname.startsWith(item.key))?.key ?? '/workspaces';
+    [...primaryItems, ...secondaryItems].find((item) => location.pathname.startsWith(item.key))?.key ?? '/workspaces';
 
   function handleLogout() {
+    if (!window.confirm('确认退出登录吗？')) {
+      return;
+    }
     logout();
     navigate('/login', { replace: true });
   }
@@ -38,7 +43,7 @@ export function AppLayout({ children }: PropsWithChildren) {
           <FlowXLogo />
         </div>
         <nav className="flex flex-col gap-2 pt-0.5 max-xl:flex-row max-xl:flex-wrap">
-          {items.map((item) => {
+          {primaryItems.map((item) => {
             const active = selectedKey === item.key;
             return (
               <Link
@@ -56,20 +61,33 @@ export function AppLayout({ children }: PropsWithChildren) {
               </Link>
             );
           })}
-          <a
-            href={USER_MANUAL_PATH}
-            target="_blank"
-            rel="noreferrer"
-            className="flex min-h-[46px] items-center justify-between rounded-md border border-transparent px-3.5 py-2.5 text-muted-foreground no-underline transition-colors hover:border-border/90 hover:bg-surface-subtle hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <span>使用手册</span>
-            <Badge variant="outline" className="shrink-0">文档</Badge>
-          </a>
         </nav>
         {session ? (
           <div className="mt-auto border-t border-border/90 pt-3">
-            <ThemeToggle />
             <div className="flex w-full min-w-0 flex-col items-stretch gap-3 rounded-lg border border-border bg-surface/78 px-3 py-2.5 shadow-sm backdrop-blur-[10px]">
+              <div className="border-b border-border/80 pb-2">
+                <ThemeToggle />
+              </div>
+              <div className="border-b border-border/80 pb-2">
+                <div className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">设置与帮助</div>
+                <div className="flex flex-col gap-1.5">
+                  {secondaryItems.map((item) => {
+                    const active = selectedKey === item.key;
+                    return (
+                      <Link
+                        key={item.key}
+                        to={item.key}
+                        className={[
+                          'flex min-h-[34px] items-center rounded-md border border-transparent px-2.5 py-1.5 text-sm text-muted-foreground no-underline transition-colors hover:border-border/90 hover:bg-surface-subtle hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                          active ? 'border-primary/25 bg-primary-soft/80 font-medium text-primary' : '',
+                        ].filter(Boolean).join(' ')}
+                      >
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="flex min-w-0 items-center gap-3">
                 <div className="grid h-[42px] w-[42px] shrink-0 place-items-center overflow-hidden rounded-md bg-primary-soft text-sm font-bold text-primary">
                   {session.user.avatarUrl ? (

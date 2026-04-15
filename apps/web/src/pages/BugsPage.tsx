@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { EmptyState } from '../components/EmptyState';
-import { FilterBar } from '../components/FilterBar';
+import { ListToolbar } from '../components/ListToolbar';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
 import { RecordListItem } from '../components/RecordListItem';
@@ -121,81 +121,83 @@ export function BugsPage() {
             </div>
           ) : (
             <>
-        <div className="mb-[18px] grid gap-[10px] rounded-2xl border border-border bg-muted p-[14px] max-[1440px]:p-3 [grid-template-columns:repeat(3,minmax(0,1fr))] max-[1180px]:[grid-template-columns:repeat(2,minmax(0,1fr))]">
-          <div className="col-[1/-1] w-full">
-            <UiInput
-              placeholder="搜索标题、描述、需求、工作区"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-            />
-          </div>
-          <FilterBar className="col-[1/-1] grid border-0 bg-transparent p-0 [grid-template-columns:repeat(3,minmax(0,1fr))] max-[1180px]:[grid-template-columns:repeat(2,minmax(0,1fr))]">
-            <Select
-              value={selectedWorkspaceId ?? '__all__'}
-              onValueChange={(value) => setSelectedWorkspaceId(value === '__all__' ? undefined : value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="按工作区筛选" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">全部工作区</SelectItem>
-                {workspaces.map((workspace) => (
-                  <SelectItem key={workspace.id} value={workspace.id}>
-                    {workspace.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={selectedStatus ?? '__all__'}
-              onValueChange={(value) => setSelectedStatus(value === '__all__' ? undefined : value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="按状态筛选" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">全部状态</SelectItem>
-                <SelectItem value="OPEN">{formatBugStatus('OPEN')}</SelectItem>
-                <SelectItem value="CONFIRMED">{formatBugStatus('CONFIRMED')}</SelectItem>
-                <SelectItem value="FIXING">{formatBugStatus('FIXING')}</SelectItem>
-                <SelectItem value="FIXED">{formatBugStatus('FIXED')}</SelectItem>
-                <SelectItem value="VERIFIED">{formatBugStatus('VERIFIED')}</SelectItem>
-                <SelectItem value="CLOSED">{formatBugStatus('CLOSED')}</SelectItem>
-                <SelectItem value="WONT_FIX">{formatBugStatus('WONT_FIX')}</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={selectedSeverity ?? '__all__'}
-              onValueChange={(value) => setSelectedSeverity(value === '__all__' ? undefined : value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="按严重级别筛选" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">全部严重级别</SelectItem>
-                <SelectItem value="LOW">{formatSeverity('LOW')}</SelectItem>
-                <SelectItem value="MEDIUM">{formatSeverity('MEDIUM')}</SelectItem>
-                <SelectItem value="HIGH">{formatSeverity('HIGH')}</SelectItem>
-                <SelectItem value="CRITICAL">{formatSeverity('CRITICAL')}</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={selectedPriority ?? '__all__'}
-              onValueChange={(value) => setSelectedPriority(value === '__all__' ? undefined : value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="按优先级筛选" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">全部优先级</SelectItem>
-                <SelectItem value="LOW">{formatPriority('LOW')}</SelectItem>
-                <SelectItem value="MEDIUM">{formatPriority('MEDIUM')}</SelectItem>
-                <SelectItem value="HIGH">{formatPriority('HIGH')}</SelectItem>
-                <SelectItem value="URGENT">{formatPriority('URGENT')}</SelectItem>
-              </SelectContent>
-            </Select>
-          </FilterBar>
-        </div>
+              <ListToolbar
+                search={(
+                  <UiInput
+                    placeholder="搜索标题、描述、需求、工作区"
+                    value={keyword}
+                    onChange={(event) => setKeyword(event.target.value)}
+                  />
+                )}
+                filters={(
+                  <>
+                    <Select
+                      value={selectedWorkspaceId ?? '__all__'}
+                      onValueChange={(value) => setSelectedWorkspaceId(value === '__all__' ? undefined : value)}
+                    >
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="按工作区筛选" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">全部工作区</SelectItem>
+                        {workspaces.map((workspace) => (
+                          <SelectItem key={workspace.id} value={workspace.id}>
+                            {workspace.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={selectedStatus ?? '__all__'}
+                      onValueChange={(value) => setSelectedStatus(value === '__all__' ? undefined : value)}
+                    >
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="按状态筛选" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">全部状态</SelectItem>
+                        <SelectItem value="OPEN">{formatBugStatus('OPEN')}</SelectItem>
+                        <SelectItem value="CONFIRMED">{formatBugStatus('CONFIRMED')}</SelectItem>
+                        <SelectItem value="FIXING">{formatBugStatus('FIXING')}</SelectItem>
+                        <SelectItem value="FIXED">{formatBugStatus('FIXED')}</SelectItem>
+                        <SelectItem value="VERIFIED">{formatBugStatus('VERIFIED')}</SelectItem>
+                        <SelectItem value="CLOSED">{formatBugStatus('CLOSED')}</SelectItem>
+                        <SelectItem value="WONT_FIX">{formatBugStatus('WONT_FIX')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={selectedSeverity ?? '__all__'}
+                      onValueChange={(value) => setSelectedSeverity(value === '__all__' ? undefined : value)}
+                    >
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="按严重级别筛选" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">全部严重级别</SelectItem>
+                        <SelectItem value="LOW">{formatSeverity('LOW')}</SelectItem>
+                        <SelectItem value="MEDIUM">{formatSeverity('MEDIUM')}</SelectItem>
+                        <SelectItem value="HIGH">{formatSeverity('HIGH')}</SelectItem>
+                        <SelectItem value="CRITICAL">{formatSeverity('CRITICAL')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={selectedPriority ?? '__all__'}
+                      onValueChange={(value) => setSelectedPriority(value === '__all__' ? undefined : value)}
+                    >
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="按优先级筛选" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">全部优先级</SelectItem>
+                        <SelectItem value="LOW">{formatPriority('LOW')}</SelectItem>
+                        <SelectItem value="MEDIUM">{formatPriority('MEDIUM')}</SelectItem>
+                        <SelectItem value="HIGH">{formatPriority('HIGH')}</SelectItem>
+                        <SelectItem value="URGENT">{formatPriority('URGENT')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
+              />
         {pagedBugs.length > 0 ? (
           <>
             <div className="flex flex-col gap-3.5">

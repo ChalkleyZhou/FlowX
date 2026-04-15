@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
-import { FilterBar } from '../components/FilterBar';
 import { EmptyState } from '../components/EmptyState';
+import { ListToolbar } from '../components/ListToolbar';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
 import { RecordListItem } from '../components/RecordListItem';
@@ -477,13 +477,22 @@ export function RequirementsPage() {
           <SectionHeader
             eyebrow="Requirement Pool"
             title="需求列表"
-            extra={
-              <FilterBar className="border-0 bg-transparent p-0">
+            extra={(
+              <UiButton onClick={() => setCreateModalOpen(true)}>
+                新增需求
+              </UiButton>
+            )}
+          />
+        </CardHeader>
+        <CardContent className="p-5 pt-0">
+          <ListToolbar
+            filters={(
+              <>
                 <Select
                   value={defaultAiProvider}
                   onValueChange={(value: 'codex' | 'cursor') => updateDefaultAiProvider(value)}
                 >
-                  <SelectTrigger className="min-w-[220px]">
+                  <SelectTrigger className="w-[220px]">
                     <SelectValue placeholder="默认执行器" />
                   </SelectTrigger>
                   <SelectContent>
@@ -501,7 +510,7 @@ export function RequirementsPage() {
                     setSelectedProjectId(undefined);
                   }}
                 >
-                  <SelectTrigger className="min-w-[220px]">
+                  <SelectTrigger className="w-[220px]">
                     <SelectValue placeholder="按工作区筛选" />
                   </SelectTrigger>
                   <SelectContent>
@@ -517,7 +526,7 @@ export function RequirementsPage() {
                   value={selectedProjectId ?? '__all__'}
                   onValueChange={(value) => setSelectedProjectId(value === '__all__' ? undefined : value)}
                 >
-                  <SelectTrigger className="min-w-[220px]">
+                  <SelectTrigger className="w-[220px]">
                     <SelectValue placeholder="按项目筛选" />
                   </SelectTrigger>
                   <SelectContent>
@@ -529,14 +538,9 @@ export function RequirementsPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <UiButton onClick={() => setCreateModalOpen(true)}>
-                  新增需求
-                </UiButton>
-              </FilterBar>
-            }
+              </>
+            )}
           />
-        </CardHeader>
-        <CardContent className="p-5 pt-0">
           {loading ? (
             <div className="flex min-h-40 items-center justify-center">
               <Spinner className="h-7 w-7" />

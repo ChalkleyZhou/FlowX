@@ -277,9 +277,32 @@ FlowX 前端已经完成以下基础重构：
 ```text
 PageHeader
 Metrics（可选）
-Filter / Actions
+Toolbar（Search + Filters）
 RecordList
 Pagination
+```
+
+### 列表页工具栏规范（强制）
+
+统一使用：
+
+- `PageHeader` 承载页面标题和“新增”主操作按钮
+- `ListToolbar` 承载 `search` + `filters`
+- `FilterBar` 仅作为筛选控件容器，不承载页面级主 CTA
+
+布局约束：
+
+- 搜索区与筛选区应在同一工具栏内紧凑排布
+- 筛选控件必须使用固定宽度（例如 `w-[180px]` / `w-[220px]`），禁止默认 `w-full` 导致“一行一个筛选项”
+- 在可容纳宽度下，筛选项应优先同排展示；空间不足时自然换行
+- “新增”按钮必须和筛选区分离，不得混在筛选条内
+
+推荐结构：
+
+```text
+SectionHeader(extra=新增按钮)
+ListToolbar(search, filters)
+RecordList
 ```
 
 ### 详情页
@@ -353,6 +376,8 @@ Repository Context
 
 - `PageHeader`
 - `DetailHeader`
+- `ListToolbar`
+- `FilterBar`
 - `ContextPanel`
 - `MetricCard`
 - `RecordListItem`
@@ -495,6 +520,16 @@ Repository Context
 - `page-container` 是否有稳定 padding
 - 页面区块之间是否有明确间距
 - 小屏笔记本宽度下是否仍然稳定
+- 列表页筛选区是否避免了“一行一个筛选项”
+- 新增按钮是否已与筛选区分离（位于 `PageHeader` / `SectionHeader` 的 `extra`）
+
+### 新增页面结构约束（列表页）
+
+- 是否采用了 `PageHeader + ListToolbar + RecordList` 基本骨架
+- 搜索输入是否放在 `ListToolbar.search`
+- 筛选控件是否放在 `ListToolbar.filters`，且为固定宽度
+- 新增按钮是否放在 `SectionHeader.extra` 或 `PageHeader` 操作区
+- 是否复用了 `RecordListItem / EmptyState / Spinner`，避免重复造结构
 
 ### 视觉层级
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { EmptyState } from '../components/EmptyState';
-import { FilterBar } from '../components/FilterBar';
+import { ListToolbar } from '../components/ListToolbar';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
 import { RecordListItem } from '../components/RecordListItem';
@@ -150,8 +150,12 @@ export function WorkflowRunsPage() {
           <SectionHeader
             eyebrow="Workflow Runs"
             title="工作流列表"
-            extra={
-              <FilterBar className="border-0 bg-transparent p-0">
+          />
+        </CardHeader>
+        <CardContent className="p-5 pt-0">
+          <ListToolbar
+            filters={(
+              <>
                 <Select
                   value={workspaceId || '__all__'}
                   onValueChange={(value) => {
@@ -166,7 +170,7 @@ export function WorkflowRunsPage() {
                     navigate(`/workflow-runs?${next.toString()}`);
                   }}
                 >
-                  <SelectTrigger className="min-w-[220px]">
+                  <SelectTrigger className="w-[220px]">
                     <SelectValue placeholder="按工作区查看" />
                   </SelectTrigger>
                   <SelectContent>
@@ -191,7 +195,7 @@ export function WorkflowRunsPage() {
                     navigate(`/workflow-runs?${next.toString()}`);
                   }}
                 >
-                  <SelectTrigger className="min-w-[220px]">
+                  <SelectTrigger className="w-[220px]">
                     <SelectValue placeholder="按项目查看" />
                   </SelectTrigger>
                   <SelectContent>
@@ -215,7 +219,7 @@ export function WorkflowRunsPage() {
                     navigate(`/workflow-runs?${next.toString()}`);
                   }}
                 >
-                  <SelectTrigger className="min-w-[220px]">
+                  <SelectTrigger className="w-[220px]">
                     <SelectValue placeholder="按需求查看" />
                   </SelectTrigger>
                   <SelectContent>
@@ -227,11 +231,9 @@ export function WorkflowRunsPage() {
                     ))}
                   </SelectContent>
                 </Select>
-              </FilterBar>
-            }
+              </>
+            )}
           />
-        </CardHeader>
-        <CardContent className="p-5 pt-0">
           {loading ? (
             <div className="flex min-h-40 items-center justify-center">
               <Spinner className="h-7 w-7" />
