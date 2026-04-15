@@ -7,9 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppLayout } from './AppLayout';
 import { ThemeProvider } from './theme-provider';
 import { api } from '../api';
+import type { AuthSession } from '../types';
 
 const { logoutSpy, navigateSpy, getSessionMock, setSessionOrganizationId } = vi.hoisted(() => {
-  const sessionMock = {
+  const sessionMock: AuthSession = {
     token: 'token-1',
     expiresAt: '2026-04-15T00:00:00.000Z',
     user: {
