@@ -6,6 +6,12 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppLayout } from './AppLayout';
 import { ThemeProvider } from './theme-provider';
+import { api } from '../api';
+
+const { successToastSpy, errorToastSpy } = vi.hoisted(() => ({
+  successToastSpy: vi.fn(),
+  errorToastSpy: vi.fn(),
+}));
 
 const { logoutSpy, navigateSpy } = vi.hoisted(() => ({
   logoutSpy: vi.fn(),
@@ -28,6 +34,20 @@ vi.mock('../auth', () => ({
       },
     },
     logout: logoutSpy,
+  }),
+}));
+
+vi.mock('../api', () => ({
+  api: {
+    getCursorCredentialStatus: vi.fn(),
+    getCodexCredentialStatus: vi.fn(),
+  },
+}));
+
+vi.mock('./ui/toast', () => ({
+  useToast: () => ({
+    success: successToastSpy,
+    error: errorToastSpy,
   }),
 }));
 
@@ -61,6 +81,18 @@ describe('AppLayout', () => {
     root = createRoot(container);
     logoutSpy.mockReset();
     navigateSpy.mockReset();
+    successToastSpy.mockReset();
+    errorToastSpy.mockReset();
+    vi.mocked(api.getCursorCredentialStatus).mockResolvedValue({
+      provider: 'cursor',
+      configured: true,
+      updatedAt: '2026-04-15T00:00:00.000Z',
+    });
+    vi.mocked(api.getCodexCredentialStatus).mockResolvedValue({
+      provider: 'codex',
+      configured: true,
+      updatedAt: '2026-04-15T00:00:00.000Z',
+    });
   });
 
   afterEach(() => {
@@ -129,5 +161,36 @@ describe('AppLayout', () => {
     expect(logoutSpy).toHaveBeenCalledTimes(1);
     expect(navigateSpy).toHaveBeenCalledTimes(1);
     expect(navigateSpy).toHaveBeenCalledWith('/login', { replace: true });
+  });
+
+  it('warns to configure AI credentials when both providers are missing', async () => {
+    vi.mocked(api.getCursorCredentialStatus).mockResolvedValue({
+      provider: 'cursor',
+      configured: false,
+    });
+    vi.mocked(api.getCodexCredentialStatus).mockResolvedValue({
+      provider: 'codex',
+      configured: false,
+    });
+
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/workspaces']}>
+          <ThemeProvider>
+            <AppLayout>
+              <div>content</div>
+            </AppLayout>
+          </ThemeProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(api.getCursorCredentialStatus).toHaveBeenCalledTimes(1);
+    expect(api.getCodexCredentialStatus).toHaveBeenCalledTimes(1);
+    expect(errorToastSpy).toHaveBeenCalledWith('未检测到 Cursor/Codex 凭据，请先到“AI 凭据”页面配置，否则工作流无法调用模型。');
   });
 });

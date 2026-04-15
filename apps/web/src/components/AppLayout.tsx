@@ -1,10 +1,12 @@
-import type { PropsWithChildren } from 'react';
+import { useEffect, type PropsWithChildren } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
+import { api } from '../api';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { FlowXLogo } from './FlowXLogo';
 import { ThemeToggle } from './ThemeToggle';
+import { useToast } from './ui/toast';
 
 const primaryItems = [
   { key: '/workspaces', label: '工作区' },
@@ -24,6 +26,7 @@ export function AppLayout({ children }: PropsWithChildren) {
   const { session, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const toast = useToast();
 
   const selectedKey =
     [...primaryItems, ...secondaryItems].find((item) => location.pathname.startsWith(item.key))?.key ?? '/workspaces';
@@ -35,6 +38,39 @@ export function AppLayout({ children }: PropsWithChildren) {
     logout();
     navigate('/login', { replace: true });
   }
+
+  useEffect(() => {
+    if (!session?.user?.id) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function checkAiCredentialStatus() {
+      try {
+        const [cursorStatus, codexStatus] = await Promise.all([
+          api.getCursorCredentialStatus(),
+          api.getCodexCredentialStatus(),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!cursorStatus.configured && !codexStatus.configured) {
+          toast.error('未检测到 Cursor/Codex 凭据，请先到“AI 凭据”页面配置，否则工作流无法调用模型。');
+        }
+      } catch {
+        // Keep page navigation unblocked if credential probe fails.
+      }
+    }
+
+    void checkAiCredentialStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id, toast]);
 
   return (
     <div className="flex min-h-screen items-stretch gap-0 max-xl:flex-col">
