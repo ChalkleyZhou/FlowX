@@ -12,3 +12,4 @@ prisma/dev.db
 prisma/.env
 apps/*/.env
 *.tsbuildinfo
+.worktrees/
