@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkflowService } from './workflow.service';
 import { WorkflowRunStatus } from '../common/enums';
 
@@ -247,5 +247,91 @@ describe('WorkflowService cursor credential policy', () => {
       codexApiKey: 'org-openai-key',
       codexCredentialSource: 'organization',
     });
+  });
+});
+
+describe('WorkflowService publish retry after partial failure', () => {
+  const buildDoneWorkflow = () =>
+    ({
+      id: 'wf-1',
+      status: 'DONE',
+      requirement: {
+        title: 'Improve publish flow',
+      },
+      reviewFindings: [],
+      reviewReport: { bugs: [] },
+      codeExecution: {
+        changedFiles: ['apps/api/src/workflow/workflow.service.ts'],
+      },
+      plan: null,
+      workflowRepositories: [
+        {
+          name: 'flowx',
+          workingBranch: 'flowx/workflow-wf-1',
+          localPath: '/tmp/flowx-workflow',
+          status: 'READY',
+          url: 'git@github.com:acme/flowx.git',
+        },
+      ],
+    }) as never;
+
+  it('pushes existing workflow commit when worktree is already clean', async () => {
+    const service = createService();
+    const workflow = buildDoneWorkflow();
+    const expectedCommitMessage = (service as unknown as {
+      buildWorkflowCommitMessage: (input: unknown) => string;
+    }).buildWorkflowCommitMessage(workflow);
+    const runGit = vi
+      .spyOn(service as never, 'runGit' as never)
+      .mockImplementation(async (args: string[]) => {
+        if (args[0] === 'log') {
+          return { stdout: expectedCommitMessage, stderr: '' };
+        }
+        if (args[0] === 'rev-parse') {
+          return { stdout: 'abc123', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      });
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(workflow);
+    vi.spyOn(service as never, 'hasGitChanges' as never).mockResolvedValue(false);
+    vi.spyOn(service as never, 'resolvePublishRemoteUrl' as never).mockResolvedValue(
+      'git@github.com:acme/flowx.git',
+    );
+    vi.spyOn(service as never, 'remoteBranchExists' as never).mockResolvedValue(true);
+
+    const result = await (service as unknown as { publishGitChanges: (id: string) => Promise<{
+      message: string;
+      repositories: Array<{ repository: string; branch: string }>;
+    }> }).publishGitChanges('wf-1');
+
+    expect(result.message).toBe(expectedCommitMessage);
+    expect(result.repositories).toHaveLength(1);
+    expect(runGit).toHaveBeenCalledWith(
+      expect.arrayContaining(['push', '--set-upstream']),
+      '/tmp/flowx-workflow',
+    );
+    expect(runGit).not.toHaveBeenCalledWith(
+      expect.arrayContaining(['commit', '-m', expectedCommitMessage]),
+      '/tmp/flowx-workflow',
+    );
+  });
+
+  it('still reports no new changes when head commit is unrelated', async () => {
+    const service = createService();
+    const workflow = buildDoneWorkflow();
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(workflow);
+    vi.spyOn(service as never, 'hasGitChanges' as never).mockResolvedValue(false);
+    vi.spyOn(service as never, 'runGit' as never).mockImplementation(async (args: string[]) => {
+      if (args[0] === 'log') {
+        return { stdout: 'chore: unrelated commit', stderr: '' };
+      }
+      return { stdout: '', stderr: '' };
+    });
+
+    await expect(
+      (service as unknown as { publishGitChanges: (id: string) => Promise<unknown> }).publishGitChanges(
+        'wf-1',
+      ),
+    ).rejects.toThrow('当前工作流没有新的代码改动可提交。');
   });
 });

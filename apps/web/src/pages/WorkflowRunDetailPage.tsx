@@ -161,6 +161,64 @@ function getStepDescription(stage?: { status?: string; statusMessage?: string | 
   return formatStageExecutionStatus(stage.status);
 }
 
+function getStickyStageActions(stageKey: WorkflowStageKey, actions: StageActionView[]) {
+  if (stageKey === 'AI_REVIEW') {
+    const prioritized = ['run', 'accept', 'rework', 'rollback'];
+    return prioritized
+      .map((key) => actions.find((action) => action.key === key))
+      .filter((action): action is StageActionView => !!action);
+  }
+
+  if (stageKey === 'EXECUTION') {
+    const prioritized = ['run', 'feedback', 'edit'];
+    return prioritized
+      .map((key) => actions.find((action) => action.key === key))
+      .filter((action): action is StageActionView => !!action);
+  }
+
+  return actions;
+}
+
+function getContextualStageActions(stageKey: WorkflowStageKey, actions: StageActionView[]) {
+  if (stageKey === 'AI_REVIEW') {
+    const prioritized = ['accept', 'rework', 'rollback', 'feedback'];
+    return prioritized
+      .map((key) => actions.find((action) => action.key === key))
+      .filter((action): action is StageActionView => !!action);
+  }
+
+  if (stageKey === 'EXECUTION') {
+    const prioritized = ['run', 'feedback', 'edit'];
+    return prioritized
+      .map((key) => actions.find((action) => action.key === key))
+      .filter((action): action is StageActionView => !!action);
+  }
+
+  return actions;
+}
+
+function renderStageActionButtons(actions: StageActionView[], options?: { compact?: boolean }) {
+  return (
+    <div className={`flex flex-wrap gap-3 ${options?.compact ? 'gap-2' : ''}`}>
+      {actions.length > 0 ? (
+        actions.map((action) => (
+          <UiButton
+            key={action.key}
+            variant={action.danger ? 'destructive' : action.variant === 'primary' ? 'default' : 'outline'}
+            onClick={action.onClick}
+            disabled={action.disabled}
+            size={options?.compact ? 'sm' : 'md'}
+          >
+            {action.loading ? '处理中...' : action.label}
+          </UiButton>
+        ))
+      ) : (
+        <span className="text-sm text-muted-foreground">当前阶段暂无可用操作</span>
+      )}
+    </div>
+  );
+}
+
 function inferFocusedStage(run: WorkflowRun): WorkflowStageKey {
   for (const stageKey of STAGE_SEQUENCE) {
     const stage = getStage(run, stageKey);
@@ -1001,6 +1059,10 @@ export function WorkflowRunDetailPage() {
   const selectedStageContent = stageContent?.[selectedStage];
   const selectedStageIndex = STAGE_SEQUENCE.indexOf(selectedStage);
   const reviewReportId = workflowRun?.reviewReport?.id ?? null;
+  const stickyStageActions = selectedStageContent ? getStickyStageActions(selectedStage, selectedStageContent.actions) : [];
+  const contextualStageActions = selectedStageContent
+    ? getContextualStageActions(selectedStage, selectedStageContent.actions)
+    : [];
 
   return (
     <>
@@ -1268,6 +1330,25 @@ export function WorkflowRunDetailPage() {
             </CardContent>
           </Card>
 
+          {selectedStageContent && stickyStageActions.length > 0 ? (
+            <Card className="sticky top-4 z-20 rounded-md border-border bg-card/95 shadow-sm backdrop-blur">
+              <CardContent className="flex flex-col gap-3 p-4">
+                <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-[0.08em] text-primary">当前阶段操作</div>
+                    <div className="text-sm leading-6 text-muted-foreground">
+                      {selectedStageContent.subtitle} 的关键动作固定在这里，滚动浏览长内容时也能直接处理。
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="w-fit rounded-md px-2.5 py-1 text-xs font-semibold">
+                    {selectedStageContent.title}
+                  </Badge>
+                </div>
+                {renderStageActionButtons(stickyStageActions, { compact: true })}
+              </CardContent>
+            </Card>
+          ) : null}
+
           <div className="grid items-start gap-5 min-[1281px]:grid-cols-[minmax(0,1.5fr)_360px] max-[1280px]:grid-cols-1">
             {/* Left: main content */}
             <div className="flex flex-col gap-5">
@@ -1301,7 +1382,7 @@ export function WorkflowRunDetailPage() {
                     },
                   ]}
                   output={selectedStageContent.output}
-                  actions={selectedStageContent.actions}
+                  actions={selectedStage === 'EXECUTION' || selectedStage === 'AI_REVIEW' ? [] : selectedStageContent.actions}
                 />
               ) : (
                 <Card className="rounded-md border border-border bg-card shadow-sm">
@@ -1310,6 +1391,21 @@ export function WorkflowRunDetailPage() {
                   </CardContent>
                 </Card>
               )}
+
+              {selectedStage === 'EXECUTION' && contextualStageActions.length > 0 ? (
+                <Card className="rounded-md border-border bg-card shadow-sm">
+                  <CardHeader className="p-5">
+                    <SectionHeader
+                      eyebrow="Execution Actions"
+                      title="开发操作"
+                      description="直接在这里继续推进开发阶段，核对完变更后不用再回到页面上方找按钮。"
+                    />
+                  </CardHeader>
+                  <CardContent className="p-5 pt-0">
+                    {renderStageActionButtons(contextualStageActions)}
+                  </CardContent>
+                </Card>
+              ) : null}
 
               {diffReviewData.length > 0 && (selectedStage === 'EXECUTION' || selectedStage === 'AI_REVIEW') ? (
               <Card className="rounded-md border-border bg-card shadow-sm">
@@ -1414,6 +1510,15 @@ export function WorkflowRunDetailPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="p-5 pt-0">
+                  {contextualStageActions.length > 0 ? (
+                    <div className="mb-5 rounded-md border border-border bg-muted/35 p-4">
+                      <div className="mb-1 text-xs font-bold uppercase tracking-[0.08em] text-primary">审查决策</div>
+                      <div className="mb-3 text-sm leading-6 text-muted-foreground">
+                        先处理审查结果，再做最终决策，避免看完问题后还要回到别处操作。
+                      </div>
+                      {renderStageActionButtons(contextualStageActions)}
+                    </div>
+                  ) : null}
                   {hasStaleReviewResults ? (
                     <div className="mb-4 flex flex-col gap-3 rounded-md border border-warning/30 bg-warning/5 px-4 py-3 text-sm leading-6 text-warning">
                       <div>

@@ -299,6 +299,23 @@ export class AuthService {
       throw new UnauthorizedException('Session expired.');
     }
 
+    const resolvedOrganization = session.organization
+      ? {
+          id: session.organization.id,
+          name: session.organization.name,
+          providerOrganizationId: session.organization.providerOrganizationId,
+        }
+      : await this.resolveOrganizationForSession(session.userId, null);
+
+    if (!session.organizationId && resolvedOrganization) {
+      await this.prisma.userSession.update({
+        where: { id: session.id },
+        data: {
+          organizationId: resolvedOrganization.id,
+        },
+      });
+    }
+
     return {
       token: session.token,
       expiresAt: session.expiresAt,
@@ -308,13 +325,7 @@ export class AuthService {
         displayName: session.user.displayName,
         avatarUrl: session.user.avatarUrl,
       },
-      organization: session.organization
-        ? {
-            id: session.organization.id,
-            name: session.organization.name,
-            providerOrganizationId: session.organization.providerOrganizationId,
-          }
-        : null,
+      organization: resolvedOrganization,
     };
   }
 
@@ -486,11 +497,7 @@ export class AuthService {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
     });
-    const organization = organizationId
-      ? await this.prisma.organization.findUnique({
-          where: { id: organizationId },
-        })
-      : null;
+    const organization = await this.resolveOrganizationForSession(user.id, organizationId);
 
     const token = this.createToken(32);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -498,7 +505,7 @@ export class AuthService {
       data: {
         token,
         userId: user.id,
-        organizationId: organization?.id,
+        organizationId: organization?.id ?? null,
         expiresAt,
       },
     });
@@ -519,6 +526,67 @@ export class AuthService {
             providerOrganizationId: organization.providerOrganizationId,
           }
         : null,
+    };
+  }
+
+  private async resolveOrganizationForSession(userId: string, requestedOrganizationId: string | null) {
+    if (requestedOrganizationId) {
+      const explicitOrganization = await this.prisma.organization.findUnique({
+        where: { id: requestedOrganizationId },
+      });
+
+      if (explicitOrganization) {
+        return {
+          id: explicitOrganization.id,
+          name: explicitOrganization.name,
+          providerOrganizationId: explicitOrganization.providerOrganizationId,
+        };
+      }
+    }
+
+    const membership = await this.prisma.userOrganization.findFirst({
+      where: { userId },
+      include: { organization: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (membership?.organization) {
+      return {
+        id: membership.organization.id,
+        name: membership.organization.name,
+        providerOrganizationId: membership.organization.providerOrganizationId,
+      };
+    }
+
+    const singletonOrganizations = await this.prisma.organization.findMany({
+      orderBy: { createdAt: 'asc' },
+      take: 2,
+    });
+
+    if (singletonOrganizations.length !== 1) {
+      return null;
+    }
+
+    const defaultOrganization = singletonOrganizations[0]!;
+    await this.prisma.userOrganization.upsert({
+      where: {
+        userId_organizationId: {
+          userId,
+          organizationId: defaultOrganization.id,
+        },
+      },
+      create: {
+        userId,
+        organizationId: defaultOrganization.id,
+        role: 'member',
+      },
+      update: {},
+    });
+
+    return {
+      id: defaultOrganization.id,
+      name: defaultOrganization.name,
+      providerOrganizationId: defaultOrganization.providerOrganizationId,
     };
   }
 

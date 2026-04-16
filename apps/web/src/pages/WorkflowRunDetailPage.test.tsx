@@ -383,4 +383,107 @@ describe('WorkflowRunDetailPage', () => {
     expect(container.textContent).toContain('已修复待验证');
     expect(fixButton?.hasAttribute('disabled')).toBe(true);
   });
+
+  it('renders a sticky current-stage action bar for execution and keeps execution actions near diff review', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'REVIEW_PENDING',
+        codeExecution: {
+          patchSummary: '已完成登录错误处理与重试',
+          changedFiles: ['apps/web/src/pages/LoginPage.tsx'],
+          codeChanges: [],
+          diffArtifacts: [
+            {
+              repository: 'flowx-web',
+              branch: 'codex/fix-login',
+              localPath: '/tmp/flowx-web',
+              diffStat: '1 file changed',
+              diffText: 'diff --git a/apps/web/src/pages/LoginPage.tsx b/apps/web/src/pages/LoginPage.tsx\n+const ok = true;',
+              untrackedFiles: [],
+            },
+          ],
+          status: 'COMPLETED',
+        },
+        stageExecutions: [
+          {
+            id: 'stage-1',
+            stage: 'EXECUTION',
+            status: 'COMPLETED',
+            statusMessage: null,
+            attempt: 1,
+            output: { patchSummary: '已完成登录错误处理与重试' },
+          },
+        ],
+      }),
+    );
+
+    await renderPage();
+
+    const text = container.textContent ?? '';
+
+    expect(text).toContain('当前阶段操作');
+    expect(text).toContain('执行开发');
+    expect(text).toContain('开发操作');
+    expect(text).toContain('直接在这里继续推进开发阶段');
+  });
+
+  it('renders a sticky current-stage action bar for review and keeps review decisions near findings', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'HUMAN_REVIEW_PENDING',
+        stageExecutions: [
+          {
+            id: 'stage-1',
+            stage: 'EXECUTION',
+            status: 'COMPLETED',
+            statusMessage: null,
+            attempt: 2,
+            output: { patchSummary: '修复审查问题' },
+          },
+          {
+            id: 'stage-2',
+            stage: 'AI_REVIEW',
+            status: 'WAITING_CONFIRMATION',
+            statusMessage: null,
+            attempt: 1,
+            output: { suggestions: ['补充错误码处理'] },
+          },
+        ],
+        reviewFindings: [
+          {
+            id: 'finding-1',
+            sourceType: 'suggestion',
+            sourceIndex: 0,
+            type: 'SUGGESTION',
+            title: '补充错误码处理',
+            description: '登录失败时需要展示更明确的错误原因。',
+            severity: 'MEDIUM',
+            status: 'OPEN',
+            impactScope: [],
+            convertedIssueId: null,
+            convertedBugId: null,
+          },
+        ],
+      }),
+    );
+
+    await renderPage();
+
+    const aiReviewStep = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('AI 审查'),
+    );
+
+    await act(async () => {
+      aiReviewStep?.click();
+      await Promise.resolve();
+    });
+
+    const text = container.textContent ?? '';
+
+    expect(text).toContain('当前阶段操作');
+    expect(text).toContain('通过');
+    expect(text).toContain('返工');
+    expect(text).toContain('审查决策');
+    expect(text).toContain('先处理审查结果，再做最终决策');
+  });
 });

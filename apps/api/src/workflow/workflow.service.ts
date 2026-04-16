@@ -1229,12 +1229,16 @@ export class WorkflowService {
       await this.runGit(['checkout', repository.workingBranch], cwd);
 
       const hasChanges = await this.hasGitChanges(cwd);
-      if (!hasChanges) {
+      const hasRetryableWorkflowCommit =
+        !hasChanges && (await this.headCommitMatchesMessage(cwd, commitMessage));
+      if (!hasChanges && !hasRetryableWorkflowCommit) {
         continue;
       }
 
-      await this.runGit(['add', '-A'], cwd);
-      await this.runGit(['commit', '-m', commitMessage], cwd);
+      if (hasChanges) {
+        await this.runGit(['add', '-A'], cwd);
+        await this.runGit(['commit', '-m', commitMessage], cwd);
+      }
       const publishBranch = this.buildPublishBranchName(
         workflow.requirement.title,
         workflow.id,
@@ -2522,6 +2526,11 @@ export class WorkflowService {
   private async hasGitChanges(cwd: string) {
     const { stdout } = await this.runGit(['status', '--porcelain'], cwd);
     return stdout.length > 0;
+  }
+
+  private async headCommitMatchesMessage(cwd: string, commitMessage: string) {
+    const { stdout } = await this.runGit(['log', '-1', '--pretty=%s'], cwd);
+    return stdout === commitMessage;
   }
 
   private async getHeadSha(cwd: string) {
