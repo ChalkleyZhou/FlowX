@@ -356,7 +356,7 @@ export class AuthService {
       },
     });
 
-    return this.createSession(user.id, null);
+    return this.createSession(user.id, null, { allowSingletonFallback: true });
   }
 
   async loginByPassword(input: { account: string; password: string }) {
@@ -377,7 +377,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid password.');
     }
 
-    return this.createSession(credential.userId, null);
+    return this.createSession(credential.userId, null, { allowSingletonFallback: true });
   }
 
   private async finalizeLogin(
@@ -486,18 +486,28 @@ export class AuthService {
       });
     }
 
-    const session = await this.createSession(user.id, organizationRecord?.id ?? null);
+    const session = await this.createSession(user.id, organizationRecord?.id ?? null, {
+      allowSingletonFallback: false,
+    });
     return {
       needOrganizationSelection: false,
       ...session,
     };
   }
 
-  private async createSession(userId: string, organizationId: string | null) {
+  private async createSession(
+    userId: string,
+    organizationId: string | null,
+    options?: { allowSingletonFallback?: boolean },
+  ) {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
     });
-    const organization = await this.resolveOrganizationForSession(user.id, organizationId);
+    const organization = await this.resolveOrganizationForSession(
+      user.id,
+      organizationId,
+      options,
+    );
 
     const token = this.createToken(32);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -529,7 +539,11 @@ export class AuthService {
     };
   }
 
-  private async resolveOrganizationForSession(userId: string, requestedOrganizationId: string | null) {
+  private async resolveOrganizationForSession(
+    userId: string,
+    requestedOrganizationId: string | null,
+    options?: { allowSingletonFallback?: boolean },
+  ) {
     if (requestedOrganizationId) {
       const explicitOrganization = await this.prisma.organization.findUnique({
         where: { id: requestedOrganizationId },
@@ -556,6 +570,10 @@ export class AuthService {
         name: membership.organization.name,
         providerOrganizationId: membership.organization.providerOrganizationId,
       };
+    }
+
+    if (!options?.allowSingletonFallback) {
+      return null;
     }
 
     const singletonOrganizations = await this.prisma.organization.findMany({

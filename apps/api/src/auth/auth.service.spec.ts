@@ -66,7 +66,7 @@ describe('AuthService organization resolution', () => {
         userId: string,
         requestedOrganizationId: string | null,
       ) => Promise<{ id: string; name: string; providerOrganizationId: string } | null>;
-    }).resolveOrganizationForSession('user-1', null);
+      }).resolveOrganizationForSession('user-1', null, { allowSingletonFallback: true });
 
     expect(prisma.userOrganization.upsert).toHaveBeenCalledWith({
       where: {
@@ -87,5 +87,28 @@ describe('AuthService organization resolution', () => {
       name: 'FlowX Org',
       providerOrganizationId: 'corp-1',
     });
+  });
+
+  it('does not auto-join the only organization for oauth users without org context', async () => {
+    const { service, prisma } = createService();
+    vi.mocked(prisma.userOrganization.findFirst).mockResolvedValue(null);
+    vi.mocked(prisma.organization.findMany).mockResolvedValue([
+      {
+        id: 'org-1',
+        name: 'FlowX Org',
+        providerOrganizationId: 'corp-1',
+      },
+    ]);
+
+    const resolved = await (service as unknown as {
+      resolveOrganizationForSession: (
+        userId: string,
+        requestedOrganizationId: string | null,
+        options?: { allowSingletonFallback?: boolean },
+      ) => Promise<{ id: string; name: string; providerOrganizationId: string } | null>;
+    }).resolveOrganizationForSession('user-1', null);
+
+    expect(prisma.userOrganization.upsert).not.toHaveBeenCalled();
+    expect(resolved).toBeNull();
   });
 });

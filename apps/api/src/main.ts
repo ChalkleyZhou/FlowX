@@ -1,11 +1,25 @@
 import 'reflect-metadata';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { Logger, LogLevel, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
+function resolveLogLevels(): LogLevel[] {
+  const configuredLevel = process.env.LOG_LEVEL?.trim().toLowerCase();
+  const supportedLevels: LogLevel[] = ['fatal', 'error', 'warn', 'log', 'debug', 'verbose'];
+
+  if (!configuredLevel || !supportedLevels.includes(configuredLevel as LogLevel)) {
+    return ['log', 'warn', 'error'];
+  }
+
+  const configuredIndex = supportedLevels.indexOf(configuredLevel as LogLevel);
+  return supportedLevels.slice(0, configuredIndex + 1);
+}
+
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: resolveLogLevels(),
+  });
   app.enableCors();
   app.useGlobalPipes(
     new ValidationPipe({

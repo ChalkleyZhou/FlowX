@@ -128,8 +128,8 @@ export function AppLayout({ children }: PropsWithChildren) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-foreground">{session.user.displayName}</div>
-                  <div className="mt-1">
-                    <Badge variant="outline">{session.organization?.name ?? '未绑定组织'}</Badge>
+                  <div className="mt-1 min-w-0">
+                    <Badge variant="outline" title={session.organization?.name ?? '未绑定组织'} className="inline-block max-w-full truncate align-bottom">{session.organization?.name ?? '未绑定组织'}</Badge>
                   </div>
                 </div>
               </div>

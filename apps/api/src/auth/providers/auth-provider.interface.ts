@@ -8,4 +8,3 @@ export interface AuthProvider {
     redirectUri: string;
   }): Promise<OAuthExchangeResult>;
 }
-
