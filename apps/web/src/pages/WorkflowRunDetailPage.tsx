@@ -7,11 +7,11 @@ import { DiffViewerPanel } from '../components/DiffViewerPanel';
 import { EmptyState } from '../components/EmptyState';
 import { DetailHeader } from '../components/DetailHeader';
 import { MetricCard } from '../components/MetricCard';
-import { RepositoryBranchCard } from '../components/RepositoryBranchCard';
 import { SectionHeader } from '../components/SectionHeader';
 import { StatPill } from '../components/StatPill';
 import { StageCard } from '../components/StageCard';
 import { ReviewFindingCard } from '../components/ReviewFindingCard';
+import { WorkflowReviewSidebar, type WorkflowWorkspaceAction } from '../components/WorkflowReviewSidebar';
 import { WorkflowSteps } from '../components/WorkflowSteps';
 import { Badge } from '../components/ui/badge';
 import { Button as UiButton } from '../components/ui/button';
@@ -20,12 +20,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input as UiInput } from '../components/ui/input';
 import { Spinner } from '../components/ui/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Textarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
 import type { RepositoryDeployConfig, WorkflowRun } from '../types';
-import {
-  formatWorkflowRepositoryStatus,
-} from '../utils/label-utils';
 import { formatStageExecutionStatus, formatWorkflowStatus, getStage } from '../utils/workflow-ui';
 
 const STAGE_SEQUENCE = ['REPOSITORY_GROUNDING', 'TASK_SPLIT', 'TECHNICAL_PLAN', 'EXECUTION', 'AI_REVIEW'] as const;
@@ -41,6 +37,16 @@ interface StageActionView {
   loading?: boolean;
   danger?: boolean;
   variant?: 'primary' | 'default';
+}
+
+interface WorkflowWorkspaceConfig {
+  stage: EditableStage;
+  title: string;
+  helperText: string;
+  statusLabel?: string;
+  feedbackPlaceholder: string;
+  primaryAction: WorkflowWorkspaceAction;
+  secondaryActions: WorkflowWorkspaceAction[];
 }
 
 interface StageDetailView {
@@ -161,64 +167,6 @@ function getStepDescription(stage?: { status?: string; statusMessage?: string | 
   return formatStageExecutionStatus(stage.status);
 }
 
-function getStickyStageActions(stageKey: WorkflowStageKey, actions: StageActionView[]) {
-  if (stageKey === 'AI_REVIEW') {
-    const prioritized = ['run', 'accept', 'rework', 'rollback'];
-    return prioritized
-      .map((key) => actions.find((action) => action.key === key))
-      .filter((action): action is StageActionView => !!action);
-  }
-
-  if (stageKey === 'EXECUTION') {
-    const prioritized = ['run', 'feedback', 'edit'];
-    return prioritized
-      .map((key) => actions.find((action) => action.key === key))
-      .filter((action): action is StageActionView => !!action);
-  }
-
-  return actions;
-}
-
-function getContextualStageActions(stageKey: WorkflowStageKey, actions: StageActionView[]) {
-  if (stageKey === 'AI_REVIEW') {
-    const prioritized = ['accept', 'rework', 'rollback', 'feedback'];
-    return prioritized
-      .map((key) => actions.find((action) => action.key === key))
-      .filter((action): action is StageActionView => !!action);
-  }
-
-  if (stageKey === 'EXECUTION') {
-    const prioritized = ['run', 'feedback', 'edit'];
-    return prioritized
-      .map((key) => actions.find((action) => action.key === key))
-      .filter((action): action is StageActionView => !!action);
-  }
-
-  return actions;
-}
-
-function renderStageActionButtons(actions: StageActionView[], options?: { compact?: boolean }) {
-  return (
-    <div className={`flex flex-wrap gap-3 ${options?.compact ? 'gap-2' : ''}`}>
-      {actions.length > 0 ? (
-        actions.map((action) => (
-          <UiButton
-            key={action.key}
-            variant={action.danger ? 'destructive' : action.variant === 'primary' ? 'default' : 'outline'}
-            onClick={action.onClick}
-            disabled={action.disabled}
-            size={options?.compact ? 'sm' : 'md'}
-          >
-            {action.loading ? '处理中...' : action.label}
-          </UiButton>
-        ))
-      ) : (
-        <span className="text-sm text-muted-foreground">当前阶段暂无可用操作</span>
-      )}
-    </div>
-  );
-}
-
 function inferFocusedStage(run: WorkflowRun): WorkflowStageKey {
   for (const stageKey of STAGE_SEQUENCE) {
     const stage = getStage(run, stageKey);
@@ -330,17 +278,13 @@ export function WorkflowRunDetailPage() {
   const [workflowRun, setWorkflowRun] = useState<WorkflowRun | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedStage, setSelectedStage] = useState<WorkflowStageKey>('TASK_SPLIT');
-  const [feedbackModal, setFeedbackModal] = useState<null | { stage: EditableStage; title: string }>(null);
-  const [editModal, setEditModal] = useState<null | { stage: EditableStage; title: string; initialOutput: unknown }>(
-    null,
-  );
-  const [submitting, setSubmitting] = useState(false);
+  const [branchSummaryExpanded, setBranchSummaryExpanded] = useState(false);
   const [busyStage, setBusyStage] = useState<string | null>(null);
+  const [submittingAction, setSubmittingAction] = useState<'feedback' | null>(null);
   const [busyFindingId, setBusyFindingId] = useState<string | null>(null);
   const [selectedArtifactKey, setSelectedArtifactKey] = useState<string | null>(null);
   const [selectedDiffFileKey, setSelectedDiffFileKey] = useState<string | null>(null);
   const [feedbackText, setFeedbackText] = useState('');
-  const [editOutputText, setEditOutputText] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [deployModalOpen, setDeployModalOpen] = useState(false);
@@ -423,6 +367,11 @@ export function WorkflowRunDetailPage() {
       setSelectedStage(suggestedStage);
     }
   }, [workflowRun]);
+
+  useEffect(() => {
+    setFeedbackText('');
+    setSubmittingAction(null);
+  }, [selectedStage, workflowRun?.id]);
 
   const hasRunningStage = workflowRun?.stageExecutions.some((item) => item.status === 'RUNNING') ?? false;
   const stageActionsLocked = busyStage !== null || hasRunningStage;
@@ -518,6 +467,18 @@ export function WorkflowRunDetailPage() {
       repositoryCount: workflowRun.workflowRepositories.length,
     };
   }, [workflowRun]);
+  const branchSummaryText = useMemo(() => {
+    if (!workflowRun?.workflowRepositories.length) {
+      return '';
+    }
+
+    const first = workflowRun.workflowRepositories[0];
+    if (workflowRun.workflowRepositories.length === 1) {
+      return `工作分支：${first.name} / ${first.workingBranch}`;
+    }
+
+    return `工作分支：${first.name} / ${first.workingBranch} 等 ${workflowRun.workflowRepositories.length} 个`;
+  }, [workflowRun]);
 
   useEffect(() => {
     if (!hasRunningStage) {
@@ -579,8 +540,29 @@ export function WorkflowRunDetailPage() {
     }
   }
 
+  function getEditableStageForSelectedStage(stageKey: WorkflowStageKey): EditableStage | null {
+    if (stageKey === 'TASK_SPLIT') {
+      return 'task-split';
+    }
+    if (stageKey === 'TECHNICAL_PLAN') {
+      return 'plan';
+    }
+    if (stageKey === 'EXECUTION') {
+      return 'execution';
+    }
+    if (stageKey === 'AI_REVIEW') {
+      return 'review';
+    }
+    return null;
+  }
+
   async function submitFeedback() {
-    if (!workflowRun || !feedbackModal) {
+    if (!workflowRun) {
+      return;
+    }
+
+    const editableStage = getEditableStageForSelectedStage(selectedStage);
+    if (!editableStage) {
       return;
     }
 
@@ -590,61 +572,25 @@ export function WorkflowRunDetailPage() {
       return;
     }
 
-    setSubmitting(true);
+    setSubmittingAction('feedback');
     try {
-      if (feedbackModal.stage === 'task-split') {
+      if (editableStage === 'task-split') {
         await api.reviseTaskSplit(workflowRun.id, nextFeedback);
-      } else if (feedbackModal.stage === 'plan') {
+      } else if (editableStage === 'plan') {
         await api.revisePlan(workflowRun.id, nextFeedback);
-      } else if (feedbackModal.stage === 'execution') {
+      } else if (editableStage === 'execution') {
         await api.reviseExecution(workflowRun.id, nextFeedback);
       } else {
         await api.reviseReview(workflowRun.id, nextFeedback);
       }
 
-      setFeedbackModal(null);
       setFeedbackText('');
       await refresh();
       toast.success('AI 已根据意见重新处理当前阶段');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '提交意见失败');
     } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function submitManualEdit() {
-    if (!workflowRun || !editModal) {
-      return;
-    }
-
-    if (!editOutputText.trim()) {
-      toast.error('请输入修改后的 JSON');
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const output = JSON.parse(editOutputText);
-
-      if (editModal.stage === 'task-split') {
-        await api.manualEditTaskSplit(workflowRun.id, output);
-      } else if (editModal.stage === 'plan') {
-        await api.manualEditPlan(workflowRun.id, output);
-      } else if (editModal.stage === 'execution') {
-        await api.manualEditExecution(workflowRun.id, output);
-      } else {
-        await api.manualEditReview(workflowRun.id, output);
-      }
-
-      setEditModal(null);
-      setEditOutputText('');
-      await refresh();
-      toast.success('阶段产出已人工更新');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '人工修改失败');
-    } finally {
-      setSubmitting(false);
+      setSubmittingAction(null);
     }
   }
 
@@ -866,20 +812,13 @@ export function WorkflowRunDetailPage() {
           {
             key: 'feedback',
             label: '提意见给 AI',
-            onClick: (): void => {
-              setFeedbackModal({ stage: 'task-split', title: '任务拆解意见' });
-              setFeedbackText('');
-            },
+            onClick: (): void => setWorkspaceMode('feedback'),
             disabled: workflowRun.status !== 'TASK_SPLIT_WAITING_CONFIRMATION' || stageActionsLocked,
           },
           {
             key: 'edit',
             label: '人工修改',
-            onClick: (): void => {
-              const output = taskSplitStage?.output ?? { tasks: workflowRun.tasks };
-              setEditOutputText(JSON.stringify(output, null, 2));
-              setEditModal({ stage: 'task-split', title: '人工修改任务拆解', initialOutput: output });
-            },
+            onClick: (): void => openWorkspaceEditMode('task-split'),
             disabled: workflowRun.status !== 'TASK_SPLIT_WAITING_CONFIRMATION' || stageActionsLocked,
           },
         ],
@@ -921,20 +860,13 @@ export function WorkflowRunDetailPage() {
           {
             key: 'feedback',
             label: '提意见给 AI',
-            onClick: (): void => {
-              setFeedbackModal({ stage: 'plan', title: '技术方案意见' });
-              setFeedbackText('');
-            },
+            onClick: (): void => setWorkspaceMode('feedback'),
             disabled: workflowRun.status !== 'PLAN_WAITING_CONFIRMATION' || stageActionsLocked,
           },
           {
             key: 'edit',
             label: '人工修改',
-            onClick: (): void => {
-              const output = planStage?.output ?? workflowRun.plan;
-              setEditOutputText(JSON.stringify(output, null, 2));
-              setEditModal({ stage: 'plan', title: '人工修改技术方案', initialOutput: output });
-            },
+            onClick: (): void => openWorkspaceEditMode('plan'),
             disabled: workflowRun.status !== 'PLAN_WAITING_CONFIRMATION' || stageActionsLocked,
           },
         ],
@@ -958,10 +890,7 @@ export function WorkflowRunDetailPage() {
           {
             key: 'feedback',
             label: '提意见给 AI',
-            onClick: (): void => {
-              setFeedbackModal({ stage: 'execution', title: '开发执行意见' });
-              setFeedbackText('');
-            },
+            onClick: (): void => setWorkspaceMode('feedback'),
             disabled:
               (workflowRun.status !== 'REVIEW_PENDING' && workflowRun.status !== 'DONE') ||
               stageActionsLocked,
@@ -969,11 +898,7 @@ export function WorkflowRunDetailPage() {
           {
             key: 'edit',
             label: '人工修改',
-            onClick: (): void => {
-              const output = workflowRun.codeExecution;
-              setEditOutputText(JSON.stringify(output, null, 2));
-              setEditModal({ stage: 'execution', title: '人工修改开发执行结果', initialOutput: output });
-            },
+            onClick: (): void => openWorkspaceEditMode('execution'),
             disabled:
               !workflowRun.codeExecution ||
               !['REVIEW_PENDING', 'HUMAN_REVIEW_PENDING', 'DONE'].includes(workflowRun.status) ||
@@ -1027,10 +952,7 @@ export function WorkflowRunDetailPage() {
           {
             key: 'feedback',
             label: '提意见给 AI',
-            onClick: (): void => {
-              setFeedbackModal({ stage: 'review', title: 'AI 审查意见' });
-              setFeedbackText('');
-            },
+            onClick: (): void => setWorkspaceMode('feedback'),
             disabled:
               (workflowRun.status !== 'HUMAN_REVIEW_PENDING' && workflowRun.status !== 'DONE') ||
               stageActionsLocked,
@@ -1038,11 +960,7 @@ export function WorkflowRunDetailPage() {
           {
             key: 'edit',
             label: '人工修改',
-            onClick: (): void => {
-              const output = workflowRun.reviewReport;
-              setEditOutputText(JSON.stringify(output, null, 2));
-              setEditModal({ stage: 'review', title: '人工修改 AI 审查结果', initialOutput: output });
-            },
+            onClick: (): void => openWorkspaceEditMode('review'),
             disabled:
               (workflowRun.status !== 'HUMAN_REVIEW_PENDING' && workflowRun.status !== 'DONE') ||
               stageActionsLocked,
@@ -1059,79 +977,77 @@ export function WorkflowRunDetailPage() {
   const selectedStageContent = stageContent?.[selectedStage];
   const selectedStageIndex = STAGE_SEQUENCE.indexOf(selectedStage);
   const reviewReportId = workflowRun?.reviewReport?.id ?? null;
-  const stickyStageActions = selectedStageContent ? getStickyStageActions(selectedStage, selectedStageContent.actions) : [];
-  const contextualStageActions = selectedStageContent
-    ? getContextualStageActions(selectedStage, selectedStageContent.actions)
-    : [];
+  const workflowWorkspaceConfig = useMemo<WorkflowWorkspaceConfig | null>(() => {
+    if (!selectedStageContent) {
+      return null;
+    }
+
+    const editableStage = getEditableStageForSelectedStage(selectedStage);
+    if (!editableStage) {
+      return null;
+    }
+
+    const actionsByKey = new Map(selectedStageContent.actions.map((action) => [action.key, action]));
+    const runActionView = actionsByKey.get('run');
+    const confirmAction = actionsByKey.get('confirm');
+    const rejectAction = actionsByKey.get('reject');
+    const acceptAction = actionsByKey.get('accept');
+
+    const canSendFeedback = Boolean(actionsByKey.get('feedback')) && selectedStageContent.actions.some((action) => action.key === 'feedback' && !action.disabled);
+
+    const primaryAction: WorkflowWorkspaceAction = canSendFeedback
+      ? {
+          key: 'send-feedback',
+          label: '发送修改意见',
+          onClick: () => void submitFeedback(),
+          disabled: !feedbackText.trim() || submittingAction !== null || stageActionsLocked,
+          loading: submittingAction === 'feedback',
+          variant: 'primary',
+        }
+      : {
+          key: runActionView?.key ?? 'noop',
+          label: runActionView?.label ?? '当前阶段暂无可执行操作',
+          onClick: runActionView?.onClick ?? (() => undefined),
+          disabled: runActionView?.disabled ?? true,
+          loading: runActionView?.loading,
+          variant: 'primary',
+        };
+
+    const secondaryActions: WorkflowWorkspaceAction[] = [];
+
+    [confirmAction, rejectAction, acceptAction]
+      .filter((action): action is StageActionView => Boolean(action))
+      .forEach((action) => {
+        secondaryActions.push({
+          key: action.key,
+          label: action.label,
+          onClick: action.onClick,
+          disabled: action.disabled,
+          loading: action.loading,
+          danger: action.danger,
+          variant: action.variant,
+        });
+      });
+
+    return {
+      stage: editableStage,
+      title: selectedStageContent.subtitle,
+      helperText: '边看左侧产物边写意见，不离开当前工作流上下文。',
+      statusLabel: selectedStageContent.status ? formatStageExecutionStatus(selectedStageContent.status) : '未开始',
+      feedbackPlaceholder: '描述你希望 AI 如何调整当前阶段的产出，例如补充遗漏任务、调整技术路线、补测试或修正审查重点。',
+      primaryAction,
+      secondaryActions,
+    };
+  }, [
+    selectedStageContent,
+    selectedStage,
+    feedbackText,
+    submittingAction,
+    stageActionsLocked,
+  ]);
 
   return (
     <>
-      <Dialog
-        open={!!feedbackModal}
-        onOpenChange={(open) => {
-          if (open) {
-            return;
-          }
-          setFeedbackModal(null);
-          setFeedbackText('');
-        }}
-      >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{feedbackModal?.title ?? '提交意见'}</DialogTitle>
-            <DialogDescription>描述你希望 AI 如何调整当前阶段的产出，系统会基于这条意见重跑该阶段。</DialogDescription>
-          </DialogHeader>
-          <form className="flex flex-col gap-4" onSubmit={(event) => {
-            event.preventDefault();
-            void submitFeedback();
-          }}>
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-foreground" htmlFor="workflow-feedback">意见说明</label>
-              <Textarea
-                id="workflow-feedback"
-                rows={6}
-                value={feedbackText}
-                onChange={(event) => setFeedbackText(event.target.value)}
-                placeholder="例如：任务拆解缺少数据库迁移；方案里应优先改 API；执行代码需要补测试。"
-              />
-            </div>
-            <UiButton type="submit" disabled={submitting}>{submitting ? '提交中...' : '提交给 AI 修改'}</UiButton>
-          </form>
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={!!editModal}
-        onOpenChange={(open) => {
-          if (open) {
-            return;
-          }
-          setEditModal(null);
-          setEditOutputText('');
-        }}
-      >
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>{editModal?.title ?? '人工修改'}</DialogTitle>
-            <DialogDescription>直接编辑阶段产出的 JSON 结构，保存后会覆盖当前阶段的结构化结果。</DialogDescription>
-          </DialogHeader>
-          <form className="flex flex-col gap-4" onSubmit={(event) => {
-            event.preventDefault();
-            void submitManualEdit();
-          }}>
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-foreground" htmlFor="workflow-edit-output">阶段产出 JSON</label>
-              <Textarea
-                id="workflow-edit-output"
-                rows={18}
-                spellCheck={false}
-                value={editOutputText}
-                onChange={(event) => setEditOutputText(event.target.value)}
-              />
-            </div>
-            <UiButton type="submit" disabled={submitting}>{submitting ? '保存中...' : '保存人工修改'}</UiButton>
-          </form>
-        </DialogContent>
-      </Dialog>
       <Dialog
         open={deployModalOpen}
         onOpenChange={(open) => {
@@ -1253,6 +1169,34 @@ export function WorkflowRunDetailPage() {
             }
           />
 
+          {workflowRun.workflowRepositories.length > 0 ? (
+            <div className="rounded-md border border-border bg-muted/35 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm leading-6 text-muted-foreground">{branchSummaryText}</p>
+                <UiButton
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setBranchSummaryExpanded((current) => !current)}
+                >
+                  {branchSummaryExpanded ? '收起分支' : '查看分支'}
+                </UiButton>
+              </div>
+              {branchSummaryExpanded ? (
+                <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+                  {workflowRun.workflowRepositories.map((repository) => (
+                    <div key={repository.id} className="text-sm leading-6 text-muted-foreground">
+                      <span className="font-medium text-foreground">{repository.name}</span>
+                      {' / '}
+                      <span>{repository.workingBranch}</span>
+                      {' / '}
+                      <span>基线 {repository.baseBranch}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {workflowMetrics ? (
             <div className="grid gap-5 md:grid-cols-4">
               <MetricCard
@@ -1330,25 +1274,6 @@ export function WorkflowRunDetailPage() {
             </CardContent>
           </Card>
 
-          {selectedStageContent && stickyStageActions.length > 0 ? (
-            <Card className="sticky top-4 z-20 rounded-md border-border bg-card/95 shadow-sm backdrop-blur">
-              <CardContent className="flex flex-col gap-3 p-4">
-                <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <div className="text-xs font-bold uppercase tracking-[0.08em] text-primary">当前阶段操作</div>
-                    <div className="text-sm leading-6 text-muted-foreground">
-                      {selectedStageContent.subtitle} 的关键动作固定在这里，滚动浏览长内容时也能直接处理。
-                    </div>
-                  </div>
-                  <Badge variant="outline" className="w-fit rounded-md px-2.5 py-1 text-xs font-semibold">
-                    {selectedStageContent.title}
-                  </Badge>
-                </div>
-                {renderStageActionButtons(stickyStageActions, { compact: true })}
-              </CardContent>
-            </Card>
-          ) : null}
-
           <div className="grid items-start gap-5 min-[1281px]:grid-cols-[minmax(0,1.5fr)_360px] max-[1280px]:grid-cols-1">
             {/* Left: main content */}
             <div className="flex flex-col gap-5">
@@ -1382,7 +1307,7 @@ export function WorkflowRunDetailPage() {
                     },
                   ]}
                   output={selectedStageContent.output}
-                  actions={selectedStage === 'EXECUTION' || selectedStage === 'AI_REVIEW' ? [] : selectedStageContent.actions}
+                  actions={[]}
                 />
               ) : (
                 <Card className="rounded-md border border-border bg-card shadow-sm">
@@ -1391,21 +1316,6 @@ export function WorkflowRunDetailPage() {
                   </CardContent>
                 </Card>
               )}
-
-              {selectedStage === 'EXECUTION' && contextualStageActions.length > 0 ? (
-                <Card className="rounded-md border-border bg-card shadow-sm">
-                  <CardHeader className="p-5">
-                    <SectionHeader
-                      eyebrow="Execution Actions"
-                      title="开发操作"
-                      description="直接在这里继续推进开发阶段，核对完变更后不用再回到页面上方找按钮。"
-                    />
-                  </CardHeader>
-                  <CardContent className="p-5 pt-0">
-                    {renderStageActionButtons(contextualStageActions)}
-                  </CardContent>
-                </Card>
-              ) : null}
 
               {diffReviewData.length > 0 && (selectedStage === 'EXECUTION' || selectedStage === 'AI_REVIEW') ? (
               <Card className="rounded-md border-border bg-card shadow-sm">
@@ -1510,15 +1420,6 @@ export function WorkflowRunDetailPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="p-5 pt-0">
-                  {contextualStageActions.length > 0 ? (
-                    <div className="mb-5 rounded-md border border-border bg-muted/35 p-4">
-                      <div className="mb-1 text-xs font-bold uppercase tracking-[0.08em] text-primary">审查决策</div>
-                      <div className="mb-3 text-sm leading-6 text-muted-foreground">
-                        先处理审查结果，再做最终决策，避免看完问题后还要回到别处操作。
-                      </div>
-                      {renderStageActionButtons(contextualStageActions)}
-                    </div>
-                  ) : null}
                   {hasStaleReviewResults ? (
                     <div className="mb-4 flex flex-col gap-3 rounded-md border border-warning/30 bg-warning/5 px-4 py-3 text-sm leading-6 text-warning">
                       <div>
@@ -1646,60 +1547,21 @@ export function WorkflowRunDetailPage() {
             </div>
 
             {/* Right: sidebar */}
-            <div className="flex flex-col gap-5">
-              <ContextPanel
-                eyebrow="Requirement Scope"
-                title="需求仓库范围"
-                description="如果这里为空，本次工作流会回退继承项目工作区的默认仓库集合。"
-              >
-                {workflowRun.requirement.requirementRepositories?.length ? (
-                  <div className="flex flex-wrap gap-3">
-                    {workflowRun.requirement.requirementRepositories.map((entry) => (
-                      <Badge key={entry.id} variant="outline">
-                        {entry.repository.name}
-                      </Badge>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm leading-6 text-muted-foreground">当前需求没有单独指定仓库范围。</p>
-                )}
-              </ContextPanel>
-
-              {workflowRun.workflowRepositories.length > 0 ? (
-                <ContextPanel eyebrow="Workflow Branches" title="工作分支" description="每次工作流都会从基线仓库准备独立的工作分支，避免直接污染项目主分支。">
-                  <div className="flex flex-col gap-3">
-                    {workflowRun.workflowRepositories.map((repository) => (
-                      <RepositoryBranchCard
-                        key={repository.id}
-                        name={repository.name}
-                        primaryMeta={`基线分支 ${repository.baseBranch}`}
-                        secondaryMeta={`工作分支 ${repository.workingBranch}`}
-                        statusLabel={formatWorkflowRepositoryStatus(repository.status)}
-                        statusVariant={
-                          repository.status === 'READY'
-                            ? 'success'
-                            : repository.status === 'ERROR'
-                              ? 'destructive'
-                              : 'warning'
-                        }
-                        description="已为本次工作流准备独立工作分支。"
-                        error={repository.syncError ? `分支准备失败：${repository.syncError}` : undefined}
-                        action={
-                          workflowRun.status === 'DONE' ? (
-                            <UiButton
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => void handleOpenDeployModal(repository.repositoryId ?? undefined)}
-                              disabled={deployLoading || !repository.repositoryId}
-                            >
-                              部署
-                            </UiButton>
-                          ) : null
-                        }
-                      />
-                    ))}
-                  </div>
-                </ContextPanel>
+            <div
+              data-testid="workflow-review-sidebar-shell"
+              className="flex flex-col gap-5 self-start min-[1281px]:sticky min-[1281px]:top-6"
+            >
+              {workflowWorkspaceConfig ? (
+                <WorkflowReviewSidebar
+                  stageTitle={workflowWorkspaceConfig.title}
+                  stageStatusLabel={workflowWorkspaceConfig.statusLabel}
+                  helperText={workflowWorkspaceConfig.helperText}
+                  feedbackText={feedbackText}
+                  feedbackPlaceholder={workflowWorkspaceConfig.feedbackPlaceholder}
+                  onFeedbackChange={setFeedbackText}
+                  primaryAction={workflowWorkspaceConfig.primaryAction}
+                  secondaryActions={workflowWorkspaceConfig.secondaryActions}
+                />
               ) : null}
             </div>
           </div>

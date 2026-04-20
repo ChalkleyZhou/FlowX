@@ -12,8 +12,21 @@ vi.mock('../api', () => ({
   api: {
     getWorkflowRun: vi.fn(),
     confirmTaskSplit: vi.fn(),
+    reviseTaskSplit: vi.fn(),
     runTaskSplit: vi.fn(),
+    runPlan: vi.fn(),
+    confirmPlan: vi.fn(),
+    rejectPlan: vi.fn(),
+    revisePlan: vi.fn(),
+    runExecution: vi.fn(),
+    reviseExecution: vi.fn(),
     runReview: vi.fn(),
+    reviseReview: vi.fn(),
+    decideHumanReview: vi.fn(),
+    syncReviewFindings: vi.fn(),
+    fixReviewFinding: vi.fn(),
+    convertReviewFindingToIssue: vi.fn(),
+    convertReviewFindingToBug: vi.fn(),
   },
 }));
 
@@ -146,6 +159,64 @@ describe('WorkflowRunDetailPage', () => {
     expect(text.match(/当前状态/g)).toHaveLength(1);
   });
 
+  it('renders the review sidebar inside a desktop sticky shell', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun());
+
+    await renderPage();
+
+    const stickyShell = container.querySelector('[data-testid="workflow-review-sidebar-shell"]');
+
+    expect(stickyShell).toBeTruthy();
+    expect(stickyShell?.className).toContain('min-[1281px]:sticky');
+    expect(stickyShell?.className).toContain('min-[1281px]:top-6');
+  });
+
+  it('shows branch info as a lightweight expandable summary near the header', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        workflowRepositories: [
+          {
+            id: 'repo-1',
+            repositoryId: 'repository-1',
+            name: 'flowx-web',
+            url: 'https://example.com/flowx-web.git',
+            baseBranch: 'main',
+            workingBranch: 'codex/fix-login',
+            status: 'READY',
+          },
+          {
+            id: 'repo-2',
+            repositoryId: 'repository-2',
+            name: 'flowx-api',
+            url: 'https://example.com/flowx-api.git',
+            baseBranch: 'main',
+            workingBranch: 'codex/fix-auth',
+            status: 'READY',
+          },
+        ],
+      }),
+    );
+
+    await renderPage();
+
+    const text = container.textContent ?? '';
+    expect(text).toContain('工作分支：flowx-web / codex/fix-login 等 2 个');
+    expect(text).toContain('查看分支');
+    expect(text).not.toContain('需求仓库范围');
+
+    const branchButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('查看分支'),
+    );
+
+    await act(async () => {
+      branchButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('flowx-api');
+    expect(container.textContent).toContain('codex/fix-auth');
+  });
+
   it('switches to the next stage card after task split is confirmed', async () => {
     vi.mocked(api.getWorkflowRun)
       .mockResolvedValueOnce(
@@ -203,6 +274,73 @@ describe('WorkflowRunDetailPage', () => {
 
     expect(api.confirmTaskSplit).toHaveBeenCalledWith('workflow-1');
     expect(container.textContent).toContain('生成技术方案');
+  });
+
+  it('renders a persistent workflow review sidebar for waiting-confirmation stages', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'TASK_SPLIT_WAITING_CONFIRMATION',
+        stageExecutions: [
+          {
+            id: 'stage-1',
+            stage: 'TASK_SPLIT',
+            status: 'WAITING_CONFIRMATION',
+            statusMessage: null,
+            attempt: 1,
+            output: { tasks: ['补齐登录错误提示'] },
+          },
+        ],
+      }),
+    );
+
+    await renderPage();
+
+    const text = container.textContent ?? '';
+    expect(text).toContain('工作流反馈区');
+    expect(text).toContain('发送修改意见');
+    expect(text).not.toContain('人工修改');
+  });
+
+  it('clears workflow feedback after a successful revise submit', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'TASK_SPLIT_WAITING_CONFIRMATION',
+        stageExecutions: [
+          {
+            id: 'stage-1',
+            stage: 'TASK_SPLIT',
+            status: 'WAITING_CONFIRMATION',
+            statusMessage: null,
+            attempt: 1,
+            output: { tasks: ['补齐登录错误提示'] },
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.reviseTaskSplit).mockResolvedValue(createWorkflowRun());
+
+    await renderPage();
+
+    const textarea = container.querySelector('textarea');
+    expect(textarea).toBeTruthy();
+
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(textarea, '把任务拆分成前后端两块');
+      textarea?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    const sendButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('发送修改意见'),
+    );
+
+    await act(async () => {
+      sendButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(api.reviseTaskSplit).toHaveBeenCalledWith('workflow-1', '把任务拆分成前后端两块');
+    expect((container.querySelector('textarea') as HTMLTextAreaElement | null)?.value).toBe('');
   });
 
   it('prevents duplicate clicks while a stage action is being submitted', async () => {
@@ -384,7 +522,7 @@ describe('WorkflowRunDetailPage', () => {
     expect(fixButton?.hasAttribute('disabled')).toBe(true);
   });
 
-  it('renders a sticky current-stage action bar for execution and keeps execution actions near diff review', async () => {
+  it('renders the workflow review sidebar for execution while keeping diff review on the left', async () => {
     vi.mocked(api.getWorkflowRun).mockResolvedValue(
       createWorkflowRun({
         status: 'REVIEW_PENDING',
@@ -421,13 +559,12 @@ describe('WorkflowRunDetailPage', () => {
 
     const text = container.textContent ?? '';
 
-    expect(text).toContain('当前阶段操作');
-    expect(text).toContain('执行开发');
-    expect(text).toContain('开发操作');
-    expect(text).toContain('直接在这里继续推进开发阶段');
+    expect(text).toContain('工作流反馈区');
+    expect(text).toContain('发送修改意见');
+    expect(text).toContain('代码变更审查');
   });
 
-  it('renders a sticky current-stage action bar for review and keeps review decisions near findings', async () => {
+  it('renders the workflow review sidebar for review and keeps findings on the left', async () => {
     vi.mocked(api.getWorkflowRun).mockResolvedValue(
       createWorkflowRun({
         status: 'HUMAN_REVIEW_PENDING',
@@ -480,10 +617,11 @@ describe('WorkflowRunDetailPage', () => {
 
     const text = container.textContent ?? '';
 
-    expect(text).toContain('当前阶段操作');
+    expect(text).toContain('工作流反馈区');
     expect(text).toContain('通过');
-    expect(text).toContain('返工');
-    expect(text).toContain('审查决策');
-    expect(text).toContain('先处理审查结果，再做最终决策');
+    expect(text).toContain('AI 审查结果');
+    expect(text).toContain('立即修复');
+    expect(text).not.toContain('返工');
+    expect(text).not.toContain('回滚');
   });
 });
