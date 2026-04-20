@@ -33,6 +33,19 @@ export class RokidOpsDeployProvider implements DeployProvider {
     }
 
     const payload = this.buildPayload(input);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...this.buildHeaders(),
+    };
+    const body = JSON.stringify(payload);
+    this.logger.log(
+      `Rokid OPS createJob request: ${JSON.stringify({
+        method: 'POST',
+        url,
+        headers: this.redactHeadersForLog(headers),
+        body: payload,
+      })}`,
+    );
     const timeoutMs = Number(this.configService.get<string>('DEPLOY_PROVIDER_TIMEOUT_MS') ?? 10000);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -40,11 +53,8 @@ export class RokidOpsDeployProvider implements DeployProvider {
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...this.buildHeaders(),
-        },
-        body: JSON.stringify(payload),
+        headers,
+        body,
         signal: controller.signal,
       });
 
@@ -121,20 +131,26 @@ export class RokidOpsDeployProvider implements DeployProvider {
     return payload;
   }
 
-  private buildHeaders() {
-    const token = this.configService.get<string>('DEPLOY_PROVIDER_AUTH_TOKEN')?.trim();
-    const headerName =
-      this.configService.get<string>('DEPLOY_PROVIDER_AUTH_HEADER')?.trim() || 'Authorization';
-    const headerPrefix =
-      this.configService.get<string>('DEPLOY_PROVIDER_AUTH_PREFIX')?.trim() || 'Bearer';
-
-    if (!token) {
+  private buildHeaders(): Record<string, string> {
+    const apiKey = this.configService.get<string>('DEPLOY_ROKID_OPS_API_KEY')?.trim();
+    if (!apiKey) {
       return {};
     }
 
     return {
-      [headerName]: headerPrefix ? `${headerPrefix} ${token}` : token,
+      'API-KEY': apiKey,
     };
+  }
+
+  /** Log-safe copy: never prints full API key. */
+  private redactHeadersForLog(headers: Record<string, string>): Record<string, string> {
+    const copy = { ...headers };
+    const key = copy['API-KEY'];
+    if (key) {
+      copy['API-KEY'] =
+        key.length <= 4 ? '(redacted)' : `(redacted, len=${key.length}, suffix=...${key.slice(-4)})`;
+    }
+    return copy;
   }
 
   private getCreateJobUrl() {

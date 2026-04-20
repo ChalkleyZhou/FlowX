@@ -4,6 +4,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Textarea } from './ui/textarea';
+import { IdeationReviewSidebar } from './IdeationReviewSidebar';
 import type { IdeationSession } from '../types';
 
 interface BrainstormBrief {
@@ -27,9 +28,44 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{children}</p>;
 }
 
+function ReviewSection({
+  title,
+  reviewLabel,
+  canQuote,
+  onQuote,
+  children,
+}: {
+  title: string;
+  reviewLabel: string;
+  canQuote: boolean;
+  onQuote: (label: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between gap-3">
+        <SectionLabel>{title}</SectionLabel>
+        {canQuote && (
+          <button
+            type="button"
+            onClick={() => onQuote(reviewLabel)}
+            aria-label={`引用到反馈: ${reviewLabel}`}
+            className="text-xs font-medium text-primary transition-colors hover:text-primary/80"
+          >
+            引用到反馈
+          </button>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export function IdeationBrainstormPanel({ requirementId, ideationStatus, sessions, onUpdated }: Props) {
   const [feedback, setFeedback] = useState('');
   const [loading, setLoading] = useState(false);
+  const [activeAction, setActiveAction] = useState<'confirm' | 'revise' | null>(null);
+  const [selectedSection, setSelectedSection] = useState<string | null>(null);
 
   const brainstormSessions = sessions.filter((s) => s.stage === 'BRAINSTORM');
   const latestSession = brainstormSessions[brainstormSessions.length - 1];
@@ -52,25 +88,31 @@ export function IdeationBrainstormPanel({ requirementId, ideationStatus, session
       alert(err instanceof Error ? err.message : '启动头脑风暴失败');
     } finally {
       setLoading(false);
+      setActiveAction(null);
     }
   }
 
   async function handleRevise() {
     if (!feedback.trim()) return;
     setLoading(true);
+    setActiveAction('revise');
     try {
-      await api.reviseBrainstorm(requirementId, feedback);
+      const revisionFeedback = selectedSection ? `[聚焦区块] ${selectedSection}\n\n${feedback}` : feedback;
+      await api.reviseBrainstorm(requirementId, revisionFeedback);
       setFeedback('');
+      setSelectedSection(null);
       onUpdated();
     } catch (err) {
       alert(err instanceof Error ? err.message : '修订失败');
     } finally {
       setLoading(false);
+      setActiveAction(null);
     }
   }
 
   async function handleConfirm() {
     setLoading(true);
+    setActiveAction('confirm');
     try {
       await api.confirmBrainstorm(requirementId);
       onUpdated();
@@ -78,6 +120,7 @@ export function IdeationBrainstormPanel({ requirementId, ideationStatus, session
       alert(err instanceof Error ? err.message : '确认失败');
     } finally {
       setLoading(false);
+      setActiveAction(null);
     }
   }
 
@@ -114,82 +157,128 @@ export function IdeationBrainstormPanel({ requirementId, ideationStatus, session
 
       {/* Brief content */}
       {brief && (
-        <Card className="border-border shadow-sm">
-          <CardContent className="flex flex-col gap-5 p-5">
-            <div>
-              <SectionLabel>扩展描述</SectionLabel>
-              <p className="whitespace-pre-line text-sm leading-6 text-foreground">{brief.expandedDescription}</p>
-            </div>
+        <div className={isWaitingConfirmation ? 'grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start' : ''}>
+          <Card className="border-border shadow-sm">
+            <CardContent className="flex flex-col gap-5 p-5">
+              <ReviewSection
+                title="扩展描述"
+                reviewLabel="头脑风暴 / 扩展描述"
+                canQuote={isWaitingConfirmation}
+                onQuote={setSelectedSection}
+              >
+                <p className="whitespace-pre-line text-sm leading-6 text-foreground">{brief.expandedDescription}</p>
+              </ReviewSection>
 
-            {brief.userStories.length > 0 && (
-              <div>
-                <SectionLabel>用户故事</SectionLabel>
-                <ul className="flex flex-col gap-1.5">
-                  {brief.userStories.map((story, i) => (
-                    <li key={i} className="text-sm text-foreground">
-                      作为<strong className="font-semibold text-foreground">{story.role}</strong>，我希望<strong className="font-semibold text-foreground">{story.action}</strong>，以便<strong className="font-semibold text-foreground">{story.benefit}</strong>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              {brief.userStories.length > 0 && (
+                <ReviewSection
+                  title="用户故事"
+                  reviewLabel="头脑风暴 / 用户故事"
+                  canQuote={isWaitingConfirmation}
+                  onQuote={setSelectedSection}
+                >
+                  <ul className="flex flex-col gap-1.5">
+                    {brief.userStories.map((story, i) => (
+                      <li key={i} className="text-sm text-foreground">
+                        作为<strong className="font-semibold text-foreground">{story.role}</strong>，我希望<strong className="font-semibold text-foreground">{story.action}</strong>，以便<strong className="font-semibold text-foreground">{story.benefit}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                </ReviewSection>
+              )}
 
-            {brief.edgeCases.length > 0 && (
-              <div>
-                <SectionLabel>边界情况</SectionLabel>
-                <ul className="list-inside list-disc space-y-0.5">
-                  {brief.edgeCases.map((item, i) => (
-                    <li key={i} className="text-sm text-foreground">{item}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              {brief.edgeCases.length > 0 && (
+                <ReviewSection
+                  title="边界情况"
+                  reviewLabel="头脑风暴 / 边界情况"
+                  canQuote={isWaitingConfirmation}
+                  onQuote={setSelectedSection}
+                >
+                  <ul className="list-inside list-disc space-y-0.5">
+                    {brief.edgeCases.map((item, i) => (
+                      <li key={i} className="text-sm text-foreground">{item}</li>
+                    ))}
+                  </ul>
+                </ReviewSection>
+              )}
 
-            {brief.successMetrics.length > 0 && (
-              <div>
-                <SectionLabel>成功指标</SectionLabel>
-                <ul className="list-inside list-disc space-y-0.5">
-                  {brief.successMetrics.map((item, i) => (
-                    <li key={i} className="text-sm text-foreground">{item}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              {brief.successMetrics.length > 0 && (
+                <ReviewSection
+                  title="成功指标"
+                  reviewLabel="头脑风暴 / 成功指标"
+                  canQuote={isWaitingConfirmation}
+                  onQuote={setSelectedSection}
+                >
+                  <ul className="list-inside list-disc space-y-0.5">
+                    {brief.successMetrics.map((item, i) => (
+                      <li key={i} className="text-sm text-foreground">{item}</li>
+                    ))}
+                  </ul>
+                </ReviewSection>
+              )}
 
-            {brief.openQuestions.length > 0 && (
-              <div>
-                <SectionLabel>待确认问题</SectionLabel>
-                <ul className="list-inside list-disc space-y-0.5">
-                  {brief.openQuestions.map((item, i) => (
-                    <li key={i} className="text-sm text-warning">{item}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              {brief.openQuestions.length > 0 && (
+                <ReviewSection
+                  title="待确认问题"
+                  reviewLabel="头脑风暴 / 待确认问题"
+                  canQuote={isWaitingConfirmation}
+                  onQuote={setSelectedSection}
+                >
+                  <ul className="list-inside list-disc space-y-0.5">
+                    {brief.openQuestions.map((item, i) => (
+                      <li key={i} className="text-sm text-warning">{item}</li>
+                    ))}
+                  </ul>
+                </ReviewSection>
+              )}
 
-            {brief.assumptions.length > 0 && (
-              <div>
-                <SectionLabel>假设</SectionLabel>
-                <ul className="list-inside list-disc space-y-0.5">
-                  {brief.assumptions.map((item, i) => (
-                    <li key={i} className="text-sm text-muted-foreground">{item}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              {brief.assumptions.length > 0 && (
+                <ReviewSection
+                  title="假设"
+                  reviewLabel="头脑风暴 / 假设"
+                  canQuote={isWaitingConfirmation}
+                  onQuote={setSelectedSection}
+                >
+                  <ul className="list-inside list-disc space-y-0.5">
+                    {brief.assumptions.map((item, i) => (
+                      <li key={i} className="text-sm text-muted-foreground">{item}</li>
+                    ))}
+                  </ul>
+                </ReviewSection>
+              )}
 
-            {brief.outOfScope.length > 0 && (
-              <div>
-                <SectionLabel>不在范围内</SectionLabel>
-                <ul className="list-inside list-disc space-y-0.5">
-                  {brief.outOfScope.map((item, i) => (
-                    <li key={i} className="text-sm text-muted-foreground">{item}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              {brief.outOfScope.length > 0 && (
+                <ReviewSection
+                  title="不在范围内"
+                  reviewLabel="头脑风暴 / 不在范围内"
+                  canQuote={isWaitingConfirmation}
+                  onQuote={setSelectedSection}
+                >
+                  <ul className="list-inside list-disc space-y-0.5">
+                    {brief.outOfScope.map((item, i) => (
+                      <li key={i} className="text-sm text-muted-foreground">{item}</li>
+                    ))}
+                  </ul>
+                </ReviewSection>
+              )}
+            </CardContent>
+          </Card>
+
+          {canRevise && isWaitingConfirmation && (
+            <IdeationReviewSidebar
+              stageLabel="头脑风暴"
+              feedback={feedback}
+              selectedSection={selectedSection}
+              loading={loading}
+              activeAction={activeAction}
+              confirmLabel="确认当前简报"
+              reviseLabel="发送修改意见"
+              onFeedbackChange={setFeedback}
+              onClearSection={() => setSelectedSection(null)}
+              onConfirm={handleConfirm}
+              onRevise={handleRevise}
+            />
+          )}
+        </div>
       )}
 
       {/* Error */}
@@ -206,7 +295,7 @@ export function IdeationBrainstormPanel({ requirementId, ideationStatus, session
         </Button>
       )}
 
-      {canRevise && isWaitingConfirmation && (
+      {canRevise && isWaitingConfirmation && !brief && (
         <div className="flex flex-col gap-3">
           <Textarea
             value={feedback}

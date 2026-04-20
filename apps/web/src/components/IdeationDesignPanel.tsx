@@ -4,6 +4,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Textarea } from './ui/textarea';
+import { IdeationReviewSidebar } from './IdeationReviewSidebar';
 import type { DemoPage, IdeationSession, Repository } from '../types';
 
 interface DesignSpec {
@@ -37,6 +38,39 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{children}</p>;
 }
 
+function ReviewSection({
+  title,
+  reviewLabel,
+  canQuote,
+  onQuote,
+  children,
+}: {
+  title: string;
+  reviewLabel: string;
+  canQuote: boolean;
+  onQuote: (label: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between gap-3">
+        <SectionLabel>{title}</SectionLabel>
+        {canQuote && (
+          <button
+            type="button"
+            onClick={() => onQuote(reviewLabel)}
+            aria-label={`引用到反馈: ${reviewLabel}`}
+            className="text-xs font-medium text-primary transition-colors hover:text-primary/80"
+          >
+            引用到反馈
+          </button>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 const methodBadgeVariant: Record<string, 'success' | 'default' | 'warning' | 'destructive' | 'outline'> = {
   GET: 'success',
   POST: 'default',
@@ -50,7 +84,9 @@ type PreviewState = 'idle' | 'deploying' | 'ready' | 'failed' | 'no_config';
 export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, repositories, onUpdated }: Props) {
   const [feedback, setFeedback] = useState('');
   const [loading, setLoading] = useState(false);
+  const [activeAction, setActiveAction] = useState<'confirm' | 'revise' | null>(null);
   const [expandedPage, setExpandedPage] = useState<number | null>(null);
+  const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [previewState, setPreviewState] = useState<PreviewState>('idle');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -140,27 +176,33 @@ export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, r
       alert(err instanceof Error ? err.message : '启动设计失败');
     } finally {
       setLoading(false);
+      setActiveAction(null);
     }
   }
 
   async function handleRevise() {
     if (!feedback.trim()) return;
     setLoading(true);
+    setActiveAction('revise');
     setPreviewState('idle');
     setPreviewUrl(null);
     try {
-      await api.reviseDesign(requirementId, feedback);
+      const revisionFeedback = selectedSection ? `[聚焦区块] ${selectedSection}\n\n${feedback}` : feedback;
+      await api.reviseDesign(requirementId, revisionFeedback);
       setFeedback('');
+      setSelectedSection(null);
       onUpdated();
     } catch (err) {
       alert(err instanceof Error ? err.message : '修订失败');
     } finally {
       setLoading(false);
+      setActiveAction(null);
     }
   }
 
   async function handleConfirm() {
     setLoading(true);
+    setActiveAction('confirm');
     try {
       await api.confirmDesign(requirementId);
       onUpdated();
@@ -168,6 +210,7 @@ export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, r
       alert(err instanceof Error ? err.message : '确认失败');
     } finally {
       setLoading(false);
+      setActiveAction(null);
     }
   }
 
@@ -273,103 +316,145 @@ export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, r
 
       {/* Design content */}
       {design && (
-        <Card className="border-border shadow-sm">
-          <CardContent className="flex flex-col gap-5 p-5">
-            <div>
-              <SectionLabel>设计概述</SectionLabel>
-              <p className="whitespace-pre-line text-sm leading-6 text-foreground">{design.overview}</p>
-            </div>
+        <div className={isWaitingConfirmation ? 'grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start' : ''}>
+          <Card className="border-border shadow-sm">
+            <CardContent className="flex flex-col gap-5 p-5">
+              <ReviewSection
+                title="设计概述"
+                reviewLabel="设计方案 / 设计概述"
+                canQuote={isWaitingConfirmation}
+                onQuote={setSelectedSection}
+              >
+                <p className="whitespace-pre-line text-sm leading-6 text-foreground">{design.overview}</p>
+              </ReviewSection>
 
-            {design.pages.length > 0 && (
-              <div>
-                <SectionLabel>页面设计</SectionLabel>
-                <div className="flex flex-col gap-2">
-                  {design.pages.map((page, i) => (
-                    <div key={i} className="overflow-hidden rounded-md border border-border">
-                      <button
-                        onClick={() => setExpandedPage(expandedPage === i ? null : i)}
-                        className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <span>{page.name} <span className="font-normal text-muted-foreground">{page.route}</span></span>
-                        <span className="text-muted-foreground">{expandedPage === i ? '▲' : '▼'}</span>
-                      </button>
-                      {expandedPage === i && (
-                        <div className="flex flex-col gap-3 border-t border-border bg-muted/50 p-4">
-                          <div>
-                            <SectionLabel>布局线框</SectionLabel>
-                            <pre className="whitespace-pre-wrap rounded-md border border-border bg-card px-3 py-2 font-mono text-xs leading-5 text-foreground">{page.layout}</pre>
-                          </div>
-                          {page.keyComponents.length > 0 && (
+              {design.pages.length > 0 && (
+                <ReviewSection
+                  title="页面设计"
+                  reviewLabel="设计方案 / 页面设计"
+                  canQuote={isWaitingConfirmation}
+                  onQuote={setSelectedSection}
+                >
+                  <div className="flex flex-col gap-2">
+                    {design.pages.map((page, i) => (
+                      <div key={i} className="overflow-hidden rounded-md border border-border">
+                        <button
+                          onClick={() => setExpandedPage(expandedPage === i ? null : i)}
+                          className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <span>{page.name} <span className="font-normal text-muted-foreground">{page.route}</span></span>
+                          <span className="text-muted-foreground">{expandedPage === i ? '▲' : '▼'}</span>
+                        </button>
+                        {expandedPage === i && (
+                          <div className="flex flex-col gap-3 border-t border-border bg-muted/50 p-4">
                             <div>
-                              <SectionLabel>关键组件</SectionLabel>
-                              <div className="flex flex-wrap gap-1.5">
-                                {page.keyComponents.map((comp, j) => (
-                                  <Badge key={j} variant="secondary">{comp}</Badge>
-                                ))}
+                              <SectionLabel>布局线框</SectionLabel>
+                              <pre className="whitespace-pre-wrap rounded-md border border-border bg-card px-3 py-2 font-mono text-xs leading-5 text-foreground">{page.layout}</pre>
+                            </div>
+                            {page.keyComponents.length > 0 && (
+                              <div>
+                                <SectionLabel>关键组件</SectionLabel>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {page.keyComponents.map((comp, j) => (
+                                    <Badge key={j} variant="secondary">{comp}</Badge>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          )}
-                          {page.interactions.length > 0 && (
-                            <div>
-                              <SectionLabel>交互</SectionLabel>
-                              <ul className="list-inside list-disc space-y-0.5">
-                                {page.interactions.map((interaction, j) => (
-                                  <li key={j} className="text-xs text-foreground">{interaction}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                            )}
+                            {page.interactions.length > 0 && (
+                              <div>
+                                <SectionLabel>交互</SectionLabel>
+                                <ul className="list-inside list-disc space-y-0.5">
+                                  {page.interactions.map((interaction, j) => (
+                                    <li key={j} className="text-xs text-foreground">{interaction}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </ReviewSection>
+              )}
 
-            {design.demoScenario && (
-              <div>
-                <SectionLabel>Demo 场景</SectionLabel>
-                <pre className="whitespace-pre-wrap rounded-md border border-border bg-muted px-3 py-2 font-mono text-sm leading-6 text-foreground">{design.demoScenario}</pre>
-              </div>
-            )}
+              {design.demoScenario && (
+                <ReviewSection
+                  title="Demo 场景"
+                  reviewLabel="设计方案 / Demo 场景"
+                  canQuote={isWaitingConfirmation}
+                  onQuote={setSelectedSection}
+                >
+                  <pre className="whitespace-pre-wrap rounded-md border border-border bg-muted px-3 py-2 font-mono text-sm leading-6 text-foreground">{design.demoScenario}</pre>
+                </ReviewSection>
+              )}
 
-            {design.dataModels.length > 0 && (
-              <div>
-                <SectionLabel>数据模型</SectionLabel>
-                <ul className="list-inside list-disc space-y-0.5">
-                  {design.dataModels.map((model, i) => (
-                    <li key={i} className="font-mono text-xs text-foreground">{model}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              {design.dataModels.length > 0 && (
+                <ReviewSection
+                  title="数据模型"
+                  reviewLabel="设计方案 / 数据模型"
+                  canQuote={isWaitingConfirmation}
+                  onQuote={setSelectedSection}
+                >
+                  <ul className="list-inside list-disc space-y-0.5">
+                    {design.dataModels.map((model, i) => (
+                      <li key={i} className="font-mono text-xs text-foreground">{model}</li>
+                    ))}
+                  </ul>
+                </ReviewSection>
+              )}
 
-            {design.apiEndpoints.length > 0 && (
-              <div>
-                <SectionLabel>API 端点</SectionLabel>
-                <div className="flex flex-col gap-1.5">
-                  {design.apiEndpoints.map((endpoint, i) => (
-                    <div key={i} className="flex items-center gap-2 text-xs">
-                      <Badge variant={methodBadgeVariant[endpoint.method] ?? 'outline'} className="font-mono px-1.5 py-0.5">
-                        {endpoint.method}
-                      </Badge>
-                      <span className="font-mono text-foreground">{endpoint.path}</span>
-                      <span className="text-muted-foreground">— {endpoint.purpose}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+              {design.apiEndpoints.length > 0 && (
+                <ReviewSection
+                  title="API 端点"
+                  reviewLabel="设计方案 / API 端点"
+                  canQuote={isWaitingConfirmation}
+                  onQuote={setSelectedSection}
+                >
+                  <div className="flex flex-col gap-1.5">
+                    {design.apiEndpoints.map((endpoint, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs">
+                        <Badge variant={methodBadgeVariant[endpoint.method] ?? 'outline'} className="font-mono px-1.5 py-0.5">
+                          {endpoint.method}
+                        </Badge>
+                        <span className="font-mono text-foreground">{endpoint.path}</span>
+                        <span className="text-muted-foreground">— {endpoint.purpose}</span>
+                      </div>
+                    ))}
+                  </div>
+                </ReviewSection>
+              )}
 
-            {design.designRationale && (
-              <div>
-                <SectionLabel>设计理由</SectionLabel>
-                <p className="text-sm text-foreground">{design.designRationale}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              {design.designRationale && (
+                <ReviewSection
+                  title="设计理由"
+                  reviewLabel="设计方案 / 设计理由"
+                  canQuote={isWaitingConfirmation}
+                  onQuote={setSelectedSection}
+                >
+                  <p className="text-sm text-foreground">{design.designRationale}</p>
+                </ReviewSection>
+              )}
+            </CardContent>
+          </Card>
+
+          {canRevise && isWaitingConfirmation && (
+            <IdeationReviewSidebar
+              stageLabel="设计方案"
+              feedback={feedback}
+              selectedSection={selectedSection}
+              loading={loading}
+              activeAction={activeAction}
+              confirmLabel="确认当前设计"
+              reviseLabel="发送修改意见"
+              onFeedbackChange={setFeedback}
+              onClearSection={() => setSelectedSection(null)}
+              onConfirm={handleConfirm}
+              onRevise={handleRevise}
+            />
+          )}
+        </div>
       )}
 
       {/* Error */}
@@ -386,7 +471,7 @@ export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, r
         </Button>
       )}
 
-      {canRevise && isWaitingConfirmation && (
+      {canRevise && isWaitingConfirmation && !design && (
         <div className="flex flex-col gap-3">
           <Textarea
             value={feedback}

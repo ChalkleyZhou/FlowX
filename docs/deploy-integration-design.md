@@ -59,7 +59,7 @@ Used for system-level and sensitive settings:
 - `DEPLOY_PROVIDER`
 - `DEPLOY_PROVIDER_TIMEOUT_MS`
 - `DEPLOY_PROVIDER_BASE_URL`
-- `DEPLOY_PROVIDER_AUTH_TOKEN`
+- `DEPLOY_ROKID_OPS_API_KEY`
 
 These are optional in open-source mode. If absent, FlowX falls back to `noop`.
 
@@ -255,15 +255,10 @@ To enable the `rokid-ops` provider, configure environment variables on the API s
 DEPLOY_PROVIDER=rokid-ops
 DEPLOY_ROKID_OPS_CREATE_JOB_URL=http://ops-manage.rokid-inc.com/api/cicd/app/createJob
 DEPLOY_PROVIDER_TIMEOUT_MS=10000
+DEPLOY_ROKID_OPS_API_KEY=
 ```
 
-Optional auth headers:
-
-```env
-DEPLOY_PROVIDER_AUTH_TOKEN=
-DEPLOY_PROVIDER_AUTH_HEADER=Authorization
-DEPLOY_PROVIDER_AUTH_PREFIX=Bearer
-```
+OPS 使用 `API-KEY` 请求头传递长效 Token（值由 `DEPLOY_ROKID_OPS_API_KEY` 提供），不再使用 `Authorization`。
 
 Recommended repository deploy config:
 
