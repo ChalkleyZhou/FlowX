@@ -194,6 +194,21 @@ function inferFocusedStage(run: WorkflowRun): WorkflowStageKey {
   return 'TASK_SPLIT';
 }
 
+function getStageKeyForEditableStage(stage: EditableStage): WorkflowStageKey {
+  switch (stage) {
+    case 'task-split':
+      return 'TASK_SPLIT';
+    case 'plan':
+      return 'TECHNICAL_PLAN';
+    case 'execution':
+      return 'EXECUTION';
+    case 'review':
+      return 'AI_REVIEW';
+    default:
+      return 'TASK_SPLIT';
+  }
+}
+
 function splitDiffTextIntoFiles(diffText: string): DiffFileView[] {
   if (!diffText.trim()) {
     return [];
@@ -308,6 +323,28 @@ export function WorkflowRunDetailPage() {
   const hasInitializedStageSelectionRef = useRef(false);
   const syncedReviewReportIdRef = useRef<string | null>(null);
   const busyStageRef = useRef<string | null>(null);
+
+  function focusWorkflowSidebarTextarea() {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      const textarea = document.querySelector<HTMLTextAreaElement>(
+        '[data-testid="workflow-review-sidebar-shell"] textarea',
+      );
+      textarea?.focus();
+    });
+  }
+
+  function setWorkspaceMode(_mode: 'feedback') {
+    focusWorkflowSidebarTextarea();
+  }
+
+  function openWorkspaceEditMode(stage: EditableStage) {
+    setSelectedStage(getStageKeyForEditableStage(stage));
+    focusWorkflowSidebarTextarea();
+  }
 
   async function refresh(options?: { silent?: boolean }) {
     if (!workflowRunId) {
