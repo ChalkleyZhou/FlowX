@@ -498,15 +498,7 @@ export function IdeationDesignPanel({
               {!primaryRepo?.localPath && (
                 <p className="text-xs text-muted-foreground">当前需求未关联可用本地仓库路径，请先完成仓库同步后再预览。</p>
               )}
-              {primaryRepo?.localPath && !localDetect && (
-                <p className="text-xs text-muted-foreground">正在检测本地启动命令…</p>
-              )}
-              {localDetect && (
-                <div className="space-y-1 text-xs">
-                  <p className="font-medium text-foreground">检测到的命令（可手动执行）</p>
-                  <pre className="overflow-auto rounded-md border border-border bg-card px-3 py-2 font-mono text-xs">{`cd ${localDetect.cwd}\n${localDetect.shellCommand}`}</pre>
-                </div>
-              )}
+              {primaryRepo?.localPath && !localDetect && <p className="text-xs text-muted-foreground">正在准备本地预览…</p>}
               {localStatus?.status === 'starting' && (
                 <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                   <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-primary" />
@@ -558,20 +550,6 @@ export function IdeationDesignPanel({
               ) : null}
             </div>
 
-            <div className="flex flex-col gap-2">
-              <SectionLabel>Demo 页面代码</SectionLabel>
-              {demoPages.map((page, i) => (
-                <div key={i} className="overflow-hidden rounded-md border border-border">
-                  <div className="flex items-center justify-between bg-muted/50 px-3 py-1.5">
-                    <span className="text-xs font-medium text-foreground">{page.componentName}</span>
-                    <span className="font-mono text-xs text-muted-foreground">{page.route}</span>
-                  </div>
-                  <pre className="max-h-64 overflow-auto bg-card px-3 py-2 font-mono text-xs leading-5 text-foreground">
-                    {page.componentCode}
-                  </pre>
-                </div>
-              ))}
-            </div>
           </CardContent>
         </Card>
       )}
