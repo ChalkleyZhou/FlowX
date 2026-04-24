@@ -8,8 +8,6 @@ describe('GenerateDesignOutput with demoPages', () => {
         overview: 'test',
         pages: [],
         demoScenario: 'test',
-        dataModels: [],
-        apiEndpoints: [],
         designRationale: 'test',
       },
       demoPages: [
@@ -33,8 +31,6 @@ describe('GenerateDesignOutput with demoPages', () => {
         overview: 'test',
         pages: [],
         demoScenario: 'test',
-        dataModels: [],
-        apiEndpoints: [],
         designRationale: 'test',
       },
     };

@@ -183,12 +183,6 @@ export interface DesignSpec {
     interactions: string[];
   }>;
   demoScenario: string;
-  dataModels: string[];
-  apiEndpoints: Array<{
-    method: string;
-    path: string;
-    purpose: string;
-  }>;
   designRationale: string;
 }
 

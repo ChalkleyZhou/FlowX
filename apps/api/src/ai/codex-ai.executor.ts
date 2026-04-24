@@ -3,7 +3,7 @@ import { promisify } from 'util';
 import { execFile as execFileCallback, spawn } from 'child_process';
 import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, relative } from 'path';
 import {
   BrainstormInput,
   BrainstormOutput,
@@ -369,19 +369,37 @@ ${diffSection}
       const componentFiles: string[] = [];
       const propTypes: Array<{ name: string; props: string }> = [];
       const pageExamples: Array<{ path: string; code: string }> = [];
+      const scanRoots = await this.discoverComponentScanRoots(repository.localPath);
+      const maxComponentTsx = 120;
 
-      for (const dir of componentDirs) {
-        const entries = await this.readDirectoryEntries(join(repository.localPath, dir), 40);
-        for (const entry of entries) {
-          if (entry.startsWith('[F]') && entry.endsWith('.tsx')) {
-            const relativePath = `${dir}/${entry.slice(4)}`;
-            componentFiles.push(relativePath);
+      for (const root of scanRoots) {
+        for (const dir of componentDirs) {
+          if (componentFiles.length >= maxComponentTsx) {
+            break;
           }
+          const abs = join(root, dir);
+          try {
+            await access(abs);
+          } catch {
+            continue;
+          }
+          await this.collectTsxRelativePaths(
+            repository.localPath,
+            abs,
+            maxComponentTsx - componentFiles.length,
+            10,
+            componentFiles,
+          );
+        }
+        if (componentFiles.length >= maxComponentTsx) {
+          break;
         }
       }
 
+      const uniqueComponentFiles = Array.from(new Set(componentFiles));
+
       // Read props from up to 8 key UI components
-      const uiComponentFiles = componentFiles.filter(
+      const uiComponentFiles = uniqueComponentFiles.filter(
         (f) => f.includes('/ui/') || f.includes('/common/'),
       );
       for (const file of uiComponentFiles.slice(0, 8)) {
@@ -397,31 +415,50 @@ ${diffSection}
         }
       }
 
-      // Read up to 2 page examples
       const pageDirs = ['src/pages', 'src/app', 'pages', 'app'];
-      let pageFilesFound = 0;
-      for (const dir of pageDirs) {
-        if (pageFilesFound >= 2) break;
-        const entries = await this.readDirectoryEntries(join(repository.localPath, dir), 20);
-        for (const entry of entries) {
-          if (pageFilesFound >= 2) break;
-          if (entry.startsWith('[F]') && entry.endsWith('.tsx')) {
-            const relativePath = `${dir}/${entry.slice(4)}`;
-            try {
-              const content = await readFile(join(repository.localPath, relativePath), 'utf8');
-              pageExamples.push({
-                path: relativePath,
-                code: content.slice(0, 2000),
-              });
-              pageFilesFound++;
-            } catch {
-              // skip unreadable files
-            }
+      const pagePaths: string[] = [];
+      const maxPagePathGather = 40;
+      for (const root of scanRoots) {
+        for (const dir of pageDirs) {
+          if (pagePaths.length >= maxPagePathGather) {
+            break;
           }
+          const abs = join(root, dir);
+          try {
+            await access(abs);
+          } catch {
+            continue;
+          }
+          await this.collectTsxRelativePaths(
+            repository.localPath,
+            abs,
+            maxPagePathGather - pagePaths.length,
+            12,
+            pagePaths,
+          );
+        }
+        if (pagePaths.length >= maxPagePathGather) {
+          break;
         }
       }
 
-      if (componentFiles.length === 0 && pageExamples.length === 0) {
+      const uniquePagePaths = Array.from(new Set(pagePaths));
+      for (const relativePath of uniquePagePaths.slice(0, 2)) {
+        try {
+          const content = await readFile(join(repository.localPath, relativePath), 'utf8');
+          pageExamples.push({
+            path: relativePath,
+            code: content.slice(0, 2000),
+          });
+        } catch {
+          // skip unreadable files
+        }
+      }
+
+      if (uniqueComponentFiles.length === 0 && pageExamples.length === 0) {
+        this.logger.warn(
+          `Repository component scan found no .tsx files under known dirs for repo=${repository.name} localPath=${repository.localPath} scanRoots=${scanRoots.length}`,
+        );
         return null;
       }
 
@@ -444,7 +481,7 @@ ${diffSection}
         }
       }
 
-      return { componentFiles, propTypes, pageExamples, designTokens };
+      return { componentFiles: uniqueComponentFiles, propTypes, pageExamples, designTokens };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'unknown component context error';
       this.logger.warn(`Failed to build repository component context: ${message}`);
@@ -554,15 +591,17 @@ ${revisionSection}
    - keyComponents: 页面上的关键 UI 组件
    - interactions: 关键用户交互和状态变化
 3. demoScenario: 逐步演示场景脚本
-4. dataModels: 关键数据实体和关系
-5. apiEndpoints: 关键 API 端点（method、path、purpose）
-6. designRationale: 为什么选择这个设计方向
-7. demoPages: 可运行的 Demo 页面代码数组，每个包含:
+4. designRationale: 为什么选择这个设计方向
+5. demoPages: 可运行的 Demo 页面代码数组，每个包含:
    - route: 页面路由路径（使用 /flowx-demo/ 前缀避免冲突）
    - componentName: 组件名称（PascalCase）
    - componentCode: 完整的页面组件源码（必须使用目标仓库的真实组件 import）
    - mockData: 组件所需的模拟数据（JSON 对象）
-   - filePath: 建议写入目标仓库的文件相对路径${input.repositoryComponentContext ? '' : '\n\n注意：未提供目标仓库组件上下文，不生成 demoPages。'}
+   - filePath: 建议写入目标仓库的文件相对路径
+
+硬约束:
+- 设计阶段禁止输出 API 设计、接口草案、数据模型方案等技术产物。
+${input.repositoryComponentContext ? '' : '\n- 未提供目标仓库组件上下文，不生成 demoPages。'}
 `;
   }
 
@@ -654,6 +693,72 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     }
   }
 
+  /** Depth-first .tsx collection (monorepo pages live under nested dirs, e.g. apps/x/src/pages/foo/bar/index.tsx). */
+  private async collectTsxRelativePaths(
+    repositoryLocalPath: string,
+    absoluteRootDir: string,
+    maxFiles: number,
+    maxDepth: number,
+    into: string[],
+  ): Promise<void> {
+    const skipDirs = new Set([
+      'node_modules',
+      'dist',
+      'build',
+      '.git',
+      'coverage',
+      '.next',
+      'out',
+      'storybook-static',
+    ]);
+
+    const walk = async (dir: string, depth: number): Promise<void> => {
+      if (into.length >= maxFiles || depth > maxDepth) {
+        return;
+      }
+      let entries;
+      try {
+        entries = await readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      const sorted = entries.sort((a, b) => a.name.localeCompare(b.name));
+      for (const ent of sorted) {
+        if (into.length >= maxFiles) {
+          break;
+        }
+        const abs = join(dir, ent.name);
+        if (ent.isDirectory()) {
+          if (skipDirs.has(ent.name)) {
+            continue;
+          }
+          await walk(abs, depth + 1);
+        } else if (ent.isFile() && ent.name.endsWith('.tsx')) {
+          into.push(relative(repositoryLocalPath, abs).replace(/\\/g, '/'));
+        }
+      }
+    };
+
+    await walk(absoluteRootDir, 0);
+  }
+
+  private async discoverComponentScanRoots(repositoryLocalPath: string): Promise<string[]> {
+    const roots = new Set<string>([repositoryLocalPath]);
+    const monorepoParents = ['apps', 'packages'];
+
+    for (const parent of monorepoParents) {
+      const entries = await this.readDirectoryEntries(join(repositoryLocalPath, parent), 20);
+      for (const entry of entries) {
+        if (!entry.startsWith('[D] ')) {
+          continue;
+        }
+        roots.add(join(repositoryLocalPath, parent, entry.slice(4)));
+      }
+    }
+
+    return Array.from(roots);
+  }
+
   private async readPackageJsonSummary(localPath: string) {
     try {
       const packageJson = JSON.parse(await readFile(join(localPath, 'package.json'), 'utf8')) as {
@@ -701,7 +806,9 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     const outputPath = join(tempDir, `${stageName.replace(/\s+/g, '-')}.json`);
     const schemaPath = await this.resolveSchemaPath(schemaFile);
     const addDirArgs = addDirs.flatMap((dir) => ['--add-dir', dir]);
-    const codexCwd = addDirs[0] ?? process.cwd();
+    // When no target repository is provided, isolate Codex from the FlowX repo itself.
+    // Otherwise it may accidentally use this service codebase as design context.
+    const codexCwd = addDirs[0] ?? tempDir;
 
     try {
       const { stderr } = await this.runCliProcess(

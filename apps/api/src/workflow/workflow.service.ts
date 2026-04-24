@@ -12,11 +12,10 @@ import { promisify } from 'util';
 import {
   AI_EXECUTOR_REGISTRY,
   type AIExecutor,
-  type AIInvocationContext,
   type AIExecutorProvider,
   type AIExecutorRegistry,
 } from '../ai/ai-executor';
-import { AiCredentialsService } from '../auth/ai-credentials.service';
+import { AiInvocationContextService } from '../ai/ai-invocation-context.service';
 import {
   HumanReviewDecision,
   StageExecutionStatus,
@@ -89,27 +88,18 @@ type WorkflowNotificationRecipient = {
 @Injectable()
 export class WorkflowService {
   private readonly logger = new Logger(WorkflowService.name);
-  private readonly configuredDefaultAiProvider = this.parseAiProvider(
-    process.env.AI_EXECUTOR_DEFAULT_PROVIDER ?? process.env.AI_EXECUTOR_PROVIDER,
-  ) ?? 'codex';
-  private readonly requireUserCursorCredential = this.parseBooleanEnv(
-    process.env.FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL,
-  );
-  private readonly requireUserCodexCredential = this.parseBooleanEnv(
-    process.env.FLOWX_CODEX_REQUIRE_USER_CREDENTIAL,
-  );
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly stateMachine: WorkflowStateMachine,
     private readonly repositorySyncService: RepositorySyncService,
     private readonly dingTalkNotificationService: DingTalkNotificationService,
-    private readonly aiCredentialsService: AiCredentialsService,
+    private readonly aiInvocationContextService: AiInvocationContextService,
     @Inject(AI_EXECUTOR_REGISTRY) private readonly aiExecutorRegistry: AIExecutorRegistry,
   ) {}
 
   async createWorkflowRun(dto: CreateWorkflowRunDto) {
-    const aiProvider = this.normalizeAiProvider(dto.aiProvider);
+    const aiProvider = this.aiInvocationContextService.normalizeAiProvider(dto.aiProvider);
     const requirement = await this.prisma.requirement.findFirstOrThrow({
       where: {
         id: dto.requirementId,
@@ -363,7 +353,7 @@ export class WorkflowService {
 
   listAiProviders() {
     return {
-      defaultProvider: this.configuredDefaultAiProvider,
+      defaultProvider: this.aiInvocationContextService.getConfiguredDefaultProvider(),
       providers: this.aiExecutorRegistry.list().map((provider) => ({
         id: provider,
         label: provider === 'cursor' ? 'Cursor CLI' : 'Codex',
@@ -494,7 +484,10 @@ export class WorkflowService {
 
     this.runInBackground(`task-split:${id}`, async () => {
       try {
-        const invocationContext = await this.resolveAiInvocationContext(workflow.aiProvider, recipient);
+        const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
+          workflow.aiProvider,
+          recipient,
+        );
         // Fetch demo page artifacts for context
         const demoArtifacts = await this.prisma.ideationArtifact.findMany({
           where: { requirementId: requirement.id, type: 'DEMO_PAGE' },
@@ -688,7 +681,10 @@ export class WorkflowService {
 
     this.runInBackground(`plan:${id}`, async () => {
       try {
-        const invocationContext = await this.resolveAiInvocationContext(workflow.aiProvider, recipient);
+        const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
+          workflow.aiProvider,
+          recipient,
+        );
         // Fetch demo page artifacts for context
         const demoArtifacts = await this.prisma.ideationArtifact.findMany({
           where: { requirementId: workflow.requirement.id, type: 'DEMO_PAGE' },
@@ -909,7 +905,10 @@ export class WorkflowService {
 
     this.runInBackground(`execution:${id}`, async () => {
       try {
-        const invocationContext = await this.resolveAiInvocationContext(workflow.aiProvider, recipient);
+        const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
+          workflow.aiProvider,
+          recipient,
+        );
         const rawOutput = await aiExecutor.executeTask(
           {
             requirement: {
@@ -1066,7 +1065,10 @@ export class WorkflowService {
 
     this.runInBackground(`review:${id}`, async () => {
       try {
-        const invocationContext = await this.resolveAiInvocationContext(workflow.aiProvider, recipient);
+        const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
+          workflow.aiProvider,
+          recipient,
+        );
         const output = await aiExecutor.reviewCode(
           {
             requirement: {
@@ -2230,31 +2232,12 @@ export class WorkflowService {
     return entry[0] as StageExecutionStatus;
   }
 
-  private normalizeAiProvider(provider?: string | null): AIExecutorProvider {
-    const parsed = this.parseAiProvider(provider);
-    if (parsed) {
-      return parsed;
-    }
-    return this.configuredDefaultAiProvider ?? 'codex';
-  }
-
-  private parseAiProvider(provider?: string | null): AIExecutorProvider | null {
-    const candidate = provider?.trim().toLowerCase();
-    if (candidate === 'cursor') {
-      return 'cursor';
-    }
-    if (candidate === 'codex') {
-      return 'codex';
-    }
-    return null;
-  }
-
   private resolveAiExecutor(provider?: string | null): AIExecutor {
-    return this.aiExecutorRegistry.get(this.normalizeAiProvider(provider));
+    return this.aiExecutorRegistry.get(this.aiInvocationContextService.normalizeAiProvider(provider));
   }
 
   private getAiProviderLabel(provider?: string | null) {
-    return this.normalizeAiProvider(provider) === 'cursor' ? 'Cursor' : 'Codex';
+    return this.aiInvocationContextService.normalizeAiProvider(provider) === 'cursor' ? 'Cursor' : 'Codex';
   }
 
   private buildWorkflowBranchName(requirementTitle: string, workflowId: string, repositoryName: string) {
@@ -2383,131 +2366,6 @@ export class WorkflowService {
           ? candidate.organizationName
           : null,
     };
-  }
-
-  private async resolveAiInvocationContext(
-    provider?: string | null,
-    recipient?: WorkflowNotificationRecipient | null,
-  ): Promise<AIInvocationContext> {
-    const context: AIInvocationContext = {
-      requestUserId: recipient?.flowxUserId,
-      requestUserDisplayName: recipient?.displayName,
-    };
-
-    const normalizedProvider = this.normalizeAiProvider(provider);
-    if (normalizedProvider === 'codex') {
-      return this.resolveCodexInvocationContext(context, recipient);
-    }
-
-    if (normalizedProvider !== 'cursor') {
-      return context;
-    }
-
-    if (recipient?.flowxOrganizationId) {
-      try {
-        const organizationApiKey = await this.aiCredentialsService.getCursorApiKeyForOrganization(
-          recipient.flowxOrganizationId,
-        );
-        if (organizationApiKey) {
-          context.cursorApiKey = organizationApiKey;
-          context.cursorCredentialSource = 'organization';
-          this.logger.log(
-            `Cursor credential source=organization for organization ${recipient.flowxOrganizationId}.`,
-          );
-          return context;
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(
-          `CURSOR_CREDENTIAL_DECRYPT_FAILED organization=${recipient.flowxOrganizationId} message=${message}`,
-        );
-        throw new Error(
-          'CURSOR_CREDENTIAL_DECRYPT_FAILED: Failed to decrypt organization Cursor credential.',
-        );
-      }
-    }
-
-    if (this.requireUserCursorCredential) {
-      const organizationId = recipient?.flowxOrganizationId ?? 'unknown';
-      this.logger.warn(`CURSOR_ORGANIZATION_CREDENTIAL_REQUIRED organization=${organizationId}`);
-      throw new Error(
-        'CURSOR_ORGANIZATION_CREDENTIAL_REQUIRED: This workspace requires organization-level Cursor credentials. Please configure your organization Cursor API Key first.',
-      );
-    }
-
-    if (process.env.CURSOR_API_KEY?.trim()) {
-      context.cursorCredentialSource = 'instance';
-      this.logger.log(
-        `Cursor credential source=instance for organization ${recipient?.flowxOrganizationId ?? 'unknown'}.`,
-      );
-      return context;
-    }
-
-    context.cursorCredentialSource = 'login-state';
-    this.logger.log(
-      `Cursor credential source=login-state for organization ${recipient?.flowxOrganizationId ?? 'unknown'}.`,
-    );
-    return context;
-  }
-
-  private async resolveCodexInvocationContext(
-    context: AIInvocationContext,
-    recipient?: WorkflowNotificationRecipient | null,
-  ): Promise<AIInvocationContext> {
-    if (recipient?.flowxOrganizationId) {
-      try {
-        const organizationApiKey = await this.aiCredentialsService.getCodexApiKeyForOrganization(
-          recipient.flowxOrganizationId,
-        );
-        if (organizationApiKey) {
-          context.codexApiKey = organizationApiKey;
-          context.codexCredentialSource = 'organization';
-          this.logger.log(
-            `Codex credential source=organization for organization ${recipient.flowxOrganizationId}.`,
-          );
-          return context;
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(
-          `CODEX_CREDENTIAL_DECRYPT_FAILED organization=${recipient.flowxOrganizationId} message=${message}`,
-        );
-        throw new Error(
-          'CODEX_CREDENTIAL_DECRYPT_FAILED: Failed to decrypt organization Codex credential.',
-        );
-      }
-    }
-
-    if (this.requireUserCodexCredential) {
-      const organizationId = recipient?.flowxOrganizationId ?? 'unknown';
-      this.logger.warn(`CODEX_ORGANIZATION_CREDENTIAL_REQUIRED organization=${organizationId}`);
-      throw new Error(
-        'CODEX_ORGANIZATION_CREDENTIAL_REQUIRED: This workspace requires organization-level Codex credentials. Please configure your organization OpenAI API Key first.',
-      );
-    }
-
-    if (process.env.OPENAI_API_KEY?.trim()) {
-      context.codexCredentialSource = 'instance';
-      this.logger.log(
-        `Codex credential source=instance for organization ${recipient?.flowxOrganizationId ?? 'unknown'}.`,
-      );
-      return context;
-    }
-
-    context.codexCredentialSource = 'login-state';
-    this.logger.log(
-      `Codex credential source=login-state for organization ${recipient?.flowxOrganizationId ?? 'unknown'}.`,
-    );
-    return context;
-  }
-
-  private parseBooleanEnv(value?: string | null) {
-    if (!value) {
-      return false;
-    }
-
-    const normalized = value.trim().toLowerCase();
-    return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
   }
 
   private async runGit(args: string[], cwd: string) {

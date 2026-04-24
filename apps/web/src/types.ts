@@ -40,6 +40,27 @@ export interface DeployJobRecord {
   updatedAt: string;
 }
 
+export interface LocalDevDetectResponse {
+  repositoryId: string;
+  localPath: string;
+  cwd: string;
+  packageManager: 'pnpm' | 'npm' | 'yarn';
+  scriptName: string;
+  shellCommand: string;
+}
+
+export interface LocalDevPreviewStatus {
+  repositoryId: string;
+  running: boolean;
+  status: 'idle' | 'starting' | 'running' | 'failed' | 'stopped';
+  previewUrl?: string;
+  port?: number;
+  cwd?: string;
+  shellCommand?: string;
+  logTail?: string;
+  lastError?: string;
+}
+
 export interface Requirement {
   id: string;
   title: string;
@@ -253,7 +274,7 @@ export interface AiCredentialStatus {
 
 export interface IdeationSession {
   id: string;
-  stage: 'BRAINSTORM' | 'DESIGN';
+  stage: 'BRAINSTORM' | 'DESIGN' | 'DEMO';
   attempt: number;
   status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'WAITING_CONFIRMATION';
   statusMessage?: string | null;
@@ -262,6 +283,16 @@ export interface IdeationSession {
   errorMessage?: string | null;
   startedAt?: string | null;
   finishedAt?: string | null;
+  createdAt: string;
+}
+
+export interface IdeationSessionEvent {
+  id: string;
+  sessionId: string;
+  eventType: 'STARTED' | 'STAGE' | 'HEARTBEAT' | 'STDERR' | 'STDOUT' | 'RETRY' | 'FAILED' | 'COMPLETED';
+  stage: 'QUEUE' | 'CONTEXT_SCAN' | 'MODEL_RUNNING' | 'JSON_PARSE' | 'WRITE_FILES' | 'PREVIEW_START' | 'FINALIZE';
+  message: string;
+  details?: Record<string, unknown> | null;
   createdAt: string;
 }
 

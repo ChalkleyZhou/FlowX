@@ -108,16 +108,6 @@ export class MockAiExecutor implements AIExecutor {
           },
         ],
         demoScenario: '1. 进入列表页，查看所有数据项\n2. 在搜索栏输入关键词，观察列表实时过滤\n3. 点击某一项进入详情页\n4. 在详情页查看完整信息\n5. 返回列表页',
-        dataModels: [
-          'Feature: { id, name, status, createdAt, updatedAt }',
-          'FeatureDetail: { id, featureId, description, metadata }',
-        ],
-        apiEndpoints: [
-          { method: 'GET', path: '/api/features', purpose: '获取功能列表（支持搜索和分页）' },
-          { method: 'GET', path: '/api/features/:id', purpose: '获取功能详情' },
-          { method: 'POST', path: '/api/features', purpose: '创建新功能' },
-          { method: 'PATCH', path: '/api/features/:id', purpose: '更新功能信息' },
-        ],
         designRationale: '采用列表-详情的经典布局模式，与系统现有页面保持一致。搜索和筛选放在列表上方便于快速定位，详情页使用标签页组织信息避免页面过长。',
       },
       demoPages: input.repositoryComponentContext

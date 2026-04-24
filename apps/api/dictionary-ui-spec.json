@@ -1,0 +1,1 @@
+{"_note": "请在本目录执行: node emit-dict-json.mjs 以生成带完整 componentCode 的 dictionary-ui-spec.json。componentCode 与 apps/api/dictionary-module-demo-tsx.txt 同文。"}

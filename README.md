@@ -52,6 +52,8 @@ flowchart LR
     ST --> RF
 ```
 
+
+
 ### Flow at a glance
 
 1. 在 `Workspace` 下登记代码库，系统拉取基线仓库并维护当前分支。
@@ -94,20 +96,20 @@ DINGTALK_APP_SECRET=""
 DINGTALK_AGENT_ID=""
 ```
 
-2. Install dependencies:
+1. Install dependencies:
 
 ```bash
 pnpm install
 ```
 
-3. Generate Prisma client and sync schema:
+1. Generate Prisma client and sync schema:
 
 ```bash
 pnpm prisma:generate
 pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma
 ```
 
-4. Start both apps:
+1. Start both apps:
 
 ```bash
 pnpm dev
@@ -227,7 +229,7 @@ docker build \
   -t flowx:latest .
 ```
 
-2. Start with the provided compose file:
+1. Start with the provided compose file:
 
 ```bash
 docker compose -f docker-compose.nginx.yml up -d
@@ -270,3 +272,4 @@ codex login
 7. Run execution
 8. Run AI review
 9. Inspect full stage history
+

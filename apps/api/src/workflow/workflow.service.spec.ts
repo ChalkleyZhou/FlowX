@@ -1,22 +1,29 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { WorkflowService } from './workflow.service';
+import { AiInvocationContextService } from '../ai/ai-invocation-context.service';
+import type { AiCredentialsService } from '../auth/ai-credentials.service';
 import { WorkflowRunStatus } from '../common/enums';
+import { WorkflowService } from './workflow.service';
 
-function createService(overrides?: {
-  aiCredentialsService?: {
-    getCursorApiKeyForOrganization?: (organizationId: string) => Promise<string | null>;
-    getCodexApiKeyForOrganization?: (organizationId: string) => Promise<string | null>;
-  };
-}) {
+function createService() {
   return new WorkflowService(
     {} as never,
     {} as never,
     {} as never,
     {} as never,
-    (overrides?.aiCredentialsService ?? {
-      getCursorApiKeyForOrganization: async () => null,
-      getCodexApiKeyForOrganization: async () => null,
-    }) as never,
+    {
+      normalizeAiProvider: (provider?: string | null) => {
+        const candidate = provider?.trim().toLowerCase();
+        if (candidate === 'cursor') {
+          return 'cursor';
+        }
+        if (candidate === 'codex') {
+          return 'codex';
+        }
+        return 'codex';
+      },
+      getConfiguredDefaultProvider: () => 'codex' as const,
+      resolveInvocationContext: async () => ({}),
+    } as never,
     { get: () => ({}) } as never,
   );
 }
@@ -134,6 +141,17 @@ describe('WorkflowService review-finding execution flow', () => {
   });
 });
 
+function createInvocationContextService(overrides?: {
+  getCursorApiKeyForOrganization?: (organizationId: string) => Promise<string | null>;
+  getCodexApiKeyForOrganization?: (organizationId: string) => Promise<string | null>;
+}) {
+  const aiCredentialsService = {
+    getCursorApiKeyForOrganization: overrides?.getCursorApiKeyForOrganization ?? (async () => null),
+    getCodexApiKeyForOrganization: overrides?.getCodexApiKeyForOrganization ?? (async () => null),
+  } as AiCredentialsService;
+  return new AiInvocationContextService(aiCredentialsService);
+}
+
 describe('WorkflowService cursor credential policy', () => {
   const originalRequireUserCredential = process.env.FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL;
   const originalRequireUserCodexCredential = process.env.FLOWX_CODEX_REQUIRE_USER_CREDENTIAL;
@@ -169,37 +187,25 @@ describe('WorkflowService cursor credential policy', () => {
   it('blocks cursor execution when user credential is required but missing', async () => {
     process.env.FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL = 'true';
     delete process.env.CURSOR_API_KEY;
-    const service = createService({
-      aiCredentialsService: {
-        getCursorApiKeyForOrganization: async () => null,
-      },
+    const service = createInvocationContextService({
+      getCursorApiKeyForOrganization: async () => null,
     });
 
-    await expect((service as unknown as {
-      resolveAiInvocationContext: (
-        provider: string,
-        recipient: { flowxUserId: string; displayName: string },
-      ) => Promise<unknown>;
-    }).resolveAiInvocationContext('cursor', { flowxUserId: 'user-1', displayName: 'User' })).rejects.toThrow(
-      /CURSOR_ORGANIZATION_CREDENTIAL_REQUIRED/,
-    );
+    await expect(
+      service.resolveInvocationContext('cursor', { flowxUserId: 'user-1', displayName: 'User' }),
+    ).rejects.toThrow(/CURSOR_ORGANIZATION_CREDENTIAL_REQUIRED/);
   });
 
   it('keeps compatibility fallback when strict mode is disabled', async () => {
     process.env.FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL = 'false';
     process.env.CURSOR_API_KEY = 'instance-key';
-    const service = createService({
-      aiCredentialsService: {
-        getCursorApiKeyForOrganization: async () => null,
-      },
+    const service = createInvocationContextService({
+      getCursorApiKeyForOrganization: async () => null,
     });
 
-    await expect((service as unknown as {
-      resolveAiInvocationContext: (
-        provider: string,
-        recipient: { flowxUserId: string; displayName: string },
-      ) => Promise<{ cursorCredentialSource?: string }>;
-    }).resolveAiInvocationContext('cursor', { flowxUserId: 'user-1', displayName: 'User' })).resolves.toMatchObject({
+    await expect(
+      service.resolveInvocationContext('cursor', { flowxUserId: 'user-1', displayName: 'User' }),
+    ).resolves.toMatchObject({
       cursorCredentialSource: 'instance',
     });
   });
@@ -207,43 +213,31 @@ describe('WorkflowService cursor credential policy', () => {
   it('blocks codex execution when user credential is required but missing', async () => {
     process.env.FLOWX_CODEX_REQUIRE_USER_CREDENTIAL = 'true';
     delete process.env.OPENAI_API_KEY;
-    const service = createService({
-      aiCredentialsService: {
-        getCursorApiKeyForOrganization: async () => null,
-        getCodexApiKeyForOrganization: async () => null,
-      },
+    const service = createInvocationContextService({
+      getCursorApiKeyForOrganization: async () => null,
+      getCodexApiKeyForOrganization: async () => null,
     });
 
-    await expect((service as unknown as {
-      resolveAiInvocationContext: (
-        provider: string,
-        recipient: { flowxUserId: string; displayName: string },
-      ) => Promise<unknown>;
-    }).resolveAiInvocationContext('codex', { flowxUserId: 'user-1', displayName: 'User' })).rejects.toThrow(
-      /CODEX_ORGANIZATION_CREDENTIAL_REQUIRED/,
-    );
+    await expect(
+      service.resolveInvocationContext('codex', { flowxUserId: 'user-1', displayName: 'User' }),
+    ).rejects.toThrow(/CODEX_ORGANIZATION_CREDENTIAL_REQUIRED/);
   });
 
   it('uses codex organization credential before instance fallback', async () => {
     process.env.FLOWX_CODEX_REQUIRE_USER_CREDENTIAL = 'false';
     process.env.OPENAI_API_KEY = 'instance-openai-key';
-    const service = createService({
-      aiCredentialsService: {
-        getCursorApiKeyForOrganization: async () => null,
-        getCodexApiKeyForOrganization: async () => 'org-openai-key',
-      },
+    const service = createInvocationContextService({
+      getCursorApiKeyForOrganization: async () => null,
+      getCodexApiKeyForOrganization: async () => 'org-openai-key',
     });
 
-    await expect((service as unknown as {
-      resolveAiInvocationContext: (
-        provider: string,
-        recipient: { flowxUserId: string; flowxOrganizationId?: string; displayName: string },
-      ) => Promise<{ codexApiKey?: string; codexCredentialSource?: string }>;
-    }).resolveAiInvocationContext('codex', {
-      flowxUserId: 'user-1',
-      flowxOrganizationId: 'org-1',
-      displayName: 'User',
-    })).resolves.toMatchObject({
+    await expect(
+      service.resolveInvocationContext('codex', {
+        flowxUserId: 'user-1',
+        flowxOrganizationId: 'org-1',
+        displayName: 'User',
+      }),
+    ).resolves.toMatchObject({
       codexApiKey: 'org-openai-key',
       codexCredentialSource: 'organization',
     });

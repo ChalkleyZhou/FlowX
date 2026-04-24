@@ -5,7 +5,14 @@ import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Textarea } from './ui/textarea';
 import { IdeationReviewSidebar } from './IdeationReviewSidebar';
-import type { DemoPage, IdeationSession, Repository } from '../types';
+import type {
+  DemoPage,
+  IdeationSession,
+  IdeationSessionEvent,
+  LocalDevDetectResponse,
+  LocalDevPreviewStatus,
+  Repository,
+} from '../types';
 
 interface DesignSpec {
   overview: string;
@@ -17,13 +24,60 @@ interface DesignSpec {
     interactions: string[];
   }>;
   demoScenario: string;
-  dataModels: string[];
-  apiEndpoints: Array<{
-    method: string;
-    path: string;
-    purpose: string;
-  }>;
   designRationale: string;
+}
+
+function readString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function readStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map(readString).filter(Boolean);
+  }
+  const single = readString(value);
+  return single ? [single] : [];
+}
+
+function parseDesignSpec(output: unknown): DesignSpec | null {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) {
+    return null;
+  }
+  const candidate = output as Record<string, unknown>;
+  if (!candidate.design || typeof candidate.design !== 'object' || Array.isArray(candidate.design)) {
+    return null;
+  }
+  const designLike = candidate.design as Record<string, unknown>;
+  const overview = readString(designLike.overview);
+  if (!overview) {
+    return null;
+  }
+  const pages = Array.isArray(designLike.pages)
+    ? designLike.pages
+        .filter((page): page is Record<string, unknown> => !!page && typeof page === 'object' && !Array.isArray(page))
+        .map((page) => ({
+          name: readString(page.name),
+          route: readString(page.route),
+          layout: readString(page.layout),
+          keyComponents: readStringArray(page.keyComponents),
+          interactions: readStringArray(page.interactions),
+        }))
+    : [];
+
+  return {
+    overview,
+    pages,
+    demoScenario: readString(designLike.demoScenario),
+    designRationale: readString(designLike.designRationale),
+  };
+}
+
+function parseDemoPages(output: unknown): DemoPage[] | null {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) {
+    return null;
+  }
+  const candidate = output as Record<string, unknown>;
+  return Array.isArray(candidate.demoPages) ? (candidate.demoPages as DemoPage[]) : null;
 }
 
 interface Props {
@@ -32,6 +86,7 @@ interface Props {
   sessions: IdeationSession[];
   repositories?: Array<{ id: string; repository: Repository }>;
   onUpdated: () => void;
+  hideHeader?: boolean;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -71,109 +126,258 @@ function ReviewSection({
   );
 }
 
-const methodBadgeVariant: Record<string, 'success' | 'default' | 'warning' | 'destructive' | 'outline'> = {
-  GET: 'success',
-  POST: 'default',
-  PUT: 'warning',
-  PATCH: 'warning',
-  DELETE: 'destructive',
-};
-
-type PreviewState = 'idle' | 'deploying' | 'ready' | 'failed' | 'no_config';
-
-export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, repositories, onUpdated }: Props) {
+export function IdeationDesignPanel({
+  requirementId,
+  ideationStatus,
+  sessions,
+  repositories,
+  onUpdated,
+  hideHeader = false,
+}: Props) {
   const [feedback, setFeedback] = useState('');
   const [loading, setLoading] = useState(false);
-  const [activeAction, setActiveAction] = useState<'confirm' | 'revise' | null>(null);
+  const [activeAction, setActiveAction] = useState<'run' | 'confirm' | 'revise' | null>(null);
   const [expandedPage, setExpandedPage] = useState<number | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
-  const [previewState, setPreviewState] = useState<PreviewState>('idle');
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollingStartRef = useRef<number>(0);
+  const [localDetect, setLocalDetect] = useState<LocalDevDetectResponse | null>(null);
+  const [localStatus, setLocalStatus] = useState<LocalDevPreviewStatus | null>(null);
+  const [demoEvents, setDemoEvents] = useState<IdeationSessionEvent[]>([]);
+  const localPollCancelRef = useRef(false);
+  const localPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const localStartSentRef = useRef(false);
 
   const designSessions = sessions.filter((s) => s.stage === 'DESIGN');
-  const latestSession = designSessions[designSessions.length - 1];
-  const isRunning = latestSession?.status === 'RUNNING';
-  const isWaitingConfirmation = latestSession?.status === 'WAITING_CONFIRMATION';
-  const canStart = ideationStatus === 'BRAINSTORM_CONFIRMED';
-  const canRevise = ideationStatus === 'DESIGN_WAITING_CONFIRMATION';
-  const isConfirmed = ideationStatus === 'DESIGN_CONFIRMED' || ideationStatus === 'FINALIZED';
+  const demoSessions = sessions.filter((s) => s.stage === 'DEMO');
+  const latestDesignSession = designSessions[designSessions.length - 1];
+  const latestDemoSession = demoSessions[demoSessions.length - 1];
+  const latestDesignOutputSession = [...designSessions]
+    .reverse()
+    .find((session) => Boolean(parseDesignSpec(session.output)));
+  const latestDemoOutputSession = [...demoSessions]
+    .reverse()
+    .find((session) => {
+      const pages = parseDemoPages(session.output);
+      return Boolean(pages && pages.length > 0);
+    });
+  const isRunning = [...designSessions, ...demoSessions].some((session) => session.status === 'RUNNING');
+  const isDesignWaitingConfirmation = ideationStatus === 'DESIGN_WAITING_CONFIRMATION';
+  const isDemoWaitingConfirmation = ideationStatus === 'DEMO_WAITING_CONFIRMATION';
+  const isDemoPending = ideationStatus === 'DEMO_PENDING';
+  const isWaitingConfirmation = isDesignWaitingConfirmation || isDemoWaitingConfirmation;
+  const canStartDesign = ideationStatus === 'BRAINSTORM_CONFIRMED';
+  const canStartDemo = ideationStatus === 'DESIGN_CONFIRMED';
+  const canReviseDesign = ideationStatus === 'DESIGN_WAITING_CONFIRMATION';
+  const canReviseDemo = ideationStatus === 'DEMO_WAITING_CONFIRMATION';
+  const latestSession =
+    isDemoPending || isDemoWaitingConfirmation || canStartDemo
+      ? latestDemoSession ?? latestDesignSession
+      : latestDesignSession;
+  const canRetryAfterFailure =
+    latestSession?.status === 'FAILED' && (canStartDesign || canStartDemo || canReviseDesign || canReviseDemo);
+  const isConfirmed = ideationStatus === 'DEMO_CONFIRMED' || ideationStatus === 'FINALIZED';
 
-  const design: DesignSpec | null = latestSession?.output
-    ? (latestSession.output as { design?: DesignSpec }).design ?? null
-    : null;
+  const design: DesignSpec | null = latestDesignOutputSession ? parseDesignSpec(latestDesignOutputSession.output) : null;
 
-  const demoPages: DemoPage[] | null = latestSession?.output
-    ? (latestSession.output as { demoPages?: DemoPage[] }).demoPages ?? null
-    : null;
+  const demoPages: DemoPage[] | null =
+    (latestDemoOutputSession ? parseDemoPages(latestDemoOutputSession.output) : null) ??
+    (latestDesignOutputSession ? parseDemoPages(latestDesignOutputSession.output) : null);
+  const primaryRepo = repositories?.[0]?.repository;
+  const latestDemoEvents = demoEvents.slice(-5).reverse();
 
-  // Clear polling on unmount
   useEffect(() => {
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-      }
-    };
-  }, []);
+    let cancel = false;
+    let intervalRef: ReturnType<typeof setInterval> | null = null;
 
-  // Start polling when design session completes with demo pages
-  useEffect(() => {
-    if (isWaitingConfirmation && demoPages && demoPages.length > 0 && previewState === 'idle') {
-      startPolling();
-    }
-  }, [isWaitingConfirmation, demoPages]);
-
-  function startPolling() {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-    }
-
-    setPreviewState('deploying');
-    pollingStartRef.current = Date.now();
-
-    pollingRef.current = setInterval(async () => {
-      // Timeout after 5 minutes
-      if (Date.now() - pollingStartRef.current > 5 * 60 * 1000) {
-        if (pollingRef.current) clearInterval(pollingRef.current);
-        setPreviewState('failed');
+    async function poll() {
+      if (!latestDemoSession?.id) {
         return;
       }
-
       try {
-        const firstRepo = repositories?.[0]?.repository;
-        if (!firstRepo) {
-          if (pollingRef.current) clearInterval(pollingRef.current);
-          setPreviewState('no_config');
-          return;
-        }
-
-        const jobs = await api.getDemoDeployStatus(firstRepo.id);
-        const latestJob = jobs[0];
-
-        if (latestJob?.externalJobUrl) {
-          setPreviewUrl(latestJob.externalJobUrl);
-          setPreviewState('ready');
-          if (pollingRef.current) clearInterval(pollingRef.current);
-        } else if (latestJob?.status === 'FAILED') {
-          setPreviewState('failed');
-          if (pollingRef.current) clearInterval(pollingRef.current);
+        const events = await api.getIdeationSessionEvents(requirementId, latestDemoSession.id);
+        if (!cancel) {
+          setDemoEvents(events);
         }
       } catch {
-        // Continue polling on transient errors
+        if (!cancel) {
+          setDemoEvents([]);
+        }
       }
-    }, 3000);
+    }
+
+    if (!latestDemoSession?.id) {
+      setDemoEvents([]);
+      return () => {
+        cancel = true;
+      };
+    }
+
+    void poll();
+    if (latestDemoSession.status === 'RUNNING' || ideationStatus === 'DEMO_PENDING') {
+      intervalRef = setInterval(() => {
+        void poll();
+      }, 5000);
+    }
+
+    return () => {
+      cancel = true;
+      if (intervalRef) {
+        clearInterval(intervalRef);
+      }
+    };
+  }, [ideationStatus, latestDemoSession?.id, latestDemoSession?.status, requirementId]);
+
+  useEffect(() => {
+    localPollCancelRef.current = false;
+    if (localPollIntervalRef.current) {
+      clearInterval(localPollIntervalRef.current);
+      localPollIntervalRef.current = null;
+    }
+
+    if (
+      !demoPages?.length ||
+      !primaryRepo?.id ||
+      !['DEMO_WAITING_CONFIRMATION', 'DEMO_CONFIRMED', 'FINALIZED'].includes(ideationStatus)
+    ) {
+      setLocalDetect(null);
+      setLocalStatus(null);
+      localStartSentRef.current = false;
+      return;
+    }
+
+    localStartSentRef.current = false;
+    setLocalDetect(null);
+    setLocalStatus(null);
+
+    void (async () => {
+      try {
+        const detection = await api.detectLocalDev(primaryRepo.id);
+        if (localPollCancelRef.current) {
+          return;
+        }
+        setLocalDetect(detection);
+      } catch {
+        if (!localPollCancelRef.current) {
+          setLocalDetect(null);
+        }
+      }
+    })();
+
+    const poll = async () => {
+      if (localPollCancelRef.current || !primaryRepo?.id) {
+        return;
+      }
+      try {
+        const status = await api.getLocalDevStatus(primaryRepo.id);
+        if (localPollCancelRef.current) {
+          return;
+        }
+        setLocalStatus(status);
+        if (status.running && status.previewUrl) {
+          if (localPollIntervalRef.current) {
+            clearInterval(localPollIntervalRef.current);
+            localPollIntervalRef.current = null;
+          }
+          return;
+        }
+        if (status.status === 'failed') {
+          if (localPollIntervalRef.current) {
+            clearInterval(localPollIntervalRef.current);
+            localPollIntervalRef.current = null;
+          }
+          return;
+        }
+        if ((status.status === 'idle' || status.status === 'stopped') && !localStartSentRef.current) {
+          localStartSentRef.current = true;
+          try {
+            await api.startLocalDevPreview(primaryRepo.id);
+            if (!localPollCancelRef.current) {
+              setLocalStatus(await api.getLocalDevStatus(primaryRepo.id));
+            }
+          } catch (error) {
+            if (!localPollCancelRef.current) {
+              setLocalStatus({
+                repositoryId: primaryRepo.id,
+                running: false,
+                status: 'failed',
+                lastError: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
+        }
+      } catch {
+        // Transient polling errors are ignored.
+      }
+    };
+
+    void poll();
+    localPollIntervalRef.current = setInterval(() => {
+      void poll();
+    }, 2000);
+
+    return () => {
+      localPollCancelRef.current = true;
+      if (localPollIntervalRef.current) {
+        clearInterval(localPollIntervalRef.current);
+        localPollIntervalRef.current = null;
+      }
+    };
+  }, [demoPages?.length, ideationStatus, primaryRepo?.id, latestSession?.id]);
+
+  async function handleStopLocalDev() {
+    if (!primaryRepo?.id) {
+      return;
+    }
+    try {
+      await api.stopLocalDevPreview(primaryRepo.id);
+      setLocalStatus(await api.getLocalDevStatus(primaryRepo.id));
+      localStartSentRef.current = false;
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '停止本地预览失败');
+    }
+  }
+
+  async function handleRetryLocalDev() {
+    if (!primaryRepo?.id) {
+      return;
+    }
+    localStartSentRef.current = false;
+    try {
+      await api.startLocalDevPreview(primaryRepo.id);
+      setLocalStatus(await api.getLocalDevStatus(primaryRepo.id));
+      if (localPollIntervalRef.current) {
+        clearInterval(localPollIntervalRef.current);
+      }
+      localPollIntervalRef.current = setInterval(async () => {
+        try {
+          const status = await api.getLocalDevStatus(primaryRepo.id);
+          setLocalStatus(status);
+          if ((status.running && status.previewUrl) || status.status === 'failed') {
+            if (localPollIntervalRef.current) {
+              clearInterval(localPollIntervalRef.current);
+              localPollIntervalRef.current = null;
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }, 2000);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '启动本地预览失败');
+    }
   }
 
   async function handleRun() {
     setLoading(true);
-    setPreviewState('idle');
-    setPreviewUrl(null);
+    setActiveAction('run');
     try {
-      await api.startDesign(requirementId);
+      if (canStartDemo) {
+        await api.startDemoGeneration(requirementId);
+      } else {
+        await api.startDesign(requirementId);
+      }
       onUpdated();
     } catch (err) {
-      alert(err instanceof Error ? err.message : '启动设计失败');
+      alert(err instanceof Error ? err.message : canStartDemo ? '启动 Demo 生成失败' : '启动设计失败');
     } finally {
       setLoading(false);
       setActiveAction(null);
@@ -184,16 +388,18 @@ export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, r
     if (!feedback.trim()) return;
     setLoading(true);
     setActiveAction('revise');
-    setPreviewState('idle');
-    setPreviewUrl(null);
     try {
       const revisionFeedback = selectedSection ? `[聚焦区块] ${selectedSection}\n\n${feedback}` : feedback;
-      await api.reviseDesign(requirementId, revisionFeedback);
+      if (canReviseDemo) {
+        await api.reviseDemoGeneration(requirementId, revisionFeedback);
+      } else {
+        await api.reviseDesign(requirementId, revisionFeedback);
+      }
       setFeedback('');
       setSelectedSection(null);
       onUpdated();
     } catch (err) {
-      alert(err instanceof Error ? err.message : '修订失败');
+      alert(err instanceof Error ? err.message : canReviseDemo ? 'Demo 修订失败' : '设计修订失败');
     } finally {
       setLoading(false);
       setActiveAction(null);
@@ -204,10 +410,14 @@ export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, r
     setLoading(true);
     setActiveAction('confirm');
     try {
-      await api.confirmDesign(requirementId);
+      if (isDemoWaitingConfirmation) {
+        await api.confirmDemoGeneration(requirementId);
+      } else {
+        await api.confirmDesign(requirementId);
+      }
       onUpdated();
     } catch (err) {
-      alert(err instanceof Error ? err.message : '确认失败');
+      alert(err instanceof Error ? err.message : isDemoWaitingConfirmation ? '确认 Demo 失败' : '确认设计失败');
     } finally {
       setLoading(false);
       setActiveAction(null);
@@ -217,99 +427,151 @@ export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, r
   return (
     <div className="flex flex-col gap-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">UI Design</p>
-          <h3 className="text-xl font-bold tracking-tight text-foreground">UI 设计 & Demo</h3>
+      {!hideHeader && (
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">UI Design</p>
+            <h3 className="text-xl font-bold tracking-tight text-foreground">UI 设计 & Demo</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            {isRunning && (
+              <Badge variant="outline" className="gap-1.5">
+                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary" />
+                AI 生成中
+              </Badge>
+            )}
+            {isWaitingConfirmation && (
+              <Badge variant="warning">待确认</Badge>
+            )}
+            {isDemoPending && (
+              <Badge variant="default">Demo 生成中</Badge>
+            )}
+            {isConfirmed && (
+              <Badge variant="success">已确认</Badge>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {isRunning && (
-            <Badge variant="outline" className="gap-1.5">
-              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary" />
-              AI 生成中
-            </Badge>
-          )}
-          {isWaitingConfirmation && (
-            <Badge variant="warning">待确认</Badge>
-          )}
-          {isConfirmed && (
-            <Badge variant="success">已确认</Badge>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Empty state */}
-      {canStart && !design && (
+      {canStartDesign && !design && (
         <p className="text-sm text-muted-foreground">
-          确认产品简报后，点击下方按钮生成 UI 设计规格和 Demo 页面。
+          确认产品简报后，先生成并确认 UI 设计，再单独生成 Demo 页面。
         </p>
+      )}
+      {isDemoPending && (
+        <div className="rounded-md border border-border bg-muted/50 px-4 py-3 text-sm text-foreground">
+          正在生成 Demo 页面，请稍候。当前阶段会写入本地代码并尝试启动本地预览。
+        </div>
+      )}
+
+      {latestSession?.statusMessage && (isWaitingConfirmation || isRunning || isDemoPending) && (
+        <div className="rounded-md border border-border bg-muted/50 px-4 py-3 text-sm leading-6 text-foreground">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">本轮状态说明</p>
+          <p>{latestSession.statusMessage}</p>
+        </div>
+      )}
+      {latestDemoEvents.length > 0 && (isDemoPending || latestDemoSession?.status === 'RUNNING') && (
+        <div className="rounded-md border border-border bg-card px-4 py-3 text-sm text-foreground">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">实时进度</p>
+          <ul className="space-y-1">
+            {latestDemoEvents.map((event) => (
+              <li key={event.id} className="flex items-start justify-between gap-3">
+                <span className="font-medium text-foreground">{event.stage}</span>
+                <span className="flex-1 text-muted-foreground">{event.message}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {/* Demo Preview */}
       {demoPages && demoPages.length > 0 && (
         <Card className="border-border shadow-sm">
           <CardContent className="flex flex-col gap-3 p-5">
-            <SectionLabel>Demo 预览</SectionLabel>
+            <SectionLabel>本地预览</SectionLabel>
 
-            {previewState === 'ready' && previewUrl && (
-              <div className="flex flex-col gap-2">
-                <div className="overflow-hidden rounded-md border border-border" style={{ height: 480 }}>
-                  <iframe
-                    src={previewUrl}
-                    className="h-full w-full"
-                    title="Demo 预览"
-                    sandbox="allow-scripts allow-same-origin"
-                  />
+            <div className="rounded-md border border-border bg-muted/40 px-4 py-4 text-sm text-foreground">
+              <p className="mb-2">
+                设计阶段不会触发远程部署。Demo 页面已写入本地仓库；FlowX 会在本机尝试自动识别并启动开发服务（与 API 同机），便于边改边看。
+              </p>
+              {!primaryRepo?.localPath && (
+                <p className="text-xs text-muted-foreground">当前需求未关联可用本地仓库路径，请先完成仓库同步后再预览。</p>
+              )}
+              {primaryRepo?.localPath && !localDetect && (
+                <p className="text-xs text-muted-foreground">正在检测本地启动命令…</p>
+              )}
+              {localDetect && (
+                <div className="space-y-1 text-xs">
+                  <p className="font-medium text-foreground">检测到的命令（可手动执行）</p>
+                  <pre className="overflow-auto rounded-md border border-border bg-card px-3 py-2 font-mono text-xs">{`cd ${localDetect.cwd}\n${localDetect.shellCommand}`}</pre>
                 </div>
-                <a
-                  href={previewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                >
-                  新窗口打开 ↗
-                </a>
-              </div>
-            )}
-
-            {previewState === 'deploying' && (
-              <div className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-4 py-8 text-sm text-muted-foreground">
-                <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-primary" />
-                Demo 部署中，请稍候...
-              </div>
-            )}
-
-            {previewState === 'failed' && (
-              <div className="flex flex-col gap-2 rounded-md border border-danger/30 bg-danger/10 px-4 py-4 text-sm text-danger">
-                <p>部署超时或失败，请稍后手动查看。</p>
-                <Button variant="outline" size="sm" onClick={startPolling}>
-                  重试
-                </Button>
-              </div>
-            )}
-
-            {previewState === 'no_config' && (
-              <div className="rounded-md border border-warning/30 bg-warning/10 px-4 py-4 text-sm text-warning">
-                仓库未配置部署，无法预览 Demo。请联系管理员配置 RepositoryDeployConfig。
-              </div>
-            )}
-
-            {(previewState === 'idle' || previewState === 'failed' || previewState === 'no_config') && !previewUrl && (
-              <div className="flex flex-col gap-2">
-                <SectionLabel>Demo 页面代码</SectionLabel>
-                {demoPages.map((page, i) => (
-                  <div key={i} className="overflow-hidden rounded-md border border-border">
-                    <div className="flex items-center justify-between bg-muted/50 px-3 py-1.5">
-                      <span className="text-xs font-medium text-foreground">{page.componentName}</span>
-                      <span className="font-mono text-xs text-muted-foreground">{page.route}</span>
-                    </div>
-                    <pre className="max-h-64 overflow-auto bg-card px-3 py-2 font-mono text-xs leading-5 text-foreground">
-                      {page.componentCode}
+              )}
+              {localStatus?.status === 'starting' && (
+                <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-primary" />
+                  正在启动本地开发服务…
+                </div>
+              )}
+              {localStatus?.status === 'failed' && (
+                <div className="mt-2 space-y-2 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+                  <p>{localStatus.lastError ?? '本地预览启动失败'}</p>
+                  {localStatus.logTail ? (
+                    <pre className="max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-danger/90">
+                      {localStatus.logTail.slice(-2000)}
                     </pre>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" type="button" onClick={handleRetryLocalDev}>
+                      重试启动
+                    </Button>
+                    <Button variant="ghost" size="sm" type="button" onClick={handleStopLocalDev}>
+                      停止进程
+                    </Button>
                   </div>
-                ))}
-              </div>
-            )}
+                </div>
+              )}
+              {localStatus?.running && localStatus.previewUrl ? (
+                <div className="mt-3 flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" type="button" onClick={handleStopLocalDev}>
+                      停止本地预览
+                    </Button>
+                    <a
+                      href={localStatus.previewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary hover:underline"
+                    >
+                      新窗口打开 ↗
+                    </a>
+                  </div>
+                  <div className="overflow-hidden rounded-md border border-border" style={{ height: 480 }}>
+                    <iframe
+                      src={localStatus.previewUrl}
+                      className="h-full w-full"
+                      title="本地 Demo 预览"
+                      sandbox="allow-scripts allow-same-origin allow-forms"
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <SectionLabel>Demo 页面代码</SectionLabel>
+              {demoPages.map((page, i) => (
+                <div key={i} className="overflow-hidden rounded-md border border-border">
+                  <div className="flex items-center justify-between bg-muted/50 px-3 py-1.5">
+                    <span className="text-xs font-medium text-foreground">{page.componentName}</span>
+                    <span className="font-mono text-xs text-muted-foreground">{page.route}</span>
+                  </div>
+                  <pre className="max-h-64 overflow-auto bg-card px-3 py-2 font-mono text-xs leading-5 text-foreground">
+                    {page.componentCode}
+                  </pre>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -390,42 +652,6 @@ export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, r
                 </ReviewSection>
               )}
 
-              {design.dataModels.length > 0 && (
-                <ReviewSection
-                  title="数据模型"
-                  reviewLabel="设计方案 / 数据模型"
-                  canQuote={isWaitingConfirmation}
-                  onQuote={setSelectedSection}
-                >
-                  <ul className="list-inside list-disc space-y-0.5">
-                    {design.dataModels.map((model, i) => (
-                      <li key={i} className="font-mono text-xs text-foreground">{model}</li>
-                    ))}
-                  </ul>
-                </ReviewSection>
-              )}
-
-              {design.apiEndpoints.length > 0 && (
-                <ReviewSection
-                  title="API 端点"
-                  reviewLabel="设计方案 / API 端点"
-                  canQuote={isWaitingConfirmation}
-                  onQuote={setSelectedSection}
-                >
-                  <div className="flex flex-col gap-1.5">
-                    {design.apiEndpoints.map((endpoint, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs">
-                        <Badge variant={methodBadgeVariant[endpoint.method] ?? 'outline'} className="font-mono px-1.5 py-0.5">
-                          {endpoint.method}
-                        </Badge>
-                        <span className="font-mono text-foreground">{endpoint.path}</span>
-                        <span className="text-muted-foreground">— {endpoint.purpose}</span>
-                      </div>
-                    ))}
-                  </div>
-                </ReviewSection>
-              )}
-
               {design.designRationale && (
                 <ReviewSection
                   title="设计理由"
@@ -439,15 +665,15 @@ export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, r
             </CardContent>
           </Card>
 
-          {canRevise && isWaitingConfirmation && (
+          {(canReviseDesign || canReviseDemo) && isWaitingConfirmation && (
             <IdeationReviewSidebar
-              stageLabel="设计方案"
+              stageLabel={canReviseDemo ? 'Demo 页面' : '设计方案'}
               feedback={feedback}
               selectedSection={selectedSection}
               loading={loading}
-              activeAction={activeAction}
-              confirmLabel="确认当前设计"
-              reviseLabel="发送修改意见"
+              activeAction={activeAction === 'run' ? null : activeAction}
+              confirmLabel={isDemoWaitingConfirmation ? '确认当前 Demo' : '确认当前设计'}
+              reviseLabel={canReviseDemo ? '发送 Demo 修改意见' : '发送修改意见'}
               onFeedbackChange={setFeedback}
               onClearSection={() => setSelectedSection(null)}
               onConfirm={handleConfirm}
@@ -459,34 +685,33 @@ export function IdeationDesignPanel({ requirementId, ideationStatus, sessions, r
 
       {/* Error */}
       {latestSession?.status === 'FAILED' && latestSession.errorMessage && (
-        <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-          {latestSession.errorMessage}
+        <div className="flex flex-col gap-3 rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+          <p>{latestSession.errorMessage}</p>
+          {canRetryAfterFailure && (
+            <div>
+              <Button size="sm" variant="outline" onClick={handleRun} disabled={loading}>
+                {loading ? '处理中...' : canStartDemo ? '重新生成 Demo' : '重新生成设计'}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
       {/* Actions */}
-      {canStart && (
-        <Button onClick={handleRun} disabled={loading}>
-          {loading ? '处理中...' : '生成设计方案'}
+      {(canStartDesign || canStartDemo) && (
+        <Button onClick={handleRun} disabled={loading || isRunning || isDemoPending}>
+          {loading ? '处理中...' : canStartDemo ? '生成 Demo 页面' : '生成设计方案'}
         </Button>
       )}
 
-      {canRevise && isWaitingConfirmation && !design && (
+      {canReviseDesign && isWaitingConfirmation && !design && (
         <div className="flex flex-col gap-3">
-          <Textarea
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            placeholder="输入修改意见，AI 将据此重新生成..."
-            rows={3}
-          />
-          <div className="flex gap-2">
-            <Button onClick={handleConfirm} disabled={loading}>
-              {loading ? '处理中...' : '确认设计'}
-            </Button>
-            <Button variant="outline" onClick={handleRevise} disabled={loading || !feedback.trim()}>
-              {loading ? '处理中...' : '修改并重新生成'}
-            </Button>
+          <div className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+            当前轮次未返回可确认的设计内容，无法执行确认。请重新生成一次设计方案。
           </div>
+          <Button variant="outline" onClick={handleRun} disabled={loading}>
+            {loading ? '处理中...' : '重新生成设计'}
+          </Button>
         </div>
       )}
     </div>

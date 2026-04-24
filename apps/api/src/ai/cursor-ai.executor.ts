@@ -1,11 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { spawn } from 'child_process';
-import { access, mkdir, writeFile } from 'fs/promises';
+import { access, mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
 import { delimiter, join } from 'path';
 import { CodexAiExecutor } from './codex-ai.executor';
 import { type AIInvocationContext } from './ai-executor';
 
 const CURSOR_TIMEOUT_MS = Number(process.env.CURSOR_TIMEOUT_MS?.trim()) || 600_000;
+const CURSOR_DESIGN_TIMEOUT_MS = Number(process.env.CURSOR_DESIGN_TIMEOUT_MS?.trim()) || CURSOR_TIMEOUT_MS;
+const CURSOR_DEMO_WALL_TIMEOUT_MS = Number(process.env.CURSOR_DEMO_WALL_TIMEOUT_MS?.trim()) || 1_200_000;
+const CURSOR_NO_PROGRESS_TIMEOUT_MS = Number(process.env.CURSOR_NO_PROGRESS_TIMEOUT_MS?.trim()) || 0;
 const CURSOR_DEBUG_ROOT = join(process.cwd(), '.flowx-data', 'cursor-debug');
 const CURSOR_MODEL = process.env.CURSOR_MODEL?.trim();
 const CURSOR_AUTH_ERROR_PATTERNS = [
@@ -30,21 +34,30 @@ export class CursorAiExecutor extends CodexAiExecutor {
     addDirs: string[] = [],
     context?: AIInvocationContext,
   ): Promise<T> {
-    const cursorCwd = addDirs[0] ?? process.cwd();
-    const args = ['-p', '--trust', '--output-format', 'json'];
+    const tempCwd = addDirs[0] ? null : await mkdtemp(join(tmpdir(), 'flowx-cursor-json-'));
+    // Avoid using the FlowX service repo as implicit context when no target repo is provided.
+    const cursorCwd = addDirs[0] ?? tempCwd!;
+    const demoFlow = this.isDemoGenerationPrompt(prompt);
+    const outputFormat = demoFlow ? 'text' : 'json';
+    const args = ['-p', '--trust', '--output-format', outputFormat];
     if (CURSOR_MODEL) {
       args.push('--model', CURSOR_MODEL);
     }
     args.push(prompt);
 
     try {
+      const timeoutMs = this.resolveStageTimeoutMs(stageName, prompt);
       const { stdout, stderr } = await this.runCursorProcess(
         args,
         cursorCwd,
         stageName,
+        timeoutMs,
         prompt,
         context,
       );
+      if (demoFlow) {
+        return this.parseCursorJsonResult<T>(stdout);
+      }
       const payload = JSON.parse(stdout.trim()) as {
         result?: string;
         subtype?: string;
@@ -60,6 +73,10 @@ export class CursorAiExecutor extends CodexAiExecutor {
       const message = error instanceof Error ? error.message : 'Unknown Cursor error';
       this.cursorLogger.error(`Cursor ${stageName} failed: ${message}`);
       throw new Error(`Cursor ${stageName} failed: ${message}`);
+    } finally {
+      if (tempCwd) {
+        await rm(tempCwd, { recursive: true, force: true });
+      }
     }
   }
 
@@ -76,7 +93,8 @@ export class CursorAiExecutor extends CodexAiExecutor {
     args.push(prompt);
 
     try {
-      await this.runCursorProcess(args, cwd, stageName, prompt, context);
+      const timeoutMs = this.resolveStageTimeoutMs(stageName, prompt);
+      await this.runCursorProcess(args, cwd, stageName, timeoutMs, prompt, context);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown Cursor mutation error';
       this.cursorLogger.error(`Cursor ${stageName} failed: ${message}`);
@@ -88,6 +106,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
     args: string[],
     cwd: string,
     stageName: string,
+    timeoutMs: number,
     prompt?: string,
     context?: AIInvocationContext,
   ) {
@@ -97,6 +116,9 @@ export class CursorAiExecutor extends CodexAiExecutor {
       let stdout = '';
       let stderr = '';
       let finished = false;
+      let stdoutBytes = 0;
+      let stderrBytes = 0;
+      let firstOutputLogged = false;
       const createdAt = new Date().toISOString();
       const timestamp = createdAt.replace(/[:.]/g, '-');
       const stageSlug = stageName.replace(/[^a-z0-9-_]+/gi, '-');
@@ -129,33 +151,102 @@ export class CursorAiExecutor extends CodexAiExecutor {
           return;
         }
         finished = true;
+        if (noProgressTimer) {
+          clearTimeout(noProgressTimer);
+        }
         child.kill('SIGTERM');
         void persistArtifact({
           status: 'TIMED_OUT',
           finishedAt: new Date().toISOString(),
           stdout,
           stderr,
-          errorMessage: `Cursor ${stageName} timed out after ${CURSOR_TIMEOUT_MS}ms.`,
+          errorMessage: `Cursor ${stageName} timed out after ${timeoutMs}ms.`,
         }).catch((error) => {
           const message = error instanceof Error ? error.message : String(error);
           this.cursorLogger.warn(`Failed to persist timed out Cursor artifact: ${message}`);
         });
-        reject(new Error(`Cursor ${stageName} timed out after ${CURSOR_TIMEOUT_MS}ms.`));
-      }, CURSOR_TIMEOUT_MS);
+        reject(new Error(`Cursor ${stageName} timed out after ${timeoutMs}ms.`));
+      }, timeoutMs);
+
+
+      let noProgressTimer: ReturnType<typeof setTimeout> | null = null;
+      const resetNoProgressTimer = () => {
+        if (CURSOR_NO_PROGRESS_TIMEOUT_MS <= 0) {
+          return;
+        }
+        if (noProgressTimer) {
+          clearTimeout(noProgressTimer);
+        }
+        noProgressTimer = setTimeout(() => {
+          if (finished) {
+            return;
+          }
+          finished = true;
+          clearTimeout(timeout);
+          if (noProgressTimer) {
+            clearTimeout(noProgressTimer);
+          }
+          child.kill('SIGTERM');
+          const errorMessage = `Cursor ${stageName} showed no progress for ${CURSOR_NO_PROGRESS_TIMEOUT_MS}ms (likely hung).`;
+          void persistArtifact({
+            status: 'FAILED',
+            finishedAt: new Date().toISOString(),
+            stdout,
+            stderr,
+            errorMessage,
+          }).catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            this.cursorLogger.warn(`Failed to persist no-progress Cursor artifact: ${message}`);
+          });
+          reject(new Error(errorMessage));
+        }, CURSOR_NO_PROGRESS_TIMEOUT_MS);
+      };
+      resetNoProgressTimer();
+
+      const sanitizePreview = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 180);
+      const maybeLogProgress = () => {
+        if ((stdoutBytes + stderrBytes) % 32768 < 2048) {
+          this.cursorLogger.log(
+            `Cursor ${stageName} streaming progress cwd=${cwd} stdoutBytes=${stdoutBytes} stderrBytes=${stderrBytes}`,
+          );
+        }
+      };
 
       child.stdout.on('data', (chunk) => {
-        stdout += chunk.toString();
+        const text = chunk.toString();
+        stdout += text;
+        stdoutBytes += Buffer.byteLength(text);
+        if (!firstOutputLogged) {
+          firstOutputLogged = true;
+          this.cursorLogger.log(
+            `Cursor ${stageName} first stdout received cwd=${cwd} preview="${sanitizePreview(text)}"`,
+          );
+        }
+        maybeLogProgress();
+        resetNoProgressTimer();
       });
 
       child.stderr.on('data', (chunk) => {
         const text = chunk.toString();
         stderr += text;
+        stderrBytes += Buffer.byteLength(text);
+        if (!firstOutputLogged) {
+          firstOutputLogged = true;
+          this.cursorLogger.log(
+            `Cursor ${stageName} first stderr received cwd=${cwd} preview="${sanitizePreview(text)}"`,
+          );
+        }
+        maybeLogProgress();
+        resetNoProgressTimer();
         if (this.isCursorAuthenticationError(stderr)) {
           if (finished) {
             return;
           }
           finished = true;
           clearTimeout(timeout);
+          if (noProgressTimer) {
+            clearTimeout(noProgressTimer);
+          }
           child.kill('SIGTERM');
           const errorMessage = this.buildCursorAuthErrorMessage(context);
           void persistArtifact({
@@ -178,6 +269,9 @@ export class CursorAiExecutor extends CodexAiExecutor {
         }
         finished = true;
         clearTimeout(timeout);
+        if (noProgressTimer) {
+          clearTimeout(noProgressTimer);
+        }
         void persistArtifact({
           status: 'ERROR',
           finishedAt: new Date().toISOString(),
@@ -198,6 +292,9 @@ export class CursorAiExecutor extends CodexAiExecutor {
         }
         finished = true;
         clearTimeout(timeout);
+        if (noProgressTimer) {
+          clearTimeout(noProgressTimer);
+        }
         if (code === 0) {
           void persistArtifact({
             status: 'COMPLETED',
@@ -232,6 +329,31 @@ export class CursorAiExecutor extends CodexAiExecutor {
         );
       });
     });
+  }
+
+  private resolveStageTimeoutMs(stageName: string, prompt?: string): number {
+    if (this.isDemoGenerationPrompt(prompt)) {
+      return CURSOR_DEMO_WALL_TIMEOUT_MS;
+    }
+    const normalized = stageName.trim().toLowerCase();
+    if (normalized.includes('design')) {
+      return CURSOR_DESIGN_TIMEOUT_MS;
+    }
+    return CURSOR_TIMEOUT_MS;
+  }
+
+  private isDemoGenerationPrompt(prompt?: string): boolean {
+    if (!prompt) {
+      return false;
+    }
+    const normalized = prompt.toLowerCase();
+    return (
+      normalized.includes('demopages') ||
+      normalized.includes('demo pages') ||
+      normalized.includes('demo 页面') ||
+      normalized.includes('生成 demo') ||
+      normalized.includes('仅生成 demo')
+    );
   }
 
   private async resolveCursorInvocation() {

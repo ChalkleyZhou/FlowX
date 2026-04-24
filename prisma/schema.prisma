@@ -466,6 +466,7 @@ model IdeationSession {
   id             String   @id @default(cuid())
   requirementId  String
   requirement    Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  events         IdeationSessionEvent[]
   stage          String
   attempt        Int      @default(1)
   status         String   @default("PENDING")
@@ -479,6 +480,19 @@ model IdeationSession {
   updatedAt      DateTime @updatedAt
 
   @@index([requirementId])
+}
+
+model IdeationSessionEvent {
+  id         String   @id @default(cuid())
+  sessionId  String
+  session    IdeationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  eventType  String
+  stage      String
+  message    String
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([sessionId, createdAt])
 }
 
 model IdeationArtifact {

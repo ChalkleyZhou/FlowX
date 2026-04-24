@@ -17,11 +17,65 @@ interface BrainstormBrief {
   outOfScope: string[];
 }
 
+function parseBrainstormBrief(output: unknown): BrainstormBrief | null {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) {
+    return null;
+  }
+
+  const candidate = output as Record<string, unknown>;
+  if (!candidate.brief || typeof candidate.brief !== 'object' || Array.isArray(candidate.brief)) {
+    return null;
+  }
+  const briefLike = candidate.brief as Record<string, unknown>;
+
+  const expandedDescription =
+    typeof briefLike.expandedDescription === 'string' ? briefLike.expandedDescription.trim() : '';
+  if (!expandedDescription) {
+    return null;
+  }
+
+  const normalizeStringArray = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value
+          .map((item) => (typeof item === 'string' ? item.trim() : ''))
+          .filter((item) => item.length > 0)
+      : [];
+
+  const userStories = Array.isArray(briefLike.userStories)
+    ? briefLike.userStories
+        .map((entry) => {
+          if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+            return null;
+          }
+          const row = entry as Record<string, unknown>;
+          const role = typeof row.role === 'string' ? row.role.trim() : '';
+          const action = typeof row.action === 'string' ? row.action.trim() : '';
+          const benefit = typeof row.benefit === 'string' ? row.benefit.trim() : '';
+          if (!role || !action || !benefit) {
+            return null;
+          }
+          return { role, action, benefit };
+        })
+        .filter((entry): entry is { role: string; action: string; benefit: string } => Boolean(entry))
+    : [];
+
+  return {
+    expandedDescription,
+    userStories,
+    edgeCases: normalizeStringArray(briefLike.edgeCases),
+    successMetrics: normalizeStringArray(briefLike.successMetrics),
+    openQuestions: normalizeStringArray(briefLike.openQuestions),
+    assumptions: normalizeStringArray(briefLike.assumptions),
+    outOfScope: normalizeStringArray(briefLike.outOfScope),
+  };
+}
+
 interface Props {
   requirementId: string;
   ideationStatus: string;
   sessions: IdeationSession[];
   onUpdated: () => void;
+  hideHeader?: boolean;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -61,7 +115,13 @@ function ReviewSection({
   );
 }
 
-export function IdeationBrainstormPanel({ requirementId, ideationStatus, sessions, onUpdated }: Props) {
+export function IdeationBrainstormPanel({
+  requirementId,
+  ideationStatus,
+  sessions,
+  onUpdated,
+  hideHeader = false,
+}: Props) {
   const [feedback, setFeedback] = useState('');
   const [loading, setLoading] = useState(false);
   const [activeAction, setActiveAction] = useState<'confirm' | 'revise' | null>(null);
@@ -69,15 +129,27 @@ export function IdeationBrainstormPanel({ requirementId, ideationStatus, session
 
   const brainstormSessions = sessions.filter((s) => s.stage === 'BRAINSTORM');
   const latestSession = brainstormSessions[brainstormSessions.length - 1];
-  const isRunning = latestSession?.status === 'RUNNING';
-  const isWaitingConfirmation = latestSession?.status === 'WAITING_CONFIRMATION';
+  const latestOutputSession = [...brainstormSessions]
+    .reverse()
+    .find((session) => Boolean(parseBrainstormBrief(session.output)));
+  const isRunning = brainstormSessions.some((session) => session.status === 'RUNNING');
+  const isWaitingConfirmation = ideationStatus === 'BRAINSTORM_WAITING_CONFIRMATION';
   const canStart = ideationStatus === 'NONE';
   const canRevise = ideationStatus === 'BRAINSTORM_WAITING_CONFIRMATION';
-  const isConfirmed = ideationStatus === 'BRAINSTORM_CONFIRMED' || ideationStatus === 'DESIGN_PENDING' || ideationStatus === 'DESIGN_WAITING_CONFIRMATION' || ideationStatus === 'DESIGN_CONFIRMED' || ideationStatus === 'FINALIZED';
+  const canRetryAfterFailure =
+    latestSession?.status === 'FAILED' &&
+    (ideationStatus === 'NONE' || ideationStatus === 'BRAINSTORM_WAITING_CONFIRMATION');
+  const isConfirmed =
+    ideationStatus === 'BRAINSTORM_CONFIRMED' ||
+    ideationStatus === 'DESIGN_PENDING' ||
+    ideationStatus === 'DESIGN_WAITING_CONFIRMATION' ||
+    ideationStatus === 'DESIGN_CONFIRMED' ||
+    ideationStatus === 'DEMO_PENDING' ||
+    ideationStatus === 'DEMO_WAITING_CONFIRMATION' ||
+    ideationStatus === 'DEMO_CONFIRMED' ||
+    ideationStatus === 'FINALIZED';
 
-  const brief: BrainstormBrief | null = latestSession?.output
-    ? (latestSession.output as { brief?: BrainstormBrief }).brief ?? null
-    : null;
+  const brief: BrainstormBrief | null = latestOutputSession ? parseBrainstormBrief(latestOutputSession.output) : null;
 
   async function handleRun() {
     setLoading(true);
@@ -127,26 +199,28 @@ export function IdeationBrainstormPanel({ requirementId, ideationStatus, session
   return (
     <div className="flex flex-col gap-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Brainstorm</p>
-          <h3 className="text-xl font-bold tracking-tight text-foreground">头脑风暴</h3>
+      {!hideHeader && (
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Brainstorm</p>
+            <h3 className="text-xl font-bold tracking-tight text-foreground">头脑风暴</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            {isRunning && (
+              <Badge variant="outline" className="gap-1.5">
+                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary" />
+                AI 思考中
+              </Badge>
+            )}
+            {isWaitingConfirmation && (
+              <Badge variant="warning">待确认</Badge>
+            )}
+            {isConfirmed && (
+              <Badge variant="success">已确认</Badge>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {isRunning && (
-            <Badge variant="outline" className="gap-1.5">
-              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary" />
-              AI 思考中
-            </Badge>
-          )}
-          {isWaitingConfirmation && (
-            <Badge variant="warning">待确认</Badge>
-          )}
-          {isConfirmed && (
-            <Badge variant="success">已确认</Badge>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Empty state */}
       {canStart && !brief && (
@@ -283,8 +357,15 @@ export function IdeationBrainstormPanel({ requirementId, ideationStatus, session
 
       {/* Error */}
       {latestSession?.status === 'FAILED' && latestSession.errorMessage && (
-        <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-          {latestSession.errorMessage}
+        <div className="flex flex-col gap-3 rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+          <p>{latestSession.errorMessage}</p>
+          {canRetryAfterFailure && (
+            <div>
+              <Button size="sm" variant="outline" onClick={handleRun} disabled={loading}>
+                {loading ? '处理中...' : '重新生成简报'}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -297,20 +378,12 @@ export function IdeationBrainstormPanel({ requirementId, ideationStatus, session
 
       {canRevise && isWaitingConfirmation && !brief && (
         <div className="flex flex-col gap-3">
-          <Textarea
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            placeholder="输入修改意见，AI 将据此重新生成..."
-            rows={3}
-          />
-          <div className="flex gap-2">
-            <Button onClick={handleConfirm} disabled={loading}>
-              {loading ? '处理中...' : '确认简报'}
-            </Button>
-            <Button variant="outline" onClick={handleRevise} disabled={loading || !feedback.trim()}>
-              {loading ? '处理中...' : '修改并重新生成'}
-            </Button>
+          <div className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+            当前轮次未返回可确认的产品简报，无法执行确认。请重新生成一次头脑风暴。
           </div>
+          <Button variant="outline" onClick={handleRun} disabled={loading}>
+            {loading ? '处理中...' : '重新生成简报'}
+          </Button>
         </div>
       )}
     </div>

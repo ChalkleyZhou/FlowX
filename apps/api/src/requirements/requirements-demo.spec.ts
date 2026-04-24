@@ -1,22 +1,52 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { DemoPage } from '../common/types';
+import { RequirementsService } from './requirements.service';
 
-// Unit tests for the demo-related logic extracted from RequirementsService.
-// Since the service has heavy Prisma/deploy dependencies, we test the
-// pure logic parts and mock the external calls.
+describe('RequirementsService demo generation progress events', () => {
+  it('emits expected stage events during successful startDemoGeneration', async () => {
+    const prisma = {
+      ideationSession: {
+        create: vi.fn().mockResolvedValue({
+          id: 'session-1',
+          attempt: 1,
+          startedAt: new Date('2026-04-23T00:00:00.000Z'),
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      requirement: {
+        update: vi.fn().mockResolvedValue({}),
+      },
+    } as any;
+    const executor = {
+      generateDesign: vi.fn().mockResolvedValue({ design: { overview: 'ok' }, demoPages: [] }),
+    } as any;
+    const aiInvocationContextService = {
+      resolveInvocationContext: vi.fn().mockResolvedValue({}),
+    } as any;
+    const localDevPreviewService = {
+      restartAfterDesignWrite: vi.fn().mockResolvedValue(undefined),
+    } as any;
+    const eventsRepo = {
+      append: vi.fn().mockResolvedValue({}),
+      list: vi.fn(),
+    } as any;
+    const service = new RequirementsService(
+      prisma,
+      { codex: executor, cursor: executor, mock: executor },
+      aiInvocationContextService,
+      localDevPreviewService,
+      eventsRepo,
+    );
 
-describe('writeDemoPagesToRepo logic', () => {
-  it('skips write when no ready repositories exist', () => {
     const requirement = {
       id: 'req-1',
+      title: 'Demo requirement',
+      description: 'Generate demo pages',
+      ideationStatus: 'DESIGN_CONFIRMED',
       requirementRepositories: [],
+      project: null,
+      workspace: null,
     };
-
-    // No repositories → should not throw, just skip
-    expect(requirement.requirementRepositories).toHaveLength(0);
-  });
-
-  it('demo page has all required fields', () => {
     const page: DemoPage = {
       route: '/flowx-demo/test',
       componentName: 'TestPage',
@@ -25,67 +55,49 @@ describe('writeDemoPagesToRepo logic', () => {
       filePath: 'src/pages/TestPage.tsx',
     };
 
-    expect(page.componentCode).toBeTruthy();
-    expect(page.filePath).toMatch(/\.tsx$/);
-    expect(page.route).toMatch(/^\/flowx-demo\//);
-  });
-});
+    vi.spyOn(service, 'findOne').mockResolvedValue(requirement as any);
+    vi.spyOn(service as any, 'getConfirmedBrief').mockResolvedValue({ expandedDescription: 'brief' });
+    vi.spyOn(service as any, 'getConfirmedDesign').mockResolvedValue({ overview: 'design' });
+    vi.spyOn(service as any, 'getPreviousDemoPages').mockResolvedValue([]);
+    vi.spyOn(service as any, 'resolveIdeationExecutor').mockReturnValue(executor);
+    vi.spyOn(service as any, 'resolveReadyRepositories').mockReturnValue([]);
+    vi.spyOn(service as any, 'buildRepositoryComponentContext').mockResolvedValue(null);
+    vi.spyOn(service as any, 'assertDesignHasComponentContextWhenNeeded').mockImplementation(() => {});
+    vi.spyOn(service as any, 'runWithTimeout').mockImplementation(async (promise: Promise<unknown>) => promise);
+    vi.spyOn(service as any, 'normalizeDesignOutput').mockReturnValue({
+      design: { overview: 'ok' },
+      demoPages: [page],
+    });
+    vi.spyOn(service as any, 'writeDemoPagesToRepo').mockResolvedValue(undefined);
+    vi.spyOn(service as any, 'getFirstReadyRepositoryId').mockReturnValue('repo-1');
+    vi.spyOn(service as any, 'markSupersededWaitingSessions').mockResolvedValue(undefined);
 
-describe('triggerDemoDeploy logic', () => {
-  it('skips deploy when repository deploy is not enabled', async () => {
-    // Simulate deploy config check
-    const config = { enabled: false, provider: 'noop' };
-    expect(config.enabled).toBe(false);
-  });
+    await service.startDemoGeneration('req-1', 'focus dashboard');
+    await vi.waitFor(() => {
+      expect(eventsRepo.append.mock.calls.length).toBeGreaterThanOrEqual(9);
+    });
 
-  it('triggers deploy when config is enabled', async () => {
-    const config = { enabled: true, provider: 'rokid-ops' };
-    expect(config.enabled).toBe(true);
-  });
-});
-
-describe('confirmDesign DEMO_PAGE artifact', () => {
-  it('stores DEMO_PAGE artifact alongside DESIGN_SPEC', () => {
-    const sessionOutput = {
-      design: {
-        overview: 'test',
-        pages: [],
-        demoScenario: 'test',
-        dataModels: [],
-        apiEndpoints: [],
-        designRationale: 'test',
-      },
-      demoPages: [
-        {
-          route: '/flowx-demo/test',
-          componentName: 'TestPage',
-          componentCode: 'export function TestPage() {}',
-          mockData: {},
-          filePath: 'src/pages/TestPage.tsx',
-        },
-      ],
-    };
-
-    // Verify both design and demoPages exist in the output
-    expect(sessionOutput.design).toBeDefined();
-    expect(sessionOutput.demoPages).toHaveLength(1);
-    expect(sessionOutput.demoPages[0].componentName).toBe('TestPage');
-  });
-
-  it('does not store DEMO_PAGE when demoPages is empty', () => {
-    const sessionOutput = {
-      design: {
-        overview: 'test',
-        pages: [],
-        demoScenario: 'test',
-        dataModels: [],
-        apiEndpoints: [],
-        designRationale: 'test',
-      },
-      demoPages: [],
-    };
-
-    // Empty demoPages should not create artifact
-    expect(sessionOutput.demoPages).toHaveLength(0);
+    const stages = eventsRepo.append.mock.calls.map((call: [any]) => call[0].stage);
+    expect(stages).toEqual([
+      'QUEUE',
+      'QUEUE',
+      'CONTEXT_SCAN',
+      'CONTEXT_SCAN',
+      'MODEL_RUNNING',
+      'JSON_PARSE',
+      'WRITE_FILES',
+      'PREVIEW_START',
+      'FINALIZE',
+    ]);
+    expect(eventsRepo.append.mock.calls[0][0].eventType).toBe('STARTED');
+    expect(eventsRepo.append.mock.calls.at(-1)[0].eventType).toBe('COMPLETED');
+    expect(prisma.ideationSession.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'session-1' },
+        data: expect.objectContaining({
+          statusMessage: expect.stringContaining('(0s)'),
+        }),
+      }),
+    );
   });
 });

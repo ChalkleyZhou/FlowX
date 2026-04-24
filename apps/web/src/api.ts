@@ -5,6 +5,9 @@ import type {
   Bug,
   DeployJobRecord,
   Issue,
+  IdeationSessionEvent,
+  LocalDevDetectResponse,
+  LocalDevPreviewStatus,
   Project,
   RepositoryDeployConfig,
   Repository,
@@ -346,8 +349,32 @@ export const api = {
     request<Requirement>(`/requirements/${requirementId}/design/confirm`, {
       method: 'POST',
     }),
+  startDemoGeneration: (requirementId: string, hint?: string) =>
+    request<Requirement>(`/requirements/${requirementId}/demo/run`, {
+      method: 'POST',
+      body: JSON.stringify({ humanHint: hint }),
+    }),
+  reviseDemoGeneration: (requirementId: string, feedback: string) =>
+    request<Requirement>(`/requirements/${requirementId}/demo/revise`, {
+      method: 'POST',
+      body: JSON.stringify({ feedback }),
+    }),
+  confirmDemoGeneration: (requirementId: string) =>
+    request<Requirement>(`/requirements/${requirementId}/demo/confirm`, {
+      method: 'POST',
+    }),
+  getIdeationSessionEvents: (requirementId: string, sessionId: string) =>
+    request<IdeationSessionEvent[]>(`/requirements/${requirementId}/ideation/sessions/${sessionId}/events`),
   getDemoDeployStatus: (repositoryId: string) =>
     request<DeployJobRecord[]>(`/repositories/${repositoryId}/deploy/jobs`),
+  detectLocalDev: (repositoryId: string) =>
+    request<LocalDevDetectResponse>(`/repositories/${repositoryId}/local-dev`),
+  getLocalDevStatus: (repositoryId: string) =>
+    request<LocalDevPreviewStatus>(`/repositories/${repositoryId}/local-dev/status`),
+  startLocalDevPreview: (repositoryId: string) =>
+    request<LocalDevPreviewStatus>(`/repositories/${repositoryId}/local-dev/start`, { method: 'POST' }),
+  stopLocalDevPreview: (repositoryId: string) =>
+    request<LocalDevPreviewStatus>(`/repositories/${repositoryId}/local-dev/stop`, { method: 'POST' }),
   finalizeIdeation: (requirementId: string) =>
     request<Requirement>(`/requirements/${requirementId}/ideation/finalize`, {
       method: 'POST',

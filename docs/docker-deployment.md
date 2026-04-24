@@ -46,28 +46,35 @@ FlowX 容器内部包含两个服务：
 
 常用环境变量如下：
 
-| 变量 | 说明 | 是否必填 |
-| --- | --- | --- |
-| `PORT` | API 监听端口，默认 `3000` | 否 |
-| `WEB_PORT` | 前端静态服务端口，默认 `4173` | 否 |
-| `DATABASE_URL` | SQLite 数据库路径 | 是 |
-| `AI_EXECUTOR_PROVIDER` | `mock`、`codex` 或 `cursor` | 是 |
-| `AI_EXECUTOR_DEFAULT_PROVIDER` | 新工作流默认执行器，`codex` 或 `cursor` | 否 |
-| `CODEX_HOME` | Codex CLI 登录态目录 | `codex` 时建议设置 |
-| `CODEX_READ_SANDBOX` | Codex 只读阶段沙箱模式，默认 `read-only`；仅在 Docker 内核不支持 `bwrap` 时临时改为 `danger-full-access` | 否 |
-| `CODEX_WRITE_SANDBOX` | Codex 写入阶段沙箱模式，默认 `workspace-write` | 否 |
-| `OPENAI_API_KEY` | Codex/API 认证方式之一 | 否 |
-| `CURSOR_API_KEY` | Cursor CLI 服务端认证 | `cursor` 时建议填写 |
-| `FLOWX_CREDENTIAL_MASTER_KEY` | 用户级 Cursor 凭据加密主密钥（BYO 模式） | 启用用户自有凭据时必填 |
-| `FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL` | 是否强制仅允许用户级 Cursor 凭据（禁用实例级/登录态回退） | 否，默认 `false` |
-| `FLOWX_CODEX_REQUIRE_USER_CREDENTIAL` | 是否强制仅允许用户级 Codex 凭据（禁用实例级/登录态回退） | 否，默认 `false` |
-| `FRONTEND_BUILD_MODE` | 前端构建模式：`nginx`、`direct`、`auto` | 建议填写 |
-| `DIRECT_API_BASE_URL` | 直连模式下前端访问 API 的地址 | `direct` 时建议填写 |
-| `DINGTALK_APP_ID` | 钉钉登录 App ID | 仅钉钉登录时必填 |
-| `DINGTALK_APP_SECRET` | 钉钉登录 App Secret | 仅钉钉登录时必填 |
-| `DINGTALK_AGENT_ID` | 钉钉通知 Agent ID | 仅钉钉通知时必填 |
-| `GIT_AUTHOR_NAME` | Git 提交用户名 | 建议填写 |
-| `GIT_AUTHOR_EMAIL` | Git 提交邮箱 | 建议填写 |
+
+| 变量                                     | 说明                                                                               | 是否必填           |
+| -------------------------------------- | -------------------------------------------------------------------------------- | -------------- |
+| `PORT`                                 | API 监听端口，默认 `3000`                                                               | 否              |
+| `WEB_PORT`                             | 前端静态服务端口，默认 `4173`                                                               | 否              |
+| `DATABASE_URL`                         | SQLite 数据库路径                                                                     | 是              |
+| `AI_EXECUTOR_PROVIDER`                 | `mock`、`codex` 或 `cursor`                                                        | 是              |
+| `AI_EXECUTOR_DEFAULT_PROVIDER`         | 新工作流默认执行器，`codex` 或 `cursor`                                                     | 否              |
+| `CODEX_HOME`                           | Codex CLI 登录态目录                                                                  | `codex` 时建议设置  |
+| `CODEX_READ_SANDBOX`                   | Codex 只读阶段沙箱模式，默认 `read-only`；仅在 Docker 内核不支持 `bwrap` 时临时改为 `danger-full-access` | 否              |
+| `CODEX_WRITE_SANDBOX`                  | Codex 写入阶段沙箱模式，默认 `workspace-write`                                              | 否              |
+| `OPENAI_API_KEY`                       | Codex/API 认证方式之一                                                                 | 否              |
+| `CURSOR_API_KEY`                       | Cursor CLI 服务端认证                                                                 | `cursor` 时建议填写 |
+| `CURSOR_DEMO_WALL_TIMEOUT_MS`          | Demo 生成最大墙钟超时（毫秒），有持续进度时允许长跑                                                     | 否，默认 `1200000` |
+| `CURSOR_NO_PROGRESS_TIMEOUT_MS`        | Cursor 进程无输出/无进展判定超时（毫秒）；设 `0` 关闭该判定                                            | 否，默认 `0`       |
+| `FLOWX_DEMO_GENERATION_TIMEOUT_MS`     | 需求服务层 Demo 生成总超时（毫秒）                                                            | 否，默认 `1200000` |
+| `FLOWX_DEMO_INCLUDE_COMPONENT_CONTEXT` | Demo 生成时是否注入完整组件上下文（关闭后仅传轻量仓库结构摘要）                                          | 否，默认 `false`   |
+| `FLOWX_IDEATION_STALE_HEARTBEAT_MS`    | 启动恢复时判定 RUNNING 会话“心跳过期”的阈值（毫秒）                                                | 否，默认 `120000`  |
+| `FLOWX_CREDENTIAL_MASTER_KEY`          | 用户级 Cursor 凭据加密主密钥（BYO 模式）                                                       | 启用用户自有凭据时必填    |
+| `FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL` | 是否强制仅允许用户级 Cursor 凭据（禁用实例级/登录态回退）                                                | 否，默认 `false`   |
+| `FLOWX_CODEX_REQUIRE_USER_CREDENTIAL`  | 是否强制仅允许用户级 Codex 凭据（禁用实例级/登录态回退）                                                 | 否，默认 `false`   |
+| `FRONTEND_BUILD_MODE`                  | 前端构建模式：`nginx`、`direct`、`auto`                                                   | 建议填写           |
+| `DIRECT_API_BASE_URL`                  | 直连模式下前端访问 API 的地址                                                                | `direct` 时建议填写 |
+| `DINGTALK_APP_ID`                      | 钉钉登录 App ID                                                                      | 仅钉钉登录时必填       |
+| `DINGTALK_APP_SECRET`                  | 钉钉登录 App Secret                                                                  | 仅钉钉登录时必填       |
+| `DINGTALK_AGENT_ID`                    | 钉钉通知 Agent ID                                                                    | 仅钉钉通知时必填       |
+| `GIT_AUTHOR_NAME`                      | Git 提交用户名                                                                        | 建议填写           |
+| `GIT_AUTHOR_EMAIL`                     | Git 提交邮箱                                                                         | 建议填写           |
+
 
 说明：
 

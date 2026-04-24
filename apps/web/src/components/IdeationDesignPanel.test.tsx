@@ -10,6 +10,29 @@ import type { IdeationSession } from '../types';
 vi.mock('../api', () => ({
   api: {
     getDemoDeployStatus: vi.fn(),
+    detectLocalDev: vi.fn().mockResolvedValue({
+      repositoryId: 'repo-1',
+      localPath: '/tmp/repo',
+      cwd: '/tmp/repo',
+      packageManager: 'pnpm',
+      scriptName: 'dev',
+      shellCommand: 'pnpm run dev',
+    }),
+    getLocalDevStatus: vi.fn().mockResolvedValue({
+      repositoryId: 'repo-1',
+      running: false,
+      status: 'idle',
+    }),
+    startLocalDevPreview: vi.fn().mockResolvedValue({
+      repositoryId: 'repo-1',
+      running: false,
+      status: 'starting',
+    }),
+    stopLocalDevPreview: vi.fn().mockResolvedValue({
+      repositoryId: 'repo-1',
+      running: false,
+      status: 'stopped',
+    }),
     startDesign: vi.fn(),
     reviseDesign: vi.fn(),
     confirmDesign: vi.fn(),
@@ -40,8 +63,6 @@ describe('IdeationDesignPanel', () => {
           },
         ],
         demoScenario: '输入错误密码，观察错误提示与重试流程。',
-        dataModels: ['LoginAttempt'],
-        apiEndpoints: [{ method: 'POST', path: '/api/login', purpose: '提交登录请求' }],
         designRationale: '先保障失败链路可见，再谈体验优化。',
       },
     },
@@ -155,5 +176,51 @@ describe('IdeationDesignPanel', () => {
     expect((container.querySelector('textarea') as HTMLTextAreaElement | null)?.value).toBe('');
     expect(container.textContent).not.toContain('已引用');
     expect(onUpdated).toHaveBeenCalled();
+  });
+
+  it('renders legacy interaction shape without crashing', async () => {
+    const legacySession: IdeationSession = {
+      ...waitingSession,
+      id: 'design-legacy-1',
+      output: {
+        design: {
+          overview: '兼容历史数据形态',
+          pages: [
+            {
+              name: '字典列表',
+              route: '/dict',
+              layout: '列表',
+              keyComponents: ['表格'],
+              interactions: '点击新增打开弹窗',
+            },
+          ],
+          demoScenario: '无',
+          designRationale: '无',
+        },
+      },
+    };
+
+    await act(async () => {
+      root?.render(
+        <IdeationDesignPanel
+          requirementId="req-1"
+          ideationStatus="DESIGN_WAITING_CONFIRMATION"
+          sessions={[legacySession]}
+          repositories={[]}
+          onUpdated={() => undefined}
+        />,
+      );
+    });
+
+    const pageButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('字典列表'),
+    );
+    expect(pageButton).toBeTruthy();
+
+    await act(async () => {
+      pageButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(container.textContent).toContain('点击新增打开弹窗');
   });
 });

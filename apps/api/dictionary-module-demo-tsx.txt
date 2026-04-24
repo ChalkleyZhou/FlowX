@@ -1,0 +1,217 @@
+import { useMemo, useState } from 'react';
+import { PageHeader } from '../../components/PageHeader';
+import { MetricCard } from '../../components/MetricCard';
+import { ListToolbar } from '../../components/ListToolbar';
+import { SectionHeader } from '../../components/SectionHeader';
+import { RecordListItem } from '../../components/RecordListItem';
+import { EmptyState } from '../../components/EmptyState';
+import { Card, CardContent, CardHeader } from '../../components/ui/card';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { Textarea } from '../../components/ui/textarea';
+import { Badge } from '../../components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog';
+import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert';
+import { useToast } from '../../components/ui/toast';
+import { Separator } from '../../components/ui/separator';
+
+export const DICTIONARY_MODULE_DEMO_MOCK = {
+  readOnly: false,
+  summary: { categoryCount: 3, itemCount: 7, activeItemCount: 6 },
+  categories: [
+    { id: 'cat-ops-status', name: '需求状态', code: 'REQ_STATUS', description: '全平台统一的需求状态选项。', status: 'active' as const, itemCount: 3 },
+    { id: 'cat-channel', name: '来源渠道', code: 'CHANNEL', description: '市场线索来源分类。', status: 'active' as const, itemCount: 3 },
+    { id: 'cat-legacy', name: '历史标签', code: 'LEGACY_TAG', description: '已逐步下线。', status: 'inactive' as const, itemCount: 1 },
+  ],
+  items: [
+    { id: 'i1', categoryId: 'cat-ops-status', label: '待评审', value: 'pending_review', sortOrder: 10, status: 'active' as const, remark: '' },
+    { id: 'i2', categoryId: 'cat-ops-status', label: '进行中', value: 'in_progress', sortOrder: 20, status: 'active' as const, remark: '' },
+    { id: 'i3', categoryId: 'cat-ops-status', label: '已结项', value: 'closed', sortOrder: 30, status: 'inactive' as const, remark: '停用后新建不可选' },
+    { id: 'i4', categoryId: 'cat-channel', label: '自然流量', value: 'organic', sortOrder: 10, status: 'active' as const, remark: '' },
+    { id: 'i5', categoryId: 'cat-channel', label: '渠道合作', value: 'partner', sortOrder: 20, status: 'active' as const, remark: '' },
+    { id: 'i6', categoryId: 'cat-channel', label: '线下活动', value: 'event', sortOrder: 30, status: 'active' as const, remark: '' },
+    { id: 'i7', categoryId: 'cat-legacy', label: '老编码-A', value: 'legacy_a', sortOrder: 1, status: 'active' as const, remark: '历史' },
+  ],
+};
+
+type Cat = (typeof DICTIONARY_MODULE_DEMO_MOCK)['categories'][number];
+type Item = (typeof DICTIONARY_MODULE_DEMO_MOCK)['items'][number];
+
+const sl = (s: 'active' | 'inactive') => (s === 'active' ? '启用' : '停用');
+
+export function DictionaryModuleDemoPage() {
+  const toast = useToast();
+  const [cats, setCats] = useState<typeof DICTIONARY_MODULE_DEMO_MOCK.categories>(() => DICTIONARY_MODULE_DEMO_MOCK.categories);
+  const [its, setIts] = useState<typeof DICTIONARY_MODULE_DEMO_MOCK.items>(() => DICTIONARY_MODULE_DEMO_MOCK.items);
+  const [sel, setSel] = useState(DICTIONARY_MODULE_DEMO_MOCK.categories[0].id);
+  const [q, setQ] = useState('');
+  const [iq, setIq] = useState('');
+  const [catDlg, setCatDlg] = useState(false);
+  const [itDlg, setItDlg] = useState(false);
+  const [form, setForm] = useState({ mode: 'c' as 'c' | 'e', id: '' as string, name: '', code: '', desc: '' });
+  const [ift, setIft] = useState({ mode: 'c' as 'c' | 'e', id: '' as string, label: '', value: '', sort: '10', st: 'active' as 'active' | 'inactive', remark: '' });
+  const [delC, setDelC] = useState<Cat | null>(null);
+  const [delI, setDelI] = useState<Item | null>(null);
+  const ro = DICTIONARY_MODULE_DEMO_MOCK.readOnly;
+  const cur = cats.find((c) => c.id === sel)!;
+  const fc = useMemo(
+    () => (!q.trim() ? cats : cats.filter((c) => [c.name, c.code, c.description].join(' ').toLowerCase().includes(q.trim().toLowerCase()))),
+    [cats, q],
+  );
+  const list = useMemo(
+    () => its.filter((i) => i.categoryId === sel).filter((i) => [i.label, i.value, i.remark].join(' ').toLowerCase().includes(iq.trim().toLowerCase())).sort((a, b) => a.sortOrder - b.sortOrder),
+    [its, sel, iq],
+  );
+  const sm = useMemo(
+    () => ({ n: cats.length, t: its.length, a: its.filter((i) => i.status === 'active').length }),
+    [cats, its],
+  );
+  const dup = (code: string, ex?: string) => cats.some((c) => c.code === code && c.id !== ex);
+  const dupV = (v: string, ex?: string) => its.some((i) => i.categoryId === sel && i.value === v && i.id !== ex);
+  return (
+    <>
+      <PageHeader eyebrow='Data Dictionary' title='灵讯 · 字典管理（演示）' description='字典分类与字典项的增删改查；演示数据不持久化。' actions={ro ? <Badge variant='secondary'>仅查看</Badge> : <Badge variant='outline'>可编辑</Badge>} />
+      <div className='grid gap-5 md:grid-cols-3'>
+        <MetricCard label='字典分类' value={sm.n} helpText='标准选项组' />
+        <MetricCard label='字典项总量' value={sm.t} />
+        <MetricCard label='启用的项' value={sm.a} />
+      </div>
+      <div className='grid gap-5 lg:grid-cols-2'>
+        <Card className='rounded-2xl border border-border bg-card shadow-sm'>
+          <CardHeader className='pb-2'>
+            <SectionHeader eyebrow='Categories' title='字典分类' extra={ro ? null : <Button onClick={() => { setForm({ mode: 'c', id: '', name: '', code: '', desc: '' }); setCatDlg(true); }}>新建</Button>} />
+          </CardHeader>
+          <CardContent className='p-5 pt-0'>
+            <ListToolbar search={<Input value={q} onChange={(e) => setQ(e.target.value)} placeholder='搜索名称/编码' />} />
+            {fc.length ? (
+              <div className='flex flex-col gap-3'>
+                {fc.map((c) => (
+                  <RecordListItem
+                    key={c.id}
+                    interactive
+                    title={<span className='font-semibold'>{c.name}</span>}
+                    badges={(<><Badge variant='secondary'>{c.code}</Badge><Badge>{c.itemCount} 项</Badge><Badge variant='outline'>{sl(c.status)}</Badge></>)}
+                    description={<p className='text-muted-foreground text-sm'>{c.description}</p>}
+                    actions={(
+                      <>
+                        <Button variant={c.id === sel ? 'default' : 'outline'} size='sm' onClick={() => setSel(c.id)}>查看项</Button>
+                        {ro ? null : <><Button variant='outline' size='sm' onClick={() => { setForm({ mode: 'e', id: c.id, name: c.name, code: c.code, desc: c.description }); setCatDlg(true); }}>编辑</Button><Button variant='outline' size='sm' onClick={() => setDelC(c)}>删</Button></>}
+                      </>
+                    )}
+                  />
+                ))}
+              </div>
+            ) : (
+              <EmptyState title='无匹配' description='调整搜索或新建分类' action={ro ? undefined : <Button onClick={() => { setForm({ mode: 'c', id: '', name: '', code: '', desc: '' }); setCatDlg(true); }}>新建</Button>} />
+            )}
+          </CardContent>
+        </Card>
+        <Card className='rounded-2xl border border-border bg-card shadow-sm'>
+          <CardHeader className='pb-2'>
+            <SectionHeader eyebrow='Items' title={`字典项 — ${cur.name}`} extra={ro ? null : <Button onClick={() => { setIft({ mode: 'c', id: '', label: '', value: '', sort: '10', st: 'active', remark: '' }); setItDlg(true); }}>新增项</Button>} />
+          </CardHeader>
+          <CardContent className='p-5 pt-0 space-y-3'>
+            <Alert>
+              <AlertTitle>说明</AlertTitle>
+              <AlertDescription>停用项可保留历史展示；新录入不应再选停用项。</AlertDescription>
+            </Alert>
+            <Separator />
+            <ListToolbar search={<Input value={iq} onChange={(e) => setIq(e.target.value)} placeholder='搜字典项' />} />
+            {list.length ? (
+              <div className='flex flex-col gap-3'>
+                {list.map((i) => (
+                  <RecordListItem
+                    key={i.id}
+                    title={<span className='font-medium'>{i.label}</span>}
+                    badges={(<><Badge variant='secondary'>{i.value}</Badge><Badge variant='outline'>序{i.sortOrder}</Badge><Badge>{sl(i.status)}</Badge></>)}
+                    description={i.remark ? <p className='text-sm'>{i.remark}</p> : undefined}
+                    actions={ro ? null : <><Button variant='outline' size='sm' onClick={() => { setIft({ mode: 'e', id: i.id, label: i.label, value: i.value, sort: String(i.sortOrder), st: i.status, remark: i.remark }); setItDlg(true); }}>编辑</Button><Button variant='outline' size='sm' onClick={() => setDelI(i)}>删</Button></>}
+                  />
+                ))}
+              </div>
+            ) : (
+              <EmptyState title='暂无项' description='为当前分类新增字典项' />
+            )}
+          </CardContent>
+        </Card>
+      </div>
+      <Dialog open={catDlg} onOpenChange={setCatDlg}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{form.mode === 'c' ? '新建' : '编辑'}分类</DialogTitle><DialogDescription>编码全局唯一</DialogDescription></DialogHeader>
+          <div className='space-y-2'>
+            <div className='text-sm font-semibold'>名称</div>
+            <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+            <div className='text-sm font-semibold'>编码</div>
+            <Input value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} />
+            <div className='text-sm font-semibold'>说明</div>
+            <Textarea rows={2} value={form.desc} onChange={(e) => setForm((f) => ({ ...f, desc: e.target.value }))} />
+            {form.mode === 'e' ? <Alert variant='destructive'><AlertTitle>改编码</AlertTitle><AlertDescription>已被引用时需谨慎</AlertDescription></Alert> : null}
+          </div>
+          <DialogFooter>
+            <Button variant='outline' onClick={() => setCatDlg(false)}>取消</Button>
+            <Button disabled={ro} onClick={() => {
+              const name = form.name.trim();
+              const code = form.code.trim();
+              if (!name || !code) { toast.error('填写名称和编码'); return; }
+              if (dup(code, form.id)) { toast.error('编码已存在'); return; }
+              if (form.mode === 'c') { const id = `c-${Date.now()}`; setCats((c) => [{ id, name, code, description: form.desc, status: 'active', itemCount: 0 }, ...c]); setSel(id); toast.success('已建'); }
+              else { setCats((c) => c.map((x) => (x.id === form.id ? { ...x, name, code, description: form.desc } : x))); toast.success('已更'); }
+              setCatDlg(false);
+            }}>保存</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!delC} onOpenChange={() => { setDelC(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>删分类？</DialogTitle><DialogDescription>{delC && delC.itemCount > 0 ? '仍有字典项' : '确认删除'}</DialogDescription></DialogHeader>
+          {delC && delC.itemCount > 0 ? <Alert variant='destructive'><AlertTitle>无法删除</AlertTitle><AlertDescription>先清空子项</AlertDescription></Alert> : null}
+          <DialogFooter>
+            <Button variant='outline' onClick={() => { setDelC(null); }}>取消</Button>
+            <Button onClick={() => { if (!delC || delC.itemCount) { toast.error('有子项'); return; } const next = cats.filter((x) => x.id !== delC.id); setCats(next); setIts((i) => i.filter((x) => x.categoryId !== delC.id)); if (sel === delC.id) { setSel(next[0]?.id ?? ''); } toast.success('已删'); setDelC(null); }} disabled={!!delC && delC.itemCount > 0}>确认</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={itDlg} onOpenChange={setItDlg}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{ift.mode === 'c' ? '新项' : '改项'}</DialogTitle><DialogDescription>同分类 value 唯一</DialogDescription></DialogHeader>
+          <div className='space-y-2'>
+            <div className='text-sm font-semibold'>显示名</div>
+            <Input value={ift.label} onChange={(e) => setIft((f) => ({ ...f, label: e.target.value }))} />
+            <div className='text-sm font-semibold'>值</div>
+            <Input value={ift.value} onChange={(e) => setIft((f) => ({ ...f, value: e.target.value }))} />
+            <div className='text-sm font-semibold'>排序 / 状态</div>
+            <div className='grid grid-cols-2 gap-2'>
+              <Input value={ift.sort} onChange={(e) => setIft((f) => ({ ...f, sort: e.target.value }))} />
+              <Select value={ift.st} onValueChange={(v: 'active' | 'inactive') => { setIft((f) => ({ ...f, st: v })); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value='active'>启</SelectItem><SelectItem value='inactive'>停</SelectItem></SelectContent></Select>
+            </div>
+            <Textarea value={ift.remark} onChange={(e) => setIft((f) => ({ ...f, remark: e.target.value }))} rows={2} />
+          </div>
+          <DialogFooter>
+            <Button variant='outline' onClick={() => { setItDlg(false); }}>取消</Button>
+            <Button disabled={ro} onClick={() => {
+              const l = ift.label.trim();
+              const v = ift.value.trim();
+              const o = parseInt(ift.sort, 10);
+              if (!l || !v || Number.isNaN(o)) { toast.error('完整填写'); return; }
+              if (dupV(v, ift.id)) { toast.error('值重复'); return; }
+              if (ift.mode === 'c') { const id = `i-${Date.now()}`; setIts((a) => [...a, { id, categoryId: sel, label: l, value: v, sortOrder: o, status: ift.st, remark: ift.remark }]); setCats((c) => c.map((x) => (x.id === sel ? { ...x, itemCount: x.itemCount + 1 } : x))); }
+              else { setIts((a) => a.map((x) => (x.id === ift.id ? { ...x, label: l, value: v, sortOrder: o, status: ift.st, remark: ift.remark } : x))); }
+              setItDlg(false);
+              toast.success('好');
+            }}>保存</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!delI} onOpenChange={() => { setDelI(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>删项？</DialogTitle><DialogDescription>生产环境通常停用更稳妥</DialogDescription></DialogHeader>
+          <DialogFooter>
+            <Button variant='outline' onClick={() => { setDelI(null); }}>否</Button>
+            <Button onClick={() => { if (!delI) { return; } setIts((a) => a.filter((x) => x.id !== delI.id)); setCats((c) => c.map((x) => (x.id === delI.categoryId ? { ...x, itemCount: Math.max(0, x.itemCount - 1) } : x))); setDelI(null); toast.success('已删'); }}>是</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
