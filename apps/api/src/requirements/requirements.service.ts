@@ -13,6 +13,7 @@ import { IdeationSessionStatus, IdeationStatus } from '../common/enums';
 import { BrainstormBrief, DemoPage, DesignSpec, RepositoryComponentContext } from '../common/types';
 import { LocalDevPreviewService } from '../dev-preview/local-dev-preview.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RepositorySyncService } from '../workspaces/repository-sync.service';
 import { CreateRequirementDto } from './dto/create-requirement.dto';
 import {
   IdeationSessionEventsRepository,
@@ -64,6 +65,7 @@ export class RequirementsService {
     private readonly aiInvocationContextService: AiInvocationContextService,
     private readonly localDevPreviewService: LocalDevPreviewService,
     private readonly ideationSessionEventsRepository: IdeationSessionEventsRepository,
+    private readonly repositorySyncService: RepositorySyncService,
   ) {}
 
   async create(dto: CreateRequirementDto) {
@@ -464,7 +466,7 @@ export class RequirementsService {
   }
 
   async startDesign(requirementId: string, hint?: string, authSession?: IdeationAuthSession) {
-    const requirement = await this.findOne(requirementId);
+    let requirement = await this.findOne(requirementId);
     const currentStatus = requirement.ideationStatus as IdeationStatus;
 
     if (currentStatus !== IdeationStatus.BRAINSTORM_CONFIRMED && currentStatus !== IdeationStatus.DESIGN_WAITING_CONFIRMATION) {
@@ -477,6 +479,7 @@ export class RequirementsService {
     if (!confirmedBrief) {
       throw new BadRequestException('No confirmed brainstorm brief found. Confirm brainstorm first.');
     }
+    requirement = await this.ensureIdeationRepositoriesReady(requirement);
 
     const previousDesigns = await this.getPreviousDesigns(requirementId);
     const executor = this.resolveIdeationExecutor();
@@ -564,7 +567,7 @@ export class RequirementsService {
   }
 
   async reviseDesign(requirementId: string, feedback: string, authSession?: IdeationAuthSession) {
-    const requirement = await this.findOne(requirementId);
+    let requirement = await this.findOne(requirementId);
     const currentStatus = requirement.ideationStatus as IdeationStatus;
 
     if (currentStatus !== IdeationStatus.DESIGN_WAITING_CONFIRMATION) {
@@ -577,6 +580,7 @@ export class RequirementsService {
     if (!confirmedBrief) {
       throw new BadRequestException('No confirmed brainstorm brief found.');
     }
+    requirement = await this.ensureIdeationRepositoriesReady(requirement);
 
     const previousDesigns = await this.getPreviousDesigns(requirementId);
     const latestDesignSessionWithOutput = requirement.ideationSessions
@@ -736,7 +740,7 @@ export class RequirementsService {
   }
 
   async startDemoGeneration(requirementId: string, hint?: string, authSession?: IdeationAuthSession) {
-    const requirement = await this.findOne(requirementId);
+    let requirement = await this.findOne(requirementId);
     const currentStatus = requirement.ideationStatus as IdeationStatus;
 
     if (
@@ -753,6 +757,7 @@ export class RequirementsService {
     if (!confirmedBrief || !confirmedDesign) {
       throw new BadRequestException('Design must be confirmed before generating demo pages.');
     }
+    requirement = await this.ensureIdeationRepositoriesReady(requirement);
 
     const executor = this.resolveIdeationExecutor();
     const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
@@ -1585,6 +1590,90 @@ export class RequirementsService {
     const repositories = this.resolveReadyRepositories(requirement);
     const first = repositories?.[0];
     return first?.id ?? null;
+  }
+
+  private async ensureIdeationRepositoriesReady(
+    requirement: Awaited<ReturnType<typeof this.findOne>>,
+  ): Promise<Awaited<ReturnType<typeof this.findOne>>> {
+    if (this.resolveReadyRepositories(requirement).length > 0) {
+      return requirement;
+    }
+
+    const repositoryIds = Array.from(
+      new Set(
+        (requirement.requirementRepositories ?? [])
+          .map((item: { repository?: { id?: string } }) => item.repository?.id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    if (repositoryIds.length === 0) {
+      throw new BadRequestException(
+        'IDEATION_REPOSITORY_MISSING: No repositories are associated with this requirement. Link a workspace repository and retry.',
+      );
+    }
+
+    const repositories = await this.prisma.repository.findMany({
+      where: {
+        id: { in: repositoryIds },
+        status: 'ACTIVE',
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (repositories.length === 0) {
+      throw new BadRequestException(
+        'IDEATION_REPOSITORY_MISSING: Linked repositories are not active or cannot be loaded.',
+      );
+    }
+
+    const syncErrors: string[] = [];
+    for (const repository of repositories) {
+      try {
+        await this.repositorySyncService.syncRepository(repository as any);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        syncErrors.push(`${repository.name}: ${message}`);
+      }
+    }
+
+    const refreshedRequirement = await this.findOne(requirement.id);
+    if (this.resolveReadyRepositories(refreshedRequirement).length > 0) {
+      return refreshedRequirement;
+    }
+
+    const readinessSummary = this.buildIdeationRepositoryReadinessSummary(refreshedRequirement);
+    const details = [
+      readinessSummary ? ` Repositories: ${readinessSummary}` : '',
+      syncErrors.length > 0 ? ` Sync failed: ${syncErrors.join(' | ')}` : '',
+    ].join('');
+    throw new BadRequestException(
+      `IDEATION_REPOSITORY_NOT_READY: Repositories are not ready for ideation. Please sync repositories from workspace and retry.${details}`,
+    );
+  }
+
+  private buildIdeationRepositoryReadinessSummary(
+    requirement: Awaited<ReturnType<typeof this.findOne>>,
+  ): string {
+    const repositories = (requirement.requirementRepositories ?? [])
+      .map((item: { repository?: Record<string, unknown> }) => item.repository)
+      .filter((repo): repo is Record<string, unknown> => Boolean(repo));
+    if (repositories.length === 0) {
+      return '';
+    }
+    return repositories
+      .map((repo) => {
+        const id = typeof repo.id === 'string' ? repo.id : 'unknown-id';
+        const name = typeof repo.name === 'string' ? repo.name : 'unknown-name';
+        const syncStatus =
+          typeof repo.syncStatus === 'string' && repo.syncStatus.trim().length > 0
+            ? repo.syncStatus
+            : 'UNKNOWN';
+        const localPath =
+          typeof repo.localPath === 'string' && repo.localPath.trim().length > 0
+            ? repo.localPath
+            : '(empty)';
+        return `${id}/${name}(syncStatus=${syncStatus}, localPath=${localPath})`;
+      })
+      .join(' | ');
   }
 
   private async buildRepositoryComponentContext(

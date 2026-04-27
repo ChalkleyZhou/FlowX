@@ -36,6 +36,7 @@ describe('RequirementsService demo generation progress events', () => {
       aiInvocationContextService,
       localDevPreviewService,
       eventsRepo,
+      { syncRepository: vi.fn() } as any,
     );
 
     const requirement = {
@@ -43,7 +44,18 @@ describe('RequirementsService demo generation progress events', () => {
       title: 'Demo requirement',
       description: 'Generate demo pages',
       ideationStatus: 'DESIGN_CONFIRMED',
-      requirementRepositories: [],
+      requirementRepositories: [
+        {
+          repository: {
+            id: 'repo-1',
+            name: 'web',
+            url: 'git@github.com:example/web.git',
+            defaultBranch: 'main',
+            localPath: '/tmp/repo-1',
+            syncStatus: 'READY',
+          },
+        },
+      ],
       project: null,
       workspace: null,
     };
