@@ -422,10 +422,17 @@ export class RequirementsService {
       );
     }
 
-    const lastSession = requirement.ideationSessions
-      ?.filter((s: { stage: string }) => s.stage === 'BRAINSTORM')
-      .sort((a: { attempt: number }, b: { attempt: number }) => b.attempt - a.attempt)[0];
-
+    const brainstormSessions = (requirement.ideationSessions ?? [])
+      .filter((session: { stage: string }) => session.stage === 'BRAINSTORM')
+      .sort((a: { attempt: number }, b: { attempt: number }) => b.attempt - a.attempt);
+    const waitingSessionWithBrief = brainstormSessions.find((session: { status?: string; output?: unknown }) => {
+      if (session.status !== ideationSessionStatusMap[IdeationSessionStatus.WAITING_CONFIRMATION]) {
+        return false;
+      }
+      return Boolean(this.extractBrainstormBrief(session.output));
+    });
+    const lastSession = waitingSessionWithBrief
+      ?? brainstormSessions.find((session: { output?: unknown }) => Boolean(this.extractBrainstormBrief(session.output)));
     const brief = this.extractBrainstormBrief(lastSession?.output);
     if (!lastSession || !brief) {
       throw new BadRequestException('当前轮次没有可确认的产品简报，请重新生成后再确认。');
