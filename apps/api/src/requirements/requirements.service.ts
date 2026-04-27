@@ -1113,10 +1113,10 @@ export class RequirementsService {
     }
 
     const candidate = output as Record<string, unknown>;
-    if (!candidate.brief || typeof candidate.brief !== 'object' || Array.isArray(candidate.brief)) {
-      return null;
-    }
-    const briefCandidate = candidate.brief as Record<string, unknown>;
+    const briefCandidate =
+      candidate.brief && typeof candidate.brief === 'object' && !Array.isArray(candidate.brief)
+        ? (candidate.brief as Record<string, unknown>)
+        : candidate;
 
     const expandedDescription = this.readString(briefCandidate.expandedDescription);
     if (!expandedDescription) {
