@@ -461,7 +461,17 @@ export function IdeationDesignPanel({
       )}
       {isDemoPending && (
         <div className="rounded-md border border-border bg-muted/50 px-4 py-3 text-sm text-foreground">
-          正在生成 Demo 页面，请稍候。当前阶段会写入本地代码并尝试启动本地预览。
+          <p>正在生成 Demo 页面，请稍候。当前阶段会写入本地代码并尝试启动本地预览。</p>
+          {primaryRepo && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" type="button" onClick={handleRetryLocalDev}>
+                重试本地预览
+              </Button>
+              <Button variant="ghost" size="sm" type="button" onClick={handleStopLocalDev}>
+                停止本地进程
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -500,9 +510,14 @@ export function IdeationDesignPanel({
               )}
               {primaryRepo?.localPath && !localDetect && <p className="text-xs text-muted-foreground">正在准备本地预览…</p>}
               {localStatus?.status === 'starting' && (
-                <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-primary" />
-                  正在启动本地开发服务…
+                <div className="mt-2 space-y-2">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-primary" />
+                    正在启动本地开发服务…
+                  </div>
+                  <Button variant="ghost" size="sm" type="button" onClick={handleStopLocalDev}>
+                    停止进程
+                  </Button>
                 </div>
               )}
               {localStatus?.status === 'failed' && (
