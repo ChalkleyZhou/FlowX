@@ -39,6 +39,46 @@ export class WorkflowController {
     return this.workflowService.deleteWorkflowRun(id);
   }
 
+  @Post(':id/brainstorm/run')
+  runBrainstorm(@Param('id') id: string, @Req() req: WorkflowRequest) {
+    return this.workflowService.runBrainstorm(id, req.authSession);
+  }
+
+  @Post(':id/brainstorm/skip')
+  skipBrainstorm(@Param('id') id: string) {
+    return this.workflowService.skipBrainstorm(id);
+  }
+
+  @Post(':id/design/run')
+  runDesign(@Param('id') id: string, @Req() req: WorkflowRequest) {
+    return this.workflowService.runDesign(id, req.authSession);
+  }
+
+  @Post(':id/design/skip')
+  skipDesign(@Param('id') id: string) {
+    return this.workflowService.skipDesign(id);
+  }
+
+  @Post(':id/demo/run')
+  runDemo(@Param('id') id: string, @Req() req: WorkflowRequest) {
+    return this.workflowService.runDemo(id, undefined, req.authSession);
+  }
+
+  @Post(':id/demo/revise')
+  reviseDemo(@Param('id') id: string, @Body() dto: StageFeedbackDto, @Req() req: WorkflowRequest) {
+    return this.workflowService.runDemo(id, dto.feedback, req.authSession);
+  }
+
+  @Post(':id/demo/confirm')
+  confirmDemo(@Param('id') id: string) {
+    return this.workflowService.confirmDemo(id);
+  }
+
+  @Post(':id/demo/skip')
+  skipDemo(@Param('id') id: string) {
+    return this.workflowService.skipDemo(id);
+  }
+
   @Post(':id/task-split/run')
   runTaskSplit(@Param('id') id: string, @Req() req: WorkflowRequest) {
     return this.workflowService.runTaskSplit(id, undefined, req.authSession);
@@ -146,6 +186,7 @@ type WorkflowRequest = {
       displayName: string;
     };
     organization?: {
+      id?: string | null;
       providerOrganizationId?: string | null;
       name?: string | null;
     } | null;

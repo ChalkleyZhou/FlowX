@@ -583,16 +583,28 @@ ${componentContextSection}
 ${revisionSection}
 
 请输出:
-1. overview: 高层设计思路
-2. pages: 页面/视图列表，每个包含:
-   - name: 页面名称
-   - route: URL 路由
-   - layout: 文字线框图描述布局结构
-   - keyComponents: 页面上的关键 UI 组件
-   - interactions: 关键用户交互和状态变化
-3. demoScenario: 逐步演示场景脚本
-4. designRationale: 为什么选择这个设计方向
-5. demoPages: 可运行的 Demo 页面代码数组，每个包含:
+1. 顶层字段 design: 设计规格对象，必须包含:
+   - overview: 高层设计思路
+   - pages: 页面/视图列表，每个包含:
+     - name: 页面名称
+     - route: URL 路由
+     - layout: 文字线框图描述布局结构
+     - keyComponents: 页面上的关键 UI 组件
+     - interactions: 关键用户交互和状态变化
+   - demoScenario: 逐步演示场景脚本
+   - designRationale: 为什么选择这个设计方向
+2. 顶层字段 demo: 面向确认与后续任务拆解的 Demo 摘要对象，必须包含:
+   - summary: 这版 Demo 核心验证目标的一句话总结
+   - flows: 演示流程列表，每个包含:
+     - name: 流程名
+     - goal: 该流程验证什么
+     - entry: 从哪里进入
+     - states: 关键状态列表
+   - scope:
+     - included: 本次已覆盖内容
+     - excluded: 本次未覆盖内容
+   - knownGaps: 当前已知取舍或简化项
+3. 顶层字段 demoPages: 可运行的 Demo 页面代码数组，每个包含:
    - route: 页面路由路径（使用 /flowx-demo/ 前缀避免冲突）
    - componentName: 组件名称（PascalCase）
    - componentCode: 完整的页面组件源码（必须使用目标仓库的真实组件 import）

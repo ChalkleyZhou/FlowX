@@ -13,7 +13,19 @@ vi.mock('../api', () => ({
     getWorkflowRun: vi.fn(),
     confirmTaskSplit: vi.fn(),
     reviseTaskSplit: vi.fn(),
+    runBrainstorm: vi.fn(),
+    runDesign: vi.fn(),
+    runDemo: vi.fn(),
+    reviseDemo: vi.fn(),
+    confirmDemo: vi.fn(),
     runTaskSplit: vi.fn(),
+    skipBrainstorm: vi.fn(),
+    skipDesign: vi.fn(),
+    skipDemo: vi.fn(),
+    detectLocalDev: vi.fn(),
+    getLocalDevStatus: vi.fn(),
+    startLocalDevPreview: vi.fn(),
+    stopLocalDevPreview: vi.fn(),
     runPlan: vi.fn(),
     confirmPlan: vi.fn(),
     rejectPlan: vi.fn(),
@@ -215,6 +227,248 @@ describe('WorkflowRunDetailPage', () => {
 
     expect(container.textContent).toContain('flowx-api');
     expect(container.textContent).toContain('codex/fix-auth');
+  });
+
+  it('renders optional ideation stages before task split', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'BRAINSTORM_PENDING',
+        stageExecutions: [
+          {
+            id: 'stage-grounding',
+            stage: 'REPOSITORY_GROUNDING',
+            status: 'COMPLETED',
+            statusMessage: null,
+            attempt: 1,
+            output: { repositories: [] },
+          },
+          {
+            id: 'stage-brainstorm',
+            stage: 'BRAINSTORM',
+            status: 'PENDING',
+            statusMessage: '可生成产品简报，也可以跳过构思继续',
+            attempt: 1,
+            output: null,
+          },
+        ],
+      }),
+    );
+
+    await renderPage();
+
+    const text = container.textContent ?? '';
+    expect(text).toContain('产品构思');
+    expect(text).toContain('AI 生成产品简报');
+    expect(text).toContain('跳过构思');
+    expect(text).toContain('设计方案');
+    expect(text).toContain('Demo 页面');
+  });
+
+  it('starts workflow brainstorm from the brainstorm stage card', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'BRAINSTORM_PENDING',
+        stageExecutions: [
+          {
+            id: 'stage-brainstorm',
+            stage: 'BRAINSTORM',
+            status: 'PENDING',
+            statusMessage: '可生成产品简报，也可以跳过构思继续',
+            attempt: 1,
+            output: null,
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.runBrainstorm).mockResolvedValue(createWorkflowRun());
+
+    await renderPage();
+
+    const runButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('AI 生成产品简报'),
+    );
+    expect(runButton).toBeTruthy();
+
+    await act(async () => {
+      runButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(api.runBrainstorm).toHaveBeenCalledWith('workflow-1');
+  });
+
+  it('starts workflow design from the design stage card', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'DESIGN_PENDING',
+        stageExecutions: [
+          {
+            id: 'stage-brainstorm',
+            stage: 'BRAINSTORM',
+            status: 'COMPLETED',
+            statusMessage: null,
+            attempt: 1,
+            output: { brief: { expandedDescription: 'Expanded', userStories: [], edgeCases: [], successMetrics: [], openQuestions: [], assumptions: [], outOfScope: [] } },
+          },
+          {
+            id: 'stage-design',
+            stage: 'DESIGN',
+            status: 'PENDING',
+            statusMessage: '可生成设计方案，也可以跳过设计继续',
+            attempt: 1,
+            output: null,
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.runDesign).mockResolvedValue(createWorkflowRun());
+
+    await renderPage();
+
+    const runButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('AI 生成设计方案'),
+    );
+    expect(runButton).toBeTruthy();
+
+    await act(async () => {
+      runButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(api.runDesign).toHaveBeenCalledWith('workflow-1');
+  });
+
+  it('starts workflow demo generation from the demo stage card', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'DEMO_PENDING',
+        stageExecutions: [
+          {
+            id: 'stage-brainstorm',
+            stage: 'BRAINSTORM',
+            status: 'COMPLETED',
+            statusMessage: null,
+            attempt: 1,
+            output: { brief: { expandedDescription: 'Expanded', userStories: [], edgeCases: [], successMetrics: [], openQuestions: [], assumptions: [], outOfScope: [] } },
+          },
+          {
+            id: 'stage-design',
+            stage: 'DESIGN',
+            status: 'COMPLETED',
+            statusMessage: null,
+            attempt: 1,
+            output: { design: { overview: 'Overview', pages: [], demoScenario: 'Scenario', designRationale: 'Rationale' } },
+          },
+          {
+            id: 'stage-demo',
+            stage: 'DEMO',
+            status: 'PENDING',
+            statusMessage: '可生成 Demo 页面，也可以跳过 Demo 进入任务拆解',
+            attempt: 1,
+            output: null,
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.runDemo).mockResolvedValue(createWorkflowRun());
+
+    await renderPage();
+
+    const runButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('生成 Demo 页面'),
+    );
+    expect(runButton).toBeTruthy();
+
+    await act(async () => {
+      runButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(api.runDemo).toHaveBeenCalledWith('workflow-1');
+  });
+
+  it('confirms demo before entering task split', async () => {
+    vi.mocked(api.getWorkflowRun)
+      .mockResolvedValueOnce(
+        createWorkflowRun({
+          status: 'DEMO_WAITING_CONFIRMATION',
+          workflowRepositories: [
+            {
+              id: 'repo-1',
+              repositoryId: 'repository-1',
+              name: 'flowx-web',
+              url: 'https://example.com/flowx-web.git',
+              baseBranch: 'main',
+              workingBranch: 'codex/demo-preview',
+              status: 'READY',
+              localPath: '/tmp/flowx-web',
+            },
+          ],
+          stageExecutions: [
+            {
+              id: 'stage-demo',
+              stage: 'DEMO',
+              status: 'WAITING_CONFIRMATION',
+              statusMessage: '请确认当前 Demo，再进入任务拆解',
+              attempt: 1,
+              output: {
+                demoPages: [{ filePath: 'src/demo.tsx', componentName: 'DemoPanel', routePath: '/demo' }],
+              },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        createWorkflowRun({
+          status: 'TASK_SPLIT_PENDING',
+          stageExecutions: [
+            {
+              id: 'stage-demo',
+              stage: 'DEMO',
+              status: 'COMPLETED',
+              statusMessage: null,
+              attempt: 1,
+              output: {
+                demoPages: [{ filePath: 'src/demo.tsx', componentName: 'DemoPanel', routePath: '/demo' }],
+              },
+            },
+            {
+              id: 'stage-task-split',
+              stage: 'TASK_SPLIT',
+              status: 'PENDING',
+              statusMessage: null,
+              attempt: 1,
+              output: null,
+            },
+          ],
+        }),
+      );
+    vi.mocked(api.detectLocalDev).mockResolvedValue({ command: 'pnpm dev', packageManager: 'pnpm' } as never);
+    vi.mocked(api.getLocalDevStatus).mockResolvedValue({
+      status: 'running',
+      running: true,
+      previewUrl: 'http://127.0.0.1:4173',
+      port: 4173,
+      command: 'pnpm dev',
+      logTail: '',
+      lastError: null,
+    } as never);
+    vi.mocked(api.confirmDemo).mockResolvedValue(createWorkflowRun());
+
+    await renderPage();
+
+    const confirmButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.trim() === '确认 Demo',
+    );
+    expect(confirmButton).toBeTruthy();
+
+    await act(async () => {
+      confirmButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(api.confirmDemo).toHaveBeenCalledWith('workflow-1');
+    expect(container.textContent).toContain('执行任务拆解');
   });
 
   it('switches to the next stage card after task split is confirmed', async () => {
@@ -623,5 +877,257 @@ describe('WorkflowRunDetailPage', () => {
     expect(text).toContain('立即修复');
     expect(text).not.toContain('返工');
     expect(text).not.toContain('回滚');
+  });
+
+  it('shows demo feedback in the right sidebar instead of the main content card', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'DEMO_WAITING_CONFIRMATION',
+        workflowRepositories: [
+          {
+            id: 'repo-1',
+            repositoryId: 'repository-1',
+            name: 'flowx-web',
+            url: 'https://example.com/flowx-web.git',
+            baseBranch: 'main',
+            workingBranch: 'codex/demo-preview',
+            status: 'READY',
+            localPath: '/tmp/flowx-web',
+          },
+        ],
+        stageExecutions: [
+          {
+            id: 'stage-grounding',
+            stage: 'REPOSITORY_GROUNDING',
+            status: 'COMPLETED',
+            statusMessage: null,
+            attempt: 1,
+            output: { repositories: [] },
+          },
+          {
+            id: 'stage-demo',
+            stage: 'DEMO',
+            status: 'WAITING_CONFIRMATION',
+            statusMessage: '请确认当前 Demo，再进入任务拆解',
+            attempt: 1,
+            output: {
+              demo: {
+                summary: '验证通知列表的筛选与详情查看流程',
+                flows: [
+                  {
+                    name: '筛选通知',
+                    goal: '验证用户可以按类型和时间过滤列表',
+                    entry: '通知列表顶部筛选区',
+                    states: ['默认列表', '筛选后结果'],
+                  },
+                ],
+                scope: {
+                  included: ['通知列表', '详情弹层'],
+                  excluded: ['批量处理'],
+                },
+                knownGaps: ['数据仍为 mock'],
+              },
+              demoPages: [{ filePath: 'src/demo.tsx', componentName: 'DemoPanel', routePath: '/demo' }],
+            },
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.detectLocalDev).mockResolvedValue({ command: 'pnpm dev', packageManager: 'pnpm' } as never);
+    vi.mocked(api.getLocalDevStatus).mockResolvedValue({
+      status: 'running',
+      running: true,
+      previewUrl: 'http://127.0.0.1:4173',
+      port: 4173,
+      command: 'pnpm dev',
+      logTail: '',
+      lastError: null,
+    } as never);
+
+    await renderPage();
+
+    const demoStepButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Demo 页面'),
+    );
+
+    await act(async () => {
+      demoStepButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const shell = container.querySelector('[data-testid="workflow-review-sidebar-shell"]');
+    expect(shell?.textContent).toContain('Demo 反馈区');
+    expect(shell?.textContent).toContain('发送 Demo 修改意见');
+    expect(container.textContent).toContain('验证通知列表的筛选与详情查看流程');
+    expect(container.textContent).toContain('通知列表');
+    expect(container.textContent).not.toContain('DemoPanel');
+  });
+
+  it('opens the demo preview in a dialog from a single entry button', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'DEMO_WAITING_CONFIRMATION',
+        workflowRepositories: [
+          {
+            id: 'repo-1',
+            repositoryId: 'repository-1',
+            name: 'flowx-web',
+            url: 'https://example.com/flowx-web.git',
+            baseBranch: 'main',
+            workingBranch: 'codex/demo-preview',
+            status: 'READY',
+            localPath: '/tmp/flowx-web',
+          },
+        ],
+        stageExecutions: [
+          {
+            id: 'stage-grounding',
+            stage: 'REPOSITORY_GROUNDING',
+            status: 'COMPLETED',
+            statusMessage: null,
+            attempt: 1,
+            output: { repositories: [] },
+          },
+          {
+            id: 'stage-demo',
+            stage: 'DEMO',
+            status: 'WAITING_CONFIRMATION',
+            statusMessage: '请确认当前 Demo，再进入任务拆解',
+            attempt: 1,
+            output: {
+              demoPages: [{ filePath: 'src/demo.tsx', componentName: 'DemoPanel', routePath: '/demo' }],
+            },
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.detectLocalDev).mockResolvedValue({ command: 'pnpm dev', packageManager: 'pnpm' } as never);
+    vi.mocked(api.getLocalDevStatus).mockResolvedValue({
+      status: 'running',
+      running: true,
+      previewUrl: 'http://127.0.0.1:4173',
+      port: 4173,
+      command: 'pnpm dev',
+      logTail: '',
+      lastError: null,
+    } as never);
+
+    await renderPage();
+
+    const demoStepButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Demo 页面'),
+    );
+
+    await act(async () => {
+      demoStepButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const previewButton = container.querySelector('[data-testid="demo-preview-open"]');
+    expect(previewButton?.textContent).toContain('打开本地预览');
+    expect(container.textContent).not.toContain('本地预览与反馈');
+
+    await act(async () => {
+      previewButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(document.body.textContent).toContain('Demo 本地预览');
+    expect(document.body.querySelector('iframe[title="本地 Demo 预览"]')).toBeTruthy();
+  });
+
+  it('offers a restart action after local preview has been stopped', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'DEMO_WAITING_CONFIRMATION',
+        workflowRepositories: [
+          {
+            id: 'repo-1',
+            repositoryId: 'repository-1',
+            name: 'flowx-web',
+            url: 'https://example.com/flowx-web.git',
+            baseBranch: 'main',
+            workingBranch: 'codex/demo-preview',
+            status: 'READY',
+            localPath: '/tmp/flowx-web',
+          },
+        ],
+        stageExecutions: [
+          {
+            id: 'stage-grounding',
+            stage: 'REPOSITORY_GROUNDING',
+            status: 'COMPLETED',
+            statusMessage: null,
+            attempt: 1,
+            output: { repositories: [] },
+          },
+          {
+            id: 'stage-demo',
+            stage: 'DEMO',
+            status: 'WAITING_CONFIRMATION',
+            statusMessage: '请确认当前 Demo，再进入任务拆解',
+            attempt: 1,
+            output: {
+              demoPages: [{ filePath: 'src/demo.tsx', componentName: 'DemoPanel', routePath: '/demo' }],
+            },
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.detectLocalDev).mockResolvedValue({ command: 'pnpm dev', packageManager: 'pnpm' } as never);
+    vi.mocked(api.getLocalDevStatus)
+      .mockResolvedValueOnce({
+        status: 'running',
+        running: true,
+        previewUrl: 'http://127.0.0.1:4173',
+        port: 4173,
+        command: 'pnpm dev',
+        logTail: '',
+        lastError: null,
+      } as never)
+      .mockResolvedValueOnce({
+        status: 'stopped',
+        running: false,
+        previewUrl: null,
+        port: 4173,
+        command: 'pnpm dev',
+        logTail: '',
+        lastError: null,
+      } as never);
+    vi.mocked(api.stopLocalDevPreview).mockResolvedValue(undefined as never);
+    vi.mocked(api.startLocalDevPreview).mockResolvedValue({ ok: true } as never);
+
+    await renderPage();
+
+    const demoStepButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Demo 页面'),
+    );
+
+    await act(async () => {
+      demoStepButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const stopButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('停止本地预览'),
+    );
+
+    await act(async () => {
+      stopButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const restartButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('启动本地预览'),
+    );
+
+    expect(restartButton).toBeTruthy();
+
+    await act(async () => {
+      restartButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(api.startLocalDevPreview).toHaveBeenCalledWith('repository-1');
   });
 });

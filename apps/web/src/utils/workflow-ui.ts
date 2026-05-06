@@ -14,6 +14,7 @@ export function formatStageExecutionStatus(status: string) {
     FAILED: '执行失败',
     WAITING_CONFIRMATION: '待人工确认',
     REJECTED: '已驳回',
+    SKIPPED: '已跳过',
   };
 
   return map[status] ?? status;
@@ -23,6 +24,10 @@ export function formatWorkflowStatus(status: string) {
   const map: Record<string, string> = {
     CREATED: '已创建',
     REPOSITORY_GROUNDING_PENDING: '待仓库 grounding',
+    BRAINSTORM_PENDING: '待产品构思',
+    DESIGN_PENDING: '待设计方案',
+    DEMO_PENDING: '待 Demo 页面',
+    DEMO_WAITING_CONFIRMATION: '待确认 Demo',
     TASK_SPLIT_PENDING: '待任务拆解',
     TASK_SPLIT_WAITING_CONFIRMATION: '待确认任务拆解',
     TASK_SPLIT_CONFIRMED: '任务拆解已确认',

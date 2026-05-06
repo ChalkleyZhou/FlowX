@@ -1,6 +1,10 @@
 export enum WorkflowRunStatus {
   CREATED = 'created',
   REPOSITORY_GROUNDING_PENDING = 'repository_grounding_pending',
+  BRAINSTORM_PENDING = 'brainstorm_pending',
+  DESIGN_PENDING = 'design_pending',
+  DEMO_PENDING = 'demo_pending',
+  DEMO_WAITING_CONFIRMATION = 'demo_waiting_confirmation',
   TASK_SPLIT_PENDING = 'task_split_pending',
   TASK_SPLIT_WAITING_CONFIRMATION = 'task_split_waiting_confirmation',
   TASK_SPLIT_CONFIRMED = 'task_split_confirmed',
@@ -18,6 +22,9 @@ export enum WorkflowRunStatus {
 export enum StageType {
   REQUIREMENT_INTAKE = 'requirement_intake',
   REPOSITORY_GROUNDING = 'repository_grounding',
+  BRAINSTORM = 'brainstorm',
+  DESIGN = 'design',
+  DEMO = 'demo',
   TASK_SPLIT = 'task_split',
   TECHNICAL_PLAN = 'technical_plan',
   EXECUTION = 'execution',
@@ -32,6 +39,7 @@ export enum StageExecutionStatus {
   FAILED = 'failed',
   WAITING_CONFIRMATION = 'waiting_confirmation',
   REJECTED = 'rejected',
+  SKIPPED = 'skipped',
 }
 
 export enum TaskStatus {

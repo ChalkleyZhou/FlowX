@@ -14,6 +14,52 @@ describe('WorkflowStateMachine', () => {
     ).toBe(true);
   });
 
+  it('routes repository grounding into brainstorm before task split', () => {
+    const machine = new WorkflowStateMachine();
+
+    expect(
+      machine.canTransitionWorkflow(
+        WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING,
+        WorkflowRunStatus.BRAINSTORM_PENDING,
+      ),
+    ).toBe(true);
+    expect(
+      machine.canTransitionWorkflow(
+        WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING,
+        WorkflowRunStatus.TASK_SPLIT_PENDING,
+      ),
+    ).toBe(false);
+  });
+
+  it('routes demo through waiting confirmation before task split', () => {
+    const machine = new WorkflowStateMachine();
+
+    expect(
+      machine.canTransitionWorkflow(
+        WorkflowRunStatus.BRAINSTORM_PENDING,
+        WorkflowRunStatus.DESIGN_PENDING,
+      ),
+    ).toBe(true);
+    expect(
+      machine.canTransitionWorkflow(
+        WorkflowRunStatus.DESIGN_PENDING,
+        WorkflowRunStatus.DEMO_PENDING,
+      ),
+    ).toBe(true);
+    expect(
+      machine.canTransitionWorkflow(
+        WorkflowRunStatus.DEMO_PENDING,
+        WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
+      ),
+    ).toBe(true);
+    expect(
+      machine.canTransitionWorkflow(
+        WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
+        WorkflowRunStatus.TASK_SPLIT_PENDING,
+      ),
+    ).toBe(true);
+  });
+
   it('rejects skipping directly from created to plan pending', () => {
     const machine = new WorkflowStateMachine();
 
@@ -32,6 +78,17 @@ describe('WorkflowStateMachine', () => {
       machine.canTransitionStage(
         StageExecutionStatus.RUNNING,
         StageExecutionStatus.WAITING_CONFIRMATION,
+      ),
+    ).toBe(true);
+  });
+
+  it('allows pending optional stage executions to be skipped', () => {
+    const machine = new WorkflowStateMachine();
+
+    expect(
+      machine.canTransitionStage(
+        StageExecutionStatus.PENDING,
+        StageExecutionStatus.SKIPPED,
       ),
     ).toBe(true);
   });

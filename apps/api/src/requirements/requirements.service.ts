@@ -10,7 +10,7 @@ import {
 } from '../ai/ai-invocation-context.service';
 import { MockAiExecutor } from '../ai/mock-ai.executor';
 import { IdeationSessionStatus, IdeationStatus } from '../common/enums';
-import { BrainstormBrief, DemoPage, DesignSpec, RepositoryComponentContext } from '../common/types';
+import { BrainstormBrief, DemoArtifact, DemoPage, DesignSpec, RepositoryComponentContext } from '../common/types';
 import { LocalDevPreviewService } from '../dev-preview/local-dev-preview.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RepositorySyncService } from '../workspaces/repository-sync.service';
@@ -1181,7 +1181,7 @@ export class RequirementsService {
     return stories;
   }
 
-  private normalizeDesignOutput(output: unknown): { design: DesignSpec; demoPages?: DemoPage[] } {
+  private normalizeDesignOutput(output: unknown): { design: DesignSpec; demo: DemoArtifact; demoPages?: DemoPage[] } {
     if (!output || typeof output !== 'object' || Array.isArray(output)) {
       throw new Error('DESIGN_OUTPUT_INVALID: Design output is not an object.');
     }
@@ -1196,8 +1196,13 @@ export class RequirementsService {
       throw new Error('DESIGN_OUTPUT_INVALID: Missing design overview in executor response.');
     }
 
-    const normalized: { design: DesignSpec; demoPages?: DemoPage[] } = {
+    if (!candidate.demo || typeof candidate.demo !== 'object' || Array.isArray(candidate.demo)) {
+      throw new Error('DESIGN_OUTPUT_INVALID: Missing demo object in executor response.');
+    }
+
+    const normalized: { design: DesignSpec; demo: DemoArtifact; demoPages?: DemoPage[] } = {
       design: designCandidate as unknown as DesignSpec,
+      demo: candidate.demo as DemoArtifact,
     };
 
     if (Array.isArray(candidate.demoPages)) {
@@ -1208,8 +1213,8 @@ export class RequirementsService {
   }
 
   private isSameDesignOutput(
-    a: { design: DesignSpec; demoPages?: DemoPage[] },
-    b: { design: DesignSpec; demoPages?: DemoPage[] },
+    a: { design: DesignSpec; demo: DemoArtifact; demoPages?: DemoPage[] },
+    b: { design: DesignSpec; demo: DemoArtifact; demoPages?: DemoPage[] },
   ): boolean {
     return JSON.stringify(a) === JSON.stringify(b);
   }

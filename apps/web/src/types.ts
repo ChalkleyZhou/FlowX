@@ -305,6 +305,23 @@ export interface DemoPage {
   previewUrl?: string;
 }
 
+export interface DemoFlow {
+  name: string;
+  goal: string;
+  entry: string;
+  states: string[];
+}
+
+export interface DemoArtifact {
+  summary: string;
+  flows: DemoFlow[];
+  scope: {
+    included: string[];
+    excluded: string[];
+  };
+  knownGaps: string[];
+}
+
 export interface IdeationArtifact {
   id: string;
   type: 'BRAINSTORM_BRIEF' | 'DESIGN_SPEC' | 'DEMO_PAGE';

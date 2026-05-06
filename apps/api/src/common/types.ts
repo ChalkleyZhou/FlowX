@@ -194,6 +194,25 @@ export interface DemoPage {
   filePath: string;
 }
 
+export interface DemoFlow {
+  name: string;
+  goal: string;
+  entry: string;
+  states: string[];
+}
+
+export interface DemoScope {
+  included: string[];
+  excluded: string[];
+}
+
+export interface DemoArtifact {
+  summary: string;
+  flows: DemoFlow[];
+  scope: DemoScope;
+  knownGaps: string[];
+}
+
 export interface RepositoryComponentContext {
   componentFiles: string[];
   propTypes: Array<{ name: string; props: string }>;
@@ -203,5 +222,6 @@ export interface RepositoryComponentContext {
 
 export interface GenerateDesignOutput {
   design: DesignSpec;
+  demo: DemoArtifact;
   demoPages?: DemoPage[];
 }

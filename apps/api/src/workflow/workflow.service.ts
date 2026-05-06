@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { execFile as execFileCallback } from 'child_process';
-import { access } from 'fs/promises';
+import { access, mkdir, writeFile } from 'fs/promises';
 import { Prisma } from '@prisma/client';
 import { promisify } from 'util';
 import {
@@ -23,6 +23,12 @@ import {
   WorkflowRunStatus,
 } from '../common/enums';
 import {
+  BrainstormBrief,
+  DemoArtifact,
+  BrainstormOutput,
+  DemoPage,
+  DesignSpec,
+  GenerateDesignOutput,
   GeneratePlanOutput,
   ReviewCodeOutput,
   SplitTasksOutput,
@@ -39,6 +45,10 @@ const execFile = promisify(execFileCallback);
 const workflowStatusMap: Record<WorkflowRunStatus, string> = {
   [WorkflowRunStatus.CREATED]: 'CREATED',
   [WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING]: 'REPOSITORY_GROUNDING_PENDING',
+  [WorkflowRunStatus.BRAINSTORM_PENDING]: 'BRAINSTORM_PENDING',
+  [WorkflowRunStatus.DESIGN_PENDING]: 'DESIGN_PENDING',
+  [WorkflowRunStatus.DEMO_PENDING]: 'DEMO_PENDING',
+  [WorkflowRunStatus.DEMO_WAITING_CONFIRMATION]: 'DEMO_WAITING_CONFIRMATION',
   [WorkflowRunStatus.TASK_SPLIT_PENDING]: 'TASK_SPLIT_PENDING',
   [WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION]:
     'TASK_SPLIT_WAITING_CONFIRMATION',
@@ -65,11 +75,15 @@ const stageStatusMap: Record<StageExecutionStatus, string> = {
   [StageExecutionStatus.WAITING_CONFIRMATION]:
     'WAITING_CONFIRMATION',
   [StageExecutionStatus.REJECTED]: 'REJECTED',
+  [StageExecutionStatus.SKIPPED]: 'SKIPPED',
 };
 
 const stageTypeMap: Record<StageType, string> = {
   [StageType.REQUIREMENT_INTAKE]: 'REQUIREMENT_INTAKE',
   [StageType.REPOSITORY_GROUNDING]: 'REPOSITORY_GROUNDING',
+  [StageType.BRAINSTORM]: 'BRAINSTORM',
+  [StageType.DESIGN]: 'DESIGN',
+  [StageType.DEMO]: 'DEMO',
   [StageType.TASK_SPLIT]: 'TASK_SPLIT',
   [StageType.TECHNICAL_PLAN]: 'TECHNICAL_PLAN',
   [StageType.EXECUTION]: 'EXECUTION',
@@ -312,10 +326,19 @@ export class WorkflowService {
             workflow.id,
             WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING,
             {
-              to: WorkflowRunStatus.TASK_SPLIT_PENDING,
-              stage: StageType.TASK_SPLIT,
+              to: WorkflowRunStatus.BRAINSTORM_PENDING,
+              stage: StageType.BRAINSTORM,
             },
           );
+
+          await this.createStageExecution(tx, workflow.id, StageType.BRAINSTORM, {
+            input: {
+              requirementId: groundedWorkflow.requirementId,
+              source: 'workflow',
+            },
+            status: StageExecutionStatus.PENDING,
+            statusMessage: '可生成产品简报，也可以跳过构思继续',
+          });
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Repository grounding failed';
@@ -434,6 +457,352 @@ export class WorkflowService {
     return workflow.stageExecutions;
   }
 
+  async runBrainstorm(
+    id: string,
+    notifyRecipient?: WorkflowNotificationSession,
+  ) {
+    const workflow = await this.getWorkflowOrThrow(id);
+    const aiExecutor = this.resolveAiExecutor(workflow.aiProvider);
+    const aiProviderLabel = this.getAiProviderLabel(workflow.aiProvider);
+    this.assertStageNotRunning(workflow, StageType.BRAINSTORM);
+    const workflowStatus = this.fromPrismaWorkflowStatus(workflow.status);
+    if (workflowStatus !== WorkflowRunStatus.BRAINSTORM_PENDING) {
+      throw new BadRequestException('Brainstorm can only run after repository grounding.');
+    }
+
+    const recipient = this.toNotificationRecipient(notifyRecipient);
+    const startedWorkflow = await this.prisma.$transaction(async (tx) => {
+      const existingStage = await this.getOrCreateRunnableSkippableStageExecution(
+        tx,
+        id,
+        StageType.BRAINSTORM,
+      );
+      await this.updateStageExecution(tx, existingStage.id, StageExecutionStatus.RUNNING, {
+        input: {
+          requirement: workflow.requirement,
+          notifier: recipient,
+        },
+        statusMessage: `正在调用 ${aiProviderLabel} 生成产品简报`,
+        startedAt: new Date(),
+      });
+
+      return tx.workflowRun.findUniqueOrThrow({
+        where: { id },
+        include: this.workflowInclude(),
+      });
+    });
+
+    this.runInBackground(`brainstorm:${id}`, async () => {
+      try {
+        const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
+          workflow.aiProvider,
+          recipient,
+        );
+        const output = this.normalizeWorkflowBrainstormOutput(
+          await aiExecutor.brainstorm(
+            {
+              requirementTitle: workflow.requirement.title,
+              requirementDescription: workflow.requirement.description,
+              workspaceContext: workflow.requirement.workspace?.name ?? undefined,
+            },
+            invocationContext,
+          ),
+        );
+
+        await this.prisma.$transaction(async (tx) => {
+          const brainstormStage = await tx.stageExecution.findFirstOrThrow({
+            where: {
+              workflowRunId: id,
+              stage: stageTypeMap[StageType.BRAINSTORM],
+              status: 'RUNNING',
+            },
+            orderBy: { attempt: 'desc' },
+          });
+
+          await this.updateStageExecution(tx, brainstormStage.id, StageExecutionStatus.COMPLETED, {
+            output,
+            statusMessage: null,
+            finishedAt: new Date(),
+          });
+
+          await this.transitionWorkflow(tx, id, WorkflowRunStatus.BRAINSTORM_PENDING, {
+            to: WorkflowRunStatus.DESIGN_PENDING,
+            stage: StageType.DESIGN,
+          });
+
+          await this.createStageExecution(tx, id, StageType.DESIGN, {
+            input: {
+              workflowRunId: id,
+              previousStage: stageTypeMap[StageType.BRAINSTORM],
+            },
+            status: StageExecutionStatus.PENDING,
+            statusMessage: '可生成设计方案，也可以跳过设计继续',
+          });
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Brainstorm failed';
+        await this.markRunningStageFailed(id, StageType.BRAINSTORM, message);
+      }
+    });
+
+    return startedWorkflow;
+  }
+
+  skipBrainstorm(id: string) {
+    return this.skipOptionalStage(id, StageType.BRAINSTORM);
+  }
+
+  async runDesign(
+    id: string,
+    notifyRecipient?: WorkflowNotificationSession,
+  ) {
+    const workflow = await this.getWorkflowOrThrow(id);
+    const aiExecutor = this.resolveAiExecutor(workflow.aiProvider);
+    const aiProviderLabel = this.getAiProviderLabel(workflow.aiProvider);
+    this.assertStageNotRunning(workflow, StageType.DESIGN);
+    const workflowStatus = this.fromPrismaWorkflowStatus(workflow.status);
+    if (workflowStatus !== WorkflowRunStatus.DESIGN_PENDING) {
+      throw new BadRequestException('Design can only run after brainstorm.');
+    }
+
+    const recipient = this.toNotificationRecipient(notifyRecipient);
+    const startedWorkflow = await this.prisma.$transaction(async (tx) => {
+      const stageExecution = await this.getOrCreateRunnableSkippableStageExecution(
+        tx,
+        id,
+        StageType.DESIGN,
+      );
+      await this.updateStageExecution(tx, stageExecution.id, StageExecutionStatus.RUNNING, {
+        input: {
+          requirement: workflow.requirement,
+          notifier: recipient,
+        },
+        statusMessage: `正在调用 ${aiProviderLabel} 生成设计方案`,
+        startedAt: new Date(),
+      });
+
+      return tx.workflowRun.findUniqueOrThrow({
+        where: { id },
+        include: this.workflowInclude(),
+      });
+    });
+
+    this.runInBackground(`design:${id}`, async () => {
+      try {
+        const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
+          workflow.aiProvider,
+          recipient,
+        );
+        const repositoryComponentContext = await this.buildWorkflowRepositoryComponentContext(
+          aiExecutor,
+          workflow,
+        );
+        const output = this.normalizeDesignOutput(
+          await aiExecutor.generateDesign(
+            {
+              requirementTitle: workflow.requirement.title,
+              requirementDescription: workflow.requirement.description,
+              confirmedBrief: this.getWorkflowBriefContext(workflow),
+              previousDesigns: this.getWorkflowPreviousDesigns(workflow),
+              repositoryComponentContext: repositoryComponentContext ?? undefined,
+            },
+            invocationContext,
+          ),
+        );
+
+        await this.prisma.$transaction(async (tx) => {
+          const designStage = await tx.stageExecution.findFirstOrThrow({
+            where: {
+              workflowRunId: id,
+              stage: stageTypeMap[StageType.DESIGN],
+              status: 'RUNNING',
+            },
+            orderBy: { attempt: 'desc' },
+          });
+
+          await this.updateStageExecution(tx, designStage.id, StageExecutionStatus.COMPLETED, {
+            output,
+            statusMessage: null,
+            finishedAt: new Date(),
+          });
+
+          await this.transitionWorkflow(tx, id, WorkflowRunStatus.DESIGN_PENDING, {
+            to: WorkflowRunStatus.DEMO_PENDING,
+            stage: StageType.DEMO,
+          });
+
+          await this.createStageExecution(tx, id, StageType.DEMO, {
+            input: {
+              workflowRunId: id,
+              previousStage: stageTypeMap[StageType.DESIGN],
+            },
+            status: StageExecutionStatus.PENDING,
+            statusMessage: '可生成 Demo 页面，也可以跳过 Demo 进入任务拆解',
+          });
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Design failed';
+        await this.markRunningStageFailed(id, StageType.DESIGN, message);
+      }
+    });
+
+    return startedWorkflow;
+  }
+
+  skipDesign(id: string) {
+    return this.skipOptionalStage(id, StageType.DESIGN);
+  }
+
+  async runDemo(
+    id: string,
+    humanFeedback?: string,
+    notifyRecipient?: WorkflowNotificationSession,
+  ) {
+    const workflow = await this.getWorkflowOrThrow(id);
+    const aiExecutor = this.resolveAiExecutor(workflow.aiProvider);
+    const aiProviderLabel = this.getAiProviderLabel(workflow.aiProvider);
+    this.assertStageNotRunning(workflow, StageType.DEMO);
+    const workflowStatus = this.fromPrismaWorkflowStatus(workflow.status);
+    if (!this.canRunDemoFromWorkflow(workflow, workflowStatus)) {
+      throw new BadRequestException('Demo can only run after design.');
+    }
+
+    const recipient = this.toNotificationRecipient(notifyRecipient);
+    const startedWorkflow = await this.prisma.$transaction(async (tx) => {
+      const stageExecution = await this.getOrCreateRunnableSkippableStageExecution(
+        tx,
+        id,
+        StageType.DEMO,
+      );
+      if (workflowStatus === WorkflowRunStatus.DEMO_WAITING_CONFIRMATION) {
+        await this.transitionWorkflow(tx, id, WorkflowRunStatus.DEMO_WAITING_CONFIRMATION, {
+          to: WorkflowRunStatus.DEMO_PENDING,
+          stage: StageType.DEMO,
+        });
+      }
+      await this.updateStageExecution(tx, stageExecution.id, StageExecutionStatus.RUNNING, {
+        input: {
+          requirement: workflow.requirement,
+          notifier: recipient,
+        },
+        statusMessage: `正在调用 ${aiProviderLabel} 生成 Demo 页面`,
+        startedAt: new Date(),
+      });
+
+      return tx.workflowRun.findUniqueOrThrow({
+        where: { id },
+        include: this.workflowInclude(),
+      });
+    });
+
+    this.runInBackground(`demo:${id}`, async () => {
+      try {
+        const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
+          workflow.aiProvider,
+          recipient,
+        );
+        const repositoryComponentContext = await this.buildWorkflowRepositoryComponentContext(
+          aiExecutor,
+          workflow,
+        );
+        const result = this.normalizeDesignOutput(
+          await aiExecutor.generateDesign(
+            {
+              requirementTitle: workflow.requirement.title,
+              requirementDescription: workflow.requirement.description,
+              confirmedBrief: this.getWorkflowBriefContext(workflow),
+              previousDesigns: [this.getWorkflowDesignContext(workflow)],
+              humanFeedback: [
+                humanFeedback?.trim(),
+                '请基于当前设计方案生成 1-2 个最小可运行的 demoPages，并确保返回 demoPages 字段。',
+              ]
+                .filter(Boolean)
+                .join('\n\n'),
+              repositoryComponentContext: repositoryComponentContext ?? undefined,
+            },
+            invocationContext,
+          ),
+        );
+
+        if (!result.demoPages || result.demoPages.length === 0) {
+          throw new Error('DEMO_OUTPUT_INVALID: Missing demoPages in executor response.');
+        }
+
+        await this.writeWorkflowDemoPagesToRepo(result.demoPages, workflow);
+
+        await this.prisma.$transaction(async (tx) => {
+          const demoStage = await tx.stageExecution.findFirstOrThrow({
+            where: {
+              workflowRunId: id,
+              stage: stageTypeMap[StageType.DEMO],
+              status: 'RUNNING',
+            },
+            orderBy: { attempt: 'desc' },
+          });
+
+          await this.updateStageExecution(tx, demoStage.id, StageExecutionStatus.WAITING_CONFIRMATION, {
+            output: { demo: result.demo, demoPages: result.demoPages },
+            statusMessage: '请确认当前 Demo，再进入任务拆解',
+          });
+
+          if (workflowStatus === WorkflowRunStatus.DEMO_PENDING) {
+            await this.transitionWorkflow(tx, id, WorkflowRunStatus.DEMO_PENDING, {
+              to: WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
+              stage: StageType.DEMO,
+            });
+          } else if (workflowStatus === WorkflowRunStatus.DEMO_WAITING_CONFIRMATION) {
+            await this.transitionWorkflow(tx, id, WorkflowRunStatus.DEMO_PENDING, {
+              to: WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
+              stage: StageType.DEMO,
+            });
+          }
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Demo failed';
+        await this.markRunningStageFailed(id, StageType.DEMO, message);
+      }
+    });
+
+    return startedWorkflow;
+  }
+
+  skipDemo(id: string) {
+    return this.skipOptionalStage(id, StageType.DEMO);
+  }
+
+  async confirmDemo(id: string) {
+    const workflow = await this.getWorkflowOrThrow(id);
+    if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.DEMO_WAITING_CONFIRMATION) {
+      throw new BadRequestException('Demo can only be confirmed while waiting for confirmation.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const demoStage = await tx.stageExecution.findFirstOrThrow({
+        where: {
+          workflowRunId: id,
+          stage: stageTypeMap[StageType.DEMO],
+          status: stageStatusMap[StageExecutionStatus.WAITING_CONFIRMATION],
+        },
+        orderBy: { attempt: 'desc' },
+      });
+
+      await this.updateStageExecution(tx, demoStage.id, StageExecutionStatus.COMPLETED, {
+        statusMessage: null,
+        finishedAt: new Date(),
+      });
+
+      await this.transitionWorkflow(tx, id, WorkflowRunStatus.DEMO_WAITING_CONFIRMATION, {
+        to: WorkflowRunStatus.TASK_SPLIT_PENDING,
+        stage: StageType.TASK_SPLIT,
+      });
+
+      return tx.workflowRun.findUniqueOrThrow({
+        where: { id },
+        include: this.workflowInclude(),
+      });
+    });
+  }
+
   async runTaskSplit(
     id: string,
     humanFeedback?: string,
@@ -489,12 +858,7 @@ export class WorkflowService {
           recipient,
         );
         // Fetch demo page artifacts for context
-        const demoArtifacts = await this.prisma.ideationArtifact.findMany({
-          where: { requirementId: requirement.id, type: 'DEMO_PAGE' },
-          orderBy: { version: 'desc' },
-          take: 1,
-        });
-        const demoContext = demoArtifacts[0]?.content ?? null;
+        const demoContext = this.getWorkflowDemoContext(workflow);
 
         const splitOutput = await aiExecutor.splitTasks(
           {
@@ -2103,6 +2467,394 @@ export class WorkflowService {
 
     if (runningStage?.status === 'RUNNING') {
       throw new BadRequestException('当前阶段正在执行，请等待完成后再试。');
+    }
+  }
+
+  private async skipOptionalStage(id: string, stage: StageType) {
+    const next = this.resolveOptionalStageSkipTarget(stage);
+    const workflow = await this.getWorkflowOrThrow(id);
+    this.assertStageNotRunning(workflow, stage);
+
+    const workflowStatus = this.fromPrismaWorkflowStatus(workflow.status);
+    if (workflowStatus !== next.from) {
+      throw new BadRequestException(
+        `Cannot skip ${stageTypeMap[stage]} from status ${workflow.status}. Expected ${workflowStatusMap[next.from]}.`,
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const stageExecution = await this.getOrCreateSkippableStageExecution(tx, id, stage);
+
+      await this.updateStageExecution(tx, stageExecution.id, StageExecutionStatus.SKIPPED, {
+        output: this.buildSkippedStageOutput(next.reason),
+        statusMessage: '已跳过，后续将使用已有上下文继续',
+        finishedAt: new Date(),
+      });
+
+      await this.transitionWorkflow(tx, id, next.from, {
+        to: next.to,
+        stage: next.nextStage,
+      });
+
+      if (next.pendingStage) {
+        await this.createStageExecution(tx, id, next.pendingStage, {
+          input: {
+            workflowRunId: id,
+            previousStage: stageTypeMap[stage],
+          },
+          status: StageExecutionStatus.PENDING,
+          statusMessage: next.pendingStatusMessage,
+        });
+      }
+
+      return tx.workflowRun.findUniqueOrThrow({
+        where: { id },
+        include: this.workflowInclude(),
+      });
+    });
+  }
+
+  private async getOrCreateSkippableStageExecution(
+    tx: Prisma.TransactionClient,
+    workflowRunId: string,
+    stage: StageType,
+  ) {
+    const latest = await tx.stageExecution.findFirst({
+      where: {
+        workflowRunId,
+        stage: stageTypeMap[stage],
+      },
+      orderBy: { attempt: 'desc' },
+    });
+
+    if (!latest) {
+      return this.createStageExecution(tx, workflowRunId, stage, {
+        status: StageExecutionStatus.PENDING,
+        statusMessage: '等待处理',
+      });
+    }
+
+    if (latest.status === 'PENDING' || latest.status === 'FAILED') {
+      return latest;
+    }
+
+    throw new BadRequestException(
+      `Cannot skip ${stageTypeMap[stage]} from stage status ${latest.status}.`,
+    );
+  }
+
+  private async getOrCreateRunnableSkippableStageExecution(
+    tx: Prisma.TransactionClient,
+    workflowRunId: string,
+    stage: StageType,
+  ) {
+    const latest = await tx.stageExecution.findFirst({
+      where: {
+        workflowRunId,
+        stage: stageTypeMap[stage],
+      },
+      orderBy: { attempt: 'desc' },
+    });
+
+    if (!latest) {
+      return this.createStageExecution(tx, workflowRunId, stage, {
+        status: StageExecutionStatus.PENDING,
+        statusMessage: '等待处理',
+      });
+    }
+
+    if (latest.status === 'PENDING') {
+      return latest;
+    }
+
+    if (latest.status === 'FAILED' || latest.status === 'WAITING_CONFIRMATION') {
+      return this.createStageExecution(tx, workflowRunId, stage, {
+        status: StageExecutionStatus.PENDING,
+        statusMessage: '等待重试',
+      });
+    }
+
+    throw new BadRequestException(
+      `Cannot run ${stageTypeMap[stage]} from stage status ${latest.status}.`,
+    );
+  }
+
+  private resolveOptionalStageSkipTarget(stage: StageType) {
+    switch (stage) {
+      case StageType.BRAINSTORM:
+        return {
+          from: WorkflowRunStatus.BRAINSTORM_PENDING,
+          to: WorkflowRunStatus.DESIGN_PENDING,
+          nextStage: StageType.DESIGN,
+          pendingStage: StageType.DESIGN,
+          pendingStatusMessage: '可生成设计方案，也可以跳过设计继续',
+          reason: 'User chose to skip brainstorm and continue with the original requirement.',
+        };
+      case StageType.DESIGN:
+        return {
+          from: WorkflowRunStatus.DESIGN_PENDING,
+          to: WorkflowRunStatus.DEMO_PENDING,
+          nextStage: StageType.DEMO,
+          pendingStage: StageType.DEMO,
+          pendingStatusMessage: '可生成 Demo 页面，也可以跳过 Demo 进入任务拆解',
+          reason: 'User chose to skip design and continue without design context.',
+        };
+      case StageType.DEMO:
+        return {
+          from: WorkflowRunStatus.DEMO_PENDING,
+          to: WorkflowRunStatus.TASK_SPLIT_PENDING,
+          nextStage: StageType.TASK_SPLIT,
+          pendingStage: null,
+          pendingStatusMessage: null,
+          reason: 'User chose to skip demo generation and continue without demo pages.',
+        };
+      default:
+        throw new BadRequestException(`${stageTypeMap[stage]} cannot be skipped.`);
+    }
+  }
+
+  private buildSkippedStageOutput(reason: string) {
+    return {
+      skipped: true,
+      source: 'user',
+      reason,
+    };
+  }
+
+  private normalizeWorkflowBrainstormOutput(output: BrainstormOutput | Record<string, unknown>) {
+    if (
+      !output ||
+      typeof output !== 'object' ||
+      Array.isArray(output) ||
+      !('brief' in output) ||
+      !output.brief ||
+      typeof output.brief !== 'object' ||
+      Array.isArray(output.brief)
+    ) {
+      throw new Error('BRAINSTORM_OUTPUT_INVALID: Missing brief content in executor response.');
+    }
+
+    const candidate = output.brief as Record<string, unknown>;
+
+    const expandedDescription =
+      typeof candidate?.expandedDescription === 'string'
+        ? candidate.expandedDescription.trim()
+        : '';
+
+    if (!expandedDescription) {
+      throw new Error('BRAINSTORM_OUTPUT_INVALID: Missing brief content in executor response.');
+    }
+
+    return {
+      brief: {
+        expandedDescription,
+        userStories: Array.isArray(candidate.userStories) ? candidate.userStories : [],
+        edgeCases: Array.isArray(candidate.edgeCases) ? candidate.edgeCases.filter((item) => typeof item === 'string') : [],
+        successMetrics: Array.isArray(candidate.successMetrics)
+          ? candidate.successMetrics.filter((item) => typeof item === 'string')
+          : [],
+        openQuestions: Array.isArray(candidate.openQuestions)
+          ? candidate.openQuestions.filter((item) => typeof item === 'string')
+          : [],
+        assumptions: Array.isArray(candidate.assumptions)
+          ? candidate.assumptions.filter((item) => typeof item === 'string')
+          : [],
+        outOfScope: Array.isArray(candidate.outOfScope)
+          ? candidate.outOfScope.filter((item) => typeof item === 'string')
+          : [],
+      },
+    };
+  }
+
+  private normalizeDesignOutput(output: unknown): GenerateDesignOutput {
+    if (!output || typeof output !== 'object' || Array.isArray(output)) {
+      throw new Error('DESIGN_OUTPUT_INVALID: Design output is not an object.');
+    }
+
+    const candidate = output as Record<string, unknown>;
+    if (!candidate.design || typeof candidate.design !== 'object' || Array.isArray(candidate.design)) {
+      throw new Error('DESIGN_OUTPUT_INVALID: Missing design object in executor response.');
+    }
+
+    const design = candidate.design as DesignSpec;
+    if (typeof design.overview !== 'string' || design.overview.trim().length === 0) {
+      throw new Error('DESIGN_OUTPUT_INVALID: Missing design overview in executor response.');
+    }
+
+    if (!candidate.demo || typeof candidate.demo !== 'object' || Array.isArray(candidate.demo)) {
+      throw new Error('DESIGN_OUTPUT_INVALID: Missing demo object in executor response.');
+    }
+
+    const demo = candidate.demo as DemoArtifact;
+    if (typeof demo.summary !== 'string' || demo.summary.trim().length === 0) {
+      throw new Error('DESIGN_OUTPUT_INVALID: Missing demo summary in executor response.');
+    }
+
+    return {
+      design,
+      demo,
+      demoPages: Array.isArray(candidate.demoPages) ? (candidate.demoPages as DemoPage[]) : undefined,
+    };
+  }
+
+  private getWorkflowDemoContext(workflow: WorkflowPayload): DemoArtifact | null {
+    const stage = this.getLatestCompletedStageOutput(workflow, StageType.DEMO);
+    if (stage?.demo && typeof stage.demo === 'object' && !Array.isArray(stage.demo)) {
+      return stage.demo as DemoArtifact;
+    }
+
+    const waitingStage = workflow.stageExecutions
+      .filter((item) => item.stage === stageTypeMap[StageType.DEMO] && item.status === 'WAITING_CONFIRMATION')
+      .sort((a, b) => b.attempt - a.attempt)[0];
+
+    if (
+      waitingStage?.output &&
+      typeof waitingStage.output === 'object' &&
+      !Array.isArray(waitingStage.output) &&
+      'demo' in (waitingStage.output as Record<string, unknown>)
+    ) {
+      const candidate = (waitingStage.output as Record<string, unknown>).demo;
+      if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+        return candidate as DemoArtifact;
+      }
+    }
+
+    return null;
+  }
+
+  private getWorkflowBriefContext(workflow: WorkflowPayload): BrainstormBrief {
+    const stage = this.getLatestCompletedStageOutput(workflow, StageType.BRAINSTORM);
+    if (stage?.brief && typeof stage.brief === 'object' && !Array.isArray(stage.brief)) {
+      return stage.brief as BrainstormBrief;
+    }
+
+    return {
+      expandedDescription: workflow.requirement.description?.trim() || workflow.requirement.title,
+      userStories: [],
+      edgeCases: [],
+      successMetrics: [],
+      openQuestions: [],
+      assumptions: [],
+      outOfScope: [],
+    };
+  }
+
+  private getWorkflowPreviousDesigns(workflow: WorkflowPayload): DesignSpec[] {
+    return workflow.stageExecutions
+      .filter((item) => item.stage === stageTypeMap[StageType.DESIGN] && item.status === 'COMPLETED')
+      .map((item) => {
+        const output =
+          item.output && typeof item.output === 'object' && !Array.isArray(item.output)
+            ? (item.output as Record<string, unknown>)
+            : null;
+        return output?.design && typeof output.design === 'object' && !Array.isArray(output.design)
+          ? (output.design as DesignSpec)
+          : null;
+      })
+      .filter((item): item is DesignSpec => Boolean(item));
+  }
+
+  private getWorkflowDesignContext(workflow: WorkflowPayload): DesignSpec {
+    const previousDesigns = this.getWorkflowPreviousDesigns(workflow);
+    if (previousDesigns.length > 0) {
+      return previousDesigns[previousDesigns.length - 1];
+    }
+
+    return {
+      overview: workflow.requirement.description?.trim() || workflow.requirement.title,
+      pages: [],
+      demoScenario: workflow.requirement.title,
+      designRationale: 'Generated directly from requirement context without a confirmed design stage.',
+    };
+  }
+
+  private getLatestCompletedStageOutput(workflow: WorkflowPayload, stage: StageType): Record<string, unknown> | null {
+    const latestStage = workflow.stageExecutions
+      .filter((item) => item.stage === stageTypeMap[stage] && item.status === 'COMPLETED')
+      .sort((a, b) => b.attempt - a.attempt)[0];
+
+    if (!latestStage?.output || typeof latestStage.output !== 'object' || Array.isArray(latestStage.output)) {
+      return null;
+    }
+
+    return latestStage.output as Record<string, unknown>;
+  }
+
+  private canRunDemoFromWorkflow(workflow: WorkflowPayload, workflowStatus: WorkflowRunStatus) {
+    if (workflowStatus === WorkflowRunStatus.DEMO_PENDING) {
+      return true;
+    }
+
+    return workflowStatus === WorkflowRunStatus.DEMO_WAITING_CONFIRMATION;
+  }
+
+  private async buildWorkflowRepositoryComponentContext(
+    executor: AIExecutor,
+    workflow: WorkflowPayload,
+  ) {
+    const repositories = workflow.workflowRepositories.filter(
+      (repository) => repository.localPath && repository.status === 'READY',
+    );
+
+    if (repositories.length === 0) {
+      this.logger.warn(
+        `Workflow component context skipped workflow=${workflow.id}: no READY workflow repositories.`,
+      );
+      return null;
+    }
+
+    const repo = repositories[0];
+    const repoContext = {
+      id: repo.repositoryId ?? repo.id,
+      name: repo.name,
+      url: repo.url,
+      defaultBranch: repo.baseBranch,
+      localPath: repo.localPath!,
+      syncStatus: repo.status,
+    };
+
+    if (
+      'buildRepositoryComponentContext' in executor &&
+      typeof (executor as { buildRepositoryComponentContext?: unknown }).buildRepositoryComponentContext ===
+        'function'
+    ) {
+      const built = await (executor as any).buildRepositoryComponentContext(repoContext);
+      if (built) {
+        const files = Array.isArray(built.componentFiles) ? built.componentFiles.length : 0;
+        const pages = Array.isArray(built.pageExamples) ? built.pageExamples.length : 0;
+        this.logger.log(
+          `Workflow component context built workflow=${workflow.id} repo=${repoContext.id} componentFiles=${files} pageExamples=${pages}`,
+        );
+      } else {
+        this.logger.warn(
+          `Workflow component context empty workflow=${workflow.id} repo=${repoContext.id} localPath=${repoContext.localPath}`,
+        );
+      }
+      return built;
+    }
+
+    this.logger.warn(
+      `Workflow component context unavailable workflow=${workflow.id}: executor ${executor.constructor?.name ?? 'unknown'} has no buildRepositoryComponentContext.`,
+    );
+    return null;
+  }
+
+  private async writeWorkflowDemoPagesToRepo(
+    demoPages: DemoPage[],
+    workflow: WorkflowPayload,
+  ): Promise<void> {
+    const repositories = workflow.workflowRepositories.filter(
+      (repository) => repository.localPath && repository.status === 'READY',
+    );
+
+    if (repositories.length === 0) {
+      throw new Error('DEMO_REPOSITORY_NOT_READY: No READY workflow repositories are available for demo generation.');
+    }
+
+    for (const page of demoPages) {
+      const fullPath = join(repositories[0].localPath!, page.filePath);
+      await mkdir(dirname(fullPath), { recursive: true });
+      await writeFile(fullPath, page.componentCode, 'utf8');
     }
   }
 

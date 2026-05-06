@@ -141,6 +141,224 @@ describe('WorkflowService review-finding execution flow', () => {
   });
 });
 
+describe('WorkflowService optional ideation stages', () => {
+  it('builds a standard skipped optional stage output', () => {
+    const service = createService();
+
+    const output = (service as unknown as {
+      buildSkippedStageOutput: (reason: string) => {
+        skipped: boolean;
+        source: string;
+        reason: string;
+      };
+    }).buildSkippedStageOutput('User chose to skip design.');
+
+    expect(output).toEqual({
+      skipped: true,
+      source: 'user',
+      reason: 'User chose to skip design.',
+    });
+  });
+
+  it('creates a new pending attempt when rerunning a failed optional stage', async () => {
+    const service = createService();
+    const findFirst = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'failed-stage',
+        attempt: 1,
+        status: 'FAILED',
+      })
+      .mockResolvedValueOnce({
+        attempt: 1,
+      });
+    const create = vi.fn().mockResolvedValue({
+      id: 'new-stage',
+      attempt: 2,
+      status: 'PENDING',
+    });
+    const tx = {
+      stageExecution: {
+        findFirst,
+        create,
+      },
+    } as any;
+
+    const stage = await (service as unknown as {
+      getOrCreateRunnableSkippableStageExecution: (
+        tx: unknown,
+        workflowRunId: string,
+        stage: string,
+      ) => Promise<{ id: string; attempt: number; status: string }>;
+    }).getOrCreateRunnableSkippableStageExecution(tx, 'workflow-1', 'BRAINSTORM');
+
+    expect(stage).toEqual({
+      id: 'new-stage',
+      attempt: 2,
+      status: 'PENDING',
+    });
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          workflowRunId: 'workflow-1',
+          attempt: 2,
+          status: 'PENDING',
+        }),
+      }),
+    );
+  });
+
+  it('rejects brainstorm payloads without brief wrapper', () => {
+    const service = createService();
+
+    expect(() =>
+      (service as unknown as {
+        normalizeWorkflowBrainstormOutput: (input: Record<string, unknown>) => {
+          brief: {
+            expandedDescription: string;
+            userStories: Array<{ role: string; action: string; benefit: string }>;
+            edgeCases: string[];
+            successMetrics: string[];
+            openQuestions: string[];
+            assumptions: string[];
+            outOfScope: string[];
+          };
+        };
+      }).normalizeWorkflowBrainstormOutput({
+        expandedDescription: 'Direct payload',
+        userStories: [{ role: 'user', action: 'do x', benefit: 'get y' }],
+        edgeCases: ['empty state'],
+        successMetrics: ['conversion'],
+        openQuestions: ['scope?'],
+        assumptions: ['admin user exists'],
+        outOfScope: ['mobile'],
+      }),
+    ).toThrowError('BRAINSTORM_OUTPUT_INVALID: Missing brief content in executor response.');
+  });
+
+  it('builds workflow repository component context from grounded repositories', async () => {
+    const service = createService();
+    const context = await (service as unknown as {
+      buildWorkflowRepositoryComponentContext: (
+        executor: unknown,
+        workflow: {
+          id: string;
+          workflowRepositories: Array<{
+            id: string;
+            repositoryId?: string | null;
+            name: string;
+            url: string;
+            baseBranch: string;
+            localPath: string | null;
+            status: string;
+          }>;
+        },
+      ) => Promise<{ componentFiles: string[]; propTypes: unknown[]; pageExamples: unknown[] } | null>;
+    }).buildWorkflowRepositoryComponentContext(
+      {
+        buildRepositoryComponentContext: vi.fn().mockResolvedValue({
+          componentFiles: ['src/components/NoticeList.tsx'],
+          propTypes: [],
+          pageExamples: [],
+        }),
+      },
+      {
+        id: 'workflow-1',
+        workflowRepositories: [
+          {
+            id: 'wr-1',
+            repositoryId: 'repo-1',
+            name: 'admin-web',
+            url: 'git@example.com:admin-web.git',
+            baseBranch: 'main',
+            localPath: '/tmp/admin-web',
+            status: 'READY',
+          },
+        ],
+      },
+    );
+
+    expect(context?.componentFiles).toEqual(['src/components/NoticeList.tsx']);
+  });
+
+  it('allows rerunning demo while demo is waiting for confirmation', () => {
+    const service = createService();
+
+    const canRun = (service as unknown as {
+      canRunDemoFromWorkflow: (
+        workflow: {
+          stageExecutions: Array<{ stage: string; attempt: number }>;
+        },
+        status: string,
+      ) => boolean;
+    }).canRunDemoFromWorkflow(
+      {
+        stageExecutions: [
+          {
+            stage: 'DEMO',
+            attempt: 1,
+          },
+        ],
+      },
+      WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
+    );
+
+    expect(canRun).toBe(true);
+  });
+
+  it('normalizes demo summary payloads from design generation output', () => {
+    const service = createService();
+
+    const normalized = (service as unknown as {
+      normalizeDesignOutput: (output: Record<string, unknown>) => {
+        demo: {
+          summary: string;
+          flows: Array<{ name: string; goal: string; entry: string; states: string[] }>;
+          scope: { included: string[]; excluded: string[] };
+          knownGaps: string[];
+        };
+        demoPages?: Array<{ componentName: string }>;
+      };
+    }).normalizeDesignOutput({
+      design: {
+        overview: 'Overview',
+        pages: [],
+        demoScenario: 'Scenario',
+        designRationale: 'Rationale',
+      },
+      demo: {
+        summary: '验证主流程',
+        flows: [
+          {
+            name: '新建流程',
+            goal: '验证用户可以完成新建',
+            entry: '列表页右上角',
+            states: ['空态', '填写完成'],
+          },
+        ],
+        scope: {
+          included: ['列表', '新建弹窗'],
+          excluded: ['批量导出'],
+        },
+        knownGaps: ['暂未接真实数据'],
+      },
+      demoPages: [
+        {
+          route: '/flowx-demo/create',
+          componentName: 'CreateDemoPage',
+          componentCode: 'export function CreateDemoPage() { return null; }',
+          mockData: {},
+          filePath: 'src/pages/CreateDemoPage.tsx',
+        },
+      ],
+    });
+
+    expect(normalized.demo.summary).toBe('验证主流程');
+    expect(normalized.demo.scope.included).toContain('列表');
+    expect(normalized.demoPages?.[0]?.componentName).toBe('CreateDemoPage');
+  });
+});
+
 function createInvocationContextService(overrides?: {
   getCursorApiKeyForOrganization?: (organizationId: string) => Promise<string | null>;
   getCodexApiKeyForOrganization?: (organizationId: string) => Promise<string | null>;

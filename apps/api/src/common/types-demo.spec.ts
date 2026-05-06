@@ -10,6 +10,22 @@ describe('GenerateDesignOutput with demoPages', () => {
         demoScenario: 'test',
         designRationale: 'test',
       },
+      demo: {
+        summary: '验证核心流程',
+        flows: [
+          {
+            name: '创建流程',
+            goal: '验证创建成功',
+            entry: '列表页右上角',
+            states: ['空态', '提交成功'],
+          },
+        ],
+        scope: {
+          included: ['列表', '创建弹窗'],
+          excluded: ['批量操作'],
+        },
+        knownGaps: ['使用 mock 数据'],
+      },
       demoPages: [
         {
           route: '/flowx-demo/test',
@@ -22,10 +38,11 @@ describe('GenerateDesignOutput with demoPages', () => {
     };
 
     expect(output.demoPages).toHaveLength(1);
+    expect(output.demo.summary).toBe('验证核心流程');
     expect(output.demoPages![0].componentName).toBe('TestDemoPage');
   });
 
-  it('accepts output without demoPages', () => {
+  it('accepts output without demoPages when demo summary exists', () => {
     const output: GenerateDesignOutput = {
       design: {
         overview: 'test',
@@ -33,9 +50,19 @@ describe('GenerateDesignOutput with demoPages', () => {
         demoScenario: 'test',
         designRationale: 'test',
       },
+      demo: {
+        summary: '只产出语义摘要',
+        flows: [],
+        scope: {
+          included: ['主流程'],
+          excluded: [],
+        },
+        knownGaps: [],
+      },
     };
 
     expect(output.demoPages).toBeUndefined();
+    expect(output.demo.summary).toBe('只产出语义摘要');
   });
 });
 

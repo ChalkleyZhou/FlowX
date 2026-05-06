@@ -335,6 +335,25 @@ export const api = {
     request<Requirement>(`/requirements/${requirementId}/brainstorm/confirm`, {
       method: 'POST',
     }),
+  runBrainstorm: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/brainstorm/run`, { method: 'POST' }),
+  skipBrainstorm: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/brainstorm/skip`, { method: 'POST' }),
+  runDesign: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/design/run`, { method: 'POST' }),
+  skipDesign: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/design/skip`, { method: 'POST' }),
+  runDemo: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/demo/run`, { method: 'POST' }),
+  reviseDemo: (id: string, feedback: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/demo/revise`, {
+      method: 'POST',
+      body: JSON.stringify({ feedback }),
+    }),
+  confirmDemo: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/demo/confirm`, { method: 'POST' }),
+  skipDemo: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/demo/skip`, { method: 'POST' }),
   startDesign: (requirementId: string, hint?: string) =>
     request<Requirement>(`/requirements/${requirementId}/design/run`, {
       method: 'POST',

@@ -110,6 +110,22 @@ export class MockAiExecutor implements AIExecutor {
         demoScenario: '1. 进入列表页，查看所有数据项\n2. 在搜索栏输入关键词，观察列表实时过滤\n3. 点击某一项进入详情页\n4. 在详情页查看完整信息\n5. 返回列表页',
         designRationale: '采用列表-详情的经典布局模式，与系统现有页面保持一致。搜索和筛选放在列表上方便于快速定位，详情页使用标签页组织信息避免页面过长。',
       },
+      demo: {
+        summary: '验证列表到详情的主操作链路是否清晰可用。',
+        flows: [
+          {
+            name: '列表到详情',
+            goal: '确认用户能从列表快速定位并进入详情',
+            entry: '列表页默认入口',
+            states: ['默认列表', '搜索过滤后', '详情查看'],
+          },
+        ],
+        scope: {
+          included: ['列表浏览', '搜索筛选', '详情查看'],
+          excluded: ['真实接口联调', '编辑提交流程'],
+        },
+        knownGaps: ['当前演示使用 mock 数据，不包含持久化状态'],
+      },
       demoPages: input.repositoryComponentContext
         ? [
             {

@@ -4,6 +4,22 @@ import { StageExecutionStatus, StageType, WorkflowRunStatus } from './enums';
 const workflowTransitions: Record<WorkflowRunStatus, WorkflowRunStatus[]> = {
   [WorkflowRunStatus.CREATED]: [WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING],
   [WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING]: [
+    WorkflowRunStatus.BRAINSTORM_PENDING,
+    WorkflowRunStatus.FAILED,
+  ],
+  [WorkflowRunStatus.BRAINSTORM_PENDING]: [
+    WorkflowRunStatus.DESIGN_PENDING,
+    WorkflowRunStatus.FAILED,
+  ],
+  [WorkflowRunStatus.DESIGN_PENDING]: [
+    WorkflowRunStatus.DEMO_PENDING,
+    WorkflowRunStatus.FAILED,
+  ],
+  [WorkflowRunStatus.DEMO_PENDING]: [
+    WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
+    WorkflowRunStatus.FAILED,
+  ],
+  [WorkflowRunStatus.DEMO_WAITING_CONFIRMATION]: [
     WorkflowRunStatus.TASK_SPLIT_PENDING,
     WorkflowRunStatus.FAILED,
   ],
@@ -50,7 +66,7 @@ const workflowTransitions: Record<WorkflowRunStatus, WorkflowRunStatus[]> = {
 };
 
 const stageTransitions: Record<StageExecutionStatus, StageExecutionStatus[]> = {
-  [StageExecutionStatus.PENDING]: [StageExecutionStatus.RUNNING],
+  [StageExecutionStatus.PENDING]: [StageExecutionStatus.RUNNING, StageExecutionStatus.SKIPPED],
   [StageExecutionStatus.RUNNING]: [
     StageExecutionStatus.WAITING_CONFIRMATION,
     StageExecutionStatus.COMPLETED,
@@ -61,8 +77,9 @@ const stageTransitions: Record<StageExecutionStatus, StageExecutionStatus[]> = {
     StageExecutionStatus.REJECTED,
   ],
   [StageExecutionStatus.COMPLETED]: [],
-  [StageExecutionStatus.FAILED]: [],
+  [StageExecutionStatus.FAILED]: [StageExecutionStatus.SKIPPED],
   [StageExecutionStatus.REJECTED]: [],
+  [StageExecutionStatus.SKIPPED]: [],
 };
 
 @Injectable()
@@ -91,6 +108,12 @@ export class WorkflowStateMachine {
     const allowed: Record<StageType, WorkflowRunStatus[]> = {
       [StageType.REQUIREMENT_INTAKE]: [WorkflowRunStatus.CREATED],
       [StageType.REPOSITORY_GROUNDING]: [WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING],
+      [StageType.BRAINSTORM]: [WorkflowRunStatus.BRAINSTORM_PENDING],
+      [StageType.DESIGN]: [WorkflowRunStatus.DESIGN_PENDING],
+      [StageType.DEMO]: [
+        WorkflowRunStatus.DEMO_PENDING,
+        WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
+      ],
       [StageType.TASK_SPLIT]: [
         WorkflowRunStatus.TASK_SPLIT_PENDING,
         WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION,
