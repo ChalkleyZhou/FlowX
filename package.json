@@ -13,7 +13,8 @@
     "test": "pnpm -r --if-present test",
     "check": "pnpm build && pnpm test",
     "prisma:generate": "pnpm --filter flowx-api prisma:generate",
-    "prisma:migrate": "pnpm --filter flowx-api prisma:migrate"
+    "prisma:migrate": "pnpm --filter flowx-api prisma:migrate",
+    "db:clean": "pnpm --filter flowx-api exec tsx ../../scripts/clean-db.ts"
   },
   "devDependencies": {
     "prisma": "6.19.2"
