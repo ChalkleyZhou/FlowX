@@ -18,7 +18,9 @@ vi.mock('../api', () => ({
 }));
 
 const members = [{ id: 'user-1', displayName: 'Alice' }];
-const projects = [{ id: 'proj-1', name: 'Alpha', workspace: { id: 'ws-1', name: 'WS' } }];
+const projects = [
+  { id: 'proj-1', name: 'Alpha', workspace: { id: 'ws-1', name: 'WS', repositories: [] } },
+];
 const requirements = [
   {
     id: 'req-1',
