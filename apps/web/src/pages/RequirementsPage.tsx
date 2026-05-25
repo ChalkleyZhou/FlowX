@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { EmptyState } from '../components/EmptyState';
 import { ListToolbar } from '../components/ListToolbar';
@@ -29,11 +29,14 @@ import { Spinner } from '../components/ui/spinner';
 import { Textarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
 import type { Project, Requirement, Workspace } from '../types';
+import { formatAssignmentSummary, formatScheduleRange } from '../utils/business-days';
+import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
 
 const AI_PROVIDER_STORAGE_KEY = 'flowx-default-ai-provider';
 
 export function RequirementsPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
@@ -127,6 +130,13 @@ export function RequirementsPage() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  useEffect(() => {
+    const projectId = searchParams.get('projectId');
+    if (projectId) {
+      setSelectedProjectId(projectId);
+    }
+  }, [searchParams]);
 
   async function createRequirement(values: {
     projectId: string;
@@ -550,11 +560,21 @@ export function RequirementsPage() {
               {filteredRequirements.map((item) => (
                 <RecordListItem
                   key={item.id}
-                  title={<div className="text-base font-semibold leading-6 text-foreground">{item.title}</div>}
+                  title={(
+                    <Link
+                      to={`/requirements/${item.id}`}
+                      className="text-base font-semibold leading-6 text-foreground no-underline hover:text-primary"
+                    >
+                      {item.title}
+                    </Link>
+                  )}
+                  interactive
                   badges={
                     <>
                       <Badge variant="secondary">{item.project.name}</Badge>
                       <Badge variant="outline">{item.project.workspace.name}</Badge>
+                      <Badge variant="outline">{formatPlanningStatus(item.planningStatus)}</Badge>
+                      <Badge variant="outline">{formatPriority(item.priority)}</Badge>
                       <Badge variant="default">{item.workflowRuns?.length ?? 0} 条工作流</Badge>
                       <Badge variant={getActiveWorkflowRuns(item).length > 0 ? 'warning' : 'outline'}>
                         {getActiveWorkflowRuns(item).length} 条活跃流
@@ -570,17 +590,25 @@ export function RequirementsPage() {
                   details={(
                     <>
                       <p className="text-sm leading-6 text-muted-foreground">{item.acceptanceCriteria}</p>
+                      <p className="text-sm leading-6 text-muted-foreground">
+                        人员排期：{formatAssignmentSummary(item.assignments)}
+                        {' · '}
+                        周期：{formatScheduleRange(
+                          item.assignments?.map((a) => a.plannedStartDate).sort()[0],
+                          item.assignments?.map((a) => a.plannedEndDate).sort().at(-1),
+                        )}
+                      </p>
                       <p className="text-sm leading-6 text-muted-foreground">仓库范围：{renderRepositoryScope(item)}</p>
                       <p className="text-sm leading-6 text-muted-foreground">并行占用：{renderActiveWorkflowScope(item)}</p>
                     </>
                   )}
                   actions={
                     <>
-                      <UiButton
-                        variant="outline"
-                        onClick={() => navigate(`/requirements/${item.id}`)}
-                      >
-                        构思
+                      <UiButton variant="default" asChild>
+                        <Link to={`/requirements/${item.id}`}>详情</Link>
+                      </UiButton>
+                      <UiButton variant="outline" asChild>
+                        <Link to={`/requirements/${item.id}#scheduling`}>排期</Link>
                       </UiButton>
                       <UiButton
                         variant="outline"
