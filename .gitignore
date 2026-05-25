@@ -8,6 +8,8 @@ coverage
 .DS_Store
 apps/api/generated
 .flowx-data/
+dev.db
+dev-current.db
 prisma/dev.db
 prisma/.env
 apps/*/.env
