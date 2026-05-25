@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { EmptyState } from '../components/EmptyState';
 import { ListToolbar } from '../components/ListToolbar';
@@ -218,7 +219,15 @@ export function ProjectsPage() {
               {filteredProjects.map((project) => (
                 <RecordListItem
                   key={project.id}
-                  title={<div className="text-base font-semibold leading-6 text-foreground">{project.name}</div>}
+                  interactive
+                  title={(
+                    <Link
+                      to={`/projects/${project.id}`}
+                      className="text-base font-semibold leading-6 text-foreground no-underline hover:text-primary"
+                    >
+                      {project.name}
+                    </Link>
+                  )}
                   badges={
                     <>
                       <Badge variant="outline">{project.workspace.name}</Badge>
@@ -231,6 +240,11 @@ export function ProjectsPage() {
                       {project.description?.trim() || '这个项目还没有补充描述。'}
                     </p>
                   }
+                  actions={(
+                    <UiButton variant="outline" asChild>
+                      <Link to={`/projects/${project.id}`}>排期总览</Link>
+                    </UiButton>
+                  )}
                 />
               ))}
             </div>

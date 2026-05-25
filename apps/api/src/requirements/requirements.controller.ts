@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
 import { CreateRequirementDto } from './dto/create-requirement.dto';
 import {
   ReviseBrainstormDto,
@@ -8,11 +8,17 @@ import {
   StartDemoDto,
   StartDesignDto,
 } from './dto/ideation.dto';
+import { UpdateRequirementDto } from './dto/update-requirement.dto';
+import { UpsertRequirementAssignmentDto } from './dto/upsert-requirement-assignment.dto';
+import { RequirementAssignmentsService } from './requirement-assignments.service';
 import { RequirementsService } from './requirements.service';
 
 @Controller('requirements')
 export class RequirementsController {
-  constructor(private readonly requirementsService: RequirementsService) {}
+  constructor(
+    private readonly requirementsService: RequirementsService,
+    private readonly requirementAssignmentsService: RequirementAssignmentsService,
+  ) {}
 
   @Post()
   create(@Body() dto: CreateRequirementDto) {
@@ -27,6 +33,35 @@ export class RequirementsController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.requirementsService.findOne(id);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() dto: UpdateRequirementDto) {
+    return this.requirementsService.update(id, dto);
+  }
+
+  @Get(':id/assignments')
+  listAssignments(@Param('id') id: string) {
+    return this.requirementAssignmentsService.list(id);
+  }
+
+  @Post(':id/assignments')
+  createAssignment(@Param('id') id: string, @Body() dto: UpsertRequirementAssignmentDto) {
+    return this.requirementAssignmentsService.create(id, dto);
+  }
+
+  @Patch(':id/assignments/:assignmentId')
+  updateAssignment(
+    @Param('id') id: string,
+    @Param('assignmentId') assignmentId: string,
+    @Body() dto: UpsertRequirementAssignmentDto,
+  ) {
+    return this.requirementAssignmentsService.update(id, assignmentId, dto);
+  }
+
+  @Delete(':id/assignments/:assignmentId')
+  removeAssignment(@Param('id') id: string, @Param('assignmentId') assignmentId: string) {
+    return this.requirementAssignmentsService.remove(id, assignmentId);
   }
 
   // ── Ideation endpoints ──

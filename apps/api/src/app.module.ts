@@ -8,6 +8,7 @@ import { DevPreviewModule } from './dev-preview/dev-preview.module';
 import { SessionAuthGuard } from './auth/session-auth.guard';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProjectsModule } from './projects/projects.module';
+import { ScheduleModule } from './schedule/schedule.module';
 import { ReviewArtifactsModule } from './review-artifacts/review-artifacts.module';
 import { RequirementsModule } from './requirements/requirements.module';
 import { WorkflowModule } from './workflow/workflow.module';
@@ -25,6 +26,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
     DeployModule,
     DevPreviewModule,
     ProjectsModule,
+    ScheduleModule,
     ReviewArtifactsModule,
     WorkspacesModule,
     RequirementsModule,

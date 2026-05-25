@@ -30,6 +30,17 @@ export class AuthController {
     return this.authService.listProviders();
   }
 
+  @Get('organization/members')
+  listOrganizationMembers(
+    @Req() req: { authSession?: { organization?: { id: string } | null } },
+  ) {
+    const organizationId = req.authSession?.organization?.id;
+    if (!organizationId) {
+      return [];
+    }
+    return this.authService.listOrganizationMembers(organizationId);
+  }
+
   @Public()
   @Get(':provider/authorize-url')
   getAuthorizeUrl(

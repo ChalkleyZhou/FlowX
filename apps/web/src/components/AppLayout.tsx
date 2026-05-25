@@ -16,12 +16,13 @@ import {
 } from './ui/dialog';
 
 const primaryItems = [
-  { key: '/workspaces', label: '工作区' },
-  { key: '/projects', label: '项目' },
   { key: '/requirements', label: '需求' },
   { key: '/workflow-runs', label: '工作流' },
-  { key: '/issues', label: '问题项' },
+  { key: '/projects', label: '项目' },
+  { key: '/schedule', label: '排期' },
   { key: '/bugs', label: '缺陷' },
+  { key: '/issues', label: '问题项' },
+  { key: '/workspaces', label: '工作区' },
 ];
 
 const secondaryItems = [
@@ -37,7 +38,7 @@ export function AppLayout({ children }: PropsWithChildren) {
   const [showSecondaryMenu, setShowSecondaryMenu] = useState(false);
 
   const selectedKey =
-    [...primaryItems, ...secondaryItems].find((item) => location.pathname.startsWith(item.key))?.key ?? '/workspaces';
+    [...primaryItems, ...secondaryItems].find((item) => location.pathname.startsWith(item.key))?.key ?? '/requirements';
 
   function handleLogout() {
     if (!window.confirm('确认退出登录吗？')) {

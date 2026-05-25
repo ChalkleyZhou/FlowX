@@ -1,10 +1,77 @@
+export interface RequirementScheduleSummary {
+  assignmentCount: number;
+  scheduleStart: string | null;
+  scheduleEnd: string | null;
+  totalEstimatedDays: number;
+}
+
+export interface RequirementAssignment {
+  id: string;
+  userId: string;
+  role: string;
+  plannedStartDate: string;
+  plannedEndDate: string;
+  sortOrder: number;
+  colorToken?: string | null;
+  note?: string | null;
+  estimatedDays?: number;
+  estimatedHours?: number;
+  user?: {
+    id: string;
+    displayName: string;
+    avatarUrl?: string | null;
+  };
+}
+
+export interface OrganizationMember {
+  id: string;
+  displayName: string;
+  avatarUrl?: string | null;
+}
+
+export interface GanttLane {
+  id: string;
+  kind: 'requirement' | 'member';
+  parentLaneId?: string;
+  label: string;
+  meta: Record<string, string | undefined>;
+}
+
+export interface GanttBar {
+  id: string;
+  laneId: string;
+  label: string;
+  start: string;
+  end: string;
+  estimatedDays: number;
+  estimatedHours: number;
+  color?: string;
+  meta: {
+    projectId: string;
+    requirementId: string;
+    userId: string;
+    role: string;
+  };
+}
+
+export interface GanttPayload {
+  view: 'requirement' | 'member';
+  range: { from: string; to: string };
+  lanes: GanttLane[];
+  bars: GanttBar[];
+}
+
 export interface Project {
   id: string;
   name: string;
   code?: string | null;
   description?: string | null;
   workspace: Workspace;
-  requirements?: Requirement[];
+  requirements?: Array<
+    Requirement & {
+      scheduleSummary?: RequirementScheduleSummary;
+    }
+  >;
   _count?: {
     requirements: number;
   };
@@ -66,8 +133,11 @@ export interface Requirement {
   title: string;
   description: string;
   acceptanceCriteria: string;
+  priority?: string;
+  planningStatus?: string;
   ideationStatus: string;
   project: Project;
+  assignments?: RequirementAssignment[];
   workspace?: Workspace | null;
   ideationSessions?: IdeationSession[];
   ideationArtifacts?: IdeationArtifact[];
@@ -123,7 +193,9 @@ export interface StageExecution {
 export interface WorkflowRun {
   id: string;
   status: string;
+  runType?: string;
   aiProvider: 'codex' | 'cursor';
+  fixForBug?: { id: string; title: string; status: string } | null;
   requirement: Requirement;
   workflowRepositories: Array<{
     id: string;
@@ -226,9 +298,14 @@ export interface Bug {
   title: string;
   description: string;
   workspace?: { id: string; name: string } | null;
+  project?: { id: string; name: string } | null;
+  projectId?: string | null;
   requirement?: { id: string; title: string } | null;
   workflowRun?: { id: string; status: string } | null;
+  fixWorkflowRun?: { id: string; status: string } | null;
+  fixRequirement?: { id: string; title: string } | null;
   workflowRunId?: string | null;
+  fixWorkflowRunId?: string | null;
   requirementId?: string | null;
   branchName?: string | null;
   createdAt?: string;

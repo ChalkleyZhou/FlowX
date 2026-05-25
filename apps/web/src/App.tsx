@@ -4,7 +4,10 @@ import { BugsPage } from './pages/BugsPage';
 import { BugDetailPage } from './pages/BugDetailPage';
 import { IssuesPage } from './pages/IssuesPage';
 import { IssueDetailPage } from './pages/IssueDetailPage';
+import { ProjectDetailPage } from './pages/ProjectDetailPage';
 import { ProjectsPage } from './pages/ProjectsPage';
+import { ScheduleHubPage } from './pages/ScheduleHubPage';
+import { ProjectScheduleRedirect, ScheduleMembersRedirect } from './pages/ScheduleRedirectPage';
 import { RequirementDetailPage } from './pages/RequirementDetailPage';
 import { AiCredentialsPage } from './pages/AiCredentialsPage';
 import { RequirementsPage } from './pages/RequirementsPage';
@@ -26,13 +29,17 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route
             path="/"
-            element={<Navigate to="/workspaces" replace />}
+            element={<Navigate to="/requirements" replace />}
           />
           <Route
             element={<ProtectedLayout />}
           >
             <Route path="/workspaces" element={<WorkspacesPage />} />
+            <Route path="/schedule" element={<ScheduleHubPage />} />
+            <Route path="/schedule/members" element={<ScheduleMembersRedirect />} />
             <Route path="/projects" element={<ProjectsPage />} />
+            <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+            <Route path="/projects/:projectId/schedule" element={<ProjectScheduleRedirect />} />
             <Route path="/requirements" element={<RequirementsPage />} />
             <Route path="/requirements/:id" element={<RequirementDetailPage />} />
             <Route path="/workflow-runs" element={<WorkflowRunsPage />} />

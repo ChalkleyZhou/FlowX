@@ -6,9 +6,12 @@ import type {
   DeployJobRecord,
   Issue,
   IdeationSessionEvent,
+  GanttPayload,
   LocalDevDetectResponse,
   LocalDevPreviewStatus,
+  OrganizationMember,
   Project,
+  RequirementAssignment,
   RepositoryDeployConfig,
   Repository,
   Requirement,
@@ -194,6 +197,8 @@ export const api = {
     }),
   getWorkspaces: () => request<Workspace[]>('/workspaces'),
   getProjects: () => request<Project[]>('/projects'),
+  getProject: (id: string) => request<Project>(`/projects/${id}`),
+  getOrganizationMembers: () => request<OrganizationMember[]>('/auth/organization/members'),
   createWorkspace: (payload: { name: string; description?: string }) =>
     request<Workspace>('/workspaces', {
       method: 'POST',
@@ -321,6 +326,77 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   getRequirement: (id: string) => request<Requirement>(`/requirements/${id}`),
+  updateRequirement: (
+    id: string,
+    payload: { priority?: string; planningStatus?: string },
+  ) =>
+    request<Requirement>(`/requirements/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  getRequirementAssignments: (id: string) =>
+    request<RequirementAssignment[]>(`/requirements/${id}/assignments`),
+  createRequirementAssignment: (
+    id: string,
+    payload: {
+      userId: string;
+      role: string;
+      plannedStartDate: string;
+      plannedEndDate: string;
+      note?: string;
+      sortOrder?: number;
+      colorToken?: string;
+    },
+  ) =>
+    request<RequirementAssignment>(`/requirements/${id}/assignments`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateRequirementAssignment: (
+    id: string,
+    assignmentId: string,
+    payload: {
+      userId: string;
+      role: string;
+      plannedStartDate: string;
+      plannedEndDate: string;
+      note?: string;
+      sortOrder?: number;
+      colorToken?: string;
+    },
+  ) =>
+    request<RequirementAssignment>(`/requirements/${id}/assignments/${assignmentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteRequirementAssignment: (id: string, assignmentId: string) =>
+    request<{ ok: boolean }>(`/requirements/${id}/assignments/${assignmentId}`, {
+      method: 'DELETE',
+    }),
+  getScheduleGantt: (query: {
+    view?: 'requirement' | 'member';
+    scope?: 'project' | 'organization';
+    projectId?: string;
+    from: string;
+    to: string;
+    userId?: string;
+    onlyMe?: boolean;
+    requirementId?: string;
+    role?: string;
+  }) => {
+    const params = new URLSearchParams();
+    Object.entries(query).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') {
+        return;
+      }
+      if (key === 'onlyMe') {
+        params.set('onlyMe', value ? 'true' : 'false');
+        return;
+      }
+      params.set(key, String(value));
+    });
+    return request<GanttPayload>(`/schedule/gantt?${params.toString()}`);
+  },
   startBrainstorm: (requirementId: string, hint?: string) =>
     request<Requirement>(`/requirements/${requirementId}/brainstorm/run`, {
       method: 'POST',
@@ -354,6 +430,15 @@ export const api = {
     request<WorkflowRun>(`/workflow-runs/${id}/demo/confirm`, { method: 'POST' }),
   skipDemo: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/demo/skip`, { method: 'POST' }),
+  reviseWorkflowDesign: (workflowRunId: string, feedback: string) =>
+    request<WorkflowRun>(`/workflow-runs/${workflowRunId}/design/revise`, {
+      method: 'POST',
+      body: JSON.stringify({ feedback }),
+    }),
+  confirmWorkflowDesign: (workflowRunId: string) =>
+    request<WorkflowRun>(`/workflow-runs/${workflowRunId}/design/confirm`, { method: 'POST' }),
+  rejectWorkflowDesign: (workflowRunId: string) =>
+    request<WorkflowRun>(`/workflow-runs/${workflowRunId}/design/reject`, { method: 'POST' }),
   startDesign: (requirementId: string, hint?: string) =>
     request<Requirement>(`/requirements/${requirementId}/design/run`, {
       method: 'POST',
@@ -386,22 +471,44 @@ export const api = {
     request<IdeationSessionEvent[]>(`/requirements/${requirementId}/ideation/sessions/${sessionId}/events`),
   getDemoDeployStatus: (repositoryId: string) =>
     request<DeployJobRecord[]>(`/repositories/${repositoryId}/deploy/jobs`),
-  detectLocalDev: (repositoryId: string) =>
-    request<LocalDevDetectResponse>(`/repositories/${repositoryId}/local-dev`),
-  getLocalDevStatus: (repositoryId: string) =>
-    request<LocalDevPreviewStatus>(`/repositories/${repositoryId}/local-dev/status`),
-  startLocalDevPreview: (repositoryId: string) =>
-    request<LocalDevPreviewStatus>(`/repositories/${repositoryId}/local-dev/start`, { method: 'POST' }),
-  stopLocalDevPreview: (repositoryId: string) =>
-    request<LocalDevPreviewStatus>(`/repositories/${repositoryId}/local-dev/stop`, { method: 'POST' }),
+  detectLocalDev: (repositoryId: string, workflowRunId?: string) =>
+    request<LocalDevDetectResponse>(
+      `/repositories/${repositoryId}/local-dev${workflowRunId ? `?workflowRunId=${encodeURIComponent(workflowRunId)}` : ''}`,
+    ),
+  getLocalDevStatus: (repositoryId: string, workflowRunId?: string) =>
+    request<LocalDevPreviewStatus>(
+      `/repositories/${repositoryId}/local-dev/status${workflowRunId ? `?workflowRunId=${encodeURIComponent(workflowRunId)}` : ''}`,
+    ),
+  startLocalDevPreview: (repositoryId: string, workflowRunId?: string) =>
+    request<LocalDevPreviewStatus>(
+      `/repositories/${repositoryId}/local-dev/start${workflowRunId ? `?workflowRunId=${encodeURIComponent(workflowRunId)}` : ''}`,
+      { method: 'POST' },
+    ),
+  stopLocalDevPreview: (repositoryId: string, workflowRunId?: string) =>
+    request<LocalDevPreviewStatus>(
+      `/repositories/${repositoryId}/local-dev/stop${workflowRunId ? `?workflowRunId=${encodeURIComponent(workflowRunId)}` : ''}`,
+      { method: 'POST' },
+    ),
   finalizeIdeation: (requirementId: string) =>
     request<Requirement>(`/requirements/${requirementId}/ideation/finalize`, {
       method: 'POST',
     }),
-  getWorkflowRuns: () => request<WorkflowRun[]>('/workflow-runs'),
+  getWorkflowRuns: (params?: { runType?: string }) =>
+    request<WorkflowRun[]>(
+      `/workflow-runs?${new URLSearchParams(
+        Object.entries(params ?? {}).reduce<Record<string, string>>((acc, [key, value]) => {
+          if (value) {
+            acc[key] = value;
+          }
+          return acc;
+        }, {}),
+      ).toString()}`,
+    ),
   getWorkflowRun: (id: string) => request<WorkflowRun>(`/workflow-runs/${id}`),
   deleteWorkflowRun: (id: string) =>
     request<{ success: boolean }>(`/workflow-runs/${id}`, { method: 'DELETE' }),
+  rollbackWorkflowToPreviousStage: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/rollback`, { method: 'POST' }),
   publishWorkflowGitChanges: (id: string) =>
     request<{
       message: string;
@@ -531,6 +638,38 @@ export const api = {
           return acc;
         }, {}),
       ).toString()}`,
+    ),
+  createBug: (payload: {
+    workspaceId: string;
+    projectId?: string;
+    title: string;
+    description: string;
+    severity?: string;
+    priority?: string;
+    expectedBehavior?: string;
+    actualBehavior?: string;
+    reproductionSteps?: string[];
+    repositoryId?: string;
+    branchName?: string;
+  }) =>
+    request<Bug>('/bugs', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  startBugFixWorkflow: (
+    bugId: string,
+    payload?: {
+      repositoryIds?: string[];
+      aiProvider?: 'codex' | 'cursor';
+      autoStart?: boolean;
+    },
+  ) =>
+    request<{ bug: Bug; requirement: { id: string; title: string }; workflowRun: WorkflowRun }>(
+      `/bugs/${bugId}/fix-workflow`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload ?? {}),
+      },
     ),
   getBug: (id: string) => request<Bug>(`/bugs/${id}`),
   updateBug: (

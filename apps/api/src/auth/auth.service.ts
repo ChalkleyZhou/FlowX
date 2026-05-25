@@ -329,6 +329,20 @@ export class AuthService {
     };
   }
 
+  async listOrganizationMembers(organizationId: string) {
+    const rows = await this.prisma.userOrganization.findMany({
+      where: { organizationId },
+      include: { user: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return rows.map((row) => ({
+      id: row.user.id,
+      displayName: row.user.displayName,
+      avatarUrl: row.user.avatarUrl,
+    }));
+  }
+
   async registerByPassword(input: {
     account: string;
     password: string;

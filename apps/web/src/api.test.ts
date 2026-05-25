@@ -93,6 +93,22 @@ describe('api helpers', () => {
     expect(third).toEqual(payload);
   });
 
+  it('passes runType when listing workflow runs', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.getWorkflowRuns({ runType: 'BUG_FIX' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3000/workflow-runs?runType=BUG_FIX',
+      expect.any(Object),
+    );
+  });
+
   it('calls cursor credential endpoint for updates', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

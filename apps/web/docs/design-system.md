@@ -1,6 +1,8 @@
 # FlowX Design System
 
-本文件是 FlowX 前端设计体系的唯一来源（Single Source of Truth）。所有视觉相关开发必须遵循此规范，禁止使用令牌以外的硬编码值。
+本文件是 FlowX 前端设计体系的**令牌与视觉红线**的唯一来源（Single Source of Truth）。所有视觉相关开发必须遵循此规范，禁止使用令牌以外的硬编码值。
+
+**姊妹文档**（布局、壳层、页面模板、样式文件职责）：仓库根目录 [`docs/frontend-shadcn-design-spec.md`](../../../docs/frontend-shadcn-design-spec.md)。改页面结构、列表页骨架、`App.css` 边界时一并查阅。
 
 ---
 
@@ -17,7 +19,7 @@
 | **Primary Soft** | 主色浅底（标签底色、头像底） | ![#DBEAFE](https://via.placeholder.com/16/DBEAFE/DBEAFE) `hsl(217.2, 91.2%, 94%)` | ![#1E3A5F](https://via.placeholder.com/16/1E3A5F/1E3A5F) `hsl(217.2, 91.2%, 18%)` | `bg-primary-soft` |
 | **Danger** | 破坏性操作、错误状态 | ![#DC2626](https://via.placeholder.com/16/DC2626/DC2626) `hsl(0, 72.2%, 50.6%)` | ![#CF4444](https://via.placeholder.com/16/CF4444/CF4444) `hsl(0, 62%, 55%)` | `text-danger` `bg-danger` |
 | **Success** | 成功、完成、正向状态 | ![#16A34A](https://via.placeholder.com/16/16A34A/16A34A) `hsl(142, 71%, 45%)` | ![#22C55E](https://via.placeholder.com/16/22C55E/22C55E) `hsl(142, 71%, 52%)` | `text-success` `bg-success` |
-| **Warning** | 警示、等待确认 | ![#D97706](https://via.placeholder.com/16/D97706/D97706) `hsl(38, 92%, 50%)` | !#[#E8A317](https://via.placeholder.com/16/E8A317/E8A317) `hsl(38, 92%, 56%)` | `text-warning` `bg-warning` |
+| **Warning** | 警示、等待确认 | ![#D97706](https://via.placeholder.com/16/D97706/D97706) `hsl(38, 92%, 50%)` | ![#E8A317](https://via.placeholder.com/16/E8A317/E8A317) `hsl(38, 92%, 56%)` | `text-warning` `bg-warning` |
 | **Background** | 页面底色 | ![#F4F7FB](https://via.placeholder.com/16/F4F7FB/F4F7FB) `hsl(210, 40%, 98%)` | ![#0C0F18](https://via.placeholder.com/16/0C0F18/0C0F18) `hsl(222.2, 47.4%, 7%)` | `bg-background` |
 | **Foreground** | 正文文字 | ![#0F172A](https://via.placeholder.com/16/0F172A/0F172A) `hsl(222.2, 47.4%, 11.2%)` | ![#F8FAFB](https://via.placeholder.com/16/F8FAFB/F8FAFB) `hsl(210, 40%, 98%)` | `text-foreground` |
 | **Muted** | 次要底色、分割区域 | ![#F1F5F9](https://via.placeholder.com/16/F1F5F9/F1F5F9) `hsl(210, 40%, 96.1%)` | ![#1E293B](https://via.placeholder.com/16/1E293B/1E293B) `hsl(217.2, 33%, 17%)` | `bg-muted` |
@@ -199,4 +201,4 @@ transition-colors
 
 ---
 
-> 本文档由 `globals.css` 和 `tailwind.config.ts` 中的令牌值生成。当 CSS 令牌更新时，此文档必须同步更新。
+> 本文档由 `src/globals.css` 和 `tailwind.config.ts` 中的令牌值生成（路径相对于 `apps/web`）。当 CSS 令牌更新时，此文档必须同步更新。

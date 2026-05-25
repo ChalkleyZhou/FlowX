@@ -39,6 +39,31 @@ export function formatPriorityLabel(priority?: string | null) {
   return `优先级：${formatPriority(priority)}`;
 }
 
+export function formatPlanningStatus(status?: string | null) {
+  const map: Record<string, string> = {
+    UNSCHEDULED: '未排期',
+    SCHEDULED: '已排期',
+    IN_PROGRESS: '进行中',
+    DONE: '已完成',
+  };
+
+  return status ? map[status] ?? status : '未排期';
+}
+
+export function formatAssignmentRole(role?: string | null) {
+  const map: Record<string, string> = {
+    PM: '产品',
+    FRONTEND: '前端',
+    BACKEND: '后端',
+    FULLSTACK: '全栈',
+    QA: '测试',
+    DESIGN: '设计',
+    OTHER: '其他',
+  };
+
+  return role ? map[role] ?? role : '其他';
+}
+
 export function formatSeverity(severity?: string | null) {
   const map: Record<string, string> = {
     LOW: '低',

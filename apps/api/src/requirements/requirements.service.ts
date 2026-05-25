@@ -8,13 +8,27 @@ import {
   AiInvocationContextService,
   type AiInvocationRecipient,
 } from '../ai/ai-invocation-context.service';
+import { assertStrictGenerateDesignOutput } from '../ai/design-output-validate';
 import { MockAiExecutor } from '../ai/mock-ai.executor';
 import { IdeationSessionStatus, IdeationStatus } from '../common/enums';
-import { BrainstormBrief, DemoArtifact, DemoPage, DesignSpec, RepositoryComponentContext } from '../common/types';
+import {
+  BrainstormBrief,
+  BrainstormOutput,
+  DemoArtifact,
+  DemoPage,
+  DesignSpec,
+  GenerateDesignOutput,
+  RepositoryComponentContext,
+} from '../common/types';
+import { integrateFlowxDemoRoutes } from '../common/demo-router-integration';
+import { createNavPlacementAgent } from '../ai/demo-nav-agent-factory';
+import type { AIInvocationContext } from '../ai/ai-executor';
 import { LocalDevPreviewService } from '../dev-preview/local-dev-preview.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RepositorySyncService } from '../workspaces/repository-sync.service';
 import { CreateRequirementDto } from './dto/create-requirement.dto';
+import { UpdateRequirementDto } from './dto/update-requirement.dto';
+import { toRequirementAssignmentResponse } from './requirement-assignment.mapper';
 import {
   IdeationSessionEventsRepository,
   type IdeationSessionEventType,
@@ -141,12 +155,63 @@ export class RequirementsService {
     });
   }
 
+  private readonly requirementRelationsInclude = {
+    assignments: {
+      include: { user: true },
+      orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }],
+    },
+  };
+
+  private enrichRequirement<T extends { assignments?: Array<Parameters<typeof toRequirementAssignmentResponse>[0]> }>(
+    requirement: T,
+  ) {
+    if (!requirement.assignments) {
+      return requirement;
+    }
+    return {
+      ...requirement,
+      assignments: requirement.assignments.map((row) => toRequirementAssignmentResponse(row)),
+    };
+  }
+
+  async update(id: string, dto: UpdateRequirementDto) {
+    await this.findOne(id);
+    const updated = await this.prisma.requirement.update({
+      where: { id },
+      data: {
+        ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
+        ...(dto.planningStatus !== undefined ? { planningStatus: dto.planningStatus } : {}),
+      },
+      include: {
+        project: {
+          include: {
+            workspace: {
+              include: {
+                repositories: {
+                  orderBy: { createdAt: 'asc' },
+                },
+              },
+            },
+          },
+        },
+        workspace: true,
+        requirementRepositories: {
+          include: { repository: true },
+          orderBy: { createdAt: 'asc' },
+        },
+        ...this.requirementRelationsInclude,
+      },
+    });
+    return this.enrichRequirement(updated);
+  }
+
   async findAll() {
-    return this.prisma.requirement.findMany({
+    const rows = await this.prisma.requirement.findMany({
       orderBy: {
         createdAt: 'desc',
       },
       include: {
+        ...this.requirementRelationsInclude,
         project: {
           include: {
             workspace: {
@@ -187,10 +252,11 @@ export class RequirementsService {
         },
       },
     });
+    return rows.map((row) => this.enrichRequirement(row));
   }
 
   async findOne(id: string) {
-    return this.prisma.requirement.findUniqueOrThrow({
+    const requirement = await this.prisma.requirement.findUniqueOrThrow({
       where: { id },
       include: {
         project: {
@@ -241,8 +307,10 @@ export class RequirementsService {
             createdAt: 'asc',
           },
         },
+        ...this.requirementRelationsInclude,
       },
     });
+    return this.enrichRequirement(requirement);
   }
 
   // ── Ideation methods ──
@@ -586,9 +654,9 @@ export class RequirementsService {
     const latestDesignSessionWithOutput = requirement.ideationSessions
       ?.filter((session) => session.stage === 'DESIGN' && !!session.output)
       .sort((a, b) => b.attempt - a.attempt)[0];
-    const previousLatestDesign = latestDesignSessionWithOutput?.output
-      ? this.normalizeDesignOutput(latestDesignSessionWithOutput.output)
-      : null;
+    const previousLatestDesign = this.extractDesignSpecFromSessionOutput(
+      latestDesignSessionWithOutput?.output,
+    );
     const executor = this.resolveIdeationExecutor();
     const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
       undefined,
@@ -630,7 +698,7 @@ export class RequirementsService {
       );
       let result = this.normalizeDesignOutput(rawResult);
 
-      if (previousLatestDesign && this.isSameDesignOutput(result, previousLatestDesign)) {
+      if (previousLatestDesign && this.isSameDesignSpec(result.design, previousLatestDesign)) {
         const retryRawResult = await executor.generateDesign(
           {
             requirementTitle: requirement.title,
@@ -645,7 +713,7 @@ export class RequirementsService {
         result = this.normalizeDesignOutput(retryRawResult);
       }
 
-      if (previousLatestDesign && this.isSameDesignOutput(result, previousLatestDesign)) {
+      if (previousLatestDesign && this.isSameDesignSpec(result.design, previousLatestDesign)) {
         throw new Error(
           'DESIGN_REVISION_UNCHANGED: Regenerated result is identical to previous design. Please provide more specific feedback.',
         );
@@ -914,8 +982,10 @@ export class RequirementsService {
         startedAtMs: input.startedAtMs,
       });
       const result = this.normalizeDesignOutput(rawResult);
-      if (!result.demoPages || result.demoPages.length === 0) {
-        throw new Error('DEMO_PAGES_EMPTY: Demo generation returned no demoPages.');
+      if (!result.demoPages || result.demoPages.length < 2) {
+        throw new Error(
+          'DEMO_PAGES_EMPTY: Demo generation must return an entry hub page and at least one scenario page.',
+        );
       }
 
       await this.emitDemoGenerationEvent({
@@ -926,7 +996,12 @@ export class RequirementsService {
         startedAtMs: input.startedAtMs,
         details: { demoPageCount: result.demoPages.length },
       });
-      await this.writeDemoPagesToRepo(result.demoPages, input.requirement);
+      await this.writeDemoPagesToRepo(
+        result.demoPages,
+        input.requirement,
+        input.invocationContext,
+        input.executor,
+      );
       const primaryRepoId = this.getFirstReadyRepositoryId(input.requirement);
       if (primaryRepoId) {
         await this.emitDemoGenerationEvent({
@@ -1111,15 +1186,18 @@ export class RequirementsService {
     };
   }
 
-  private normalizeBrainstormOutput(output: unknown): { brief: BrainstormBrief } {
-    const brief = this.extractBrainstormBrief(output);
-    if (!brief) {
+  private normalizeBrainstormOutput(output: BrainstormOutput): { brief: BrainstormBrief } {
+    if (!output.brief?.expandedDescription?.trim()) {
       throw new Error('BRAINSTORM_OUTPUT_INVALID: Missing brief content in executor response.');
     }
-    return { brief };
+    return { brief: output.brief };
   }
 
-  private extractBrainstormBrief(output: unknown): BrainstormBrief | null {
+  /**
+   * Only for reading persisted ideation session rows: older data may be flat JSON without `brief`.
+   * Live executor responses must already match {@link BrainstormOutput}; do not use this to paper over bad providers.
+   */
+  private parseLegacyBrainstormSessionOutput(output: unknown): BrainstormBrief | null {
     if (!output || typeof output !== 'object' || Array.isArray(output)) {
       return null;
     }
@@ -1137,7 +1215,7 @@ export class RequirementsService {
 
     return {
       expandedDescription,
-      userStories: this.readUserStories(briefCandidate.userStories),
+      userStories: this.readLegacyUserStories(briefCandidate.userStories),
       edgeCases: this.readStringArray(briefCandidate.edgeCases),
       successMetrics: this.readStringArray(briefCandidate.successMetrics),
       openQuestions: this.readStringArray(briefCandidate.openQuestions),
@@ -1146,20 +1224,11 @@ export class RequirementsService {
     };
   }
 
-  private readString(value: unknown): string {
-    return typeof value === 'string' ? value.trim() : '';
+  private extractBrainstormBrief(output: unknown): BrainstormBrief | null {
+    return this.parseLegacyBrainstormSessionOutput(output);
   }
 
-  private readStringArray(value: unknown): string[] {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    return value
-      .map((item) => (typeof item === 'string' ? item.trim() : ''))
-      .filter((item) => item.length > 0);
-  }
-
-  private readUserStories(
+  private readLegacyUserStories(
     value: unknown,
   ): Array<{ role: string; action: string; benefit: string }> {
     if (!Array.isArray(value)) {
@@ -1181,41 +1250,36 @@ export class RequirementsService {
     return stories;
   }
 
-  private normalizeDesignOutput(output: unknown): { design: DesignSpec; demo: DemoArtifact; demoPages?: DemoPage[] } {
-    if (!output || typeof output !== 'object' || Array.isArray(output)) {
-      throw new Error('DESIGN_OUTPUT_INVALID: Design output is not an object.');
-    }
-    const candidate = output as Record<string, unknown>;
-    const designCandidate =
-      candidate.design && typeof candidate.design === 'object' && !Array.isArray(candidate.design)
-        ? (candidate.design as Record<string, unknown>)
-        : candidate;
-
-    const overview = this.readString(designCandidate.overview);
-    if (!overview) {
-      throw new Error('DESIGN_OUTPUT_INVALID: Missing design overview in executor response.');
-    }
-
-    if (!candidate.demo || typeof candidate.demo !== 'object' || Array.isArray(candidate.demo)) {
-      throw new Error('DESIGN_OUTPUT_INVALID: Missing demo object in executor response.');
-    }
-
-    const normalized: { design: DesignSpec; demo: DemoArtifact; demoPages?: DemoPage[] } = {
-      design: designCandidate as unknown as DesignSpec,
-      demo: candidate.demo as DemoArtifact,
-    };
-
-    if (Array.isArray(candidate.demoPages)) {
-      normalized.demoPages = candidate.demoPages as DemoPage[];
-    }
-
-    return normalized;
+  private readString(value: unknown): string {
+    return typeof value === 'string' ? value.trim() : '';
   }
 
-  private isSameDesignOutput(
-    a: { design: DesignSpec; demo: DemoArtifact; demoPages?: DemoPage[] },
-    b: { design: DesignSpec; demo: DemoArtifact; demoPages?: DemoPage[] },
-  ): boolean {
+  private readStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value
+      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .filter((item) => item.length > 0);
+  }
+
+  private normalizeDesignOutput(output: unknown): GenerateDesignOutput {
+    return assertStrictGenerateDesignOutput(output);
+  }
+
+  /** Ideation sessions may only persist { design } — use for diff checks, not full executor validation. */
+  private extractDesignSpecFromSessionOutput(output: unknown): DesignSpec | null {
+    if (!output || typeof output !== 'object' || Array.isArray(output)) {
+      return null;
+    }
+    const o = output as Record<string, unknown>;
+    if (o.design && typeof o.design === 'object' && !Array.isArray(o.design)) {
+      return o.design as DesignSpec;
+    }
+    return null;
+  }
+
+  private isSameDesignSpec(a: DesignSpec, b: DesignSpec): boolean {
     return JSON.stringify(a) === JSON.stringify(b);
   }
 
@@ -1233,7 +1297,7 @@ export class RequirementsService {
 
     if (readyRepos.length === 0) {
       this.logger.warn(
-        `Ideation design trace requirement=${requirementId} session=${sessionId}: no READY repositories (need localPath + syncStatus=READY). The model will not receive repo component context; demoPages are usually empty.`,
+        `Ideation design trace requirement=${requirementId} session=${sessionId}: no READY repositories (need localPath + syncStatus=READY). The model will not receive repo component context.`,
       );
       return;
     }
@@ -1733,6 +1797,8 @@ export class RequirementsService {
   private async writeDemoPagesToRepo(
     demoPages: DemoPage[],
     requirement: Awaited<ReturnType<typeof this.findOne>>,
+    invocationContext: AIInvocationContext | undefined,
+    executor: AIExecutor,
   ): Promise<void> {
     const { execFile: execFileCb } = require('child_process');
     const { promisify } = require('util');
@@ -1759,6 +1825,21 @@ export class RequirementsService {
         const message = error instanceof Error ? error.message : 'unknown write error';
         this.logger.warn(`Failed to write demo page ${page.filePath}: ${message}`);
       }
+    }
+
+    const routeIntegration = await integrateFlowxDemoRoutes(repo.localPath, demoPages, {
+      navPlacementAgent: createNavPlacementAgent(executor, invocationContext),
+    });
+    for (const w of routeIntegration.warnings) {
+      this.logger.warn(w);
+    }
+    if (routeIntegration.routerRelativePath && routeIntegration.normalizedRoutes.length > 0) {
+      this.logger.log(
+        `FlowX demo preview routes: ${routeIntegration.normalizedRoutes.join(', ')} (see ${routeIntegration.generatedRelativePath ?? 'flowx-demo-routes.generated'})`,
+      );
+    }
+    if (routeIntegration.navMenuPatch?.patchedRelativePath) {
+      this.logger.log(`FlowX demo nav patched: ${routeIntegration.navMenuPatch.patchedRelativePath}`);
     }
 
     // Git commit

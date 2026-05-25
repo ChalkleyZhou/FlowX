@@ -1,8 +1,14 @@
+export enum WorkflowRunType {
+  FULL = 'FULL',
+  BUG_FIX = 'BUG_FIX',
+}
+
 export enum WorkflowRunStatus {
   CREATED = 'created',
   REPOSITORY_GROUNDING_PENDING = 'repository_grounding_pending',
   BRAINSTORM_PENDING = 'brainstorm_pending',
   DESIGN_PENDING = 'design_pending',
+  DESIGN_WAITING_CONFIRMATION = 'design_waiting_confirmation',
   DEMO_PENDING = 'demo_pending',
   DEMO_WAITING_CONFIRMATION = 'demo_waiting_confirmation',
   TASK_SPLIT_PENDING = 'task_split_pending',
@@ -104,4 +110,27 @@ export enum IdeationSessionStatus {
   COMPLETED = 'COMPLETED',
   FAILED = 'FAILED',
   WAITING_CONFIRMATION = 'WAITING_CONFIRMATION',
+}
+
+export enum RequirementPriority {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+}
+
+export enum RequirementPlanningStatus {
+  UNSCHEDULED = 'UNSCHEDULED',
+  SCHEDULED = 'SCHEDULED',
+  IN_PROGRESS = 'IN_PROGRESS',
+  DONE = 'DONE',
+}
+
+export enum RequirementAssignmentRole {
+  PM = 'PM',
+  FRONTEND = 'FRONTEND',
+  BACKEND = 'BACKEND',
+  FULLSTACK = 'FULLSTACK',
+  QA = 'QA',
+  DESIGN = 'DESIGN',
+  OTHER = 'OTHER',
 }
