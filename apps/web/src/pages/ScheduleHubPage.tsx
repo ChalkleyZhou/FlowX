@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { PageHeader } from '../components/PageHeader';
+import { ScheduleAssignmentDialog } from '../components/ScheduleAssignmentDialog';
 import { ScheduleGantt } from '../components/ScheduleGantt';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -35,6 +36,8 @@ export function ScheduleHubPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [metaLoading, setMetaLoading] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [ganttRefreshToken, setGanttRefreshToken] = useState(0);
 
   const projectId = searchParams.get('projectId') ?? '';
   const requirementId = searchParams.get('requirementId') ?? '';
@@ -72,10 +75,12 @@ export function ScheduleHubPage() {
 
   const requirementOptions = useMemo(() => {
     if (!projectId) {
-      return requirements;
+      return [];
     }
     return requirements.filter((r) => r.project.id === projectId);
   }, [requirements, projectId]);
+
+  const requirementFilterReady = Boolean(projectId) && requirementOptions.length > 0;
 
   const selectedProject = useMemo(
     () => projects.find((p) => p.id === projectId),
@@ -99,18 +104,28 @@ export function ScheduleHubPage() {
     setSearchParams(next, { replace: true });
   }
 
-  function handleProjectChange(value: string) {
-    const nextProjectId = value === ALL_PROJECTS ? '' : value;
-    let nextRequirementId: string | null = requirementId || null;
-    if (nextProjectId && requirementId) {
-      const req = requirements.find((r) => r.id === requirementId);
-      if (req?.project.id !== nextProjectId) {
-        nextRequirementId = null;
+  useEffect(() => {
+    if (!requirements.length) {
+      return;
+    }
+    if (requirementId && !projectId) {
+      updateParams({ requirementId: null });
+      return;
+    }
+    if (requirementId && projectId) {
+      const match = requirements.find((r) => r.id === requirementId);
+      if (match?.project.id !== projectId) {
+        updateParams({ requirementId: null });
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only reconcile URL when data/filters change
+  }, [requirements, projectId, requirementId]);
+
+  function handleProjectChange(value: string) {
+    const nextProjectId = value === ALL_PROJECTS ? '' : value;
     updateParams({
       projectId: nextProjectId || null,
-      requirementId: nextRequirementId,
+      requirementId: null,
     });
   }
 
@@ -155,11 +170,16 @@ export function ScheduleHubPage() {
       <PageHeader
         eyebrow="Schedule"
         title="排期甘特"
-        description="每行一名成员，每列一天；条形为在该时间段内的排期任务，可通过项目、需求、时间与角色筛选。"
+        description="每行一名成员，每列一天；条形为在该时间段内的排期任务。筛选时需先选项目，再选该项目下的需求。"
         actions={(
-          <Button variant="outline" asChild>
-            <Link to="/requirements">需求列表</Link>
-          </Button>
+          <>
+            <Button type="button" onClick={() => setCreateDialogOpen(true)}>
+              新建排期
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/requirements">需求列表</Link>
+            </Button>
+          </>
         )}
       />
 
@@ -188,20 +208,30 @@ export function ScheduleHubPage() {
 
             <FilterField label="需求">
               <Select
-                value={requirementId || ALL_REQUIREMENTS}
+                value={projectId ? requirementId || ALL_REQUIREMENTS : undefined}
                 onValueChange={handleRequirementChange}
+                disabled={!projectId || metaLoading}
               >
                 <SelectTrigger className="w-[260px]" aria-label="筛选需求">
-                  <SelectValue placeholder="全部需求" />
+                  <SelectValue
+                    placeholder={
+                      !projectId
+                        ? '请先选择项目'
+                        : requirementOptions.length === 0
+                          ? '该项目下暂无需求'
+                          : '全部需求'
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL_REQUIREMENTS}>全部需求</SelectItem>
-                  {requirementOptions.map((req) => (
-                    <SelectItem key={req.id} value={req.id}>
-                      {!projectId && req.project?.name ? `${req.project.name} · ` : ''}
-                      {req.title}
-                    </SelectItem>
-                  ))}
+                  {requirementFilterReady
+                    ? requirementOptions.map((req) => (
+                        <SelectItem key={req.id} value={req.id}>
+                          {req.title}
+                        </SelectItem>
+                      ))
+                    : null}
                 </SelectContent>
               </Select>
             </FilterField>
@@ -279,9 +309,17 @@ export function ScheduleHubPage() {
 
       <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardContent className="p-5">
-          <ScheduleGantt query={ganttQuery} />
+          <ScheduleGantt query={ganttQuery} refreshToken={ganttRefreshToken} />
         </CardContent>
       </Card>
+
+      <ScheduleAssignmentDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        initialProjectId={projectId}
+        initialRequirementId={requirementId}
+        onSaved={() => setGanttRefreshToken((n) => n + 1)}
+      />
     </>
   );
 }

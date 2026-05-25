@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -10,15 +9,6 @@ import { RequirementPlanningStatus } from '../common/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpsertRequirementAssignmentDto } from './dto/upsert-requirement-assignment.dto';
 import { toRequirementAssignmentResponse } from './requirement-assignment.mapper';
-
-function isUniqueConstraintError(error: unknown) {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code: string }).code === 'P2002'
-  );
-}
 
 @Injectable()
 export class RequirementAssignmentsService {
@@ -39,28 +29,21 @@ export class RequirementAssignmentsService {
     this.assertValidDateRange(dto.plannedStartDate, dto.plannedEndDate);
     await this.assertUserAssignable(dto.userId);
 
-    try {
-      const created = await this.prisma.requirementAssignment.create({
-        data: {
-          requirementId,
-          userId: dto.userId,
-          role: dto.role,
-          plannedStartDate: parseAssignmentDate(dto.plannedStartDate),
-          plannedEndDate: parseAssignmentDate(dto.plannedEndDate),
-          note: dto.note?.trim() || null,
-          sortOrder: dto.sortOrder ?? 0,
-          colorToken: dto.colorToken?.trim() || null,
-        },
-        include: { user: true },
-      });
-      await this.syncPlanningStatus(requirementId);
-      return this.toResponse(created);
-    } catch (error) {
-      if (isUniqueConstraintError(error)) {
-        throw new ConflictException('This user is already scheduled on the requirement.');
-      }
-      throw error;
-    }
+    const created = await this.prisma.requirementAssignment.create({
+      data: {
+        requirementId,
+        userId: dto.userId,
+        role: dto.role,
+        plannedStartDate: parseAssignmentDate(dto.plannedStartDate),
+        plannedEndDate: parseAssignmentDate(dto.plannedEndDate),
+        note: dto.note?.trim() || null,
+        sortOrder: dto.sortOrder ?? 0,
+        colorToken: dto.colorToken?.trim() || null,
+      },
+      include: { user: true },
+    });
+    await this.syncPlanningStatus(requirementId);
+    return this.toResponse(created);
   }
 
   async update(
@@ -72,28 +55,21 @@ export class RequirementAssignmentsService {
     this.assertValidDateRange(dto.plannedStartDate, dto.plannedEndDate);
     await this.assertUserAssignable(dto.userId);
 
-    try {
-      const updated = await this.prisma.requirementAssignment.update({
-        where: { id: assignmentId },
-        data: {
-          userId: dto.userId,
-          role: dto.role,
-          plannedStartDate: parseAssignmentDate(dto.plannedStartDate),
-          plannedEndDate: parseAssignmentDate(dto.plannedEndDate),
-          note: dto.note?.trim() || null,
-          sortOrder: dto.sortOrder ?? 0,
-          colorToken: dto.colorToken?.trim() || null,
-        },
-        include: { user: true },
-      });
-      await this.syncPlanningStatus(requirementId);
-      return this.toResponse(updated);
-    } catch (error) {
-      if (isUniqueConstraintError(error)) {
-        throw new ConflictException('This user is already scheduled on the requirement.');
-      }
-      throw error;
-    }
+    const updated = await this.prisma.requirementAssignment.update({
+      where: { id: assignmentId },
+      data: {
+        userId: dto.userId,
+        role: dto.role,
+        plannedStartDate: parseAssignmentDate(dto.plannedStartDate),
+        plannedEndDate: parseAssignmentDate(dto.plannedEndDate),
+        note: dto.note?.trim() || null,
+        sortOrder: dto.sortOrder ?? 0,
+        colorToken: dto.colorToken?.trim() || null,
+      },
+      include: { user: true },
+    });
+    await this.syncPlanningStatus(requirementId);
+    return this.toResponse(updated);
   }
 
   async remove(requirementId: string, assignmentId: string) {

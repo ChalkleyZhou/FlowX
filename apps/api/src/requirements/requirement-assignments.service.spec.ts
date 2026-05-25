@@ -1,4 +1,3 @@
-import { ConflictException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RequirementPlanningStatus } from '../common/enums';
 import { RequirementAssignmentsService } from './requirement-assignments.service';
@@ -90,16 +89,28 @@ describe('RequirementAssignmentsService', () => {
     });
   });
 
-  it('maps duplicate user conflict', async () => {
-    prisma.requirementAssignment.create.mockRejectedValue({ code: 'P2002' });
+  it('allows multiple assignments for the same user on one requirement', async () => {
+    prisma.requirementAssignment.create.mockResolvedValue({
+      id: 'a2',
+      requirementId,
+      userId: 'user-1',
+      role: 'QA',
+      plannedStartDate: new Date('2026-06-01T00:00:00.000Z'),
+      plannedEndDate: new Date('2026-06-05T00:00:00.000Z'),
+      sortOrder: 1,
+      colorToken: null,
+      note: null,
+      user: { id: 'user-1', displayName: 'Alice', avatarUrl: null },
+    });
 
-    await expect(
-      service.create(requirementId, {
-        userId: 'user-1',
-        role: 'FRONTEND',
-        plannedStartDate: '2026-05-18',
-        plannedEndDate: '2026-05-22',
-      }),
-    ).rejects.toBeInstanceOf(ConflictException);
+    const result = await service.create(requirementId, {
+      userId: 'user-1',
+      role: 'QA',
+      plannedStartDate: '2026-06-01',
+      plannedEndDate: '2026-06-05',
+    });
+
+    expect(result.id).toBe('a2');
+    expect(prisma.requirementAssignment.create).toHaveBeenCalled();
   });
 });

@@ -51,7 +51,7 @@ Workspace
 | `note` | string? | 备注 |
 | `createdAt` / `updatedAt` | DateTime | |
 
-**唯一约束：** `@@unique([requirementId, userId])` — 同一需求下同一人仅一条排期记录。
+**多人多条：** 同一需求下同一成员可有多条排期记录（不同角色或时间段）；以 `RequirementAssignment.id` 区分。
 
 **级联：** 删除 `Requirement` 时删除其 assignments。
 

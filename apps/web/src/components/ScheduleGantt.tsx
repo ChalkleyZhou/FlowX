@@ -32,6 +32,8 @@ export interface ScheduleGanttQuery {
 
 interface ScheduleGanttProps {
   query: ScheduleGanttQuery;
+  /** 变更后递增以重新拉取甘特数据 */
+  refreshToken?: number;
 }
 
 function barsByLane(bars: GanttBar[]): Map<string, GanttBar[]> {
@@ -53,7 +55,7 @@ function barTooltip(bar: GanttBar): string {
   return `${bar.label}\n${bar.start} ~ ${bar.end}\n${bar.estimatedDays} 人天 / ${bar.estimatedHours}h · ${role}`;
 }
 
-export function ScheduleGantt({ query }: ScheduleGanttProps) {
+export function ScheduleGantt({ query, refreshToken = 0 }: ScheduleGanttProps) {
   const [payload, setPayload] = useState<GanttPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -94,6 +96,7 @@ export function ScheduleGantt({ query }: ScheduleGanttProps) {
     query.onlyMe,
     query.from,
     query.to,
+    refreshToken,
   ]);
 
   const days = useMemo(() => enumerateDays(range.from, range.to), [range.from, range.to]);

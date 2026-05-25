@@ -49,8 +49,8 @@ model RequirementAssignment {
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 
-  @@unique([requirementId, userId])
   @@index([requirementId, plannedStartDate])
+  @@index([requirementId, userId])
   @@index([userId, plannedStartDate])
 }
 

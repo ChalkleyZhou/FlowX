@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
+import { ScheduleAssignmentDialog } from './ScheduleAssignmentDialog';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader } from './ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
-import { Input } from './ui/input';
 import {
   Select,
   SelectContent,
@@ -14,23 +13,13 @@ import {
 } from './ui/select';
 import { SectionHeading } from './ui/section-heading';
 import { Spinner } from './ui/spinner';
-import { Textarea } from './ui/textarea';
 import { useToast } from './ui/toast';
-import type { OrganizationMember, Requirement, RequirementAssignment } from '../types';
-import { addLocalCalendarDays, displayEstimatedDays, localTodayIso } from '../utils/business-days';
+import type { Requirement, RequirementAssignment } from '../types';
+import { displayEstimatedDays } from '../utils/business-days';
 import { formatAssignmentRole, formatPlanningStatus, formatPriority } from '../utils/label-utils';
 
-const ROLE_OPTIONS = ['PM', 'FRONTEND', 'BACKEND', 'FULLSTACK', 'QA', 'DESIGN', 'OTHER'] as const;
 const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH'] as const;
 const PLANNING_OPTIONS = ['UNSCHEDULED', 'SCHEDULED', 'IN_PROGRESS', 'DONE'] as const;
-
-function defaultScheduleRange() {
-  const start = localTodayIso();
-  return {
-    plannedStartDate: start,
-    plannedEndDate: addLocalCalendarDays(start, 4),
-  };
-}
 
 interface RequirementSchedulingPanelProps {
   requirement: Requirement;
@@ -39,19 +28,12 @@ interface RequirementSchedulingPanelProps {
 
 export function RequirementSchedulingPanel({ requirement, onChanged }: RequirementSchedulingPanelProps) {
   const toast = useToast();
-  const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [assignments, setAssignments] = useState<RequirementAssignment[]>(requirement.assignments ?? []);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<RequirementAssignment | null>(null);
   const [priority, setPriority] = useState(requirement.priority ?? 'MEDIUM');
   const [planningStatus, setPlanningStatus] = useState(requirement.planningStatus ?? 'UNSCHEDULED');
-  const [draft, setDraft] = useState({
-    userId: '',
-    role: 'FRONTEND',
-    ...defaultScheduleRange(),
-    note: '',
-  });
 
   const totalEstimatedDays = useMemo(
     () => assignments.reduce((sum, item) => sum + displayEstimatedDays(item), 0),
@@ -75,36 +57,13 @@ export function RequirementSchedulingPanel({ requirement, onChanged }: Requireme
     setPlanningStatus(requirement.planningStatus ?? 'UNSCHEDULED');
   }, [requirement]);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        setMembers(await api.getOrganizationMembers());
-      } catch {
-        setMembers([]);
-      }
-    })();
-  }, []);
-
   function openCreateDialog() {
     setEditing(null);
-    setDraft({
-      userId: members[0]?.id ?? '',
-      role: 'FRONTEND',
-      ...defaultScheduleRange(),
-      note: '',
-    });
     setDialogOpen(true);
   }
 
   function openEditDialog(assignment: RequirementAssignment) {
     setEditing(assignment);
-    setDraft({
-      userId: assignment.userId,
-      role: assignment.role,
-      plannedStartDate: assignment.plannedStartDate,
-      plannedEndDate: assignment.plannedEndDate,
-      note: assignment.note ?? '',
-    });
     setDialogOpen(true);
   }
 
@@ -116,26 +75,9 @@ export function RequirementSchedulingPanel({ requirement, onChanged }: Requireme
     await onChanged();
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!draft.userId) {
-      toast.error('请选择排期成员');
-      return;
-    }
-
-    try {
-      if (editing) {
-        await api.updateRequirementAssignment(requirement.id, editing.id, draft);
-      } else {
-        await api.createRequirementAssignment(requirement.id, draft);
-      }
-      setDialogOpen(false);
-      await refreshAssignments();
-      await onChanged();
-      toast.success(editing ? '排期已更新' : '排期已添加');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '保存排期失败');
-    }
+  async function handleAssignmentSaved() {
+    await refreshAssignments();
+    await onChanged();
   }
 
   async function handleDelete(assignmentId: string) {
@@ -259,75 +201,14 @@ export function RequirementSchedulingPanel({ requirement, onChanged }: Requireme
         )}
       </CardContent>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editing ? '编辑排期' : '添加排期'}</DialogTitle>
-            <DialogDescription>为这条需求指定成员、角色和计划起止日期。</DialogDescription>
-          </DialogHeader>
-          <form className="flex flex-col gap-4" onSubmit={(event) => void handleSubmit(event)}>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-foreground">成员</label>
-              <Select value={draft.userId || undefined} onValueChange={(value) => setDraft((c) => ({ ...c, userId: value }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="选择成员" />
-                </SelectTrigger>
-                <SelectContent>
-                  {members.map((member) => (
-                    <SelectItem key={member.id} value={member.id}>
-                      {member.displayName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-foreground">角色</label>
-              <Select value={draft.role} onValueChange={(value) => setDraft((c) => ({ ...c, role: value }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROLE_OPTIONS.map((role) => (
-                    <SelectItem key={role} value={role}>
-                      {formatAssignmentRole(role)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-foreground">开始日期</label>
-                <Input
-                  type="date"
-                  value={draft.plannedStartDate}
-                  onChange={(event) => setDraft((c) => ({ ...c, plannedStartDate: event.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-foreground">结束日期</label>
-                <Input
-                  type="date"
-                  value={draft.plannedEndDate}
-                  onChange={(event) => setDraft((c) => ({ ...c, plannedEndDate: event.target.value }))}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-foreground">备注</label>
-              <Textarea
-                rows={3}
-                value={draft.note}
-                onChange={(event) => setDraft((c) => ({ ...c, note: event.target.value }))}
-              />
-            </div>
-            <DialogFooter>
-              <Button type="submit">{editing ? '保存' : '添加'}</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <ScheduleAssignmentDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        editing={editing}
+        fixedRequirementId={requirement.id}
+        fixedRequirementTitle={requirement.title}
+        onSaved={handleAssignmentSaved}
+      />
     </Card>
   );
 }
