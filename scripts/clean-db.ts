@@ -113,6 +113,9 @@ function resolveDatabasePath(repoRoot: string): string | null {
     return null;
   }
   const raw = url.slice('file:'.length);
+  if (raw.startsWith('/')) {
+    return raw;
+  }
   return resolve(repoRoot, raw.startsWith('./') ? raw : `./${raw}`);
 }
 

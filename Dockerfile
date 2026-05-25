@@ -68,9 +68,9 @@ COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=build /app/tsconfig.base.json ./tsconfig.base.json
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/apps ./apps
+COPY scripts/clean-db.ts scripts/clean-db.sh ./scripts/
 COPY docker/start.sh /start.sh
-
-RUN chmod +x /start.sh
+RUN chmod +x /start.sh ./scripts/clean-db.sh
 
 EXPOSE 3000 4173
 

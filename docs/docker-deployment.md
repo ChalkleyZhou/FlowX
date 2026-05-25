@@ -378,6 +378,28 @@ scp dev-current.db user@server:/opt/flowx-data/dev-current.db
 - `/app/.flowx-data` 主要保存工作区仓库、本地副本和 workflow 仓库副本
 - 如果不持久化 `/app/.flowx-data`，容器重建后执行阶段可能会因为找不到仓库目录而失败
 
+### 7.1 只清业务数据（保留用户与登录态）
+
+数据库在卷 `flowx-data` 的 `/data/dev-current.db`。镜像内已包含 `pnpm db:clean`，**无需在宿主机安装 pnpm**。
+
+重新构建并拉起容器后，在部署目录执行：
+
+```bash
+sh docker/clean-business.sh
+```
+
+等价于：
+
+```bash
+docker exec flowx pnpm db:clean --mode=business --yes
+```
+
+说明：
+
+- `business`（默认）：删除工作区、项目、需求、工作流、Issue/Bug 等业务数据，**保留 User、凭据、会话表以外的认证数据**
+- 不删除 `/data/.codex`（Codex 登录态）和 `flowx-workdir`（仓库 clone）
+- 若需只清工作流或只清登录会话：`sh docker/clean-business.sh workflows` / `sessions`
+
 ## 8. Git 与仓库操作要求
 
 如果工作流里需要：
