@@ -8,6 +8,8 @@ import {
   GenerateDesignOutput,
   GeneratePlanInput,
   GeneratePlanOutput,
+  RepositoryComponentContext,
+  RepositoryContext,
   ReviewCodeInput,
   ReviewCodeOutput,
   SplitTaskItem,
@@ -15,6 +17,7 @@ import {
   SplitTasksOutput,
 } from '../common/types';
 import { AIExecutor, type AIInvocationContext } from './ai-executor';
+import { CodexAiExecutor } from './codex-ai.executor';
 
 function createBaselineTasks(title: string): SplitTaskItem[] {
   return [
@@ -41,6 +44,20 @@ function createBaselineTasks(title: string): SplitTaskItem[] {
 
 @Injectable()
 export class MockAiExecutor implements AIExecutor {
+  /**
+   * Reuse Codex 的磁盘扫描逻辑，使 Mock 在工作流 Demo 阶段也能获得真实组件上下文（与「必须有 grounded 仓库」一致）。
+   */
+  async buildRepositoryComponentContext(
+    repository: RepositoryContext,
+  ): Promise<RepositoryComponentContext | null> {
+    const scanner = new CodexAiExecutor();
+    return (
+      scanner as unknown as {
+        buildRepositoryComponentContext: (r: RepositoryContext) => Promise<RepositoryComponentContext | null>;
+      }
+    ).buildRepositoryComponentContext(repository);
+  }
+
   async brainstorm(input: BrainstormInput, _context?: AIInvocationContext): Promise<BrainstormOutput> {
     return {
       brief: {
@@ -126,23 +143,33 @@ export class MockAiExecutor implements AIExecutor {
         },
         knownGaps: ['当前演示使用 mock 数据，不包含持久化状态'],
       },
-      demoPages: input.repositoryComponentContext
-        ? [
-            {
-              route: '/flowx-demo/feature-list',
-              componentName: 'FeatureListDemoPage',
-              componentCode: `import React from 'react';\nimport { PageHeader } from '../components/PageHeader';\nimport { Card, CardContent, CardHeader } from '../components/ui/card';\nimport { Button } from '../components/ui/button';\nimport { Badge } from '../components/ui/badge';\nimport { Input } from '../components/ui/input';\n\nexport function FeatureListDemoPage() {\n  const features = mockData.features;\n  return (\n    <div className="flex flex-col gap-6 p-6">\n      <PageHeader eyebrow="Features" title="功能列表" description="管理所有功能" />\n      <Card>\n        <CardHeader><Input placeholder="搜索功能..." /></CardHeader>\n        <CardContent>\n          {features.map((f: any) => (\n            <div key={f.id} className="flex items-center justify-between border-b py-3">\n              <div>\n                <p className="font-medium">{f.name}</p>\n                <p className="text-sm text-muted-foreground">{f.description}</p>\n              </div>\n              <Badge>{f.status}</Badge>\n            </div>\n          ))}\n        </CardContent>\n      </Card>\n    </div>\n  );\n}\n`,
-              mockData: {
-                features: [
-                  { id: '1', name: '用户管理', description: '管理用户账号和权限', status: 'active' },
-                  { id: '2', name: '数据导出', description: '支持 CSV 和 Excel 导出', status: 'draft' },
-                  { id: '3', name: '通知中心', description: '站内消息和推送通知', status: 'active' },
-                ],
-              },
-              filePath: 'src/pages/FeatureListDemoPage.tsx',
-            },
-          ]
-        : undefined,
+      demoPages: [
+        {
+          route: 'flowx-demo',
+          navLabel: '通知中心',
+          componentName: 'FlowxDemoHubPage',
+          componentCode: input.repositoryComponentContext
+            ? `import React from 'react';\nimport { Link } from 'react-router-dom';\nimport { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';\n\nexport function FlowxDemoHubPage() {\n  return (\n    <div className="flex flex-col gap-6 p-6 max-w-lg">\n      <div>\n        <h1 className="text-2xl font-semibold tracking-tight">FlowX Demo</h1>\n        <p className="text-sm text-muted-foreground mt-1">从本页进入各演示场景，无需手输子路径 URL。</p>\n      </div>\n      <Card>\n        <CardHeader>\n          <CardTitle className="text-base">演示入口</CardTitle>\n        </CardHeader>\n        <CardContent className="flex flex-col gap-2">\n          <Link to="feature-list" className="text-primary underline underline-offset-4 hover:text-primary/90">\n            功能列表场景\n          </Link>\n        </CardContent>\n      </Card>\n    </div>\n  );\n}\n`
+            : `import React from 'react';\nimport { Link } from 'react-router-dom';\n\n/** 构思阶段极简入口页：真实环境应由 grounded 仓库组件替换样式。 */\nexport function FlowxDemoHubPage() {\n  return (\n    <div style={{ padding: 24, maxWidth: 480 }}>\n      <h1 style={{ fontSize: 22, marginBottom: 8 }}>FlowX Demo</h1>\n      <p style={{ fontSize: 14, color: '#555', marginBottom: 16 }}>从本页进入子演示，无需手输 URL。</p>\n      <Link to="feature-list">功能列表场景 →</Link>\n    </div>\n  );\n}\n`,
+          mockData: { links: [{ label: '功能列表场景', to: 'feature-list' }] },
+          filePath: 'src/pages/flowx-demo/FlowxDemoHubPage.tsx',
+        },
+        {
+          route: 'flowx-demo/feature-list',
+          componentName: 'FeatureListDemoPage',
+          componentCode: input.repositoryComponentContext
+            ? `import React from 'react';\nimport { PageHeader } from '../../components/PageHeader';\nimport { Card, CardContent, CardHeader } from '../../components/ui/card';\nimport { Button } from '../../components/ui/button';\nimport { Badge } from '../../components/ui/badge';\nimport { Input } from '../../components/ui/input';\n\nexport function FeatureListDemoPage() {\n  const features = mockData.features;\n  return (\n    <div className="flex flex-col gap-6 p-6">\n      <PageHeader eyebrow="Features" title="功能列表" description="管理所有功能" />\n      <Card>\n        <CardHeader><Input placeholder="搜索功能..." /></CardHeader>\n        <CardContent>\n          {features.map((f: any) => (\n            <div key={f.id} className="flex items-center justify-between border-b py-3">\n              <div>\n                <p className="font-medium">{f.name}</p>\n                <p className="text-sm text-muted-foreground">{f.description}</p>\n              </div>\n              <Badge>{f.status}</Badge>\n            </div>\n          ))}\n        </CardContent>\n      </Card>\n    </div>\n  );\n}\n`
+            : `import React from 'react';\n\n/** 构思阶段未注入仓库扫描上下文时的极简占位（仅满足 schema；真实 Demo 应基于 grounded 仓库）。 */\nconst mockData = { features: [{ id: '1', name: '示例', description: 'Brief-only preview', status: 'active' }] };\n\nexport function FeatureListDemoPage() {\n  const features = mockData.features;\n  return (\n    <div style={{ padding: 24 }}>\n      <h1 style={{ fontSize: 20, marginBottom: 16 }}>Preview</h1>\n      <ul>\n        {features.map((f) => (\n          <li key={f.id}>{f.name}</li>\n        ))}\n      </ul>\n    </div>\n  );\n}\n`,
+          mockData: {
+            features: [
+              { id: '1', name: '用户管理', description: '管理用户账号和权限', status: 'active' },
+              { id: '2', name: '数据导出', description: '支持 CSV 和 Excel 导出', status: 'draft' },
+              { id: '3', name: '通知中心', description: '站内消息和推送通知', status: 'active' },
+            ],
+          },
+          filePath: 'src/pages/flowx-demo/FeatureListDemoPage.tsx',
+        },
+      ],
     };
   }
 

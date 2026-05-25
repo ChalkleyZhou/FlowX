@@ -1,0 +1,30 @@
+---
+description: FlowX 前端须遵循 docs/design-system.md 与 shadcn/Tailwind 约定
+globs: apps/web/**/*
+alwaysApply: false
+---
+
+# FlowX Web 设计与实现
+
+作任何 `apps/web` 下的 UI 改动前，先阅读并对齐：
+
+- **令牌与红线**：`apps/web/docs/design-system.md`（颜色、字号、间距、圆角、阴影、交互、暗色、禁止硬编码）。
+- **布局与架构**：`docs/frontend-shadcn-design-spec.md`（App Shell、`page-container`、列表/详情/工作流模板、`globals.css` / `App.css` / 组件职责）。
+
+## 必须遵守
+
+- **语义 Token**：用 `text-foreground`、`bg-card`、`border-border`、`text-primary` 等；禁止 `text-slate-*`、`bg-white`、裸 `text-[#…]` / `bg-[#…]`，除非 `docs/design-system.md` 明确允许例外。
+- **基础 UI**：新交互能力进 `src/components/ui/*`；业务页不要自造基础 Button、Input、Badge。
+- **组合顺序**：`components/ui` → `src/components`（`PageHeader`、`ListToolbar`、`Card` 等）→ `pages/*`；页面不堆全局装饰类、不重复卡片视觉体系。
+- **列表页骨架**：`PageHeader`（标题 + 主 CTA）+ `ListToolbar`（search + filters）+ 列表；筛选控件固定宽度；**新增**不得塞进筛选条。
+- **样式边界**：主题与 reset 在 `globals.css`；壳层、`page-container`、toast 等在 `App.css`；单页/单组件布局在对应组件或页面，不把大块业务布局塞进 `App.css`。
+
+## 避免
+
+- 新重型 CSS 框架或平行组件体系。
+- 在页面新增大块 `foo-*` 全局类依赖。
+- 用 `dark:` 在组件里分叉主题（暗色由 `globals.css` 变量承担，见 `apps/web/docs/design-system.md` §7）。
+
+## 自检（提交前）
+
+改动是否仍符合 `apps/web/docs/design-system.md` §8 红线；列表页是否符合 `frontend-shadcn-design-spec` 中工具栏与间距约定；是否优先复用现有业务组件而非复制结构。

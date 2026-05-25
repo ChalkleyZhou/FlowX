@@ -1,8 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenerateDesignOutput",
+  "description": "设计/Demo 生成统一输出：顶层含 design、demo 与非空 demoPages；有仓库扫描上下文时页面须对齐真实路径。",
   "type": "object",
   "additionalProperties": false,
-  "required": ["design"],
+  "required": ["design", "demo", "demoPages"],
   "properties": {
     "design": {
       "type": "object",
@@ -11,7 +13,8 @@
       "properties": {
         "overview": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "高层设计思路（非 API/库表设计）。"
         },
         "pages": {
           "type": "array",
@@ -21,40 +24,91 @@
             "additionalProperties": false,
             "required": ["name", "route", "layout", "keyComponents", "interactions"],
             "properties": {
-              "name": {
-                "type": "string",
-                "minLength": 1
-              },
-              "route": {
-                "type": "string",
-                "minLength": 1
-              },
-              "layout": {
-                "type": "string",
-                "minLength": 1
-              },
+              "name": { "type": "string", "minLength": 1 },
+              "route": { "type": "string", "minLength": 1 },
+              "layout": { "type": "string", "minLength": 1 },
               "keyComponents": {
                 "type": "array",
-                "items": {
-                  "type": "string"
-                }
+                "items": { "type": "string" }
               },
               "interactions": {
                 "type": "array",
-                "items": {
-                  "type": "string"
-                }
+                "items": { "type": "string" }
               }
             }
           }
         },
-        "demoScenario": {
-          "type": "string",
-          "minLength": 1
+        "demoScenario": { "type": "string", "minLength": 1 },
+        "designRationale": { "type": "string", "minLength": 1 }
+      }
+    },
+    "demo": {
+      "type": "object",
+      "description": "Demo 摘要，用于确认与后续任务拆解。",
+      "additionalProperties": false,
+      "required": ["summary", "flows", "scope", "knownGaps"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1 },
+        "flows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "goal", "entry", "states"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "goal": { "type": "string", "minLength": 1 },
+              "entry": { "type": "string", "minLength": 1 },
+              "states": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
         },
-        "designRationale": {
-          "type": "string",
-          "minLength": 1
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["included", "excluded"],
+          "properties": {
+            "included": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "excluded": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "knownGaps": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "demoPages": {
+      "type": "array",
+      "minItems": 2,
+      "description": "可运行 Demo：至少 2 页 — 含前缀根路径上的入口/导航页（Link 到子场景）+ 至少一个子场景页。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["route", "componentName", "componentCode", "mockData", "filePath"],
+        "properties": {
+          "route": { "type": "string", "minLength": 1 },
+          "componentName": { "type": "string", "minLength": 1 },
+          "componentCode": { "type": "string", "minLength": 1 },
+          "mockData": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "filePath": { "type": "string", "minLength": 1 },
+          "navLabel": {
+            "type": "string",
+            "minLength": 1,
+            "description": "侧栏/主导航菜单标题（与 FlowX 自动写菜单项一致，优先于 mockData.navLabel）。"
+          }
         }
       }
     }

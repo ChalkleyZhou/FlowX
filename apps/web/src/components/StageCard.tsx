@@ -60,6 +60,9 @@ function formatOutputLabel(key: string) {
     impactScope: '影响范围',
     status: '状态',
     message: '说明',
+    design: '设计方案',
+    demo: '演示说明',
+    demoPages: 'Demo 页面代码',
   };
 
   return map[key] ?? key;

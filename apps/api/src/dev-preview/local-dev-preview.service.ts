@@ -104,12 +104,76 @@ export class LocalDevPreviewService {
     return this.isEnabled() && shouldAutoStartAfterDesign();
   }
 
-  async detectRepositoryCommand(repositoryId: string) {
-    const repo = await this.getRepositoryOrThrow(repositoryId);
-    const localPath = repo.localPath?.trim();
-    if (!localPath) {
-      throw new BadRequestException('Repository has no localPath; sync the repository first.');
+  /** When set, preview runs from the workflow working copy (same tree as demo writes). */
+  private previewSessionKey(repositoryId: string, workflowRunId?: string): string {
+    const w = workflowRunId?.trim();
+    return w ? `${repositoryId}::wf::${w}` : repositoryId;
+  }
+
+  private async resolveLocalPreviewRoot(repositoryId: string, workflowRunId?: string): Promise<string> {
+    const wf = workflowRunId?.trim();
+    if (!wf) {
+      const repo = await this.getRepositoryOrThrow(repositoryId);
+      const localPath = repo.localPath?.trim();
+      if (!localPath) {
+        throw new BadRequestException('Repository has no localPath; sync the repository first.');
+      }
+      return localPath;
     }
+
+    // 1) Path param is WorkflowRepository.id (stable when workspace Repository was unlinked → repositoryId null).
+    const byWorkflowRow = await this.prisma.workflowRepository.findFirst({
+      where: {
+        id: repositoryId,
+        workflowRunId: wf,
+        status: 'READY',
+      },
+      select: { localPath: true },
+    });
+    if (byWorkflowRow?.localPath?.trim()) {
+      const p = byWorkflowRow.localPath.trim();
+      this.logger.log(`Local dev preview workflow clone id=${repositoryId} workflowRun=${wf} path=${p}`);
+      return p;
+    }
+
+    // 2) Path param is workspace Repository.id
+    const linked = await this.prisma.workflowRepository.findFirst({
+      where: {
+        workflowRunId: wf,
+        repositoryId,
+        status: 'READY',
+      },
+      select: { localPath: true },
+    });
+    if (linked?.localPath?.trim()) {
+      const p = linked.localPath.trim();
+      this.logger.log(`Local dev preview workflow clone repositoryId=${repositoryId} workflowRun=${wf} path=${p}`);
+      return p;
+    }
+
+    // 3) Single-repo runs / stale ids: first READY clone in this workflow run (same tree demo writes use).
+    const fallback = await this.prisma.workflowRepository.findFirst({
+      where: {
+        workflowRunId: wf,
+        status: 'READY',
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, localPath: true },
+    });
+    const pathFallback = fallback?.localPath?.trim();
+    if (!pathFallback) {
+      throw new BadRequestException(
+        'Workflow working copy is not ready on disk (demo writes live here). Wait for workflow repository preparation to finish, then retry preview.',
+      );
+    }
+    this.logger.warn(
+      `Local dev preview: using first READY workflow repository in run workflowRun=${wf} workflowRepositoryId=${fallback!.id} path=${pathFallback} (requested id=${repositoryId})`,
+    );
+    return pathFallback;
+  }
+
+  async detectRepositoryCommand(repositoryId: string, workflowRunId?: string) {
+    const localPath = await this.resolveLocalPreviewRoot(repositoryId, workflowRunId);
     const detected = detectLocalDevCommand(localPath);
     if (!detected) {
       throw new BadRequestException('Could not detect a dev script (dev/develop/start:dev/...) in package.json.');
@@ -124,8 +188,9 @@ export class LocalDevPreviewService {
     };
   }
 
-  getStatus(repositoryId: string) {
-    const session = this.sessions.get(repositoryId) ?? { status: 'idle' as const, logTail: '' };
+  getStatus(repositoryId: string, workflowRunId?: string) {
+    const sessionKey = this.previewSessionKey(repositoryId, workflowRunId);
+    const session = this.sessions.get(sessionKey) ?? { status: 'idle' as const, logTail: '' };
     return {
       repositoryId,
       running: session.status === 'running',
@@ -139,8 +204,9 @@ export class LocalDevPreviewService {
     };
   }
 
-  async stop(repositoryId: string) {
-    const child = this.processes.get(repositoryId);
+  async stop(repositoryId: string, workflowRunId?: string) {
+    const sessionKey = this.previewSessionKey(repositoryId, workflowRunId);
+    const child = this.processes.get(sessionKey);
     if (child?.pid) {
       try {
         if (process.platform !== 'win32') {
@@ -150,17 +216,17 @@ export class LocalDevPreviewService {
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        this.logger.warn(`Failed to SIGTERM dev preview for repository ${repositoryId}: ${message}`);
+        this.logger.warn(`Failed to SIGTERM dev preview for session ${sessionKey}: ${message}`);
       }
     }
-    this.processes.delete(repositoryId);
-    const prev = this.sessions.get(repositoryId);
-    this.sessions.set(repositoryId, {
+    this.processes.delete(sessionKey);
+    const prev = this.sessions.get(sessionKey);
+    this.sessions.set(sessionKey, {
       status: 'stopped',
       logTail: prev?.logTail ?? '',
       lastError: undefined,
     });
-    return this.getStatus(repositoryId);
+    return this.getStatus(repositoryId, workflowRunId);
   }
 
   async restartAfterDesignWrite(repositoryId: string): Promise<void> {
@@ -175,18 +241,16 @@ export class LocalDevPreviewService {
     }
   }
 
-  async start(repositoryId: string) {
+  async start(repositoryId: string, workflowRunId?: string) {
     if (!this.isEnabled()) {
       throw new BadRequestException('Local dev preview is disabled (FLOWX_LOCAL_DEV_PREVIEW).');
     }
 
-    await this.stop(repositoryId);
+    const sessionKey = this.previewSessionKey(repositoryId, workflowRunId);
 
-    const repo = await this.getRepositoryOrThrow(repositoryId);
-    const localPath = repo.localPath?.trim();
-    if (!localPath) {
-      throw new BadRequestException('Repository has no localPath; sync the repository first.');
-    }
+    await this.stop(repositoryId, workflowRunId);
+
+    const localPath = await this.resolveLocalPreviewRoot(repositoryId, workflowRunId);
 
     const detected = detectLocalDevCommand(localPath);
     if (!detected) {
@@ -198,7 +262,7 @@ export class LocalDevPreviewService {
       const installPm = resolveInstallPackageManager(localPath, detected);
       const { command, args } = installCommandForPackageManager(installPm);
       this.logger.log(
-        `Local dev preview: installing dependencies in ${installCwd} (${command} ${args.join(' ')}) for repository ${repositoryId} (detectedDevPm=${detected.packageManager}, installPm=${installPm})`,
+        `Local dev preview: installing dependencies in ${installCwd} (${command} ${args.join(' ')}) for session ${sessionKey} (detectedDevPm=${detected.packageManager}, installPm=${installPm})`,
       );
       try {
         const { stdout, stderr } = await execFileAsync(command, args, {
@@ -209,13 +273,13 @@ export class LocalDevPreviewService {
         });
         const combined = `${stdout ?? ''}\n${stderr ?? ''}`.trimEnd();
         if (combined) {
-          this.logger.log(`Local dev preview: install output tail for ${repositoryId}:\n${combined.slice(-3000)}`);
+          this.logger.log(`Local dev preview: install output tail for ${sessionKey}:\n${combined.slice(-3000)}`);
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const stderr = (error as { stderr?: Buffer }).stderr?.toString?.() ?? '';
         this.logger.error(
-          `Local dev preview: dependency install failed for ${repositoryId}: ${message}\n${stderr.slice(0, 4000)}`,
+          `Local dev preview: dependency install failed for ${sessionKey}: ${message}\n${stderr.slice(0, 4000)}`,
         );
         throw new BadRequestException(
           `Dependency install failed in ${installCwd} (${command} ${args.join(' ')}): ${message}. Install manually in that directory, then retry local preview.`,
@@ -247,11 +311,11 @@ export class LocalDevPreviewService {
       logTail: '',
       startedAt: Date.now(),
     };
-    this.sessions.set(repositoryId, session);
+    this.sessions.set(sessionKey, session);
 
     const appendLog = (chunk: Buffer | string) => {
       const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
-      const current = this.sessions.get(repositoryId) ?? session;
+      const current = this.sessions.get(sessionKey) ?? session;
       current.logTail = (current.logTail + text).slice(-8000);
     };
 
@@ -266,23 +330,23 @@ export class LocalDevPreviewService {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    this.processes.set(repositoryId, child);
+    this.processes.set(sessionKey, child);
     session.childPid = child.pid;
 
     child.stdout?.on('data', appendLog);
     child.stderr?.on('data', appendLog);
 
     child.on('error', (error) => {
-      const current = this.sessions.get(repositoryId) ?? session;
+      const current = this.sessions.get(sessionKey) ?? session;
       current.status = 'failed';
       current.lastError = error.message;
       appendLog(`\n[process error] ${error.message}\n`);
     });
 
     child.on('exit', (code, signal) => {
-      const current = this.sessions.get(repositoryId);
+      const current = this.sessions.get(sessionKey);
       if (!current || current.status === 'stopped') {
-        this.processes.delete(repositoryId);
+        this.processes.delete(sessionKey);
         return;
       }
       if (current.status === 'starting' || current.status === 'running') {
@@ -291,16 +355,16 @@ export class LocalDevPreviewService {
         current.lastError = `Dev process exited early (code=${code ?? 'null'}, signal=${signal ?? 'null'}).${hint}`;
         appendLog(`\n[exit] code=${code} signal=${signal}\n`);
       }
-      this.processes.delete(repositoryId);
+      this.processes.delete(sessionKey);
     });
 
-    this.finalizeStartup(repositoryId, port);
-    return this.getStatus(repositoryId);
+    this.finalizeStartup(sessionKey, port);
+    return this.getStatus(repositoryId, workflowRunId);
   }
 
-  private finalizeStartup(repositoryId: string, port: number) {
+  private finalizeStartup(sessionKey: string, port: number) {
     void (async () => {
-      const session = this.sessions.get(repositoryId);
+      const session = this.sessions.get(sessionKey);
       if (!session || session.status !== 'starting') {
         return;
       }
@@ -308,7 +372,7 @@ export class LocalDevPreviewService {
         await waitForPortOpen(port, 120_000);
         session.status = 'running';
         session.previewUrl = `http://127.0.0.1:${port}/`;
-        this.logger.log(`Local dev preview running for repository ${repositoryId} at ${session.previewUrl}`);
+        this.logger.log(`Local dev preview running for session ${sessionKey} at ${session.previewUrl}`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         session.status = 'failed';
@@ -318,7 +382,7 @@ export class LocalDevPreviewService {
           session.logTail = (session.logTail + text).slice(-8000);
         };
         append(`\n[wait] ${message}\n`);
-        const proc = this.processes.get(repositoryId);
+        const proc = this.processes.get(sessionKey);
         if (proc?.pid) {
           try {
             if (process.platform !== 'win32') {
@@ -331,7 +395,7 @@ export class LocalDevPreviewService {
             this.logger.warn(`Failed to terminate dev preview after wait failure: ${killMessage}`);
           }
         }
-        this.processes.delete(repositoryId);
+        this.processes.delete(sessionKey);
       }
     })();
   }

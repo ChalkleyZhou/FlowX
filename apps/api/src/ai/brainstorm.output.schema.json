@@ -1,21 +1,26 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BrainstormOutput",
+  "description": "产品简报 JSON：仅允许顶层键 brief；禁止将 brief 内字段写到根对象。",
   "type": "object",
   "additionalProperties": false,
   "required": ["brief"],
   "properties": {
     "brief": {
       "type": "object",
+      "description": "产品简报正文；所有结构化字段必须在此对象内。",
       "additionalProperties": false,
       "required": ["expandedDescription", "userStories", "edgeCases", "successMetrics", "openQuestions", "assumptions", "outOfScope"],
       "properties": {
         "expandedDescription": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "2–3 段用户与业务视角说明；不写实现细节。篇幅精炼，避免单次输出过长被 CLI 截断。"
         },
         "userStories": {
           "type": "array",
-          "minItems": 1,
+          "description": "用户故事列表；每条需三者俱全。",
+          "minItems": 3,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -23,45 +28,56 @@
             "properties": {
               "role": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "description": "用户角色或使用者类型"
               },
               "action": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "description": "要完成的关键行为"
               },
               "benefit": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "description": "带来的价值或解决的问题"
               }
             }
           }
         },
         "edgeCases": {
           "type": "array",
+          "description": "边界情况与异常路径（产品/交互层面，非代码异常栈）。",
+          "minItems": 3,
           "items": {
-            "type": "string"
+            "type": "string",
+            "description": "一条边界或风险场景"
           }
         },
         "successMetrics": {
           "type": "array",
+          "description": "可衡量或可验证的成功指标。",
           "items": {
-            "type": "string"
+            "type": "string",
+            "description": "指标描述"
           }
         },
         "openQuestions": {
           "type": "array",
+          "description": "需产品或业务方确认的问题。",
           "items": {
             "type": "string"
           }
         },
         "assumptions": {
           "type": "array",
+          "description": "撰写简报时依赖的前提假设。",
           "items": {
             "type": "string"
           }
         },
         "outOfScope": {
           "type": "array",
+          "description": "明确排除在本次范围外的内容。",
           "items": {
             "type": "string"
           }

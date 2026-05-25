@@ -10,7 +10,7 @@ FlowX is a staged, interruptible, human-confirmable AI R&D orchestration system.
 
 ```bash
 # Development
-pnpm dev                    # Start both API (port 3000) and Web (port 5173)
+pnpm dev                    # Start both API (port 3000) and Web (port 4173)
 pnpm dev:api                # Start API only
 pnpm dev:web                # Start Web only (Vite dev server)
 

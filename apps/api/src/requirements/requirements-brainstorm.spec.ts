@@ -23,10 +23,10 @@ describe('RequirementsService brainstorm output normalization', () => {
     expect(normalized.brief.expandedDescription).toBe('Expanded');
   });
 
-  it('accepts flat brainstorm output without brief wrapper', () => {
+  it('reads flat legacy persisted session payloads (pre-schema enforcement)', () => {
     const service = createService();
 
-    const normalized = (service as any).normalizeBrainstormOutput({
+    const brief = (service as any).extractBrainstormBrief({
       expandedDescription: 'Expanded',
       userStories: [{ role: 'user', action: 'do', benefit: 'value' }],
       edgeCases: [],
@@ -36,7 +36,7 @@ describe('RequirementsService brainstorm output normalization', () => {
       outOfScope: [],
     });
 
-    expect(normalized.brief.expandedDescription).toBe('Expanded');
+    expect(brief?.expandedDescription).toBe('Expanded');
   });
 });
 

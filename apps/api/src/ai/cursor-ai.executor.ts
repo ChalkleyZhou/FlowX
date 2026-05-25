@@ -3,12 +3,18 @@ import { spawn } from 'child_process';
 import { access, mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { delimiter, join } from 'path';
-import { CodexAiExecutor } from './codex-ai.executor';
+import type { BrainstormInput, BrainstormOutput, GenerateDesignInput, GenerateDesignOutput } from '../common/types';
+import { assertStrictGenerateDesignOutput } from './design-output-validate';
 import { type AIInvocationContext } from './ai-executor';
+import { CodexAiExecutor } from './codex-ai.executor';
 
 const CURSOR_TIMEOUT_MS = Number(process.env.CURSOR_TIMEOUT_MS?.trim()) || 600_000;
-const CURSOR_DESIGN_TIMEOUT_MS = Number(process.env.CURSOR_DESIGN_TIMEOUT_MS?.trim()) || CURSOR_TIMEOUT_MS;
-const CURSOR_DEMO_WALL_TIMEOUT_MS = Number(process.env.CURSOR_DEMO_WALL_TIMEOUT_MS?.trim()) || 1_200_000;
+/** Brainstorm outputs large JSON; allow longer wall time than generic stages (truncated stdout → parse errors). */
+const CURSOR_BRAINSTORM_TIMEOUT_MS =
+  Number(process.env.CURSOR_BRAINSTORM_TIMEOUT_MS?.trim()) || 900_000;
+/** Design matches brainstorm output size (design+demo+demoPages); default aligned to reduce truncation parse failures. */
+const CURSOR_DESIGN_TIMEOUT_MS =
+  Number(process.env.CURSOR_DESIGN_TIMEOUT_MS?.trim()) || CURSOR_BRAINSTORM_TIMEOUT_MS;
 const CURSOR_NO_PROGRESS_TIMEOUT_MS = Number(process.env.CURSOR_NO_PROGRESS_TIMEOUT_MS?.trim()) || 0;
 const CURSOR_DEBUG_ROOT = join(process.cwd(), '.flowx-data', 'cursor-debug');
 const CURSOR_MODEL = process.env.CURSOR_MODEL?.trim();
@@ -27,6 +33,35 @@ export class CursorAiExecutor extends CodexAiExecutor {
   protected override readonly providerLabel = 'Cursor';
   protected override readonly debugRoot = CURSOR_DEBUG_ROOT;
 
+  /** Cursor CLI JSON envelope + validation aligned with Codex schema files. */
+  override async generateDesign(
+    input: GenerateDesignInput,
+    context?: AIInvocationContext,
+  ): Promise<GenerateDesignOutput> {
+    const prompt = this.buildDesignGenerationPrompt(input);
+    const raw = await this.runJsonStage<unknown>(
+      'design-generation.output.schema.json',
+      prompt,
+      'design generation',
+      [],
+      context,
+    );
+    return assertStrictGenerateDesignOutput(raw);
+  }
+
+  /** Cursor does not apply Codex's --output-schema; enforce shape here instead of coercing bad JSON. */
+  override async brainstorm(input: BrainstormInput, context?: AIInvocationContext): Promise<BrainstormOutput> {
+    const prompt = this.buildBrainstormPrompt(input);
+    const raw = await this.runJsonStage<unknown>(
+      'brainstorm.output.schema.json',
+      prompt,
+      'brainstorm',
+      [],
+      context,
+    );
+    return this.assertStrictBrainstormOutput(raw);
+  }
+
   protected override async runJsonStage<T>(
     _schemaFile: string,
     prompt: string,
@@ -37,9 +72,8 @@ export class CursorAiExecutor extends CodexAiExecutor {
     const tempCwd = addDirs[0] ? null : await mkdtemp(join(tmpdir(), 'flowx-cursor-json-'));
     // Avoid using the FlowX service repo as implicit context when no target repo is provided.
     const cursorCwd = addDirs[0] ?? tempCwd!;
-    const demoFlow = this.isDemoGenerationPrompt(prompt);
-    const outputFormat = demoFlow ? 'text' : 'json';
-    const args = ['-p', '--trust', '--output-format', outputFormat];
+    // Always JSON envelope: design prompts mention "demoPages" but must not switch to text mode (breaks parsing).
+    const args = ['-p', '--trust', '--output-format', 'json'];
     if (CURSOR_MODEL) {
       args.push('--model', CURSOR_MODEL);
     }
@@ -55,9 +89,6 @@ export class CursorAiExecutor extends CodexAiExecutor {
         prompt,
         context,
       );
-      if (demoFlow) {
-        return this.parseCursorJsonResult<T>(stdout);
-      }
       const payload = JSON.parse(stdout.trim()) as {
         result?: string;
         subtype?: string;
@@ -331,29 +362,15 @@ export class CursorAiExecutor extends CodexAiExecutor {
     });
   }
 
-  private resolveStageTimeoutMs(stageName: string, prompt?: string): number {
-    if (this.isDemoGenerationPrompt(prompt)) {
-      return CURSOR_DEMO_WALL_TIMEOUT_MS;
-    }
+  private resolveStageTimeoutMs(stageName: string, _prompt?: string): number {
     const normalized = stageName.trim().toLowerCase();
+    if (normalized.includes('brainstorm')) {
+      return CURSOR_BRAINSTORM_TIMEOUT_MS;
+    }
     if (normalized.includes('design')) {
       return CURSOR_DESIGN_TIMEOUT_MS;
     }
     return CURSOR_TIMEOUT_MS;
-  }
-
-  private isDemoGenerationPrompt(prompt?: string): boolean {
-    if (!prompt) {
-      return false;
-    }
-    const normalized = prompt.toLowerCase();
-    return (
-      normalized.includes('demopages') ||
-      normalized.includes('demo pages') ||
-      normalized.includes('demo 页面') ||
-      normalized.includes('生成 demo') ||
-      normalized.includes('仅生成 demo')
-    );
   }
 
   private async resolveCursorInvocation() {
@@ -419,22 +436,49 @@ export class CursorAiExecutor extends CodexAiExecutor {
     return 'CURSOR_AUTH_MISSING: Cursor authentication failed. Re-run `agent login` (or `cursor agent login`) on the server, or provide CURSOR_API_KEY.';
   }
 
+  private stripMarkdownJsonFence(text: string): string {
+    let t = text.trim();
+    if (t.startsWith('\uFEFF')) {
+      t = t.slice(1).trim();
+    }
+    const fenced =
+      /^```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```\s*$/im.exec(t) ?? /^```(?:json)?\s*([\s\S]*?)```\s*$/im.exec(t);
+    if (fenced) {
+      return fenced[1]!.trim();
+    }
+    return t;
+  }
+
   private parseCursorJsonResult<T>(result: string): T {
-    const trimmed = result.trim();
+    const trimmed = this.stripMarkdownJsonFence(result);
+
+    let rootParseError: unknown;
     try {
       return JSON.parse(trimmed) as T;
-    } catch {
-      const candidates = this.extractJsonCandidates(trimmed);
-      for (let index = candidates.length - 1; index >= 0; index -= 1) {
-        try {
-          return JSON.parse(candidates[index]!) as T;
-        } catch {
-          continue;
-        }
-      }
-
-      throw new Error(`Cursor result did not contain JSON. Result preview=${trimmed.slice(0, 200)}`);
+    } catch (error) {
+      rootParseError = error;
     }
+
+    const candidates = this.extractJsonCandidates(trimmed);
+    for (let index = candidates.length - 1; index >= 0; index -= 1) {
+      try {
+        return JSON.parse(candidates[index]!) as T;
+      } catch {
+        continue;
+      }
+    }
+
+    const syntaxMsg =
+      rootParseError instanceof SyntaxError ? ` ${rootParseError.message}.` : '';
+    const looksTruncated =
+      trimmed.includes('{') && !/\}\s*$/.test(trimmed) && candidates.length === 0;
+    const truncationHint = looksTruncated
+      ? ' Likely incomplete JSON (truncated). Raise CURSOR_BRAINSTORM_TIMEOUT_MS / CURSOR_DESIGN_TIMEOUT_MS (defaults 900000 ms), or shorten prompts / disable embedding huge blobs in user messages.'
+      : '';
+
+    throw new Error(
+      `Cursor result did not contain valid JSON.${syntaxMsg}${truncationHint} length=${trimmed.length} preview=${trimmed.slice(0, 280)}`,
+    );
   }
 
   private extractJsonCandidates(input: string) {

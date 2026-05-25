@@ -192,6 +192,8 @@ export interface DemoPage {
   componentCode: string;
   mockData: Record<string, unknown>;
   filePath: string;
+  /** 主导航/侧栏展示名；FlowX 会尝试写入 navMain/menuItems 等数据数组（最佳努力）。 */
+  navLabel?: string;
 }
 
 export interface DemoFlow {
@@ -218,10 +220,12 @@ export interface RepositoryComponentContext {
   propTypes: Array<{ name: string; props: string }>;
   pageExamples: Array<{ path: string; code: string }>;
   designTokens?: string;
+  /** Sampled route/router/auth snippets — align demo route registration; demo should bypass permission UI hiding for review */
+  routingAndAccessHints?: string;
 }
 
 export interface GenerateDesignOutput {
   design: DesignSpec;
   demo: DemoArtifact;
-  demoPages?: DemoPage[];
+  demoPages: DemoPage[];
 }

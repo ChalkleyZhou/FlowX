@@ -294,4 +294,93 @@ describe('CursorAiExecutor', () => {
 
     expect(process.env.CURSOR_API_KEY).toBe('instance-key');
   });
+
+  it('uses json output format for design generation prompts that mention demoPages', async () => {
+    accessMock.mockImplementation(async (targetPath: string) => {
+      if (targetPath === '/mock/bin/cursor') {
+        return;
+      }
+      throw new Error('missing');
+    });
+
+    let seenArgs: string[] = [];
+    spawnMock.mockImplementation((command: string, args: string[]) => {
+      seenArgs = args;
+      const child = new FakeChildProcess();
+      const inner = JSON.stringify({
+        design: {
+          overview: 'o',
+          pages: [
+            {
+              name: 'p',
+              route: '/p',
+              layout: 'l',
+              keyComponents: [],
+              interactions: [],
+            },
+          ],
+          demoScenario: 'd',
+          designRationale: 'r',
+        },
+        demo: {
+          summary: 's',
+          flows: [{ name: 'n', goal: 'g', entry: 'e', states: [] }],
+          scope: { included: [], excluded: [] },
+          knownGaps: [],
+        },
+      });
+      queueMicrotask(() => {
+        child.stdout.emit(
+          'data',
+          Buffer.from(JSON.stringify({ subtype: 'success', is_error: false, result: inner })),
+        );
+        child.emit('close', 0);
+      });
+      return child;
+    });
+
+    const { CursorAiExecutor } = await import('./cursor-ai.executor');
+    const executor = new CursorAiExecutor();
+    const prompt = (executor as unknown as { buildDesignGenerationPrompt: (i: unknown) => string })
+      .buildDesignGenerationPrompt({
+        requirementTitle: 't',
+        requirementDescription: 'd',
+        confirmedBrief: {
+          expandedDescription: 'e',
+          userStories: [
+            { role: 'r', action: 'a', benefit: 'b' },
+            { role: 'r2', action: 'a2', benefit: 'b2' },
+            { role: 'r3', action: 'a3', benefit: 'b3' },
+          ],
+          edgeCases: ['1', '2', '3'],
+          successMetrics: [],
+          openQuestions: [],
+          assumptions: [],
+          outOfScope: [],
+        },
+      });
+
+    await (executor as unknown as {
+      runJsonStage: <T>(
+        schemaFile: string,
+        p: string,
+        stageName: string,
+        addDirs: string[],
+      ) => Promise<T>;
+    }).runJsonStage<Record<string, unknown>>('schema.json', prompt, 'design generation', ['/tmp/workspace']);
+
+    expect(seenArgs).toContain('--output-format');
+    expect(seenArgs).toContain('json');
+    expect(seenArgs[seenArgs.length - 1]).toContain('demoPages');
+  });
+
+  it('parseCursorJsonResult accepts ```json fences around the payload', async () => {
+    const { CursorAiExecutor } = await import('./cursor-ai.executor');
+    const executor = new CursorAiExecutor();
+    const parse = (executor as unknown as { parseCursorJsonResult: <T>(s: string) => T }).parseCursorJsonResult.bind(
+      executor,
+    );
+
+    expect(parse<{ x: number }>('```json\n{"x":1}\n```')).toEqual({ x: 1 });
+  });
 });

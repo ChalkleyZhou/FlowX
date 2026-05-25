@@ -154,6 +154,7 @@ describe('DingTalkAuthProvider', () => {
       .mockResolvedValueOnce({
         ok: false,
         status: 403,
+        text: async () => '',
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -238,6 +239,7 @@ describe('DingTalkAuthProvider', () => {
       .mockResolvedValueOnce({
         ok: false,
         status: 403,
+        text: async () => '',
       })
       .mockResolvedValueOnce({
         ok: true,

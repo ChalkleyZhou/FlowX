@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "found": {
+      "type": "boolean",
+      "description": "Whether a suitable shell/menu file was identified."
+    },
+    "patches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "relativePath": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Path relative to repository root (POSIX slashes)."
+          },
+          "insertAfter": {
+            "type": "string",
+            "minLength": 8,
+            "description": "Exact substring from that file that must appear exactly once (anchor)."
+          },
+          "insertText": {
+            "type": "string",
+            "description": "Text to insert immediately after insertAfter (usually starts with newline)."
+          }
+        },
+        "required": ["relativePath", "insertAfter", "insertText"]
+      }
+    },
+    "notes": { "type": "string" }
+  },
+  "required": ["found", "patches"]
+}

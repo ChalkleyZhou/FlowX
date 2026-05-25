@@ -28,6 +28,13 @@ describe('GenerateDesignOutput with demoPages', () => {
       },
       demoPages: [
         {
+          route: 'flowx-demo',
+          componentName: 'HubDemoPage',
+          componentCode: 'export function HubDemoPage() { return <div />; }',
+          mockData: {},
+          filePath: 'src/pages/flowx-demo/HubDemoPage.tsx',
+        },
+        {
           route: '/flowx-demo/test',
           componentName: 'TestDemoPage',
           componentCode: 'export function TestDemoPage() { return <div />; }',
@@ -37,32 +44,10 @@ describe('GenerateDesignOutput with demoPages', () => {
       ],
     };
 
-    expect(output.demoPages).toHaveLength(1);
+    expect(output.demoPages).toHaveLength(2);
     expect(output.demo.summary).toBe('验证核心流程');
-    expect(output.demoPages![0].componentName).toBe('TestDemoPage');
-  });
-
-  it('accepts output without demoPages when demo summary exists', () => {
-    const output: GenerateDesignOutput = {
-      design: {
-        overview: 'test',
-        pages: [],
-        demoScenario: 'test',
-        designRationale: 'test',
-      },
-      demo: {
-        summary: '只产出语义摘要',
-        flows: [],
-        scope: {
-          included: ['主流程'],
-          excluded: [],
-        },
-        knownGaps: [],
-      },
-    };
-
-    expect(output.demoPages).toBeUndefined();
-    expect(output.demo.summary).toBe('只产出语义摘要');
+    expect(output.demoPages[0].componentName).toBe('HubDemoPage');
+    expect(output.demoPages[1].componentName).toBe('TestDemoPage');
   });
 });
 

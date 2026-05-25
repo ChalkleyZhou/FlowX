@@ -59,6 +59,13 @@ describe('RequirementsService demo generation progress events', () => {
       project: null,
       workspace: null,
     };
+    const hubPage: DemoPage = {
+      route: 'flowx-demo',
+      componentName: 'DemoHubPage',
+      componentCode: 'export function DemoHubPage() {}',
+      mockData: {},
+      filePath: 'src/pages/flowx-demo/DemoHubPage.tsx',
+    };
     const page: DemoPage = {
       route: '/flowx-demo/test',
       componentName: 'TestPage',
@@ -68,6 +75,7 @@ describe('RequirementsService demo generation progress events', () => {
     };
 
     vi.spyOn(service, 'findOne').mockResolvedValue(requirement as any);
+    vi.spyOn(service as any, 'ensureIdeationRepositoriesReady').mockResolvedValue(requirement);
     vi.spyOn(service as any, 'getConfirmedBrief').mockResolvedValue({ expandedDescription: 'brief' });
     vi.spyOn(service as any, 'getConfirmedDesign').mockResolvedValue({ overview: 'design' });
     vi.spyOn(service as any, 'getPreviousDemoPages').mockResolvedValue([]);
@@ -78,7 +86,7 @@ describe('RequirementsService demo generation progress events', () => {
     vi.spyOn(service as any, 'runWithTimeout').mockImplementation(async (promise: Promise<unknown>) => promise);
     vi.spyOn(service as any, 'normalizeDesignOutput').mockReturnValue({
       design: { overview: 'ok' },
-      demoPages: [page],
+      demoPages: [hubPage, page],
     });
     vi.spyOn(service as any, 'writeDemoPagesToRepo').mockResolvedValue(undefined);
     vi.spyOn(service as any, 'getFirstReadyRepositoryId').mockReturnValue('repo-1');

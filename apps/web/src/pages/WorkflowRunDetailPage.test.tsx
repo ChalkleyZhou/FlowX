@@ -15,6 +15,9 @@ vi.mock('../api', () => ({
     reviseTaskSplit: vi.fn(),
     runBrainstorm: vi.fn(),
     runDesign: vi.fn(),
+    reviseWorkflowDesign: vi.fn(),
+    confirmWorkflowDesign: vi.fn(),
+    rejectWorkflowDesign: vi.fn(),
     runDemo: vi.fn(),
     reviseDemo: vi.fn(),
     confirmDemo: vi.fn(),
@@ -1036,6 +1039,75 @@ describe('WorkflowRunDetailPage', () => {
     expect(document.body.querySelector('iframe[title="本地 Demo 预览"]')).toBeTruthy();
   });
 
+  it('uses workflow repository row id for local dev when workspace repositoryId is unlinked', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'DEMO_WAITING_CONFIRMATION',
+        workflowRepositories: [
+          {
+            id: 'wf-repo-row-only',
+            repositoryId: null,
+            name: 'flowx-web',
+            url: 'https://example.com/flowx-web.git',
+            baseBranch: 'main',
+            workingBranch: 'codex/demo-preview',
+            status: 'READY',
+            localPath: '/tmp/wf-only-clone',
+          },
+        ],
+        stageExecutions: [
+          {
+            id: 'stage-grounding',
+            stage: 'REPOSITORY_GROUNDING',
+            status: 'COMPLETED',
+            statusMessage: null,
+            attempt: 1,
+            output: { repositories: [] },
+          },
+          {
+            id: 'stage-demo',
+            stage: 'DEMO',
+            status: 'WAITING_CONFIRMATION',
+            statusMessage: '请确认当前 Demo，再进入任务拆解',
+            attempt: 1,
+            output: {
+              demoPages: [{ filePath: 'src/demo.tsx', componentName: 'DemoPanel', routePath: '/demo' }],
+            },
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.detectLocalDev).mockResolvedValue({ command: 'pnpm dev', packageManager: 'pnpm' } as never);
+    vi.mocked(api.getLocalDevStatus).mockResolvedValue({
+      status: 'running',
+      running: true,
+      previewUrl: 'http://127.0.0.1:4173',
+      port: 4173,
+      command: 'pnpm dev',
+      logTail: '',
+      lastError: null,
+    } as never);
+
+    await renderPage();
+
+    const demoStepButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Demo 页面'),
+    );
+
+    await act(async () => {
+      demoStepButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const previewButton = container.querySelector('[data-testid="demo-preview-open"]');
+    await act(async () => {
+      previewButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(api.detectLocalDev).toHaveBeenCalledWith('wf-repo-row-only', 'workflow-1');
+  });
+
   it('offers a restart action after local preview has been stopped', async () => {
     vi.mocked(api.getWorkflowRun).mockResolvedValue(
       createWorkflowRun({
@@ -1128,6 +1200,6 @@ describe('WorkflowRunDetailPage', () => {
       await Promise.resolve();
     });
 
-    expect(api.startLocalDevPreview).toHaveBeenCalledWith('repository-1');
+    expect(api.startLocalDevPreview).toHaveBeenCalledWith('repository-1', 'workflow-1');
   });
 });
