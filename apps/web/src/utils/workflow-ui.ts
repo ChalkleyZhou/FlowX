@@ -20,12 +20,20 @@ export function formatStageExecutionStatus(status: string) {
   return map[status] ?? status;
 }
 
+export function formatWorkflowRunType(runType?: string | null) {
+  if (runType === 'BUG_FIX') {
+    return '缺陷修复';
+  }
+  return '完整研发';
+}
+
 export function formatWorkflowStatus(status: string) {
   const map: Record<string, string> = {
     CREATED: '已创建',
     REPOSITORY_GROUNDING_PENDING: '待仓库 grounding',
     BRAINSTORM_PENDING: '待产品构思',
     DESIGN_PENDING: '待设计方案',
+    DESIGN_WAITING_CONFIRMATION: '待确认设计方案',
     DEMO_PENDING: '待 Demo 页面',
     DEMO_WAITING_CONFIRMATION: '待确认 Demo',
     TASK_SPLIT_PENDING: '待任务拆解',

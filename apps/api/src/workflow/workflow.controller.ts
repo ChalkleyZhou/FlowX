@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { CreateWorkflowRunDto } from './dto/create-workflow-run.dto';
 import { HumanReviewDecisionDto } from './dto/human-review-decision.dto';
 import { StageFeedbackDto } from './dto/stage-feedback.dto';
@@ -20,8 +20,8 @@ export class WorkflowController {
   }
 
   @Get()
-  findAll() {
-    return this.workflowService.findAll();
+  findAll(@Query('runType') runType?: string) {
+    return this.workflowService.findAll(runType ? { runType } : undefined);
   }
 
   @Get(':id')
@@ -39,6 +39,11 @@ export class WorkflowController {
     return this.workflowService.deleteWorkflowRun(id);
   }
 
+  @Post(':id/rollback')
+  rollbackToPreviousStage(@Param('id') id: string) {
+    return this.workflowService.rollbackToPreviousStage(id);
+  }
+
   @Post(':id/brainstorm/run')
   runBrainstorm(@Param('id') id: string, @Req() req: WorkflowRequest) {
     return this.workflowService.runBrainstorm(id, req.authSession);
@@ -51,7 +56,22 @@ export class WorkflowController {
 
   @Post(':id/design/run')
   runDesign(@Param('id') id: string, @Req() req: WorkflowRequest) {
-    return this.workflowService.runDesign(id, req.authSession);
+    return this.workflowService.runDesign(id, undefined, req.authSession);
+  }
+
+  @Post(':id/design/revise')
+  reviseDesign(@Param('id') id: string, @Body() dto: StageFeedbackDto, @Req() req: WorkflowRequest) {
+    return this.workflowService.runDesign(id, dto.feedback, req.authSession);
+  }
+
+  @Post(':id/design/confirm')
+  confirmDesign(@Param('id') id: string, @Req() req: WorkflowRequest) {
+    return this.workflowService.confirmDesign(id, req.authSession);
+  }
+
+  @Post(':id/design/reject')
+  rejectDesign(@Param('id') id: string) {
+    return this.workflowService.rejectDesign(id);
   }
 
   @Post(':id/design/skip')

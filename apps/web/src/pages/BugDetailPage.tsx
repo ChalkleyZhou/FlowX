@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { ContextPanel } from '../components/ContextPanel';
 import { DetailHeader } from '../components/DetailHeader';
@@ -20,7 +20,14 @@ import {
   SelectValue,
 } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
-import type { Bug } from '../types';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
+import type { Bug, Workspace } from '../types';
 import {
   formatBugStatus,
   formatPriority,
@@ -30,9 +37,17 @@ import {
   formatSeverityLabel,
 } from '../utils/label-utils';
 
+const AI_PROVIDER_STORAGE_KEY = 'flowx-default-ai-provider';
+
 export function BugDetailPage() {
   const { bugId = '' } = useParams();
+  const navigate = useNavigate();
   const [bug, setBug] = useState<Bug | null>(null);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [fixModalOpen, setFixModalOpen] = useState(false);
+  const [fixSubmitting, setFixSubmitting] = useState(false);
+  const [fixRepositoryIds, setFixRepositoryIds] = useState<string[]>([]);
+  const [fixAiProvider, setFixAiProvider] = useState<'codex' | 'cursor'>('codex');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<{
@@ -53,6 +68,16 @@ export function BugDetailPage() {
     resolution: '',
   });
   const toast = useToast();
+
+  const bugWorkspace = useMemo(
+    () => workspaces.find((workspace) => workspace.id === bug?.workspace?.id) ?? null,
+    [bug?.workspace?.id, workspaces],
+  );
+  const availableRepositories = bugWorkspace?.repositories ?? [];
+  const canStartFixWorkflow =
+    bug != null &&
+    ['OPEN', 'CONFIRMED'].includes(bug.status) &&
+    (!bug.fixWorkflowRun || ['DONE', 'FAILED'].includes(bug.fixWorkflowRun.status));
 
   async function refresh() {
     if (!bugId) {
@@ -84,6 +109,59 @@ export function BugDetailPage() {
   useEffect(() => {
     void refresh();
   }, [bugId]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [workspaceList, providerConfig] = await Promise.all([
+          api.getWorkspaces(),
+          api.getWorkflowProviders(),
+        ]);
+        setWorkspaces(workspaceList);
+        const storedProvider =
+          typeof window !== 'undefined'
+            ? window.localStorage.getItem(AI_PROVIDER_STORAGE_KEY)
+            : null;
+        setFixAiProvider(
+          storedProvider === 'cursor' || storedProvider === 'codex'
+            ? storedProvider
+            : providerConfig.defaultProvider,
+        );
+      } catch {
+        // ignore — fix dialog can still open with defaults
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!fixModalOpen || availableRepositories.length === 0) {
+      return;
+    }
+    setFixRepositoryIds((current) =>
+      current.length > 0 ? current : availableRepositories.map((repository) => repository.id),
+    );
+  }, [availableRepositories, fixModalOpen]);
+
+  async function handleStartFixWorkflow() {
+    if (!bugId) {
+      return;
+    }
+    setFixSubmitting(true);
+    try {
+      const result = await api.startBugFixWorkflow(bugId, {
+        repositoryIds: fixRepositoryIds,
+        aiProvider: fixAiProvider,
+        autoStart: true,
+      });
+      toast.success('已发起缺陷修复工作流，正在自动执行');
+      setFixModalOpen(false);
+      navigate(`/workflow-runs/${result.workflowRun.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '发起修复工作流失败');
+    } finally {
+      setFixSubmitting(false);
+    }
+  }
 
   async function submit(values: {
     title: string;
@@ -185,9 +263,17 @@ export function BugDetailPage() {
           ]}
           actions={
             <>
+              {canStartFixWorkflow ? (
+                <UiButton onClick={() => setFixModalOpen(true)}>发起修复工作流</UiButton>
+              ) : null}
               <UiButton variant="outline" asChild>
                 <Link to="/bugs">返回缺陷列表</Link>
               </UiButton>
+              {bug?.fixWorkflowRun?.id ? (
+                <UiButton variant="outline" asChild>
+                  <Link to={`/workflow-runs/${bug.fixWorkflowRun.id}`}>查看修复工作流</Link>
+                </UiButton>
+              ) : null}
               {bug?.workflowRun?.id ? (
                 <UiButton variant="outline" asChild>
                   <Link to={`/workflow-runs/${bug.workflowRun.id}`}>查看来源流程</Link>
@@ -343,6 +429,33 @@ export function BugDetailPage() {
 
           <div className="flex flex-col gap-[18px]">
             <ContextPanel
+              eyebrow="Fix"
+              title="修复上下文"
+              description="查看缺陷关联的修复需求与修复工作流。"
+            >
+              <div className="space-y-4">
+                <div className="rounded-lg border border-border bg-muted p-4">
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                    修复需求
+                  </div>
+                  <div className="break-words text-sm font-medium text-foreground">
+                    {bug?.fixRequirement?.title ?? '尚未发起修复'}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border bg-muted p-4">
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                    修复工作流
+                  </div>
+                  <div className="break-words text-sm font-medium text-foreground">
+                    {bug?.fixWorkflowRun
+                      ? `${formatBugStatus(bug.fixWorkflowRun.status)} · ${bug.fixWorkflowRun.id}`
+                      : '尚未创建'}
+                  </div>
+                </div>
+              </div>
+            </ContextPanel>
+
+            <ContextPanel
               eyebrow="Source"
               title="来源上下文"
               description="回看当前缺陷对应的原始需求、分支以及 AI 审查结论。"
@@ -370,6 +483,67 @@ export function BugDetailPage() {
           </div>
         </div>
       </div>
+
+      <Dialog open={fixModalOpen} onOpenChange={setFixModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>发起修复工作流</DialogTitle>
+            <DialogDescription>
+              将跳过构思、设计、任务拆解与技术方案阶段，在仓库准备完成后自动开始研发执行与审查。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-foreground">AI 执行器</label>
+              <Select
+                value={fixAiProvider}
+                onValueChange={(value) => setFixAiProvider(value as 'codex' | 'cursor')}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="codex">Codex</SelectItem>
+                  <SelectItem value="cursor">Cursor CLI</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-foreground">目标仓库</label>
+              <div className="flex flex-col gap-2">
+                {availableRepositories.map((repository) => {
+                  const checked = fixRepositoryIds.includes(repository.id);
+                  return (
+                    <label
+                      key={repository.id}
+                      className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          setFixRepositoryIds((current) =>
+                            checked
+                              ? current.filter((id) => id !== repository.id)
+                              : [...current, repository.id],
+                          );
+                        }}
+                      />
+                      <span>{repository.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+            <UiButton
+              disabled={fixSubmitting || fixRepositoryIds.length === 0}
+              onClick={() => void handleStartFixWorkflow()}
+            >
+              {fixSubmitting ? '发起中...' : '确认并自动开始修复'}
+            </UiButton>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

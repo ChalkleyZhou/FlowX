@@ -1,8 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { WorkflowService } from '../workflow/workflow.service';
 import { ConvertToBugDto } from './dto/convert-to-bug.dto';
+import { CreateBugDto } from './dto/create-bug.dto';
 import { ConvertToIssueDto } from './dto/convert-to-issue.dto';
+import { StartBugFixWorkflowDto } from './dto/start-bug-fix-workflow.dto';
 import { UpdateBugDto } from './dto/update-bug.dto';
 import { UpdateIssueDto } from './dto/update-issue.dto';
 import { UpdateReviewFindingDto } from './dto/update-review-finding.dto';
@@ -11,7 +14,10 @@ type FindingType = 'ISSUE' | 'BUG' | 'MISSING_TEST' | 'SUGGESTION';
 
 @Injectable()
 export class ReviewArtifactsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly workflowService: WorkflowService,
+  ) {}
 
   async getWorkflowRunReviewFindings(workflowRunId: string) {
     await this.prisma.workflowRun.findUniqueOrThrow({ where: { id: workflowRunId } });
@@ -287,6 +293,62 @@ export class ReviewArtifactsService {
     });
   }
 
+  async createBug(dto: CreateBugDto, userId: string | null) {
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id: dto.workspaceId },
+    });
+    if (!workspace) {
+      throw new NotFoundException('Workspace not found.');
+    }
+
+    if (dto.projectId) {
+      const project = await this.prisma.project.findFirst({
+        where: { id: dto.projectId, workspaceId: dto.workspaceId, status: 'ACTIVE' },
+      });
+      if (!project) {
+        throw new BadRequestException('Project does not belong to the selected workspace.');
+      }
+    }
+
+    if (dto.repositoryId) {
+      const repository = await this.prisma.repository.findFirst({
+        where: { id: dto.repositoryId, workspaceId: dto.workspaceId, status: 'ACTIVE' },
+      });
+      if (!repository) {
+        throw new BadRequestException('Repository does not belong to the selected workspace.');
+      }
+    }
+
+    return this.prisma.bug.create({
+      data: {
+        status: 'OPEN',
+        severity: dto.severity ?? 'MEDIUM',
+        priority: dto.priority ?? 'MEDIUM',
+        title: dto.title.trim(),
+        description: dto.description.trim(),
+        expectedBehavior: dto.expectedBehavior?.trim() || null,
+        actualBehavior: dto.actualBehavior?.trim() || null,
+        reproductionSteps: dto.reproductionSteps ?? [],
+        workspaceId: dto.workspaceId,
+        projectId: dto.projectId ?? null,
+        repositoryId: dto.repositoryId ?? null,
+        branchName: dto.branchName?.trim() || null,
+        reportedByUserId: userId,
+      },
+      include: {
+        workspace: true,
+        project: true,
+        requirement: true,
+        workflowRun: true,
+        fixWorkflowRun: true,
+      },
+    });
+  }
+
+  async startBugFixWorkflow(bugId: string, dto: StartBugFixWorkflowDto) {
+    return this.workflowService.createBugFixWorkflowRun(bugId, dto);
+  }
+
   async getBugs(filters: { workspaceId?: string; workflowRunId?: string; status?: string }) {
     return this.prisma.bug.findMany({
       where: {
@@ -296,8 +358,10 @@ export class ReviewArtifactsService {
       },
       include: {
         workspace: true,
+        project: true,
         requirement: true,
         workflowRun: true,
+        fixWorkflowRun: true,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -308,8 +372,11 @@ export class ReviewArtifactsService {
       where: { id },
       include: {
         workspace: true,
+        project: true,
         requirement: true,
         workflowRun: true,
+        fixWorkflowRun: true,
+        fixRequirement: true,
         reviewFinding: true,
       },
     });
@@ -337,8 +404,10 @@ export class ReviewArtifactsService {
       },
       include: {
         workspace: true,
+        project: true,
         requirement: true,
         workflowRun: true,
+        fixWorkflowRun: true,
         reviewFinding: true,
       },
     });

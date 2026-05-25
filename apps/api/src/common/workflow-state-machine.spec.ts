@@ -31,7 +31,7 @@ describe('WorkflowStateMachine', () => {
     ).toBe(false);
   });
 
-  it('routes demo through waiting confirmation before task split', () => {
+  it('routes design through waiting confirmation before demo, and demo before task split', () => {
     const machine = new WorkflowStateMachine();
 
     expect(
@@ -43,13 +43,37 @@ describe('WorkflowStateMachine', () => {
     expect(
       machine.canTransitionWorkflow(
         WorkflowRunStatus.DESIGN_PENDING,
+        WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION,
+      ),
+    ).toBe(true);
+    expect(
+      machine.canTransitionWorkflow(
+        WorkflowRunStatus.DESIGN_PENDING,
         WorkflowRunStatus.DEMO_PENDING,
+      ),
+    ).toBe(true);
+    expect(
+      machine.canTransitionWorkflow(
+        WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION,
+        WorkflowRunStatus.DEMO_PENDING,
+      ),
+    ).toBe(true);
+    expect(
+      machine.canTransitionWorkflow(
+        WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION,
+        WorkflowRunStatus.DESIGN_PENDING,
       ),
     ).toBe(true);
     expect(
       machine.canTransitionWorkflow(
         WorkflowRunStatus.DEMO_PENDING,
         WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
+      ),
+    ).toBe(true);
+    expect(
+      machine.canTransitionWorkflow(
+        WorkflowRunStatus.DEMO_PENDING,
+        WorkflowRunStatus.TASK_SPLIT_PENDING,
       ),
     ).toBe(true);
     expect(
@@ -57,6 +81,20 @@ describe('WorkflowStateMachine', () => {
         WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
         WorkflowRunStatus.TASK_SPLIT_PENDING,
       ),
+    ).toBe(true);
+    expect(
+      machine.canTransitionWorkflow(
+        WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
+        WorkflowRunStatus.DEMO_PENDING,
+      ),
+    ).toBe(true);
+  });
+
+  it('allows optional-stage executions to be skipped from waiting confirmation', () => {
+    const machine = new WorkflowStateMachine();
+
+    expect(
+      machine.canTransitionStage(StageExecutionStatus.WAITING_CONFIRMATION, StageExecutionStatus.SKIPPED),
     ).toBe(true);
   });
 
@@ -135,5 +173,28 @@ describe('WorkflowStateMachine', () => {
         WorkflowRunStatus.EXECUTION_PENDING,
       ),
     ).toThrow(/Illegal workflow transition/i);
+  });
+
+  it('allows rolling back to the previous pipeline stage for debugging', () => {
+    const machine = new WorkflowStateMachine();
+
+    expect(
+      machine.canTransitionWorkflow(
+        WorkflowRunStatus.PLAN_CONFIRMED,
+        WorkflowRunStatus.TASK_SPLIT_PENDING,
+      ),
+    ).toBe(true);
+    expect(
+      machine.canTransitionWorkflow(
+        WorkflowRunStatus.EXECUTION_PENDING,
+        WorkflowRunStatus.PLAN_PENDING,
+      ),
+    ).toBe(true);
+    expect(
+      machine.canTransitionWorkflow(WorkflowRunStatus.DONE, WorkflowRunStatus.HUMAN_REVIEW_PENDING),
+    ).toBe(true);
+    expect(
+      machine.canTransitionWorkflow(WorkflowRunStatus.FAILED, WorkflowRunStatus.PLAN_PENDING),
+    ).toBe(true);
   });
 });

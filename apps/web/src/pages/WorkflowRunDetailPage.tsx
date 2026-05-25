@@ -23,7 +23,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { Textarea as UiTextarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
 import type { DemoArtifact, DemoPage, LocalDevDetectResponse, LocalDevPreviewStatus, RepositoryDeployConfig, WorkflowRun } from '../types';
-import { formatStageExecutionStatus, formatWorkflowStatus, getStage } from '../utils/workflow-ui';
+import {
+  formatStageExecutionStatus,
+  formatWorkflowRunType,
+  formatWorkflowStatus,
+  getStage,
+} from '../utils/workflow-ui';
 
 const STAGE_SEQUENCE = [
   'REPOSITORY_GROUNDING',
@@ -212,6 +217,10 @@ function inferFocusedStage(run: WorkflowRun): WorkflowStageKey {
     return 'DESIGN';
   }
 
+  if (run.status === 'DESIGN_WAITING_CONFIRMATION') {
+    return 'DESIGN';
+  }
+
   if (run.status === 'DEMO_PENDING') {
     return 'DEMO';
   }
@@ -364,10 +373,13 @@ export function WorkflowRunDetailPage() {
   const [feedbackText, setFeedbackText] = useState('');
   const [demoFeedback, setDemoFeedback] = useState('');
   const [demoSubmitting, setDemoSubmitting] = useState(false);
+  const [designFeedback, setDesignFeedback] = useState('');
+  const [designSubmitting, setDesignSubmitting] = useState(false);
   const [demoLocalDetect, setDemoLocalDetect] = useState<LocalDevDetectResponse | null>(null);
   const [demoLocalStatus, setDemoLocalStatus] = useState<LocalDevPreviewStatus | null>(null);
   const [demoPreviewOpen, setDemoPreviewOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [rollingBack, setRollingBack] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [deployModalOpen, setDeployModalOpen] = useState(false);
   const [deployLoading, setDeployLoading] = useState(false);
@@ -488,6 +500,12 @@ export function WorkflowRunDetailPage() {
   }, [selectedStage, workflowRun?.id]);
 
   const hasRunningStage = workflowRun?.stageExecutions.some((item) => item.status === 'RUNNING') ?? false;
+  const canRollbackToPreviousStage = Boolean(
+    workflowRun &&
+      !hasRunningStage &&
+      workflowRun.status !== 'CREATED' &&
+      workflowRun.status !== 'REPOSITORY_GROUNDING_PENDING',
+  );
   const stageActionsLocked = busyStage !== null || hasRunningStage;
   const latestExecutionStage = workflowRun ? getStage(workflowRun, 'EXECUTION') : undefined;
   const latestReviewStage = workflowRun ? getStage(workflowRun, 'AI_REVIEW') : undefined;
@@ -608,6 +626,11 @@ export function WorkflowRunDetailPage() {
       null,
     [workflowRun],
   );
+  /** API `/repositories/:id/local-dev` — prefer workspace Repository.id; else WorkflowRepository row id (link may be null). */
+  const demoPreviewRepositoryParam = useMemo(
+    () => selectedDemoRepository?.repositoryId ?? selectedDemoRepository?.id ?? '',
+    [selectedDemoRepository?.repositoryId, selectedDemoRepository?.id],
+  );
   const canReviseCompletedDemo =
     !!workflowRun &&
     selectedStage === 'DEMO' &&
@@ -618,6 +641,18 @@ export function WorkflowRunDetailPage() {
     selectedStage === 'DEMO' &&
     (!!selectedDemoArtifact || selectedDemoPages.length > 0) &&
     workflowRun?.status === 'DEMO_WAITING_CONFIRMATION';
+
+  const designStageSnapshot = workflowRun ? getStage(workflowRun, 'DESIGN') : undefined;
+  const canReviseDesignSpec =
+    !!workflowRun &&
+    selectedStage === 'DESIGN' &&
+    workflowRun.status === 'DESIGN_WAITING_CONFIRMATION' &&
+    designStageSnapshot?.status === 'WAITING_CONFIRMATION' &&
+    !stageActionsLocked;
+  const isDesignFeedbackVisible =
+    selectedStage === 'DESIGN' &&
+    workflowRun?.status === 'DESIGN_WAITING_CONFIRMATION' &&
+    designStageSnapshot?.status === 'WAITING_CONFIRMATION';
 
   useEffect(() => {
     if (!hasRunningStage) {
@@ -641,7 +676,8 @@ export function WorkflowRunDetailPage() {
     if (
       selectedStage !== 'DEMO' ||
       (!selectedDemoArtifact && selectedDemoPages.length === 0) ||
-      !selectedDemoRepository?.repositoryId
+      !selectedDemoRepository ||
+      !demoPreviewRepositoryParam
     ) {
       setDemoLocalDetect(null);
       setDemoLocalStatus(null);
@@ -655,7 +691,7 @@ export function WorkflowRunDetailPage() {
 
     void (async () => {
       try {
-        const detection = await api.detectLocalDev(selectedDemoRepository.repositoryId!);
+        const detection = await api.detectLocalDev(demoPreviewRepositoryParam, workflowRunId);
         if (!demoLocalPollCancelRef.current) {
           setDemoLocalDetect(detection);
         }
@@ -667,11 +703,11 @@ export function WorkflowRunDetailPage() {
     })();
 
     const poll = async () => {
-      if (demoLocalPollCancelRef.current || !selectedDemoRepository?.repositoryId) {
+      if (demoLocalPollCancelRef.current || !demoPreviewRepositoryParam) {
         return;
       }
       try {
-        const status = await api.getLocalDevStatus(selectedDemoRepository.repositoryId);
+        const status = await api.getLocalDevStatus(demoPreviewRepositoryParam, workflowRunId);
         if (demoLocalPollCancelRef.current) {
           return;
         }
@@ -692,9 +728,9 @@ export function WorkflowRunDetailPage() {
         }
         if ((status.status === 'idle' || status.status === 'stopped') && !demoLocalStartSentRef.current) {
           demoLocalStartSentRef.current = true;
-          await api.startLocalDevPreview(selectedDemoRepository.repositoryId);
+          await api.startLocalDevPreview(demoPreviewRepositoryParam, workflowRunId);
           if (!demoLocalPollCancelRef.current) {
-            setDemoLocalStatus(await api.getLocalDevStatus(selectedDemoRepository.repositoryId));
+            setDemoLocalStatus(await api.getLocalDevStatus(demoPreviewRepositoryParam, workflowRunId));
           }
         }
       } catch {
@@ -714,7 +750,15 @@ export function WorkflowRunDetailPage() {
         demoLocalPollIntervalRef.current = null;
       }
     };
-  }, [selectedStage, selectedDemoArtifact, selectedDemoPages.length, selectedDemoRepository?.repositoryId, workflowRun?.id]);
+  }, [
+    selectedStage,
+    selectedDemoArtifact,
+    selectedDemoPages.length,
+    selectedDemoRepository,
+    demoPreviewRepositoryParam,
+    workflowRun?.id,
+    workflowRunId,
+  ]);
 
   useEffect(() => {
     if (!activeArtifact) {
@@ -835,6 +879,30 @@ export function WorkflowRunDetailPage() {
     }
   }
 
+  async function handleRollbackToPreviousStage() {
+    if (!workflowRun || !canRollbackToPreviousStage) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      '确定回退到上一阶段吗？后续阶段产生的产物可能被清除，请在重新执行前确认需求与上下文。',
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setRollingBack(true);
+    try {
+      const next = await api.rollbackWorkflowToPreviousStage(workflowRun.id);
+      setWorkflowRun(next);
+      toast.success('已回退到上一阶段，可在对应步骤重新执行');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '回退失败');
+    } finally {
+      setRollingBack(false);
+    }
+  }
+
   async function handleDeleteWorkflow() {
     if (!workflowRun) {
       return;
@@ -938,12 +1006,13 @@ export function WorkflowRunDetailPage() {
   }
 
   async function handleStopDemoLocalDev() {
-    if (!selectedDemoRepository?.repositoryId) {
+    const key = selectedDemoRepository?.repositoryId ?? selectedDemoRepository?.id;
+    if (!key) {
       return;
     }
     try {
-      await api.stopLocalDevPreview(selectedDemoRepository.repositoryId);
-      setDemoLocalStatus(await api.getLocalDevStatus(selectedDemoRepository.repositoryId));
+      await api.stopLocalDevPreview(key, workflowRunId);
+      setDemoLocalStatus(await api.getLocalDevStatus(key, workflowRunId));
       demoLocalStartSentRef.current = false;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '停止本地预览失败');
@@ -951,13 +1020,14 @@ export function WorkflowRunDetailPage() {
   }
 
   async function handleRetryDemoLocalDev() {
-    if (!selectedDemoRepository?.repositoryId) {
+    const key = selectedDemoRepository?.repositoryId ?? selectedDemoRepository?.id;
+    if (!key) {
       return;
     }
     demoLocalStartSentRef.current = false;
     try {
-      await api.startLocalDevPreview(selectedDemoRepository.repositoryId);
-      setDemoLocalStatus(await api.getLocalDevStatus(selectedDemoRepository.repositoryId));
+      await api.startLocalDevPreview(key, workflowRunId);
+      setDemoLocalStatus(await api.getLocalDevStatus(key, workflowRunId));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '启动本地预览失败');
     }
@@ -978,6 +1048,24 @@ export function WorkflowRunDetailPage() {
       toast.error(error instanceof Error ? error.message : '发送 Demo 修改意见失败');
     } finally {
       setDemoSubmitting(false);
+    }
+  }
+
+  async function handleReviseDesign() {
+    if (!workflowRun || !designFeedback.trim()) {
+      return;
+    }
+
+    setDesignSubmitting(true);
+    try {
+      await api.reviseWorkflowDesign(workflowRun.id, designFeedback.trim());
+      setDesignFeedback('');
+      await refresh();
+      toast.success('设计方案修改意见已发送');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '发送设计方案反馈失败');
+    } finally {
+      setDesignSubmitting(false);
     }
   }
 
@@ -1093,13 +1181,38 @@ export function WorkflowRunDetailPage() {
             variant: 'primary' as const,
           },
           {
+            key: 'confirm',
+            label: '确认设计方案',
+            onClick: () =>
+              void runAction(
+                'DESIGN',
+                () => api.confirmWorkflowDesign(workflowRun.id),
+                '设计方案已确认',
+                { focusNextStage: true },
+              ),
+            disabled: workflowRun.status !== 'DESIGN_WAITING_CONFIRMATION' || stageActionsLocked,
+            loading: busyStage === 'DESIGN',
+          },
+          {
+            key: 'reject',
+            label: '驳回',
+            onClick: () =>
+              void runAction('DESIGN', () => api.rejectWorkflowDesign(workflowRun.id), '设计方案已驳回，可重新生成'),
+            disabled: workflowRun.status !== 'DESIGN_WAITING_CONFIRMATION' || stageActionsLocked,
+            loading: busyStage === 'DESIGN',
+            danger: true,
+          },
+          {
             key: 'skip',
             label: '跳过设计',
             onClick: () =>
               void runAction('DESIGN', () => api.skipDesign(workflowRun.id), '已跳过设计', {
                 focusNextStage: true,
               }),
-            disabled: workflowRun.status !== 'DESIGN_PENDING' || stageActionsLocked,
+            disabled:
+              (workflowRun.status !== 'DESIGN_PENDING' &&
+                workflowRun.status !== 'DESIGN_WAITING_CONFIRMATION') ||
+              stageActionsLocked,
             loading: busyStage === 'DESIGN',
           },
         ],
@@ -1515,6 +1628,9 @@ export function WorkflowRunDetailPage() {
             eyebrow="Workflow Detail"
             title={workflowRun.requirement.title}
             badges={[
+              ...(workflowRun.runType === 'BUG_FIX'
+                ? [{ key: 'run-type', label: formatWorkflowRunType(workflowRun.runType), variant: 'default' as const }]
+                : []),
               { key: 'workspace', label: workflowRun.requirement.project.workspace.name, variant: 'default' },
               { key: 'project', label: workflowRun.requirement.project.name, variant: 'outline' },
               {
@@ -1527,9 +1643,21 @@ export function WorkflowRunDetailPage() {
             ]}
             actions={
               <>
+                <UiButton
+                  variant="outline"
+                  disabled={!canRollbackToPreviousStage || rollingBack}
+                  onClick={() => void handleRollbackToPreviousStage()}
+                >
+                  {rollingBack ? '回退中...' : '回退到上一阶段'}
+                </UiButton>
                 <UiButton variant="destructive" disabled={deleting || hasRunningStage} onClick={() => void handleDeleteWorkflow()}>
                   {deleting ? '删除中...' : '删除工作流'}
                 </UiButton>
+                {workflowRun.fixForBug?.id ? (
+                  <UiButton variant="outline" asChild>
+                    <Link to={`/bugs/${workflowRun.fixForBug.id}`}>查看关联缺陷</Link>
+                  </UiButton>
+                ) : null}
                 <UiButton variant="outline" asChild>
                   <Link to="/workflow-runs">返回列表</Link>
                 </UiButton>
@@ -1774,13 +1902,13 @@ export function WorkflowRunDetailPage() {
                         </p>
                       ) : null}
 
-                      {!selectedDemoRepository?.repositoryId ? (
+                      {!demoPreviewRepositoryParam ? (
                         <p className="text-xs text-muted-foreground">当前工作流仓库没有可用的仓库标识，暂时无法启动本地预览。</p>
                       ) : null}
-                      {selectedDemoRepository?.repositoryId && !demoLocalDetect ? (
+                      {demoPreviewRepositoryParam && !demoLocalDetect ? (
                         <p className="text-xs text-muted-foreground">正在准备本地预览…</p>
                       ) : null}
-                      {selectedDemoRepository?.repositoryId &&
+                      {demoPreviewRepositoryParam &&
                       demoLocalDetect &&
                       (demoLocalStatus?.status === 'idle' ||
                         demoLocalStatus?.status === 'stopped' ||
@@ -2077,6 +2205,47 @@ export function WorkflowRunDetailPage() {
               data-testid="workflow-review-sidebar-shell"
               className="flex flex-col gap-5 self-start min-[1281px]:sticky min-[1281px]:top-6"
             >
+              {isDesignFeedbackVisible ? (
+                <Card className="border-border shadow-sm">
+                  <CardContent className="flex flex-col gap-4 p-5">
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Design Spec</p>
+                      <div>
+                        <h4 className="text-base font-semibold text-foreground">设计方案反馈区</h4>
+                        <p className="text-sm text-muted-foreground">
+                          基于仓库 Design System 与组件选型，补充页面结构、状态与交互修正意见；确认前可反复修订 AI 输出。
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">当前阶段</p>
+                      <p className="mt-1 text-sm font-medium text-foreground">设计方案（DesignSpec）</p>
+                      <p className="mt-1 text-xs text-muted-foreground">此阶段不写入可运行 Demo 代码，确认后再进入 Demo 生成。</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-foreground">修改意见</p>
+                      <UiTextarea
+                        value={designFeedback}
+                        onChange={(event) => setDesignFeedback(event.target.value)}
+                        placeholder="例如：列表空态与错误态需单独说明；主按钮与次要操作在首屏的层级；与现有设计 token 的对应关系。"
+                        rows={8}
+                        className="min-h-[220px] resize-y"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <UiButton
+                        onClick={() => void handleReviseDesign()}
+                        disabled={!canReviseDesignSpec || !designFeedback.trim() || designSubmitting}
+                      >
+                        {designSubmitting ? '发送中...' : '发送设计修订意见'}
+                      </UiButton>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null}
               {isDemoFeedbackVisible ? (
                 <Card className="border-border shadow-sm">
                   <CardContent className="flex flex-col gap-4 p-5">

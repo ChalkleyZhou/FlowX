@@ -120,6 +120,16 @@ describe('WorkflowService review-finding execution flow', () => {
     expect(nextStatus).toBe(WorkflowRunStatus.REVIEW_PENDING);
   });
 
+  it('keeps bug_fix execution runs in human review pending', () => {
+    const service = createService();
+
+    const nextStatus = (service as unknown as {
+      getExecutionCompletionTargetStatus: (triggerType?: string) => WorkflowRunStatus;
+    }).getExecutionCompletionTargetStatus('bug_fix');
+
+    expect(nextStatus).toBe(WorkflowRunStatus.HUMAN_REVIEW_PENDING);
+  });
+
   it('allows rerunning review from human review pending without extra feedback', () => {
     const service = createService();
 
@@ -208,34 +218,6 @@ describe('WorkflowService optional ideation stages', () => {
     );
   });
 
-  it('rejects brainstorm payloads without brief wrapper', () => {
-    const service = createService();
-
-    expect(() =>
-      (service as unknown as {
-        normalizeWorkflowBrainstormOutput: (input: Record<string, unknown>) => {
-          brief: {
-            expandedDescription: string;
-            userStories: Array<{ role: string; action: string; benefit: string }>;
-            edgeCases: string[];
-            successMetrics: string[];
-            openQuestions: string[];
-            assumptions: string[];
-            outOfScope: string[];
-          };
-        };
-      }).normalizeWorkflowBrainstormOutput({
-        expandedDescription: 'Direct payload',
-        userStories: [{ role: 'user', action: 'do x', benefit: 'get y' }],
-        edgeCases: ['empty state'],
-        successMetrics: ['conversion'],
-        openQuestions: ['scope?'],
-        assumptions: ['admin user exists'],
-        outOfScope: ['mobile'],
-      }),
-    ).toThrowError('BRAINSTORM_OUTPUT_INVALID: Missing brief content in executor response.');
-  });
-
   it('builds workflow repository component context from grounded repositories', async () => {
     const service = createService();
     const context = await (service as unknown as {
@@ -322,7 +304,15 @@ describe('WorkflowService optional ideation stages', () => {
     }).normalizeDesignOutput({
       design: {
         overview: 'Overview',
-        pages: [],
+        pages: [
+          {
+            name: 'Home',
+            route: '/',
+            layout: 'Layout',
+            keyComponents: ['X'],
+            interactions: ['Y'],
+          },
+        ],
         demoScenario: 'Scenario',
         designRationale: 'Rationale',
       },
@@ -344,6 +334,13 @@ describe('WorkflowService optional ideation stages', () => {
       },
       demoPages: [
         {
+          route: 'flowx-demo',
+          componentName: 'DemoHubPage',
+          componentCode: 'export function DemoHubPage() { return null; }',
+          mockData: {},
+          filePath: 'src/pages/flowx-demo/DemoHubPage.tsx',
+        },
+        {
           route: '/flowx-demo/create',
           componentName: 'CreateDemoPage',
           componentCode: 'export function CreateDemoPage() { return null; }',
@@ -355,7 +352,8 @@ describe('WorkflowService optional ideation stages', () => {
 
     expect(normalized.demo.summary).toBe('验证主流程');
     expect(normalized.demo.scope.included).toContain('列表');
-    expect(normalized.demoPages?.[0]?.componentName).toBe('CreateDemoPage');
+    expect(normalized.demoPages?.[0]?.componentName).toBe('DemoHubPage');
+    expect(normalized.demoPages?.[1]?.componentName).toBe('CreateDemoPage');
   });
 });
 

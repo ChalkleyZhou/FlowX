@@ -1,5 +1,17 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { StageExecutionStatus, StageType, WorkflowRunStatus } from './enums';
+import { StageExecutionStatus, StageType, WorkflowRunStatus, WorkflowRunType } from './enums';
+
+const rollbackTargets: WorkflowRunStatus[] = [
+  WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING,
+  WorkflowRunStatus.BRAINSTORM_PENDING,
+  WorkflowRunStatus.DESIGN_PENDING,
+  WorkflowRunStatus.DEMO_PENDING,
+  WorkflowRunStatus.TASK_SPLIT_PENDING,
+  WorkflowRunStatus.PLAN_PENDING,
+  WorkflowRunStatus.EXECUTION_PENDING,
+  WorkflowRunStatus.REVIEW_PENDING,
+  WorkflowRunStatus.HUMAN_REVIEW_PENDING,
+];
 
 const workflowTransitions: Record<WorkflowRunStatus, WorkflowRunStatus[]> = {
   [WorkflowRunStatus.CREATED]: [WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING],
@@ -9,60 +21,92 @@ const workflowTransitions: Record<WorkflowRunStatus, WorkflowRunStatus[]> = {
   ],
   [WorkflowRunStatus.BRAINSTORM_PENDING]: [
     WorkflowRunStatus.DESIGN_PENDING,
+    WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING,
     WorkflowRunStatus.FAILED,
   ],
   [WorkflowRunStatus.DESIGN_PENDING]: [
+    WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION,
     WorkflowRunStatus.DEMO_PENDING,
+    WorkflowRunStatus.BRAINSTORM_PENDING,
+    WorkflowRunStatus.FAILED,
+  ],
+  [WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION]: [
+    WorkflowRunStatus.DEMO_PENDING,
+    WorkflowRunStatus.DESIGN_PENDING,
+    WorkflowRunStatus.BRAINSTORM_PENDING,
     WorkflowRunStatus.FAILED,
   ],
   [WorkflowRunStatus.DEMO_PENDING]: [
     WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
+    WorkflowRunStatus.TASK_SPLIT_PENDING,
+    WorkflowRunStatus.DESIGN_PENDING,
     WorkflowRunStatus.FAILED,
   ],
   [WorkflowRunStatus.DEMO_WAITING_CONFIRMATION]: [
+    WorkflowRunStatus.DEMO_PENDING,
     WorkflowRunStatus.TASK_SPLIT_PENDING,
+    WorkflowRunStatus.DESIGN_PENDING,
     WorkflowRunStatus.FAILED,
   ],
   [WorkflowRunStatus.TASK_SPLIT_PENDING]: [
     WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION,
+    WorkflowRunStatus.DEMO_PENDING,
     WorkflowRunStatus.FAILED,
   ],
   [WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION]: [
     WorkflowRunStatus.TASK_SPLIT_CONFIRMED,
     WorkflowRunStatus.TASK_SPLIT_PENDING,
+    WorkflowRunStatus.DEMO_PENDING,
     WorkflowRunStatus.FAILED,
   ],
-  [WorkflowRunStatus.TASK_SPLIT_CONFIRMED]: [WorkflowRunStatus.PLAN_PENDING],
+  [WorkflowRunStatus.TASK_SPLIT_CONFIRMED]: [
+    WorkflowRunStatus.PLAN_PENDING,
+    WorkflowRunStatus.DEMO_PENDING,
+  ],
   [WorkflowRunStatus.PLAN_PENDING]: [
     WorkflowRunStatus.PLAN_WAITING_CONFIRMATION,
+    WorkflowRunStatus.TASK_SPLIT_PENDING,
     WorkflowRunStatus.FAILED,
   ],
   [WorkflowRunStatus.PLAN_WAITING_CONFIRMATION]: [
     WorkflowRunStatus.PLAN_CONFIRMED,
     WorkflowRunStatus.PLAN_PENDING,
+    WorkflowRunStatus.TASK_SPLIT_PENDING,
     WorkflowRunStatus.FAILED,
   ],
-  [WorkflowRunStatus.PLAN_CONFIRMED]: [WorkflowRunStatus.EXECUTION_PENDING],
+  [WorkflowRunStatus.PLAN_CONFIRMED]: [
+    WorkflowRunStatus.EXECUTION_PENDING,
+    WorkflowRunStatus.PLAN_PENDING,
+    WorkflowRunStatus.TASK_SPLIT_PENDING,
+  ],
   [WorkflowRunStatus.EXECUTION_PENDING]: [
     WorkflowRunStatus.EXECUTION_RUNNING,
+    WorkflowRunStatus.PLAN_PENDING,
     WorkflowRunStatus.FAILED,
   ],
   [WorkflowRunStatus.EXECUTION_RUNNING]: [
     WorkflowRunStatus.REVIEW_PENDING,
     WorkflowRunStatus.EXECUTION_PENDING,
+    WorkflowRunStatus.PLAN_PENDING,
     WorkflowRunStatus.FAILED,
   ],
   [WorkflowRunStatus.REVIEW_PENDING]: [
     WorkflowRunStatus.HUMAN_REVIEW_PENDING,
+    WorkflowRunStatus.EXECUTION_PENDING,
     WorkflowRunStatus.FAILED,
   ],
   [WorkflowRunStatus.HUMAN_REVIEW_PENDING]: [
     WorkflowRunStatus.DONE,
     WorkflowRunStatus.EXECUTION_PENDING,
+    WorkflowRunStatus.REVIEW_PENDING,
     WorkflowRunStatus.FAILED,
   ],
-  [WorkflowRunStatus.DONE]: [WorkflowRunStatus.EXECUTION_PENDING, WorkflowRunStatus.REVIEW_PENDING],
-  [WorkflowRunStatus.FAILED]: [],
+  [WorkflowRunStatus.DONE]: [
+    WorkflowRunStatus.EXECUTION_PENDING,
+    WorkflowRunStatus.REVIEW_PENDING,
+    WorkflowRunStatus.HUMAN_REVIEW_PENDING,
+  ],
+  [WorkflowRunStatus.FAILED]: rollbackTargets,
 };
 
 const stageTransitions: Record<StageExecutionStatus, StageExecutionStatus[]> = {
@@ -75,6 +119,7 @@ const stageTransitions: Record<StageExecutionStatus, StageExecutionStatus[]> = {
   [StageExecutionStatus.WAITING_CONFIRMATION]: [
     StageExecutionStatus.COMPLETED,
     StageExecutionStatus.REJECTED,
+    StageExecutionStatus.SKIPPED,
   ],
   [StageExecutionStatus.COMPLETED]: [],
   [StageExecutionStatus.FAILED]: [StageExecutionStatus.SKIPPED],
@@ -84,6 +129,10 @@ const stageTransitions: Record<StageExecutionStatus, StageExecutionStatus[]> = {
 
 @Injectable()
 export class WorkflowStateMachine {
+  canBootstrapBugFixWorkflow(runType: WorkflowRunType): boolean {
+    return runType === WorkflowRunType.BUG_FIX;
+  }
+
   canTransitionWorkflow(from: WorkflowRunStatus, to: WorkflowRunStatus): boolean {
     return workflowTransitions[from].includes(to);
   }
@@ -109,7 +158,10 @@ export class WorkflowStateMachine {
       [StageType.REQUIREMENT_INTAKE]: [WorkflowRunStatus.CREATED],
       [StageType.REPOSITORY_GROUNDING]: [WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING],
       [StageType.BRAINSTORM]: [WorkflowRunStatus.BRAINSTORM_PENDING],
-      [StageType.DESIGN]: [WorkflowRunStatus.DESIGN_PENDING],
+      [StageType.DESIGN]: [
+        WorkflowRunStatus.DESIGN_PENDING,
+        WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION,
+      ],
       [StageType.DEMO]: [
         WorkflowRunStatus.DEMO_PENDING,
         WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
@@ -121,6 +173,7 @@ export class WorkflowStateMachine {
       [StageType.TECHNICAL_PLAN]: [
         WorkflowRunStatus.PLAN_PENDING,
         WorkflowRunStatus.PLAN_WAITING_CONFIRMATION,
+        WorkflowRunStatus.PLAN_CONFIRMED,
       ],
       [StageType.EXECUTION]: [
         WorkflowRunStatus.EXECUTION_PENDING,

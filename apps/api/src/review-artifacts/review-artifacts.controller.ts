@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { ConvertToBugDto } from './dto/convert-to-bug.dto';
+import { CreateBugDto } from './dto/create-bug.dto';
+import { StartBugFixWorkflowDto } from './dto/start-bug-fix-workflow.dto';
 import { ConvertToIssueDto } from './dto/convert-to-issue.dto';
 import { UpdateBugDto } from './dto/update-bug.dto';
 import { UpdateIssueDto } from './dto/update-issue.dto';
@@ -70,6 +72,19 @@ export class ReviewArtifactsController {
   @Patch('issues/:id')
   updateIssue(@Param('id') id: string, @Body() dto: UpdateIssueDto) {
     return this.reviewArtifactsService.updateIssue(id, dto);
+  }
+
+  @Post('bugs')
+  createBug(
+    @Body() dto: CreateBugDto,
+    @Req() request: { user?: { id?: string } },
+  ) {
+    return this.reviewArtifactsService.createBug(dto, request.user?.id ?? null);
+  }
+
+  @Post('bugs/:id/fix-workflow')
+  startBugFixWorkflow(@Param('id') id: string, @Body() dto: StartBugFixWorkflowDto) {
+    return this.reviewArtifactsService.startBugFixWorkflow(id, dto);
   }
 
   @Get('bugs')

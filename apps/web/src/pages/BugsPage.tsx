@@ -7,11 +7,19 @@ import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
 import { RecordListItem } from '../components/RecordListItem';
 import { SectionHeader } from '../components/SectionHeader';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
 import { Button as UiButton } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Input as UiInput } from '../components/ui/input';
 import { Spinner } from '../components/ui/spinner';
+import { Textarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
 import {
   Select,
@@ -20,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import type { Bug, Workspace } from '../types';
+import type { Bug, Project, Workspace } from '../types';
 import {
   formatBugStatus,
   formatPriority,
@@ -32,6 +40,20 @@ import {
 export function BugsPage() {
   const [bugs, setBugs] = useState<Bug[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [createDraft, setCreateDraft] = useState({
+    workspaceId: '',
+    projectId: '',
+    title: '',
+    description: '',
+    severity: 'MEDIUM',
+    priority: 'MEDIUM',
+    expectedBehavior: '',
+    actualBehavior: '',
+    reproductionSteps: '',
+  });
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>();
   const [selectedStatus, setSelectedStatus] = useState<string>();
   const [selectedSeverity, setSelectedSeverity] = useState<string>();
@@ -76,12 +98,25 @@ export function BugsPage() {
 
   const totalPages = Math.max(1, Math.ceil(filteredBugs.length / 8));
 
+  const createWorkspaceProjects = useMemo(
+    () =>
+      projects.filter(
+        (project) => !createDraft.workspaceId || project.workspace.id === createDraft.workspaceId,
+      ),
+    [createDraft.workspaceId, projects],
+  );
+
   async function refresh() {
     setLoading(true);
     try {
-      const [bugList, workspaceList] = await Promise.all([api.getBugs(), api.getWorkspaces()]);
+      const [bugList, workspaceList, projectList] = await Promise.all([
+        api.getBugs(),
+        api.getWorkspaces(),
+        api.getProjects(),
+      ]);
       setBugs(bugList);
       setWorkspaces(workspaceList);
+      setProjects(projectList);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '加载缺陷失败');
     } finally {
@@ -97,13 +132,202 @@ export function BugsPage() {
     setPage(1);
   }, [keyword, selectedPriority, selectedSeverity, selectedStatus, selectedWorkspaceId]);
 
+  async function handleCreateBug(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!createDraft.workspaceId || !createDraft.title.trim() || !createDraft.description.trim()) {
+      toast.error('请填写工作区、标题和描述');
+      return;
+    }
+    setCreateSubmitting(true);
+    try {
+      await api.createBug({
+        workspaceId: createDraft.workspaceId,
+        projectId: createDraft.projectId || undefined,
+        title: createDraft.title.trim(),
+        description: createDraft.description.trim(),
+        severity: createDraft.severity,
+        priority: createDraft.priority,
+        expectedBehavior: createDraft.expectedBehavior.trim() || undefined,
+        actualBehavior: createDraft.actualBehavior.trim() || undefined,
+        reproductionSteps: createDraft.reproductionSteps
+          .split('\n')
+          .map((item) => item.trim())
+          .filter(Boolean),
+      });
+      toast.success('缺陷已创建');
+      setCreateModalOpen(false);
+      setCreateDraft({
+        workspaceId: '',
+        projectId: '',
+        title: '',
+        description: '',
+        severity: 'MEDIUM',
+        priority: 'MEDIUM',
+        expectedBehavior: '',
+        actualBehavior: '',
+        reproductionSteps: '',
+      });
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '创建缺陷失败');
+    } finally {
+      setCreateSubmitting(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
         eyebrow="Bug Registry"
         title="缺陷中心"
-        description="集中管理 AI 审查和人工确认后的缺陷，统一查看严重级别、优先级、来源流程和修复上下文。"
+        description="集中管理手动登记与 AI 审查沉淀的缺陷，统一查看严重级别、优先级、来源流程和修复上下文。"
+        actions={
+          <UiButton onClick={() => setCreateModalOpen(true)}>新建缺陷</UiButton>
+        }
       />
+      <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>新建缺陷</DialogTitle>
+            <DialogDescription>登记测试发现的缺陷，后续可由研发发起修复工作流。</DialogDescription>
+          </DialogHeader>
+          <form className="flex flex-col gap-4" onSubmit={(event) => void handleCreateBug(event)}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-foreground">工作区</label>
+                <Select
+                  value={createDraft.workspaceId || undefined}
+                  onValueChange={(value) =>
+                    setCreateDraft((current) => ({ ...current, workspaceId: value, projectId: '' }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择工作区" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {workspaces.map((workspace) => (
+                      <SelectItem key={workspace.id} value={workspace.id}>
+                        {workspace.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-foreground">项目（可选）</label>
+                <Select
+                  value={createDraft.projectId || '__none__'}
+                  onValueChange={(value) =>
+                    setCreateDraft((current) => ({
+                      ...current,
+                      projectId: value === '__none__' ? '' : value,
+                    }))
+                  }
+                  disabled={!createDraft.workspaceId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="默认使用缺陷修复项目" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">默认（缺陷修复）</SelectItem>
+                    {createWorkspaceProjects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-foreground">标题</label>
+              <UiInput
+                value={createDraft.title}
+                onChange={(event) => setCreateDraft((current) => ({ ...current, title: event.target.value }))}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-foreground">描述</label>
+              <Textarea
+                rows={4}
+                value={createDraft.description}
+                onChange={(event) =>
+                  setCreateDraft((current) => ({ ...current, description: event.target.value }))
+                }
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-foreground">严重级别</label>
+                <Select
+                  value={createDraft.severity}
+                  onValueChange={(value) => setCreateDraft((current) => ({ ...current, severity: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LOW">{formatSeverity('LOW')}</SelectItem>
+                    <SelectItem value="MEDIUM">{formatSeverity('MEDIUM')}</SelectItem>
+                    <SelectItem value="HIGH">{formatSeverity('HIGH')}</SelectItem>
+                    <SelectItem value="CRITICAL">{formatSeverity('CRITICAL')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-foreground">优先级</label>
+                <Select
+                  value={createDraft.priority}
+                  onValueChange={(value) => setCreateDraft((current) => ({ ...current, priority: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LOW">{formatPriority('LOW')}</SelectItem>
+                    <SelectItem value="MEDIUM">{formatPriority('MEDIUM')}</SelectItem>
+                    <SelectItem value="HIGH">{formatPriority('HIGH')}</SelectItem>
+                    <SelectItem value="URGENT">{formatPriority('URGENT')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-foreground">预期行为（可选）</label>
+              <Textarea
+                rows={2}
+                value={createDraft.expectedBehavior}
+                onChange={(event) =>
+                  setCreateDraft((current) => ({ ...current, expectedBehavior: event.target.value }))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-foreground">实际行为（可选）</label>
+              <Textarea
+                rows={2}
+                value={createDraft.actualBehavior}
+                onChange={(event) =>
+                  setCreateDraft((current) => ({ ...current, actualBehavior: event.target.value }))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-foreground">复现步骤（可选，每行一步）</label>
+              <Textarea
+                rows={4}
+                value={createDraft.reproductionSteps}
+                onChange={(event) =>
+                  setCreateDraft((current) => ({ ...current, reproductionSteps: event.target.value }))
+                }
+              />
+            </div>
+            <UiButton type="submit" disabled={createSubmitting} className="self-start">
+              {createSubmitting ? '创建中...' : '创建缺陷'}
+            </UiButton>
+          </form>
+        </DialogContent>
+      </Dialog>
       <div className="grid gap-5 md:grid-cols-4">
         <MetricCard label="缺陷总数" value={bugSummary.total} />
         <MetricCard label="当前筛选结果" value={bugSummary.visible} />
@@ -251,7 +475,7 @@ export function BugsPage() {
             </div>
           </>
         ) : (
-          <EmptyState description="当前还没有沉淀的缺陷，先在 AI 审查阶段录入缺陷。" />
+          <EmptyState description="当前还没有缺陷，可点击「新建缺陷」登记，或从 AI 审查阶段转换。" />
         )}
             </>
           )}

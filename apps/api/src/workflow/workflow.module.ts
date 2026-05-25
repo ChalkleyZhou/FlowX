@@ -11,5 +11,6 @@ import { WorkflowService } from './workflow.service';
   imports: [AiModule, AuthModule, WorkspacesModule, NotificationsModule],
   controllers: [WorkflowController],
   providers: [WorkflowService, WorkflowStateMachine],
+  exports: [WorkflowService],
 })
 export class WorkflowModule {}

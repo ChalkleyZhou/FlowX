@@ -20,7 +20,7 @@ import {
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
 import type { Project, Requirement, WorkflowRun, Workspace } from '../types';
-import { formatWorkflowStatus } from '../utils/workflow-ui';
+import { formatWorkflowRunType, formatWorkflowStatus } from '../utils/workflow-ui';
 
 export function WorkflowRunsPage() {
   const navigate = useNavigate();
@@ -35,6 +35,7 @@ export function WorkflowRunsPage() {
   const workspaceId = searchParams.get('workspaceId') ?? '';
   const projectId = searchParams.get('projectId') ?? '';
   const requirementId = searchParams.get('requirementId') ?? '';
+  const runType = searchParams.get('runType') ?? '';
 
   const visibleProjects = useMemo(
     () => projects.filter((project) => !workspaceId || project.workspace.id === workspaceId),
@@ -66,9 +67,12 @@ export function WorkflowRunsPage() {
         if (requirementId && run.requirement.id !== requirementId) {
           return false;
         }
+        if (runType && (run.runType ?? 'FULL') !== runType) {
+          return false;
+        }
         return true;
       }),
-    [projectId, requirementId, workflowRuns, workspaceId],
+    [projectId, requirementId, runType, workflowRuns, workspaceId],
   );
 
   const workflowSummary = useMemo(() => {
@@ -89,7 +93,7 @@ export function WorkflowRunsPage() {
         api.getWorkspaces(),
         api.getProjects(),
         api.getRequirements(),
-        api.getWorkflowRuns(),
+        api.getWorkflowRuns(runType ? { runType } : undefined),
       ]);
       setWorkspaces(workspaceList);
       setProjects(projectList);
@@ -104,7 +108,7 @@ export function WorkflowRunsPage() {
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [runType]);
 
   async function handleDeleteWorkflow(workflowRunId: string) {
     const confirmed = window.confirm('删除后将清空这条工作流的阶段记录、审查结果和工作副本。确认删除吗？');
@@ -231,6 +235,27 @@ export function WorkflowRunsPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <Select
+                  value={runType || '__all__'}
+                  onValueChange={(value) => {
+                    const next = new URLSearchParams(searchParams);
+                    if (value && value !== '__all__') {
+                      next.set('runType', value);
+                    } else {
+                      next.delete('runType');
+                    }
+                    navigate(`/workflow-runs?${next.toString()}`);
+                  }}
+                >
+                  <SelectTrigger className="w-[220px]">
+                    <SelectValue placeholder="按流程类型" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">全部类型</SelectItem>
+                    <SelectItem value="FULL">完整研发</SelectItem>
+                    <SelectItem value="BUG_FIX">缺陷修复</SelectItem>
+                  </SelectContent>
+                </Select>
               </>
             )}
           />
@@ -248,6 +273,9 @@ export function WorkflowRunsPage() {
                   badges={
                     <>
                       <Badge variant="default">{formatWorkflowStatus(item.status)}</Badge>
+                      {item.runType === 'BUG_FIX' ? (
+                        <Badge variant="secondary">{formatWorkflowRunType(item.runType)}</Badge>
+                      ) : null}
                       <Badge variant="outline">{item.aiProvider === 'cursor' ? 'Cursor CLI' : 'Codex'}</Badge>
                       <Badge variant="secondary">{item.requirement.project.name}</Badge>
                       <Badge variant="outline">{item.requirement.project.workspace.name}</Badge>
