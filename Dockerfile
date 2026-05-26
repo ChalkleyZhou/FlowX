@@ -69,8 +69,9 @@ COPY --from=build /app/tsconfig.base.json ./tsconfig.base.json
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/apps ./apps
 COPY scripts/clean-db.ts scripts/clean-db.sh ./scripts/
+COPY scripts/backfill-organization-admins.ts scripts/backfill-organization-admins.sh ./scripts/
 COPY docker/start.sh /start.sh
-RUN chmod +x /start.sh ./scripts/clean-db.sh
+RUN chmod +x /start.sh ./scripts/clean-db.sh ./scripts/backfill-organization-admins.sh
 
 EXPOSE 3000 4173
 

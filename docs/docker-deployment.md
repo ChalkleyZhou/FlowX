@@ -400,6 +400,37 @@ docker exec flowx pnpm db:clean --mode=business --yes
 - 不删除 `/data/.codex`（Codex 登录态）和 `flowx-workdir`（仓库 clone）
 - 若需只清工作流或只清登录会话：`sh docker/clean-business.sh workflows` / `sessions`
 
+### 7.2 补齐组织管理员（老数据）
+
+上线「首个成员为管理员」后，历史组织里可能所有人都是 `member`，导致无人能进用户管理。可执行**洗数据**（保留业务与用户，只补 `admin` 角色）：
+
+```bash
+# 预览将提拔谁
+sh docker/backfill-organization-admins.sh --dry-run
+
+# 执行（每个尚无 admin 的组织，把最早加入的成员设为 admin）
+sh docker/backfill-organization-admins.sh
+```
+
+等价于：
+
+```bash
+docker exec flowx pnpm db:backfill-admins --yes
+```
+
+本地 SQLite（仓库根目录 `.env` 指向的库）：
+
+```bash
+pnpm db:backfill-admins --dry-run
+pnpm db:backfill-admins --yes
+```
+
+说明：
+
+- 已有 `admin` 的组织会跳过
+- 无成员的组织会跳过
+- 可重复执行（幂等）
+
 ## 8. Git 与仓库操作要求
 
 如果工作流里需要：
