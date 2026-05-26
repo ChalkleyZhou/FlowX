@@ -7,6 +7,7 @@ describe('AuthService organization resolution', () => {
       userOrganization: {
         findFirst: vi.fn(),
         upsert: vi.fn(),
+        count: vi.fn().mockResolvedValue(1),
       },
       organization: {
         findMany: vi.fn(),

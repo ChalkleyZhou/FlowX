@@ -27,6 +27,7 @@ const primaryItems = [
 
 const secondaryItems = [
   { key: '/user-manual', label: '使用手册' },
+  { key: '/settings/users', label: '用户管理' },
   { key: '/settings/ai-credentials', label: 'AI 凭据' },
 ];
 

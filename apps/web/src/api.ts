@@ -199,6 +199,35 @@ export const api = {
   getProjects: () => request<Project[]>('/projects'),
   getProject: (id: string) => request<Project>(`/projects/${id}`),
   getOrganizationMembers: () => request<OrganizationMember[]>('/auth/organization/members'),
+  createOrganizationMember: (payload: {
+    account: string;
+    password?: string;
+    displayName?: string;
+  }) =>
+    request<OrganizationMember>('/auth/organization/members', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateOrganizationMember: (
+    userId: string,
+    payload: {
+      displayName?: string;
+      status?: 'ACTIVE' | 'DISABLED';
+    },
+  ) =>
+    request<OrganizationMember>(`/auth/organization/members/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  transferOrganizationAdmin: (payload: { targetUserId: string }) =>
+    request<OrganizationMember>('/auth/organization/admin/transfer', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  removeOrganizationMember: (userId: string) =>
+    request<{ removed: boolean }>(`/auth/organization/members/${userId}`, {
+      method: 'DELETE',
+    }),
   createWorkspace: (payload: { name: string; description?: string }) =>
     request<Workspace>('/workspaces', {
       method: 'POST',

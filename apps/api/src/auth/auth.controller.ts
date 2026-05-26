@@ -1,15 +1,21 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Param,
+  Patch,
   Post,
   Query,
   Req,
   Res,
   UnauthorizedException,
 } from '@nestjs/common';
+import { CreateOrganizationMemberDto } from './dto/create-organization-member.dto';
+import { TransferOrganizationAdminDto } from './dto/transfer-organization-admin.dto';
+import { UpdateOrganizationMemberDto } from './dto/update-organization-member.dto';
 import { DingTalkCallbackDto } from './dto/dingtalk-callback.dto';
 import { DingTalkLoginDto } from './dto/dingtalk-login.dto';
 import { ExchangeCodeDto } from './dto/exchange-code.dto';
@@ -34,11 +40,66 @@ export class AuthController {
   listOrganizationMembers(
     @Req() req: { authSession?: { organization?: { id: string } | null } },
   ) {
-    const organizationId = req.authSession?.organization?.id;
+    const organizationId = req.authSession?.organization?.id?.trim();
     if (!organizationId) {
       return [];
     }
     return this.authService.listOrganizationMembers(organizationId);
+  }
+
+  @Post('organization/members')
+  createOrganizationMember(
+    @Req() req: AuthRequest,
+    @Body() dto: CreateOrganizationMemberDto,
+  ) {
+    const organizationId = this.requireOrganizationId(req);
+    const actingUserId = this.requireActingUserId(req);
+    return this.authService.createOrganizationMember(organizationId, actingUserId, dto);
+  }
+
+  @Patch('organization/members/:userId')
+  updateOrganizationMember(
+    @Req() req: AuthRequest,
+    @Param('userId') userId: string,
+    @Body() dto: UpdateOrganizationMemberDto,
+  ) {
+    const organizationId = this.requireOrganizationId(req);
+    const actingUserId = this.requireActingUserId(req);
+    return this.authService.updateOrganizationMember(organizationId, actingUserId, userId, dto);
+  }
+
+  @Post('organization/admin/transfer')
+  transferOrganizationAdmin(@Req() req: AuthRequest, @Body() dto: TransferOrganizationAdminDto) {
+    const organizationId = this.requireOrganizationId(req);
+    const actingUserId = this.requireActingUserId(req);
+    return this.authService.transferOrganizationAdmin(
+      organizationId,
+      actingUserId,
+      dto.targetUserId,
+    );
+  }
+
+  @Delete('organization/members/:userId')
+  removeOrganizationMember(@Req() req: AuthRequest, @Param('userId') userId: string) {
+    const organizationId = this.requireOrganizationId(req);
+    const actingUserId = this.requireActingUserId(req);
+    return this.authService.removeOrganizationMember(organizationId, userId, actingUserId);
+  }
+
+  private requireOrganizationId(req: { authSession?: { organization?: { id: string } | null } }) {
+    const organizationId = req.authSession?.organization?.id?.trim();
+    if (!organizationId) {
+      throw new BadRequestException('No organization selected for the current session.');
+    }
+    return organizationId;
+  }
+
+  private requireActingUserId(req: AuthRequest) {
+    const actingUserId = req.authSession?.user?.id?.trim();
+    if (!actingUserId) {
+      throw new UnauthorizedException('Missing authenticated user.');
+    }
+    return actingUserId;
   }
 
   @Public()
@@ -119,3 +180,10 @@ export class AuthController {
     return this.authService.getSession(authorization.slice('Bearer '.length));
   }
 }
+
+type AuthRequest = {
+  authSession?: {
+    user?: { id: string };
+    organization?: { id: string } | null;
+  };
+};

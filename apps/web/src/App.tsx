@@ -10,6 +10,7 @@ import { ScheduleHubPage } from './pages/ScheduleHubPage';
 import { ProjectScheduleRedirect, ScheduleMembersRedirect } from './pages/ScheduleRedirectPage';
 import { RequirementDetailPage } from './pages/RequirementDetailPage';
 import { AiCredentialsPage } from './pages/AiCredentialsPage';
+import { OrganizationUsersPage } from './pages/OrganizationUsersPage';
 import { RequirementsPage } from './pages/RequirementsPage';
 import { WorkflowRunDetailPage } from './pages/WorkflowRunDetailPage';
 import { WorkflowRunsPage } from './pages/WorkflowRunsPage';
@@ -50,6 +51,7 @@ export default function App() {
             <Route path="/bugs/:bugId" element={<BugDetailPage />} />
             <Route path="/user-manual" element={<UserManualPage />} />
             <Route path="/settings/ai-credentials" element={<AiCredentialsPage />} />
+            <Route path="/settings/users" element={<OrganizationUsersPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

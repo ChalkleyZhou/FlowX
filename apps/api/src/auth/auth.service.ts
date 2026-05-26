@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -316,6 +317,10 @@ export class AuthService {
       });
     }
 
+    const organizationRole = resolvedOrganization
+      ? await this.getOrganizationRole(resolvedOrganization.id, session.userId)
+      : null;
+
     return {
       token: session.token,
       expiresAt: session.expiresAt,
@@ -325,14 +330,23 @@ export class AuthService {
         displayName: session.user.displayName,
         avatarUrl: session.user.avatarUrl,
       },
-      organization: resolvedOrganization,
+      organization: resolvedOrganization
+        ? {
+            ...resolvedOrganization,
+            role: organizationRole,
+          }
+        : null,
     };
   }
 
   async listOrganizationMembers(organizationId: string) {
     const rows = await this.prisma.userOrganization.findMany({
       where: { organizationId },
-      include: { user: true },
+      include: {
+        user: {
+          include: { localCredential: true },
+        },
+      },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -340,7 +354,270 @@ export class AuthService {
       id: row.user.id,
       displayName: row.user.displayName,
       avatarUrl: row.user.avatarUrl,
+      account: row.user.localCredential?.account ?? row.user.account,
+      email: row.user.email,
+      role: row.role,
+      status: row.user.status,
+      joinedAt: row.createdAt.toISOString(),
     }));
+  }
+
+  async createOrganizationMember(
+    organizationId: string,
+    actingUserId: string,
+    input: {
+      account: string;
+      password?: string;
+      displayName?: string;
+    },
+  ) {
+    await this.requireOrganizationAdmin(organizationId, actingUserId);
+
+    const account = input.account.trim().toLowerCase();
+    const role = 'member';
+    const existingCredential = await this.prisma.localCredential.findUnique({
+      where: { account },
+      include: { user: true },
+    });
+
+    if (existingCredential) {
+      const existingMembership = await this.prisma.userOrganization.findUnique({
+        where: {
+          userId_organizationId: {
+            userId: existingCredential.userId,
+            organizationId,
+          },
+        },
+      });
+      if (existingMembership) {
+        throw new ConflictException('User is already a member of this organization.');
+      }
+
+      await this.prisma.userOrganization.create({
+        data: {
+          userId: existingCredential.userId,
+          organizationId,
+          role,
+        },
+      });
+
+      return this.getOrganizationMember(organizationId, existingCredential.userId);
+    }
+
+    if (!input.password?.trim()) {
+      throw new BadRequestException('Password is required when creating a new account.');
+    }
+
+    const passwordHash = this.passwordService.hashPassword(input.password);
+    const user = await this.prisma.user.create({
+      data: {
+        account,
+        displayName: input.displayName?.trim() || account,
+        localCredential: {
+          create: {
+            account,
+            passwordHash,
+          },
+        },
+        memberships: {
+          create: {
+            organizationId,
+            role,
+          },
+        },
+      },
+    });
+
+    return this.getOrganizationMember(organizationId, user.id);
+  }
+
+  async updateOrganizationMember(
+    organizationId: string,
+    actingUserId: string,
+    userId: string,
+    input: {
+      displayName?: string;
+      status?: 'ACTIVE' | 'DISABLED';
+    },
+  ) {
+    await this.requireOrganizationAdmin(organizationId, actingUserId);
+
+    const membership = await this.prisma.userOrganization.findUnique({
+      where: {
+        userId_organizationId: {
+          userId,
+          organizationId,
+        },
+      },
+    });
+    if (!membership) {
+      throw new NotFoundException('Organization member not found.');
+    }
+
+    const userUpdates: Prisma.UserUpdateInput = {};
+    if (input.displayName !== undefined) {
+      userUpdates.displayName = input.displayName.trim();
+    }
+    if (input.status !== undefined) {
+      userUpdates.status = input.status;
+    }
+
+    if (Object.keys(userUpdates).length > 0) {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: userUpdates,
+      });
+    }
+
+    return this.getOrganizationMember(organizationId, userId);
+  }
+
+  async transferOrganizationAdmin(
+    organizationId: string,
+    actingUserId: string,
+    targetUserId: string,
+  ) {
+    if (actingUserId === targetUserId) {
+      throw new BadRequestException('Cannot transfer admin role to yourself.');
+    }
+
+    const actingMembership = await this.requireOrganizationAdmin(organizationId, actingUserId);
+
+    const targetMembership = await this.prisma.userOrganization.findUnique({
+      where: {
+        userId_organizationId: {
+          userId: targetUserId,
+          organizationId,
+        },
+      },
+    });
+    if (!targetMembership) {
+      throw new NotFoundException('Organization member not found.');
+    }
+    if (targetMembership.role === 'admin') {
+      throw new BadRequestException('Target user is already an organization admin.');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.userOrganization.update({
+        where: { id: actingMembership.id },
+        data: { role: 'member' },
+      }),
+      this.prisma.userOrganization.update({
+        where: { id: targetMembership.id },
+        data: { role: 'admin' },
+      }),
+    ]);
+
+    return this.getOrganizationMember(organizationId, targetUserId);
+  }
+
+  async removeOrganizationMember(
+    organizationId: string,
+    userId: string,
+    actingUserId: string,
+  ) {
+    await this.requireOrganizationAdmin(organizationId, actingUserId);
+
+    if (userId === actingUserId) {
+      throw new BadRequestException('You cannot remove yourself from the organization.');
+    }
+
+    const membership = await this.prisma.userOrganization.findUnique({
+      where: {
+        userId_organizationId: {
+          userId,
+          organizationId,
+        },
+      },
+    });
+    if (!membership) {
+      throw new NotFoundException('Organization member not found.');
+    }
+    if (membership.role === 'admin') {
+      const adminCount = await this.countOrganizationAdmins(organizationId);
+      if (adminCount <= 1) {
+        throw new BadRequestException(
+          'Cannot remove the only organization admin. Transfer admin role first.',
+        );
+      }
+    }
+
+    await this.prisma.userOrganization.delete({
+      where: { id: membership.id },
+    });
+
+    return { removed: true };
+  }
+
+  private async resolveInitialMembershipRole(organizationId: string): Promise<'admin' | 'member'> {
+    const memberCount = await this.prisma.userOrganization.count({
+      where: { organizationId },
+    });
+    return memberCount === 0 ? 'admin' : 'member';
+  }
+
+  private async getOrganizationRole(organizationId: string, userId: string) {
+    const membership = await this.prisma.userOrganization.findUnique({
+      where: {
+        userId_organizationId: {
+          userId,
+          organizationId,
+        },
+      },
+    });
+    return membership?.role ?? null;
+  }
+
+  private async requireOrganizationAdmin(organizationId: string, actingUserId: string) {
+    const membership = await this.prisma.userOrganization.findUnique({
+      where: {
+        userId_organizationId: {
+          userId: actingUserId,
+          organizationId,
+        },
+      },
+    });
+    if (!membership || membership.role !== 'admin') {
+      throw new ForbiddenException('Organization admin permission required.');
+    }
+    return membership;
+  }
+
+  private async countOrganizationAdmins(organizationId: string) {
+    return this.prisma.userOrganization.count({
+      where: { organizationId, role: 'admin' },
+    });
+  }
+
+  private async getOrganizationMember(organizationId: string, userId: string) {
+    const row = await this.prisma.userOrganization.findUnique({
+      where: {
+        userId_organizationId: {
+          userId,
+          organizationId,
+        },
+      },
+      include: {
+        user: {
+          include: { localCredential: true },
+        },
+      },
+    });
+    if (!row) {
+      throw new NotFoundException('Organization member not found.');
+    }
+
+    return {
+      id: row.user.id,
+      displayName: row.user.displayName,
+      avatarUrl: row.user.avatarUrl,
+      account: row.user.localCredential?.account ?? row.user.account,
+      email: row.user.email,
+      role: row.role,
+      status: row.user.status,
+      joinedAt: row.createdAt.toISOString(),
+    };
   }
 
   async registerByPassword(input: {
@@ -484,6 +761,7 @@ export class AuthService {
         providerOrganizationId: upsertedOrg.providerOrganizationId,
       };
 
+      const initialRole = await this.resolveInitialMembershipRole(upsertedOrg.id);
       await this.prisma.userOrganization.upsert({
         where: {
           userId_organizationId: {
@@ -494,7 +772,7 @@ export class AuthService {
         create: {
           userId: user.id,
           organizationId: upsertedOrg.id,
-          role: 'member',
+          role: initialRole,
         },
         update: {},
       });
@@ -522,6 +800,9 @@ export class AuthService {
       organizationId,
       options,
     );
+    const organizationRole = organization
+      ? await this.getOrganizationRole(organization.id, user.id)
+      : null;
 
     const token = this.createToken(32);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -548,6 +829,7 @@ export class AuthService {
             id: organization.id,
             name: organization.name,
             providerOrganizationId: organization.providerOrganizationId,
+            role: organizationRole,
           }
         : null,
     };
@@ -600,6 +882,7 @@ export class AuthService {
     }
 
     const defaultOrganization = singletonOrganizations[0]!;
+    const initialRole = await this.resolveInitialMembershipRole(defaultOrganization.id);
     await this.prisma.userOrganization.upsert({
       where: {
         userId_organizationId: {
@@ -610,7 +893,7 @@ export class AuthService {
       create: {
         userId,
         organizationId: defaultOrganization.id,
-        role: 'member',
+        role: initialRole,
       },
       update: {},
     });

@@ -27,6 +27,11 @@ export interface OrganizationMember {
   id: string;
   displayName: string;
   avatarUrl?: string | null;
+  account?: string | null;
+  email?: string | null;
+  role?: string;
+  status?: string;
+  joinedAt?: string;
 }
 
 export interface GanttLane {
@@ -327,6 +332,7 @@ export interface AuthOrganization {
   name: string;
   providerOrganizationId?: string;
   logoUrl?: string;
+  role?: string | null;
 }
 
 export interface AuthUser {
