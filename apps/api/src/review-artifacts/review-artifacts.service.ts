@@ -2,6 +2,11 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { WorkflowService } from '../workflow/workflow.service';
+import {
+  parseBugScreenshots,
+  persistBugScreenshots,
+  readBugScreenshotFile,
+} from './bug-screenshot.storage';
 import { ConvertToBugDto } from './dto/convert-to-bug.dto';
 import { CreateBugDto } from './dto/create-bug.dto';
 import { ConvertToIssueDto } from './dto/convert-to-issue.dto';
@@ -319,7 +324,15 @@ export class ReviewArtifactsService {
       }
     }
 
-    return this.prisma.bug.create({
+    const bugInclude = {
+      workspace: true,
+      project: true,
+      requirement: true,
+      workflowRun: true,
+      fixWorkflowRun: true,
+    } as const;
+
+    const bug = await this.prisma.bug.create({
       data: {
         status: 'OPEN',
         severity: dto.severity ?? 'MEDIUM',
@@ -334,15 +347,36 @@ export class ReviewArtifactsService {
         repositoryId: dto.repositoryId ?? null,
         branchName: dto.branchName?.trim() || null,
         reportedByUserId: userId,
+        screenshots: [],
       },
-      include: {
-        workspace: true,
-        project: true,
-        requirement: true,
-        workflowRun: true,
-        fixWorkflowRun: true,
-      },
+      include: bugInclude,
     });
+
+    if (!dto.screenshots?.length) {
+      return bug;
+    }
+
+    try {
+      const screenshots = await persistBugScreenshots(bug.id, dto.screenshots);
+      return this.prisma.bug.update({
+        where: { id: bug.id },
+        data: { screenshots: screenshots as unknown as Prisma.InputJsonValue },
+        include: bugInclude,
+      });
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : '截图保存失败');
+    }
+  }
+
+  async getBugScreenshotFile(bugId: string, screenshotId: string) {
+    const bug = await this.getBug(bugId);
+    const screenshots = parseBugScreenshots(bug.screenshots);
+
+    try {
+      return await readBugScreenshotFile(bugId, screenshotId, screenshots);
+    } catch {
+      throw new NotFoundException('Screenshot not found.');
+    }
   }
 
   async startBugFixWorkflow(bugId: string, dto: StartBugFixWorkflowDto) {
@@ -387,7 +421,19 @@ export class ReviewArtifactsService {
   }
 
   async updateBug(id: string, dto: UpdateBugDto) {
-    await this.getBug(id);
+    const bug = await this.getBug(id);
+    const existingScreenshots = parseBugScreenshots(bug.screenshots);
+    let nextScreenshots: Prisma.InputJsonValue | undefined;
+
+    if (dto.screenshots?.length) {
+      try {
+        const addedScreenshots = await persistBugScreenshots(id, dto.screenshots, existingScreenshots);
+        nextScreenshots = [...existingScreenshots, ...addedScreenshots] as unknown as Prisma.InputJsonValue;
+      } catch (error) {
+        throw new BadRequestException(error instanceof Error ? error.message : '截图保存失败');
+      }
+    }
+
     return this.prisma.bug.update({
       where: { id },
       data: {
@@ -401,6 +447,7 @@ export class ReviewArtifactsService {
         ...(dto.reproductionSteps !== undefined ? { reproductionSteps: dto.reproductionSteps } : {}),
         ...(dto.resolution !== undefined ? { resolution: dto.resolution } : {}),
         ...(dto.branchName !== undefined ? { branchName: dto.branchName } : {}),
+        ...(nextScreenshots !== undefined ? { screenshots: nextScreenshots } : {}),
       },
       include: {
         workspace: true,

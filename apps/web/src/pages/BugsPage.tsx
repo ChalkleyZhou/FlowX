@@ -28,7 +28,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
+import { ImageAttachmentPicker } from '../components/ImageAttachmentPicker';
 import type { Bug, Project, Workspace } from '../types';
+import {
+  type PendingImageAttachment,
+  releaseImageAttachmentPreviews,
+  toImageAttachmentPayload,
+} from '../utils/image-attachments';
 import {
   formatBugStatus,
   formatPriority,
@@ -43,6 +49,7 @@ export function BugsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [createAttachments, setCreateAttachments] = useState<PendingImageAttachment[]>([]);
   const [createDraft, setCreateDraft] = useState({
     workspaceId: '',
     projectId: '',
@@ -153,9 +160,13 @@ export function BugsPage() {
           .split('\n')
           .map((item) => item.trim())
           .filter(Boolean),
+        screenshots:
+          createAttachments.length > 0 ? toImageAttachmentPayload(createAttachments) : undefined,
       });
       toast.success('缺陷已创建');
       setCreateModalOpen(false);
+      releaseImageAttachmentPreviews(createAttachments);
+      setCreateAttachments([]);
       setCreateDraft({
         workspaceId: '',
         projectId: '',
@@ -185,7 +196,16 @@ export function BugsPage() {
           <UiButton onClick={() => setCreateModalOpen(true)}>新建缺陷</UiButton>
         }
       />
-      <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
+      <Dialog
+        open={createModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            releaseImageAttachmentPreviews(createAttachments);
+            setCreateAttachments([]);
+          }
+          setCreateModalOpen(open);
+        }}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>新建缺陷</DialogTitle>
@@ -322,6 +342,12 @@ export function BugsPage() {
                 }
               />
             </div>
+            <ImageAttachmentPicker
+              attachments={createAttachments}
+              onChange={setCreateAttachments}
+              onError={(message) => toast.error(message)}
+              disabled={createSubmitting}
+            />
             <UiButton type="submit" disabled={createSubmitting} className="self-start">
               {createSubmitting ? '创建中...' : '创建缺陷'}
             </UiButton>

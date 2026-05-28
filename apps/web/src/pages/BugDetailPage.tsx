@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
-import { api } from '../api';
+import { api, getBugScreenshotUrl } from '../api';
+import { AuthenticatedImage } from '../components/AuthenticatedImage';
+import { ImageAttachmentPicker } from '../components/ImageAttachmentPicker';
 import { ContextPanel } from '../components/ContextPanel';
 import { DetailHeader } from '../components/DetailHeader';
 import { MetricCard } from '../components/MetricCard';
@@ -29,6 +31,11 @@ import {
 } from '../components/ui/dialog';
 import type { Bug, Workspace } from '../types';
 import {
+  type PendingImageAttachment,
+  releaseImageAttachmentPreviews,
+  toImageAttachmentPayload,
+} from '../utils/image-attachments';
+import {
   formatBugStatus,
   formatPriority,
   formatPriorityLabel,
@@ -55,6 +62,7 @@ export function BugDetailPage() {
     title: string;
     description: string;
   } | null>(null);
+  const [newAttachments, setNewAttachments] = useState<PendingImageAttachment[]>([]);
   const [draft, setDraft] = useState({
     title: '',
     description: '',
@@ -174,6 +182,11 @@ export function BugDetailPage() {
     actualBehavior?: string;
     reproductionSteps?: string;
     resolution?: string;
+    screenshots?: Array<{
+      fileName: string;
+      contentType: string;
+      dataBase64: string;
+    }>;
   }) {
     if (!bugId) {
       return;
@@ -241,7 +254,11 @@ export function BugDetailPage() {
       actualBehavior: draft.actualBehavior.trim() || undefined,
       reproductionSteps: draft.reproductionSteps,
       resolution: draft.resolution.trim() || undefined,
+      screenshots:
+        newAttachments.length > 0 ? toImageAttachmentPayload(newAttachments) : undefined,
     });
+    releaseImageAttachmentPreviews(newAttachments);
+    setNewAttachments([]);
   }
 
   if (!bugId) {
@@ -418,6 +435,37 @@ export function BugDetailPage() {
                     onChange={(event) => setDraft((current) => ({ ...current, resolution: event.target.value }))}
                   />
                 </div>
+                {bug?.screenshots && bug.screenshots.length > 0 ? (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-semibold text-foreground">已有截图</label>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {bug.screenshots.map((screenshot) => (
+                        <div
+                          key={screenshot.id}
+                          className="overflow-hidden rounded-xl border border-border bg-muted/30"
+                        >
+                          <AuthenticatedImage
+                            src={getBugScreenshotUrl(bug.id, screenshot.id)}
+                            alt={screenshot.fileName}
+                            className="h-40 w-full object-cover"
+                          />
+                          <div className="border-t border-border px-3 py-2 text-sm text-muted-foreground">
+                            {screenshot.fileName}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                <ImageAttachmentPicker
+                  attachments={newAttachments}
+                  existingCount={bug?.screenshots?.length ?? 0}
+                  onChange={setNewAttachments}
+                  onError={(message) => toast.error(message)}
+                  disabled={saving}
+                  label="补充截图"
+                  description="保存后会追加到当前缺陷，支持继续选择或粘贴图片。"
+                />
                 <UiButton type="submit" disabled={saving} className="self-start min-w-[120px]">
                   保存变更
                 </UiButton>

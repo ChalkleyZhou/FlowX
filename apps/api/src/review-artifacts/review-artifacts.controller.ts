@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, Patch, Post, Query, Req, StreamableFile } from '@nestjs/common';
 import { ConvertToBugDto } from './dto/convert-to-bug.dto';
 import { CreateBugDto } from './dto/create-bug.dto';
 import { StartBugFixWorkflowDto } from './dto/start-bug-fix-workflow.dto';
@@ -94,6 +94,16 @@ export class ReviewArtifactsController {
     @Query('status') status?: string,
   ) {
     return this.reviewArtifactsService.getBugs({ workspaceId, workflowRunId, status });
+  }
+
+  @Get('bugs/:id/screenshots/:screenshotId')
+  @Header('Cache-Control', 'private, max-age=3600')
+  async getBugScreenshot(@Param('id') id: string, @Param('screenshotId') screenshotId: string) {
+    const file = await this.reviewArtifactsService.getBugScreenshotFile(id, screenshotId);
+    return new StreamableFile(file.buffer, {
+      type: file.contentType,
+      disposition: `inline; filename="${encodeURIComponent(file.fileName)}"`,
+    });
   }
 
   @Get('bugs/:id')

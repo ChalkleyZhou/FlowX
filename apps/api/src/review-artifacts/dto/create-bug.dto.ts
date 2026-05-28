@@ -1,10 +1,13 @@
+import { Type } from 'class-transformer';
 import {
   IsArray,
   IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
+  ValidateNested,
 } from 'class-validator';
+import { BugScreenshotUploadDto } from './bug-screenshot-upload.dto';
 
 export class CreateBugDto {
   @IsString()
@@ -51,4 +54,10 @@ export class CreateBugDto {
   @IsOptional()
   @IsString()
   branchName?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BugScreenshotUploadDto)
+  screenshots?: BugScreenshotUploadDto[];
 }

@@ -295,6 +295,14 @@ export interface Issue {
   } | null;
 }
 
+export interface BugScreenshot {
+  id: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
 export interface Bug {
   id: string;
   status: string;
@@ -302,6 +310,7 @@ export interface Bug {
   priority: string;
   title: string;
   description: string;
+  screenshots?: BugScreenshot[] | null;
   workspace?: { id: string; name: string } | null;
   project?: { id: string; name: string } | null;
   projectId?: string | null;

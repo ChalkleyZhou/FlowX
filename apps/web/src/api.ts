@@ -139,6 +139,10 @@ export const authTokenStorageKey = AUTH_TOKEN_STORAGE_KEY;
 export const apiBaseUrl = API_BASE_URL;
 export const toApiUrl = buildApiUrl;
 
+export function getBugScreenshotUrl(bugId: string, screenshotId: string) {
+  return buildApiUrl(`/bugs/${bugId}/screenshots/${screenshotId}`);
+}
+
 export const api = {
   getWorkflowProviders: () =>
     request<{
@@ -680,6 +684,11 @@ export const api = {
     reproductionSteps?: string[];
     repositoryId?: string;
     branchName?: string;
+    screenshots?: Array<{
+      fileName: string;
+      contentType: string;
+      dataBase64: string;
+    }>;
   }) =>
     request<Bug>('/bugs', {
       method: 'POST',
@@ -714,6 +723,11 @@ export const api = {
       reproductionSteps?: string[];
       resolution?: string;
       branchName?: string;
+      screenshots?: Array<{
+        fileName: string;
+        contentType: string;
+        dataBase64: string;
+      }>;
     },
   ) =>
     request<Bug>(`/bugs/${id}`, {

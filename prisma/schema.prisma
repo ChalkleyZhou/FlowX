@@ -545,6 +545,7 @@ model Bug {
   expectedBehavior  String?
   actualBehavior    String?
   reproductionSteps Json?
+  screenshots       Json?
   resolution        String?
   workspaceId       String
   workspace         Workspace      @relation(fields: [workspaceId], references: [id])
