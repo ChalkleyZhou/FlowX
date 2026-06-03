@@ -207,7 +207,15 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+function isDirectRun() {
+  return process.argv[1]
+    ? resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+    : false;
+}
+
+if (isDirectRun()) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}
