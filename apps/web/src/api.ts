@@ -2,7 +2,10 @@ import type {
   AuthOrganization,
   AuthSession,
   AiCredentialStatus,
+  Briefing,
+  BriefingSource,
   Bug,
+  DeliveryTarget,
   DeployJobRecord,
   Issue,
   IdeationSessionEvent,
@@ -14,6 +17,7 @@ import type {
   LocalHandoffPayload,
   OrganizationMember,
   Project,
+  ProjectBriefingConfig,
   RequirementAssignment,
   RepositoryDeployConfig,
   Repository,
@@ -52,6 +56,19 @@ interface RequirementPayload {
   description: string;
   acceptanceCriteria: string;
   repositoryIds?: string[];
+}
+
+function queryString(params?: Record<string, string | undefined>) {
+  const search = new URLSearchParams(
+    Object.entries(params ?? {}).reduce<Record<string, string>>((acc, [key, value]) => {
+      if (value) {
+        acc[key] = value;
+      }
+      return acc;
+    }, {}),
+  ).toString();
+  const text = search.toString();
+  return text ? `?${text}` : '';
 }
 
 function getAuthToken() {
@@ -281,6 +298,100 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  getBriefingSources: (params?: { workspaceId?: string }) =>
+    request<BriefingSource[]>(`/briefing-sources${queryString(params)}`),
+  createBriefingSource: (payload: {
+    workspaceId: string;
+    repositoryId: string;
+    gitlabProjectId: number;
+    pathWithNamespace: string;
+    webhookSecret: string;
+    isActive?: boolean;
+  }) =>
+    request<BriefingSource>('/briefing-sources', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateBriefingSource: (
+    id: string,
+    payload: {
+      gitlabProjectId?: number;
+      pathWithNamespace?: string;
+      webhookSecret?: string;
+      isActive?: boolean;
+    },
+  ) =>
+    request<BriefingSource>(`/briefing-sources/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteBriefingSource: (id: string) =>
+    request<{ success: true }>(`/briefing-sources/${id}`, { method: 'DELETE' }),
+  getProjectBriefingConfig: (projectId: string) =>
+    request<ProjectBriefingConfig>(`/projects/${projectId}/briefing-config`),
+  updateProjectBriefingConfig: (
+    projectId: string,
+    payload: {
+      enabled?: boolean;
+      dailyHour?: number;
+      timezone?: string;
+      autoSend?: boolean;
+    },
+  ) =>
+    request<ProjectBriefingConfig>(`/projects/${projectId}/briefing-config`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  getProjectBriefings: (projectId: string) =>
+    request<Briefing[]>(`/projects/${projectId}/briefings`),
+  generateProjectBriefing: (
+    projectId: string,
+    payload: {
+      date: string;
+      regenerate?: boolean;
+    },
+  ) =>
+    request<Briefing>(`/projects/${projectId}/briefings/generate`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  getBriefing: (id: string) => request<Briefing>(`/briefings/${id}`),
+  sendBriefing: (id: string) =>
+    request<{ successCount: number; targetCount: number }>(`/briefings/${id}/send`, {
+      method: 'POST',
+    }),
+  getDeliveryTargets: (params?: { workspaceId?: string }) =>
+    request<DeliveryTarget[]>(`/delivery-targets${queryString(params)}`),
+  createDeliveryTarget: (payload: {
+    workspaceId: string;
+    type: string;
+    name: string;
+    emailAddress?: string;
+    dingtalkWebhookUrl?: string;
+    dingtalkSecret?: string;
+    isActive?: boolean;
+  }) =>
+    request<DeliveryTarget>('/delivery-targets', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateDeliveryTarget: (
+    id: string,
+    payload: {
+      type?: string;
+      name?: string;
+      emailAddress?: string;
+      dingtalkWebhookUrl?: string;
+      dingtalkSecret?: string;
+      isActive?: boolean;
+    },
+  ) =>
+    request<DeliveryTarget>(`/delivery-targets/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteDeliveryTarget: (id: string) =>
+    request<DeliveryTarget>(`/delivery-targets/${id}`, { method: 'DELETE' }),
   createRepositoryDeployJob: (
     repositoryId: string,
     payload: {

@@ -144,4 +144,56 @@ describe('api helpers', () => {
       }),
     );
   });
+
+  it('calls briefing endpoints with expected methods and payloads', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.getBriefingSources({ workspaceId: 'workspace-1' });
+    await api.createBriefingSource({
+      workspaceId: 'workspace-1',
+      repositoryId: 'repo-1',
+      gitlabProjectId: 42,
+      pathWithNamespace: 'rokid/flowx',
+      webhookSecret: 'secret',
+    });
+    await api.updateBriefingSource('source-1', { isActive: false });
+    await api.deleteBriefingSource('source-1');
+    await api.getProjectBriefingConfig('project-1');
+    await api.updateProjectBriefingConfig('project-1', { enabled: true, dailyHour: 9 });
+    await api.getProjectBriefings('project-1');
+    await api.generateProjectBriefing('project-1', { date: '2026-06-03' });
+    await api.getBriefing('briefing-1');
+    await api.sendBriefing('briefing-1');
+    await api.getDeliveryTargets({ workspaceId: 'workspace-1' });
+    await api.createDeliveryTarget({
+      workspaceId: 'workspace-1',
+      type: 'EMAIL',
+      name: 'Team',
+      emailAddress: 'team@example.com',
+    });
+    await api.updateDeliveryTarget('target-1', { isActive: false });
+    await api.deleteDeliveryTarget('target-1');
+
+    expect(fetchMock.mock.calls.map((call) => [call[0], call[1]?.method ?? 'GET'])).toEqual([
+      ['http://localhost:3000/briefing-sources?workspaceId=workspace-1', 'GET'],
+      ['http://localhost:3000/briefing-sources', 'POST'],
+      ['http://localhost:3000/briefing-sources/source-1', 'PATCH'],
+      ['http://localhost:3000/briefing-sources/source-1', 'DELETE'],
+      ['http://localhost:3000/projects/project-1/briefing-config', 'GET'],
+      ['http://localhost:3000/projects/project-1/briefing-config', 'PUT'],
+      ['http://localhost:3000/projects/project-1/briefings', 'GET'],
+      ['http://localhost:3000/projects/project-1/briefings/generate', 'POST'],
+      ['http://localhost:3000/briefings/briefing-1', 'GET'],
+      ['http://localhost:3000/briefings/briefing-1/send', 'POST'],
+      ['http://localhost:3000/delivery-targets?workspaceId=workspace-1', 'GET'],
+      ['http://localhost:3000/delivery-targets', 'POST'],
+      ['http://localhost:3000/delivery-targets/target-1', 'PATCH'],
+      ['http://localhost:3000/delivery-targets/target-1', 'DELETE'],
+    ]);
+  });
 });

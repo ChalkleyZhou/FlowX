@@ -112,6 +112,85 @@ export interface DeployJobRecord {
   updatedAt: string;
 }
 
+export interface BriefingSource {
+  id: string;
+  workspaceId: string;
+  repositoryId: string;
+  provider: string;
+  gitlabProjectId: number;
+  pathWithNamespace: string;
+  webhookSecret?: string;
+  isActive: boolean;
+  workspace?: Workspace;
+  repository?: Repository;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProjectBriefingConfig {
+  id?: string;
+  projectId: string;
+  enabled: boolean;
+  dailyHour: number;
+  timezone: string;
+  autoSend: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface DeliveryTarget {
+  id: string;
+  workspaceId: string;
+  type: 'EMAIL' | 'DINGTALK_ROBOT' | 'DINGTALK_APP' | string;
+  name: string;
+  emailAddress?: string | null;
+  dingtalkWebhookUrl?: string | null;
+  dingtalkSecret?: string | null;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface DeliveryLog {
+  id: string;
+  briefingId: string;
+  deliveryTargetId: string;
+  channel: string;
+  status: string;
+  errorMessage?: string | null;
+  providerResponse?: unknown;
+  sentAt?: string | null;
+  createdAt: string;
+  deliveryTarget?: DeliveryTarget;
+}
+
+export interface Briefing {
+  id: string;
+  projectId: string;
+  workspaceId: string;
+  date: string;
+  scopeKey: string;
+  scope: {
+    date?: string;
+    projectId?: string;
+    workspaceId?: string;
+    repositoryIds?: string[];
+    briefingSourceIds?: string[];
+  } | Record<string, unknown>;
+  status: string;
+  markdownContent: string;
+  htmlContent: string;
+  eventCount: number;
+  generatedAt?: string | null;
+  sentAt?: string | null;
+  errorMessage?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  project?: Project;
+  workspace?: Workspace;
+  deliveryLogs?: DeliveryLog[];
+}
+
 export interface LocalDevDetectResponse {
   repositoryId: string;
   localPath: string;
