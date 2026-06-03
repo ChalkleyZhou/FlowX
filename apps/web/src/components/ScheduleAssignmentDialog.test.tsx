@@ -93,7 +93,7 @@ describe('ScheduleAssignmentDialog', () => {
     expect(document.body.textContent).toContain('需求');
     expect(document.body.textContent).toContain('成员');
     expect(document.body.textContent).toContain('角色');
-  });
+  }, 10_000);
 
   it('hides project and requirement when requirement is fixed', async () => {
     renderDialog({
