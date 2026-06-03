@@ -44,6 +44,7 @@ import {
   RepositoryComponentContext,
   ReviewCodeOutput,
   SplitTasksOutput,
+  type ExecuteTaskOutput,
 } from '../common/types';
 import { dirname, join, sep } from 'path';
 import { integrateFlowxDemoRoutes } from '../common/demo-router-integration';
@@ -51,8 +52,12 @@ import { WorkflowStateMachine } from '../common/workflow-state-machine';
 import { DingTalkNotificationService } from '../notifications/dingtalk-notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RepositorySyncService } from '../workspaces/repository-sync.service';
+import { CompleteLocalExecutionDto } from './dto/complete-local-execution.dto';
 import { CreateWorkflowRunDto } from './dto/create-workflow-run.dto';
+import { buildExecutionOutputFromLocalReport } from './workflow-local-execution-output';
+import { buildLocalHandoff, type LocalHandoffPayload } from './workflow-local-handoff';
 import { WorkflowArtifactService } from './workflow-artifact.service';
+import { WorkflowGitRemoteService } from './workflow-git-remote.service';
 
 const execFile = promisify(execFileCallback);
 
@@ -126,6 +131,7 @@ export class WorkflowService {
     private readonly aiInvocationContextService: AiInvocationContextService,
     @Inject(AI_EXECUTOR_REGISTRY) private readonly aiExecutorRegistry: AIExecutorRegistry,
     private readonly workflowArtifactService: WorkflowArtifactService,
+    private readonly workflowGitRemoteService: WorkflowGitRemoteService,
   ) {}
 
   async createWorkflowRun(dto: CreateWorkflowRunDto) {
@@ -548,6 +554,157 @@ export class WorkflowService {
     const html = await this.workflowArtifactService.readPlanHtml(id);
     if (!html) throw new NotFoundException('Plan artifact not found.');
     return html;
+  }
+
+  async readExecutionArtifactHtml(id: string): Promise<string> {
+    const html = await this.workflowArtifactService.readExecutionHtml(id);
+    if (!html) {
+      throw new NotFoundException('Execution artifact not found.');
+    }
+    return html;
+  }
+
+  async claimLocalExecution(id: string, notifyRecipient?: WorkflowNotificationSession) {
+    const workflow = await this.getWorkflowOrThrow(id);
+    this.assertStageNotRunning(workflow, StageType.EXECUTION);
+    if (workflow.status !== 'EXECUTION_PENDING') {
+      throw new BadRequestException('Local execution can only be claimed after plan confirmation.');
+    }
+    await this.resolveConfirmedPlan(workflow);
+
+    const recipient = this.toNotificationRecipient(notifyRecipient);
+    const claimedAt = new Date().toISOString();
+    const handoffSnapshot = await this.buildLocalHandoffForWorkflow(workflow, 'EXECUTION_RUNNING');
+
+    const updatedWorkflow = await this.prisma.$transaction(async (tx) => {
+      await this.transitionWorkflow(tx, id, WorkflowRunStatus.EXECUTION_PENDING, {
+        to: WorkflowRunStatus.EXECUTION_RUNNING,
+        stage: StageType.EXECUTION,
+      });
+
+      await this.createStageExecution(tx, id, StageType.EXECUTION, {
+        input: {
+          executor: 'LOCAL',
+          claimedAt,
+          claimedByUserId: recipient?.flowxUserId ?? null,
+          requirementId: workflow.requirement.id,
+          handoffSnapshot,
+        },
+        status: StageExecutionStatus.RUNNING,
+        statusMessage: '等待本地开发完成：请切到工作分支、提交并推送后点击完成',
+        startedAt: new Date(),
+      });
+
+      return tx.workflowRun.findUniqueOrThrow({
+        where: { id },
+        include: this.workflowInclude(),
+      });
+    });
+
+    const handoff = await this.buildLocalHandoffForWorkflow(updatedWorkflow, 'EXECUTION_RUNNING');
+    return { workflow: updatedWorkflow, handoff };
+  }
+
+  async getLocalHandoff(id: string) {
+    const workflow = await this.getWorkflowOrThrow(id);
+    this.assertLocalExecutionActive(workflow);
+    return this.buildLocalHandoffForWorkflow(workflow, workflow.status);
+  }
+
+  async completeLocalExecution(
+    id: string,
+    dto: CompleteLocalExecutionDto,
+    notifyRecipient?: WorkflowNotificationSession,
+  ) {
+    const workflow = await this.getWorkflowOrThrow(id);
+    this.assertLocalExecutionActive(workflow);
+
+    const handoff = await this.buildLocalHandoffForWorkflow(workflow, workflow.status);
+    const repoByWrId = new Map(handoff.repositories.map((repository) => [repository.workflowRepositoryId, repository]));
+
+    for (const report of dto.repositories) {
+      if (!repoByWrId.has(report.workflowRepositoryId)) {
+        throw new BadRequestException(`Unknown workflow repository: ${report.workflowRepositoryId}`);
+      }
+    }
+
+    const requiresRemote = handoff.repositories.some((repository) => repository.url.trim());
+    if (requiresRemote && !dto.pushed) {
+      throw new BadRequestException('请先 push 到远程后再完成本地执行。');
+    }
+
+    const verificationRows: Array<{ workflowRepositoryId: string; verified: boolean }> = [];
+    if (dto.pushed) {
+      for (const report of dto.repositories) {
+        const repository = repoByWrId.get(report.workflowRepositoryId)!;
+        if (!repository.url.trim()) {
+          verificationRows.push({ workflowRepositoryId: report.workflowRepositoryId, verified: false });
+          continue;
+        }
+        const verified = await this.workflowGitRemoteService.verifyBranchTip(
+          repository.url,
+          repository.workingBranch,
+          report.headSha,
+        );
+        if (!verified) {
+          throw new BadRequestException(
+            `远程分支 ${repository.workingBranch} 未找到提交 ${report.headSha.slice(0, 12)}，请先 push。`,
+          );
+        }
+        verificationRows.push({ workflowRepositoryId: report.workflowRepositoryId, verified: true });
+      }
+    }
+
+    const rawOutput = buildExecutionOutputFromLocalReport(handoff, dto);
+    const output = this.sanitizeExecutionOutputPaths(rawOutput, workflow.workflowRepositories);
+    const executionStage = this.getLatestStageOrThrow(workflow, StageType.EXECUTION);
+    const stageOutput = await this.attachExecutionArtifactToOutput(
+      id,
+      executionStage.attempt,
+      output,
+      handoff,
+      dto,
+      verificationRows,
+    );
+
+    const triggerType =
+      typeof executionStage.input === 'object' &&
+      executionStage.input !== null &&
+      !Array.isArray(executionStage.input)
+        ? String((executionStage.input as Record<string, unknown>).triggerType ?? '') || undefined
+        : undefined;
+
+    await this.finalizeExecutionSuccess(id, stageOutput, {
+      triggerType,
+      notifyRecipient: this.toNotificationRecipient(notifyRecipient),
+      executor: 'LOCAL',
+      requirementTitle: workflow.requirement.title,
+    });
+
+    const updated = await this.getWorkflowOrThrow(id);
+    return { workflow: updated, handoff };
+  }
+
+  async cancelLocalExecution(id: string) {
+    const workflow = await this.getWorkflowOrThrow(id);
+    this.assertLocalExecutionActive(workflow);
+    const executionStage = this.getLatestStageOrThrow(workflow, StageType.EXECUTION);
+
+    return this.prisma.$transaction(async (tx) => {
+      await this.updateStageExecution(tx, executionStage.id, StageExecutionStatus.REJECTED, {
+        errorMessage: 'User cancelled local execution',
+        statusMessage: '本地执行已取消',
+        finishedAt: new Date(),
+      });
+      await this.transitionWorkflow(tx, id, WorkflowRunStatus.EXECUTION_RUNNING, {
+        to: WorkflowRunStatus.EXECUTION_PENDING,
+        stage: StageType.EXECUTION,
+      });
+      return tx.workflowRun.findUniqueOrThrow({
+        where: { id },
+        include: this.workflowInclude(),
+      });
+    });
   }
 
   /**
@@ -1660,68 +1817,12 @@ export class WorkflowService {
         );
         const output = this.sanitizeExecutionOutputPaths(rawOutput, workflow.workflowRepositories);
 
-        await this.prisma.$transaction(async (tx) => {
-          const executionStage = await tx.stageExecution.findFirstOrThrow({
-            where: { workflowRunId: id, stage: stageTypeMap[StageType.EXECUTION], status: 'RUNNING' },
-            orderBy: { attempt: 'desc' },
-          });
-
-          await tx.codeExecution.upsert({
-            where: { workflowRunId: id },
-            create: {
-              workflowRunId: id,
-              status: 'WAITING_HUMAN_REVIEW',
-              patchSummary: output.patchSummary,
-              changedFiles: output.changedFiles,
-              codeChanges: output.codeChanges,
-              diffArtifacts: output.diffArtifacts,
-            },
-            update: {
-              status: 'WAITING_HUMAN_REVIEW',
-              patchSummary: output.patchSummary,
-              changedFiles: output.changedFiles,
-              codeChanges: output.codeChanges,
-              diffArtifacts: output.diffArtifacts,
-            },
-          });
-
-          await this.updateStageExecution(tx, executionStage.id, StageExecutionStatus.COMPLETED, {
-            output,
-            statusMessage: null,
-            finishedAt: new Date(),
-          });
-
-          const nextWorkflowStatus = this.getExecutionCompletionTargetStatus(trigger?.triggerType);
-
-          if (nextWorkflowStatus === WorkflowRunStatus.HUMAN_REVIEW_PENDING) {
-            await this.transitionWorkflow(tx, id, WorkflowRunStatus.EXECUTION_RUNNING, {
-              to: WorkflowRunStatus.REVIEW_PENDING,
-              stage: StageType.AI_REVIEW,
-            });
-            await this.transitionWorkflow(tx, id, WorkflowRunStatus.REVIEW_PENDING, {
-              to: WorkflowRunStatus.HUMAN_REVIEW_PENDING,
-              stage: StageType.HUMAN_REVIEW,
-            });
-          } else {
-            await this.transitionWorkflow(tx, id, WorkflowRunStatus.EXECUTION_RUNNING, {
-              to: nextWorkflowStatus,
-              stage: StageType.AI_REVIEW,
-            });
-          }
-        });
-
-        this.notifyStageCompleted({
-          recipient: this.readNotificationRecipient(startedWorkflow.stageExecutions, StageType.EXECUTION) ?? recipient,
-          workflowRunId: workflow.id,
+        await this.finalizeExecutionSuccess(id, output, {
+          triggerType: trigger?.triggerType,
+          notifyRecipient: recipient,
+          executor: 'CLOUD',
           requirementTitle: workflow.requirement.title,
-          stageName: '执行开发',
-          result: '已完成',
-          nextStep:
-            trigger?.triggerType === 'review_finding_fix'
-              ? '可继续修复其他审查结果，或按需重新执行 AI 审查'
-              : trigger?.triggerType === 'bug_fix'
-                ? '等待 AI 审查与人工确认'
-                : '可以开始 AI 审查阶段',
+          notificationStages: startedWorkflow.stageExecutions,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Execution failed';
@@ -2357,6 +2458,209 @@ export class WorkflowService {
           } | null) ?? null,
       })),
     };
+  }
+
+  private async buildLocalHandoffForWorkflow(
+    workflow: WorkflowPayload,
+    status: string,
+  ): Promise<LocalHandoffPayload> {
+    const plan = await this.resolveConfirmedPlan(workflow);
+    const manifest = await this.workflowArtifactService.readManifest(workflow.id);
+    const { planMetaPath, planHtmlPath } = this.workflowArtifactService.getPlanArtifactPaths(manifest);
+
+    return buildLocalHandoff({
+      workflowRunId: workflow.id,
+      status,
+      requirement: {
+        id: workflow.requirement.id,
+        title: workflow.requirement.title,
+        description: workflow.requirement.description,
+        acceptanceCriteria: workflow.requirement.acceptanceCriteria,
+      },
+      plan,
+      tasks: workflow.tasks,
+      workflowRepositories: workflow.workflowRepositories,
+      planMetaPath,
+      planHtmlPath,
+    });
+  }
+
+  private assertLocalExecutionActive(workflow: WorkflowPayload) {
+    if (workflow.status !== 'EXECUTION_RUNNING') {
+      throw new BadRequestException('Workflow is not running local execution.');
+    }
+    const executionStage = workflow.stageExecutions
+      .filter((stage) => stage.stage === stageTypeMap[StageType.EXECUTION])
+      .sort((left, right) => right.attempt - left.attempt)[0];
+    const input = executionStage?.input;
+    if (
+      !input ||
+      typeof input !== 'object' ||
+      Array.isArray(input) ||
+      (input as Record<string, unknown>).executor !== 'LOCAL'
+    ) {
+      throw new BadRequestException('Workflow is not claimed for local execution.');
+    }
+  }
+
+  private async attachExecutionArtifactToOutput(
+    workflowRunId: string,
+    version: number,
+    output: ExecuteTaskOutput,
+    handoff: LocalHandoffPayload,
+    dto: CompleteLocalExecutionDto,
+    verificationRows: Array<{ workflowRepositoryId: string; verified: boolean }>,
+  ): Promise<
+    ExecuteTaskOutput & {
+      _artifact?: {
+        kind: 'execution';
+        version: number;
+        htmlPath: string;
+        metaPath: string;
+        sha256: string;
+      };
+    }
+  > {
+    const verifiedById = new Map(verificationRows.map((row) => [row.workflowRepositoryId, row.verified]));
+    const repoByWrId = new Map(handoff.repositories.map((repository) => [repository.workflowRepositoryId, repository]));
+
+    try {
+      const repositoryRows = dto.repositories.map((report) => {
+        const repository = repoByWrId.get(report.workflowRepositoryId)!;
+        return {
+          name: repository.name,
+          workingBranch: repository.workingBranch,
+          headSha: report.headSha,
+          changedFileCount: report.changedFiles.length,
+          pushed: dto.pushed,
+          verified: verifiedById.get(report.workflowRepositoryId) ?? false,
+        };
+      });
+
+      const completedAt = new Date().toISOString();
+      const { htmlPath, metaPath, sha256 } = await this.workflowArtifactService.writeExecutionArtifact({
+        workflowRunId,
+        version,
+        executor: 'LOCAL',
+        patchSummary: output.patchSummary,
+        changedFiles: output.changedFiles,
+        repositoryRows,
+        pushed: dto.pushed,
+        meta: {
+          executor: 'LOCAL',
+          status: 'COMPLETED',
+          completedAt,
+          patchSummary: output.patchSummary,
+          changedFiles: output.changedFiles,
+          pushed: dto.pushed,
+          repositories: dto.repositories.map((report) => {
+            const repository = repoByWrId.get(report.workflowRepositoryId)!;
+            return {
+              workflowRepositoryId: report.workflowRepositoryId,
+              name: repository.name,
+              workingBranch: repository.workingBranch,
+              headSha: report.headSha,
+              changedFiles: report.changedFiles,
+              verified: verifiedById.get(report.workflowRepositoryId) ?? false,
+            };
+          }),
+        },
+      });
+
+      return {
+        ...output,
+        _artifact: {
+          kind: 'execution',
+          version,
+          htmlPath,
+          metaPath,
+          sha256,
+        },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to write execution artifact for workflow ${workflowRunId}: ${message}`);
+      return { ...output };
+    }
+  }
+
+  private async finalizeExecutionSuccess(
+    id: string,
+    output: ExecuteTaskOutput,
+    options: {
+      triggerType?: string;
+      notifyRecipient?: WorkflowNotificationRecipient | null;
+      executor: 'LOCAL' | 'CLOUD';
+      requirementTitle: string;
+      notificationStages?: WorkflowPayload['stageExecutions'];
+    },
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const executionStage = await tx.stageExecution.findFirstOrThrow({
+        where: { workflowRunId: id, stage: stageTypeMap[StageType.EXECUTION], status: 'RUNNING' },
+        orderBy: { attempt: 'desc' },
+      });
+
+      await tx.codeExecution.upsert({
+        where: { workflowRunId: id },
+        create: {
+          workflowRunId: id,
+          status: 'WAITING_HUMAN_REVIEW',
+          patchSummary: output.patchSummary,
+          changedFiles: output.changedFiles,
+          codeChanges: output.codeChanges,
+          diffArtifacts: output.diffArtifacts,
+        },
+        update: {
+          status: 'WAITING_HUMAN_REVIEW',
+          patchSummary: output.patchSummary,
+          changedFiles: output.changedFiles,
+          codeChanges: output.codeChanges,
+          diffArtifacts: output.diffArtifacts,
+        },
+      });
+
+      await this.updateStageExecution(tx, executionStage.id, StageExecutionStatus.COMPLETED, {
+        output,
+        statusMessage: null,
+        finishedAt: new Date(),
+      });
+
+      const nextWorkflowStatus = this.getExecutionCompletionTargetStatus(options.triggerType);
+
+      if (nextWorkflowStatus === WorkflowRunStatus.HUMAN_REVIEW_PENDING) {
+        await this.transitionWorkflow(tx, id, WorkflowRunStatus.EXECUTION_RUNNING, {
+          to: WorkflowRunStatus.REVIEW_PENDING,
+          stage: StageType.AI_REVIEW,
+        });
+        await this.transitionWorkflow(tx, id, WorkflowRunStatus.REVIEW_PENDING, {
+          to: WorkflowRunStatus.HUMAN_REVIEW_PENDING,
+          stage: StageType.HUMAN_REVIEW,
+        });
+      } else {
+        await this.transitionWorkflow(tx, id, WorkflowRunStatus.EXECUTION_RUNNING, {
+          to: nextWorkflowStatus,
+          stage: StageType.AI_REVIEW,
+        });
+      }
+    });
+
+    const stages = options.notificationStages;
+    this.notifyStageCompleted({
+      recipient:
+        (stages ? this.readNotificationRecipient(stages, StageType.EXECUTION) : null) ??
+        options.notifyRecipient,
+      workflowRunId: id,
+      requirementTitle: options.requirementTitle,
+      stageName: '执行开发',
+      result: options.executor === 'LOCAL' ? '本地执行已完成' : '已完成',
+      nextStep:
+        options.triggerType === 'review_finding_fix'
+          ? '可继续修复其他审查结果，或按需重新执行 AI 审查'
+          : options.triggerType === 'bug_fix'
+            ? '等待 AI 审查与人工确认'
+            : '可以开始 AI 审查阶段',
+    });
   }
 
   private async attachPlanArtifactToOutput(

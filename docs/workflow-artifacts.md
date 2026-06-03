@@ -2,7 +2,7 @@
 
 FlowX stores human-readable stage deliverables as versioned HTML files under `.flowx-data`. SQLite keeps pointers and metadata only; the HTML file is the canonical view for operators.
 
-Slice 1 covers the **TECHNICAL_PLAN** stage (`plan.html`). Other stages may follow the same pattern later.
+Slice 1 covers the **TECHNICAL_PLAN** stage (`plan.html`). **EXECUTION** reports (`execution.html`) are written when local (or cloud) execution completes with artifact hooks; see [local-execution-handoff.md](./local-execution-handoff.md) for the developer handoff flow.
 
 ## Directory layout
 
@@ -147,5 +147,7 @@ Artifact write failure is non-fatal: the workflow stage succeeds with SQLite/Pri
 | `apps/api/src/workflow/workflow.controller.ts` | HTTP artifact endpoint |
 | `apps/web/src/api.ts` | `fetchPlanArtifact` |
 | `apps/web/src/pages/WorkflowRunDetailPage.tsx` | iframe preview UI |
+| `apps/api/src/workflow/workflow-artifact.execution.render.ts` | Execution report HTML |
+| `GET /workflow-runs/:id/artifacts/execution` | Execution artifact HTTP endpoint |
 
-Design and task breakdown: `docs/superpowers/plans/2026-06-03-workflow-html-artifacts.md`.
+Design and task breakdown: `docs/superpowers/plans/2026-06-03-workflow-html-artifacts.md`. Local execution: `docs/superpowers/plans/2026-06-03-local-execution-handoff.md`.

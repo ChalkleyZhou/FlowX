@@ -34,6 +34,7 @@ function createHookTestService() {
       loadPlanMeta: vi.fn(),
       readPlanHtml: vi.fn(),
     } as never,
+    {} as never,
   );
 
   return { service, writePlanArtifact };
@@ -90,6 +91,7 @@ describe('WorkflowService plan artifact hook', () => {
         loadPlanMeta: vi.fn(),
         readPlanHtml: vi.fn(),
       } as never,
+      {} as never,
     );
 
     const result = await (

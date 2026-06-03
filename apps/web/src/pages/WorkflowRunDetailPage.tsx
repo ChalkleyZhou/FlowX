@@ -22,7 +22,15 @@ import { Spinner } from '../components/ui/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Textarea as UiTextarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
-import type { DemoArtifact, DemoPage, LocalDevDetectResponse, LocalDevPreviewStatus, RepositoryDeployConfig, WorkflowRun } from '../types';
+import type {
+  DemoArtifact,
+  DemoPage,
+  LocalDevDetectResponse,
+  LocalDevPreviewStatus,
+  LocalHandoffPayload,
+  RepositoryDeployConfig,
+  WorkflowRun,
+} from '../types';
 import {
   formatStageExecutionStatus,
   formatWorkflowRunType,
@@ -113,6 +121,18 @@ interface DeployDraft {
   version: string;
   versionImage: string;
   image: string;
+}
+
+function isLocalExecutionActive(workflowRun: WorkflowRun): boolean {
+  const executionStage = getStage(workflowRun, 'EXECUTION');
+  const input = executionStage?.input;
+  return (
+    workflowRun.status === 'EXECUTION_RUNNING' &&
+    !!input &&
+    typeof input === 'object' &&
+    !Array.isArray(input) &&
+    (input as Record<string, unknown>).executor === 'LOCAL'
+  );
 }
 
 const stageMeta: Record<
@@ -388,6 +408,14 @@ export function WorkflowRunDetailPage() {
   const [deployTargetRepositoryId, setDeployTargetRepositoryId] = useState<string | null>(null);
   const [lastPublishedRepositories, setLastPublishedRepositories] = useState<PublishRepositorySummary[]>([]);
   const [planHtml, setPlanHtml] = useState<string | null>(null);
+  const [localHandoff, setLocalHandoff] = useState<LocalHandoffPayload | null>(null);
+  const [executionHtml, setExecutionHtml] = useState<string | null>(null);
+  const [completeLocalOpen, setCompleteLocalOpen] = useState(false);
+  const [completeLocalPushed, setCompleteLocalPushed] = useState(true);
+  const [completeLocalBusy, setCompleteLocalBusy] = useState(false);
+  const [completeLocalReports, setCompleteLocalReports] = useState<
+    Record<string, { headSha: string; changedFiles: string; patchSummary: string }>
+  >({});
   const [deployDraft, setDeployDraft] = useState<DeployDraft>({
     repositoryId: '',
     repositoryName: '',
@@ -696,6 +724,75 @@ export function WorkflowRunDetailPage() {
     };
   }, [hasPlanArtifact, workflowRun?.id]);
 
+  const localExecutionActive = workflowRun ? isLocalExecutionActive(workflowRun) : false;
+
+  useEffect(() => {
+    if (!workflowRun?.id || !localExecutionActive) {
+      setLocalHandoff(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void api
+      .getLocalHandoff(workflowRun.id)
+      .then((handoff) => {
+        if (!cancelled) {
+          setLocalHandoff(handoff);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLocalHandoff(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workflowRun?.id, localExecutionActive]);
+
+  const hasExecutionArtifact = useMemo(() => {
+    if (selectedStage !== 'EXECUTION' || !workflowRun) {
+      return false;
+    }
+
+    const output = getStage(workflowRun, 'EXECUTION')?.output;
+    return Boolean(
+      output &&
+        typeof output === 'object' &&
+        !Array.isArray(output) &&
+        '_artifact' in output &&
+        output._artifact,
+    );
+  }, [selectedStage, workflowRun]);
+
+  useEffect(() => {
+    if (!hasExecutionArtifact || !workflowRun?.id) {
+      setExecutionHtml(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void api
+      .fetchExecutionArtifact(workflowRun.id)
+      .then((html) => {
+        if (!cancelled) {
+          setExecutionHtml(html);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setExecutionHtml(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasExecutionArtifact, workflowRun?.id]);
+
   useEffect(() => {
     if (!hasRunningStage) {
       return;
@@ -827,9 +924,9 @@ export function WorkflowRunDetailPage() {
     stage: string,
     action: () => Promise<unknown>,
     successText: string,
-    options?: { focusNextStage?: boolean },
+    options?: { focusNextStage?: boolean; allowWhileRunning?: boolean },
   ) {
-    if (busyStageRef.current || hasRunningStage) {
+    if (busyStageRef.current || (hasRunningStage && !options?.allowWhileRunning)) {
       return;
     }
 
@@ -847,6 +944,41 @@ export function WorkflowRunDetailPage() {
     } finally {
       busyStageRef.current = null;
       setBusyStage(null);
+    }
+  }
+
+  async function submitCompleteLocalExecution() {
+    if (!workflowRun || !localHandoff) {
+      return;
+    }
+
+    setCompleteLocalBusy(true);
+    try {
+      const repositories = localHandoff.repositories.map((repository) => {
+        const report = completeLocalReports[repository.workflowRepositoryId];
+        return {
+          workflowRepositoryId: repository.workflowRepositoryId,
+          headSha: report?.headSha.trim() ?? '',
+          changedFiles: (report?.changedFiles ?? '')
+            .split('\n')
+            .map((path) => path.trim())
+            .filter(Boolean),
+          patchSummary: report?.patchSummary?.trim() || undefined,
+        };
+      });
+
+      await api.completeLocalExecution(workflowRun.id, {
+        pushed: completeLocalPushed,
+        repositories,
+      });
+      setCompleteLocalOpen(false);
+      setLocalHandoff(null);
+      await refresh();
+      toast.success('本地执行已完成');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '完成本地执行失败');
+    } finally {
+      setCompleteLocalBusy(false);
     }
   }
 
@@ -1404,11 +1536,60 @@ export function WorkflowRunDetailPage() {
         actions: [
           {
             key: 'run',
-            label: '执行开发',
+            label: '云端执行',
             onClick: () => void runAction('EXECUTION', () => api.runExecution(workflowRun.id), '开发执行已启动'),
-            disabled: workflowRun.status !== 'EXECUTION_PENDING' || stageActionsLocked,
+            disabled:
+              workflowRun.status !== 'EXECUTION_PENDING' || stageActionsLocked || localExecutionActive,
             loading: busyStage === 'EXECUTION',
             variant: 'primary' as const,
+          },
+          {
+            key: 'claim-local',
+            label: '本地执行',
+            onClick: () =>
+              void runAction('EXECUTION', async () => {
+                const result = await api.claimLocalExecution(workflowRun.id);
+                setLocalHandoff(result.handoff);
+                return result.workflow;
+              }, '本地执行已认领，请按指引切分支开发'),
+            disabled: workflowRun.status !== 'EXECUTION_PENDING' || stageActionsLocked,
+            loading: busyStage === 'EXECUTION',
+          },
+          {
+            key: 'complete-local',
+            label: '完成本地执行',
+            onClick: () => {
+              const handoff = localHandoff;
+              if (handoff) {
+                setCompleteLocalReports(
+                  Object.fromEntries(
+                    handoff.repositories.map((repository) => [
+                      repository.workflowRepositoryId,
+                      { headSha: '', changedFiles: '', patchSummary: '' },
+                    ]),
+                  ),
+                );
+              }
+              setCompleteLocalOpen(true);
+            },
+            disabled: !localExecutionActive || stageActionsLocked || !localHandoff,
+          },
+          {
+            key: 'cancel-local',
+            label: '取消本地执行',
+            onClick: () =>
+              void runAction(
+                'EXECUTION',
+                async () => {
+                  const updated = await api.cancelLocalExecution(workflowRun.id);
+                  setLocalHandoff(null);
+                  return updated;
+                },
+                '本地执行已取消',
+                { allowWhileRunning: true },
+              ),
+            disabled: !localExecutionActive || stageActionsLocked,
+            danger: true,
           },
           {
             key: 'feedback',
@@ -1491,7 +1672,7 @@ export function WorkflowRunDetailPage() {
         ],
       },
     };
-  }, [workflowRun, busyStage, stageActionsLocked]);
+  }, [workflowRun, busyStage, stageActionsLocked, localHandoff, localExecutionActive]);
 
   if (!workflowRunId) {
     return <Navigate to="/workflow-runs" replace />;
@@ -1571,6 +1752,120 @@ export function WorkflowRunDetailPage() {
 
   return (
     <>
+      <Dialog open={completeLocalOpen} onOpenChange={setCompleteLocalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>完成本地执行</DialogTitle>
+            <DialogDescription>
+              填写各仓库推送后的 HEAD SHA 与变更文件列表。若仓库已登记远程 URL，需勾选「已推送」并通过服务端校验。
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="flex flex-col gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitCompleteLocalExecution();
+            }}
+          >
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={completeLocalPushed}
+                onChange={(event) => setCompleteLocalPushed(event.target.checked)}
+              />
+              已推送到远程
+            </label>
+            {localHandoff?.repositories.map((repository) => {
+              const report = completeLocalReports[repository.workflowRepositoryId] ?? {
+                headSha: '',
+                changedFiles: '',
+                patchSummary: '',
+              };
+              return (
+                <div
+                  key={repository.workflowRepositoryId}
+                  className="rounded-md border border-border bg-muted/30 px-4 py-4"
+                >
+                  <div className="text-sm font-semibold text-foreground">{repository.name}</div>
+                  <div className="mt-3 flex flex-col gap-3">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-medium text-foreground" htmlFor={`head-sha-${repository.workflowRepositoryId}`}>
+                        HEAD SHA
+                      </label>
+                      <UiInput
+                        id={`head-sha-${repository.workflowRepositoryId}`}
+                        value={report.headSha}
+                        onChange={(event) =>
+                          setCompleteLocalReports((current) => ({
+                            ...current,
+                            [repository.workflowRepositoryId]: {
+                              ...report,
+                              headSha: event.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="git rev-parse HEAD"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label
+                        className="text-sm font-medium text-foreground"
+                        htmlFor={`changed-files-${repository.workflowRepositoryId}`}
+                      >
+                        变更文件（每行一个路径）
+                      </label>
+                      <UiTextarea
+                        id={`changed-files-${repository.workflowRepositoryId}`}
+                        value={report.changedFiles}
+                        onChange={(event) =>
+                          setCompleteLocalReports((current) => ({
+                            ...current,
+                            [repository.workflowRepositoryId]: {
+                              ...report,
+                              changedFiles: event.target.value,
+                            },
+                          }))
+                        }
+                        rows={4}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label
+                        className="text-sm font-medium text-foreground"
+                        htmlFor={`patch-summary-${repository.workflowRepositoryId}`}
+                      >
+                        变更摘要（可选）
+                      </label>
+                      <UiInput
+                        id={`patch-summary-${repository.workflowRepositoryId}`}
+                        value={report.patchSummary}
+                        onChange={(event) =>
+                          setCompleteLocalReports((current) => ({
+                            ...current,
+                            [repository.workflowRepositoryId]: {
+                              ...report,
+                              patchSummary: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <div className="flex justify-end gap-2">
+              <UiButton type="button" variant="outline" onClick={() => setCompleteLocalOpen(false)}>
+                取消
+              </UiButton>
+              <UiButton type="submit" disabled={completeLocalBusy}>
+                {completeLocalBusy ? '提交中…' : '确认完成'}
+              </UiButton>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={deployModalOpen}
         onOpenChange={(open) => {
@@ -1865,6 +2160,86 @@ export function WorkflowRunDetailPage() {
                       title="技术方案预览"
                       sandbox=""
                       srcDoc={planHtml}
+                      className="h-[480px] w-full rounded-md border border-border"
+                    />
+                  </CardContent>
+                </Card>
+              ) : null}
+
+              {selectedStage === 'EXECUTION' && localExecutionActive && localHandoff ? (
+                <Card className="rounded-md border-border bg-card shadow-sm">
+                  <CardHeader className="p-5 pb-0">
+                    <SectionHeader
+                      eyebrow="Local Handoff"
+                      title="本地执行指引"
+                      description="在本地 clone 中切到工作分支，开发后提交并 push，再填写完成表单。"
+                    />
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-5 p-5 pt-4">
+                    <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+                      <li>拉取远程并切换到工作分支</li>
+                      <li>按技术方案完成开发</li>
+                      <li>提交并推送到远程</li>
+                      <li>点击「完成本地执行」回写工作流</li>
+                    </ol>
+                    {localHandoff.repositories.map((repository) => (
+                      <div
+                        key={repository.workflowRepositoryId}
+                        className="rounded-md border border-border bg-muted/30 px-4 py-4 text-sm"
+                      >
+                        <div className="font-semibold text-foreground">{repository.name}</div>
+                        <div className="mt-2 space-y-1 text-muted-foreground">
+                          <div>
+                            工作分支：<code className="text-foreground">{repository.workingBranch}</code>
+                            <UiButton
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="ml-2 h-7 px-2"
+                              onClick={() => void navigator.clipboard.writeText(repository.workingBranch)}
+                            >
+                              复制分支
+                            </UiButton>
+                          </div>
+                          <div>基线分支：{repository.baseBranch}</div>
+                          <div className="mt-3 font-medium text-foreground">建议提交说明</div>
+                          <pre className="mt-1 overflow-x-auto rounded-md border border-border bg-background p-2 text-xs">
+                            {repository.suggestedCommitMessage}
+                          </pre>
+                          <div className="mt-3 font-medium text-foreground">Git 命令</div>
+                          <pre className="mt-1 overflow-x-auto rounded-md border border-border bg-background p-2 text-xs leading-6">
+                            {`${repository.checkout.fetch}\n${repository.checkout.checkout}\n# ... 开发并提交 ...\n${repository.checkout.push}`}
+                          </pre>
+                          <UiButton
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="mt-2"
+                            onClick={() =>
+                              void navigator.clipboard.writeText(
+                                `${repository.checkout.fetch}\n${repository.checkout.checkout}\n${repository.checkout.push}`,
+                              )
+                            }
+                          >
+                            复制命令
+                          </UiButton>
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              ) : null}
+
+              {selectedStage === 'EXECUTION' && executionHtml ? (
+                <Card className="rounded-md border-border bg-card shadow-sm">
+                  <CardHeader className="p-5 pb-0">
+                    <SectionHeader eyebrow="Execution Report" title="执行报告" />
+                  </CardHeader>
+                  <CardContent className="p-5 pt-4">
+                    <iframe
+                      title="执行报告预览"
+                      sandbox=""
+                      srcDoc={executionHtml}
                       className="h-[480px] w-full rounded-md border border-border"
                     />
                   </CardContent>

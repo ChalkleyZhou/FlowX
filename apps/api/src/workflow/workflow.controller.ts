@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, Res } from '@nestjs/common';
+import { CompleteLocalExecutionDto } from './dto/complete-local-execution.dto';
 import { CreateWorkflowRunDto } from './dto/create-workflow-run.dto';
 import { HumanReviewDecisionDto } from './dto/human-review-decision.dto';
 import { StageFeedbackDto } from './dto/stage-feedback.dto';
@@ -28,6 +29,17 @@ export class WorkflowController {
   async getPlanArtifact(@Param('id') id: string, @Res({ passthrough: false }) res: any) {
     const html = await this.workflowService.readPlanArtifactHtml(id);
     res.type('text/html; charset=utf-8').send(html);
+  }
+
+  @Get(':id/artifacts/execution')
+  async getExecutionArtifact(@Param('id') id: string, @Res({ passthrough: false }) res: any) {
+    const html = await this.workflowService.readExecutionArtifactHtml(id);
+    res.type('text/html; charset=utf-8').send(html);
+  }
+
+  @Get(':id/execution/local-handoff')
+  getLocalHandoff(@Param('id') id: string) {
+    return this.workflowService.getLocalHandoff(id);
   }
 
   @Get(':id')
@@ -158,6 +170,25 @@ export class WorkflowController {
   @Post(':id/execution/run')
   runExecution(@Param('id') id: string, @Req() req: WorkflowRequest) {
     return this.workflowService.runExecution(id, undefined, undefined, req.authSession);
+  }
+
+  @Post(':id/execution/claim-local')
+  claimLocalExecution(@Param('id') id: string, @Req() req: WorkflowRequest) {
+    return this.workflowService.claimLocalExecution(id, req.authSession);
+  }
+
+  @Post(':id/execution/complete-local')
+  completeLocalExecution(
+    @Param('id') id: string,
+    @Body() dto: CompleteLocalExecutionDto,
+    @Req() req: WorkflowRequest,
+  ) {
+    return this.workflowService.completeLocalExecution(id, dto, req.authSession);
+  }
+
+  @Post(':id/execution/cancel-local')
+  cancelLocalExecution(@Param('id') id: string) {
+    return this.workflowService.cancelLocalExecution(id);
   }
 
   @Post(':id/execution/revise')

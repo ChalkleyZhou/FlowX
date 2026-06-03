@@ -192,6 +192,7 @@ export interface StageExecution {
   status: string;
   statusMessage?: string | null;
   attempt: number;
+  input?: unknown;
   output: unknown;
 }
 
@@ -255,6 +256,66 @@ export interface WorkflowRun {
   };
   reviewFindings: ReviewFinding[];
   stageExecutions: StageExecution[];
+}
+
+export interface LocalHandoffCheckoutHints {
+  fetch: string;
+  checkout: string;
+  push: string;
+}
+
+export interface LocalHandoffRepository {
+  workflowRepositoryId: string;
+  repositoryId: string | null;
+  name: string;
+  url: string;
+  baseBranch: string;
+  workingBranch: string;
+  checkout: LocalHandoffCheckoutHints;
+  suggestedCommitMessage: string;
+}
+
+export interface LocalHandoffPayload {
+  workflowRunId: string;
+  status: string;
+  executor: 'LOCAL';
+  requirement: {
+    id: string;
+    title: string;
+    description: string;
+    acceptanceCriteria: string;
+  };
+  plan: {
+    summary: string;
+    implementationPlan: string[];
+    filesToModify: string[];
+    newFiles: string[];
+    riskPoints: string[];
+  };
+  tasks: Array<{
+    id: string;
+    title: string;
+    description: string;
+    surface: string | null;
+    repositoryNames: string[];
+  }>;
+  repositories: LocalHandoffRepository[];
+  artifacts: {
+    planMetaPath: string | null;
+    planHtmlPath: string | null;
+  };
+}
+
+export interface LocalExecutionClaimResponse {
+  workflow: WorkflowRun;
+  handoff: LocalHandoffPayload;
+}
+
+export interface CompleteLocalRepositoryReport {
+  workflowRepositoryId: string;
+  headSha: string;
+  changedFiles: string[];
+  patchSummary?: string;
 }
 
 export interface ReviewFinding {

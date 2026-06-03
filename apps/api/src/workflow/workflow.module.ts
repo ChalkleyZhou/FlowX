@@ -6,12 +6,13 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { WorkspacesModule } from '../workspaces/workspaces.module';
 import { WorkflowArtifactService } from './workflow-artifact.service';
 import { WorkflowController } from './workflow.controller';
+import { WorkflowGitRemoteService } from './workflow-git-remote.service';
 import { WorkflowService } from './workflow.service';
 
 @Module({
   imports: [AiModule, AuthModule, WorkspacesModule, NotificationsModule],
   controllers: [WorkflowController],
-  providers: [WorkflowService, WorkflowStateMachine, WorkflowArtifactService],
+  providers: [WorkflowService, WorkflowStateMachine, WorkflowArtifactService, WorkflowGitRemoteService],
   exports: [WorkflowService],
 })
 export class WorkflowModule {}

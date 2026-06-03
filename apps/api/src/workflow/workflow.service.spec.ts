@@ -57,6 +57,7 @@ function createService(workflowArtifactService: Partial<WorkflowArtifactService>
       } as never,
       { get: () => ({}) } as never,
       artifactService,
+      {} as never,
     ),
     workflowArtifactService: artifactService,
   };

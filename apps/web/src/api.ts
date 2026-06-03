@@ -7,8 +7,11 @@ import type {
   Issue,
   IdeationSessionEvent,
   GanttPayload,
+  CompleteLocalRepositoryReport,
   LocalDevDetectResponse,
   LocalDevPreviewStatus,
+  LocalExecutionClaimResponse,
+  LocalHandoffPayload,
   OrganizationMember,
   Project,
   RequirementAssignment,
@@ -548,6 +551,32 @@ export const api = {
     }
     return response.text();
   },
+  fetchExecutionArtifact: async (id: string) => {
+    const token = getAuthToken();
+    const response = await fetch(buildApiUrl(`/workflow-runs/${id}/artifacts/execution`), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      throw new Error('Artifact not found');
+    }
+    return response.text();
+  },
+  claimLocalExecution: (id: string) =>
+    request<LocalExecutionClaimResponse>(`/workflow-runs/${id}/execution/claim-local`, {
+      method: 'POST',
+    }),
+  getLocalHandoff: (id: string) =>
+    request<LocalHandoffPayload>(`/workflow-runs/${id}/execution/local-handoff`),
+  completeLocalExecution: (
+    id: string,
+    body: { pushed: boolean; repositories: CompleteLocalRepositoryReport[] },
+  ) =>
+    request<LocalExecutionClaimResponse>(`/workflow-runs/${id}/execution/complete-local`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  cancelLocalExecution: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/execution/cancel-local`, { method: 'POST' }),
   deleteWorkflowRun: (id: string) =>
     request<{ success: boolean }>(`/workflow-runs/${id}`, { method: 'DELETE' }),
   rollbackWorkflowToPreviousStage: (id: string) =>
