@@ -2,6 +2,10 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './auth';
 import { BugsPage } from './pages/BugsPage';
 import { BugDetailPage } from './pages/BugDetailPage';
+import { BriefingDetailPage } from './pages/BriefingDetailPage';
+import { BriefingSourcesPage } from './pages/BriefingSourcesPage';
+import { BriefingsPage } from './pages/BriefingsPage';
+import { DeliveryTargetsPage } from './pages/DeliveryTargetsPage';
 import { IssuesPage } from './pages/IssuesPage';
 import { IssueDetailPage } from './pages/IssueDetailPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
@@ -41,6 +45,8 @@ export default function App() {
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
             <Route path="/projects/:projectId/schedule" element={<ProjectScheduleRedirect />} />
+            <Route path="/briefings" element={<BriefingsPage />} />
+            <Route path="/briefings/:briefingId" element={<BriefingDetailPage />} />
             <Route path="/requirements" element={<RequirementsPage />} />
             <Route path="/requirements/:id" element={<RequirementDetailPage />} />
             <Route path="/workflow-runs" element={<WorkflowRunsPage />} />
@@ -52,6 +58,8 @@ export default function App() {
             <Route path="/user-manual" element={<UserManualPage />} />
             <Route path="/settings/ai-credentials" element={<AiCredentialsPage />} />
             <Route path="/settings/users" element={<OrganizationUsersPage />} />
+            <Route path="/settings/briefing-sources" element={<BriefingSourcesPage />} />
+            <Route path="/settings/delivery-targets" element={<DeliveryTargetsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

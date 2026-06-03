@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { PageHeader } from '../components/PageHeader';
+import { ProjectBriefingConfigPanel } from '../components/ProjectBriefingConfigPanel';
 import { SectionHeader } from '../components/SectionHeader';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -75,6 +76,8 @@ export function ProjectDetailPage() {
         {project.code ? <Badge variant="secondary">{project.code}</Badge> : null}
         <Badge variant="default">{project.requirements?.length ?? 0} 条需求</Badge>
       </div>
+
+      <ProjectBriefingConfigPanel projectId={projectId} />
 
       <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="pb-4">

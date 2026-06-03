@@ -19,6 +19,7 @@ const primaryItems = [
   { key: '/requirements', label: '需求' },
   { key: '/workflow-runs', label: '工作流' },
   { key: '/projects', label: '项目' },
+  { key: '/briefings', label: '简报' },
   { key: '/schedule', label: '排期' },
   { key: '/bugs', label: '缺陷' },
   { key: '/issues', label: '问题项' },
@@ -29,6 +30,8 @@ const secondaryItems = [
   { key: '/user-manual', label: '使用手册' },
   { key: '/settings/users', label: '用户管理' },
   { key: '/settings/ai-credentials', label: 'AI 凭据' },
+  { key: '/settings/briefing-sources', label: '简报数据源' },
+  { key: '/settings/delivery-targets', label: '投递目标' },
 ];
 
 export function AppLayout({ children }: PropsWithChildren) {
