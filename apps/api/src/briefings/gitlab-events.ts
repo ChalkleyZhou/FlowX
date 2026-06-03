@@ -1,26 +1,6 @@
-export type GitlabEventType =
-  | 'push'
-  | 'tag'
-  | 'merge_request'
-  | 'issue'
-  | 'note'
-  | 'pipeline'
-  | 'release'
-  | 'unsupported';
-
-export interface NormalizedGitlabEvent {
-  eventType: GitlabEventType;
-  objectKind: string;
-  gitlabProjectId: number;
-  projectName: string;
-  actorName?: string;
-  actorUsername?: string;
-  action?: string;
-  subject: string;
-  url?: string;
-  occurredAt: string;
-  summary: Record<string, string | number | boolean | null>;
-}
+import type { BriefingEventType, NormalizedBriefingEvent } from './briefing-events';
+export { buildDedupeKey } from './briefing-events';
+export type { BriefingEventType, NormalizedBriefingEvent };
 
 type GitlabPayload = Record<string, unknown>;
 type GitlabObject = Record<string, unknown>;
@@ -61,7 +41,7 @@ function payloadOccurredAt(payload: GitlabPayload) {
   );
 }
 
-function eventTypeFromObjectKind(objectKind: string): GitlabEventType {
+function eventTypeFromObjectKind(objectKind: string): BriefingEventType {
   if (objectKind === 'push') {
     return 'push';
   }
@@ -86,16 +66,19 @@ function eventTypeFromObjectKind(objectKind: string): GitlabEventType {
   return 'unsupported';
 }
 
-export function normalizeGitlabPayload(payload: GitlabPayload): NormalizedGitlabEvent {
+export function normalizeGitlabPayload(payload: GitlabPayload): NormalizedBriefingEvent {
   const objectKind = asString(payload.object_kind) || asString(payload.objectKind) || 'unsupported';
   const eventType = eventTypeFromObjectKind(objectKind);
   const project = payloadProject(payload);
   const attributes = asObject(payload.object_attributes);
+  const externalPath = asString(project.path_with_namespace) || asString(project.name);
   const base = {
+    provider: 'gitlab' as const,
+    externalPath,
+    externalId: String(asNumber(project.id)),
     eventType,
     objectKind,
-    gitlabProjectId: asNumber(project.id),
-    projectName: asString(project.name),
+    projectName: asString(project.name) || externalPath,
     ...payloadActor(payload),
     occurredAt: new Date(payloadOccurredAt(payload)).toISOString(),
   };
@@ -145,11 +128,3 @@ export function normalizeGitlabPayload(payload: GitlabPayload): NormalizedGitlab
     },
   };
 }
-
-export function buildDedupeKey(event: NormalizedGitlabEvent) {
-  const objectId = event.summary.id ?? event.summary.iid ?? event.summary.after ?? event.subject;
-  return [event.eventType, event.gitlabProjectId, event.subject, objectId, event.occurredAt].join(
-    ':',
-  );
-}
-

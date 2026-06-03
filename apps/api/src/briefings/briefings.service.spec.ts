@@ -26,7 +26,7 @@ describe('BriefingsService', () => {
           upsert: configUpsert,
         },
         briefingSource: { findMany: sourceFindMany },
-        gitlabEvent: { findMany: eventFindMany },
+        briefingEvent: { findMany: eventFindMany },
         briefing: {
           findFirst: briefingFindFirst,
           findUnique: briefingFindUnique,
@@ -109,9 +109,11 @@ describe('BriefingsService', () => {
     eventFindMany.mockResolvedValue([
       {
         normalizedPayload: {
+          provider: 'gitlab',
+          externalPath: 'rokid/flowx',
+          externalId: '42',
           eventType: 'push',
           objectKind: 'push',
-          gitlabProjectId: 42,
           projectName: 'flowx',
           action: 'push',
           subject: 'main',

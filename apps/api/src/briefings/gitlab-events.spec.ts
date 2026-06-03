@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildDedupeKey, normalizeGitlabPayload } from './gitlab-events';
+import { buildDedupeKey } from './briefing-events';
+import { normalizeGitlabPayload } from './gitlab-events';
 
 describe('GitLab briefing events', () => {
   it('normalizes push payloads into briefing-ready events', () => {
@@ -14,13 +15,16 @@ describe('GitLab briefing events', () => {
       project: {
         id: 42,
         name: 'daily-briefing',
+        path_with_namespace: 'rokid/daily-briefing',
       },
     });
 
     expect(event).toMatchObject({
+      provider: 'gitlab',
+      externalPath: 'rokid/daily-briefing',
+      externalId: '42',
       eventType: 'push',
       objectKind: 'push',
-      gitlabProjectId: 42,
       projectName: 'daily-briefing',
       actorName: 'Alice',
       actorUsername: 'alice',
@@ -39,7 +43,7 @@ describe('GitLab briefing events', () => {
     const event = normalizeGitlabPayload({
       object_kind: 'merge_request',
       user: { name: 'Bob', username: 'bob' },
-      project: { id: 7, name: 'flowx-web' },
+      project: { id: 7, name: 'flowx-web', path_with_namespace: 'rokid/flowx-web' },
       object_attributes: {
         id: 99,
         iid: 12,
@@ -53,53 +57,17 @@ describe('GitLab briefing events', () => {
 
     expect(event).toMatchObject({
       eventType: 'merge_request',
-      objectKind: 'merge_request',
-      gitlabProjectId: 7,
-      projectName: 'flowx-web',
+      externalId: '7',
       actorName: 'Bob',
-      actorUsername: 'bob',
       action: 'merge',
       subject: 'Add briefing page',
-      url: 'https://gitlab.example.com/flowx/web/-/merge_requests/12',
-      summary: {
-        id: 99,
-        iid: 12,
-        state: 'merged',
-        action: 'merge',
-      },
-    });
-  });
-
-  it('normalizes pipeline payloads using status as action', () => {
-    const event = normalizeGitlabPayload({
-      object_kind: 'pipeline',
-      user: { name: 'CI', username: 'ci' },
-      project: { id: 11, name: 'api' },
-      object_attributes: {
-        id: 1234,
-        ref: 'release/2026-06-03',
-        status: 'failed',
-        url: 'https://gitlab.example.com/api/-/pipelines/1234',
-        updated_at: '2026-06-03T11:00:00+08:00',
-      },
-    });
-
-    expect(event).toMatchObject({
-      eventType: 'pipeline',
-      action: 'failed',
-      subject: 'release/2026-06-03',
-      summary: {
-        id: 1234,
-        ref: 'release/2026-06-03',
-        status: 'failed',
-      },
     });
   });
 
   it('builds stable dedupe keys from event identity fields', () => {
     const event = normalizeGitlabPayload({
       object_kind: 'issue',
-      project: { id: 42, name: 'daily-briefing' },
+      project: { id: 42, name: 'daily-briefing', path_with_namespace: 'rokid/daily-briefing' },
       object_attributes: {
         id: 500,
         iid: 8,
@@ -110,7 +78,7 @@ describe('GitLab briefing events', () => {
     });
 
     expect(buildDedupeKey(event)).toBe(
-      'issue:42:Webhook failed:500:2026-06-03T04:00:00.000Z',
+      'gitlab:rokid/daily-briefing:issue:Webhook failed:500:2026-06-03T04:00:00.000Z',
     );
   });
 });

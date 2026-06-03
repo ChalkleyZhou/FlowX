@@ -6,9 +6,22 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { buildDedupeKey, normalizeGitlabPayload } from './gitlab-events';
+import { buildDedupeKey } from './briefing-events';
 import { CreateBriefingSourceDto } from './dto/create-briefing-source.dto';
 import { UpdateBriefingSourceDto } from './dto/update-briefing-source.dto';
+import { isGithubPing, normalizeGithubPayload } from './github-events';
+import { normalizeGitlabPayload } from './gitlab-events';
+import { parseRepositoryRemote } from './repository-remote';
+import { verifyGithubWebhookSignature } from './webhook-auth';
+import { generateWebhookSecret } from './webhook-secret';
+
+export interface WebhookRequestContext {
+  gitlabToken?: string;
+  githubSignature?: string;
+  githubEvent?: string;
+  payload: Record<string, unknown>;
+  rawBody?: Buffer;
+}
 
 @Injectable()
 export class BriefingSourcesService {
@@ -25,19 +38,56 @@ export class BriefingSourcesService {
     });
   }
 
+  async resolveRepositoryBinding(workspaceId: string, repositoryId: string) {
+    const repository = await this.prisma.repository.findFirst({
+      where: { id: repositoryId, workspaceId },
+    });
+    if (!repository) {
+      throw new NotFoundException('Repository not found in workspace.');
+    }
+
+    const parsed = parseRepositoryRemote(repository.url);
+    if (!parsed) {
+      throw new BadRequestException(
+        'Repository URL is not a supported GitHub or GitLab remote. Use an https or git@ remote.',
+      );
+    }
+
+    return {
+      repositoryId: repository.id,
+      repositoryName: repository.name,
+      repositoryUrl: repository.url,
+      provider: parsed.provider,
+      externalPath: parsed.externalPath,
+      host: parsed.host,
+    };
+  }
+
   async createSource(dto: CreateBriefingSourceDto) {
-    await this.ensureRepositoryInWorkspace(dto.workspaceId, dto.repositoryId);
+    const repository = await this.ensureRepositoryInWorkspace(dto.workspaceId, dto.repositoryId);
+    const binding = this.resolveBindingFromInput(dto, repository.url);
 
     return this.prisma.briefingSource.create({
       data: {
         workspaceId: dto.workspaceId,
         repositoryId: dto.repositoryId,
-        provider: 'gitlab',
-        gitlabProjectId: dto.gitlabProjectId,
-        pathWithNamespace: dto.pathWithNamespace.trim(),
-        webhookSecret: dto.webhookSecret.trim(),
+        provider: binding.provider,
+        externalPath: binding.externalPath,
+        webhookSecret: dto.webhookSecret?.trim() || generateWebhookSecret(),
         isActive: dto.isActive ?? true,
       },
+      include: {
+        workspace: true,
+        repository: true,
+      },
+    });
+  }
+
+  async regenerateWebhookSecret(id: string) {
+    await this.ensureSourceExists(id);
+    return this.prisma.briefingSource.update({
+      where: { id },
+      data: { webhookSecret: generateWebhookSecret() },
       include: {
         workspace: true,
         repository: true,
@@ -51,10 +101,6 @@ export class BriefingSourcesService {
     return this.prisma.briefingSource.update({
       where: { id },
       data: {
-        ...(dto.gitlabProjectId === undefined ? {} : { gitlabProjectId: dto.gitlabProjectId }),
-        ...(dto.pathWithNamespace === undefined
-          ? {}
-          : { pathWithNamespace: dto.pathWithNamespace.trim() }),
         ...(dto.webhookSecret === undefined ? {} : { webhookSecret: dto.webhookSecret.trim() }),
         ...(dto.isActive === undefined ? {} : { isActive: dto.isActive }),
       },
@@ -67,7 +113,7 @@ export class BriefingSourcesService {
 
   async deleteSource(id: string) {
     await this.ensureSourceExists(id);
-    await this.prisma.gitlabEvent.deleteMany({ where: { briefingSourceId: id } });
+    await this.prisma.briefingEvent.deleteMany({ where: { briefingSourceId: id } });
     await this.prisma.briefingSource.delete({ where: { id } });
     return { success: true };
   }
@@ -77,6 +123,13 @@ export class BriefingSourcesService {
     token: string | undefined,
     payload: Record<string, unknown>,
   ) {
+    return this.receiveWebhook(sourceId, {
+      gitlabToken: token,
+      payload,
+    });
+  }
+
+  async receiveWebhook(sourceId: string, context: WebhookRequestContext) {
     const source = await this.prisma.briefingSource.findUnique({
       where: { id: sourceId },
     });
@@ -87,20 +140,90 @@ export class BriefingSourcesService {
     if (!source.isActive) {
       throw new BadRequestException('Briefing source is inactive.');
     }
-    if (!token || token !== source.webhookSecret) {
+
+    if (source.provider === 'github') {
+      if (isGithubPing(context.githubEvent)) {
+        return { duplicate: false, ping: true };
+      }
+      if (
+        !verifyGithubWebhookSignature(
+          source.webhookSecret,
+          context.rawBody,
+          context.githubSignature,
+        )
+      ) {
+        throw new UnauthorizedException('Invalid GitHub webhook signature.');
+      }
+      const normalized = normalizeGithubPayload(
+        context.githubEvent ?? 'unsupported',
+        context.payload,
+      );
+      return this.persistWebhookEvent(source, context.payload, normalized);
+    }
+
+    if (!context.gitlabToken || context.gitlabToken !== source.webhookSecret) {
       throw new UnauthorizedException('Invalid GitLab webhook token.');
     }
 
-    const normalized = normalizeGitlabPayload(payload);
+    const normalized = normalizeGitlabPayload(context.payload);
+    return this.persistWebhookEvent(source, context.payload, normalized);
+  }
+
+  private resolveBindingFromInput(dto: CreateBriefingSourceDto, repositoryUrl: string) {
+    if (dto.provider && dto.externalPath) {
+      return {
+        provider: dto.provider,
+        externalPath: dto.externalPath.trim(),
+      };
+    }
+
+    const parsed = parseRepositoryRemote(repositoryUrl);
+    if (!parsed) {
+      throw new BadRequestException(
+        'Could not infer provider from repository URL. Register a GitHub or GitLab https/git remote.',
+      );
+    }
+
+    if (dto.provider && dto.provider !== parsed.provider) {
+      throw new BadRequestException('Provider does not match repository URL host.');
+    }
+    if (dto.externalPath && dto.externalPath.trim() !== parsed.externalPath) {
+      throw new BadRequestException('External path does not match repository URL.');
+    }
+
+    return parsed;
+  }
+
+  private async persistWebhookEvent(
+    source: {
+      id: string;
+      workspaceId: string;
+      repositoryId: string;
+      provider: string;
+      externalPath: string;
+      externalId: string | null;
+    },
+    payload: Record<string, unknown>,
+    normalized: ReturnType<typeof normalizeGitlabPayload>,
+  ) {
+    if (!source.externalId && normalized.externalId) {
+      await this.prisma.briefingSource.update({
+        where: { id: source.id },
+        data: { externalId: normalized.externalId },
+      });
+    }
+
     const dedupeKey = buildDedupeKey(normalized);
 
     try {
-      const event = await this.prisma.gitlabEvent.create({
+      const event = await this.prisma.briefingEvent.create({
         data: {
           briefingSourceId: source.id,
           workspaceId: source.workspaceId,
           repositoryId: source.repositoryId,
-          gitlabProjectId: normalized.gitlabProjectId,
+          provider: normalized.provider,
+          externalPath: normalized.externalPath || source.externalPath,
+          externalId: normalized.externalId || null,
           eventType: normalized.eventType,
           objectKind: normalized.objectKind,
           actorName: normalized.actorName ?? null,
@@ -131,6 +254,7 @@ export class BriefingSourcesService {
     if (!repository) {
       throw new NotFoundException('Repository not found in workspace.');
     }
+    return repository;
   }
 
   private async ensureSourceExists(id: string) {
@@ -140,4 +264,3 @@ export class BriefingSourcesService {
     }
   }
 }
-

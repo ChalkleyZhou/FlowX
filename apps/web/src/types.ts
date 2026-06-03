@@ -116,9 +116,9 @@ export interface BriefingSource {
   id: string;
   workspaceId: string;
   repositoryId: string;
-  provider: string;
-  gitlabProjectId: number;
-  pathWithNamespace: string;
+  provider: 'github' | 'gitlab';
+  externalPath: string;
+  externalId?: string | null;
   webhookSecret?: string;
   isActive: boolean;
   workspace?: Workspace;

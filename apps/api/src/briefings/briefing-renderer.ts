@@ -1,4 +1,4 @@
-import type { GitlabEventType, NormalizedGitlabEvent } from './gitlab-events';
+import type { BriefingEventType, NormalizedBriefingEvent } from './briefing-events';
 
 export interface BriefingAggregate {
   overview: {
@@ -8,15 +8,15 @@ export interface BriefingAggregate {
     issueCount: number;
     failedPipelineCount: number;
   };
-  byType: Record<GitlabEventType, NormalizedGitlabEvent[]>;
+  byType: Record<BriefingEventType, NormalizedBriefingEvent[]>;
 }
 
 interface RenderInput {
   date: string;
-  events: NormalizedGitlabEvent[];
+  events: NormalizedBriefingEvent[];
 }
 
-export function aggregateEvents(events: NormalizedGitlabEvent[]): BriefingAggregate {
+export function aggregateEvents(events: NormalizedBriefingEvent[]): BriefingAggregate {
   const byType: BriefingAggregate['byType'] = {
     push: [],
     tag: [],
@@ -34,7 +34,7 @@ export function aggregateEvents(events: NormalizedGitlabEvent[]): BriefingAggreg
 
   return {
     overview: {
-      projectCount: new Set(events.map((event) => event.gitlabProjectId)).size,
+      projectCount: new Set(events.map((event) => `${event.provider}:${event.externalPath}`)).size,
       eventCount: events.length,
       mergeRequestCount: byType.merge_request.length,
       issueCount: byType.issue.length,
@@ -45,7 +45,7 @@ export function aggregateEvents(events: NormalizedGitlabEvent[]): BriefingAggreg
   };
 }
 
-function markdownEventList(events: NormalizedGitlabEvent[]) {
+function markdownEventList(events: NormalizedBriefingEvent[]) {
   if (events.length === 0) {
     return '- No events for this section.';
   }
@@ -100,7 +100,7 @@ function escapeHtml(value: string) {
     .replaceAll("'", '&#39;');
 }
 
-function htmlEventList(events: NormalizedGitlabEvent[]) {
+function htmlEventList(events: NormalizedBriefingEvent[]) {
   if (events.length === 0) {
     return '<ul><li>No events for this section.</li></ul>';
   }
@@ -144,4 +144,3 @@ export function renderBriefingHtml(input: RenderInput) {
     htmlEventList(aggregate.byType.note),
   ].join('\n');
 }
-

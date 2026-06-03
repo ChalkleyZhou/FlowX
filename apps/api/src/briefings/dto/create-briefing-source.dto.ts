@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateBriefingSourceDto {
   @IsString()
@@ -9,19 +9,21 @@ export class CreateBriefingSourceDto {
   @IsNotEmpty()
   repositoryId!: string;
 
-  @IsInt()
-  gitlabProjectId!: number;
-
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  pathWithNamespace!: string;
+  webhookSecret?: string;
 
+  @IsOptional()
+  @IsIn(['github', 'gitlab'])
+  provider?: 'github' | 'gitlab';
+
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  webhookSecret!: string;
+  externalPath?: string;
 
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 }
-

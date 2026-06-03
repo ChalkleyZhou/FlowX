@@ -1,20 +1,12 @@
-import { IsBoolean, IsInt, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class UpdateBriefingSourceDto {
   @IsOptional()
-  @IsInt()
-  gitlabProjectId?: number;
-
-  @IsOptional()
   @IsString()
-  pathWithNamespace?: string;
-
-  @IsOptional()
-  @IsString()
+  @IsNotEmpty()
   webhookSecret?: string;
 
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 }
-

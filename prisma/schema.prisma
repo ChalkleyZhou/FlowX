@@ -65,7 +65,7 @@ model Workspace {
   issues       Issue[]
   bugs         Bug[]
   briefingSources BriefingSource[]
-  gitlabEvents GitlabEvent[]
+  briefingEvents BriefingEvent[]
   briefings    Briefing[]
   deliveryTargets DeliveryTarget[]
   createdAt    DateTime      @default(now())
@@ -154,7 +154,7 @@ model Repository {
   issues                  Issue[]
   bugs                    Bug[]
   briefingSources         BriefingSource[]
-  gitlabEvents            GitlabEvent[]
+  briefingEvents          BriefingEvent[]
   createdAt               DateTime                @default(now())
   updatedAt               DateTime                @updatedAt
 }
@@ -171,44 +171,46 @@ model RepositoryDeployConfig {
 }
 
 model BriefingSource {
-  id                String        @id @default(cuid())
-  workspaceId       String
-  workspace         Workspace     @relation(fields: [workspaceId], references: [id])
-  repositoryId      String
-  repository        Repository    @relation(fields: [repositoryId], references: [id])
-  provider          String        @default("gitlab")
-  gitlabProjectId   Int
-  pathWithNamespace String
-  webhookSecret     String
-  isActive          Boolean       @default(true)
-  gitlabEvents      GitlabEvent[]
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  id             String         @id @default(cuid())
+  workspaceId    String
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id])
+  repositoryId   String
+  repository     Repository     @relation(fields: [repositoryId], references: [id])
+  provider       String
+  externalPath   String
+  externalId     String?
+  webhookSecret  String
+  isActive       Boolean        @default(true)
+  briefingEvents BriefingEvent[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
-  @@unique([repositoryId, provider, gitlabProjectId])
+  @@unique([repositoryId, provider, externalPath])
   @@index([workspaceId])
   @@index([repositoryId])
   @@index([isActive])
 }
 
-model GitlabEvent {
-  id                String          @id @default(cuid())
-  briefingSourceId String
-  briefingSource   BriefingSource  @relation(fields: [briefingSourceId], references: [id])
+model BriefingEvent {
+  id                String         @id @default(cuid())
+  briefingSourceId  String
+  briefingSource    BriefingSource @relation(fields: [briefingSourceId], references: [id])
   workspaceId       String
-  workspace         Workspace       @relation(fields: [workspaceId], references: [id])
+  workspace         Workspace      @relation(fields: [workspaceId], references: [id])
   repositoryId      String
-  repository        Repository      @relation(fields: [repositoryId], references: [id])
-  gitlabProjectId   Int
+  repository        Repository     @relation(fields: [repositoryId], references: [id])
+  provider          String
+  externalPath      String
+  externalId        String?
   eventType         String
   objectKind        String
   actorName         String?
   actorUsername     String?
   occurredAt        DateTime
-  dedupeKey         String          @unique
+  dedupeKey         String         @unique
   rawPayload        Json
   normalizedPayload Json
-  createdAt         DateTime        @default(now())
+  createdAt         DateTime       @default(now())
 
   @@index([briefingSourceId, occurredAt])
   @@index([workspaceId, occurredAt])

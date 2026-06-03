@@ -300,12 +300,24 @@ export const api = {
     }),
   getBriefingSources: (params?: { workspaceId?: string }) =>
     request<BriefingSource[]>(`/briefing-sources${queryString(params)}`),
+  resolveBriefingRepositoryBinding: (params: {
+    workspaceId: string;
+    repositoryId: string;
+  }) =>
+    request<{
+      repositoryId: string;
+      repositoryName: string;
+      repositoryUrl: string;
+      provider: 'github' | 'gitlab';
+      externalPath: string;
+      host: string;
+    }>(`/briefing-sources/repository-binding${queryString(params)}`),
   createBriefingSource: (payload: {
     workspaceId: string;
     repositoryId: string;
-    gitlabProjectId: number;
-    pathWithNamespace: string;
-    webhookSecret: string;
+    webhookSecret?: string;
+    provider?: 'github' | 'gitlab';
+    externalPath?: string;
     isActive?: boolean;
   }) =>
     request<BriefingSource>('/briefing-sources', {
@@ -315,8 +327,6 @@ export const api = {
   updateBriefingSource: (
     id: string,
     payload: {
-      gitlabProjectId?: number;
-      pathWithNamespace?: string;
       webhookSecret?: string;
       isActive?: boolean;
     },
@@ -324,6 +334,10 @@ export const api = {
     request<BriefingSource>(`/briefing-sources/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
+    }),
+  regenerateBriefingSourceWebhookSecret: (id: string) =>
+    request<BriefingSource>(`/briefing-sources/${id}/regenerate-webhook-secret`, {
+      method: 'POST',
     }),
   deleteBriefingSource: (id: string) =>
     request<{ success: true }>(`/briefing-sources/${id}`, { method: 'DELETE' }),
@@ -420,6 +434,10 @@ export const api = {
     request<Repository>(`/workspaces/${workspaceId}/repositories`, {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+  resyncWorkspaceRepository: (workspaceId: string, repositoryId: string) =>
+    request<Repository>(`/workspaces/${workspaceId}/repositories/${repositoryId}/sync`, {
+      method: 'POST',
     }),
   updateRepository: (
     workspaceId: string,

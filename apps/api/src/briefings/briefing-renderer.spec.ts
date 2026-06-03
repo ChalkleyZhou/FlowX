@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import type { NormalizedBriefingEvent } from './briefing-events';
 import { aggregateEvents, renderBriefingHtml, renderBriefingMarkdown } from './briefing-renderer';
-import type { NormalizedGitlabEvent } from './gitlab-events';
 
-function event(overrides: Partial<NormalizedGitlabEvent>): NormalizedGitlabEvent {
+function event(overrides: Partial<NormalizedBriefingEvent>): NormalizedBriefingEvent {
   return {
+    provider: 'gitlab',
+    externalPath: 'rokid/flowx',
+    externalId: '1',
     eventType: 'push',
     objectKind: 'push',
-    gitlabProjectId: 1,
     projectName: 'flowx',
     action: 'push',
     subject: 'main',
@@ -19,19 +21,26 @@ function event(overrides: Partial<NormalizedGitlabEvent>): NormalizedGitlabEvent
 describe('briefing renderer', () => {
   it('aggregates overview counts by type and project', () => {
     const aggregate = aggregateEvents([
-      event({ eventType: 'push', gitlabProjectId: 1 }),
-      event({ eventType: 'merge_request', objectKind: 'merge_request', gitlabProjectId: 1 }),
-      event({ eventType: 'issue', objectKind: 'issue', gitlabProjectId: 2 }),
+      event({ externalPath: 'rokid/a', externalId: '1' }),
+      event({
+        eventType: 'merge_request',
+        objectKind: 'merge_request',
+        externalPath: 'rokid/a',
+        externalId: '1',
+      }),
+      event({ eventType: 'issue', objectKind: 'issue', externalPath: 'rokid/b', externalId: '2' }),
       event({
         eventType: 'pipeline',
         objectKind: 'pipeline',
-        gitlabProjectId: 2,
+        externalPath: 'github.com/org/api',
+        provider: 'github',
+        externalId: '9',
         summary: { status: 'failed' },
       }),
     ]);
 
     expect(aggregate.overview).toEqual({
-      projectCount: 2,
+      projectCount: 3,
       eventCount: 4,
       mergeRequestCount: 1,
       issueCount: 1,
@@ -76,4 +85,3 @@ describe('briefing renderer', () => {
     expect(html).not.toContain('<script>alert("x")</script>');
   });
 });
-

@@ -154,12 +154,13 @@ describe('api helpers', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await api.getBriefingSources({ workspaceId: 'workspace-1' });
+    await api.resolveBriefingRepositoryBinding({
+      workspaceId: 'workspace-1',
+      repositoryId: 'repo-1',
+    });
     await api.createBriefingSource({
       workspaceId: 'workspace-1',
       repositoryId: 'repo-1',
-      gitlabProjectId: 42,
-      pathWithNamespace: 'rokid/flowx',
-      webhookSecret: 'secret',
     });
     await api.updateBriefingSource('source-1', { isActive: false });
     await api.deleteBriefingSource('source-1');
@@ -181,6 +182,10 @@ describe('api helpers', () => {
 
     expect(fetchMock.mock.calls.map((call) => [call[0], call[1]?.method ?? 'GET'])).toEqual([
       ['http://localhost:3000/briefing-sources?workspaceId=workspace-1', 'GET'],
+      [
+        'http://localhost:3000/briefing-sources/repository-binding?workspaceId=workspace-1&repositoryId=repo-1',
+        'GET',
+      ],
       ['http://localhost:3000/briefing-sources', 'POST'],
       ['http://localhost:3000/briefing-sources/source-1', 'PATCH'],
       ['http://localhost:3000/briefing-sources/source-1', 'DELETE'],

@@ -5,7 +5,7 @@ import {
   renderBriefingHtml,
   renderBriefingMarkdown,
 } from './briefing-renderer';
-import type { NormalizedGitlabEvent } from './gitlab-events';
+import type { NormalizedBriefingEvent } from './briefing-events';
 import { DeliveryTargetsService } from './delivery-targets.service';
 import { GenerateBriefingDto } from './dto/generate-briefing.dto';
 import { UpsertProjectBriefingConfigDto } from './dto/upsert-project-briefing-config.dto';
@@ -134,7 +134,7 @@ export class BriefingsService {
     }
 
     const { start, end } = dateWindow(dto.date, DEFAULT_TIMEZONE);
-    const eventRows = await this.prisma.gitlabEvent.findMany({
+    const eventRows = await this.prisma.briefingEvent.findMany({
       where: {
         briefingSourceId: { in: sourceIds },
         occurredAt: { gte: start, lt: end },
@@ -228,10 +228,10 @@ function dateWindow(date: string, timezone: string) {
   return { start, end };
 }
 
-function normalizeStoredEvent(value: Prisma.JsonValue): NormalizedGitlabEvent {
+function normalizeStoredEvent(value: Prisma.JsonValue): NormalizedBriefingEvent {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('Stored normalized GitLab event is invalid.');
+    throw new Error('Stored normalized briefing event is invalid.');
   }
-  return value as unknown as NormalizedGitlabEvent;
+  return value as unknown as NormalizedBriefingEvent;
 }
 
