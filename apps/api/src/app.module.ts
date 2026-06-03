@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { AiModule } from './ai/ai.module';
 import { AuthModule } from './auth/auth.module';
+import { BriefingsModule } from './briefings/briefings.module';
 import { DeployModule } from './deploy/deploy.module';
 import { DevPreviewModule } from './dev-preview/dev-preview.module';
 import { SessionAuthGuard } from './auth/session-auth.guard';
@@ -23,6 +24,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
     PrismaModule,
     AiModule,
     AuthModule,
+    BriefingsModule,
     DeployModule,
     DevPreviewModule,
     ProjectsModule,

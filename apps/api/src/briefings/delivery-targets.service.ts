@@ -1,0 +1,182 @@
+import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import {
+  sendDingTalkMarkdown,
+  sendEmail,
+} from './delivery-senders';
+import { CreateDeliveryTargetDto } from './dto/create-delivery-target.dto';
+import { UpdateDeliveryTargetDto } from './dto/update-delivery-target.dto';
+
+export const BRIEFING_DELIVERY_SENDERS = Symbol('BRIEFING_DELIVERY_SENDERS');
+
+export interface BriefingDeliverySenders {
+  sendDingTalkMarkdown: typeof sendDingTalkMarkdown;
+  sendEmail: typeof sendEmail;
+}
+
+type BriefingSendRecord = {
+  id: string;
+  workspaceId: string;
+  date: Date;
+  markdownContent: string;
+  htmlContent: string;
+};
+
+@Injectable()
+export class DeliveryTargetsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    @Inject(BRIEFING_DELIVERY_SENDERS)
+    private readonly senders: BriefingDeliverySenders = {
+      sendDingTalkMarkdown,
+      sendEmail,
+    },
+  ) {}
+
+  listTargets(workspaceId?: string) {
+    return this.prisma.deliveryTarget.findMany({
+      where: workspaceId ? { workspaceId } : undefined,
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  createTarget(dto: CreateDeliveryTargetDto) {
+    return this.prisma.deliveryTarget.create({
+      data: this.toCreateData(dto),
+    });
+  }
+
+  updateTarget(id: string, dto: UpdateDeliveryTargetDto) {
+    return this.prisma.deliveryTarget.update({
+      where: { id },
+      data: {
+        ...(dto.type === undefined ? {} : { type: dto.type.trim() }),
+        ...(dto.name === undefined ? {} : { name: dto.name.trim() }),
+        ...(dto.emailAddress === undefined
+          ? {}
+          : { emailAddress: dto.emailAddress.trim() || null }),
+        ...(dto.dingtalkWebhookUrl === undefined
+          ? {}
+          : { dingtalkWebhookUrl: dto.dingtalkWebhookUrl.trim() || null }),
+        ...(dto.dingtalkSecret === undefined
+          ? {}
+          : { dingtalkSecret: dto.dingtalkSecret.trim() || null }),
+        ...(dto.isActive === undefined ? {} : { isActive: dto.isActive }),
+      },
+    });
+  }
+
+  deleteTarget(id: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.deliveryLog.deleteMany({ where: { deliveryTargetId: id } });
+      return tx.deliveryTarget.delete({ where: { id } });
+    });
+  }
+
+  async sendBriefing(briefing: BriefingSendRecord) {
+    const targets = await this.prisma.deliveryTarget.findMany({
+      where: {
+        workspaceId: briefing.workspaceId,
+        isActive: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    let successCount = 0;
+
+    for (const target of targets) {
+      try {
+        const providerResponse = await this.sendToTarget(briefing, target);
+        successCount += 1;
+        await this.prisma.deliveryLog.create({
+          data: {
+            briefingId: briefing.id,
+            deliveryTargetId: target.id,
+            channel: target.type,
+            status: 'SUCCESS',
+            providerResponse: providerResponse as Prisma.InputJsonValue,
+            sentAt: new Date(),
+          },
+        });
+      } catch (error) {
+        await this.prisma.deliveryLog.create({
+          data: {
+            briefingId: briefing.id,
+            deliveryTargetId: target.id,
+            channel: target.type,
+            status: 'FAILED',
+            errorMessage: error instanceof Error ? error.message : String(error),
+          },
+        });
+      }
+    }
+
+    if (successCount > 0) {
+      await this.prisma.briefing.update({
+        where: { id: briefing.id },
+        data: { sentAt: new Date() },
+      });
+    }
+
+    return { successCount, targetCount: targets.length };
+  }
+
+  private toCreateData(dto: CreateDeliveryTargetDto) {
+    return {
+      workspaceId: dto.workspaceId,
+      type: dto.type.trim(),
+      name: dto.name.trim(),
+      emailAddress: dto.emailAddress?.trim() || null,
+      dingtalkWebhookUrl: dto.dingtalkWebhookUrl?.trim() || null,
+      dingtalkSecret: dto.dingtalkSecret?.trim() || null,
+      isActive: dto.isActive ?? true,
+    };
+  }
+
+  private async sendToTarget(
+    briefing: BriefingSendRecord,
+    target: {
+      type: string;
+      emailAddress: string | null;
+      dingtalkWebhookUrl: string | null;
+      dingtalkSecret: string | null;
+    },
+  ) {
+    const subject = `Daily Briefing ${briefing.date.toISOString().slice(0, 10)}`;
+
+    if (target.type === 'EMAIL') {
+      if (!target.emailAddress) {
+        throw new BadRequestException('Email address is required.');
+      }
+      return this.senders.sendEmail({
+        smtp: {
+          host: process.env.SMTP_HOST ?? '',
+          port: Number(process.env.SMTP_PORT ?? 587),
+          user: process.env.SMTP_USER ?? '',
+          password: process.env.SMTP_PASSWORD ?? '',
+          from: process.env.SMTP_FROM ?? 'flowx@example.com',
+        },
+        to: target.emailAddress,
+        subject,
+        html: briefing.htmlContent,
+        text: briefing.markdownContent,
+      });
+    }
+
+    if (target.type === 'DINGTALK_ROBOT') {
+      if (!target.dingtalkWebhookUrl) {
+        throw new BadRequestException('DingTalk webhook URL is required.');
+      }
+      return this.senders.sendDingTalkMarkdown({
+        webhookUrl: target.dingtalkWebhookUrl,
+        secret: target.dingtalkSecret ?? undefined,
+        title: subject,
+        markdown: briefing.markdownContent,
+      });
+    }
+
+    throw new BadRequestException(`Unsupported delivery target type: ${target.type}`);
+  }
+}
+
