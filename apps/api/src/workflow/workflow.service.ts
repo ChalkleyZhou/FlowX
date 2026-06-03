@@ -52,6 +52,7 @@ import { DingTalkNotificationService } from '../notifications/dingtalk-notificat
 import { PrismaService } from '../prisma/prisma.service';
 import { RepositorySyncService } from '../workspaces/repository-sync.service';
 import { CreateWorkflowRunDto } from './dto/create-workflow-run.dto';
+import { WorkflowArtifactService } from './workflow-artifact.service';
 
 const execFile = promisify(execFileCallback);
 
@@ -124,6 +125,7 @@ export class WorkflowService {
     private readonly dingTalkNotificationService: DingTalkNotificationService,
     private readonly aiInvocationContextService: AiInvocationContextService,
     @Inject(AI_EXECUTOR_REGISTRY) private readonly aiExecutorRegistry: AIExecutorRegistry,
+    private readonly workflowArtifactService: WorkflowArtifactService,
   ) {}
 
   async createWorkflowRun(dto: CreateWorkflowRunDto) {
@@ -540,6 +542,12 @@ export class WorkflowService {
 
   async findOne(id: string) {
     return this.getWorkflowOrThrow(id);
+  }
+
+  async readPlanArtifactHtml(id: string): Promise<string> {
+    const html = await this.workflowArtifactService.readPlanHtml(id);
+    if (!html) throw new NotFoundException('Plan artifact not found.');
+    return html;
   }
 
   /**
@@ -1429,8 +1437,14 @@ export class WorkflowService {
             },
           });
 
-          await this.updateStageExecution(tx, planStage.id, StageExecutionStatus.WAITING_CONFIRMATION, {
+          const stageOutput = await this.attachPlanArtifactToOutput(
+            id,
+            planStage.attempt,
             output,
+          );
+
+          await this.updateStageExecution(tx, planStage.id, StageExecutionStatus.WAITING_CONFIRMATION, {
+            output: stageOutput,
             statusMessage: null,
             finishedAt: new Date(),
           });
@@ -1480,6 +1494,8 @@ export class WorkflowService {
       });
     });
 
+    await this.workflowArtifactService.confirmPlanArtifact(id);
+
     this.notifyStageCompleted({
       recipient: this.toNotificationRecipient(notifyRecipient),
       workflowRunId: updatedWorkflow.id,
@@ -1521,6 +1537,29 @@ export class WorkflowService {
     });
   }
 
+  private async resolveConfirmedPlan(workflow: WorkflowPayload): Promise<GeneratePlanOutput> {
+    const meta = await this.workflowArtifactService.loadPlanMeta(workflow.id);
+    if (meta?.status === 'CONFIRMED') {
+      return {
+        summary: meta.summary,
+        implementationPlan: meta.implementationPlan,
+        filesToModify: meta.filesToModify,
+        newFiles: meta.newFiles,
+        riskPoints: meta.riskPoints,
+      };
+    }
+    if (!workflow.plan) {
+      throw new NotFoundException('Confirmed plan not found.');
+    }
+    return {
+      summary: workflow.plan.summary,
+      implementationPlan: workflow.plan.implementationPlan as string[],
+      filesToModify: workflow.plan.filesToModify as string[],
+      newFiles: workflow.plan.newFiles as string[],
+      riskPoints: workflow.plan.riskPoints as string[],
+    };
+  }
+
   async runExecution(
     id: string,
     humanFeedback?: string,
@@ -1547,10 +1586,7 @@ export class WorkflowService {
     ) {
       throw new BadRequestException('Execution can only run after plan confirmation.');
     }
-    if (!workflow.plan) {
-      throw new NotFoundException('Confirmed plan not found.');
-    }
-    const confirmedPlan = workflow.plan;
+    const confirmedPlan = await this.resolveConfirmedPlan(workflow);
 
     const startedWorkflow = await this.prisma.$transaction(async (tx) => {
       if (
@@ -1571,7 +1607,7 @@ export class WorkflowService {
       const executionStage = await this.createStageExecution(tx, id, StageType.EXECUTION, {
         input: {
           requirement: workflow.requirement,
-          plan: workflow.plan,
+          plan: confirmedPlan,
           humanFeedback: humanFeedback ?? null,
           triggerType: trigger?.triggerType ?? null,
           findingId: trigger?.findingId ?? null,
@@ -1616,13 +1652,7 @@ export class WorkflowService {
                 ? task.repositoryNames.map(String)
                 : [],
             })),
-            plan: {
-              summary: confirmedPlan.summary,
-              implementationPlan: confirmedPlan.implementationPlan as string[],
-              filesToModify: confirmedPlan.filesToModify as string[],
-              newFiles: confirmedPlan.newFiles as string[],
-              riskPoints: confirmedPlan.riskPoints as string[],
-            },
+            plan: confirmedPlan,
             workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
             humanFeedback: humanFeedback ?? null,
           },
@@ -2327,6 +2357,45 @@ export class WorkflowService {
           } | null) ?? null,
       })),
     };
+  }
+
+  private async attachPlanArtifactToOutput(
+    workflowRunId: string,
+    version: number,
+    output: GeneratePlanOutput,
+  ): Promise<GeneratePlanOutput & {
+    _artifact?: {
+      kind: 'plan';
+      version: number;
+      htmlPath: string;
+      metaPath: string;
+      sha256: string;
+    };
+  }> {
+    try {
+      const { htmlPath, metaPath, sha256 } = await this.workflowArtifactService.writePlanArtifact({
+        workflowRunId,
+        version,
+        output,
+        status: 'WAITING_HUMAN_CONFIRMATION',
+      });
+      return {
+        ...output,
+        _artifact: {
+          kind: 'plan',
+          version,
+          htmlPath,
+          metaPath,
+          sha256,
+        },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Failed to write plan artifact for workflow ${workflowRunId}: ${message}`,
+      );
+      return { ...output };
+    }
   }
 
   private sanitizePlanOutputPaths(

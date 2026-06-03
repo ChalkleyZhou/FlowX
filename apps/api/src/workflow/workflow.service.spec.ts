@@ -1,36 +1,135 @@
+import { NotFoundException } from '@nestjs/common';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AiInvocationContextService } from '../ai/ai-invocation-context.service';
 import type { AiCredentialsService } from '../auth/ai-credentials.service';
 import { WorkflowRunStatus } from '../common/enums';
+import type { GeneratePlanOutput } from '../common/types';
+import type { PlanArtifactMeta } from './workflow-artifact.service';
+import { WorkflowArtifactService } from './workflow-artifact.service';
 import { WorkflowService } from './workflow.service';
 
-function createService() {
-  return new WorkflowService(
-    {} as never,
-    {} as never,
-    {} as never,
-    {} as never,
-    {
-      normalizeAiProvider: (provider?: string | null) => {
-        const candidate = provider?.trim().toLowerCase();
-        if (candidate === 'cursor') {
-          return 'cursor';
-        }
-        if (candidate === 'codex') {
+const confirmedPlanMeta: PlanArtifactMeta = {
+  summary: 'From artifact meta',
+  implementationPlan: ['meta step'],
+  filesToModify: ['meta/App.tsx'],
+  newFiles: ['meta/Modal.tsx'],
+  riskPoints: ['meta risk'],
+  status: 'CONFIRMED',
+  confirmedAt: '2026-06-03T00:00:00.000Z',
+};
+
+const dbPlanOutput: GeneratePlanOutput = {
+  summary: 'From database plan',
+  implementationPlan: ['db step'],
+  filesToModify: ['db/App.tsx'],
+  newFiles: ['db/Modal.tsx'],
+  riskPoints: ['db risk'],
+};
+
+function createService(workflowArtifactService: Partial<WorkflowArtifactService> = {}) {
+  const artifactService = {
+    writePlanArtifact: vi.fn(),
+    confirmPlanArtifact: vi.fn(),
+    loadPlanMeta: vi.fn(),
+    readPlanHtml: vi.fn(),
+    ...workflowArtifactService,
+  } as WorkflowArtifactService;
+
+  return {
+    service: new WorkflowService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {
+        normalizeAiProvider: (provider?: string | null) => {
+          const candidate = provider?.trim().toLowerCase();
+          if (candidate === 'cursor') {
+            return 'cursor';
+          }
+          if (candidate === 'codex') {
+            return 'codex';
+          }
           return 'codex';
-        }
-        return 'codex';
-      },
-      getConfiguredDefaultProvider: () => 'codex' as const,
-      resolveInvocationContext: async () => ({}),
-    } as never,
-    { get: () => ({}) } as never,
-  );
+        },
+        getConfiguredDefaultProvider: () => 'codex' as const,
+        resolveInvocationContext: async () => ({}),
+      } as never,
+      { get: () => ({}) } as never,
+      artifactService,
+    ),
+    workflowArtifactService: artifactService,
+  };
 }
+
+describe('WorkflowService resolveConfirmedPlan', () => {
+  it('uses CONFIRMED plan meta when available', async () => {
+    const loadPlanMeta = vi.fn().mockResolvedValue(confirmedPlanMeta);
+    const { service } = createService({ loadPlanMeta });
+
+    const resolved = await (
+      service as unknown as {
+        resolveConfirmedPlan: (workflow: {
+          id: string;
+          plan: GeneratePlanOutput & { status: string };
+        }) => Promise<GeneratePlanOutput>;
+      }
+    ).resolveConfirmedPlan({
+      id: 'run-meta',
+      plan: { ...dbPlanOutput, status: 'CONFIRMED' },
+    });
+
+    expect(loadPlanMeta).toHaveBeenCalledWith('run-meta');
+    expect(resolved).toEqual({
+      summary: confirmedPlanMeta.summary,
+      implementationPlan: confirmedPlanMeta.implementationPlan,
+      filesToModify: confirmedPlanMeta.filesToModify,
+      newFiles: confirmedPlanMeta.newFiles,
+      riskPoints: confirmedPlanMeta.riskPoints,
+    });
+  });
+
+  it('falls back to workflow.plan when meta is null', async () => {
+    const loadPlanMeta = vi.fn().mockResolvedValue(null);
+    const { service } = createService({ loadPlanMeta });
+
+    const resolved = await (
+      service as unknown as {
+        resolveConfirmedPlan: (workflow: {
+          id: string;
+          plan: GeneratePlanOutput & { status: string };
+        }) => Promise<GeneratePlanOutput>;
+      }
+    ).resolveConfirmedPlan({
+      id: 'run-db',
+      plan: { ...dbPlanOutput, status: 'CONFIRMED' },
+    });
+
+    expect(loadPlanMeta).toHaveBeenCalledWith('run-db');
+    expect(resolved).toEqual(dbPlanOutput);
+  });
+
+  it('throws NotFoundException when meta is not confirmed and plan is missing', async () => {
+    const { service } = createService({
+      loadPlanMeta: vi.fn().mockResolvedValue({
+        ...confirmedPlanMeta,
+        status: 'WAITING_HUMAN_CONFIRMATION',
+      }),
+    });
+
+    await expect(
+      (
+        service as unknown as {
+          resolveConfirmedPlan: (workflow: { id: string; plan: null }) => Promise<GeneratePlanOutput>;
+        }
+      ).resolveConfirmedPlan({ id: 'run-missing', plan: null }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
 
 describe('WorkflowService plan normalization', () => {
   it('normalizes Cursor-style technical plan payloads into GeneratePlanOutput', () => {
-    const service = createService();
+    const { service } = createService();
 
     const normalized = (service as unknown as {
       normalizePlanOutput: (output: Record<string, unknown>) => {
@@ -74,7 +173,7 @@ describe('WorkflowService plan normalization', () => {
 
 describe('WorkflowService plan path validation', () => {
   it('accepts new files whose nearest existing ancestor directory already exists', async () => {
-    const service = createService();
+    const { service } = createService();
     const repositories = [
       {
         name: 'ai-platform',
@@ -101,7 +200,7 @@ describe('WorkflowService plan path validation', () => {
 
 describe('WorkflowService review-finding execution flow', () => {
   it('keeps the workflow in human review pending after fixing a finding', () => {
-    const service = createService();
+    const { service } = createService();
 
     const nextStatus = (service as unknown as {
       getExecutionCompletionTargetStatus: (triggerType?: string) => WorkflowRunStatus;
@@ -111,7 +210,7 @@ describe('WorkflowService review-finding execution flow', () => {
   });
 
   it('sends regular execution runs back to review pending', () => {
-    const service = createService();
+    const { service } = createService();
 
     const nextStatus = (service as unknown as {
       getExecutionCompletionTargetStatus: (triggerType?: string) => WorkflowRunStatus;
@@ -121,7 +220,7 @@ describe('WorkflowService review-finding execution flow', () => {
   });
 
   it('keeps bug_fix execution runs in human review pending', () => {
-    const service = createService();
+    const { service } = createService();
 
     const nextStatus = (service as unknown as {
       getExecutionCompletionTargetStatus: (triggerType?: string) => WorkflowRunStatus;
@@ -131,7 +230,7 @@ describe('WorkflowService review-finding execution flow', () => {
   });
 
   it('allows rerunning review from human review pending without extra feedback', () => {
-    const service = createService();
+    const { service } = createService();
 
     const canRunReview = (service as unknown as {
       canRunReviewFromStatus: (status: string) => boolean;
@@ -141,7 +240,7 @@ describe('WorkflowService review-finding execution flow', () => {
   });
 
   it('marks a review finding as fixed pending review after triggering repair', () => {
-    const service = createService();
+    const { service } = createService();
 
     const nextStatus = (service as unknown as {
       getReviewFindingStatusAfterFix: () => string;
@@ -153,7 +252,7 @@ describe('WorkflowService review-finding execution flow', () => {
 
 describe('WorkflowService optional ideation stages', () => {
   it('builds a standard skipped optional stage output', () => {
-    const service = createService();
+    const { service } = createService();
 
     const output = (service as unknown as {
       buildSkippedStageOutput: (reason: string) => {
@@ -171,7 +270,7 @@ describe('WorkflowService optional ideation stages', () => {
   });
 
   it('creates a new pending attempt when rerunning a failed optional stage', async () => {
-    const service = createService();
+    const { service } = createService();
     const findFirst = vi
       .fn()
       .mockResolvedValueOnce({
@@ -219,7 +318,7 @@ describe('WorkflowService optional ideation stages', () => {
   });
 
   it('builds workflow repository component context from grounded repositories', async () => {
-    const service = createService();
+    const { service } = createService();
     const context = await (service as unknown as {
       buildWorkflowRepositoryComponentContext: (
         executor: unknown,
@@ -264,7 +363,7 @@ describe('WorkflowService optional ideation stages', () => {
   });
 
   it('allows rerunning demo while demo is waiting for confirmation', () => {
-    const service = createService();
+    const { service } = createService();
 
     const canRun = (service as unknown as {
       canRunDemoFromWorkflow: (
@@ -289,7 +388,7 @@ describe('WorkflowService optional ideation stages', () => {
   });
 
   it('normalizes demo summary payloads from design generation output', () => {
-    const service = createService();
+    const { service } = createService();
 
     const normalized = (service as unknown as {
       normalizeDesignOutput: (output: Record<string, unknown>) => {
@@ -486,7 +585,7 @@ describe('WorkflowService publish retry after partial failure', () => {
     }) as never;
 
   it('pushes existing workflow commit when worktree is already clean', async () => {
-    const service = createService();
+    const { service } = createService();
     const workflow = buildDoneWorkflow();
     const expectedCommitMessage = (service as unknown as {
       buildWorkflowCommitMessage: (input: unknown) => string;
@@ -527,7 +626,7 @@ describe('WorkflowService publish retry after partial failure', () => {
   });
 
   it('still reports no new changes when head commit is unrelated', async () => {
-    const service = createService();
+    const { service } = createService();
     const workflow = buildDoneWorkflow();
     vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(workflow);
     vi.spyOn(service as never, 'hasGitChanges' as never).mockResolvedValue(false);

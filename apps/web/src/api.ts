@@ -538,6 +538,16 @@ export const api = {
       ).toString()}`,
     ),
   getWorkflowRun: (id: string) => request<WorkflowRun>(`/workflow-runs/${id}`),
+  fetchPlanArtifact: async (id: string) => {
+    const token = getAuthToken();
+    const response = await fetch(buildApiUrl(`/workflow-runs/${id}/artifacts/plan`), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      throw new Error('Artifact not found');
+    }
+    return response.text();
+  },
   deleteWorkflowRun: (id: string) =>
     request<{ success: boolean }>(`/workflow-runs/${id}`, { method: 'DELETE' }),
   rollbackWorkflowToPreviousStage: (id: string) =>

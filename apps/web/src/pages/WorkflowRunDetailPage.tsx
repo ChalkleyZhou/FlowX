@@ -387,6 +387,7 @@ export function WorkflowRunDetailPage() {
   const [deployConfig, setDeployConfig] = useState<RepositoryDeployConfig | null>(null);
   const [deployTargetRepositoryId, setDeployTargetRepositoryId] = useState<string | null>(null);
   const [lastPublishedRepositories, setLastPublishedRepositories] = useState<PublishRepositorySummary[]>([]);
+  const [planHtml, setPlanHtml] = useState<string | null>(null);
   const [deployDraft, setDeployDraft] = useState<DeployDraft>({
     repositoryId: '',
     repositoryName: '',
@@ -653,6 +654,47 @@ export function WorkflowRunDetailPage() {
     selectedStage === 'DESIGN' &&
     workflowRun?.status === 'DESIGN_WAITING_CONFIRMATION' &&
     designStageSnapshot?.status === 'WAITING_CONFIRMATION';
+
+  const hasPlanArtifact = useMemo(() => {
+    if (selectedStage !== 'TECHNICAL_PLAN' || !workflowRun) {
+      return false;
+    }
+
+    const output = getStage(workflowRun, 'TECHNICAL_PLAN')?.output;
+    return Boolean(
+      output &&
+        typeof output === 'object' &&
+        !Array.isArray(output) &&
+        '_artifact' in output &&
+        output._artifact,
+    );
+  }, [selectedStage, workflowRun]);
+
+  useEffect(() => {
+    if (!hasPlanArtifact || !workflowRun?.id) {
+      setPlanHtml(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void api
+      .fetchPlanArtifact(workflowRun.id)
+      .then((html) => {
+        if (!cancelled) {
+          setPlanHtml(html);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPlanHtml(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasPlanArtifact, workflowRun?.id]);
 
   useEffect(() => {
     if (!hasRunningStage) {
@@ -1812,6 +1854,22 @@ export function WorkflowRunDetailPage() {
                   </CardContent>
                 </Card>
               )}
+
+              {selectedStage === 'TECHNICAL_PLAN' && planHtml ? (
+                <Card className="rounded-md border-border bg-card shadow-sm">
+                  <CardHeader className="p-5 pb-0">
+                    <SectionHeader eyebrow="Plan Preview" title="方案预览" />
+                  </CardHeader>
+                  <CardContent className="p-5 pt-4">
+                    <iframe
+                      title="技术方案预览"
+                      sandbox=""
+                      srcDoc={planHtml}
+                      className="h-[480px] w-full rounded-md border border-border"
+                    />
+                  </CardContent>
+                </Card>
+              ) : null}
 
               {selectedStage === 'DEMO' && (selectedDemoArtifact || selectedDemoPages.length > 0) ? (
                 <Card className="rounded-md border-border bg-card shadow-sm">

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, Res } from '@nestjs/common';
 import { CreateWorkflowRunDto } from './dto/create-workflow-run.dto';
 import { HumanReviewDecisionDto } from './dto/human-review-decision.dto';
 import { StageFeedbackDto } from './dto/stage-feedback.dto';
@@ -22,6 +22,12 @@ export class WorkflowController {
   @Get()
   findAll(@Query('runType') runType?: string) {
     return this.workflowService.findAll(runType ? { runType } : undefined);
+  }
+
+  @Get(':id/artifacts/plan')
+  async getPlanArtifact(@Param('id') id: string, @Res({ passthrough: false }) res: any) {
+    const html = await this.workflowService.readPlanArtifactHtml(id);
+    res.type('text/html; charset=utf-8').send(html);
   }
 
   @Get(':id')

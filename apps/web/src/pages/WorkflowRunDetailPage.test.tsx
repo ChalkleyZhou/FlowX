@@ -33,6 +33,7 @@ vi.mock('../api', () => ({
     confirmPlan: vi.fn(),
     rejectPlan: vi.fn(),
     revisePlan: vi.fn(),
+    fetchPlanArtifact: vi.fn(),
     runExecution: vi.fn(),
     reviseExecution: vi.fn(),
     runReview: vi.fn(),
@@ -1106,6 +1107,56 @@ describe('WorkflowRunDetailPage', () => {
     });
 
     expect(api.detectLocalDev).toHaveBeenCalledWith('wf-repo-row-only', 'workflow-1');
+  });
+
+  it('renders plan HTML preview when technical plan stage has an artifact pointer', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'PLAN_WAITING_CONFIRMATION',
+        stageExecutions: [
+          {
+            id: 'stage-1',
+            stage: 'TASK_SPLIT',
+            status: 'COMPLETED',
+            statusMessage: null,
+            attempt: 1,
+            output: { tasks: ['补齐登录错误提示'] },
+          },
+          {
+            id: 'stage-2',
+            stage: 'TECHNICAL_PLAN',
+            status: 'WAITING_CONFIRMATION',
+            statusMessage: null,
+            attempt: 1,
+            output: {
+              summary: '补齐登录失败链路',
+              implementationPlan: ['更新接口错误处理'],
+              filesToModify: ['apps/web/src/pages/LoginPage.tsx'],
+              newFiles: [],
+              riskPoints: ['兼容旧错误码'],
+              _artifact: {
+                kind: 'plan',
+                version: 1,
+                htmlPath: 'plan/v1/plan.html',
+                metaPath: 'plan/v1/plan.meta.json',
+                sha256: 'abc123',
+              },
+            },
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.fetchPlanArtifact).mockResolvedValue('<html><body>Plan</body></html>');
+
+    await renderPage();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(api.fetchPlanArtifact).toHaveBeenCalledWith('workflow-1');
+    expect(container.textContent).toContain('方案预览');
+    expect(container.querySelector('iframe[title="技术方案预览"]')).toBeTruthy();
   });
 
   it('offers a restart action after local preview has been stopped', async () => {
