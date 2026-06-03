@@ -64,6 +64,10 @@ model Workspace {
   requirements Requirement[]
   issues       Issue[]
   bugs         Bug[]
+  briefingSources BriefingSource[]
+  gitlabEvents GitlabEvent[]
+  briefings    Briefing[]
+  deliveryTargets DeliveryTarget[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }
@@ -78,6 +82,8 @@ model Project {
   description  String?
   requirements Requirement[]
   bugs         Bug[]
+  briefingConfig ProjectBriefingConfig?
+  briefings    Briefing[]
   legacyDeployConfig ProjectDeployConfig?
   deployJobs   DeployJobRecord[]
   createdAt    DateTime      @default(now())
@@ -147,6 +153,8 @@ model Repository {
   deployJobs              DeployJobRecord[]
   issues                  Issue[]
   bugs                    Bug[]
+  briefingSources         BriefingSource[]
+  gitlabEvents            GitlabEvent[]
   createdAt               DateTime                @default(now())
   updatedAt               DateTime                @updatedAt
 }
@@ -160,6 +168,125 @@ model RepositoryDeployConfig {
   configJson Json?
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
+}
+
+model BriefingSource {
+  id                String        @id @default(cuid())
+  workspaceId       String
+  workspace         Workspace     @relation(fields: [workspaceId], references: [id])
+  repositoryId      String
+  repository        Repository    @relation(fields: [repositoryId], references: [id])
+  provider          String        @default("gitlab")
+  gitlabProjectId   Int
+  pathWithNamespace String
+  webhookSecret     String
+  isActive          Boolean       @default(true)
+  gitlabEvents      GitlabEvent[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@unique([repositoryId, provider, gitlabProjectId])
+  @@index([workspaceId])
+  @@index([repositoryId])
+  @@index([isActive])
+}
+
+model GitlabEvent {
+  id                String          @id @default(cuid())
+  briefingSourceId String
+  briefingSource   BriefingSource  @relation(fields: [briefingSourceId], references: [id])
+  workspaceId       String
+  workspace         Workspace       @relation(fields: [workspaceId], references: [id])
+  repositoryId      String
+  repository        Repository      @relation(fields: [repositoryId], references: [id])
+  gitlabProjectId   Int
+  eventType         String
+  objectKind        String
+  actorName         String?
+  actorUsername     String?
+  occurredAt        DateTime
+  dedupeKey         String          @unique
+  rawPayload        Json
+  normalizedPayload Json
+  createdAt         DateTime        @default(now())
+
+  @@index([briefingSourceId, occurredAt])
+  @@index([workspaceId, occurredAt])
+  @@index([repositoryId, occurredAt])
+  @@index([eventType, occurredAt])
+}
+
+model ProjectBriefingConfig {
+  id        String   @id @default(cuid())
+  projectId String   @unique
+  project   Project  @relation(fields: [projectId], references: [id])
+  enabled   Boolean  @default(false)
+  dailyHour Int      @default(18)
+  timezone  String   @default("Asia/Shanghai")
+  autoSend  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Briefing {
+  id              String        @id @default(cuid())
+  projectId       String
+  project         Project       @relation(fields: [projectId], references: [id])
+  workspaceId     String
+  workspace       Workspace     @relation(fields: [workspaceId], references: [id])
+  date            DateTime
+  scopeKey        String
+  scope           Json
+  status          String        @default("GENERATED")
+  markdownContent String
+  htmlContent     String
+  eventCount      Int           @default(0)
+  generatedAt     DateTime?
+  sentAt          DateTime?
+  errorMessage    String?
+  deliveryLogs    DeliveryLog[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([projectId, date, scopeKey])
+  @@index([projectId, date])
+  @@index([workspaceId, date])
+}
+
+model DeliveryTarget {
+  id                 String        @id @default(cuid())
+  workspaceId        String
+  workspace          Workspace     @relation(fields: [workspaceId], references: [id])
+  type               String
+  name               String
+  emailAddress       String?
+  dingtalkWebhookUrl String?
+  dingtalkSecret     String?
+  isActive           Boolean       @default(true)
+  deliveryLogs       DeliveryLog[]
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([workspaceId])
+  @@index([type])
+  @@index([isActive])
+}
+
+model DeliveryLog {
+  id               String         @id @default(cuid())
+  briefingId       String
+  briefing         Briefing       @relation(fields: [briefingId], references: [id])
+  deliveryTargetId String
+  deliveryTarget   DeliveryTarget @relation(fields: [deliveryTargetId], references: [id])
+  channel          String
+  status           String
+  errorMessage     String?
+  providerResponse Json?
+  sentAt           DateTime?
+  createdAt        DateTime       @default(now())
+
+  @@index([briefingId])
+  @@index([deliveryTargetId])
 }
 
 model User {
