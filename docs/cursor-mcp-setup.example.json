@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "flowx": {
+      "command": "node",
+      "args": ["/absolute/path/to/FlowX/packages/flowx-mcp/dist/index.js"],
+      "env": {
+        "FLOWX_API_BASE_URL": "http://127.0.0.1:3000",
+        "FLOWX_API_TOKEN": "<session-token>"
+      }
+    }
+  }
+}

@@ -102,6 +102,31 @@ MCP should stay thin:
 
 FlowX API remains the state source. MCP only bridges Cursor Agent, local Git state, and FlowX reporting.
 
+### Cursor MCP setup
+
+Build the MCP package:
+
+```bash
+pnpm --filter flowx-mcp build
+```
+
+Then add a Cursor MCP config equivalent to [cursor-mcp-setup.example.json](./cursor-mcp-setup.example.json). Use an absolute path to `packages/flowx-mcp/dist/index.js` and a FlowX session token:
+
+```json
+{
+  "mcpServers": {
+    "flowx": {
+      "command": "node",
+      "args": ["/absolute/path/to/FlowX/packages/flowx-mcp/dist/index.js"],
+      "env": {
+        "FLOWX_API_BASE_URL": "http://127.0.0.1:3000",
+        "FLOWX_API_TOKEN": "<session-token>"
+      }
+    }
+  }
+}
+```
+
 ## First-version boundaries
 
 - Do not auto-clone repositories.
