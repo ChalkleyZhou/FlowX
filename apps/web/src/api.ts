@@ -352,7 +352,6 @@ export const api = {
     payload: {
       enabled?: boolean;
       dailyHour?: number;
-      timezone?: string;
       autoSend?: boolean;
     },
   ) =>

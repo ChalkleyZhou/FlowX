@@ -12,13 +12,12 @@ import { GenerateBriefingDto } from './dto/generate-briefing.dto';
 import { UpsertProjectBriefingConfigDto } from './dto/upsert-project-briefing-config.dto';
 import {
   briefingDateWindow,
-  dateAtTimezoneMidnight,
+  BRIEFING_TIMEZONE,
+  dateAtBeijingMidnight,
   DEFAULT_BRIEFING_CUTOFF_HOUR,
-  DEFAULT_BRIEFING_TIMEZONE,
   resolveBriefingDate,
 } from './briefing-time-window';
 
-const DEFAULT_TIMEZONE = DEFAULT_BRIEFING_TIMEZONE;
 const DEFAULT_DAILY_HOUR = DEFAULT_BRIEFING_CUTOFF_HOUR;
 
 type ProjectWithWorkspace = {
@@ -49,7 +48,7 @@ export class BriefingsService {
         projectId,
         enabled: false,
         dailyHour: DEFAULT_DAILY_HOUR,
-        timezone: DEFAULT_TIMEZONE,
+        timezone: BRIEFING_TIMEZONE,
         autoSend: false,
         createdAt: null,
         updatedAt: null,
@@ -62,7 +61,7 @@ export class BriefingsService {
     const data = {
       enabled: dto.enabled ?? false,
       dailyHour: dto.dailyHour ?? DEFAULT_DAILY_HOUR,
-      timezone: dto.timezone?.trim() || DEFAULT_TIMEZONE,
+      timezone: BRIEFING_TIMEZONE,
       autoSend: dto.autoSend ?? false,
     };
 
@@ -113,10 +112,9 @@ export class BriefingsService {
     const config = await this.prisma.projectBriefingConfig.findUnique({
       where: { projectId },
     });
-    const timezone = config?.timezone?.trim() || DEFAULT_TIMEZONE;
     const cutoffHour = config?.dailyHour ?? DEFAULT_DAILY_HOUR;
     const briefingDate =
-      dto.date?.trim() || resolveBriefingDate(new Date(), timezone, cutoffHour);
+      dto.date?.trim() || resolveBriefingDate(new Date(), cutoffHour);
     const repositoryIds = project.workspace.repositories.map((repository) => repository.id).sort();
     const sources = await this.prisma.briefingSource.findMany({
       where: {
@@ -134,10 +132,9 @@ export class BriefingsService {
       repositoryIds,
       briefingSourceIds: sourceIds,
       cutoffHour,
-      timezone,
     };
     const scopeKey = stableJson(scope);
-    const date = dateAtTimezoneMidnight(briefingDate, timezone);
+    const date = dateAtBeijingMidnight(briefingDate);
     const existing = await this.prisma.briefing.findFirst({
       where: {
         projectId,
@@ -150,7 +147,7 @@ export class BriefingsService {
       return existing;
     }
 
-    const { start, end } = briefingDateWindow(briefingDate, timezone, cutoffHour);
+    const { start, end } = briefingDateWindow(briefingDate, cutoffHour);
     const eventRows = await this.prisma.briefingEvent.findMany({
       where: {
         briefingSourceId: { in: sourceIds },

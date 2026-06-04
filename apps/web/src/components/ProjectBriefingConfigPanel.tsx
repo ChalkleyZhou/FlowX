@@ -49,8 +49,8 @@ export function ProjectBriefingConfigPanel({ projectId }: { projectId: string })
         <Button variant={config?.enabled ? 'default' : 'outline'} onClick={() => void save({ enabled: !config?.enabled })} disabled={saving}>
           {config?.enabled ? '已启用' : '启用简报'}
         </Button>
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>每日时刻</span>
+        <label className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <span>北京时间每日</span>
           <Input
             className="w-20"
             type="number"
@@ -59,7 +59,9 @@ export function ProjectBriefingConfigPanel({ projectId }: { projectId: string })
             value={config?.dailyHour ?? 22}
             onChange={(event) => void save({ dailyHour: Number(event.target.value) })}
           />
-          <span>时（22:00–24:00 的活动计入次日简报）</span>
+          <span>
+            时发送（整点；该时刻–24:00 的活动计入次日简报）
+          </span>
         </label>
         <Button variant={config?.autoSend ? 'default' : 'outline'} onClick={() => void save({ autoSend: !config?.autoSend })} disabled={saving}>
           {config?.autoSend ? '自动发送' : '手动发送'}

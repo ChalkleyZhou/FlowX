@@ -1,9 +1,10 @@
-export const DEFAULT_BRIEFING_TIMEZONE = 'Asia/Shanghai';
+/** Briefing schedules and day boundaries always use China Standard Time (UTC+8). */
+export const BRIEFING_TIMEZONE = 'Asia/Shanghai';
 export const DEFAULT_BRIEFING_CUTOFF_HOUR = 22;
 
-export function briefingLocalParts(date: Date, timezone: string) {
+export function briefingLocalParts(date: Date) {
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
+    timeZone: BRIEFING_TIMEZONE,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -19,35 +20,35 @@ export function briefingLocalParts(date: Date, timezone: string) {
   };
 }
 
-export function formatBriefingDate(date: Date, timezone: string) {
-  const parts = briefingLocalParts(date, timezone);
+export function formatBriefingDate(date: Date) {
+  const parts = briefingLocalParts(date);
   return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(
     2,
     '0',
   )}`;
 }
 
-export function resolveBriefingDate(now: Date, timezone: string, cutoffHour: number) {
-  const parts = briefingLocalParts(now, timezone);
+export function resolveBriefingDate(now: Date, cutoffHour: number) {
+  const parts = briefingLocalParts(now);
   if (parts.hour >= cutoffHour) {
-    return formatBriefingDate(new Date(now.getTime() + 24 * 60 * 60 * 1000), timezone);
+    return formatBriefingDate(new Date(now.getTime() + 24 * 60 * 60 * 1000));
   }
-  return formatBriefingDate(now, timezone);
+  return formatBriefingDate(now);
 }
 
-export function isBriefingSchedulerDue(now: Date, timezone: string, dailyHour: number) {
-  return briefingLocalParts(now, timezone).hour === dailyHour;
+export function isBriefingSchedulerDue(now: Date, dailyHour: number) {
+  return briefingLocalParts(now).hour === dailyHour;
 }
 
-export function briefingDateWindow(date: string, timezone: string, cutoffHour: number) {
-  const end = localDateTimeToUtc(date, cutoffHour, 0, 0, timezone);
+export function briefingDateWindow(date: string, cutoffHour: number) {
+  const end = beijingLocalDateTimeToUtc(date, cutoffHour, 0, 0);
   const startDate = shiftCalendarDate(date, -1);
-  const start = localDateTimeToUtc(startDate, cutoffHour, 0, 0, timezone);
+  const start = beijingLocalDateTimeToUtc(startDate, cutoffHour, 0, 0);
   return { start, end };
 }
 
-export function dateAtTimezoneMidnight(date: string, timezone: string) {
-  return localDateTimeToUtc(date, 0, 0, 0, timezone);
+export function dateAtBeijingMidnight(date: string) {
+  return beijingLocalDateTimeToUtc(date, 0, 0, 0);
 }
 
 function shiftCalendarDate(date: string, deltaDays: number) {
@@ -56,17 +57,11 @@ function shiftCalendarDate(date: string, deltaDays: number) {
   return shifted.toISOString().slice(0, 10);
 }
 
-function localDateTimeToUtc(
-  date: string,
-  hour: number,
-  minute: number,
-  second: number,
-  timeZone: string,
-) {
+function beijingLocalDateTimeToUtc(date: string, hour: number, minute: number, second: number) {
   const [year, month, day] = date.split('-').map((part) => Number(part));
   const utcGuess = Date.UTC(year, month - 1, day, hour, minute, second);
   const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone,
+    timeZone: BRIEFING_TIMEZONE,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -91,7 +86,9 @@ function localDateTimeToUtc(
     }
   }
 
-  throw new Error(`Unable to resolve local time ${date} ${hour}:${minute}:${second} in ${timeZone}.`);
+  throw new Error(
+    `Unable to resolve Beijing local time ${date} ${hour}:${minute}:${second}.`,
+  );
 }
 
 function readLocalDateTimeParts(parts: Intl.DateTimeFormatPart[]) {
@@ -105,3 +102,6 @@ function readLocalDateTimeParts(parts: Intl.DateTimeFormatPart[]) {
     second: read('second'),
   };
 }
+
+/** @deprecated Use BRIEFING_TIMEZONE */
+export const DEFAULT_BRIEFING_TIMEZONE = BRIEFING_TIMEZONE;

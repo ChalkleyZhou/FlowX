@@ -49,10 +49,10 @@ export class BriefingSchedulerService implements OnModuleInit, OnModuleDestroy {
     let generatedCount = 0;
 
     for (const config of configs) {
-      if (!isBriefingSchedulerDue(now, config.timezone, config.dailyHour)) {
+      if (!isBriefingSchedulerDue(now, config.dailyHour)) {
         continue;
       }
-      const date = formatBriefingDate(now, config.timezone);
+      const date = formatBriefingDate(now);
       const briefing = await this.briefingsService.generateProjectBriefing(config.projectId, {
         date,
       });

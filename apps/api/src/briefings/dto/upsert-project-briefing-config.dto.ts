@@ -12,10 +12,6 @@ export class UpsertProjectBriefingConfigDto {
   dailyHour?: number;
 
   @IsOptional()
-  @IsString()
-  timezone?: string;
-
-  @IsOptional()
   @IsBoolean()
   autoSend?: boolean;
 }

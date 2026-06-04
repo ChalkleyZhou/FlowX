@@ -115,7 +115,6 @@ describe('BriefingsService', () => {
       },
     });
     configFindUnique.mockResolvedValue({
-      timezone: 'Asia/Shanghai',
       dailyHour: 22,
     });
     sourceFindMany.mockResolvedValue([
