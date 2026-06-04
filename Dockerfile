@@ -70,7 +70,8 @@ COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/apps ./apps
 COPY scripts/clean-db.ts scripts/clean-db.sh ./scripts/
 COPY scripts/backfill-organization-admins.ts scripts/backfill-organization-admins.sh ./scripts/
-COPY docker/start.sh docker/prisma-pre-db-push.sh /docker/
+COPY docker/start.sh /start.sh
+COPY docker/prisma-pre-db-push.sh /docker/prisma-pre-db-push.sh
 RUN chmod +x /start.sh /docker/prisma-pre-db-push.sh ./scripts/clean-db.sh ./scripts/backfill-organization-admins.sh
 
 EXPOSE 3000 4173
