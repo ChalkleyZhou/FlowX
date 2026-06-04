@@ -48,7 +48,7 @@ describe('briefing renderer', () => {
     });
   });
 
-  it('renders commit summary and categorized sections', () => {
+  it('renders a concise summary and omits empty sections', () => {
     const markdown = renderBriefingMarkdown({
       date: '2026-06-03',
       events: [
@@ -71,23 +71,26 @@ describe('briefing renderer', () => {
     });
 
     expect(markdown).toContain('# 研发日报 - 2026-06-03');
-    expect(markdown).toContain('## 提交明细（按 message 归类）');
+    expect(markdown).toContain('## 今日研发摘要');
+    expect(markdown).toContain('共 2 次提交');
     expect(markdown).toContain('### 新功能 / 能力');
     expect(markdown).toContain('feat(briefing): add daily summary');
     expect(markdown).toContain('### 问题修复');
     expect(markdown).toContain('fix(renderer): escape html output');
-    expect(markdown).toContain('### 已合并合并请求');
-    expect(markdown).toContain('- merge: Add briefing page（flowx-web）');
-    expect(markdown).toContain('- 本日无相关记录。');
+    expect(markdown).toContain('Add briefing page');
+    expect(markdown).not.toContain('本日无相关记录');
+    expect(markdown).not.toContain('活动概览');
+    expect(markdown).not.toContain('代码推送');
+    expect(markdown).not.toContain('AI_EXECUTOR_PROVIDER');
   });
 
-  it('escapes HTML content from GitLab payload fields', () => {
+  it('escapes HTML content from commit messages', () => {
     const html = renderBriefingHtml({
       date: '2026-06-03',
       events: [
         event({
-          subject: '<script>alert("x")</script>',
           projectName: 'flowx & api',
+          commits: [{ id: 'x1', message: '<script>alert("x")</script>' }],
         }),
       ],
     });

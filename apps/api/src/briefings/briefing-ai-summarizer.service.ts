@@ -24,6 +24,7 @@ export interface BriefingAiSummary {
   summaryParagraph: string;
   features: BriefingAiWorkItem[];
   fixes: BriefingAiWorkItem[];
+  others: BriefingAiWorkItem[];
   risks: string[];
   otherNotes: string[];
 }
@@ -77,6 +78,7 @@ export class BriefingAiSummarizerService {
         summaryParagraph: raw.summaryParagraph.trim(),
         features: raw.features ?? [],
         fixes: raw.fixes ?? [],
+        others: [],
         risks: raw.risks ?? [],
         otherNotes: raw.otherNotes ?? [],
       };
@@ -123,22 +125,26 @@ export class BriefingAiSummarizerService {
 
     const features: BriefingAiWorkItem[] = categorized.features.map((item) => ({
       title: item.title,
-      detail: '来自提交说明的自动归类（未启用 AI 或 AI 调用失败）。',
+      detail: '',
       repositories: [item.projectName],
     }));
     const fixes: BriefingAiWorkItem[] = categorized.fixes.map((item) => ({
       title: item.title,
-      detail: '来自提交说明的自动归类（未启用 AI 或 AI 调用失败）。',
+      detail: '',
       repositories: [item.projectName],
     }));
-    const otherNotes = categorized.other.map((item) => `[${item.projectName}] ${item.title}`);
+    const others: BriefingAiWorkItem[] = categorized.other.map((item) => ({
+      title: item.title,
+      detail: '',
+      repositories: [item.projectName],
+    }));
 
     for (const mr of facts.mergeRequests.filter(
       (item) => item.action === 'merge' || item.state === 'merged',
     )) {
       features.push({
         title: mr.title,
-        detail: `已合并合并请求（${mr.action ?? 'merge'}）。`,
+        detail: '',
         repositories: [mr.repository],
       });
     }
@@ -152,24 +158,24 @@ export class BriefingAiSummarizerService {
       }
     }
 
-    const headline =
-      facts.overview.commitCount > 0
-        ? `${facts.date} 共 ${facts.overview.commitCount} 次提交，覆盖 ${facts.overview.repositoryCount} 个仓库`
-        : `${facts.date} 研发活动较少，以合并请求与其它事件为主`;
-
-    const summaryParagraph =
-      facts.overview.eventCount === 0
-        ? '本日未收到可汇总的 webhook 事件，请检查简报数据源与仓库推送配置。'
-        : `本日收到 ${facts.overview.eventCount} 条研发事件。当前为规则归纳摘要；配置 AI_EXECUTOR_PROVIDER（codex/cursor）及对应凭据后可启用 AI 总结。`;
+    const hasWork =
+      features.length > 0 || fixes.length > 0 || others.length > 0 || risks.length > 0;
 
     return {
       source: 'fallback',
-      headline,
-      summaryParagraph,
+      headline:
+        facts.overview.commitCount > 0 ? `共 ${facts.overview.commitCount} 次提交` : '',
+      summaryParagraph:
+        facts.overview.eventCount === 0
+          ? '本日暂无研发活动记录。'
+          : !hasWork && facts.overview.commitCount === 0
+            ? '本日有研发事件，但未解析到可归纳的提交说明。'
+            : '',
       features,
       fixes,
+      others,
       risks,
-      otherNotes,
+      otherNotes: [],
     };
   }
 }

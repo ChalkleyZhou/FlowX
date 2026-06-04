@@ -23,6 +23,7 @@ describe('BriefingsService', () => {
       summaryParagraph: '规则归纳。',
       features: [],
       fixes: [],
+      others: [],
       risks: [],
       otherNotes: [],
     });

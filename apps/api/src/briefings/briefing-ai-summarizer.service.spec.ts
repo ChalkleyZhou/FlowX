@@ -30,6 +30,7 @@ const aiOutput = {
     },
   ],
   fixes: [],
+  others: [],
   risks: [],
   otherNotes: [],
 };
