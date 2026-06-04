@@ -102,6 +102,31 @@ MCP should stay thin:
 
 FlowX API remains the state source. MCP only bridges Cursor Agent, local Git state, and FlowX reporting.
 
+## Cursor extension from source
+
+Build the extension package:
+
+```bash
+pnpm --filter flowx-cursor-extension compile
+```
+
+Load it from source in a Cursor-compatible extension host:
+
+```bash
+cursor --extensionDevelopmentPath /absolute/path/to/FlowX/apps/cursor-extension
+```
+
+In the FlowX activity bar:
+
+1. Run `FlowX: Configure` and enter the API base URL, workspace id, and session token.
+2. Open the local Git repository that matches the FlowX task repository URL.
+3. Use `FlowX: Refresh Tasks`.
+4. Select a requirement or bug and run `FlowX: Start in Chat`.
+5. Paste the copied prompt into Cursor Chat/Agent and implement the change.
+6. When the task is ready, run `FlowX: Report Completion` from the active task.
+
+`Start in Chat` writes `.flowx/tasks/<task-id>.md` plus a small JSON handoff snapshot. `Report Completion` collects local Git state, sends `complete-local`, and saves `.flowx/completion-drafts/<workflowRunId>.json` if the API call fails.
+
 ### Cursor MCP setup
 
 Build the MCP package:
