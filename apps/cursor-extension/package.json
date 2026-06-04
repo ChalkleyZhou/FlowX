@@ -36,8 +36,26 @@
       {
         "command": "flowx.refreshTasks",
         "title": "FlowX: Refresh Tasks"
+      },
+      {
+        "command": "flowx.startInChat",
+        "title": "FlowX: Start in Chat"
       }
-    ]
+    ],
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "flowx.startInChat",
+          "when": "view == flowxTasks && viewItem == flowxTask.startable",
+          "group": "inline"
+        },
+        {
+          "command": "flowx.refreshTasks",
+          "when": "view == flowxTasks",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "scripts": {
     "compile": "tsc -p tsconfig.json",
