@@ -56,7 +56,7 @@ ENV GIT_COMMITTER_EMAIL=""
 
 RUN corepack enable \
   && apt-get update \
-  && apt-get install -y --no-install-recommends curl \
+  && apt-get install -y --no-install-recommends curl sqlite3 \
   && rm -rf /var/lib/apt/lists/* \
   && npm install -g @openai/codex serve@14.2.4 \
   && curl https://cursor.com/install -fsS | bash \
@@ -70,8 +70,8 @@ COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/apps ./apps
 COPY scripts/clean-db.ts scripts/clean-db.sh ./scripts/
 COPY scripts/backfill-organization-admins.ts scripts/backfill-organization-admins.sh ./scripts/
-COPY docker/start.sh /start.sh
-RUN chmod +x /start.sh ./scripts/clean-db.sh ./scripts/backfill-organization-admins.sh
+COPY docker/start.sh docker/prisma-pre-db-push.sh /docker/
+RUN chmod +x /start.sh /docker/prisma-pre-db-push.sh ./scripts/clean-db.sh ./scripts/backfill-organization-admins.sh
 
 EXPOSE 3000 4173
 

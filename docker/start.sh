@@ -51,6 +51,7 @@ if [ -n "${GIT_COMMITTER_EMAIL:-}" ]; then
   git config --global committer.email "${GIT_COMMITTER_EMAIL}"
 fi
 
+/docker/prisma-pre-db-push.sh ../../prisma/schema.prisma
 pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma
 
 node apps/api/dist/main.js &

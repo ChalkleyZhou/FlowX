@@ -355,7 +355,7 @@ DATABASE_URL="file:/data/dev-current.db"
 原因：
 
 - 这个仓库当前开发演进过程中已经从旧库迁到了 `dev-current.db`
-- 容器启动脚本会自动执行 `prisma db push`
+- 容器启动脚本会在 `prisma db push` 前自动执行必要的 SQLite 数据迁移（例如投递目标从工作区迁到项目），再同步 schema
 - 建议把 `/data` 挂成 volume，避免容器删除后数据库丢失
 - Nginx compose 部署还会默认持久化 `/app/.flowx-data`，用于保存工作区仓库和 workflow 副本
 
