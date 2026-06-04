@@ -1,4 +1,8 @@
-import type { BriefingEventType, NormalizedBriefingEvent } from './briefing-events';
+import type {
+  BriefingEventType,
+  NormalizedBriefingCommit,
+  NormalizedBriefingEvent,
+} from './briefing-events';
 
 type GithubPayload = Record<string, unknown>;
 type GithubObject = Record<string, unknown>;
@@ -19,21 +23,24 @@ function parsePushCommits(payload: GithubPayload) {
     return undefined;
   }
 
-  const parsed = commits
-    .map((entry) => {
-      const commit = asObject(entry);
-      const id = asString(commit.id) || asString(commit.sha);
-      const message = asString(commit.message);
-      if (!id || !message) {
-        return null;
-      }
-      const author =
-        asString(asObject(commit.author).name) ||
-        asString(asObject(commit.committer).name) ||
-        undefined;
-      return { id, message, author };
-    })
-    .filter((item): item is { id: string; message: string; author?: string } => item !== null);
+  const parsed: NormalizedBriefingCommit[] = [];
+  for (const entry of commits) {
+    const commit = asObject(entry);
+    const id = asString(commit.id) || asString(commit.sha);
+    const message = asString(commit.message);
+    if (!id || !message) {
+      continue;
+    }
+    const author =
+      asString(asObject(commit.author).name) ||
+      asString(asObject(commit.committer).name) ||
+      undefined;
+    const normalized: NormalizedBriefingCommit = { id, message };
+    if (author) {
+      normalized.author = author;
+    }
+    parsed.push(normalized);
+  }
 
   return parsed.length > 0 ? parsed : undefined;
 }

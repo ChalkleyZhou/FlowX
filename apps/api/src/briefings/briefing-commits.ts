@@ -57,6 +57,29 @@ export function categorizeCommitMessage(message: string): CommitCategory {
   return 'other';
 }
 
+function buildBriefingCommit(input: {
+  id: string;
+  message: string;
+  author?: string;
+  projectName: string;
+  ref?: string;
+  occurredAt: string;
+}): BriefingCommit {
+  const commit: BriefingCommit = {
+    id: input.id,
+    message: input.message,
+    projectName: input.projectName,
+    occurredAt: input.occurredAt,
+  };
+  if (input.author) {
+    commit.author = input.author;
+  }
+  if (input.ref) {
+    commit.ref = input.ref;
+  }
+  return commit;
+}
+
 function parseWebhookCommits(
   payload: RawPayload,
   projectName: string,
@@ -68,32 +91,34 @@ function parseWebhookCommits(
     return [];
   }
 
-  return commits
-    .map((entry) => {
-      const commit = asObject(entry);
-      const id = asString(commit.id) || asString(commit.sha);
-      const message =
-        asString(commit.message) ||
-        asString(commit.title) ||
-        asString(asObject(commit.commit).message);
-      if (!id || !message) {
-        return null;
-      }
-      const author =
-        asString(asObject(commit.author).name) ||
-        asString(commit.author_name) ||
-        asString(asObject(commit.committer).name) ||
-        undefined;
-      return {
+  const parsed: BriefingCommit[] = [];
+  for (const entry of commits) {
+    const commit = asObject(entry);
+    const id = asString(commit.id) || asString(commit.sha);
+    const message =
+      asString(commit.message) ||
+      asString(commit.title) ||
+      asString(asObject(commit.commit).message);
+    if (!id || !message) {
+      continue;
+    }
+    const author =
+      asString(asObject(commit.author).name) ||
+      asString(commit.author_name) ||
+      asString(asObject(commit.committer).name) ||
+      undefined;
+    parsed.push(
+      buildBriefingCommit({
         id,
         message,
         author,
         projectName,
         ref,
         occurredAt,
-      };
-    })
-    .filter((item): item is BriefingCommit => item !== null);
+      }),
+    );
+  }
+  return parsed;
 }
 
 function parseNormalizedCommits(event: NormalizedBriefingEvent): BriefingCommit[] {
@@ -102,21 +127,23 @@ function parseNormalizedCommits(event: NormalizedBriefingEvent): BriefingCommit[
   }
 
   const ref = asString(event.summary.ref) || undefined;
-  return event.commits
-    .map((commit) => {
-      if (!commit.id || !commit.message) {
-        return null;
-      }
-      return {
+  const parsed: BriefingCommit[] = [];
+  for (const commit of event.commits) {
+    if (!commit.id || !commit.message) {
+      continue;
+    }
+    parsed.push(
+      buildBriefingCommit({
         id: commit.id,
         message: commit.message,
         author: commit.author,
         projectName: event.projectName,
         ref,
         occurredAt: event.occurredAt,
-      };
-    })
-    .filter((item): item is BriefingCommit => item !== null);
+      }),
+    );
+  }
+  return parsed;
 }
 
 export function extractCommitsFromPush(
