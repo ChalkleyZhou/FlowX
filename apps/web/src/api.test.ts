@@ -172,7 +172,7 @@ describe('api helpers', () => {
     await api.sendBriefing('briefing-1');
     await api.getDeliveryTargets({ workspaceId: 'workspace-1' });
     await api.createDeliveryTarget({
-      workspaceId: 'workspace-1',
+      projectId: 'project-1',
       type: 'EMAIL',
       name: 'Team',
       emailAddress: 'team@example.com',

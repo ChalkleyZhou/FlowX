@@ -154,12 +154,14 @@ export class BriefingsService {
     });
     const markdownContent = renderBriefingMarkdown({
       date: dto.date,
+      projectName: project.name,
       events,
       rawPayloadByEventIndex,
       aiSummary,
     });
     const htmlContent = renderBriefingHtml({
       date: dto.date,
+      projectName: project.name,
       events,
       rawPayloadByEventIndex,
       aiSummary,
@@ -196,11 +198,19 @@ export class BriefingsService {
   async sendBriefing(briefingId: string) {
     const briefing = await this.prisma.briefing.findUnique({
       where: { id: briefingId },
+      include: { project: { select: { name: true } } },
     });
     if (!briefing) {
       throw new NotFoundException('Briefing not found.');
     }
-    return this.deliveryTargetsService.sendBriefing(briefing);
+    return this.deliveryTargetsService.sendBriefing({
+      id: briefing.id,
+      projectId: briefing.projectId,
+      projectName: briefing.project.name,
+      date: briefing.date,
+      markdownContent: briefing.markdownContent,
+      htmlContent: briefing.htmlContent,
+    });
   }
 
   private async ensureProjectExists(projectId: string) {

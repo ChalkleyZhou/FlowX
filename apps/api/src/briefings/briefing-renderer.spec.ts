@@ -51,6 +51,7 @@ describe('briefing renderer', () => {
   it('renders a concise summary and omits empty sections', () => {
     const markdown = renderBriefingMarkdown({
       date: '2026-06-03',
+      projectName: 'FlowX',
       events: [
         event({
           commits: [
@@ -70,7 +71,7 @@ describe('briefing renderer', () => {
       ],
     });
 
-    expect(markdown).toContain('# 研发日报 - 2026-06-03');
+    expect(markdown).toContain('# FlowX · 研发日报 · 2026-06-03');
     expect(markdown).toContain('## 今日研发摘要');
     expect(markdown).toContain('共 2 次提交');
     expect(markdown).toContain('### 新功能');
@@ -87,6 +88,7 @@ describe('briefing renderer', () => {
   it('escapes HTML content from commit messages', () => {
     const html = renderBriefingHtml({
       date: '2026-06-03',
+      projectName: 'FlowX',
       events: [
         event({
           projectName: 'flowx & api',

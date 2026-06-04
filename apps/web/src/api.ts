@@ -378,10 +378,10 @@ export const api = {
     request<{ successCount: number; targetCount: number }>(`/briefings/${id}/send`, {
       method: 'POST',
     }),
-  getDeliveryTargets: (params?: { workspaceId?: string }) =>
+  getDeliveryTargets: (params?: { workspaceId?: string; projectId?: string }) =>
     request<DeliveryTarget[]>(`/delivery-targets${queryString(params)}`),
   createDeliveryTarget: (payload: {
-    workspaceId: string;
+    projectId: string;
     type: string;
     name: string;
     userId?: string;

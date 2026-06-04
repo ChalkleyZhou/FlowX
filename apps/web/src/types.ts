@@ -140,7 +140,7 @@ export interface ProjectBriefingConfig {
 
 export interface DeliveryTarget {
   id: string;
-  workspaceId: string;
+  projectId: string;
   type: 'EMAIL' | 'DINGTALK_ROBOT' | 'DINGTALK_APP' | string;
   name: string;
   userId?: string | null;

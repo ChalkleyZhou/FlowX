@@ -9,6 +9,7 @@ describe('DeliveryTargetsService', () => {
   const logDeleteMany = vi.fn();
   const logCreate = vi.fn();
   const briefingUpdate = vi.fn();
+  const projectFindUnique = vi.fn();
   const userOrganizationFindUnique = vi.fn();
   const organizationFindUnique = vi.fn();
   const transaction = vi.fn((callback) =>
@@ -23,6 +24,7 @@ describe('DeliveryTargetsService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    projectFindUnique.mockResolvedValue({ id: 'project-1', workspaceId: 'workspace-1' });
   });
 
   function createService(options?: {
@@ -38,6 +40,7 @@ describe('DeliveryTargetsService', () => {
         },
         deliveryLog: { create: logCreate },
         briefing: { update: briefingUpdate },
+        project: { findUnique: projectFindUnique },
         userOrganization: { findUnique: userOrganizationFindUnique },
         organization: { findUnique: organizationFindUnique },
         $transaction: transaction,
@@ -48,21 +51,22 @@ describe('DeliveryTargetsService', () => {
     );
   }
 
-  it('creates workspace-scoped delivery targets', async () => {
+  it('creates project-scoped delivery targets', async () => {
     targetCreate.mockResolvedValue({ id: 'target-1' });
 
     await expect(
       createService().createTarget({
-        workspaceId: 'workspace-1',
+        projectId: 'project-1',
         type: 'EMAIL',
         name: 'Team',
         emailAddress: 'team@example.com',
       }),
     ).resolves.toEqual({ id: 'target-1' });
 
+    expect(projectFindUnique).toHaveBeenCalledWith({ where: { id: 'project-1' } });
     expect(targetCreate).toHaveBeenCalledWith({
       data: {
-        workspaceId: 'workspace-1',
+        projectId: 'project-1',
         type: 'EMAIL',
         name: 'Team',
         userId: null,
@@ -72,6 +76,17 @@ describe('DeliveryTargetsService', () => {
         dingtalkSecret: null,
         isActive: true,
       },
+    });
+  });
+
+  it('lists targets for a workspace through project relation', async () => {
+    targetFindMany.mockResolvedValue([]);
+
+    await createService().listTargets({ workspaceId: 'workspace-1' });
+
+    expect(targetFindMany).toHaveBeenCalledWith({
+      where: { project: { workspaceId: 'workspace-1' } },
+      orderBy: { createdAt: 'desc' },
     });
   });
 
@@ -85,7 +100,7 @@ describe('DeliveryTargetsService', () => {
     await expect(
       createService({ authService: { resolveOrganizationMemberEmail } }).createTarget(
         {
-          workspaceId: 'workspace-1',
+          projectId: 'project-1',
           type: 'EMAIL',
           name: 'Bob',
           userId: 'user-bob',
@@ -97,7 +112,7 @@ describe('DeliveryTargetsService', () => {
     expect(resolveOrganizationMemberEmail).toHaveBeenCalledWith('org-1', 'user-bob');
     expect(targetCreate).toHaveBeenCalledWith({
       data: {
-        workspaceId: 'workspace-1',
+        projectId: 'project-1',
         type: 'EMAIL',
         name: 'Bob',
         userId: null,
@@ -117,7 +132,7 @@ describe('DeliveryTargetsService', () => {
     await expect(
       createService().createTarget(
         {
-          workspaceId: 'workspace-1',
+          projectId: 'project-1',
           type: 'DINGTALK_APP',
           name: 'Bob',
           userId: 'user-bob',
@@ -128,7 +143,7 @@ describe('DeliveryTargetsService', () => {
 
     expect(targetCreate).toHaveBeenCalledWith({
       data: {
-        workspaceId: 'workspace-1',
+        projectId: 'project-1',
         type: 'DINGTALK_APP',
         name: 'Bob',
         userId: 'user-bob',
@@ -151,7 +166,7 @@ describe('DeliveryTargetsService', () => {
     expect(targetDelete).toHaveBeenCalledWith({ where: { id: 'target-1' } });
   });
 
-  it('sends a briefing to active targets and records success and failure logs', async () => {
+  it('sends a briefing only to active targets for the briefing project', async () => {
     targetFindMany.mockResolvedValue([
       {
         id: 'target-email',
@@ -180,13 +195,18 @@ describe('DeliveryTargetsService', () => {
     await expect(
       createService().sendBriefing({
         id: 'briefing-1',
-        workspaceId: 'workspace-1',
+        projectId: 'project-1',
+        projectName: '信息化系统',
         date: new Date('2026-06-03T00:00:00.000Z'),
         markdownContent: '# Briefing',
         htmlContent: '<h1>Briefing</h1>',
       }),
     ).resolves.toEqual({ successCount: 1, targetCount: 2 });
 
+    expect(targetFindMany).toHaveBeenCalledWith({
+      where: { projectId: 'project-1', isActive: true },
+      orderBy: { createdAt: 'asc' },
+    });
     expect(logCreate).toHaveBeenCalledTimes(2);
     expect(logCreate.mock.calls[0]?.[0]).toMatchObject({
       data: {
@@ -230,7 +250,8 @@ describe('DeliveryTargetsService', () => {
     await expect(
       createService({ dingTalkNotification: { sendPersonalMarkdown } }).sendBriefing({
         id: 'briefing-1',
-        workspaceId: 'workspace-1',
+        projectId: 'project-1',
+        projectName: '信息化系统',
         date: new Date('2026-06-03T00:00:00.000Z'),
         markdownContent: '# Briefing',
         htmlContent: '<h1>Briefing</h1>',
@@ -240,7 +261,7 @@ describe('DeliveryTargetsService', () => {
     expect(sendPersonalMarkdown).toHaveBeenCalledWith({
       flowxUserId: 'user-bob',
       corpId: 'corp-1',
-      title: 'Daily Briefing 2026-06-03',
+      title: '信息化系统 · 研发日报 · 2026-06-03',
       markdown: '# Briefing',
     });
   });

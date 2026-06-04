@@ -18,9 +18,18 @@ export interface BriefingAggregate {
 
 interface RenderInput {
   date: string;
+  projectName: string;
   events: NormalizedBriefingEvent[];
   rawPayloadByEventIndex?: unknown[];
   aiSummary?: BriefingAiSummary;
+}
+
+export function formatBriefingTitle(projectName: string, date: string) {
+  const name = projectName.trim();
+  if (!name) {
+    return `研发日报 - ${date}`;
+  }
+  return `${name} · 研发日报 · ${date}`;
 }
 
 function renderEventInputs(input: RenderInput) {
@@ -192,8 +201,9 @@ function renderMainSummaryMarkdown(summary: BriefingAiSummary) {
 
 export function renderBriefingMarkdown(input: RenderInput) {
   const summary = resolveSummary(input);
+  const title = formatBriefingTitle(input.projectName, input.date);
 
-  return [`# 研发日报 - ${input.date}`, '', renderMainSummaryMarkdown(summary)].join('\n');
+  return [`# ${title}`, '', renderMainSummaryMarkdown(summary)].join('\n');
 }
 
 function escapeHtml(value: string) {
@@ -274,8 +284,7 @@ function renderMainSummaryHtml(summary: BriefingAiSummary) {
 
 export function renderBriefingHtml(input: RenderInput) {
   const summary = resolveSummary(input);
+  const title = formatBriefingTitle(input.projectName, input.date);
 
-  return [`<h1>研发日报 - ${escapeHtml(input.date)}</h1>`, renderMainSummaryHtml(summary)].join(
-    '\n',
-  );
+  return [`<h1>${escapeHtml(title)}</h1>`, renderMainSummaryHtml(summary)].join('\n');
 }

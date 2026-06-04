@@ -171,19 +171,25 @@ describe('BriefingsService', () => {
     sourceFindMany.mockResolvedValue([{ id: 'source-1', repositoryId: 'repo-1' }]);
     briefingFindFirst.mockResolvedValue({ id: 'existing-briefing' });
     eventFindMany.mockResolvedValue([]);
-    briefingUpdate.mockResolvedValue({ id: 'existing-briefing', markdownContent: '# 研发日报' });
+    briefingUpdate.mockResolvedValue({
+      id: 'existing-briefing',
+      markdownContent: '# FlowX · 研发日报 · 2026-06-03',
+    });
 
     await expect(
       createService().generateProjectBriefing('project-1', {
         date: '2026-06-03',
         regenerate: true,
       }),
-    ).resolves.toEqual({ id: 'existing-briefing', markdownContent: '# 研发日报' });
+    ).resolves.toEqual({
+      id: 'existing-briefing',
+      markdownContent: '# FlowX · 研发日报 · 2026-06-03',
+    });
 
     expect(briefingUpdate).toHaveBeenCalledWith({
       where: { id: 'existing-briefing' },
       data: expect.objectContaining({
-        markdownContent: expect.stringContaining('# 研发日报'),
+        markdownContent: expect.stringContaining('# FlowX · 研发日报 · 2026-06-03'),
       }),
     });
     expect(briefingCreate).not.toHaveBeenCalled();
@@ -207,13 +213,29 @@ describe('BriefingsService', () => {
     expect(briefingCreate).not.toHaveBeenCalled();
   });
 
-  it('delegates resend to delivery targets service', async () => {
-    briefingFindUnique.mockResolvedValue({ id: 'briefing-1', workspaceId: 'workspace-1' });
+  it('delegates resend to delivery targets service with project title context', async () => {
+    briefingFindUnique.mockResolvedValue({
+      id: 'briefing-1',
+      projectId: 'project-1',
+      project: { name: 'FlowX' },
+      date: new Date('2026-06-03T00:00:00.000Z'),
+      markdownContent: '# FlowX · 研发日报 · 2026-06-03',
+      htmlContent: '<h1>FlowX · 研发日报 · 2026-06-03</h1>',
+    });
     sendBriefing.mockResolvedValue({ successCount: 1, targetCount: 1 });
 
     await expect(createService().sendBriefing('briefing-1')).resolves.toEqual({
       successCount: 1,
       targetCount: 1,
+    });
+
+    expect(sendBriefing).toHaveBeenCalledWith({
+      id: 'briefing-1',
+      projectId: 'project-1',
+      projectName: 'FlowX',
+      date: new Date('2026-06-03T00:00:00.000Z'),
+      markdownContent: '# FlowX · 研发日报 · 2026-06-03',
+      htmlContent: '<h1>FlowX · 研发日报 · 2026-06-03</h1>',
     });
   });
 });

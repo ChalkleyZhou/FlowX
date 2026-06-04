@@ -67,7 +67,6 @@ model Workspace {
   briefingSources BriefingSource[]
   briefingEvents BriefingEvent[]
   briefings    Briefing[]
-  deliveryTargets DeliveryTarget[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }
@@ -84,6 +83,7 @@ model Project {
   bugs         Bug[]
   briefingConfig ProjectBriefingConfig?
   briefings    Briefing[]
+  deliveryTargets DeliveryTarget[]
   legacyDeployConfig ProjectDeployConfig?
   deployJobs   DeployJobRecord[]
   createdAt    DateTime      @default(now())
@@ -257,8 +257,8 @@ model Briefing {
 
 model DeliveryTarget {
   id                 String        @id @default(cuid())
-  workspaceId        String
-  workspace          Workspace     @relation(fields: [workspaceId], references: [id])
+  projectId          String
+  project            Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   type               String
   name               String
   userId             String?
@@ -271,7 +271,7 @@ model DeliveryTarget {
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
-  @@index([workspaceId])
+  @@index([projectId])
   @@index([type])
   @@index([isActive])
   @@index([userId])

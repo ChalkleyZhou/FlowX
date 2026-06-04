@@ -1,46 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
+import { DeliveryTargetList } from '../components/DeliveryTargetList';
 import { EmptyState } from '../components/EmptyState';
 import { PageHeader } from '../components/PageHeader';
 import { SectionHeader } from '../components/SectionHeader';
-import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { useToast } from '../components/ui/toast';
-import type { DeliveryTarget, OrganizationMember, Workspace } from '../types';
+import type { DeliveryTarget, OrganizationMember, Project, Workspace } from '../types';
 
 const MANUAL_MEMBER_VALUE = '__manual__';
 
-function deliveryTargetDescription(target: DeliveryTarget) {
-  if (target.type === 'EMAIL') {
-    return target.emailAddress ?? '-';
-  }
-  if (target.type === 'DINGTALK_APP') {
-    return '钉钉工作通知（个人）';
-  }
-  return target.dingtalkWebhookUrl ?? '-';
-}
-
-function deliveryTargetTypeLabel(type: string) {
-  if (type === 'EMAIL') {
-    return '邮件';
-  }
-  if (type === 'DINGTALK_APP') {
-    return '钉钉应用';
-  }
-  if (type === 'DINGTALK_ROBOT') {
-    return '钉钉机器人';
-  }
-  return type;
-}
-
 export function DeliveryTargetsPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [targets, setTargets] = useState<DeliveryTarget[]>([]);
   const [workspaceId, setWorkspaceId] = useState('');
+  const [projectId, setProjectId] = useState('');
   const [type, setType] = useState('EMAIL');
   const [name, setName] = useState('');
   const [selectedMemberId, setSelectedMemberId] = useState(MANUAL_MEMBER_VALUE);
@@ -53,26 +32,44 @@ export function DeliveryTargetsPage() {
   const usesMemberPicker = type === 'EMAIL' || type === 'DINGTALK_APP';
   const requiresMember = type === 'DINGTALK_APP';
 
+  const workspaceProjects = useMemo(
+    () => projects.filter((project) => project.workspace.id === workspaceId),
+    [projects, workspaceId],
+  );
+
   async function refresh(nextWorkspaceId = workspaceId) {
     if (!nextWorkspaceId) {
+      setTargets([]);
       return;
     }
     setTargets(await api.getDeliveryTargets({ workspaceId: nextWorkspaceId }));
   }
 
   useEffect(() => {
-    Promise.all([api.getWorkspaces(), api.getOrganizationMembers()])
-      .then(async ([workspaceList, memberList]) => {
+    Promise.all([api.getWorkspaces(), api.getProjects(), api.getOrganizationMembers()])
+      .then(async ([workspaceList, projectList, memberList]) => {
         setWorkspaces(workspaceList);
+        setProjects(projectList);
         setMembers(memberList);
-        const first = workspaceList[0]?.id ?? '';
-        setWorkspaceId(first);
-        if (first) {
-          setTargets(await api.getDeliveryTargets({ workspaceId: first }));
+        const firstWorkspaceId = workspaceList[0]?.id ?? '';
+        setWorkspaceId(firstWorkspaceId);
+        const firstProjectId =
+          projectList.find((project) => project.workspace.id === firstWorkspaceId)?.id ?? '';
+        setProjectId(firstProjectId);
+        if (firstWorkspaceId) {
+          setTargets(await api.getDeliveryTargets({ workspaceId: firstWorkspaceId }));
         }
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : '加载投递目标失败'));
   }, []);
+
+  function handleWorkspaceChange(nextWorkspaceId: string) {
+    setWorkspaceId(nextWorkspaceId);
+    const nextProjectId =
+      projects.find((project) => project.workspace.id === nextWorkspaceId)?.id ?? '';
+    setProjectId(nextProjectId);
+    void refresh(nextWorkspaceId);
+  }
 
   async function handleMemberChange(nextMemberId: string) {
     setSelectedMemberId(nextMemberId);
@@ -123,8 +120,8 @@ export function DeliveryTargetsPage() {
   }
 
   async function createTarget() {
-    if (!workspaceId || !name) {
-      toast.error('请填写完整投递目标');
+    if (!projectId || !name) {
+      toast.error('请选择项目并填写完整投递目标');
       return;
     }
     if (type === 'EMAIL' && !address && selectedMemberId === MANUAL_MEMBER_VALUE) {
@@ -143,7 +140,7 @@ export function DeliveryTargetsPage() {
     setSaving(true);
     try {
       await api.createDeliveryTarget({
-        workspaceId,
+        projectId,
         type,
         name,
         ...(type === 'EMAIL'
@@ -186,16 +183,28 @@ export function DeliveryTargetsPage() {
       <PageHeader
         eyebrow="Delivery"
         title="投递目标"
-        description="配置项目简报的邮件、钉钉工作通知和群机器人投递目标。"
+        description="按项目配置简报的邮件、钉钉工作通知和群机器人投递目标；发送时仅投递到对应项目的目标。"
       />
       <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="Create" title="新增投递目标" />
         </CardHeader>
         <CardContent className="grid gap-3 p-5 pt-0 md:grid-cols-2 xl:grid-cols-3">
-          <Select value={workspaceId || undefined} onValueChange={(value) => { setWorkspaceId(value); void refresh(value); }}>
+          <Select value={workspaceId || undefined} onValueChange={handleWorkspaceChange}>
             <SelectTrigger><SelectValue placeholder="工作区" /></SelectTrigger>
             <SelectContent>{workspaces.map((workspace) => <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>)}</SelectContent>
+          </Select>
+          <Select
+            value={projectId || undefined}
+            onValueChange={setProjectId}
+            disabled={workspaceProjects.length === 0}
+          >
+            <SelectTrigger><SelectValue placeholder="项目" /></SelectTrigger>
+            <SelectContent>
+              {workspaceProjects.map((project) => (
+                <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
+              ))}
+            </SelectContent>
           </Select>
           <Select value={type} onValueChange={(value) => {
             setType(value);
@@ -237,7 +246,7 @@ export function DeliveryTargetsPage() {
           ) : null}
           <div className="flex gap-2 md:col-span-2 xl:col-span-3">
             {type === 'DINGTALK_ROBOT' ? <Input placeholder="签名密钥" value={secret} onChange={(event) => setSecret(event.target.value)} /> : null}
-            <Button onClick={() => void createTarget()} disabled={saving || resolvingEmail}>
+            <Button onClick={() => void createTarget()} disabled={saving || resolvingEmail || !projectId}>
               {saving ? '保存中…' : '保存'}
             </Button>
           </div>
@@ -248,23 +257,16 @@ export function DeliveryTargetsPage() {
           <SectionHeader eyebrow="Targets" title="目标列表" />
         </CardHeader>
         <CardContent className="p-5 pt-0">
-          {targets.length > 0 ? (
-            <div className="flex flex-col gap-3">
-              {targets.map((target) => (
-                <div key={target.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-4">
-                  <div>
-                    <div className="font-semibold text-foreground">{target.name}</div>
-                    <div className="text-sm text-muted-foreground">{deliveryTargetDescription(target)}</div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant={target.isActive ? 'default' : 'outline'}>{deliveryTargetTypeLabel(target.type)}</Badge>
-                    <Button variant="outline" size="sm" onClick={() => void toggleTarget(target)}>{target.isActive ? '停用' : '启用'}</Button>
-                    <Button variant="destructive" size="sm" onClick={() => void deleteTarget(target)}>删除</Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : <EmptyState title="暂无投递目标" description="添加邮件、钉钉应用通知或群机器人后即可发送简报。" />}
+          {workspaceProjects.length === 0 ? (
+            <EmptyState title="暂无项目" description="请先在项目中创建工作区下的项目，再配置投递目标。" />
+          ) : (
+            <DeliveryTargetList
+              projects={workspaceProjects}
+              targets={targets}
+              onToggleTarget={(target) => void toggleTarget(target)}
+              onDeleteTarget={(target) => void deleteTarget(target)}
+            />
+          )}
         </CardContent>
       </Card>
     </>

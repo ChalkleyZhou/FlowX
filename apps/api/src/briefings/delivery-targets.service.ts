@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuthService } from '../auth/auth.service';
 import { DingTalkNotificationService } from '../notifications/dingtalk-notification.service';
@@ -7,6 +7,7 @@ import {
   sendDingTalkMarkdown,
   sendEmail,
 } from './delivery-senders';
+import { formatBriefingTitle } from './briefing-renderer';
 import { CreateDeliveryTargetDto } from './dto/create-delivery-target.dto';
 import { UpdateDeliveryTargetDto } from './dto/update-delivery-target.dto';
 
@@ -19,7 +20,8 @@ export interface BriefingDeliverySenders {
 
 type BriefingSendRecord = {
   id: string;
-  workspaceId: string;
+  projectId: string;
+  projectName: string;
   date: Date;
   markdownContent: string;
   htmlContent: string;
@@ -41,9 +43,15 @@ export class DeliveryTargetsService {
     private readonly dingTalkNotification?: DingTalkNotificationService,
   ) {}
 
-  listTargets(workspaceId?: string) {
+  listTargets(params?: { workspaceId?: string; projectId?: string }) {
+    const workspaceId = params?.workspaceId?.trim();
+    const projectId = params?.projectId?.trim();
     return this.prisma.deliveryTarget.findMany({
-      where: workspaceId ? { workspaceId } : undefined,
+      where: projectId
+        ? { projectId }
+        : workspaceId
+          ? { project: { workspaceId } }
+          : undefined,
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -83,7 +91,7 @@ export class DeliveryTargetsService {
   async sendBriefing(briefing: BriefingSendRecord) {
     const targets = await this.prisma.deliveryTarget.findMany({
       where: {
-        workspaceId: briefing.workspaceId,
+        projectId: briefing.projectId,
         isActive: true,
       },
       orderBy: { createdAt: 'asc' },
@@ -128,6 +136,13 @@ export class DeliveryTargetsService {
   }
 
   private async toCreateData(dto: CreateDeliveryTargetDto, organizationId?: string) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: dto.projectId.trim() },
+    });
+    if (!project) {
+      throw new NotFoundException('Project not found.');
+    }
+
     let emailAddress = dto.emailAddress?.trim() || null;
     if (dto.type.trim() === 'EMAIL' && !emailAddress && dto.userId?.trim()) {
       if (!this.authService) {
@@ -163,7 +178,7 @@ export class DeliveryTargetsService {
     }
 
     return {
-      workspaceId: dto.workspaceId,
+      projectId: project.id,
       type,
       name: dto.name.trim(),
       userId,
@@ -200,7 +215,10 @@ export class DeliveryTargetsService {
       dingtalkSecret: string | null;
     },
   ) {
-    const subject = `Daily Briefing ${briefing.date.toISOString().slice(0, 10)}`;
+    const subject = formatBriefingTitle(
+      briefing.projectName,
+      briefing.date.toISOString().slice(0, 10),
+    );
 
     if (target.type === 'EMAIL') {
       if (!target.emailAddress) {

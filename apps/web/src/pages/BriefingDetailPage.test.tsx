@@ -32,7 +32,7 @@ describe('BriefingDetailPage', () => {
       scopeKey: 'scope',
       scope: { repositoryIds: ['repo-1'], briefingSourceIds: ['source-1'] },
       status: 'GENERATED',
-      markdownContent: '# Daily Briefing',
+      markdownContent: '# Daily Briefing\n\nFlowX summary',
       htmlContent: '<h1>Daily Briefing</h1><p>FlowX</p>',
       eventCount: 3,
       createdAt: '2026-06-03T00:00:00.000Z',
@@ -47,7 +47,7 @@ describe('BriefingDetailPage', () => {
           createdAt: '2026-06-03T00:00:00.000Z',
           deliveryTarget: {
             id: 'target-1',
-            workspaceId: 'workspace-1',
+            projectId: 'project-1',
             type: 'EMAIL',
             name: 'Team',
             isActive: true,

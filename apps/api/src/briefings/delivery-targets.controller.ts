@@ -14,8 +14,11 @@ export class DeliveryTargetsController {
   constructor(private readonly deliveryTargetsService: DeliveryTargetsService) {}
 
   @Get()
-  list(@Query('workspaceId') workspaceId?: string) {
-    return this.deliveryTargetsService.listTargets(workspaceId);
+  list(
+    @Query('workspaceId') workspaceId?: string,
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.deliveryTargetsService.listTargets({ workspaceId, projectId });
   }
 
   @Post()

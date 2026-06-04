@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
+import { BriefingMarkdownView } from '../components/BriefingMarkdownView';
 import { PageHeader } from '../components/PageHeader';
 import { SectionHeader } from '../components/SectionHeader';
 import { Badge } from '../components/ui/badge';
@@ -96,10 +97,7 @@ export function BriefingDetailPage() {
           <SectionHeader eyebrow="Content" title="简报内容" />
         </CardHeader>
         <CardContent className="p-5 pt-0">
-          <div
-            className="prose prose-sm max-w-none rounded-xl border border-border bg-background p-5 text-foreground"
-            dangerouslySetInnerHTML={{ __html: briefing.htmlContent }}
-          />
+          <BriefingMarkdownView markdown={briefing.markdownContent} />
         </CardContent>
       </Card>
 

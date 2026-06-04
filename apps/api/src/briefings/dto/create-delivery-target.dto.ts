@@ -3,7 +3,7 @@ import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-vali
 export class CreateDeliveryTargetDto {
   @IsString()
   @IsNotEmpty()
-  workspaceId!: string;
+  projectId!: string;
 
   @IsString()
   @IsNotEmpty()
