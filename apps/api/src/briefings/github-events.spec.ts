@@ -12,7 +12,7 @@ describe('GitHub briefing events', () => {
     const event = normalizeGithubPayload('push', {
       ref: 'refs/heads/main',
       after: 'abc123',
-      commits: [{ id: 'abc123' }],
+      commits: [{ id: 'abc123', message: 'feat: github webhook support', author: { name: 'Alice' } }],
       repository: {
         id: 99,
         full_name: 'rokid/flowx',
@@ -34,6 +34,7 @@ describe('GitHub briefing events', () => {
       eventType: 'push',
       subject: 'main',
       actorUsername: 'alice',
+      commits: [{ id: 'abc123', message: 'feat: github webhook support', author: 'Alice' }],
     });
   });
 

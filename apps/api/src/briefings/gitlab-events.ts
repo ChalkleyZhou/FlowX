@@ -19,6 +19,29 @@ function asNumber(value: unknown) {
   return typeof value === 'number' ? value : Number(value);
 }
 
+function parsePushCommits(payload: GitlabPayload) {
+  const commits = payload.commits;
+  if (!Array.isArray(commits)) {
+    return undefined;
+  }
+
+  const parsed = commits
+    .map((entry) => {
+      const commit = asObject(entry);
+      const id = asString(commit.id);
+      const message = asString(commit.message) || asString(commit.title);
+      if (!id || !message) {
+        return null;
+      }
+      const author =
+        asString(asObject(commit.author).name) || asString(commit.author_name) || undefined;
+      return { id, message, author };
+    })
+    .filter((item): item is { id: string; message: string; author?: string } => item !== null);
+
+  return parsed.length > 0 ? parsed : undefined;
+}
+
 function payloadProject(payload: GitlabPayload) {
   return asObject(payload.project);
 }
@@ -85,14 +108,16 @@ export function normalizeGitlabPayload(payload: GitlabPayload): NormalizedBriefi
 
   if (eventType === 'push' || eventType === 'tag') {
     const ref = asString(payload.ref).replace(/^refs\/(heads|tags)\//, '');
+    const commits = eventType === 'push' ? parsePushCommits(payload) : undefined;
     return {
       ...base,
       action: eventType === 'tag' ? 'tag_push' : 'push',
       subject: ref,
+      commits,
       summary: {
         ref,
         after: asString(payload.after) || null,
-        commitCount: Array.isArray(payload.commits) ? payload.commits.length : 0,
+        commitCount: commits?.length ?? (Array.isArray(payload.commits) ? payload.commits.length : 0),
       },
     };
   }

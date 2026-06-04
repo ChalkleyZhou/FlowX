@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BriefingSummaryOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["headline", "summaryParagraph", "features", "fixes", "risks", "otherNotes"],
+  "properties": {
+    "headline": {
+      "type": "string",
+      "description": "一句话概括当日研发重点，面向项目负责人。"
+    },
+    "summaryParagraph": {
+      "type": "string",
+      "description": "2-4 句自然语言总结，说明今天整体做了什么、影响范围与结论。"
+    },
+    "features": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/workItem" }
+    },
+    "fixes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/workItem" }
+    },
+    "risks": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "需要关注的失败流水线、阻塞或质量风险；无则空数组。"
+    },
+    "otherNotes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "不属于功能/修复但值得提及的事项，如发布、重构、文档。"
+    }
+  },
+  "$defs": {
+    "workItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "detail", "repositories"],
+      "properties": {
+        "title": { "type": "string" },
+        "detail": { "type": "string" },
+        "repositories": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        }
+      }
+    }
+  }
+}

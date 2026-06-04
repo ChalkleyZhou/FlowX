@@ -10,6 +10,12 @@ export type BriefingEventType =
 
 export type BriefingProvider = 'github' | 'gitlab';
 
+export interface NormalizedBriefingCommit {
+  id: string;
+  message: string;
+  author?: string;
+}
+
 export interface NormalizedBriefingEvent {
   provider: BriefingProvider;
   externalPath: string;
@@ -23,6 +29,7 @@ export interface NormalizedBriefingEvent {
   subject: string;
   url?: string;
   occurredAt: string;
+  commits?: NormalizedBriefingCommit[];
   summary: Record<string, string | number | boolean | null>;
 }
 

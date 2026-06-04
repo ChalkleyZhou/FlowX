@@ -70,6 +70,16 @@ export class CodexAiExecutor implements AIExecutor {
     );
   }
 
+  /** Read-only structured JSON generation (no target repository context). */
+  async runStructuredJsonStage<T>(
+    schemaFile: string,
+    prompt: string,
+    stageName: string,
+    context?: AIInvocationContext,
+  ): Promise<T> {
+    return this.runJsonStage<T>(schemaFile, prompt, stageName, [], context);
+  }
+
   async generateDesign(
     input: GenerateDesignInput,
     context?: AIInvocationContext,

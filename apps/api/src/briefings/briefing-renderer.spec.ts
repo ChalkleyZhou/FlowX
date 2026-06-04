@@ -48,25 +48,37 @@ describe('briefing renderer', () => {
     });
   });
 
-  it('renders deterministic Markdown sections', () => {
+  it('renders commit summary and categorized sections', () => {
     const markdown = renderBriefingMarkdown({
       date: '2026-06-03',
       events: [
+        event({
+          commits: [
+            { id: 'abc', message: 'feat(briefing): add daily summary' },
+            { id: 'def', message: 'fix(renderer): escape html output' },
+          ],
+          summary: { ref: 'main', commitCount: 2 },
+        }),
         event({
           eventType: 'merge_request',
           objectKind: 'merge_request',
           action: 'merge',
           subject: 'Add briefing page',
           projectName: 'flowx-web',
+          summary: { state: 'merged' },
         }),
       ],
     });
 
-    expect(markdown).toContain('# Daily Briefing - 2026-06-03');
-    expect(markdown).toContain('## Overview');
-    expect(markdown).toContain('- Merge Requests: 1');
-    expect(markdown).toContain('- merge: Add briefing page (flowx-web)');
-    expect(markdown).toContain('- No events for this section.');
+    expect(markdown).toContain('# 研发日报 - 2026-06-03');
+    expect(markdown).toContain('## 提交明细（按 message 归类）');
+    expect(markdown).toContain('### 新功能 / 能力');
+    expect(markdown).toContain('feat(briefing): add daily summary');
+    expect(markdown).toContain('### 问题修复');
+    expect(markdown).toContain('fix(renderer): escape html output');
+    expect(markdown).toContain('### 已合并合并请求');
+    expect(markdown).toContain('- merge: Add briefing page（flowx-web）');
+    expect(markdown).toContain('- 本日无相关记录。');
   });
 
   it('escapes HTML content from GitLab payload fields', () => {

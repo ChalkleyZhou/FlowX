@@ -13,6 +13,31 @@ function asString(value: unknown, fallback = '') {
   return typeof value === 'string' ? value : fallback;
 }
 
+function parsePushCommits(payload: GithubPayload) {
+  const commits = payload.commits;
+  if (!Array.isArray(commits)) {
+    return undefined;
+  }
+
+  const parsed = commits
+    .map((entry) => {
+      const commit = asObject(entry);
+      const id = asString(commit.id) || asString(commit.sha);
+      const message = asString(commit.message);
+      if (!id || !message) {
+        return null;
+      }
+      const author =
+        asString(asObject(commit.author).name) ||
+        asString(asObject(commit.committer).name) ||
+        undefined;
+      return { id, message, author };
+    })
+    .filter((item): item is { id: string; message: string; author?: string } => item !== null);
+
+  return parsed.length > 0 ? parsed : undefined;
+}
+
 function payloadRepository(payload: GithubPayload) {
   return asObject(payload.repository);
 }
@@ -82,15 +107,17 @@ export function normalizeGithubPayload(
   if (eventName === 'push') {
     const ref = asString(payload.ref).replace(/^refs\/(heads|tags)\//, '');
     const head = asString(asObject(payload.head_commit).id) || asString(payload.after);
+    const commits = parsePushCommits(payload);
     return {
       ...base,
       action: 'push',
       subject: ref,
       occurredAt: payloadOccurredAt(payload),
+      commits,
       summary: {
         ref,
         after: head || null,
-        commitCount: Array.isArray(payload.commits) ? payload.commits.length : 0,
+        commitCount: commits?.length ?? (Array.isArray(payload.commits) ? payload.commits.length : 0),
       },
     };
   }

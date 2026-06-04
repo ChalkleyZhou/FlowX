@@ -11,7 +11,10 @@ describe('GitLab briefing events', () => {
       user_username: 'alice',
       ref: 'refs/heads/main',
       after: 'abc123',
-      commits: [{ id: 'abc123' }, { id: 'def456' }],
+      commits: [
+        { id: 'abc123', message: 'feat: first change', author: { name: 'Alice' } },
+        { id: 'def456', message: 'fix: second change', author_name: 'Alice' },
+      ],
       project: {
         id: 42,
         name: 'daily-briefing',
@@ -35,6 +38,10 @@ describe('GitLab briefing events', () => {
         after: 'abc123',
         commitCount: 2,
       },
+      commits: [
+        { id: 'abc123', message: 'feat: first change', author: 'Alice' },
+        { id: 'def456', message: 'fix: second change', author: 'Alice' },
+      ],
     });
     expect(event.occurredAt).toBe('2026-06-03T01:15:00.000Z');
   });

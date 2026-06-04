@@ -12,9 +12,19 @@ describe('BriefingsService', () => {
   const briefingFindUnique = vi.fn();
   const briefingCreate = vi.fn();
   const sendBriefing = vi.fn();
+  const summarize = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
+    summarize.mockResolvedValue({
+      source: 'fallback',
+      headline: '测试摘要',
+      summaryParagraph: '规则归纳。',
+      features: [],
+      fixes: [],
+      risks: [],
+      otherNotes: [],
+    });
   });
 
   function createService() {
@@ -34,6 +44,7 @@ describe('BriefingsService', () => {
         },
       } as never,
       { sendBriefing } as never,
+      { summarize } as never,
     );
   }
 
@@ -94,6 +105,7 @@ describe('BriefingsService', () => {
   it('generates a project briefing from enabled workspace sources', async () => {
     projectFindUnique.mockResolvedValue({
       id: 'project-1',
+      name: 'FlowX',
       workspaceId: 'workspace-1',
       workspace: {
         repositories: [{ id: 'repo-1' }],

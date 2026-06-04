@@ -6,6 +6,7 @@ import {
   renderBriefingMarkdown,
 } from './briefing-renderer';
 import type { NormalizedBriefingEvent } from './briefing-events';
+import { BriefingAiSummarizerService } from './briefing-ai-summarizer.service';
 import { DeliveryTargetsService } from './delivery-targets.service';
 import { GenerateBriefingDto } from './dto/generate-briefing.dto';
 import { UpsertProjectBriefingConfigDto } from './dto/upsert-project-briefing-config.dto';
@@ -15,6 +16,7 @@ const DEFAULT_DAILY_HOUR = 18;
 
 type ProjectWithWorkspace = {
   id: string;
+  name: string;
   workspaceId: string;
   workspace: {
     repositories: Array<{ id: string }>;
@@ -26,6 +28,7 @@ export class BriefingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly deliveryTargetsService: DeliveryTargetsService,
+    private readonly briefingAiSummarizerService: BriefingAiSummarizerService,
   ) {}
 
   async getProjectConfig(projectId: string) {
@@ -144,8 +147,25 @@ export class BriefingsService {
     const events = eventRows.map((row) =>
       normalizeStoredEvent(row.normalizedPayload),
     );
-    const markdownContent = renderBriefingMarkdown({ date: dto.date, events });
-    const htmlContent = renderBriefingHtml({ date: dto.date, events });
+    const rawPayloadByEventIndex = eventRows.map((row) => row.rawPayload);
+    const aiSummary = await this.briefingAiSummarizerService.summarize({
+      date: dto.date,
+      projectName: project.name,
+      events,
+      rawPayloadByEventIndex,
+    });
+    const markdownContent = renderBriefingMarkdown({
+      date: dto.date,
+      events,
+      rawPayloadByEventIndex,
+      aiSummary,
+    });
+    const htmlContent = renderBriefingHtml({
+      date: dto.date,
+      events,
+      rawPayloadByEventIndex,
+      aiSummary,
+    });
 
     return this.prisma.briefing.create({
       data: {

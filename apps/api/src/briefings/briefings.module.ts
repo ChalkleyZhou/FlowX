@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
+import { AiModule } from '../ai/ai.module';
 import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { BriefingAiSummarizerService } from './briefing-ai-summarizer.service';
 import { BriefingSourcesController } from './briefing-sources.controller';
 import { BriefingSourcesService } from './briefing-sources.service';
 import { BriefingSchedulerService } from './briefing-scheduler.service';
@@ -12,11 +14,12 @@ import { DeliveryTargetsController } from './delivery-targets.controller';
 import { sendDingTalkMarkdown, sendEmail } from './delivery-senders';
 
 @Module({
-  imports: [PrismaModule, AuthModule, NotificationsModule],
+  imports: [PrismaModule, AuthModule, NotificationsModule, AiModule],
   controllers: [BriefingSourcesController, BriefingsController, DeliveryTargetsController],
   providers: [
     BriefingSourcesService,
     BriefingsService,
+    BriefingAiSummarizerService,
     DeliveryTargetsService,
     BriefingSchedulerService,
     {
