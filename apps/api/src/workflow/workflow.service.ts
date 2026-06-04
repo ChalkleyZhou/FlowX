@@ -136,6 +136,14 @@ export class WorkflowService {
   ) {}
 
   async createWorkflowRun(dto: CreateWorkflowRunDto) {
+    return this.createRequirementWorkflowRun(dto, WorkflowRunType.FULL);
+  }
+
+  async createLocalChatWorkflowRun(dto: CreateWorkflowRunDto) {
+    return this.createRequirementWorkflowRun(dto, WorkflowRunType.LOCAL_CHAT);
+  }
+
+  private async createRequirementWorkflowRun(dto: CreateWorkflowRunDto, runType: WorkflowRunType) {
     const aiProvider = this.aiInvocationContextService.normalizeAiProvider(dto.aiProvider);
     const requirement = await this.prisma.requirement.findFirstOrThrow({
       where: {
@@ -226,6 +234,7 @@ export class WorkflowService {
         data: {
           requirementId: dto.requirementId,
           status: 'CREATED',
+          runType,
           aiProvider,
         },
       });

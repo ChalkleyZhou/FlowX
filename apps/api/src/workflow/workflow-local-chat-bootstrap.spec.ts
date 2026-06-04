@@ -33,6 +33,20 @@ function createService() {
 }
 
 describe('WorkflowService local chat bootstrap', () => {
+  it('creates requirement workflows with LOCAL_CHAT run type through the local chat entrypoint', async () => {
+    const service = createService();
+    const createRequirementWorkflowRun = vi
+      .spyOn(service as never, 'createRequirementWorkflowRun' as never)
+      .mockResolvedValue({ id: 'workflow-1' });
+
+    await service.createLocalChatWorkflowRun({ requirementId: 'req-1', repositoryIds: ['repo-1'] });
+
+    expect(createRequirementWorkflowRun).toHaveBeenCalledWith(
+      { requirementId: 'req-1', repositoryIds: ['repo-1'] },
+      WorkflowRunType.LOCAL_CHAT,
+    );
+  });
+
   it('prepares confirmed local chat task and plan without starting execution', async () => {
     const service = createService();
     const tx = {
