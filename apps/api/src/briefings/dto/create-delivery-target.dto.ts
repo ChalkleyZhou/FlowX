@@ -14,6 +14,10 @@ export class CreateDeliveryTargetDto {
   name!: string;
 
   @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @IsOptional()
   @IsEmail()
   emailAddress?: string;
 

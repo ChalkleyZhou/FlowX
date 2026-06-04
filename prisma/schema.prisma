@@ -261,6 +261,8 @@ model DeliveryTarget {
   workspace          Workspace     @relation(fields: [workspaceId], references: [id])
   type               String
   name               String
+  userId             String?
+  organizationId     String?
   emailAddress       String?
   dingtalkWebhookUrl String?
   dingtalkSecret     String?
@@ -272,6 +274,7 @@ model DeliveryTarget {
   @@index([workspaceId])
   @@index([type])
   @@index([isActive])
+  @@index([userId])
 }
 
 model DeliveryLog {

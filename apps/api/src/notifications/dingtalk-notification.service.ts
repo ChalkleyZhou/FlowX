@@ -123,6 +123,114 @@ export class DingTalkNotificationService {
     return lines.join('\n');
   }
 
+  async sendPersonalMarkdown(input: {
+    flowxUserId: string;
+    corpId: string;
+    title: string;
+    markdown: string;
+  }) {
+    if (!this.isEnabled()) {
+      throw new Error('DingTalk app delivery is not configured.');
+    }
+
+    const staffId = await this.resolveStaffId(input.flowxUserId, input.corpId);
+    if (!staffId) {
+      throw new Error('DingTalk staff id not found for user.');
+    }
+
+    const accessToken = await this.getAppAccessToken(input.corpId);
+    if (!accessToken) {
+      throw new Error('DingTalk access token is unavailable.');
+    }
+
+    const url = new URL('https://oapi.dingtalk.com/topapi/message/corpconversation/asyncsend_v2');
+    url.searchParams.set('access_token', accessToken);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        agent_id: Number(this.configService.get<string>('DINGTALK_AGENT_ID')),
+        userid_list: staffId,
+        msg: {
+          msgtype: 'markdown',
+          markdown: {
+            title: input.title,
+            text: input.markdown,
+          },
+        },
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as
+      | {
+          errcode?: number | string;
+          errmsg?: string;
+          task_id?: number;
+        }
+      | null;
+
+    if (!response.ok || Number(payload?.errcode ?? 0) !== 0) {
+      throw new Error(
+        `DingTalk personal notification failed: ${payload?.errmsg ?? response.status}`,
+      );
+    }
+
+    return payload;
+  }
+
+  async fetchStaffEmail(flowxUserId: string, corpId: string) {
+    const staffId = await this.resolveStaffId(flowxUserId, corpId);
+    if (!staffId) {
+      return null;
+    }
+
+    const accessToken = await this.getAppAccessToken(corpId);
+    if (!accessToken) {
+      return null;
+    }
+
+    return this.fetchEmailByStaffId(staffId, accessToken);
+  }
+
+  private async fetchEmailByStaffId(staffId: string, accessToken: string) {
+    const url = new URL('https://oapi.dingtalk.com/topapi/v2/user/get');
+    url.searchParams.set('access_token', accessToken);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userid: staffId,
+        language: 'zh_CN',
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as
+      | {
+          errcode?: number | string;
+          errmsg?: string;
+          result?: {
+            email?: string;
+            org_email?: string;
+          };
+        }
+      | null;
+
+    if (!response.ok || Number(payload?.errcode ?? 0) !== 0) {
+      this.logger.warn(
+        `Fetch DingTalk user email failed for staff ${staffId}: ${response.status} ${payload?.errmsg ?? 'unknown error'}`,
+      );
+      return null;
+    }
+
+    return this.pickString(payload?.result?.org_email, payload?.result?.email);
+  }
+
   private async resolveStaffId(flowxUserId: string, corpId: string) {
     const identity = await this.prisma.authIdentity.findFirst({
       where: {

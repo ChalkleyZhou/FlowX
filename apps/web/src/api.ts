@@ -223,6 +223,10 @@ export const api = {
   getProjects: () => request<Project[]>('/projects'),
   getProject: (id: string) => request<Project>(`/projects/${id}`),
   getOrganizationMembers: () => request<OrganizationMember[]>('/auth/organization/members'),
+  resolveOrganizationMemberEmail: (userId: string) =>
+    request<{ email: string; source: 'profile' | 'dingtalk' }>(
+      `/auth/organization/members/${userId}/email`,
+    ),
   createOrganizationMember: (payload: {
     account: string;
     password?: string;
@@ -380,6 +384,7 @@ export const api = {
     workspaceId: string;
     type: string;
     name: string;
+    userId?: string;
     emailAddress?: string;
     dingtalkWebhookUrl?: string;
     dingtalkSecret?: string;

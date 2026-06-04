@@ -47,6 +47,12 @@ export class AuthController {
     return this.authService.listOrganizationMembers(organizationId);
   }
 
+  @Get('organization/members/:userId/email')
+  resolveOrganizationMemberEmail(@Req() req: AuthRequest, @Param('userId') userId: string) {
+    const organizationId = this.requireOrganizationId(req);
+    return this.authService.resolveOrganizationMemberEmail(organizationId, userId);
+  }
+
   @Post('organization/members')
   createOrganizationMember(
     @Req() req: AuthRequest,

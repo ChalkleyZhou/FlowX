@@ -8,6 +8,7 @@ function buildService(prisma: Record<string, unknown>) {
     prisma as never,
     { listProviders: () => [] } as never,
     { hashPassword: (password: string) => `hash:${password}` } as never,
+    undefined,
   );
 }
 

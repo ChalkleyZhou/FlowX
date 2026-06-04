@@ -2,12 +2,15 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { Prisma } from '@prisma/client';
+import { DingTalkNotificationService } from '../notifications/dingtalk-notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PasswordService } from './password.service';
 import { ProviderRegistryService } from './providers/provider-registry.service';
@@ -18,6 +21,9 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly providerRegistry: ProviderRegistryService,
     private readonly passwordService: PasswordService,
+    @Optional()
+    @Inject(DingTalkNotificationService)
+    private readonly dingTalkNotification?: DingTalkNotificationService,
   ) {}
 
   listProviders() {
@@ -360,6 +366,58 @@ export class AuthService {
       status: row.user.status,
       joinedAt: row.createdAt.toISOString(),
     }));
+  }
+
+  async resolveOrganizationMemberEmail(organizationId: string, userId: string) {
+    const membership = await this.prisma.userOrganization.findUnique({
+      where: {
+        userId_organizationId: {
+          userId,
+          organizationId,
+        },
+      },
+      include: { user: true },
+    });
+
+    if (!membership) {
+      throw new NotFoundException('Organization member not found.');
+    }
+
+    const cachedEmail = membership.user.email?.trim();
+    if (cachedEmail) {
+      return {
+        email: cachedEmail,
+        source: 'profile' as const,
+      };
+    }
+
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+    });
+    if (
+      organization?.provider === 'dingtalk' &&
+      organization.providerOrganizationId?.trim() &&
+      this.dingTalkNotification
+    ) {
+      const resolvedEmail = await this.dingTalkNotification.fetchStaffEmail(
+        userId,
+        organization.providerOrganizationId.trim(),
+      );
+      if (resolvedEmail) {
+        await this.prisma.user.update({
+          where: { id: userId },
+          data: { email: resolvedEmail },
+        });
+        return {
+          email: resolvedEmail,
+          source: 'dingtalk' as const,
+        };
+      }
+    }
+
+    throw new BadRequestException(
+      'Member email is unavailable. Ask the user to sign in with DingTalk or enter an email manually.',
+    );
   }
 
   async createOrganizationMember(

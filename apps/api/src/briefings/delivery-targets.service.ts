@@ -1,5 +1,7 @@
 import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { AuthService } from '../auth/auth.service';
+import { DingTalkNotificationService } from '../notifications/dingtalk-notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   sendDingTalkMarkdown,
@@ -33,6 +35,10 @@ export class DeliveryTargetsService {
       sendDingTalkMarkdown,
       sendEmail,
     },
+    @Optional()
+    private readonly authService?: AuthService,
+    @Optional()
+    private readonly dingTalkNotification?: DingTalkNotificationService,
   ) {}
 
   listTargets(workspaceId?: string) {
@@ -42,10 +48,9 @@ export class DeliveryTargetsService {
     });
   }
 
-  createTarget(dto: CreateDeliveryTargetDto) {
-    return this.prisma.deliveryTarget.create({
-      data: this.toCreateData(dto),
-    });
+  async createTarget(dto: CreateDeliveryTargetDto, organizationId?: string) {
+    const data = await this.toCreateData(dto, organizationId);
+    return this.prisma.deliveryTarget.create({ data });
   }
 
   updateTarget(id: string, dto: UpdateDeliveryTargetDto) {
@@ -122,22 +127,74 @@ export class DeliveryTargetsService {
     return { successCount, targetCount: targets.length };
   }
 
-  private toCreateData(dto: CreateDeliveryTargetDto) {
+  private async toCreateData(dto: CreateDeliveryTargetDto, organizationId?: string) {
+    let emailAddress = dto.emailAddress?.trim() || null;
+    if (dto.type.trim() === 'EMAIL' && !emailAddress && dto.userId?.trim()) {
+      if (!this.authService) {
+        throw new BadRequestException('Email resolution is unavailable.');
+      }
+      if (!organizationId?.trim()) {
+        throw new BadRequestException('Organization context is required to resolve member email.');
+      }
+      const resolved = await this.authService.resolveOrganizationMemberEmail(
+        organizationId.trim(),
+        dto.userId.trim(),
+      );
+      emailAddress = resolved.email;
+    }
+    if (dto.type.trim() === 'EMAIL' && !emailAddress) {
+      throw new BadRequestException('Email address or organization member is required.');
+    }
+
+    const type = dto.type.trim();
+    let userId = dto.userId?.trim() || null;
+    let targetOrganizationId = organizationId?.trim() || null;
+    if (type === 'DINGTALK_APP') {
+      if (!userId) {
+        throw new BadRequestException('Organization member is required for DingTalk app delivery.');
+      }
+      if (!targetOrganizationId) {
+        throw new BadRequestException('Organization context is required for DingTalk app delivery.');
+      }
+      await this.assertOrganizationMember(targetOrganizationId, userId);
+    } else {
+      userId = null;
+      targetOrganizationId = null;
+    }
+
     return {
       workspaceId: dto.workspaceId,
-      type: dto.type.trim(),
+      type,
       name: dto.name.trim(),
-      emailAddress: dto.emailAddress?.trim() || null,
+      userId,
+      organizationId: targetOrganizationId,
+      emailAddress,
       dingtalkWebhookUrl: dto.dingtalkWebhookUrl?.trim() || null,
       dingtalkSecret: dto.dingtalkSecret?.trim() || null,
       isActive: dto.isActive ?? true,
     };
   }
 
+  private async assertOrganizationMember(organizationId: string, userId: string) {
+    const membership = await this.prisma.userOrganization.findUnique({
+      where: {
+        userId_organizationId: {
+          userId,
+          organizationId,
+        },
+      },
+    });
+    if (!membership) {
+      throw new BadRequestException('Organization member not found.');
+    }
+  }
+
   private async sendToTarget(
     briefing: BriefingSendRecord,
     target: {
       type: string;
+      userId: string | null;
+      organizationId: string | null;
       emailAddress: string | null;
       dingtalkWebhookUrl: string | null;
       dingtalkSecret: string | null;
@@ -171,6 +228,28 @@ export class DeliveryTargetsService {
       return this.senders.sendDingTalkMarkdown({
         webhookUrl: target.dingtalkWebhookUrl,
         secret: target.dingtalkSecret ?? undefined,
+        title: subject,
+        markdown: briefing.markdownContent,
+      });
+    }
+
+    if (target.type === 'DINGTALK_APP') {
+      if (!target.userId || !target.organizationId) {
+        throw new BadRequestException('DingTalk app delivery target is missing member binding.');
+      }
+      if (!this.dingTalkNotification) {
+        throw new BadRequestException('DingTalk app delivery is unavailable.');
+      }
+      const organization = await this.prisma.organization.findUnique({
+        where: { id: target.organizationId },
+      });
+      const corpId = organization?.providerOrganizationId?.trim();
+      if (!corpId) {
+        throw new BadRequestException('DingTalk organization is not configured.');
+      }
+      return this.dingTalkNotification.sendPersonalMarkdown({
+        flowxUserId: target.userId,
+        corpId,
         title: subject,
         markdown: briefing.markdownContent,
       });

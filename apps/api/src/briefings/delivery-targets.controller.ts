@@ -1,7 +1,13 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { DeliveryTargetsService } from './delivery-targets.service';
 import { CreateDeliveryTargetDto } from './dto/create-delivery-target.dto';
 import { UpdateDeliveryTargetDto } from './dto/update-delivery-target.dto';
+
+type AuthRequest = {
+  authSession?: {
+    organization?: { id: string } | null;
+  };
+};
 
 @Controller('delivery-targets')
 export class DeliveryTargetsController {
@@ -13,8 +19,11 @@ export class DeliveryTargetsController {
   }
 
   @Post()
-  create(@Body() dto: CreateDeliveryTargetDto) {
-    return this.deliveryTargetsService.createTarget(dto);
+  create(@Body() dto: CreateDeliveryTargetDto, @Req() req: AuthRequest) {
+    return this.deliveryTargetsService.createTarget(
+      dto,
+      req.authSession?.organization?.id ?? undefined,
+    );
   }
 
   @Patch(':id')

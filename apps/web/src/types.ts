@@ -143,6 +143,8 @@ export interface DeliveryTarget {
   workspaceId: string;
   type: 'EMAIL' | 'DINGTALK_ROBOT' | 'DINGTALK_APP' | string;
   name: string;
+  userId?: string | null;
+  organizationId?: string | null;
   emailAddress?: string | null;
   dingtalkWebhookUrl?: string | null;
   dingtalkSecret?: string | null;
