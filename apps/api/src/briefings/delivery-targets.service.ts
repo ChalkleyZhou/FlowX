@@ -128,7 +128,17 @@ export class DeliveryTargetsService {
     if (successCount > 0) {
       await this.prisma.briefing.update({
         where: { id: briefing.id },
-        data: { sentAt: new Date() },
+        data: { sentAt: new Date(), errorMessage: null },
+      });
+    } else if (targets.length === 0) {
+      await this.prisma.briefing.update({
+        where: { id: briefing.id },
+        data: { errorMessage: '未配置启用的投递目标' },
+      });
+    } else {
+      await this.prisma.briefing.update({
+        where: { id: briefing.id },
+        data: { errorMessage: '所有投递目标均失败，请查看投递记录' },
       });
     }
 

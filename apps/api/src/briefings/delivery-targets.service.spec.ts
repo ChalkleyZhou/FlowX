@@ -225,7 +225,7 @@ describe('DeliveryTargetsService', () => {
     });
     expect(briefingUpdate).toHaveBeenCalledWith({
       where: { id: 'briefing-1' },
-      data: { sentAt: expect.any(Date) },
+      data: { sentAt: expect.any(Date), errorMessage: null },
     });
   });
 

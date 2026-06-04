@@ -134,6 +134,9 @@ export interface ProjectBriefingConfig {
   dailyHour: number;
   timezone: string;
   autoSend: boolean;
+  lastSchedulerSlot?: string | null;
+  lastSchedulerRunAt?: string | null;
+  lastSchedulerMessage?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 }

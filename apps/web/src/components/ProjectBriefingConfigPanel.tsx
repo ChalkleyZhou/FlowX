@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { Card, CardContent, CardHeader } from './ui/card';
 import { Input } from './ui/input';
 import { useToast } from './ui/toast';
+import { formatBeijingDateTime } from '../utils/datetime';
 import type { ProjectBriefingConfig } from '../types';
 
 export function ProjectBriefingConfigPanel({ projectId }: { projectId: string }) {
@@ -106,6 +107,12 @@ export function ProjectBriefingConfigPanel({ projectId }: { projectId: string })
             <Link to="/briefings">查看历史</Link>
           </Button>
         </div>
+        {config?.enabled ? (
+          <p className="text-sm text-muted-foreground">
+            上次定时执行：{formatBeijingDateTime(config.lastSchedulerRunAt)}
+            {config.lastSchedulerMessage ? ` · ${config.lastSchedulerMessage}` : ''}
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   );

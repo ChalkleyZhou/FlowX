@@ -61,6 +61,9 @@ describe('BriefingsService', () => {
       dailyHour: 22,
       timezone: 'Asia/Shanghai',
       autoSend: false,
+      lastSchedulerSlot: null,
+      lastSchedulerRunAt: null,
+      lastSchedulerMessage: null,
       createdAt: null,
       updatedAt: null,
     });
@@ -98,6 +101,7 @@ describe('BriefingsService', () => {
       update: {
         enabled: true,
         dailyHour: 9,
+        lastSchedulerSlot: null,
         timezone: 'Asia/Shanghai',
         autoSend: true,
       },

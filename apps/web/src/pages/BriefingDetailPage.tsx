@@ -9,6 +9,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
+import { formatBeijingDateTime } from '../utils/datetime';
 import type { Briefing } from '../types';
 
 export function BriefingDetailPage() {
@@ -93,6 +94,25 @@ export function BriefingDetailPage() {
       </div>
 
       <Card className="rounded-2xl border border-border bg-card shadow-sm">
+        <CardContent className="grid gap-2 p-5 text-sm sm:grid-cols-2">
+          <div>
+            <span className="text-muted-foreground">生成时间（北京时间）</span>
+            <p className="font-medium text-foreground">{formatBeijingDateTime(briefing.generatedAt)}</p>
+          </div>
+          <div>
+            <span className="text-muted-foreground">发送时间（北京时间）</span>
+            <p className="font-medium text-foreground">{formatBeijingDateTime(briefing.sentAt)}</p>
+          </div>
+          {briefing.errorMessage ? (
+            <div className="sm:col-span-2">
+              <span className="text-muted-foreground">最近错误</span>
+              <p className="font-medium text-destructive">{briefing.errorMessage}</p>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="Content" title="简报内容" />
         </CardHeader>
@@ -114,6 +134,7 @@ export function BriefingDetailPage() {
                     <th className="px-4 py-3 font-medium">目标</th>
                     <th className="px-4 py-3 font-medium">渠道</th>
                     <th className="px-4 py-3 font-medium">状态</th>
+                    <th className="px-4 py-3 font-medium">投递时间</th>
                     <th className="px-4 py-3 font-medium">错误</th>
                   </tr>
                 </thead>
@@ -123,6 +144,7 @@ export function BriefingDetailPage() {
                       <td className="px-4 py-3">{log.deliveryTarget?.name ?? log.deliveryTargetId}</td>
                       <td className="px-4 py-3">{log.channel}</td>
                       <td className="px-4 py-3"><Badge variant="secondary">{log.status}</Badge></td>
+                      <td className="px-4 py-3">{formatBeijingDateTime(log.sentAt ?? log.createdAt)}</td>
                       <td className="px-4 py-3 text-muted-foreground">{log.errorMessage ?? '-'}</td>
                     </tr>
                   ))}

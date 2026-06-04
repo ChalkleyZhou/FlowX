@@ -225,9 +225,12 @@ model ProjectBriefingConfig {
   enabled   Boolean  @default(false)
   dailyHour Int      @default(22)
   timezone  String   @default("Asia/Shanghai")
-  autoSend  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  autoSend               Boolean   @default(false)
+  lastSchedulerSlot      String?
+  lastSchedulerRunAt     DateTime?
+  lastSchedulerMessage   String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 }
 
 model Briefing {

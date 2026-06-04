@@ -50,6 +50,9 @@ export class BriefingsService {
         dailyHour: DEFAULT_DAILY_HOUR,
         timezone: BRIEFING_TIMEZONE,
         autoSend: false,
+        lastSchedulerSlot: null,
+        lastSchedulerRunAt: null,
+        lastSchedulerMessage: null,
         createdAt: null,
         updatedAt: null,
       }
@@ -63,6 +66,7 @@ export class BriefingsService {
       dailyHour?: number;
       timezone: string;
       autoSend?: boolean;
+      lastSchedulerSlot?: string | null;
     } = {
       timezone: BRIEFING_TIMEZONE,
     };
@@ -72,6 +76,7 @@ export class BriefingsService {
     }
     if (dto.dailyHour !== undefined) {
       updateData.dailyHour = dto.dailyHour;
+      updateData.lastSchedulerSlot = null;
     }
     if (dto.autoSend !== undefined) {
       updateData.autoSend = dto.autoSend;
@@ -208,7 +213,10 @@ export class BriefingsService {
     if (existing) {
       return this.prisma.briefing.update({
         where: { id: existing.id },
-        data: generatedPayload,
+        data: {
+          ...generatedPayload,
+          ...(dto.regenerate ? { sentAt: null } : {}),
+        },
       });
     }
 

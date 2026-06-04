@@ -12,6 +12,7 @@ import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
+import { formatBeijingDateTime } from '../utils/datetime';
 import type { Briefing, Project } from '../types';
 
 function today() {
@@ -185,7 +186,8 @@ export function BriefingsPage() {
                     <th className="px-4 py-3 font-medium">日期</th>
                     <th className="px-4 py-3 font-medium">状态</th>
                     <th className="px-4 py-3 font-medium">事件</th>
-                    <th className="px-4 py-3 font-medium">发送</th>
+                    <th className="px-4 py-3 font-medium">生成时间</th>
+                    <th className="px-4 py-3 font-medium">发送时间</th>
                     <th className="px-4 py-3 font-medium">操作</th>
                   </tr>
                 </thead>
@@ -195,7 +197,10 @@ export function BriefingsPage() {
                       <td className="px-4 py-3">{briefing.date.slice(0, 10)}</td>
                       <td className="px-4 py-3"><Badge variant="secondary">{briefing.status}</Badge></td>
                       <td className="px-4 py-3">{briefing.eventCount}</td>
-                      <td className="px-4 py-3">{briefing.sentAt ? '已发送' : '未发送'}</td>
+                      <td className="px-4 py-3">{formatBeijingDateTime(briefing.generatedAt)}</td>
+                      <td className="px-4 py-3">
+                        {briefing.sentAt ? formatBeijingDateTime(briefing.sentAt) : '未发送'}
+                      </td>
                       <td className="px-4 py-3">
                         <Button variant="outline" size="sm" asChild>
                           <Link to={`/briefings/${briefing.id}`}>查看详情</Link>
