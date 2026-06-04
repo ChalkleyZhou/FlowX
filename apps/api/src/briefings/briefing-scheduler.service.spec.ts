@@ -84,5 +84,47 @@ describe('BriefingSchedulerService', () => {
 
     expect(sendBriefing).toHaveBeenCalledWith('briefing-1');
   });
+
+  it('runs scheduled briefings at 22:00 in the configured timezone', async () => {
+    configFindMany.mockResolvedValue([
+      {
+        projectId: 'project-1',
+        enabled: true,
+        dailyHour: 22,
+        timezone: 'Asia/Shanghai',
+        autoSend: true,
+        project: { id: 'project-1' },
+      },
+    ]);
+    generateProjectBriefing.mockResolvedValue({ id: 'briefing-22', sentAt: null });
+
+    await createService().runDueBriefings(new Date('2026-06-05T14:30:00.000Z'));
+
+    expect(generateProjectBriefing).toHaveBeenCalledWith('project-1', {
+      date: '2026-06-05',
+    });
+    expect(sendBriefing).toHaveBeenCalledWith('briefing-22');
+  });
+
+  it('skips auto send when the briefing was already sent', async () => {
+    configFindMany.mockResolvedValue([
+      {
+        projectId: 'project-1',
+        enabled: true,
+        dailyHour: 18,
+        timezone: 'Asia/Shanghai',
+        autoSend: true,
+        project: { id: 'project-1' },
+      },
+    ]);
+    generateProjectBriefing.mockResolvedValue({
+      id: 'briefing-1',
+      sentAt: new Date('2026-06-03T09:00:00.000Z'),
+    });
+
+    await createService().runDueBriefings(new Date('2026-06-03T10:00:00.000Z'));
+
+    expect(sendBriefing).not.toHaveBeenCalled();
+  });
 });
 

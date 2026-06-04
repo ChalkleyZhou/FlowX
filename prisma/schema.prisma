@@ -223,7 +223,7 @@ model ProjectBriefingConfig {
   projectId String   @unique
   project   Project  @relation(fields: [projectId], references: [id])
   enabled   Boolean  @default(false)
-  dailyHour Int      @default(18)
+  dailyHour Int      @default(22)
   timezone  String   @default("Asia/Shanghai")
   autoSend  Boolean  @default(false)
   createdAt DateTime @default(now())

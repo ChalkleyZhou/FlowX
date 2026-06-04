@@ -58,7 +58,7 @@ describe('BriefingsService', () => {
     await expect(createService().getProjectConfig('project-1')).resolves.toEqual({
       projectId: 'project-1',
       enabled: false,
-      dailyHour: 18,
+      dailyHour: 22,
       timezone: 'Asia/Shanghai',
       autoSend: false,
       createdAt: null,
@@ -114,6 +114,10 @@ describe('BriefingsService', () => {
         repositories: [{ id: 'repo-1' }],
       },
     });
+    configFindUnique.mockResolvedValue({
+      timezone: 'Asia/Shanghai',
+      dailyHour: 22,
+    });
     sourceFindMany.mockResolvedValue([
       {
         id: 'source-1',
@@ -148,6 +152,10 @@ describe('BriefingsService', () => {
     expect(eventFindMany.mock.calls[0]?.[0]).toMatchObject({
       where: {
         briefingSourceId: { in: ['source-1'] },
+        occurredAt: {
+          gte: new Date('2026-06-02T14:00:00.000Z'),
+          lt: new Date('2026-06-03T14:00:00.000Z'),
+        },
       },
       orderBy: { occurredAt: 'asc' },
     });
@@ -168,6 +176,7 @@ describe('BriefingsService', () => {
       workspaceId: 'workspace-1',
       workspace: { repositories: [{ id: 'repo-1' }] },
     });
+    configFindUnique.mockResolvedValue(null);
     sourceFindMany.mockResolvedValue([{ id: 'source-1', repositoryId: 'repo-1' }]);
     briefingFindFirst.mockResolvedValue({ id: 'existing-briefing' });
     eventFindMany.mockResolvedValue([]);
@@ -201,6 +210,7 @@ describe('BriefingsService', () => {
       workspaceId: 'workspace-1',
       workspace: { repositories: [{ id: 'repo-1' }] },
     });
+    configFindUnique.mockResolvedValue(null);
     sourceFindMany.mockResolvedValue([{ id: 'source-1', repositoryId: 'repo-1' }]);
     briefingFindFirst.mockResolvedValue({ id: 'existing-briefing' });
 

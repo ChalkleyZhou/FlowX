@@ -365,7 +365,7 @@ export const api = {
   generateProjectBriefing: (
     projectId: string,
     payload: {
-      date: string;
+      date?: string;
       regenerate?: boolean;
     },
   ) =>

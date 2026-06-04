@@ -35,10 +35,9 @@ export function ProjectBriefingConfigPanel({ projectId }: { projectId: string })
 
   async function generateToday() {
     await api.generateProjectBriefing(projectId, {
-      date: new Date().toISOString().slice(0, 10),
       regenerate: true,
     });
-    toast.success('今日简报已生成');
+    toast.success('当前周期简报已生成');
   }
 
   return (
@@ -50,18 +49,22 @@ export function ProjectBriefingConfigPanel({ projectId }: { projectId: string })
         <Button variant={config?.enabled ? 'default' : 'outline'} onClick={() => void save({ enabled: !config?.enabled })} disabled={saving}>
           {config?.enabled ? '已启用' : '启用简报'}
         </Button>
-        <Input
-          className="w-28"
-          type="number"
-          min={0}
-          max={23}
-          value={config?.dailyHour ?? 18}
-          onChange={(event) => void save({ dailyHour: Number(event.target.value) })}
-        />
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>每日时刻</span>
+          <Input
+            className="w-20"
+            type="number"
+            min={0}
+            max={23}
+            value={config?.dailyHour ?? 22}
+            onChange={(event) => void save({ dailyHour: Number(event.target.value) })}
+          />
+          <span>时（22:00–24:00 的活动计入次日简报）</span>
+        </label>
         <Button variant={config?.autoSend ? 'default' : 'outline'} onClick={() => void save({ autoSend: !config?.autoSend })} disabled={saving}>
           {config?.autoSend ? '自动发送' : '手动发送'}
         </Button>
-        <Button variant="outline" onClick={() => void generateToday()}>生成今日简报</Button>
+        <Button variant="outline" onClick={() => void generateToday()}>生成当前周期简报</Button>
         <Button variant="outline" asChild>
           <Link to={`/briefings`}>查看历史</Link>
         </Button>

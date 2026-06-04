@@ -10,9 +10,16 @@ import { BriefingAiSummarizerService } from './briefing-ai-summarizer.service';
 import { DeliveryTargetsService } from './delivery-targets.service';
 import { GenerateBriefingDto } from './dto/generate-briefing.dto';
 import { UpsertProjectBriefingConfigDto } from './dto/upsert-project-briefing-config.dto';
+import {
+  briefingDateWindow,
+  dateAtTimezoneMidnight,
+  DEFAULT_BRIEFING_CUTOFF_HOUR,
+  DEFAULT_BRIEFING_TIMEZONE,
+  resolveBriefingDate,
+} from './briefing-time-window';
 
-const DEFAULT_TIMEZONE = 'Asia/Shanghai';
-const DEFAULT_DAILY_HOUR = 18;
+const DEFAULT_TIMEZONE = DEFAULT_BRIEFING_TIMEZONE;
+const DEFAULT_DAILY_HOUR = DEFAULT_BRIEFING_CUTOFF_HOUR;
 
 type ProjectWithWorkspace = {
   id: string;
@@ -103,6 +110,13 @@ export class BriefingsService {
 
   async generateProjectBriefing(projectId: string, dto: GenerateBriefingDto) {
     const project = await this.getProjectForBriefing(projectId);
+    const config = await this.prisma.projectBriefingConfig.findUnique({
+      where: { projectId },
+    });
+    const timezone = config?.timezone?.trim() || DEFAULT_TIMEZONE;
+    const cutoffHour = config?.dailyHour ?? DEFAULT_DAILY_HOUR;
+    const briefingDate =
+      dto.date?.trim() || resolveBriefingDate(new Date(), timezone, cutoffHour);
     const repositoryIds = project.workspace.repositories.map((repository) => repository.id).sort();
     const sources = await this.prisma.briefingSource.findMany({
       where: {
@@ -114,14 +128,16 @@ export class BriefingsService {
     });
     const sourceIds = sources.map((source) => source.id).sort();
     const scope = {
-      date: dto.date,
+      date: briefingDate,
       projectId,
       workspaceId: project.workspaceId,
       repositoryIds,
       briefingSourceIds: sourceIds,
+      cutoffHour,
+      timezone,
     };
     const scopeKey = stableJson(scope);
-    const date = dateAtTimezoneStart(dto.date, DEFAULT_TIMEZONE);
+    const date = dateAtTimezoneMidnight(briefingDate, timezone);
     const existing = await this.prisma.briefing.findFirst({
       where: {
         projectId,
@@ -134,7 +150,7 @@ export class BriefingsService {
       return existing;
     }
 
-    const { start, end } = dateWindow(dto.date, DEFAULT_TIMEZONE);
+    const { start, end } = briefingDateWindow(briefingDate, timezone, cutoffHour);
     const eventRows = await this.prisma.briefingEvent.findMany({
       where: {
         briefingSourceId: { in: sourceIds },
@@ -147,20 +163,20 @@ export class BriefingsService {
     );
     const rawPayloadByEventIndex = eventRows.map((row) => row.rawPayload);
     const aiSummary = await this.briefingAiSummarizerService.summarize({
-      date: dto.date,
+      date: briefingDate,
       projectName: project.name,
       events,
       rawPayloadByEventIndex,
     });
     const markdownContent = renderBriefingMarkdown({
-      date: dto.date,
+      date: briefingDate,
       projectName: project.name,
       events,
       rawPayloadByEventIndex,
       aiSummary,
     });
     const htmlContent = renderBriefingHtml({
-      date: dto.date,
+      date: briefingDate,
       projectName: project.name,
       events,
       rawPayloadByEventIndex,
@@ -252,20 +268,6 @@ function stableJson(value: unknown): string {
         return acc;
       }, {});
   });
-}
-
-function dateAtTimezoneStart(date: string, timezone: string) {
-  if (timezone === DEFAULT_TIMEZONE) {
-    return new Date(`${date}T00:00:00.000+08:00`);
-  }
-  return new Date(`${date}T00:00:00.000Z`);
-}
-
-function dateWindow(date: string, timezone: string) {
-  const start = dateAtTimezoneStart(date, timezone);
-  const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 1);
-  return { start, end };
 }
 
 function normalizeStoredEvent(value: Prisma.JsonValue): NormalizedBriefingEvent {
