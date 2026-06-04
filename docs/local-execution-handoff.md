@@ -2,6 +2,8 @@
 
 FlowX supports **local execution** for the EXECUTION stage: the server tells developers which Git branch to use; work happens in the developer's own clone (not a server sandbox). After commit and push, the UI or API records the result and advances the workflow toward AI review.
 
+Cursor local Chat uses this same local execution contract with a shorter task picker and Chat prompt handoff. See [cursor-plugin-local-chat.md](./cursor-plugin-local-chat.md).
+
 ## Flow
 
 1. Confirm the technical plan (`PLAN_CONFIRMED` → `EXECUTION_PENDING`).
@@ -34,6 +36,10 @@ Example: `flowx/work/local-handoff/ocal-001` for run id ending in `ocal-001`.
 ```json
 {
   "pushed": true,
+  "implementationSummary": "Optional local Chat implementation summary",
+  "testResult": "Optional test result summary",
+  "diffSummary": "Optional diff summary",
+  "untrackedFiles": [],
   "repositories": [
     {
       "workflowRepositoryId": "wr-1",

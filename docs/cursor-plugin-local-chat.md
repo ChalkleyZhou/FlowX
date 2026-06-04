@@ -1,0 +1,110 @@
+# Cursor Plugin Local Chat Flow
+
+FlowX local Chat is the lightweight path for Cursor-based development:
+
+```text
+Pick requirement or bug -> match local repository -> open Cursor Chat context -> report completion to FlowX
+```
+
+The developer keeps working in Cursor Chat/Agent. FlowX keeps the task, workflow, handoff, completion, and review state.
+
+## API endpoints
+
+### `GET /cursor-local/tasks?workspaceId=...`
+
+Returns requirements and bugs that can be started from Cursor.
+
+Each item includes:
+
+- `id`
+- `type`: `requirement` or `bug`
+- `title`
+- `status`
+- `priority`
+- `scheduleSignal`
+- `repository`
+- `workflowRunId`
+- `eligible`
+- `ineligibleReason`
+
+### `POST /cursor-local/handoff`
+
+Creates or starts a local Chat workflow, claims local execution, and returns:
+
+- `workflow`
+- `handoff`
+- `chatPrompt`
+- `taskType`
+- `taskId`
+
+Example body:
+
+```json
+{
+  "taskType": "requirement",
+  "taskId": "req-1",
+  "repositoryIds": ["repo-1"],
+  "aiProvider": "codex"
+}
+```
+
+For bugs, use `"taskType": "bug"` and the bug id. FlowX creates a `LOCAL_CHAT` run backed by a bug-fix requirement, but it does not auto-run cloud execution.
+
+### `GET /cursor-local/tasks/:type/:id/context`
+
+Returns the raw requirement or bug context for MCP tools or extension previews.
+
+## Relationship to local execution APIs
+
+`/cursor-local/handoff` is a convenience endpoint over the existing local execution path:
+
+1. Create or reuse a `LOCAL_CHAT` workflow.
+2. Bootstrap it directly to `EXECUTION_PENDING`.
+3. Call `POST /workflow-runs/:id/execution/claim-local`.
+4. Return the local handoff plus a Cursor Chat prompt.
+
+When the developer finishes, the extension or MCP server should call:
+
+```text
+POST /workflow-runs/:id/execution/complete-local
+```
+
+The body can include local Chat metadata:
+
+```json
+{
+  "pushed": true,
+  "implementationSummary": "Implemented CSV export from Cursor Chat.",
+  "testResult": "pnpm --filter flowx-web test passed.",
+  "diffSummary": "2 files changed",
+  "untrackedFiles": [],
+  "repositories": [
+    {
+      "workflowRepositoryId": "wr-1",
+      "headSha": "abc123def456",
+      "changedFiles": ["src/App.tsx"],
+      "patchSummary": "Added export action"
+    }
+  ]
+}
+```
+
+If a full FlowX workflow is already in `EXECUTION_PENDING`, Cursor integrations can call `claim-local` directly and do not need to create a new `LOCAL_CHAT` run.
+
+## MCP role
+
+MCP should stay thin:
+
+- `flowx_list_tasks`
+- `flowx_get_task_context`
+- `flowx_collect_git_report`
+- `flowx_report_completion`
+
+FlowX API remains the state source. MCP only bridges Cursor Agent, local Git state, and FlowX reporting.
+
+## First-version boundaries
+
+- Do not auto-clone repositories.
+- Do not rely on controlling Cursor native Chat internals.
+- Do not reimplement the full FlowX state machine in MCP.
+- Require explicit user action before push and completion reporting.
