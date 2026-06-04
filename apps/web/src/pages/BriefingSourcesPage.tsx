@@ -6,10 +6,12 @@ import { SectionHeader } from '../components/SectionHeader';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
+import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
 import { cn } from '../lib/utils';
+import { copyToClipboard } from '../lib/clipboard';
 import type { BriefingSource, Repository, Workspace } from '../types';
 
 type RepositoryBinding = {
@@ -19,8 +21,43 @@ type RepositoryBinding = {
   repositoryUrl: string;
 };
 
-async function copyText(value: string) {
-  await navigator.clipboard.writeText(value);
+async function handleCopy(toast: ReturnType<typeof useToast>, label: string, value: string) {
+  if (!value) {
+    toast.error(`${label.trim()} 为空，请重新生成 Secret 或刷新页面`);
+    return;
+  }
+
+  try {
+    await copyToClipboard(value);
+    toast.success(`已复制${label}`);
+  } catch {
+    toast.error(`复制${label}失败，请手动选中输入框内容复制`);
+  }
+}
+
+function CopyField({
+  label,
+  value,
+  onCopy,
+}: {
+  label: string;
+  value: string;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Input
+        readOnly
+        value={value}
+        onFocus={(event) => event.currentTarget.select()}
+        className="min-w-0 flex-1 font-mono text-xs"
+        aria-label={label}
+      />
+      <Button type="button" variant="outline" size="sm" disabled={!value} onClick={onCopy}>
+        复制{label}
+      </Button>
+    </div>
+  );
 }
 
 function providerLabel(provider: BriefingSource['provider']) {
@@ -43,15 +80,6 @@ function WebhookSetupGuide({
   const url = webhookUrl(source.id);
   const isGitlab = source.provider === 'gitlab';
 
-  async function handleCopy(label: string, value: string) {
-    try {
-      await copyText(value);
-      toast.success(`已复制${label}`);
-    } catch {
-      toast.error(`复制${label}失败`);
-    }
-  }
-
   return (
     <div className="mt-4 space-y-3 rounded-lg border border-border bg-muted/30 p-4">
       <p className="text-sm font-medium text-foreground">在 {providerLabel(source.provider)} 配置 Webhook</p>
@@ -66,27 +94,17 @@ function WebhookSetupGuide({
         <li>勾选 Push、Merge request、Issue、Pipeline 等事件后保存；可用 Test 推送验证。</li>
       </ol>
       <div className="grid gap-2">
+        <CopyField
+          label=" URL"
+          value={url}
+          onCopy={() => void handleCopy(toast, ' URL', url)}
+        />
         <div className="flex flex-wrap items-center gap-2">
-          <code className="min-w-0 flex-1 truncate rounded-md border border-input bg-background px-2 py-1.5 text-xs">
-            {url}
-          </code>
-          <Button type="button" variant="outline" size="sm" onClick={() => void handleCopy(' URL', url)}>
-            复制 URL
-          </Button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <code className="min-w-0 flex-1 truncate rounded-md border border-input bg-background px-2 py-1.5 text-xs">
-            {secret || '（无 Secret，请重新生成）'}
-          </code>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={!secret}
-            onClick={() => void handleCopy(' Secret', secret)}
-          >
-            复制 Secret
-          </Button>
+          <CopyField
+            label=" Secret"
+            value={secret}
+            onCopy={() => void handleCopy(toast, ' Secret', secret)}
+          />
           <Button type="button" variant="outline" size="sm" onClick={onRegenerateSecret}>
             重新生成 Secret
           </Button>
