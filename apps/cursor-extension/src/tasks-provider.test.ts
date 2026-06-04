@@ -55,4 +55,21 @@ describe('buildTaskViewModels', () => {
       }),
     ]);
   });
+
+  it('marks tasks with active workflow runs as reportable', () => {
+    const runningTask = {
+      ...baseTask,
+      eligible: false,
+      ineligibleReason: 'Active workflow already exists.',
+      workflowRunId: 'workflow-1',
+    };
+
+    expect(buildTaskViewModels([runningTask], 'git@github.com:flowx-ai/flowx.git')).toEqual([
+      expect.objectContaining({
+        contextValue: 'flowxTask.reportable',
+        reportable: true,
+        startable: false,
+      }),
+    ]);
+  });
 });

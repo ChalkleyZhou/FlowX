@@ -40,6 +40,10 @@
       {
         "command": "flowx.startInChat",
         "title": "FlowX: Start in Chat"
+      },
+      {
+        "command": "flowx.reportCompletion",
+        "title": "FlowX: Report Completion"
       }
     ],
     "menus": {
@@ -47,6 +51,11 @@
         {
           "command": "flowx.startInChat",
           "when": "view == flowxTasks && viewItem == flowxTask.startable",
+          "group": "inline"
+        },
+        {
+          "command": "flowx.reportCompletion",
+          "when": "view == flowxTasks && viewItem == flowxTask.reportable",
           "group": "inline"
         },
         {

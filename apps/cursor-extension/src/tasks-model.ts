@@ -6,8 +6,9 @@ export interface FlowXTaskViewModel {
   label: string;
   description: string;
   tooltip: string;
-  contextValue: 'flowxTask.startable' | 'flowxTask.blocked';
+  contextValue: 'flowxTask.startable' | 'flowxTask.reportable' | 'flowxTask.blocked';
   startable: boolean;
+  reportable: boolean;
 }
 
 export function buildTaskViewModels(tasks: FlowXTaskItem[], currentRemoteUrl: string | null): FlowXTaskViewModel[] {
@@ -21,7 +22,8 @@ export function buildTaskViewModels(tasks: FlowXTaskItem[], currentRemoteUrl: st
       label: task.title,
       description,
       tooltip: blockedReason ?? buildTaskTooltip(task, repositoryMatch.expectedRemote),
-      contextValue: blockedReason ? 'flowxTask.blocked' : 'flowxTask.startable',
+      contextValue: task.workflowRunId ? 'flowxTask.reportable' : blockedReason ? 'flowxTask.blocked' : 'flowxTask.startable',
+      reportable: Boolean(task.workflowRunId),
       startable: !blockedReason,
     };
   });

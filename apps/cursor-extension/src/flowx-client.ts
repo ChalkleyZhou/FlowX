@@ -24,11 +24,31 @@ export interface LocalChatHandoff {
   handoff: {
     workflowRunId: string;
     workflowRepositoryId?: string;
-    repositories?: Array<{ id: string; name: string; url: string | null; workingBranch?: string }>;
+    repositories?: Array<{
+      id?: string;
+      workflowRepositoryId?: string;
+      name: string;
+      url: string | null;
+      workingBranch?: string;
+    }>;
   };
   chatPrompt: string;
   taskType: 'requirement' | 'bug';
   taskId: string;
+}
+
+export interface CompleteLocalInput {
+  repositories: Array<{
+    workflowRepositoryId: string;
+    headSha: string;
+    changedFiles: string[];
+    patchSummary?: string;
+  }>;
+  pushed: boolean;
+  implementationSummary?: string;
+  testResult?: string;
+  diffSummary?: string;
+  untrackedFiles?: string[];
 }
 
 export class FlowXClient {
@@ -40,6 +60,13 @@ export class FlowXClient {
 
   async startHandoff(input: StartLocalChatInput): Promise<LocalChatHandoff> {
     return this.request<LocalChatHandoff>('/cursor-local/handoff', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async completeLocal(workflowRunId: string, input: CompleteLocalInput): Promise<unknown> {
+    return this.request(`/workflow-runs/${encodeURIComponent(workflowRunId)}/complete-local`, {
       method: 'POST',
       body: JSON.stringify(input),
     });

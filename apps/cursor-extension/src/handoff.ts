@@ -26,6 +26,7 @@ export interface StartInChatDeps {
   showInfo(message: string): void;
   startHandoff(input: StartLocalChatInput): Promise<LocalChatHandoff>;
   writeTaskFile(gitRoot: string, taskId: string, content: string): Promise<string>;
+  saveHandoffSnapshot?(gitRoot: string, handoff: LocalChatHandoff): PromiseLike<unknown>;
   copyToClipboard(content: string): PromiseLike<void>;
   executeCommand(command: string): PromiseLike<unknown>;
 }
@@ -62,6 +63,7 @@ export async function startInChat(deps: StartInChatDeps, task: FlowXTaskItem): P
     repositoryIds: task.repository?.id ? [task.repository.id] : undefined,
   });
   const filePath = await deps.writeTaskFile(gitReport.gitRoot, task.id, handoff.chatPrompt);
+  await deps.saveHandoffSnapshot?.(gitReport.gitRoot, handoff);
   await deps.copyToClipboard(handoff.chatPrompt);
   try {
     await deps.executeCommand('workbench.action.chat.open');

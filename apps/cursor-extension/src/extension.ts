@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { loadHandoffSnapshot, saveCompletionDraft, saveHandoffSnapshot } from './completion-draft';
+import { collectGitCompletionReport, getCurrentGitRoot, reportCompletion } from './completion-panel';
 import { configureFlowX, getFlowXConfig } from './config';
 import type { FlowXTaskItem } from './flowx-client';
 import { FlowXClient } from './flowx-client';
@@ -27,7 +29,31 @@ export function activate(context: vscode.ExtensionContext) {
           showInfo: (message) => vscode.window.showInformationMessage(message),
           showWarning: (message, ...items) => vscode.window.showWarningMessage(message, ...items),
           startHandoff: (input) => client.startHandoff(input),
+          saveHandoffSnapshot,
           writeTaskFile: writeTaskPromptFile,
+        },
+        task,
+      );
+    }),
+    vscode.commands.registerCommand('flowx.reportCompletion', async (task: FlowXTaskItem) => {
+      const config = await getFlowXConfig(context);
+      if (!config) {
+        vscode.window.showErrorMessage('Configure FlowX before reporting completion.');
+        return;
+      }
+      const client = new FlowXClient(config);
+      await reportCompletion(
+        {
+          collectGitReport: collectGitCompletionReport,
+          completeLocal: (workflowRunId, input) => client.completeLocal(workflowRunId, input),
+          getGitRoot: () => getCurrentGitRoot(vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath)),
+          loadHandoffSnapshot,
+          saveCompletionDraft,
+          showError: (message) => vscode.window.showErrorMessage(message),
+          showInfo: (message) => vscode.window.showInformationMessage(message),
+          showInput: (prompt) => vscode.window.showInputBox({ ignoreFocusOut: true, prompt }),
+          showQuickPick: (items, placeHolder) => vscode.window.showQuickPick(items, { ignoreFocusOut: true, placeHolder }),
+          showWarning: (message, ...items) => vscode.window.showWarningMessage(message, ...items),
         },
         task,
       );
