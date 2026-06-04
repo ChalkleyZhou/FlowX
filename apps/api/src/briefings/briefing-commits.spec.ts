@@ -3,6 +3,7 @@ import {
   categorizeCommitMessage,
   collectDailyCommits,
   extractCommitsFromPush,
+  isMeaningfulCommitMessage,
   summarizeDailyCommits,
 } from './briefing-commits';
 import type { NormalizedBriefingEvent } from './briefing-events';
@@ -49,6 +50,30 @@ describe('briefing commits', () => {
     expect(commits).toHaveLength(2);
     expect(commits[0]?.message).toContain('feat(briefing)');
     expect(commits[1]?.author).toBe('Bob');
+  });
+
+  it('drops low-signal commit titles such as bare 翻译', () => {
+    expect(isMeaningfulCommitMessage('翻译')).toBe(false);
+    expect(isMeaningfulCommitMessage('销售模块子产品明细表单配置功能开发')).toBe(true);
+
+    const summary = summarizeDailyCommits([
+      {
+        id: '1',
+        message: '翻译',
+        projectName: 'r2os',
+        occurredAt: '2026-06-03T01:00:00.000Z',
+      },
+      {
+        id: '2',
+        message: '销售模块子产品明细表单配置功能开发',
+        projectName: 'r2os',
+        occurredAt: '2026-06-03T01:00:00.000Z',
+      },
+    ]);
+
+    expect(summary.totalCommits).toBe(1);
+    expect(summary.other).toHaveLength(1);
+    expect(summary.other[0]?.title).toContain('销售模块');
   });
 
   it('dedupes commits across push events for the same day', () => {

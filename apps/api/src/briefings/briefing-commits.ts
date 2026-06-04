@@ -40,6 +40,22 @@ function firstLine(message: string) {
   return message.split('\n')[0]?.trim() || message.trim();
 }
 
+/** Skip commit titles that carry little product meaning in a daily report. */
+export function isMeaningfulCommitMessage(message: string): boolean {
+  const line = firstLine(message);
+  if (line.length < 4) {
+    return false;
+  }
+  const lower = line.toLowerCase();
+  if (/^(翻译|translation|merge|merged|wip|update|updates|bump|tmp|temp|test|chore|style|refactor|revert|sync)$/i.test(line)) {
+    return false;
+  }
+  if (/^merge\b/i.test(lower)) {
+    return false;
+  }
+  return true;
+}
+
 export function categorizeCommitMessage(message: string): CommitCategory {
   const line = firstLine(message).toLowerCase();
   if (/^(feat|feature)(\(|:|\s)/.test(line)) {
@@ -193,7 +209,8 @@ export function collectDailyCommits(
 }
 
 export function summarizeDailyCommits(commits: BriefingCommit[]): DailyCommitSummary {
-  const categorized = commits.map((commit) => {
+  const meaningful = commits.filter((commit) => isMeaningfulCommitMessage(commit.message));
+  const categorized = meaningful.map((commit) => {
     const category = categorizeCommitMessage(commit.message);
     return {
       ...commit,

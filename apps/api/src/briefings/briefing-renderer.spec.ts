@@ -73,7 +73,7 @@ describe('briefing renderer', () => {
     expect(markdown).toContain('# 研发日报 - 2026-06-03');
     expect(markdown).toContain('## 今日研发摘要');
     expect(markdown).toContain('共 2 次提交');
-    expect(markdown).toContain('### 新功能 / 能力');
+    expect(markdown).toContain('### 新功能');
     expect(markdown).toContain('feat(briefing): add daily summary');
     expect(markdown).toContain('### 问题修复');
     expect(markdown).toContain('fix(renderer): escape html output');

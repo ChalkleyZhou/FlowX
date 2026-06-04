@@ -176,9 +176,9 @@ function renderMainSummaryMarkdown(summary: BriefingAiSummary) {
     lines.push('', '本日暂无研发活动记录。');
   }
 
-  appendMarkdownWorkItems(lines, '新功能 / 能力', summary.features);
+  appendMarkdownWorkItems(lines, '新功能', summary.features);
   appendMarkdownWorkItems(lines, '问题修复', summary.fixes);
-  appendMarkdownWorkItems(lines, '其他改动', summary.others);
+  appendMarkdownWorkItems(lines, '其它提交（说明里未写 feat/fix）', summary.others);
 
   if (summary.risks.length > 0) {
     lines.push('', '### 风险与关注', ...summary.risks.map((item) => `- ${item}`));
@@ -250,9 +250,9 @@ function renderMainSummaryHtml(summary: BriefingAiSummary) {
     parts.push('<p>本日暂无研发活动记录。</p>');
   }
 
-  appendHtmlWorkItems(parts, '新功能 / 能力', summary.features);
+  appendHtmlWorkItems(parts, '新功能', summary.features);
   appendHtmlWorkItems(parts, '问题修复', summary.fixes);
-  appendHtmlWorkItems(parts, '其他改动', summary.others);
+  appendHtmlWorkItems(parts, '其它提交（说明里未写 feat/fix）', summary.others);
 
   if (summary.risks.length > 0) {
     parts.push('<h3>风险与关注</h3><ul>');
