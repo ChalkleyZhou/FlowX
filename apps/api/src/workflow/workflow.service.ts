@@ -33,6 +33,7 @@ import {
   buildBugFixTask,
   type BugFixPayload,
 } from './bug-fix-workflow.bootstrap';
+import { buildLocalChatRequirementBootstrap } from './local-chat-workflow.bootstrap';
 import { StartBugFixWorkflowDto } from '../review-artifacts/dto/start-bug-fix-workflow.dto';
 import {
   BrainstormBrief,
@@ -3625,6 +3626,12 @@ export class WorkflowService {
               bug,
               groundedWorkflow.workflowRepositories.map((repository) => repository.name),
             );
+          } else if (groundedWorkflow.runType === WorkflowRunType.LOCAL_CHAT) {
+            await this.applyLocalChatBootstrap(
+              tx,
+              groundedWorkflow,
+              groundedWorkflow.workflowRepositories.map((repository) => repository.name),
+            );
           } else {
             await this.createStageExecution(tx, workflowId, StageType.BRAINSTORM, {
               input: {
@@ -4139,20 +4146,137 @@ export class WorkflowService {
     });
   }
 
+  private async applyLocalChatBootstrap(
+    tx: Prisma.TransactionClient,
+    workflow: {
+      id: string;
+      requirement: {
+        id: string;
+        title: string;
+        description: string;
+        acceptanceCriteria: string;
+      };
+    },
+    repositoryNames: string[],
+  ) {
+    if (!this.stateMachine.canBootstrapLocalChatWorkflow(WorkflowRunType.LOCAL_CHAT)) {
+      throw new BadRequestException('本地 Chat 工作流 bootstrap 不可用。');
+    }
+
+    let workflowStatus = WorkflowRunStatus.BRAINSTORM_PENDING;
+    const skipOptions = {
+      source: 'local_chat_bootstrap',
+      label: '本地 Chat 工作流',
+    };
+    workflowStatus = await this.applyBootstrapStageSkip(
+      tx,
+      workflow.id,
+      StageType.BRAINSTORM,
+      workflowStatus,
+      skipOptions,
+    );
+    workflowStatus = await this.applyBootstrapStageSkip(
+      tx,
+      workflow.id,
+      StageType.DESIGN,
+      workflowStatus,
+      skipOptions,
+    );
+    workflowStatus = await this.applyBootstrapStageSkip(
+      tx,
+      workflow.id,
+      StageType.DEMO,
+      workflowStatus,
+      skipOptions,
+    );
+
+    const bootstrap = buildLocalChatRequirementBootstrap(workflow.requirement);
+    const taskSplitStage = await this.createStageExecution(tx, workflow.id, StageType.TASK_SPLIT, {
+      input: { requirementId: workflow.requirement.id, source: 'local_chat_bootstrap' },
+      status: StageExecutionStatus.WAITING_CONFIRMATION,
+      statusMessage: '本地 Chat 工作流已预置任务',
+      finishedAt: new Date(),
+    });
+
+    await tx.task.create({
+      data: {
+        workflowRunId: workflow.id,
+        title: bootstrap.task.title,
+        description: bootstrap.task.description,
+        surface: bootstrap.task.surface,
+        repositoryNames,
+        order: 0,
+        status: 'CONFIRMED',
+      },
+    });
+
+    await this.updateStageExecution(tx, taskSplitStage.id, StageExecutionStatus.COMPLETED, {
+      finishedAt: new Date(),
+    });
+
+    await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.TASK_SPLIT_PENDING, {
+      to: WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION,
+      stage: StageType.TASK_SPLIT,
+    });
+    await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION, {
+      to: WorkflowRunStatus.TASK_SPLIT_CONFIRMED,
+    });
+    await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.TASK_SPLIT_CONFIRMED, {
+      to: WorkflowRunStatus.PLAN_PENDING,
+      stage: StageType.TECHNICAL_PLAN,
+    });
+
+    await tx.plan.create({
+      data: {
+        workflowRunId: workflow.id,
+        status: 'CONFIRMED',
+        summary: bootstrap.plan.summary,
+        implementationPlan: bootstrap.plan.implementationPlan,
+        filesToModify: bootstrap.plan.filesToModify,
+        newFiles: bootstrap.plan.newFiles,
+        riskPoints: bootstrap.plan.riskPoints,
+      },
+    });
+
+    await this.createStageExecution(tx, workflow.id, StageType.TECHNICAL_PLAN, {
+      input: { source: 'local_chat_bootstrap' },
+      output: bootstrap.plan,
+      status: StageExecutionStatus.COMPLETED,
+      statusMessage: '本地 Chat 工作流已预置技术方案',
+      finishedAt: new Date(),
+    });
+
+    await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.PLAN_PENDING, {
+      to: WorkflowRunStatus.PLAN_WAITING_CONFIRMATION,
+      stage: StageType.TECHNICAL_PLAN,
+    });
+    await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.PLAN_WAITING_CONFIRMATION, {
+      to: WorkflowRunStatus.PLAN_CONFIRMED,
+    });
+    await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.PLAN_CONFIRMED, {
+      to: WorkflowRunStatus.EXECUTION_PENDING,
+      stage: StageType.EXECUTION,
+    });
+  }
+
   private async applyBootstrapStageSkip(
     tx: Prisma.TransactionClient,
     workflowId: string,
     stage: StageType,
     fromStatus: WorkflowRunStatus,
+    options: { source: string; label: string } = {
+      source: 'bug_fix_bootstrap',
+      label: '缺陷修复工作流',
+    },
   ): Promise<WorkflowRunStatus> {
     const skipTarget = this.resolveOptionalStageSkipTarget(stage);
     const stageExecution = await this.createStageExecution(tx, workflowId, stage, {
       status: StageExecutionStatus.PENDING,
-      statusMessage: '缺陷修复工作流跳过该阶段',
+      statusMessage: `${options.label}跳过该阶段`,
     });
     await this.updateStageExecution(tx, stageExecution.id, StageExecutionStatus.SKIPPED, {
       output: this.buildSkippedStageOutput(skipTarget.reason),
-      statusMessage: '已跳过，缺陷修复工作流继续',
+      statusMessage: `已跳过，${options.label}继续`,
       finishedAt: new Date(),
     });
     await this.transitionWorkflow(tx, workflowId, fromStatus, {
@@ -4164,7 +4288,7 @@ export class WorkflowService {
         input: {
           workflowRunId: workflowId,
           previousStage: stageTypeMap[stage],
-          source: 'bug_fix_bootstrap',
+          source: options.source,
         },
         status: StageExecutionStatus.PENDING,
         statusMessage: skipTarget.pendingStatusMessage,
