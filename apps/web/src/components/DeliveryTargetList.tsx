@@ -5,12 +5,12 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import type { DeliveryTarget, Project } from '../types';
 
-const TYPE_ORDER = ['EMAIL', 'DINGTALK_APP', 'DINGTALK_ROBOT'] as const;
+const TYPE_ORDER = ['DINGTALK_APP', 'DINGTALK_ROBOT', 'EMAIL'] as const;
 
 const TYPE_LABELS: Record<string, string> = {
-  EMAIL: '邮件',
-  DINGTALK_APP: '钉钉应用通知',
+  DINGTALK_APP: '钉钉工作通知',
   DINGTALK_ROBOT: '钉钉群机器人',
+  EMAIL: '邮件',
 };
 
 function deliveryTargetDescription(target: DeliveryTarget) {

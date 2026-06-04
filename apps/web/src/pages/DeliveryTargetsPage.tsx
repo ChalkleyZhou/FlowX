@@ -20,17 +20,16 @@ export function DeliveryTargetsPage() {
   const [targets, setTargets] = useState<DeliveryTarget[]>([]);
   const [workspaceId, setWorkspaceId] = useState('');
   const [projectId, setProjectId] = useState('');
-  const [type, setType] = useState('EMAIL');
+  const [type, setType] = useState('DINGTALK_APP');
   const [name, setName] = useState('');
   const [selectedMemberId, setSelectedMemberId] = useState(MANUAL_MEMBER_VALUE);
   const [address, setAddress] = useState('');
   const [secret, setSecret] = useState('');
-  const [resolvingEmail, setResolvingEmail] = useState(false);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
-  const usesMemberPicker = type === 'EMAIL' || type === 'DINGTALK_APP';
-  const requiresMember = type === 'DINGTALK_APP';
+  const usesMemberPicker = type === 'DINGTALK_APP';
+  const usesWebhook = type === 'DINGTALK_ROBOT';
 
   const workspaceProjects = useMemo(
     () => projects.filter((project) => project.workspace.id === workspaceId),
@@ -71,12 +70,10 @@ export function DeliveryTargetsPage() {
     void refresh(nextWorkspaceId);
   }
 
-  async function handleMemberChange(nextMemberId: string) {
+  function handleMemberChange(nextMemberId: string) {
     setSelectedMemberId(nextMemberId);
     if (nextMemberId === MANUAL_MEMBER_VALUE) {
-      if (type === 'DINGTALK_APP') {
-        setName('');
-      }
+      setName('');
       return;
     }
 
@@ -86,30 +83,7 @@ export function DeliveryTargetsPage() {
     }
 
     setName(member.displayName);
-
-    if (type === 'DINGTALK_APP') {
-      setAddress('');
-      return;
-    }
-
-    if (member.email?.trim()) {
-      setAddress(member.email.trim());
-      return;
-    }
-
-    setResolvingEmail(true);
-    try {
-      const resolved = await api.resolveOrganizationMemberEmail(nextMemberId);
-      setAddress(resolved.email);
-      toast.success(
-        resolved.source === 'dingtalk' ? '已从钉钉获取邮箱' : '已填入成员邮箱',
-      );
-    } catch (error) {
-      setAddress('');
-      toast.error(error instanceof Error ? error.message : '获取成员邮箱失败，请手动输入');
-    } finally {
-      setResolvingEmail(false);
-    }
+    setAddress('');
   }
 
   function resetFormFields() {
@@ -124,15 +98,11 @@ export function DeliveryTargetsPage() {
       toast.error('请选择项目并填写完整投递目标');
       return;
     }
-    if (type === 'EMAIL' && !address && selectedMemberId === MANUAL_MEMBER_VALUE) {
-      toast.error('请选择组织成员或填写邮箱地址');
-      return;
-    }
-    if (requiresMember && selectedMemberId === MANUAL_MEMBER_VALUE) {
+    if (usesMemberPicker && selectedMemberId === MANUAL_MEMBER_VALUE) {
       toast.error('请选择要接收钉钉工作通知的组织成员');
       return;
     }
-    if (type === 'DINGTALK_ROBOT' && !address) {
+    if (usesWebhook && !address) {
       toast.error('请填写钉钉机器人 Webhook');
       return;
     }
@@ -143,18 +113,10 @@ export function DeliveryTargetsPage() {
         projectId,
         type,
         name,
-        ...(type === 'EMAIL'
-          ? {
-              ...(selectedMemberId !== MANUAL_MEMBER_VALUE ? { userId: selectedMemberId } : {}),
-              ...(address ? { emailAddress: address } : {}),
-            }
-          : {}),
-        ...(type === 'DINGTALK_APP' && selectedMemberId !== MANUAL_MEMBER_VALUE
+        ...(usesMemberPicker && selectedMemberId !== MANUAL_MEMBER_VALUE
           ? { userId: selectedMemberId }
           : {}),
-        ...(type === 'DINGTALK_ROBOT'
-          ? { dingtalkWebhookUrl: address, dingtalkSecret: secret }
-          : {}),
+        ...(usesWebhook ? { dingtalkWebhookUrl: address, dingtalkSecret: secret } : {}),
       });
       resetFormFields();
       await refresh(workspaceId);
@@ -183,7 +145,7 @@ export function DeliveryTargetsPage() {
       <PageHeader
         eyebrow="Delivery"
         title="投递目标"
-        description="按项目配置简报的邮件、钉钉工作通知和群机器人投递目标；发送时仅投递到对应项目的目标。"
+        description="按项目配置简报的钉钉工作通知与群机器人投递目标；发送时仅投递到对应项目的目标。"
       />
       <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="pb-4">
@@ -212,20 +174,17 @@ export function DeliveryTargetsPage() {
           }}>
             <SelectTrigger><SelectValue placeholder="类型" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="EMAIL">邮件</SelectItem>
-              <SelectItem value="DINGTALK_APP">钉钉应用通知</SelectItem>
+              <SelectItem value="DINGTALK_APP">钉钉工作通知</SelectItem>
               <SelectItem value="DINGTALK_ROBOT">钉钉群机器人</SelectItem>
             </SelectContent>
           </Select>
           {usesMemberPicker ? (
             <Select
               value={selectedMemberId}
-              onValueChange={(value) => { void handleMemberChange(value); }}
-              disabled={resolvingEmail}
+              onValueChange={handleMemberChange}
             >
               <SelectTrigger><SelectValue placeholder="组织成员" /></SelectTrigger>
               <SelectContent>
-                {!requiresMember ? <SelectItem value={MANUAL_MEMBER_VALUE}>手动输入邮箱</SelectItem> : null}
                 {members.map((member) => (
                   <SelectItem key={member.id} value={member.id}>
                     {member.displayName}
@@ -236,17 +195,16 @@ export function DeliveryTargetsPage() {
             </Select>
           ) : null}
           <Input placeholder="名称" value={name} onChange={(event) => setName(event.target.value)} />
-          {type === 'EMAIL' || type === 'DINGTALK_ROBOT' ? (
+          {usesWebhook ? (
             <Input
-              placeholder={type === 'EMAIL' ? '邮箱地址' : '钉钉机器人 Webhook'}
+              placeholder="钉钉机器人 Webhook"
               value={address}
               onChange={(event) => setAddress(event.target.value)}
-              disabled={type === 'EMAIL' && resolvingEmail}
             />
           ) : null}
           <div className="flex gap-2 md:col-span-2 xl:col-span-3">
-            {type === 'DINGTALK_ROBOT' ? <Input placeholder="签名密钥" value={secret} onChange={(event) => setSecret(event.target.value)} /> : null}
-            <Button onClick={() => void createTarget()} disabled={saving || resolvingEmail || !projectId}>
+            {usesWebhook ? <Input placeholder="签名密钥" value={secret} onChange={(event) => setSecret(event.target.value)} /> : null}
+            <Button onClick={() => void createTarget()} disabled={saving || !projectId}>
               {saving ? '保存中…' : '保存'}
             </Button>
           </div>
