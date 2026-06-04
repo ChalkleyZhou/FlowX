@@ -24,6 +24,14 @@ export class WorkspacesController {
     return this.workspacesService.addRepository(id, dto);
   }
 
+  @Post(':workspaceId/repositories/:repositoryId/sync')
+  resyncRepository(
+    @Param('workspaceId') workspaceId: string,
+    @Param('repositoryId') repositoryId: string,
+  ) {
+    return this.workspacesService.resyncRepository(workspaceId, repositoryId);
+  }
+
   @Patch(':workspaceId/repositories/:repositoryId')
   updateRepository(
     @Param('workspaceId') workspaceId: string,

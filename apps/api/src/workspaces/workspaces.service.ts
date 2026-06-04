@@ -79,19 +79,27 @@ export class WorkspacesService {
       },
     });
 
-    try {
-      return await this.repositorySyncService.syncRepository(repository);
-    } catch (error) {
-      await this.prisma.repository.delete({
-        where: { id: repository.id },
-      });
-      await this.repositorySyncService.removeRepositoryStorage(
-        repository.workspaceId,
-        repository.id,
-        repository.name,
-      );
-      throw error;
+    this.repositorySyncService.scheduleRepositorySync(repository);
+    return repository;
+  }
+
+  async resyncRepository(workspaceId: string, repositoryId: string) {
+    const repository = await this.prisma.repository.findFirst({
+      where: {
+        id: repositoryId,
+        workspaceId,
+        status: 'ACTIVE',
+      },
+      include: {
+        deployConfig: true,
+      },
+    });
+    if (!repository) {
+      throw new NotFoundException('Repository not found.');
     }
+
+    this.repositorySyncService.scheduleRepositorySync(repository);
+    return repository;
   }
 
   async updateRepository(

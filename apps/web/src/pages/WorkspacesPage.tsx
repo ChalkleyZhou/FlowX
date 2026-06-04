@@ -56,6 +56,8 @@ export function WorkspacesPage() {
   const [deployProviders, setDeployProviders] = useState<Array<{ id: string; label: string }>>([]);
   const [deployConfigLoading, setDeployConfigLoading] = useState(false);
   const [deployConfigSaving, setDeployConfigSaving] = useState(false);
+  const [addingRepository, setAddingRepository] = useState(false);
+  const [resyncingRepositoryId, setResyncingRepositoryId] = useState<string | null>(null);
   const toast = useToast();
 
   const workspaceSummary = useMemo(() => {
@@ -81,9 +83,31 @@ export function WorkspacesPage() {
     }
   }
 
+  const hasPendingRepositorySync = useMemo(
+    () =>
+      workspaces.some((workspace) =>
+        workspace.repositories.some(
+          (repository) => repository.syncStatus === 'PENDING' || repository.syncStatus === 'SYNCING',
+        ),
+      ),
+    [workspaces],
+  );
+
   useEffect(() => {
     void refresh();
   }, []);
+
+  useEffect(() => {
+    if (!hasPendingRepositorySync) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void refresh();
+    }, 3000);
+
+    return () => window.clearInterval(timer);
+  }, [hasPendingRepositorySync]);
 
   async function createWorkspace(values: { name: string; description?: string }) {
     try {
@@ -98,15 +122,31 @@ export function WorkspacesPage() {
   }
 
   async function addRepository(values: { name: string; url: string; defaultBranch?: string }) {
+    setAddingRepository(true);
     try {
       await api.addRepositoryToWorkspace(repositoryWorkspaceId, values);
       setRepositoryDraft({ name: '', url: '', defaultBranch: '' });
       setRepositoryModalOpen(false);
       setRepositoryWorkspaceId('');
       await refresh();
-      toast.success('代码库已拉取并加入工作区');
+      toast.success('代码库已加入工作区，正在后台同步');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '添加代码库失败');
+    } finally {
+      setAddingRepository(false);
+    }
+  }
+
+  async function resyncRepository(workspaceId: string, repository: Repository) {
+    setResyncingRepositoryId(repository.id);
+    try {
+      await api.resyncWorkspaceRepository(workspaceId, repository.id);
+      await refresh();
+      toast.success('已重新触发代码库同步');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '重新同步失败');
+    } finally {
+      setResyncingRepositoryId(null);
     }
   }
 
@@ -359,7 +399,9 @@ export function WorkspacesPage() {
                 placeholder="main / master / develop"
               />
             </div>
-            <UiButton type="submit">添加代码库</UiButton>
+            <UiButton type="submit" disabled={addingRepository}>
+              {addingRepository ? '提交中...' : '添加代码库'}
+            </UiButton>
           </form>
         </DialogContent>
       </Dialog>
@@ -574,6 +616,18 @@ export function WorkspacesPage() {
                         error={repository.syncError ? `同步失败：${repository.syncError}` : undefined}
                         action={
                           <div className="flex flex-wrap gap-2">
+                            {(repository.syncStatus === 'PENDING' ||
+                              repository.syncStatus === 'SYNCING' ||
+                              repository.syncStatus === 'ERROR') && (
+                              <UiButton
+                                variant="secondary"
+                                size="sm"
+                                disabled={resyncingRepositoryId === repository.id}
+                                onClick={() => void resyncRepository(workspace.id, repository)}
+                              >
+                                {resyncingRepositoryId === repository.id ? '同步中...' : '重新同步'}
+                              </UiButton>
+                            )}
                             <UiButton
                               variant="secondary"
                               size="sm"

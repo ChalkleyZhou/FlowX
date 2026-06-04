@@ -7,6 +7,9 @@ import { basename, join } from 'path';
 
 const execFile = promisify(execFileCallback);
 
+const GIT_CLONE_TIMEOUT_MS = 900_000;
+const GIT_OPERATION_TIMEOUT_MS = 180_000;
+
 type RepositoryRecord = {
   id: string;
   workspaceId: string;
@@ -20,8 +23,25 @@ type RepositoryRecord = {
 @Injectable()
 export class RepositorySyncService {
   private readonly logger = new Logger(RepositorySyncService.name);
+  private readonly syncingRepositoryIds = new Set<string>();
 
   constructor(private readonly prisma: PrismaService) {}
+
+  scheduleRepositorySync(repository: RepositoryRecord) {
+    if (this.syncingRepositoryIds.has(repository.id)) {
+      return;
+    }
+
+    this.syncingRepositoryIds.add(repository.id);
+    void this.syncRepository(repository)
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Background repository sync failed for ${repository.id}: ${message}`);
+      })
+      .finally(() => {
+        this.syncingRepositoryIds.delete(repository.id);
+      });
+  }
 
   async syncRepository(repository: RepositoryRecord) {
     const repoRoot = this.resolveRepositoryPath(repository.workspaceId, repository.id, repository.name);
@@ -72,7 +92,7 @@ export class RepositorySyncService {
         },
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown git sync error';
+      const message = this.formatGitSyncError(error);
       this.logger.error(`Repository sync failed for ${repository.id}: ${message}`);
       await this.prisma.repository.update({
         where: { id: repository.id },
@@ -241,11 +261,37 @@ export class RepositorySyncService {
     await rm(repositoryPath, { recursive: true, force: true });
   }
 
+  private buildGitEnv() {
+    return {
+      ...process.env,
+      GIT_TERMINAL_PROMPT: '0',
+    };
+  }
+
+  private resolveGitTimeoutMs(args: string[]) {
+    return args[0] === 'clone' ? GIT_CLONE_TIMEOUT_MS : GIT_OPERATION_TIMEOUT_MS;
+  }
+
+  private formatGitSyncError(error: unknown) {
+    if (!(error instanceof Error)) {
+      return 'Unknown git sync error';
+    }
+
+    const errorWithCode = error as Error & { code?: string; killed?: boolean; signal?: string };
+    if (errorWithCode.code === 'ETIMEDOUT' || errorWithCode.killed) {
+      return `Git 命令超时（${error.message}）`;
+    }
+
+    return error.message;
+  }
+
   private async runGit(args: string[], cwd?: string) {
     const { stderr } = await execFile('git', args, {
       cwd,
-      env: process.env,
+      env: this.buildGitEnv(),
       maxBuffer: 1024 * 1024 * 8,
+      timeout: this.resolveGitTimeoutMs(args),
+      killSignal: 'SIGTERM',
     });
 
     return stderr;
