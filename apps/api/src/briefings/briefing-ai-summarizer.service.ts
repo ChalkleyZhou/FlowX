@@ -1,8 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
-import type { AIExecutorProvider } from '../ai/ai-executor';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  AI_EXECUTOR_REGISTRY,
+  type AIExecutorProvider,
+  type AIExecutorRegistry,
+} from '../ai/ai-executor';
 import { AiInvocationContextService } from '../ai/ai-invocation-context.service';
 import { CodexAiExecutor } from '../ai/codex-ai.executor';
-import { CursorAiExecutor } from '../ai/cursor-ai.executor';
 import { buildBriefingSummaryPrompt } from '../prompts/briefing-summary.prompt';
 import { buildBriefingFacts, type BriefingFactsPayload } from './briefing-facts';
 import { summarizeDailyCommits, collectDailyCommits } from './briefing-commits';
@@ -37,8 +40,8 @@ export class BriefingAiSummarizerService {
   private readonly logger = new Logger(BriefingAiSummarizerService.name);
 
   constructor(
-    private readonly codexExecutor: CodexAiExecutor,
-    private readonly cursorExecutor: CursorAiExecutor,
+    @Inject(AI_EXECUTOR_REGISTRY)
+    private readonly executorRegistry: AIExecutorRegistry,
     private readonly aiInvocationContextService: AiInvocationContextService,
   ) {}
 
@@ -51,7 +54,7 @@ export class BriefingAiSummarizerService {
     try {
       const provider = this.resolveProvider();
       const context = await this.aiInvocationContextService.resolveInvocationContext(provider, null);
-      const executor = provider === 'cursor' ? this.cursorExecutor : this.codexExecutor;
+      const executor = this.resolveStructuredExecutor(provider);
       const prompt = buildBriefingSummaryPrompt(facts);
       const raw = await executor.runStructuredJsonStage<{
         headline: string;
@@ -82,6 +85,15 @@ export class BriefingAiSummarizerService {
       this.logger.warn(`Briefing AI summary failed, using fallback: ${message}`);
       return this.buildFallbackSummary(facts, input);
     }
+  }
+
+  private resolveStructuredExecutor(provider: AIExecutorProvider): CodexAiExecutor {
+    if (provider !== 'codex' && provider !== 'cursor') {
+      throw new Error(
+        `Briefing AI summary requires codex or cursor executor (provider=${provider}).`,
+      );
+    }
+    return this.executorRegistry.get(provider) as CodexAiExecutor;
   }
 
   private resolveProvider(): AIExecutorProvider {

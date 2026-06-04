@@ -37,6 +37,7 @@ const aiOutput = {
 describe('BriefingAiSummarizerService', () => {
   const codexRunStructuredJsonStage = vi.fn();
   const cursorRunStructuredJsonStage = vi.fn();
+  const executorRegistryGet = vi.fn();
   const resolveInvocationContext = vi.fn();
   const getConfiguredDefaultProvider = vi.fn();
   const originalDisabled = process.env.FLOWX_BRIEFING_AI_DISABLED;
@@ -50,6 +51,12 @@ describe('BriefingAiSummarizerService', () => {
     resolveInvocationContext.mockResolvedValue({ codexCredentialSource: 'instance' });
     codexRunStructuredJsonStage.mockResolvedValue(aiOutput);
     cursorRunStructuredJsonStage.mockResolvedValue(aiOutput);
+    executorRegistryGet.mockImplementation((provider: string) => {
+      if (provider === 'cursor') {
+        return { runStructuredJsonStage: cursorRunStructuredJsonStage };
+      }
+      return { runStructuredJsonStage: codexRunStructuredJsonStage };
+    });
   });
 
   afterEach(() => {
@@ -67,8 +74,7 @@ describe('BriefingAiSummarizerService', () => {
 
   function createService() {
     return new BriefingAiSummarizerService(
-      { runStructuredJsonStage: codexRunStructuredJsonStage } as never,
-      { runStructuredJsonStage: cursorRunStructuredJsonStage } as never,
+      { get: executorRegistryGet } as never,
       {
         resolveInvocationContext,
         getConfiguredDefaultProvider,
