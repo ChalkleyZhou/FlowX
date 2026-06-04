@@ -10,12 +10,16 @@ import type { ProjectBriefingConfig } from '../types';
 
 export function ProjectBriefingConfigPanel({ projectId }: { projectId: string }) {
   const [config, setConfig] = useState<ProjectBriefingConfig | null>(null);
+  const [dailyHourInput, setDailyHourInput] = useState('22');
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
     api.getProjectBriefingConfig(projectId)
-      .then(setConfig)
+      .then((loaded) => {
+        setConfig(loaded);
+        setDailyHourInput(String(loaded.dailyHour ?? 22));
+      })
       .catch((error) => toast.error(error instanceof Error ? error.message : '加载简报配置失败'));
   }, [projectId]);
 
@@ -24,7 +28,9 @@ export function ProjectBriefingConfigPanel({ projectId }: { projectId: string })
     setConfig(merged as ProjectBriefingConfig);
     setSaving(true);
     try {
-      setConfig(await api.updateProjectBriefingConfig(projectId, next));
+      const updated = await api.updateProjectBriefingConfig(projectId, next);
+      setConfig(updated);
+      setDailyHourInput(String(updated.dailyHour ?? 22));
       toast.success('简报配置已保存');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '保存简报配置失败');
@@ -56,8 +62,20 @@ export function ProjectBriefingConfigPanel({ projectId }: { projectId: string })
             type="number"
             min={0}
             max={23}
-            value={config?.dailyHour ?? 22}
-            onChange={(event) => void save({ dailyHour: Number(event.target.value) })}
+            value={dailyHourInput}
+            onChange={(event) => setDailyHourInput(event.target.value)}
+            onBlur={() => {
+              const hour = Number(dailyHourInput);
+              if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+                setDailyHourInput(String(config?.dailyHour ?? 22));
+                toast.error('请输入 0–23 之间的整点小时');
+                return;
+              }
+              if (hour === (config?.dailyHour ?? 22)) {
+                return;
+              }
+              void save({ dailyHour: hour });
+            }}
           />
           <span>
             时发送（整点；该时刻–24:00 的活动计入次日简报）

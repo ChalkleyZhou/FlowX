@@ -58,20 +58,34 @@ export class BriefingsService {
 
   async upsertProjectConfig(projectId: string, dto: UpsertProjectBriefingConfigDto) {
     await this.ensureProjectExists(projectId);
-    const data = {
-      enabled: dto.enabled ?? false,
-      dailyHour: dto.dailyHour ?? DEFAULT_DAILY_HOUR,
+    const updateData: {
+      enabled?: boolean;
+      dailyHour?: number;
+      timezone: string;
+      autoSend?: boolean;
+    } = {
       timezone: BRIEFING_TIMEZONE,
-      autoSend: dto.autoSend ?? false,
     };
+    if (dto.enabled !== undefined) {
+      updateData.enabled = dto.enabled;
+    }
+    if (dto.dailyHour !== undefined) {
+      updateData.dailyHour = dto.dailyHour;
+    }
+    if (dto.autoSend !== undefined) {
+      updateData.autoSend = dto.autoSend;
+    }
 
     return this.prisma.projectBriefingConfig.upsert({
       where: { projectId },
       create: {
         projectId,
-        ...data,
+        enabled: dto.enabled ?? false,
+        dailyHour: dto.dailyHour ?? DEFAULT_DAILY_HOUR,
+        timezone: BRIEFING_TIMEZONE,
+        autoSend: dto.autoSend ?? false,
       },
-      update: data,
+      update: updateData,
     });
   }
 

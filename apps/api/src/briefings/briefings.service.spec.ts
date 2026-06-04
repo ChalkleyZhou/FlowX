@@ -82,7 +82,6 @@ describe('BriefingsService', () => {
       createService().upsertProjectConfig('project-1', {
         enabled: true,
         dailyHour: 9,
-        timezone: 'Asia/Shanghai',
         autoSend: true,
       }),
     ).resolves.toEqual({ id: 'config-1', enabled: true });
@@ -101,6 +100,30 @@ describe('BriefingsService', () => {
         dailyHour: 9,
         timezone: 'Asia/Shanghai',
         autoSend: true,
+      },
+    });
+  });
+
+  it('preserves dailyHour when toggling enabled without sending hour', async () => {
+    projectFindUnique.mockResolvedValue({ id: 'project-1' });
+    configUpsert.mockResolvedValue({ id: 'config-1', enabled: true, dailyHour: 9 });
+
+    await expect(
+      createService().upsertProjectConfig('project-1', { enabled: true }),
+    ).resolves.toEqual({ id: 'config-1', enabled: true, dailyHour: 9 });
+
+    expect(configUpsert).toHaveBeenCalledWith({
+      where: { projectId: 'project-1' },
+      create: {
+        projectId: 'project-1',
+        enabled: true,
+        dailyHour: 22,
+        timezone: 'Asia/Shanghai',
+        autoSend: false,
+      },
+      update: {
+        enabled: true,
+        timezone: 'Asia/Shanghai',
       },
     });
   });
