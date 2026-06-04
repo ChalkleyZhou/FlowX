@@ -113,38 +113,58 @@ export function BriefingsPage() {
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="Generate" title="生成简报" />
         </CardHeader>
-        <CardContent className="flex flex-wrap items-end gap-3 p-5 pt-0">
-          <div className="min-w-[220px]">
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">项目</label>
-            <Select
-              value={selectedProjectId || undefined}
-              onValueChange={(value) => {
-                setSelectedProjectId(value);
-                void refresh(value);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="选择项目" />
-              </SelectTrigger>
-              <SelectContent>
-                {projects.map((project) => (
-                  <SelectItem key={project.id} value={project.id}>
-                    {project.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <CardContent className="p-5 pt-0">
+          <div className="rounded-xl border border-border bg-muted/70 p-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex min-w-[220px] flex-1 flex-col gap-1.5 sm:max-w-xs">
+                <label className="text-xs font-medium text-muted-foreground">项目</label>
+                <Select
+                  value={selectedProjectId || undefined}
+                  onValueChange={(value) => {
+                    setSelectedProjectId(value);
+                    void refresh(value);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="选择项目" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex w-full flex-col gap-1.5 sm:w-[168px]">
+                <label className="text-xs font-medium text-muted-foreground">日期</label>
+                <Input
+                  type="date"
+                  className="w-full"
+                  value={date}
+                  onChange={(event) => setDate(event.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <span className="hidden text-xs font-medium text-muted-foreground sm:invisible sm:block" aria-hidden>
+                  操作
+                </span>
+                <Button
+                  className="h-10 w-full sm:w-auto"
+                  onClick={handleGenerate}
+                  disabled={!selectedProjectId || generating}
+                >
+                  {generating ? '生成中...' : '生成简报'}
+                </Button>
+              </div>
+            </div>
+            {selectedProject ? (
+              <p className="mt-3 text-sm text-muted-foreground">
+                工作区：<span className="font-medium text-foreground">{selectedProject.workspace.name}</span>
+              </p>
+            ) : null}
           </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">日期</label>
-            <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-          </div>
-          <Button onClick={handleGenerate} disabled={!selectedProjectId || generating}>
-            {generating ? '生成中...' : '生成简报'}
-          </Button>
-          {selectedProject ? (
-            <Badge variant="outline">工作区：{selectedProject.workspace.name}</Badge>
-          ) : null}
         </CardContent>
       </Card>
 
