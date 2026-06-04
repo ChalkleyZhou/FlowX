@@ -34,7 +34,10 @@ export function ProjectBriefingConfigPanel({ projectId }: { projectId: string })
   }
 
   async function generateToday() {
-    await api.generateProjectBriefing(projectId, { date: new Date().toISOString().slice(0, 10) });
+    await api.generateProjectBriefing(projectId, {
+      date: new Date().toISOString().slice(0, 10),
+      regenerate: true,
+    });
     toast.success('今日简报已生成');
   }
 

@@ -11,6 +11,7 @@ describe('BriefingsService', () => {
   const briefingFindFirst = vi.fn();
   const briefingFindUnique = vi.fn();
   const briefingCreate = vi.fn();
+  const briefingUpdate = vi.fn();
   const sendBriefing = vi.fn();
   const summarize = vi.fn();
 
@@ -41,6 +42,7 @@ describe('BriefingsService', () => {
           findFirst: briefingFindFirst,
           findUnique: briefingFindUnique,
           create: briefingCreate,
+          update: briefingUpdate,
         },
       } as never,
       { sendBriefing } as never,
@@ -156,6 +158,34 @@ describe('BriefingsService', () => {
         eventCount: 1,
       },
     });
+  });
+
+  it('updates an existing briefing when regenerate is true', async () => {
+    projectFindUnique.mockResolvedValue({
+      id: 'project-1',
+      name: 'FlowX',
+      workspaceId: 'workspace-1',
+      workspace: { repositories: [{ id: 'repo-1' }] },
+    });
+    sourceFindMany.mockResolvedValue([{ id: 'source-1', repositoryId: 'repo-1' }]);
+    briefingFindFirst.mockResolvedValue({ id: 'existing-briefing' });
+    eventFindMany.mockResolvedValue([]);
+    briefingUpdate.mockResolvedValue({ id: 'existing-briefing', markdownContent: '# 研发日报' });
+
+    await expect(
+      createService().generateProjectBriefing('project-1', {
+        date: '2026-06-03',
+        regenerate: true,
+      }),
+    ).resolves.toEqual({ id: 'existing-briefing', markdownContent: '# 研发日报' });
+
+    expect(briefingUpdate).toHaveBeenCalledWith({
+      where: { id: 'existing-briefing' },
+      data: expect.objectContaining({
+        markdownContent: expect.stringContaining('# 研发日报'),
+      }),
+    });
+    expect(briefingCreate).not.toHaveBeenCalled();
   });
 
   it('returns an existing briefing unless regenerate is true', async () => {

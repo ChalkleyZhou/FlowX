@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { EmptyState } from '../components/EmptyState';
 import { MetricCard } from '../components/MetricCard';
@@ -26,6 +26,7 @@ export function BriefingsPage() {
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const toast = useToast();
+  const navigate = useNavigate();
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId),
@@ -70,9 +71,13 @@ export function BriefingsPage() {
     }
     setGenerating(true);
     try {
-      await api.generateProjectBriefing(selectedProjectId, { date });
+      const briefing = await api.generateProjectBriefing(selectedProjectId, {
+        date,
+        regenerate: true,
+      });
       await refresh(selectedProjectId);
       toast.success('简报已生成');
+      navigate(`/briefings/${briefing.id}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '生成简报失败');
     } finally {

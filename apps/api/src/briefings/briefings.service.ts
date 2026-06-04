@@ -122,18 +122,16 @@ export class BriefingsService {
     };
     const scopeKey = stableJson(scope);
     const date = dateAtTimezoneStart(dto.date, DEFAULT_TIMEZONE);
+    const existing = await this.prisma.briefing.findFirst({
+      where: {
+        projectId,
+        date,
+        scopeKey,
+      },
+    });
 
-    if (!dto.regenerate) {
-      const existing = await this.prisma.briefing.findFirst({
-        where: {
-          projectId,
-          date,
-          scopeKey,
-        },
-      });
-      if (existing) {
-        return existing;
-      }
+    if (existing && !dto.regenerate) {
+      return existing;
     }
 
     const { start, end } = dateWindow(dto.date, DEFAULT_TIMEZONE);
@@ -167,18 +165,30 @@ export class BriefingsService {
       aiSummary,
     });
 
+    const generatedPayload = {
+      scope: scope as Prisma.InputJsonValue,
+      status: 'GENERATED',
+      markdownContent,
+      htmlContent,
+      eventCount: events.length,
+      generatedAt: new Date(),
+      errorMessage: null,
+    };
+
+    if (existing) {
+      return this.prisma.briefing.update({
+        where: { id: existing.id },
+        data: generatedPayload,
+      });
+    }
+
     return this.prisma.briefing.create({
       data: {
         projectId,
         workspaceId: project.workspaceId,
         date,
         scopeKey,
-        scope: scope as Prisma.InputJsonValue,
-        status: 'GENERATED',
-        markdownContent,
-        htmlContent,
-        eventCount: events.length,
-        generatedAt: new Date(),
+        ...generatedPayload,
       },
     });
   }

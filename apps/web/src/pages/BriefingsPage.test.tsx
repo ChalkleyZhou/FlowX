@@ -89,6 +89,7 @@ describe('BriefingsPage', () => {
 
     expect(api.generateProjectBriefing).toHaveBeenCalledWith('project-1', {
       date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      regenerate: true,
     });
   });
 });
