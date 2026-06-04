@@ -36,4 +36,21 @@ export class CompleteLocalExecutionDto {
 
   @IsBoolean()
   pushed!: boolean;
+
+  @IsOptional()
+  @IsString()
+  implementationSummary?: string;
+
+  @IsOptional()
+  @IsString()
+  testResult?: string;
+
+  @IsOptional()
+  @IsString()
+  diffSummary?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  untrackedFiles?: string[];
 }
