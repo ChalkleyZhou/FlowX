@@ -2,9 +2,9 @@
 
 ## 项目概览
 
-`apps/api` 是 FlowX 的后端服务，基于 NestJS + TypeScript + Prisma + SQLite。它负责认证与会话、工作区和仓库管理、需求 ideation、工作流阶段编排、AI executor 调用、审查产物沉淀、本地预览和部署集成。
+`apps/api` 是 FlowX 的后端服务，基于 NestJS + TypeScript + Prisma + SQLite。它负责认证与会话、工作区和仓库管理、需求 ideation、工作流阶段编排、AI executor 调用、审查产物沉淀、项目排期、项目简报、本地预览和部署集成。
 
-本子项目属于高风险核心区域，尤其是工作流编排、需求 ideation、AI 输出解析、认证凭据、Prisma 数据模型和 API 边界。
+本子项目属于高风险核心区域，尤其是工作流编排、需求 ideation、AI 输出解析、认证凭据、Prisma 数据模型、项目简报/投递、排期和 API 边界。
 
 ## 常用命令
 
@@ -46,6 +46,8 @@ pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma
 - `src/common`：共享枚举、类型、状态机和 demo 路由集成工具。
 - `src/workspaces`：工作区、仓库登记、仓库同步和分支元数据。
 - `src/projects`：项目管理 API。
+- `src/briefings`：项目简报来源、事件归档、AI 总结、定时生成、投递目标和投递日志，属于高风险区域。
+- `src/schedule`：需求/项目排期和甘特图数据，属于高风险区域。
 - `src/review-artifacts`：ReviewFinding、Issue、Bug 的维护和转换。
 - `src/deploy`：部署 provider 抽象和 provider 实现。
 - `src/dev-preview`：本地开发预览命令探测和预览生命周期。
@@ -80,6 +82,8 @@ pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma
 - 修改 `src/workflow`：`pnpm --filter flowx-api test`。
 - 修改 `src/common/workflow-state-machine.ts`：`pnpm --filter flowx-api test`。
 - 修改 `src/requirements/requirements.service.ts` 或 ideation 编排：`pnpm --filter flowx-api test`。
+- 修改 `src/briefings`、简报投递或通知发送：`pnpm --filter flowx-api test`。
+- 修改 `src/schedule` 或排期相关 Prisma model/API：`pnpm --filter flowx-api test`。
 - 修改 AI executor、prompt、schema 或 contract：运行相关 spec，并优先运行完整 `pnpm --filter flowx-api test`。
 - 修改 Prisma schema：`pnpm --filter flowx-api prisma:generate`，再运行 API build/test。
 - 最终交付前：`pnpm check`，如无法运行需说明原因。
@@ -91,5 +95,5 @@ pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma
 - 不要改 `dist/`、生成的 Prisma client、运行时数据库或本地数据目录。
 - 不要把 Mock executor、Codex executor、Cursor executor 的行为混在一次大改里，除非任务明确要求。
 - 修改 API 返回结构时，同步检查 `apps/web/src/api.ts`、前端类型和页面调用方。
-- 对高风险文件保持窄 diff：`prisma/schema.prisma`、`src/workflow`、`src/requirements`、`src/common/workflow-state-machine.ts`、`src/auth`、`src/ai`。
+- 对高风险文件保持窄 diff：`prisma/schema.prisma`、`src/workflow`、`src/requirements`、`src/common/workflow-state-machine.ts`、`src/auth`、`src/ai`、`src/briefings`、`src/schedule`。
 - 遇到已有未提交改动时，默认视为用户工作；不要回滚，必要时围绕现有改动继续。
