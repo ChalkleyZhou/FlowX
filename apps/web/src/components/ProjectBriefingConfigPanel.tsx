@@ -39,57 +39,74 @@ export function ProjectBriefingConfigPanel({ projectId }: { projectId: string })
     }
   }
 
+  async function toggleScheduledBriefing() {
+    const nextEnabled = !config?.enabled;
+    await save({ enabled: nextEnabled, autoSend: nextEnabled });
+  }
+
   async function generateToday() {
     await api.generateProjectBriefing(projectId, {
       regenerate: true,
     });
-    toast.success('当前周期简报已生成');
+    toast.success('当前周期简报已生成，可在简报详情中手动发送');
   }
 
   return (
     <Card className="rounded-2xl border border-border bg-card shadow-sm">
       <CardHeader className="pb-4">
-        <SectionHeader eyebrow="Briefings" title="简报配置" />
+        <SectionHeader
+          eyebrow="Briefings"
+          title="简报配置"
+          description={
+            config?.enabled
+              ? '到点会自动生成并投递到本项目的投递目标。'
+              : '开启后按下方时刻自动生成并投递；也可随时手动生成预览。'
+          }
+        />
       </CardHeader>
-      <CardContent className="flex flex-wrap items-center gap-3 p-5 pt-0">
-        <Button variant={config?.enabled ? 'default' : 'outline'} onClick={() => void save({ enabled: !config?.enabled })} disabled={saving}>
-          {config?.enabled ? '已启用' : '启用简报'}
-        </Button>
-        <label className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <span>北京时间每日</span>
-          <Input
-            className="w-20"
-            type="number"
-            min={0}
-            max={23}
-            value={dailyHourInput}
-            onChange={(event) => setDailyHourInput(event.target.value)}
-            onBlur={() => {
-              const hour = Number(dailyHourInput);
-              if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
-                setDailyHourInput(String(config?.dailyHour ?? 22));
-                toast.error('请输入 0–23 之间的整点小时');
-                return;
-              }
-              if (hour === (config?.dailyHour ?? 22)) {
-                return;
-              }
-              void save({ dailyHour: hour });
-            }}
-          />
-          <span>
-            时发送（整点；该时刻–24:00 的活动计入次日简报）
-          </span>
-        </label>
-        <Button variant={config?.autoSend ? 'default' : 'outline'} onClick={() => void save({ autoSend: !config?.autoSend })} disabled={saving}>
-          {config?.autoSend ? '自动发送' : '手动发送'}
-        </Button>
-        <Button variant="outline" onClick={() => void generateToday()}>生成当前周期简报</Button>
-        <Button variant="outline" asChild>
-          <Link to={`/briefings`}>查看历史</Link>
-        </Button>
+      <CardContent className="flex flex-col gap-3 p-5 pt-0">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant={config?.enabled ? 'default' : 'outline'}
+            onClick={() => void toggleScheduledBriefing()}
+            disabled={saving}
+          >
+            {config?.enabled ? '定时简报已开启' : '开启定时简报'}
+          </Button>
+          <label className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span>北京时间每日</span>
+            <Input
+              className="w-20"
+              type="number"
+              min={0}
+              max={23}
+              value={dailyHourInput}
+              onChange={(event) => setDailyHourInput(event.target.value)}
+              onBlur={() => {
+                const hour = Number(dailyHourInput);
+                if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+                  setDailyHourInput(String(config?.dailyHour ?? 22));
+                  toast.error('请输入 0–23 之间的整点小时');
+                  return;
+                }
+                if (hour === (config?.dailyHour ?? 22)) {
+                  return;
+                }
+                void save({ dailyHour: hour });
+              }}
+            />
+            <span>时自动发送（整点；该时刻–24:00 的活动计入次日简报）</span>
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => void generateToday()} disabled={saving}>
+            仅生成预览（不投递）
+          </Button>
+          <Button variant="outline" asChild>
+            <Link to="/briefings">查看历史</Link>
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
 }
-

@@ -123,6 +123,7 @@ describe('BriefingsService', () => {
       },
       update: {
         enabled: true,
+        autoSend: true,
         timezone: 'Asia/Shanghai',
       },
     });

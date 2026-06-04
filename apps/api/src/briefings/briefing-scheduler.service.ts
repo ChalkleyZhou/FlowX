@@ -57,7 +57,7 @@ export class BriefingSchedulerService implements OnModuleInit, OnModuleDestroy {
         date,
       });
       generatedCount += 1;
-      if (config.autoSend && !briefing.sentAt) {
+      if (!briefing.sentAt) {
         await this.briefingsService.sendBriefing(briefing.id);
       }
     }

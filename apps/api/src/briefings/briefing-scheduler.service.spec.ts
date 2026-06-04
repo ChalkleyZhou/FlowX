@@ -35,7 +35,7 @@ describe('BriefingSchedulerService', () => {
         project: { id: 'project-1' },
       },
     ]);
-    generateProjectBriefing.mockResolvedValue({ id: 'briefing-1' });
+    generateProjectBriefing.mockResolvedValue({ id: 'briefing-1', sentAt: null });
 
     await expect(
       createService().runDueBriefings(new Date('2026-06-03T10:00:00.000Z')),
@@ -44,7 +44,7 @@ describe('BriefingSchedulerService', () => {
     expect(generateProjectBriefing).toHaveBeenCalledWith('project-1', {
       date: '2026-06-03',
     });
-    expect(sendBriefing).not.toHaveBeenCalled();
+    expect(sendBriefing).toHaveBeenCalledWith('briefing-1');
   });
 
   it('skips configs that are not due yet', async () => {

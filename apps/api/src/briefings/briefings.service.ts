@@ -68,6 +68,7 @@ export class BriefingsService {
     };
     if (dto.enabled !== undefined) {
       updateData.enabled = dto.enabled;
+      updateData.autoSend = dto.enabled;
     }
     if (dto.dailyHour !== undefined) {
       updateData.dailyHour = dto.dailyHour;
