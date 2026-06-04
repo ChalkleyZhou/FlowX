@@ -13,11 +13,36 @@ export interface FlowXTaskItem {
   ineligibleReason?: string;
 }
 
+export interface StartLocalChatInput {
+  taskType: 'requirement' | 'bug';
+  taskId: string;
+  repositoryIds?: string[];
+}
+
+export interface LocalChatHandoff {
+  workflow: { id: string; status?: string };
+  handoff: {
+    workflowRunId: string;
+    workflowRepositoryId?: string;
+    repositories?: Array<{ id: string; name: string; url: string | null; workingBranch?: string }>;
+  };
+  chatPrompt: string;
+  taskType: 'requirement' | 'bug';
+  taskId: string;
+}
+
 export class FlowXClient {
   constructor(private readonly config: FlowXConfig) {}
 
   async listTasks(): Promise<FlowXTaskItem[]> {
     return this.request<FlowXTaskItem[]>(`/cursor-local/tasks?workspaceId=${encodeURIComponent(this.config.workspaceId)}`);
+  }
+
+  async startHandoff(input: StartLocalChatInput): Promise<LocalChatHandoff> {
+    return this.request<LocalChatHandoff>('/cursor-local/handoff', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
