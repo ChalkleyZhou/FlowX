@@ -30,6 +30,10 @@
     },
     "commands": [
       {
+        "command": "flowx.configure",
+        "title": "FlowX: Configure"
+      },
+      {
         "command": "flowx.refreshTasks",
         "title": "FlowX: Refresh Tasks"
       }
