@@ -53,6 +53,7 @@ export function buildLocalChatPrompt(input: BuildLocalChatPromptInput) {
     `- Repository: ${input.repository.name}`,
     input.repository.url?.trim() ? `- Remote: ${input.repository.url.trim()}` : '',
     `- Working branch: ${input.repository.workingBranch}`,
+    '- Work in Cursor Chat/Agent and iterate there until the change is ready.',
     '',
     '## Description',
     input.description.trim(),

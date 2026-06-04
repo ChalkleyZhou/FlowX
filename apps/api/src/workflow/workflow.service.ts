@@ -143,6 +143,54 @@ export class WorkflowService {
     return this.createRequirementWorkflowRun(dto, WorkflowRunType.LOCAL_CHAT);
   }
 
+  async createLocalChatBugWorkflowRun(bugId: string, dto: StartBugFixWorkflowDto) {
+    const bug = await this.prisma.bug.findUnique({
+      where: { id: bugId },
+      include: {
+        fixWorkflowRun: true,
+      },
+    });
+    if (!bug) {
+      throw new NotFoundException('Bug not found.');
+    }
+    if (!['OPEN', 'CONFIRMED'].includes(bug.status)) {
+      throw new BadRequestException('只有开放或已确认状态的缺陷可以发起本地 Chat 修复工作流。');
+    }
+    if (
+      bug.fixWorkflowRun &&
+      !['DONE', 'FAILED'].includes(bug.fixWorkflowRun.status)
+    ) {
+      throw new BadRequestException('该缺陷已有进行中的修复工作流。');
+    }
+
+    const requirement = await this.ensureBugFixRequirement(bug);
+    const repositoryIds =
+      dto.repositoryIds && dto.repositoryIds.length > 0
+        ? dto.repositoryIds
+        : bug.repositoryId
+          ? [bug.repositoryId]
+          : undefined;
+    const workflow = await this.createRequirementWorkflowRun(
+      {
+        requirementId: requirement.id,
+        repositoryIds,
+        aiProvider: dto.aiProvider,
+      },
+      WorkflowRunType.LOCAL_CHAT,
+    );
+
+    await this.prisma.bug.update({
+      where: { id: bug.id },
+      data: {
+        status: 'FIXING',
+        fixRequirementId: requirement.id,
+        fixWorkflowRunId: workflow.id,
+      },
+    });
+
+    return workflow;
+  }
+
   private async createRequirementWorkflowRun(dto: CreateWorkflowRunDto, runType: WorkflowRunType) {
     const aiProvider = this.aiInvocationContextService.normalizeAiProvider(dto.aiProvider);
     const requirement = await this.prisma.requirement.findFirstOrThrow({
