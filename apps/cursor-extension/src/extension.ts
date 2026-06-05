@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { loadHandoffSnapshot, saveCompletionDraft, saveHandoffSnapshot } from './completion-draft';
 import { collectGitCompletionReport, getCurrentGitRoot, reportCompletion } from './completion-panel';
 import { completeFlowXSignIn, configureFlowX, getFlowXConfig } from './config';
+import { buildFlowXWebUrl } from './config-model';
 import type { FlowXTaskItem } from './flowx-client';
 import { FlowXClient } from './flowx-client';
 import { getLocalGitReport, startInChat, writeTaskPromptFile } from './handoff';
@@ -19,6 +20,11 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.registerTreeDataProvider('flowxTasks', provider),
     vscode.commands.registerCommand('flowx.configure', () => configureFlowX(context)),
     vscode.commands.registerCommand('flowx.refreshTasks', () => provider.refresh()),
+    vscode.commands.registerCommand('flowx.openRequirements', async () => {
+      const config = await getFlowXConfig(context);
+      const apiBaseUrl = config?.apiBaseUrl ?? 'http://127.0.0.1:3000';
+      await vscode.env.openExternal(vscode.Uri.parse(buildFlowXWebUrl(apiBaseUrl, '/requirements', process.env)));
+    }),
     vscode.commands.registerCommand('flowx.startInChat', async (task: FlowXTaskItem) => {
       const config = await getFlowXConfig(context);
       if (!config) {

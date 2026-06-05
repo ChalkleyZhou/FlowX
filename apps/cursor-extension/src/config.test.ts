@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildCursorAuthCallbackUri,
   buildFlowXLoginUrl,
+  buildFlowXWebUrl,
   normalizeApiBaseUrl,
   parseFlowXAuthCallback,
 } from './config-model';
@@ -44,5 +45,21 @@ describe('buildFlowXLoginUrl', () => {
     ).toBe(
       'http://127.0.0.1:3000/auth/dingtalk/login?callbackUrl=cursor%3A%2F%2Fflowx.flowx-cursor-extension%2Fcallback&next=%2Frequirements',
     );
+  });
+});
+
+describe('buildFlowXWebUrl', () => {
+  it('opens local FlowX web pages through the Vite dev server', () => {
+    expect(buildFlowXWebUrl('http://127.0.0.1:3000', '/requirements')).toBe(
+      'http://127.0.0.1:5173/requirements',
+    );
+  });
+
+  it('uses FLOWX_WEB_BASE_URL when provided', () => {
+    expect(
+      buildFlowXWebUrl('http://127.0.0.1:3000', '/requirements', {
+        FLOWX_WEB_BASE_URL: 'http://flowx.local:8080/app',
+      }),
+    ).toBe('http://flowx.local:8080/requirements');
   });
 });

@@ -38,6 +38,10 @@
         "title": "FlowX: Refresh Tasks"
       },
       {
+        "command": "flowx.openRequirements",
+        "title": "FlowX: Open Requirements"
+      },
+      {
         "command": "flowx.startInChat",
         "title": "FlowX: Start in Chat"
       },

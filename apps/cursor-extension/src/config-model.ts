@@ -31,6 +31,15 @@ export function buildFlowXLoginUrl(input: { apiBaseUrl: string; callbackUrl: str
   return url.toString();
 }
 
+export function buildFlowXWebUrl(apiBaseUrl: string, path: string, env: Record<string, string | undefined> = {}): string {
+  const webBaseUrl = env.FLOWX_WEB_BASE_URL?.trim();
+  const url = new URL(path, webBaseUrl || apiBaseUrl);
+  if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost') && url.port === '3000') {
+    url.port = '5173';
+  }
+  return url.toString();
+}
+
 export function buildCursorAuthCallbackUri(uriScheme: string, extensionId: string): string {
   return `${uriScheme}://${extensionId}/auth-callback`;
 }

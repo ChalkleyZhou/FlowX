@@ -1,6 +1,24 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { buildTaskViewModels } from './tasks-model';
 import type { FlowXTaskItem } from './flowx-client';
+import { FlowXTasksProvider } from './tasks-provider';
+
+vi.mock('./config', () => ({
+  getFlowXConfig: vi.fn(async () => ({
+    apiBaseUrl: 'http://127.0.0.1:3000',
+    apiToken: 'token-1',
+  })),
+}));
+
+vi.mock('./repo-match', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./repo-match')>();
+  return {
+    ...actual,
+    getOriginRemoteUrl: vi.fn(async () => null),
+    getWorkspaceGitRoot: vi.fn(async () => '/workspace/repo'),
+    resolveWorkspacePath: vi.fn(() => '/workspace/repo'),
+  };
+});
 
 const baseTask: FlowXTaskItem = {
   eligible: true,
@@ -71,5 +89,45 @@ describe('buildTaskViewModels', () => {
         startable: false,
       }),
     ]);
+  });
+});
+
+describe('FlowXTasksProvider', () => {
+  it('offers to open FlowX requirements when no local-chat tasks exist', async () => {
+    const vscode = {
+      EventEmitter: class {
+        event = vi.fn();
+        fire = vi.fn();
+      },
+      TreeItem: class {
+        description?: string;
+        tooltip?: string;
+        contextValue?: string;
+        command?: unknown;
+
+        constructor(
+          public label: string,
+          public collapsibleState: number,
+        ) {}
+      },
+      TreeItemCollapsibleState: {
+        None: 0,
+      },
+      workspace: {
+        workspaceFolders: [{ uri: { fsPath: '/workspace/repo' } }],
+      },
+    };
+    const context = {} as never;
+    const provider = new FlowXTasksProvider(vscode as never, context, () => ({
+      listTasks: async () => [],
+    }) as never);
+
+    const [item] = await provider.getChildren();
+
+    expect(item.label).toBe('No FlowX tasks. Create a requirement or bug in FlowX.');
+    expect(item.command).toEqual({
+      command: 'flowx.openRequirements',
+      title: 'Open FlowX Requirements',
+    });
   });
 });

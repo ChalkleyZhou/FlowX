@@ -45,7 +45,13 @@ export class FlowXTasksProvider implements vscode.TreeDataProvider<vscode.TreeIt
     try {
       const tasks = await this.createClient(config).listTasks();
       if (tasks.length === 0) {
-        return [this.createPlaceholder('No FlowX tasks ready for local chat')];
+        return [
+          this.createPlaceholder(
+            'No FlowX tasks. Create a requirement or bug in FlowX.',
+            'flowx.openRequirements',
+            'Open FlowX Requirements',
+          ),
+        ];
       }
       return buildTaskViewModels(tasks, originRemoteUrl).map((model) => this.createTaskItem(model));
     } catch (error) {
@@ -75,13 +81,13 @@ export class FlowXTasksProvider implements vscode.TreeDataProvider<vscode.TreeIt
     return item;
   }
 
-  private createPlaceholder(label: string, command?: string): vscode.TreeItem {
+  private createPlaceholder(label: string, command?: string, commandTitle = label): vscode.TreeItem {
     const item = new this.vscode.TreeItem(label, this.vscode.TreeItemCollapsibleState.None);
     item.contextValue = 'flowxPlaceholder';
     if (command) {
       item.command = {
         command,
-        title: label,
+        title: commandTitle,
       };
     }
     return item;
