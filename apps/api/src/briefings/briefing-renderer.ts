@@ -1,6 +1,8 @@
 import type { BriefingAiSummary, BriefingAiWorkItem } from './briefing-ai-summarizer.service';
 import {
+  COMMIT_CATEGORY_LABELS,
   collectDailyCommits,
+  orderedCommitCategoryGroups,
   summarizeDailyCommits,
 } from './briefing-commits';
 import type { BriefingEventType, NormalizedBriefingEvent } from './briefing-events';
@@ -80,26 +82,35 @@ function toWorkItem(
   };
 }
 
-function buildCommitBasedSummary(input: RenderInput): BriefingAiSummary {
-  const commits = collectDailyCommits(renderEventInputs(input));
-  const categorized = summarizeDailyCommits(commits);
+function buildCommitWorkItemSections(input: RenderInput) {
+  const categorized = summarizeDailyCommits(collectDailyCommits(renderEventInputs(input)));
+  const sections = orderedCommitCategoryGroups(categorized).map((group) => ({
+    label: group.label,
+    items: group.commits.map((item) => toWorkItem(item.title, item.projectName)),
+  }));
+
   const mergedMrs = input.events.filter(
     (event) =>
       event.eventType === 'merge_request' &&
       (event.action === 'merge' || event.summary.state === 'merged'),
   );
-
-  const features = categorized.features.map((item) =>
-    toWorkItem(item.title, item.projectName),
-  );
-  const fixes = categorized.fixes.map((item) => toWorkItem(item.title, item.projectName));
-  const others = categorized.other.map((item) => toWorkItem(item.title, item.projectName));
-
-  for (const event of mergedMrs) {
-    const action = event.action ? `${event.action}: ` : '';
-    features.push(toWorkItem(`${action}${event.subject}`, event.projectName));
+  if (mergedMrs.length > 0) {
+    const featSection = sections.find((section) => section.label === COMMIT_CATEGORY_LABELS.feat);
+    const mrItems = mergedMrs.map((event) => {
+      const action = event.action ? `${event.action}: ` : '';
+      return toWorkItem(`${action}${event.subject}`, event.projectName);
+    });
+    if (featSection) {
+      featSection.items.push(...mrItems);
+    } else {
+      sections.unshift({ label: COMMIT_CATEGORY_LABELS.feat, items: mrItems });
+    }
   }
 
+  return { sections, totalCommits: categorized.totalCommits };
+}
+
+function collectPipelineRisks(input: RenderInput) {
   const risks: string[] = [];
   for (const event of input.events) {
     if (event.eventType !== 'pipeline') {
@@ -115,34 +126,38 @@ function buildCommitBasedSummary(input: RenderInput): BriefingAiSummary {
       `${event.projectName}：${event.subject}（${status ?? event.action ?? 'failed'}）`,
     );
   }
+  return risks;
+}
 
-  const hasWork =
-    features.length > 0 || fixes.length > 0 || others.length > 0 || risks.length > 0;
+function resolveNarrative(input: RenderInput) {
+  const { sections, totalCommits } = buildCommitWorkItemSections(input);
+  const risks = input.aiSummary?.risks ?? collectPipelineRisks(input);
+  const otherNotes = input.aiSummary?.otherNotes ?? [];
+  const hasCommitSections = sections.some((section) => section.items.length > 0);
+  const hasWork = hasCommitSections || risks.length > 0 || otherNotes.length > 0;
+
+  if (input.aiSummary) {
+    return {
+      headline: input.aiSummary.headline,
+      summaryParagraph: input.aiSummary.summaryParagraph,
+      risks,
+      otherNotes,
+      hasWork,
+    };
+  }
 
   return {
-    source: 'fallback',
-    headline:
-      categorized.totalCommits > 0
-        ? `共 ${categorized.totalCommits} 次提交`
-        : hasWork
-          ? ''
-          : '',
+    headline: totalCommits > 0 ? `共 ${totalCommits} 次提交` : hasWork ? '' : '',
     summaryParagraph:
       input.events.length === 0
         ? '本日暂无研发活动记录。'
-        : !hasWork && categorized.totalCommits === 0
+        : !hasWork && totalCommits === 0
           ? '本日有研发事件，但未解析到可归纳的提交说明。'
           : '',
-    features,
-    fixes,
-    others,
     risks,
-    otherNotes: [],
+    otherNotes,
+    hasWork,
   };
-}
-
-function resolveSummary(input: RenderInput): BriefingAiSummary {
-  return input.aiSummary ?? buildCommitBasedSummary(input);
 }
 
 function appendMarkdownWorkItems(
@@ -163,47 +178,44 @@ function appendMarkdownWorkItems(
   }
 }
 
-function renderMainSummaryMarkdown(summary: BriefingAiSummary) {
+function renderMainSummaryMarkdown(input: RenderInput) {
+  const narrative = resolveNarrative(input);
+  const { sections } = buildCommitWorkItemSections(input);
   const lines = ['## 今日研发摘要'];
 
-  if (summary.headline.trim()) {
-    lines.push('', summary.headline.trim());
+  if (narrative.headline.trim()) {
+    lines.push('', narrative.headline.trim());
   }
-  if (summary.summaryParagraph.trim()) {
-    lines.push('', summary.summaryParagraph.trim());
+  if (narrative.summaryParagraph.trim()) {
+    lines.push('', narrative.summaryParagraph.trim());
   }
 
-  const hasWork =
-    summary.features.length +
-      summary.fixes.length +
-      summary.others.length +
-      summary.risks.length +
-      summary.otherNotes.length >
-    0;
-
-  if (!hasWork && !summary.headline.trim() && !summary.summaryParagraph.trim()) {
+  if (
+    !narrative.hasWork &&
+    !narrative.headline.trim() &&
+    !narrative.summaryParagraph.trim()
+  ) {
     lines.push('', '本日暂无研发活动记录。');
   }
 
-  appendMarkdownWorkItems(lines, '新功能', summary.features);
-  appendMarkdownWorkItems(lines, '问题修复', summary.fixes);
-  appendMarkdownWorkItems(lines, '其它提交（说明里未写 feat/fix）', summary.others);
-
-  if (summary.risks.length > 0) {
-    lines.push('', '### 风险与关注', ...summary.risks.map((item) => `- ${item}`));
+  for (const section of sections) {
+    appendMarkdownWorkItems(lines, section.label, section.items);
   }
-  if (summary.otherNotes.length > 0) {
-    lines.push('', '### 其它', ...summary.otherNotes.map((item) => `- ${item}`));
+
+  if (narrative.risks.length > 0) {
+    lines.push('', '### 风险与关注', ...narrative.risks.map((item) => `- ${item}`));
+  }
+  if (narrative.otherNotes.length > 0) {
+    lines.push('', '### 其它', ...narrative.otherNotes.map((item) => `- ${item}`));
   }
 
   return lines.join('\n');
 }
 
 export function renderBriefingMarkdown(input: RenderInput) {
-  const summary = resolveSummary(input);
   const title = formatBriefingTitle(input.projectName, input.date);
 
-  return [`# ${title}`, '', renderMainSummaryMarkdown(summary)].join('\n');
+  return [`# ${title}`, '', renderMainSummaryMarkdown(input)].join('\n');
 }
 
 function escapeHtml(value: string) {
@@ -238,42 +250,40 @@ function appendHtmlWorkItems(
   parts.push('</ul>');
 }
 
-function renderMainSummaryHtml(summary: BriefingAiSummary) {
+function renderMainSummaryHtml(input: RenderInput) {
+  const narrative = resolveNarrative(input);
+  const { sections } = buildCommitWorkItemSections(input);
   const parts = ['<h2>今日研发摘要</h2>'];
 
-  if (summary.headline.trim()) {
-    parts.push(`<p>${escapeHtml(summary.headline.trim())}</p>`);
+  if (narrative.headline.trim()) {
+    parts.push(`<p>${escapeHtml(narrative.headline.trim())}</p>`);
   }
-  if (summary.summaryParagraph.trim()) {
-    parts.push(`<p>${escapeHtml(summary.summaryParagraph.trim())}</p>`);
+  if (narrative.summaryParagraph.trim()) {
+    parts.push(`<p>${escapeHtml(narrative.summaryParagraph.trim())}</p>`);
   }
 
-  const hasWork =
-    summary.features.length +
-      summary.fixes.length +
-      summary.others.length +
-      summary.risks.length +
-      summary.otherNotes.length >
-    0;
-
-  if (!hasWork && !summary.headline.trim() && !summary.summaryParagraph.trim()) {
+  if (
+    !narrative.hasWork &&
+    !narrative.headline.trim() &&
+    !narrative.summaryParagraph.trim()
+  ) {
     parts.push('<p>本日暂无研发活动记录。</p>');
   }
 
-  appendHtmlWorkItems(parts, '新功能', summary.features);
-  appendHtmlWorkItems(parts, '问题修复', summary.fixes);
-  appendHtmlWorkItems(parts, '其它提交（说明里未写 feat/fix）', summary.others);
+  for (const section of sections) {
+    appendHtmlWorkItems(parts, section.label, section.items);
+  }
 
-  if (summary.risks.length > 0) {
+  if (narrative.risks.length > 0) {
     parts.push('<h3>风险与关注</h3><ul>');
-    for (const item of summary.risks) {
+    for (const item of narrative.risks) {
       parts.push(`<li>${escapeHtml(item)}</li>`);
     }
     parts.push('</ul>');
   }
-  if (summary.otherNotes.length > 0) {
+  if (narrative.otherNotes.length > 0) {
     parts.push('<h3>其它</h3><ul>');
-    for (const item of summary.otherNotes) {
+    for (const item of narrative.otherNotes) {
       parts.push(`<li>${escapeHtml(item)}</li>`);
     }
     parts.push('</ul>');
@@ -283,8 +293,7 @@ function renderMainSummaryHtml(summary: BriefingAiSummary) {
 }
 
 export function renderBriefingHtml(input: RenderInput) {
-  const summary = resolveSummary(input);
   const title = formatBriefingTitle(input.projectName, input.date);
 
-  return [`<h1>${escapeHtml(title)}</h1>`, renderMainSummaryHtml(summary)].join('\n');
+  return [`<h1>${escapeHtml(title)}</h1>`, renderMainSummaryHtml(input)].join('\n');
 }

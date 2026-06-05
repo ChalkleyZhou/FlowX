@@ -85,6 +85,27 @@ describe('briefing renderer', () => {
     expect(markdown).not.toContain('AI_EXECUTOR_PROVIDER');
   });
 
+  it('renders commitlint category sections for docs and chore commits', () => {
+    const markdown = renderBriefingMarkdown({
+      date: '2026-06-03',
+      projectName: 'FlowX',
+      events: [
+        event({
+          commits: [
+            { id: 'a1', message: 'docs(readme): update setup guide' },
+            { id: 'a2', message: 'chore(deps): bump vitest' },
+          ],
+          summary: { ref: 'main', commitCount: 2 },
+        }),
+      ],
+    });
+
+    expect(markdown).toContain('### 文档');
+    expect(markdown).toContain('docs(readme): update setup guide');
+    expect(markdown).toContain('### 杂项维护');
+    expect(markdown).toContain('chore(deps): bump vitest');
+  });
+
   it('escapes HTML content from commit messages', () => {
     const html = renderBriefingHtml({
       date: '2026-06-03',

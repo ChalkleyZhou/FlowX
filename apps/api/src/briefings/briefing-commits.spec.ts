@@ -4,6 +4,8 @@ import {
   collectDailyCommits,
   extractCommitsFromPush,
   isMeaningfulCommitMessage,
+  orderedCommitCategoryGroups,
+  parseConventionalCommitType,
   summarizeDailyCommits,
 } from './briefing-commits';
 import type { NormalizedBriefingEvent } from './briefing-events';
@@ -25,10 +27,20 @@ function pushEvent(overrides: Partial<NormalizedBriefingEvent> = {}): Normalized
 }
 
 describe('briefing commits', () => {
+  it('parses commitlint conventional commit types', () => {
+    expect(parseConventionalCommitType('feat(auth): add DingTalk login')).toBe('feat');
+    expect(parseConventionalCommitType('fix(briefing): dedupe webhook events')).toBe('fix');
+    expect(parseConventionalCommitType('docs(readme): update setup guide')).toBe('docs');
+    expect(parseConventionalCommitType('chore: bump deps')).toBe('chore');
+    expect(parseConventionalCommitType('refactor(api): split modules')).toBe('refactor');
+  });
+
   it('categorizes conventional commit prefixes', () => {
-    expect(categorizeCommitMessage('feat(auth): add DingTalk login')).toBe('feature');
+    expect(categorizeCommitMessage('feat(auth): add DingTalk login')).toBe('feat');
     expect(categorizeCommitMessage('fix(briefing): dedupe webhook events')).toBe('fix');
-    expect(categorizeCommitMessage('chore: bump deps')).toBe('other');
+    expect(categorizeCommitMessage('docs(api): document webhook setup')).toBe('docs');
+    expect(categorizeCommitMessage('chore: bump deps')).toBe('chore');
+    expect(categorizeCommitMessage('ci: add nightly workflow')).toBe('ci');
   });
 
   it('extracts commits from raw push payload when normalized payload has none', () => {
@@ -52,7 +64,10 @@ describe('briefing commits', () => {
     expect(commits[1]?.author).toBe('Bob');
   });
 
-  it('drops low-signal commit titles such as bare 翻译', () => {
+  it('keeps conventional chore and docs commits while dropping bare low-signal titles', () => {
+    expect(isMeaningfulCommitMessage('chore: bump deps')).toBe(true);
+    expect(isMeaningfulCommitMessage('docs: update user manual')).toBe(true);
+    expect(isMeaningfulCommitMessage('chore')).toBe(false);
     expect(isMeaningfulCommitMessage('翻译')).toBe(false);
     expect(isMeaningfulCommitMessage('销售模块子产品明细表单配置功能开发')).toBe(true);
 
@@ -69,11 +84,46 @@ describe('briefing commits', () => {
         projectName: 'r2os',
         occurredAt: '2026-06-03T01:00:00.000Z',
       },
+      {
+        id: '3',
+        message: 'docs(briefing): add commitlint categories',
+        projectName: 'r2os',
+        occurredAt: '2026-06-03T01:00:00.000Z',
+      },
+      {
+        id: '4',
+        message: 'chore(deps): upgrade vitest',
+        projectName: 'r2os',
+        occurredAt: '2026-06-03T01:00:00.000Z',
+      },
     ]);
 
-    expect(summary.totalCommits).toBe(1);
-    expect(summary.other).toHaveLength(1);
-    expect(summary.other[0]?.title).toContain('销售模块');
+    expect(summary.totalCommits).toBe(3);
+    expect(summary.byCategory.other).toHaveLength(1);
+    expect(summary.byCategory.other[0]?.title).toContain('销售模块');
+    expect(summary.byCategory.docs).toHaveLength(1);
+    expect(summary.byCategory.chore).toHaveLength(1);
+  });
+
+  it('groups commits by commitlint category', () => {
+    const summary = summarizeDailyCommits(
+      collectDailyCommits([
+        {
+          event: pushEvent({ projectName: 'flowx-api' }),
+          rawPayload: {
+            commits: [
+              { id: 'abc', message: 'feat: first' },
+              { id: 'def', message: 'fix: second' },
+              { id: 'ghi', message: 'docs: third' },
+            ],
+          },
+        },
+      ]),
+    );
+
+    const groups = orderedCommitCategoryGroups(summary);
+    expect(groups.map((group) => group.category)).toEqual(['feat', 'fix', 'docs']);
+    expect(summary.totalCommits).toBe(3);
   });
 
   it('dedupes commits across push events for the same day', () => {
@@ -95,7 +145,7 @@ describe('briefing commits', () => {
     );
 
     expect(summary.totalCommits).toBe(2);
-    expect(summary.features).toHaveLength(1);
-    expect(summary.fixes).toHaveLength(1);
+    expect(summary.byCategory.feat).toHaveLength(1);
+    expect(summary.byCategory.fix).toHaveLength(1);
   });
 });

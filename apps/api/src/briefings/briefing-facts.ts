@@ -1,8 +1,10 @@
 import type { NormalizedBriefingEvent } from './briefing-events';
 import {
+  categorizeCommitMessage,
   collectDailyCommits,
   summarizeDailyCommits,
   type BriefingCommit,
+  type CommitCategory,
 } from './briefing-commits';
 
 export interface BriefingFactsPayload {
@@ -21,6 +23,7 @@ export interface BriefingFactsPayload {
     ref?: string;
     message: string;
     author?: string;
+    category: CommitCategory;
   }>;
   mergeRequests: Array<{
     repository: string;
@@ -71,6 +74,7 @@ function commitFacts(commits: BriefingCommit[]) {
     ref: commit.ref,
     message: truncateMessage(commit.message),
     author: commit.author,
+    category: categorizeCommitMessage(commit.message),
   }));
 }
 

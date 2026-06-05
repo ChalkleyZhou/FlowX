@@ -8,7 +8,11 @@ import { AiInvocationContextService } from '../ai/ai-invocation-context.service'
 import { CodexAiExecutor } from '../ai/codex-ai.executor';
 import { buildBriefingSummaryPrompt } from '../prompts/briefing-summary.prompt';
 import { buildBriefingFacts, type BriefingFactsPayload } from './briefing-facts';
-import { summarizeDailyCommits, collectDailyCommits } from './briefing-commits';
+import {
+  collectDailyCommits,
+  orderedCommitCategoryGroups,
+  summarizeDailyCommits,
+} from './briefing-commits';
 import type { NormalizedBriefingEvent } from './briefing-events';
 
 export interface BriefingAiWorkItem {
@@ -123,21 +127,23 @@ export class BriefingAiSummarizerService {
     }));
     const categorized = summarizeDailyCommits(collectDailyCommits(eventInputs));
 
-    const features: BriefingAiWorkItem[] = categorized.features.map((item) => ({
-      title: item.title,
-      detail: '',
-      repositories: [item.projectName],
-    }));
-    const fixes: BriefingAiWorkItem[] = categorized.fixes.map((item) => ({
-      title: item.title,
-      detail: '',
-      repositories: [item.projectName],
-    }));
-    const others: BriefingAiWorkItem[] = categorized.other.map((item) => ({
-      title: item.title,
-      detail: '',
-      repositories: [item.projectName],
-    }));
+    const features: BriefingAiWorkItem[] = [];
+    const fixes: BriefingAiWorkItem[] = [];
+    const others: BriefingAiWorkItem[] = [];
+    for (const group of orderedCommitCategoryGroups(categorized)) {
+      const items = group.commits.map((item) => ({
+        title: item.title,
+        detail: '',
+        repositories: [item.projectName],
+      }));
+      if (group.category === 'feat') {
+        features.push(...items);
+      } else if (group.category === 'fix') {
+        fixes.push(...items);
+      } else {
+        others.push(...items);
+      }
+    }
 
     for (const mr of facts.mergeRequests.filter(
       (item) => item.action === 'merge' || item.state === 'merged',

@@ -9,7 +9,56 @@ export interface BriefingCommit {
   occurredAt: string;
 }
 
-export type CommitCategory = 'feature' | 'fix' | 'other';
+/** Conventional commit types from @commitlint/config-conventional */
+export const COMMITLINT_TYPES = [
+  'feat',
+  'fix',
+  'docs',
+  'style',
+  'refactor',
+  'perf',
+  'test',
+  'build',
+  'ci',
+  'chore',
+  'revert',
+] as const;
+
+export type CommitlintType = (typeof COMMITLINT_TYPES)[number];
+export type CommitCategory = CommitlintType | 'other';
+
+export const COMMIT_CATEGORY_ORDER: CommitCategory[] = [
+  'feat',
+  'fix',
+  'perf',
+  'refactor',
+  'docs',
+  'test',
+  'build',
+  'ci',
+  'chore',
+  'style',
+  'revert',
+  'other',
+];
+
+export const COMMIT_CATEGORY_LABELS: Record<CommitCategory, string> = {
+  feat: '新功能',
+  fix: '问题修复',
+  perf: '性能优化',
+  refactor: '重构',
+  docs: '文档',
+  test: '测试',
+  build: '构建',
+  ci: 'CI',
+  chore: '杂项维护',
+  style: '样式',
+  revert: '回滚',
+  other: '其它提交',
+};
+
+const CONVENTIONAL_COMMIT_TYPE_RE =
+  /^(feat|feature|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([\w\-./\s]+\))?!?:\s*.+/i;
 
 export interface CategorizedCommit extends BriefingCommit {
   category: CommitCategory;
@@ -19,9 +68,7 @@ export interface CategorizedCommit extends BriefingCommit {
 export interface DailyCommitSummary {
   totalCommits: number;
   repositoryCount: number;
-  features: CategorizedCommit[];
-  fixes: CategorizedCommit[];
-  other: CategorizedCommit[];
+  byCategory: Record<CommitCategory, CategorizedCommit[]>;
 }
 
 type RawPayload = Record<string, unknown>;
@@ -40,35 +87,73 @@ function firstLine(message: string) {
   return message.split('\n')[0]?.trim() || message.trim();
 }
 
+function emptyCategoryMap(): Record<CommitCategory, CategorizedCommit[]> {
+  return Object.fromEntries(
+    COMMIT_CATEGORY_ORDER.map((category) => [category, [] as CategorizedCommit[]]),
+  ) as Record<CommitCategory, CategorizedCommit[]>;
+}
+
 /** Skip commit titles that carry little product meaning in a daily report. */
 export function isMeaningfulCommitMessage(message: string): boolean {
   const line = firstLine(message);
   if (line.length < 4) {
     return false;
   }
+  if (CONVENTIONAL_COMMIT_TYPE_RE.test(line)) {
+    return true;
+  }
   const lower = line.toLowerCase();
-  if (/^(翻译|translation|merge|merged|wip|update|updates|bump|tmp|temp|test|chore|style|refactor|revert|sync)$/i.test(line)) {
+  if (/^(翻译|translation|merge|merged|wip|update|updates|bump|tmp|temp|sync)$/i.test(line)) {
     return false;
   }
   if (/^merge\b/i.test(lower)) {
     return false;
   }
+  if (/^(chore|style|refactor|revert|test)$/i.test(line)) {
+    return false;
+  }
   return true;
 }
 
+export function parseConventionalCommitType(message: string): CommitCategory | null {
+  const line = firstLine(message);
+  const match = line.match(
+    /^(feat|feature|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([\w\-./\s]+\))?!?:/i,
+  );
+  if (!match) {
+    return null;
+  }
+  const rawType = match[1].toLowerCase();
+  if (rawType === 'feature') {
+    return 'feat';
+  }
+  return rawType as CommitlintType;
+}
+
 export function categorizeCommitMessage(message: string): CommitCategory {
+  const conventional = parseConventionalCommitType(message);
+  if (conventional) {
+    return conventional;
+  }
+
   const line = firstLine(message).toLowerCase();
-  if (/^(feat|feature)(\(|:|\s)/.test(line)) {
-    return 'feature';
-  }
-  if (/^(fix|bugfix|hotfix|patch)(\(|:|\s)/.test(line)) {
-    return 'fix';
-  }
   if (/\b(fix|修复|bug)\b/.test(line) && !/^feat/.test(line)) {
     return 'fix';
   }
   if (/\b(feat|功能|新增|add)\b/.test(line) && !/^fix/.test(line)) {
-    return 'feature';
+    return 'feat';
+  }
+  if (/\b(docs?|文档|readme)\b/.test(line)) {
+    return 'docs';
+  }
+  if (/\b(chore|deps|dependency|bump)\b/.test(line)) {
+    return 'chore';
+  }
+  if (/\b(refactor|重构)\b/.test(line)) {
+    return 'refactor';
+  }
+  if (/\b(test|测试)\b/.test(line)) {
+    return 'test';
   }
   return 'other';
 }
@@ -210,22 +295,32 @@ export function collectDailyCommits(
 
 export function summarizeDailyCommits(commits: BriefingCommit[]): DailyCommitSummary {
   const meaningful = commits.filter((commit) => isMeaningfulCommitMessage(commit.message));
-  const categorized = meaningful.map((commit) => {
+  const byCategory = emptyCategoryMap();
+
+  for (const commit of meaningful) {
     const category = categorizeCommitMessage(commit.message);
-    return {
+    byCategory[category].push({
       ...commit,
       category,
       title: firstLine(commit.message),
-    };
-  });
+    });
+  }
+
+  const categorized = COMMIT_CATEGORY_ORDER.flatMap((category) => byCategory[category]);
 
   return {
     totalCommits: categorized.length,
     repositoryCount: new Set(categorized.map((item) => item.projectName)).size,
-    features: categorized.filter((item) => item.category === 'feature'),
-    fixes: categorized.filter((item) => item.category === 'fix'),
-    other: categorized.filter((item) => item.category === 'other'),
+    byCategory,
   };
+}
+
+export function orderedCommitCategoryGroups(summary: DailyCommitSummary) {
+  return COMMIT_CATEGORY_ORDER.map((category) => ({
+    category,
+    label: COMMIT_CATEGORY_LABELS[category],
+    commits: summary.byCategory[category],
+  })).filter((group) => group.commits.length > 0);
 }
 
 export function formatCommitBullet(commit: CategorizedCommit | BriefingCommit & { title?: string }) {
