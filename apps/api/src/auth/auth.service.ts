@@ -156,7 +156,9 @@ export class AuthService {
       backendOrigin: string;
     },
   ) {
-    return new URL(`/api/auth/${providerName}/callback`, input.backendOrigin).toString();
+    const origin = new URL(input.backendOrigin);
+    const pathPrefix = origin.port === '3000' ? '' : '/api';
+    return new URL(`${pathPrefix}/auth/${providerName}/callback`, origin).toString();
   }
 
   private encodeBrowserState(input: { callbackUrl: string; next?: string }) {

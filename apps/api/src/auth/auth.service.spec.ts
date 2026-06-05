@@ -13,6 +13,9 @@ describe('AuthService organization resolution', () => {
         findMany: vi.fn(),
         findUnique: vi.fn(),
       },
+      oAuthState: {
+        create: vi.fn(),
+      },
       ...prismaOverrides,
     };
 
@@ -111,5 +114,47 @@ describe('AuthService organization resolution', () => {
 
     expect(prisma.userOrganization.upsert).not.toHaveBeenCalled();
     expect(resolved).toBeNull();
+  });
+
+  it('builds direct API OAuth callback URL without the web proxy /api prefix', async () => {
+    const provider = {
+      getAuthorizeUrl: vi.fn().mockReturnValue({ url: 'https://login.example.test' }),
+    };
+    const { service } = createService();
+    (service as unknown as { providerRegistry: { getProvider: ReturnType<typeof vi.fn> } }).providerRegistry = {
+      listProviders: () => ['dingtalk'],
+      getProvider: vi.fn().mockReturnValue(provider),
+    } as never;
+
+    await service.createBrowserLoginUrl('dingtalk', {
+      backendOrigin: 'http://127.0.0.1:3000',
+      callbackUrl: 'cursor://flowx/callback',
+    });
+
+    expect(provider.getAuthorizeUrl).toHaveBeenCalledWith({
+      state: expect.any(String),
+      redirectUri: 'http://127.0.0.1:3000/auth/dingtalk/callback',
+    });
+  });
+
+  it('keeps the web proxy /api prefix for OAuth callbacks from the Vite dev origin', async () => {
+    const provider = {
+      getAuthorizeUrl: vi.fn().mockReturnValue({ url: 'https://login.example.test' }),
+    };
+    const { service } = createService();
+    (service as unknown as { providerRegistry: { getProvider: ReturnType<typeof vi.fn> } }).providerRegistry = {
+      listProviders: () => ['dingtalk'],
+      getProvider: vi.fn().mockReturnValue(provider),
+    } as never;
+
+    await service.createBrowserLoginUrl('dingtalk', {
+      backendOrigin: 'http://127.0.0.1:5173',
+      callbackUrl: 'http://127.0.0.1:5173/login',
+    });
+
+    expect(provider.getAuthorizeUrl).toHaveBeenCalledWith({
+      state: expect.any(String),
+      redirectUri: 'http://127.0.0.1:5173/api/auth/dingtalk/callback',
+    });
   });
 });
