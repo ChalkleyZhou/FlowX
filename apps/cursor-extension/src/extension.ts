@@ -124,6 +124,12 @@ export function activate(context: vscode.ExtensionContext) {
           openChat: async () => {
             await vscode.commands.executeCommand('workbench.action.chat.open');
           },
+          openFlowX: async () => {
+            const config = await getFlowXConfig(context);
+            const apiBaseUrl = config?.apiBaseUrl ?? 'http://127.0.0.1:3000';
+            await vscode.env.openExternal(vscode.Uri.parse(buildFlowXWebUrl(apiBaseUrl, '/requirements', process.env)));
+          },
+          refreshTasks: () => provider.refresh(),
           reportCompletion: reportTaskCompletion,
           showQuickPick: (items, placeHolder) => vscode.window.showQuickPick(items, { ignoreFocusOut: true, placeHolder }),
           startInChat: startTaskInChat,

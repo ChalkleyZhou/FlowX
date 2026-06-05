@@ -19,7 +19,9 @@ const readyTask: FlowXTaskItem = {
 function createDeps(overrides: Partial<Parameters<typeof showTaskActions>[0]> = {}) {
   return {
     copyPrompt: vi.fn(),
+    openFlowX: vi.fn(),
     openChat: vi.fn(),
+    refreshTasks: vi.fn(),
     reportCompletion: vi.fn(),
     showQuickPick: vi.fn(),
     startInChat: vi.fn(),
@@ -36,6 +38,7 @@ describe('showTaskActions', () => {
     await showTaskActions(deps, readyTask);
 
     expect(deps.startInChat).toHaveBeenCalledWith(readyTask);
+    expect(deps.refreshTasks).toHaveBeenCalled();
     expect(deps.reportCompletion).not.toHaveBeenCalled();
   });
 
@@ -75,5 +78,21 @@ describe('showTaskActions', () => {
       ]),
       'FlowX: Add local handoff',
     );
+  });
+
+  it('offers to open FlowX for blocked tasks without a local handoff', async () => {
+    const blockedTask = {
+      ...readyTask,
+      eligible: false,
+      ineligibleReason: 'Active workflow workflow-1 already exists.',
+    };
+    const deps = createDeps({
+      showQuickPick: vi.fn().mockResolvedValue({ action: 'openFlowX' }),
+    });
+
+    await showTaskActions(deps, blockedTask);
+
+    expect(deps.openFlowX).toHaveBeenCalledWith(blockedTask);
+    expect(deps.copyPrompt).not.toHaveBeenCalled();
   });
 });

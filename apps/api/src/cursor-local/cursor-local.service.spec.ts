@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { CursorLocalService } from './cursor-local.service';
 
@@ -11,6 +12,9 @@ function createService() {
       findMany: vi.fn(),
       findUniqueOrThrow: vi.fn(),
     },
+    workflowRun: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
     workspace: {
       findMany: vi.fn(),
     },
@@ -19,6 +23,8 @@ function createService() {
     createLocalChatWorkflowRun: vi.fn(),
     createLocalChatBugWorkflowRun: vi.fn(),
     claimLocalExecution: vi.fn(),
+    getLocalHandoff: vi.fn(),
+    findOne: vi.fn(),
   };
 
   return {
@@ -217,6 +223,114 @@ describe('CursorLocalService', () => {
     });
     expect(result.chatPrompt).toContain('Cursor Chat');
     expect(result.chatPrompt).toContain('CSV downloads with headers');
+  });
+
+  it('claims an existing execution-pending local chat workflow instead of creating a duplicate', async () => {
+    const { service, prisma, workflowService } = createService();
+    prisma.workflowRun.findMany.mockResolvedValue([
+      {
+        id: 'workflow-existing',
+        status: 'EXECUTION_PENDING',
+        runType: 'LOCAL_CHAT',
+        workflowRepositories: [{ repositoryId: 'repo-1' }],
+      },
+    ]);
+    workflowService.claimLocalExecution.mockResolvedValue({
+      workflow: { id: 'workflow-existing', status: 'EXECUTION_RUNNING' },
+      handoff: {
+        workflowRunId: 'workflow-existing',
+        requirement: {
+          id: 'req-1',
+          title: 'Export CSV',
+          description: 'Users need CSV export',
+          acceptanceCriteria: 'CSV downloads with headers',
+        },
+        repositories: [
+          {
+            name: 'flowx-web',
+            url: 'https://github.com/acme/flowx-web.git',
+            workingBranch: 'flowx/work/export/workflow-existing',
+          },
+        ],
+      },
+    });
+
+    const result = await service.startHandoff(
+      { taskType: 'requirement', taskId: 'req-1', repositoryIds: ['repo-1'] },
+      { user: { id: 'user-1', displayName: 'User' } },
+    );
+
+    expect(workflowService.createLocalChatWorkflowRun).not.toHaveBeenCalled();
+    expect(workflowService.claimLocalExecution).toHaveBeenCalledWith('workflow-existing', {
+      user: { id: 'user-1', displayName: 'User' },
+    });
+    expect(result.workflow.id).toBe('workflow-existing');
+    expect(result.chatPrompt).toContain('CSV downloads with headers');
+  });
+
+  it('returns handoff for an existing execution-running local chat workflow', async () => {
+    const { service, prisma, workflowService } = createService();
+    prisma.workflowRun.findMany.mockResolvedValue([
+      {
+        id: 'workflow-running',
+        status: 'EXECUTION_RUNNING',
+        runType: 'LOCAL_CHAT',
+        workflowRepositories: [{ repositoryId: 'repo-1' }],
+      },
+    ]);
+    workflowService.getLocalHandoff.mockResolvedValue({
+      workflowRunId: 'workflow-running',
+      requirement: {
+        id: 'req-1',
+        title: 'Export CSV',
+        description: 'Users need CSV export',
+        acceptanceCriteria: 'CSV downloads with headers',
+      },
+      repositories: [
+        {
+          name: 'flowx-web',
+          url: 'https://github.com/acme/flowx-web.git',
+          workingBranch: 'flowx/work/export/workflow-running',
+        },
+      ],
+    });
+
+    const result = await service.startHandoff({
+      taskType: 'requirement',
+      taskId: 'req-1',
+      repositoryIds: ['repo-1'],
+    });
+
+    expect(workflowService.createLocalChatWorkflowRun).not.toHaveBeenCalled();
+    expect(workflowService.claimLocalExecution).not.toHaveBeenCalled();
+    expect(workflowService.getLocalHandoff).toHaveBeenCalledWith('workflow-running');
+    expect(result.workflow).toEqual(expect.objectContaining({ id: 'workflow-running', status: 'EXECUTION_RUNNING' }));
+    expect(result.chatPrompt).toContain('Cursor Chat');
+    expect(result.chatPrompt).toContain('CSV downloads with headers');
+  });
+
+  it('does not create a duplicate when an existing local chat workflow is still preparing', async () => {
+    const { service, prisma, workflowService } = createService();
+    prisma.workflowRun.findMany.mockResolvedValue([
+      {
+        id: 'workflow-preparing',
+        status: 'REPOSITORY_GROUNDING_PENDING',
+        runType: 'LOCAL_CHAT',
+        workflowRepositories: [{ repositoryId: 'repo-1' }],
+      },
+    ]);
+
+    await expect(
+      service.startHandoff({
+        taskType: 'requirement',
+        taskId: 'req-1',
+        repositoryIds: ['repo-1'],
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(workflowService.createLocalChatWorkflowRun).not.toHaveBeenCalled();
+    expect(workflowService.claimLocalExecution).not.toHaveBeenCalled();
+    expect(workflowService.getLocalHandoff).not.toHaveBeenCalled();
   });
 
   it('creates a local chat bug workflow and returns bug-focused chat prompt', async () => {

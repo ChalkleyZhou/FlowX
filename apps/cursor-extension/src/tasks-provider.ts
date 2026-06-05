@@ -65,13 +65,11 @@ export class FlowXTasksProvider implements vscode.TreeDataProvider<vscode.TreeIt
     item.description = model.description;
     item.tooltip = model.tooltip;
     item.contextValue = model.contextValue;
-    if (model.reportable || model.startable) {
-      item.command = {
-        command: 'flowx.showTaskActions',
-        title: 'FlowX Task Actions',
-        arguments: [model.task],
-      };
-    }
+    item.command = {
+      command: 'flowx.showTaskActions',
+      title: 'FlowX Task Actions',
+      arguments: [model.task],
+    };
     return item;
   }
 

@@ -1,6 +1,6 @@
 import type { FlowXTaskItem } from './flowx-client';
 
-type TaskAction = 'start' | 'openChat' | 'copyPrompt' | 'report';
+type TaskAction = 'start' | 'openChat' | 'copyPrompt' | 'report' | 'openFlowX';
 
 interface TaskActionItem {
   label: string;
@@ -13,6 +13,8 @@ export interface TaskActionDeps {
   startInChat(task: FlowXTaskItem): PromiseLike<void>;
   openChat(task: FlowXTaskItem): PromiseLike<void>;
   copyPrompt(task: FlowXTaskItem): PromiseLike<void>;
+  openFlowX(task: FlowXTaskItem): PromiseLike<void>;
+  refreshTasks?(): void;
   reportCompletion(task: FlowXTaskItem): PromiseLike<void>;
 }
 
@@ -24,6 +26,7 @@ export async function showTaskActions(deps: TaskActionDeps, task: FlowXTaskItem)
 
   if (choice.action === 'start') {
     await deps.startInChat(task);
+    deps.refreshTasks?.();
     return;
   }
   if (choice.action === 'openChat') {
@@ -34,7 +37,12 @@ export async function showTaskActions(deps: TaskActionDeps, task: FlowXTaskItem)
     await deps.copyPrompt(task);
     return;
   }
+  if (choice.action === 'openFlowX') {
+    await deps.openFlowX(task);
+    return;
+  }
   await deps.reportCompletion(task);
+  deps.refreshTasks?.();
 }
 
 function buildTaskActionItems(task: FlowXTaskItem): TaskActionItem[] {
@@ -67,9 +75,9 @@ function buildTaskActionItems(task: FlowXTaskItem): TaskActionItem[] {
   }
   if (items.length === 0) {
     items.push({
-      label: 'Copy Saved Prompt',
+      label: 'Open FlowX',
       description: task.ineligibleReason ?? 'Task is not ready to start',
-      action: 'copyPrompt',
+      action: 'openFlowX',
     });
   }
   return items;

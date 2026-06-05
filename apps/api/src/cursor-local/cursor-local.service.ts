@@ -7,6 +7,17 @@ import { WorkflowRunStatus, WorkflowRunType } from '../common/enums';
 
 type LocalChatTaskType = 'requirement' | 'bug';
 
+const LOCAL_CHAT_READY_POLL_INTERVAL_MS = 250;
+const LOCAL_CHAT_READY_TIMEOUT_MS = 15_000;
+
+type LocalBugContext = {
+  title?: string | null;
+  description?: string | null;
+  expectedBehavior?: string | null;
+  actualBehavior?: string | null;
+  reproductionSteps?: unknown;
+};
+
 type WorkflowSession = {
   user: {
     id: string;
@@ -148,6 +159,12 @@ export class CursorLocalService {
       dto.taskType === 'bug'
         ? await this.prisma.bug.findUniqueOrThrow({ where: { id: dto.taskId } })
         : null;
+
+    const existingWorkflow = await this.findExistingLocalChatWorkflow(dto);
+    if (existingWorkflow) {
+      return this.continueLocalChatWorkflow(existingWorkflow, dto, bugContext, session);
+    }
+
     const workflow =
       dto.taskType === 'bug'
         ? await this.workflowService.createLocalChatBugWorkflowRun(dto.taskId, {
@@ -160,19 +177,105 @@ export class CursorLocalService {
             aiProvider: dto.aiProvider,
           });
 
-    if (workflow.status !== 'EXECUTION_PENDING') {
+    const readyWorkflow = await this.waitForLocalChatExecutionPending(workflow);
+    if (!readyWorkflow) {
       throw new ConflictException('Local chat workflow repositories are still preparing. Please retry shortly.');
     }
 
-    const claimed = await this.workflowService.claimLocalExecution(workflow.id, session);
-    const repository = claimed.handoff.repositories[0];
+    const claimed = await this.workflowService.claimLocalExecution(readyWorkflow.id, session);
+    return this.buildStartHandoffResult(dto, bugContext, claimed.workflow, claimed.handoff);
+  }
+
+  private async findExistingLocalChatWorkflow(dto: StartLocalChatDto) {
+    if (dto.taskType !== 'requirement') {
+      return null;
+    }
+
+    const workflows = await this.prisma.workflowRun.findMany({
+      where: {
+        requirementId: dto.taskId,
+        runType: WorkflowRunType.LOCAL_CHAT,
+        status: {
+          notIn: ['DONE', 'FAILED'],
+        },
+      },
+      include: {
+        workflowRepositories: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    const repositoryIds = new Set((dto.repositoryIds ?? []).map((id) => id.trim()).filter(Boolean));
+    if (repositoryIds.size === 0) {
+      return workflows[0] ?? null;
+    }
+
+    return (
+      workflows.find((workflow) =>
+        workflow.workflowRepositories.some((repository) =>
+          repository.repositoryId ? repositoryIds.has(repository.repositoryId) : false,
+        ),
+      ) ?? null
+    );
+  }
+
+  private async continueLocalChatWorkflow(
+    workflow: { id: string; status: string },
+    dto: StartLocalChatDto,
+    bugContext: LocalBugContext | null,
+    session?: WorkflowSession,
+  ) {
+    const status = this.normalizeWorkflowStatus(workflow.status);
+    if (status === WorkflowRunStatus.EXECUTION_PENDING) {
+      const claimed = await this.workflowService.claimLocalExecution(workflow.id, session);
+      return this.buildStartHandoffResult(dto, bugContext, claimed.workflow, claimed.handoff);
+    }
+
+    if (status === WorkflowRunStatus.EXECUTION_RUNNING) {
+      const handoff = await this.workflowService.getLocalHandoff(workflow.id);
+      return this.buildStartHandoffResult(dto, bugContext, workflow, handoff);
+    }
+
+    throw new ConflictException('Local chat workflow repositories are still preparing. Please retry shortly.');
+  }
+
+  private async waitForLocalChatExecutionPending(workflow: { id: string; status: string }) {
+    if (this.normalizeWorkflowStatus(workflow.status) === WorkflowRunStatus.EXECUTION_PENDING) {
+      return workflow;
+    }
+
+    const deadline = Date.now() + LOCAL_CHAT_READY_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, LOCAL_CHAT_READY_POLL_INTERVAL_MS));
+      const latest = await this.workflowService.findOne(workflow.id);
+      const status = this.normalizeWorkflowStatus(latest.status);
+      if (status === WorkflowRunStatus.EXECUTION_PENDING) {
+        return latest;
+      }
+      if ([WorkflowRunStatus.FAILED, WorkflowRunStatus.DONE].includes(status as WorkflowRunStatus)) {
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  private buildStartHandoffResult(
+    dto: StartLocalChatDto,
+    bugContext: LocalBugContext | null,
+    workflow: { id: string; status: string },
+    handoff: Awaited<ReturnType<WorkflowService['getLocalHandoff']>>,
+  ) {
+    const repository = handoff.repositories[0];
     const chatPrompt = buildLocalChatPrompt({
       taskType: dto.taskType,
       taskId: dto.taskId,
-      workflowRunId: claimed.handoff.workflowRunId,
-      title: bugContext?.title ?? claimed.handoff.requirement.title,
-      description: bugContext?.description ?? claimed.handoff.requirement.description,
-      acceptanceCriteria: dto.taskType === 'requirement' ? claimed.handoff.requirement.acceptanceCriteria : undefined,
+      workflowRunId: handoff.workflowRunId,
+      title: bugContext?.title ?? handoff.requirement.title,
+      description: bugContext?.description ?? handoff.requirement.description,
+      acceptanceCriteria: dto.taskType === 'requirement' ? handoff.requirement.acceptanceCriteria : undefined,
       expectedBehavior: bugContext?.expectedBehavior,
       actualBehavior: bugContext?.actualBehavior,
       reproductionSteps: Array.isArray(bugContext?.reproductionSteps)
@@ -186,8 +289,8 @@ export class CursorLocalService {
     });
 
     return {
-      workflow: claimed.workflow,
-      handoff: claimed.handoff,
+      workflow,
+      handoff,
       chatPrompt,
       taskType: dto.taskType,
       taskId: dto.taskId,

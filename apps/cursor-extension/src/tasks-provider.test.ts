@@ -150,4 +150,26 @@ describe('FlowXTasksProvider', () => {
       arguments: [baseTask],
     });
   });
+
+  it('opens an action menu when a blocked task is selected', async () => {
+    const vscode = createVscodeMock();
+    const blockedTask = {
+      ...baseTask,
+      eligible: false,
+      ineligibleReason: 'Active workflow workflow-1 already exists.',
+    };
+    const context = {} as never;
+    const provider = new FlowXTasksProvider(vscode as never, context, () => ({
+      listTasks: async () => [blockedTask],
+    }) as never);
+
+    const [item] = await provider.getChildren();
+
+    expect(item.command).toEqual({
+      command: 'flowx.showTaskActions',
+      title: 'FlowX Task Actions',
+      arguments: [blockedTask],
+    });
+  });
+
 });
