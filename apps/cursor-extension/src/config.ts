@@ -117,3 +117,8 @@ async function selectOrganizationAndExchangeToken(
 export async function configureFlowX(context: vscode.ExtensionContext) {
   return signInToFlowX(context);
 }
+
+export async function signOutFromFlowX(context: vscode.ExtensionContext) {
+  await context.secrets.delete(API_TOKEN_SECRET_KEY);
+  vscode.window.showInformationMessage('FlowX signed out.');
+}

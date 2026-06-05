@@ -108,6 +108,75 @@ describe('CursorLocalService', () => {
     );
   });
 
+  it('only marks local-chat execution-running workflows as reportable', async () => {
+    const { service, prisma } = createService();
+    prisma.requirement.findMany.mockResolvedValue([
+      {
+        id: 'req-1',
+        title: 'Export CSV',
+        status: 'ACTIVE',
+        priority: 'HIGH',
+        planningStatus: 'SCHEDULED',
+        requirementRepositories: [
+          {
+            repository: {
+              id: 'repo-1',
+              name: 'flowx-web',
+              url: 'https://github.com/acme/flowx-web.git',
+            },
+          },
+        ],
+        workflowRuns: [
+          {
+            id: 'workflow-plan-1',
+            runType: 'LOCAL_CHAT',
+            status: 'PLAN_PENDING',
+            workflowRepositories: [],
+          },
+          {
+            id: 'workflow-local-1',
+            runType: 'LOCAL_CHAT',
+            status: 'EXECUTION_RUNNING',
+            workflowRepositories: [],
+          },
+        ],
+      },
+    ]);
+    prisma.bug.findMany.mockResolvedValue([
+      {
+        id: 'bug-1',
+        title: 'Login fails',
+        status: 'OPEN',
+        priority: 'MEDIUM',
+        repository: {
+          id: 'repo-2',
+          name: 'flowx-api',
+          url: 'https://github.com/acme/flowx-api.git',
+        },
+        fixWorkflowRun: {
+          id: 'workflow-bug-1',
+          runType: 'BUG_FIX',
+          status: 'EXECUTION_RUNNING',
+        },
+      },
+    ]);
+
+    const tasks = await service.listTasks({});
+
+    expect(tasks).toEqual([
+      expect.objectContaining({
+        id: 'req-1',
+        eligible: false,
+        workflowRunId: 'workflow-local-1',
+      }),
+      expect.objectContaining({
+        id: 'bug-1',
+        eligible: false,
+        workflowRunId: null,
+      }),
+    ]);
+  });
+
   it('creates a local chat workflow, claims local execution, and returns a chat prompt', async () => {
     const { service, workflowService } = createService();
     workflowService.createLocalChatWorkflowRun.mockResolvedValue({

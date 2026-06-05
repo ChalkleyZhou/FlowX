@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { startInChat } from './handoff';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { buildPromptFromLocalHandoff, readTaskPromptFile, startInChat, writeTaskPromptFile } from './handoff';
 import type { FlowXTaskItem } from './flowx-client';
 
 const task: FlowXTaskItem = {
@@ -71,6 +74,32 @@ describe('startInChat', () => {
     expect(deps.showError).toHaveBeenCalledWith(expect.stringContaining('Repository mismatch'));
   });
 
+  it('allows handoff when only the FlowX repository name matches the local remote', async () => {
+    const deps = createDeps({
+      getGitReport: vi.fn().mockResolvedValue({
+        currentRemoteUrl: 'git@gitlab.rokid-inc.com:a2d2/a2os.git',
+        dirty: false,
+        gitRoot: '/repo/a2os',
+      }),
+    });
+
+    await startInChat(deps, {
+      ...task,
+      repository: {
+        id: 'repo-1',
+        name: 'a2os',
+        url: null,
+      },
+    });
+
+    expect(deps.showError).not.toHaveBeenCalled();
+    expect(deps.startHandoff).toHaveBeenCalledWith({
+      repositoryIds: ['repo-1'],
+      taskId: 'req-1',
+      taskType: 'requirement',
+    });
+  });
+
   it('lets the user cancel when the local tree is dirty', async () => {
     const deps = createDeps({
       getGitReport: vi.fn().mockResolvedValue({
@@ -85,5 +114,43 @@ describe('startInChat', () => {
 
     expect(deps.startHandoff).not.toHaveBeenCalled();
     expect(deps.writeTaskFile).not.toHaveBeenCalled();
+  });
+});
+
+describe('task prompt files', () => {
+  it('reads a saved FlowX prompt', async () => {
+    const gitRoot = await mkdtemp(path.join(tmpdir(), 'flowx-prompt-'));
+    try {
+      await writeTaskPromptFile(gitRoot, 'req-1', '# FlowX handoff');
+
+      await expect(readTaskPromptFile(gitRoot, 'req-1')).resolves.toBe('# FlowX handoff');
+    } finally {
+      await rm(gitRoot, { force: true, recursive: true });
+    }
+  });
+
+  it('rebuilds a FlowX prompt from active local handoff metadata', () => {
+    const prompt = buildPromptFromLocalHandoff(task, {
+      workflowRunId: 'workflow-1',
+      requirement: {
+        id: 'req-1',
+        title: 'Add local handoff',
+        description: 'Implement local chat handoff',
+        acceptanceCriteria: 'Prompt can be copied again',
+      },
+      repositories: [
+        {
+          workflowRepositoryId: 'workflow-repo-1',
+          name: 'FlowX',
+          url: 'https://github.com/flowx-ai/flowx.git',
+          workingBranch: 'flowx/work/local-handoff/workflow-1',
+        },
+      ],
+    });
+
+    expect(prompt).toContain('# FlowX Requirement: Add local handoff');
+    expect(prompt).toContain('- Workflow run id: workflow-1');
+    expect(prompt).toContain('- Working branch: flowx/work/local-handoff/workflow-1');
+    expect(prompt).toContain('Prompt can be copied again');
   });
 });

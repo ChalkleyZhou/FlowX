@@ -45,6 +45,14 @@ describe('matchRepository', () => {
       match: false,
     });
   });
+
+  it('matches by repository name when FlowX has no repository url', () => {
+    expect(matchRepository(null, 'git@gitlab.rokid-inc.com:a2d2/a2os.git', 'a2os')).toEqual({
+      currentRemote: 'gitlab.rokid-inc.com/a2d2/a2os',
+      expectedRemote: 'a2os',
+      match: true,
+    });
+  });
 });
 
 describe('resolveWorkspacePath', () => {

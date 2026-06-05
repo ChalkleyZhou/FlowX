@@ -37,6 +37,26 @@ export interface LocalChatHandoff {
   taskId: string;
 }
 
+export interface LocalHandoffPayload {
+  workflowRunId: string;
+  status?: string;
+  executor?: 'LOCAL';
+  requirement: {
+    id: string;
+    title: string;
+    description: string;
+    acceptanceCriteria: string;
+  };
+  repositories: Array<{
+    workflowRepositoryId: string;
+    repositoryId?: string | null;
+    name: string;
+    url: string | null;
+    baseBranch?: string;
+    workingBranch: string;
+  }>;
+}
+
 export interface CompleteLocalInput {
   repositories: Array<{
     workflowRepositoryId: string;
@@ -63,6 +83,12 @@ export class FlowXClient {
       method: 'POST',
       body: JSON.stringify(input),
     });
+  }
+
+  async getLocalHandoff(workflowRunId: string): Promise<LocalHandoffPayload> {
+    return this.request<LocalHandoffPayload>(
+      `/workflow-runs/${encodeURIComponent(workflowRunId)}/execution/local-handoff`,
+    );
   }
 
   async completeLocal(workflowRunId: string, input: CompleteLocalInput): Promise<unknown> {

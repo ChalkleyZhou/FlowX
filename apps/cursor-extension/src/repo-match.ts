@@ -29,14 +29,22 @@ export function normalizeRemoteUrl(remoteUrl: string | null | undefined): string
   }
 }
 
-export function matchRepository(taskRemoteUrl: string | null | undefined, currentRemoteUrl: string | null | undefined): RepositoryMatch {
-  const expectedRemote = normalizeRemoteUrl(taskRemoteUrl);
+export function matchRepository(
+  taskRemoteUrl: string | null | undefined,
+  currentRemoteUrl: string | null | undefined,
+  taskRepositoryName?: string | null,
+): RepositoryMatch {
+  const expectedRemote = normalizeRemoteUrl(taskRemoteUrl) ?? normalizeRepositoryName(taskRepositoryName);
   const currentRemote = normalizeRemoteUrl(currentRemoteUrl);
 
   return {
     currentRemote,
     expectedRemote,
-    match: Boolean(expectedRemote && currentRemote && expectedRemote === currentRemote),
+    match: Boolean(
+      expectedRemote &&
+        currentRemote &&
+        (expectedRemote === currentRemote || currentRemote.split('/').at(-1) === expectedRemote),
+    ),
   };
 }
 
@@ -70,4 +78,9 @@ function normalizeRemoteParts(host: string, path: string): string {
 
 function stripGitSuffix(value: string): string {
   return value.replace(/\.git\/?$/i, '');
+}
+
+function normalizeRepositoryName(name: string | null | undefined): string | null {
+  const cleanName = name?.trim();
+  return cleanName ? stripGitSuffix(cleanName).toLowerCase() : null;
 }

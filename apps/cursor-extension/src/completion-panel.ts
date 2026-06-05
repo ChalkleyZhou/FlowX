@@ -20,6 +20,7 @@ export interface ReportCompletionDeps {
   getGitRoot(): Promise<string | null>;
   collectGitReport(gitRoot: string): Promise<GitCompletionReport>;
   loadHandoffSnapshot(gitRoot: string, taskId: string): Promise<HandoffSnapshot | null>;
+  restoreHandoffSnapshot?(gitRoot: string, task: FlowXTaskItem): Promise<HandoffSnapshot | null>;
   completeLocal(workflowRunId: string, input: CompleteLocalInput): Promise<unknown>;
   saveCompletionDraft(gitRoot: string, workflowRunId: string, payload: CompleteLocalInput): Promise<unknown>;
   showInput(prompt: string): PromiseLike<string | undefined>;
@@ -36,7 +37,7 @@ export async function reportCompletion(deps: ReportCompletionDeps, task: FlowXTa
     return;
   }
 
-  const snapshot = await deps.loadHandoffSnapshot(gitRoot, task.id);
+  const snapshot = (await deps.loadHandoffSnapshot(gitRoot, task.id)) ?? (await deps.restoreHandoffSnapshot?.(gitRoot, task));
   const workflowRunId = snapshot?.workflowRunId ?? task.workflowRunId;
   const workflowRepositoryId = snapshot?.workflowRepositoryId;
   if (!workflowRunId || !workflowRepositoryId) {

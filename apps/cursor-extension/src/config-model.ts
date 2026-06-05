@@ -17,18 +17,28 @@ export function normalizeApiBaseUrl(input: string): string {
   const url = new URL(input.trim());
   if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
     url.port = '3000';
+    url.pathname = '';
   }
-  url.pathname = '';
   url.search = '';
   url.hash = '';
   return url.toString().replace(/\/$/, '');
 }
 
 export function buildFlowXLoginUrl(input: { apiBaseUrl: string; callbackUrl: string }): string {
-  const url = new URL('/auth/dingtalk/login', input.apiBaseUrl);
+  const url = buildFlowXApiUrl(input.apiBaseUrl, '/auth/dingtalk/login');
   url.searchParams.set('callbackUrl', input.callbackUrl);
   url.searchParams.set('next', '/requirements');
   return url.toString();
+}
+
+export function buildFlowXApiUrl(apiBaseUrl: string, path: string): URL {
+  const base = new URL(apiBaseUrl);
+  const basePath = base.pathname.replace(/\/$/, '');
+  const nextPath = path.startsWith('/') ? path : `/${path}`;
+  base.pathname = `${basePath}${nextPath}`;
+  base.search = '';
+  base.hash = '';
+  return base;
 }
 
 export function buildFlowXWebUrl(apiBaseUrl: string, path: string, env: Record<string, string | undefined> = {}): string {

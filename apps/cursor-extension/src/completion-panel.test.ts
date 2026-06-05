@@ -34,6 +34,7 @@ function createDeps(overrides: Partial<Parameters<typeof reportCompletion>[0]> =
       workflowRepositoryId: 'workflow-repo-1',
       workflowRunId: 'workflow-1',
     }),
+    restoreHandoffSnapshot: vi.fn(),
     saveCompletionDraft: vi.fn(),
     showError: vi.fn(),
     showInfo: vi.fn(),
@@ -94,5 +95,28 @@ describe('reportCompletion', () => {
 
     expect(deps.saveCompletionDraft).toHaveBeenCalledWith('/repo/flowx', 'workflow-1', expect.any(Object));
     expect(deps.showError).toHaveBeenCalledWith(expect.stringContaining('API unavailable'));
+  });
+
+  it('restores missing handoff metadata before reporting completion', async () => {
+    const deps = createDeps({
+      loadHandoffSnapshot: vi.fn().mockResolvedValue(null),
+      restoreHandoffSnapshot: vi.fn().mockResolvedValue({
+        taskId: 'req-1',
+        taskType: 'requirement',
+        workflowRepositoryId: 'workflow-repo-1',
+        workflowRunId: 'workflow-1',
+      }),
+    });
+
+    await reportCompletion(deps, task);
+
+    expect(deps.restoreHandoffSnapshot).toHaveBeenCalledWith('/repo/flowx', task);
+    expect(deps.completeLocal).toHaveBeenCalledWith('workflow-1', expect.objectContaining({
+      repositories: [
+        expect.objectContaining({
+          workflowRepositoryId: 'workflow-repo-1',
+        }),
+      ],
+    }));
   });
 });

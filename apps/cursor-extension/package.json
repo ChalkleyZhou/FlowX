@@ -34,12 +34,20 @@
         "title": "FlowX: Sign in"
       },
       {
+        "command": "flowx.signOut",
+        "title": "FlowX: Sign out"
+      },
+      {
         "command": "flowx.refreshTasks",
         "title": "FlowX: Refresh Tasks"
       },
       {
         "command": "flowx.openRequirements",
         "title": "FlowX: Open Requirements"
+      },
+      {
+        "command": "flowx.showTaskActions",
+        "title": "FlowX: Task Actions"
       },
       {
         "command": "flowx.startInChat",
@@ -53,17 +61,17 @@
     "menus": {
       "view/item/context": [
         {
-          "command": "flowx.startInChat",
-          "when": "view == flowxTasks && viewItem == flowxTask.startable",
-          "group": "inline"
-        },
-        {
-          "command": "flowx.reportCompletion",
-          "when": "view == flowxTasks && viewItem == flowxTask.reportable",
+          "command": "flowx.showTaskActions",
+          "when": "view == flowxTasks && (viewItem == flowxTask.startable || viewItem == flowxTask.reportable)",
           "group": "inline"
         },
         {
           "command": "flowx.refreshTasks",
+          "when": "view == flowxTasks",
+          "group": "navigation"
+        },
+        {
+          "command": "flowx.signOut",
           "when": "view == flowxTasks",
           "group": "navigation"
         }

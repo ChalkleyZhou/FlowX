@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WorkflowService } from '../workflow/workflow.service';
 import { buildLocalChatPrompt } from '../workflow/local-chat-prompt';
 import { StartLocalChatDto } from './dto/start-local-chat.dto';
+import { WorkflowRunStatus, WorkflowRunType } from '../common/enums';
 
 type LocalChatTaskType = 'requirement' | 'bug';
 
@@ -74,9 +75,8 @@ export class CursorLocalService {
     return [
       ...requirements.map((requirement) => {
         const repository = requirement.requirementRepositories[0]?.repository ?? null;
-        const activeWorkflow = requirement.workflowRuns.find(
-          (workflow) => !['DONE', 'FAILED'].includes(workflow.status),
-        );
+        const localExecutionWorkflow = requirement.workflowRuns.find((workflow) => this.isReportableLocalWorkflow(workflow));
+        const activeWorkflow = localExecutionWorkflow ?? requirement.workflowRuns.find((workflow) => this.isActiveWorkflow(workflow));
         return this.buildTaskItem({
           id: requirement.id,
           type: 'requirement',
@@ -85,7 +85,7 @@ export class CursorLocalService {
           priority: requirement.priority,
           scheduleSignal: requirement.planningStatus,
           repository,
-          workflowRunId: activeWorkflow?.id ?? null,
+          workflowRunId: localExecutionWorkflow?.id ?? null,
           eligible: !!repository && !activeWorkflow,
           ineligibleReason: !repository
             ? 'No active repository is bound to this requirement.'
@@ -96,7 +96,7 @@ export class CursorLocalService {
       }),
       ...bugs.map((bug) => {
         const activeFixWorkflow =
-          bug.fixWorkflowRun && !['DONE', 'FAILED'].includes(bug.fixWorkflowRun.status)
+          bug.fixWorkflowRun && this.isActiveWorkflow(bug.fixWorkflowRun)
             ? bug.fixWorkflowRun
             : null;
         return this.buildTaskItem({
@@ -107,7 +107,7 @@ export class CursorLocalService {
           priority: bug.priority,
           scheduleSignal: null,
           repository: bug.repository,
-          workflowRunId: activeFixWorkflow?.id ?? null,
+          workflowRunId: activeFixWorkflow && this.isReportableLocalWorkflow(activeFixWorkflow) ? activeFixWorkflow.id : null,
           eligible: !!bug.repository && !activeFixWorkflow,
           ineligibleReason: !bug.repository
             ? 'No repository is bound to this bug.'
@@ -117,6 +117,22 @@ export class CursorLocalService {
         });
       }),
     ];
+  }
+
+  private isActiveWorkflow(workflow: { status: string }) {
+    const status = this.normalizeWorkflowStatus(workflow.status);
+    return ![WorkflowRunStatus.DONE, WorkflowRunStatus.FAILED].includes(status as WorkflowRunStatus);
+  }
+
+  private isReportableLocalWorkflow(workflow: { runType?: string | null; status: string }) {
+    return (
+      workflow.runType === WorkflowRunType.LOCAL_CHAT &&
+      this.normalizeWorkflowStatus(workflow.status) === WorkflowRunStatus.EXECUTION_RUNNING
+    );
+  }
+
+  private normalizeWorkflowStatus(status: string) {
+    return status.toLowerCase();
   }
 
   private async resolveWorkspaceFilter(filters: { workspaceId?: string; session?: WorkflowSession }) {

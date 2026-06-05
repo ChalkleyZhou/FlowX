@@ -1,0 +1,79 @@
+import { describe, expect, it, vi } from 'vitest';
+import { showTaskActions } from './task-actions';
+import type { FlowXTaskItem } from './flowx-client';
+
+const readyTask: FlowXTaskItem = {
+  eligible: true,
+  id: 'req-1',
+  repository: {
+    id: 'repo-1',
+    name: 'FlowX',
+    url: 'https://github.com/flowx-ai/flowx.git',
+  },
+  status: 'ACTIVE',
+  title: 'Add local handoff',
+  type: 'requirement',
+  workflowRunId: null,
+};
+
+function createDeps(overrides: Partial<Parameters<typeof showTaskActions>[0]> = {}) {
+  return {
+    copyPrompt: vi.fn(),
+    openChat: vi.fn(),
+    reportCompletion: vi.fn(),
+    showQuickPick: vi.fn(),
+    startInChat: vi.fn(),
+    ...overrides,
+  };
+}
+
+describe('showTaskActions', () => {
+  it('starts chat only after the user chooses Start in Chat', async () => {
+    const deps = createDeps({
+      showQuickPick: vi.fn().mockResolvedValue({ action: 'start' }),
+    });
+
+    await showTaskActions(deps, readyTask);
+
+    expect(deps.startInChat).toHaveBeenCalledWith(readyTask);
+    expect(deps.reportCompletion).not.toHaveBeenCalled();
+  });
+
+  it('reports completion only after the user chooses Report Completion', async () => {
+    const workingTask = {
+      ...readyTask,
+      eligible: false,
+      workflowRunId: 'workflow-1',
+    };
+    const deps = createDeps({
+      showQuickPick: vi.fn().mockResolvedValue({ action: 'report' }),
+    });
+
+    await showTaskActions(deps, workingTask);
+
+    expect(deps.reportCompletion).toHaveBeenCalledWith(workingTask);
+    expect(deps.startInChat).not.toHaveBeenCalled();
+  });
+
+  it('labels prompt copying as a saved local prompt action', async () => {
+    const workingTask = {
+      ...readyTask,
+      eligible: false,
+      workflowRunId: 'workflow-1',
+    };
+    const deps = createDeps({
+      showQuickPick: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await showTaskActions(deps, workingTask);
+
+    expect(deps.showQuickPick).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Copy Saved Prompt',
+        }),
+      ]),
+      'FlowX: Add local handoff',
+    );
+  });
+});

@@ -14,7 +14,7 @@ export interface FlowXTaskViewModel {
 export function buildTaskViewModels(tasks: FlowXTaskItem[], currentRemoteUrl: string | null): FlowXTaskViewModel[] {
   return tasks.map((task) => {
     const description = `${task.type} / ${task.status} / ${task.repository?.name ?? 'No repository'}`;
-    const repositoryMatch = matchRepository(task.repository?.url, currentRemoteUrl);
+    const repositoryMatch = matchRepository(task.repository?.url, currentRemoteUrl, task.repository?.name);
     const blockedReason = getBlockedReason(task, repositoryMatch);
 
     return {

@@ -14,7 +14,7 @@ vi.mock('./repo-match', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./repo-match')>();
   return {
     ...actual,
-    getOriginRemoteUrl: vi.fn(async () => null),
+    getOriginRemoteUrl: vi.fn(async () => 'git@github.com:flowx-ai/flowx.git'),
     getWorkspaceGitRoot: vi.fn(async () => '/workspace/repo'),
     resolveWorkspacePath: vi.fn(() => '/workspace/repo'),
   };
@@ -93,8 +93,8 @@ describe('buildTaskViewModels', () => {
 });
 
 describe('FlowXTasksProvider', () => {
-  it('offers to open FlowX requirements when no local-chat tasks exist', async () => {
-    const vscode = {
+  function createVscodeMock() {
+    return {
       EventEmitter: class {
         event = vi.fn();
         fire = vi.fn();
@@ -117,6 +117,10 @@ describe('FlowXTasksProvider', () => {
         workspaceFolders: [{ uri: { fsPath: '/workspace/repo' } }],
       },
     };
+  }
+
+  it('offers to open FlowX requirements when no local-chat tasks exist', async () => {
+    const vscode = createVscodeMock();
     const context = {} as never;
     const provider = new FlowXTasksProvider(vscode as never, context, () => ({
       listTasks: async () => [],
@@ -128,6 +132,22 @@ describe('FlowXTasksProvider', () => {
     expect(item.command).toEqual({
       command: 'flowx.openRequirements',
       title: 'Open FlowX Requirements',
+    });
+  });
+
+  it('opens an action menu when a task is selected', async () => {
+    const vscode = createVscodeMock();
+    const context = {} as never;
+    const provider = new FlowXTasksProvider(vscode as never, context, () => ({
+      listTasks: async () => [baseTask],
+    }) as never);
+
+    const [item] = await provider.getChildren();
+
+    expect(item.command).toEqual({
+      command: 'flowx.showTaskActions',
+      title: 'FlowX Task Actions',
+      arguments: [baseTask],
     });
   });
 });

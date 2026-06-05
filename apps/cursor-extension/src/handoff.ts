@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import type { FlowXTaskItem, LocalChatHandoff, StartLocalChatInput } from './flowx-client';
+import type { FlowXTaskItem, LocalChatHandoff, LocalHandoffPayload, StartLocalChatInput } from './flowx-client';
 import {
   getOriginRemoteUrl,
   getWorkspaceGitRoot,
@@ -38,7 +38,7 @@ export async function startInChat(deps: StartInChatDeps, task: FlowXTaskItem): P
     return;
   }
 
-  const repositoryMatch = matchRepository(task.repository?.url, gitReport.currentRemoteUrl);
+  const repositoryMatch = matchRepository(task.repository?.url, gitReport.currentRemoteUrl, task.repository?.name);
   if (!repositoryMatch.match) {
     deps.showError(
       `Repository mismatch. Expected ${repositoryMatch.expectedRemote ?? 'unknown'}, current ${repositoryMatch.currentRemote ?? 'unknown'}.`,
@@ -95,6 +95,45 @@ export async function writeTaskPromptFile(gitRoot: string, taskId: string, conte
   const filePath = path.join(taskDir, `${sanitizeTaskId(taskId)}.md`);
   await fs.writeFile(filePath, content, 'utf8');
   return filePath;
+}
+
+export async function readTaskPromptFile(gitRoot: string, taskId: string): Promise<string | null> {
+  try {
+    return await fs.readFile(path.join(gitRoot, '.flowx', 'tasks', `${sanitizeTaskId(taskId)}.md`), 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+export function buildPromptFromLocalHandoff(task: FlowXTaskItem, handoff: LocalHandoffPayload): string {
+  const repository = handoff.repositories[0];
+  const taskLabel = task.type === 'bug' ? 'Bug' : 'Requirement';
+  return [
+    `# FlowX ${taskLabel}: ${handoff.requirement.title.trim()}`,
+    '',
+    '## FlowX context',
+    `- Task type: ${task.type}`,
+    `- Task id: ${task.id}`,
+    `- Workflow run id: ${handoff.workflowRunId}`,
+    `- Repository: ${repository?.name ?? task.repository?.name ?? 'unknown'}`,
+    repository?.url?.trim() ? `- Remote: ${repository.url.trim()}` : '',
+    `- Working branch: ${repository?.workingBranch ?? ''}`,
+    '- Work in Cursor Chat/Agent and iterate there until the change is ready.',
+    '',
+    '## Description',
+    handoff.requirement.description.trim(),
+    '',
+    '## Acceptance criteria',
+    handoff.requirement.acceptanceCriteria.trim(),
+    '',
+    '## Suggested checks',
+    '- Run the smallest relevant tests before reporting completion.',
+    '',
+    '## Completion',
+    'When the implementation is ready, report it back to FlowX with the extension `Report Completion` action.',
+  ]
+    .filter((line) => line !== '')
+    .join('\n');
 }
 
 async function isGitWorkingTreeDirty(gitRoot: string): Promise<boolean> {

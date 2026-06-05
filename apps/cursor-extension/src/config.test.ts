@@ -12,6 +12,10 @@ describe('normalizeApiBaseUrl', () => {
     expect(normalizeApiBaseUrl('http://127.0.0.1:5173')).toBe('http://127.0.0.1:3000');
     expect(normalizeApiBaseUrl('http://127.0.0.1:3000/')).toBe('http://127.0.0.1:3000');
   });
+
+  it('preserves API base paths for reverse-proxy deployments', () => {
+    expect(normalizeApiBaseUrl('https://flowx.example.com/api/')).toBe('https://flowx.example.com/api');
+  });
 });
 
 describe('parseFlowXAuthCallback', () => {
@@ -44,6 +48,17 @@ describe('buildFlowXLoginUrl', () => {
       }),
     ).toBe(
       'http://127.0.0.1:3000/auth/dingtalk/login?callbackUrl=cursor%3A%2F%2Fflowx.flowx-cursor-extension%2Fcallback&next=%2Frequirements',
+    );
+  });
+
+  it('builds DingTalk login url under an API reverse-proxy base path', () => {
+    expect(
+      buildFlowXLoginUrl({
+        apiBaseUrl: 'https://flowx.example.com/api',
+        callbackUrl: 'cursor://flowx.flowx-cursor-extension/callback',
+      }),
+    ).toBe(
+      'https://flowx.example.com/api/auth/dingtalk/login?callbackUrl=cursor%3A%2F%2Fflowx.flowx-cursor-extension%2Fcallback&next=%2Frequirements',
     );
   });
 });

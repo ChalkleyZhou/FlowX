@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { CompleteLocalInput, LocalChatHandoff } from './flowx-client';
+import type { CompleteLocalInput, FlowXTaskItem, LocalChatHandoff, LocalHandoffPayload } from './flowx-client';
 
 export interface HandoffSnapshot {
   taskId: string;
@@ -21,6 +21,25 @@ export function buildHandoffSnapshot(handoff: LocalChatHandoff): HandoffSnapshot
 
 export async function saveHandoffSnapshot(gitRoot: string, handoff: LocalChatHandoff): Promise<string> {
   const snapshot = buildHandoffSnapshot(handoff);
+  return writeHandoffSnapshot(gitRoot, snapshot);
+}
+
+export async function saveRestoredHandoffSnapshot(
+  gitRoot: string,
+  task: FlowXTaskItem,
+  handoff: LocalHandoffPayload,
+): Promise<HandoffSnapshot> {
+  const snapshot: HandoffSnapshot = {
+    taskId: task.id,
+    taskType: task.type,
+    workflowRunId: handoff.workflowRunId,
+    workflowRepositoryId: handoff.repositories?.[0]?.workflowRepositoryId ?? null,
+  };
+  await writeHandoffSnapshot(gitRoot, snapshot);
+  return snapshot;
+}
+
+async function writeHandoffSnapshot(gitRoot: string, snapshot: HandoffSnapshot): Promise<string> {
   const dir = path.join(gitRoot, '.flowx', 'tasks');
   await fs.mkdir(dir, { recursive: true });
   const filePath = path.join(dir, `${sanitizeFileName(snapshot.taskId)}.json`);
