@@ -11,6 +11,9 @@ function createService() {
       findMany: vi.fn(),
       findUniqueOrThrow: vi.fn(),
     },
+    workspace: {
+      findMany: vi.fn(),
+    },
   };
   const workflowService = {
     createLocalChatWorkflowRun: vi.fn(),
@@ -78,6 +81,31 @@ describe('CursorLocalService', () => {
         eligible: true,
       }),
     ]);
+  });
+
+  it('does not require workspaceId when listing tasks for a signed-in user', async () => {
+    const { service, prisma } = createService();
+    prisma.requirement.findMany.mockResolvedValue([]);
+    prisma.bug.findMany.mockResolvedValue([]);
+
+    await service.listTasks({
+      session: {
+        user: { id: 'user-1', displayName: 'User' },
+        organization: { id: 'org-1', name: 'FlowX Org' },
+      },
+    });
+
+    expect(prisma.workspace.findMany).not.toHaveBeenCalled();
+    expect(prisma.requirement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { status: 'ACTIVE' },
+      }),
+    );
+    expect(prisma.bug.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { status: { in: ['OPEN', 'CONFIRMED'] } },
+      }),
+    );
   });
 
   it('creates a local chat workflow, claims local execution, and returns a chat prompt', async () => {

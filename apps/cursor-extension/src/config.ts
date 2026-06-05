@@ -1,61 +1,116 @@
 import * as vscode from 'vscode';
+import {
+  buildFlowXLoginUrl,
+  normalizeApiBaseUrl,
+  parseFlowXAuthCallback,
+  type FlowXConfig,
+  type FlowXAuthOrganization,
+} from './config-model';
 
 const API_BASE_URL_KEY = 'flowx.apiBaseUrl';
-const WORKSPACE_ID_KEY = 'flowx.workspaceId';
 const API_TOKEN_SECRET_KEY = 'flowx.apiToken';
-
-export interface FlowXConfig {
-  apiBaseUrl: string;
-  workspaceId: string;
-  apiToken: string;
-}
 
 export async function getFlowXConfig(context: vscode.ExtensionContext): Promise<FlowXConfig | null> {
   const apiBaseUrl = context.workspaceState.get<string>(API_BASE_URL_KEY) ?? '';
-  const workspaceId = context.workspaceState.get<string>(WORKSPACE_ID_KEY) ?? '';
   const apiToken = await context.secrets.get(API_TOKEN_SECRET_KEY);
 
-  if (!apiBaseUrl || !workspaceId || !apiToken) {
+  if (!apiBaseUrl || !apiToken) {
     return null;
   }
 
-  return { apiBaseUrl, workspaceId, apiToken };
+  return { apiBaseUrl, apiToken };
+}
+
+export async function signInToFlowX(context: vscode.ExtensionContext, extensionUri: vscode.Uri) {
+  const currentApiBaseUrl = context.workspaceState.get<string>(API_BASE_URL_KEY) ?? 'http://127.0.0.1:3000';
+
+  const inputApiBaseUrl = await vscode.window.showInputBox({
+    title: 'FlowX URL',
+    value: currentApiBaseUrl,
+    ignoreFocusOut: true,
+    prompt: 'Example: http://127.0.0.1:5173 or http://127.0.0.1:3000',
+  });
+  if (!inputApiBaseUrl) {
+    return;
+  }
+
+  const apiBaseUrl = normalizeApiBaseUrl(inputApiBaseUrl);
+  await context.workspaceState.update(API_BASE_URL_KEY, apiBaseUrl);
+
+  const callbackUri = await vscode.env.asExternalUri(vscode.Uri.joinPath(extensionUri, 'auth-callback'));
+  await vscode.env.openExternal(
+    vscode.Uri.parse(
+      buildFlowXLoginUrl({
+        apiBaseUrl,
+        callbackUrl: callbackUri.toString(),
+      }),
+    ),
+  );
+  vscode.window.showInformationMessage('FlowX login opened. Complete DingTalk login in the browser.');
+}
+
+export async function completeFlowXSignIn(context: vscode.ExtensionContext, uri: vscode.Uri) {
+  const result = parseFlowXAuthCallback(uri.query);
+  if (result.type === 'error') {
+    vscode.window.showErrorMessage(result.message);
+    return;
+  }
+
+  const token =
+    result.type === 'token'
+      ? result.token
+      : await selectOrganizationAndExchangeToken(context, result.selectionToken, result.organizations);
+  if (!token) {
+    return;
+  }
+  await context.secrets.store(API_TOKEN_SECRET_KEY, token);
+  vscode.window.showInformationMessage('FlowX sign-in complete.');
+}
+
+async function selectOrganizationAndExchangeToken(
+  context: vscode.ExtensionContext,
+  selectionToken: string,
+  organizations: FlowXAuthOrganization[],
+) {
+  const selected = await vscode.window.showQuickPick(
+    organizations.map((organization) => ({
+      label: organization.name,
+      description: organization.id,
+      organization,
+    })),
+    {
+      ignoreFocusOut: true,
+      placeHolder: 'Select FlowX organization',
+    },
+  );
+  if (!selected) {
+    return null;
+  }
+
+  const apiBaseUrl = context.workspaceState.get<string>(API_BASE_URL_KEY) ?? 'http://127.0.0.1:3000';
+  const response = await fetch(`${apiBaseUrl}/auth/organization/select`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      selectionToken,
+      organizationId: selected.organization.id,
+    }),
+  });
+
+  if (!response.ok) {
+    vscode.window.showErrorMessage((await response.text()) || 'FlowX organization selection failed.');
+    return null;
+  }
+
+  const session = (await response.json()) as { token?: string };
+  if (!session.token) {
+    vscode.window.showErrorMessage('FlowX organization selection did not return a token.');
+    return null;
+  }
+
+  return session.token;
 }
 
 export async function configureFlowX(context: vscode.ExtensionContext) {
-  const currentApiBaseUrl = context.workspaceState.get<string>(API_BASE_URL_KEY) ?? 'http://127.0.0.1:3000';
-  const currentWorkspaceId = context.workspaceState.get<string>(WORKSPACE_ID_KEY) ?? '';
-
-  const apiBaseUrl = await vscode.window.showInputBox({
-    title: 'FlowX API Base URL',
-    value: currentApiBaseUrl,
-    ignoreFocusOut: true,
-    prompt: 'Example: http://127.0.0.1:3000',
-  });
-  if (!apiBaseUrl) {
-    return;
-  }
-
-  const workspaceId = await vscode.window.showInputBox({
-    title: 'FlowX Workspace ID',
-    value: currentWorkspaceId,
-    ignoreFocusOut: true,
-  });
-  if (!workspaceId) {
-    return;
-  }
-
-  const apiToken = await vscode.window.showInputBox({
-    title: 'FlowX API Token',
-    password: true,
-    ignoreFocusOut: true,
-  });
-  if (!apiToken) {
-    return;
-  }
-
-  await context.workspaceState.update(API_BASE_URL_KEY, apiBaseUrl.replace(/\/$/, ''));
-  await context.workspaceState.update(WORKSPACE_ID_KEY, workspaceId);
-  await context.secrets.store(API_TOKEN_SECRET_KEY, apiToken);
-  vscode.window.showInformationMessage('FlowX configuration saved.');
+  return signInToFlowX(context, context.extensionUri);
 }

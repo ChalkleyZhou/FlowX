@@ -1,4 +1,4 @@
-import type { FlowXConfig } from './config';
+import type { FlowXConfig } from './config-model';
 
 export interface FlowXTaskItem {
   id: string;
@@ -55,7 +55,7 @@ export class FlowXClient {
   constructor(private readonly config: FlowXConfig) {}
 
   async listTasks(): Promise<FlowXTaskItem[]> {
-    return this.request<FlowXTaskItem[]>(`/cursor-local/tasks?workspaceId=${encodeURIComponent(this.config.workspaceId)}`);
+    return this.request<FlowXTaskItem[]>('/cursor-local/tasks');
   }
 
   async startHandoff(input: StartLocalChatInput): Promise<LocalChatHandoff> {

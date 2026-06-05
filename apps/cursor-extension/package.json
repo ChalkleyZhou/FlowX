@@ -31,7 +31,7 @@
     "commands": [
       {
         "command": "flowx.configure",
-        "title": "FlowX: Configure"
+        "title": "FlowX: Sign in"
       },
       {
         "command": "flowx.refreshTasks",

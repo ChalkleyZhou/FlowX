@@ -7,8 +7,8 @@ export class CursorLocalController {
   constructor(private readonly cursorLocalService: CursorLocalService) {}
 
   @Get('tasks')
-  listTasks(@Query('workspaceId') workspaceId?: string) {
-    return this.cursorLocalService.listTasks({ workspaceId });
+  listTasks(@Query('workspaceId') workspaceId: string | undefined, @Req() req: CursorLocalRequest) {
+    return this.cursorLocalService.listTasks({ workspaceId, session: req.authSession });
   }
 
   @Post('handoff')

@@ -1,5 +1,6 @@
 import type * as vscode from 'vscode';
-import { getFlowXConfig, type FlowXConfig } from './config';
+import { getFlowXConfig } from './config';
+import type { FlowXConfig } from './config-model';
 import { FlowXClient } from './flowx-client';
 import { getOriginRemoteUrl, getWorkspaceGitRoot, resolveWorkspacePath } from './repo-match';
 import { buildTaskViewModels, type FlowXTaskViewModel } from './tasks-model';
@@ -30,7 +31,7 @@ export class FlowXTasksProvider implements vscode.TreeDataProvider<vscode.TreeIt
   async getChildren(): Promise<vscode.TreeItem[]> {
     const config = await getFlowXConfig(this.context);
     if (!config) {
-      return [this.createPlaceholder('Configure FlowX to load tasks', 'flowx.configure')];
+      return [this.createPlaceholder('Sign in to FlowX to load tasks', 'flowx.configure')];
     }
 
     const workspacePath = resolveWorkspacePath(this.vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath));

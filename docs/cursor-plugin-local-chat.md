@@ -118,12 +118,17 @@ cursor --extensionDevelopmentPath /absolute/path/to/FlowX/apps/cursor-extension
 
 In the FlowX activity bar:
 
-1. Run `FlowX: Configure` and enter the API base URL, workspace id, and session token.
-2. Open the local Git repository that matches the FlowX task repository URL.
-3. Use `FlowX: Refresh Tasks`.
-4. Select a requirement or bug and run `FlowX: Start in Chat`.
-5. Paste the copied prompt into Cursor Chat/Agent and implement the change.
-6. When the task is ready, run `FlowX: Report Completion` from the active task.
+1. Run `FlowX: Sign in` and enter the local FlowX URL, for example `http://127.0.0.1:5173`.
+2. Complete the normal DingTalk login in the browser.
+3. If the account can access multiple DingTalk organizations, select the organization in Cursor.
+4. Return to Cursor after the plugin reports that sign-in is complete.
+5. Open the local Git repository that matches the FlowX task repository URL.
+6. Use `FlowX: Refresh Tasks`.
+7. Select a requirement or bug and run `FlowX: Start in Chat`.
+8. Paste the copied prompt into Cursor Chat/Agent and implement the change.
+9. When the task is ready, run `FlowX: Report Completion` from the active task.
+
+The extension stores the FlowX API URL and session token locally. Users do not need to enter a workspace id; FlowX resolves visible tasks from the signed-in session.
 
 `Start in Chat` writes `.flowx/tasks/<task-id>.md` plus a small JSON handoff snapshot. `Report Completion` collects local Git state, sends `complete-local`, and saves `.flowx/completion-drafts/<workflowRunId>.json` if the API call fails.
 

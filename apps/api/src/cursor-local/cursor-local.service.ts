@@ -38,12 +38,13 @@ export class CursorLocalService {
     private readonly workflowService: WorkflowService,
   ) {}
 
-  async listTasks(filters: { workspaceId?: string }): Promise<LocalChatTaskItem[]> {
+  async listTasks(filters: { workspaceId?: string; session?: WorkflowSession }): Promise<LocalChatTaskItem[]> {
+    const workspaceFilter = await this.resolveWorkspaceFilter(filters);
     const [requirements, bugs] = await Promise.all([
       this.prisma.requirement.findMany({
         where: {
           status: 'ACTIVE',
-          ...(filters.workspaceId ? { workspaceId: filters.workspaceId } : {}),
+          ...workspaceFilter,
         },
         include: {
           requirementRepositories: {
@@ -60,7 +61,7 @@ export class CursorLocalService {
       this.prisma.bug.findMany({
         where: {
           status: { in: ['OPEN', 'CONFIRMED'] },
-          ...(filters.workspaceId ? { workspaceId: filters.workspaceId } : {}),
+          ...workspaceFilter,
         },
         include: {
           repository: true,
@@ -116,6 +117,14 @@ export class CursorLocalService {
         });
       }),
     ];
+  }
+
+  private async resolveWorkspaceFilter(filters: { workspaceId?: string; session?: WorkflowSession }) {
+    if (filters.workspaceId?.trim()) {
+      return { workspaceId: filters.workspaceId.trim() };
+    }
+
+    return {};
   }
 
   async startHandoff(dto: StartLocalChatDto, session?: WorkflowSession) {

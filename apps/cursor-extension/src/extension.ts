@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { loadHandoffSnapshot, saveCompletionDraft, saveHandoffSnapshot } from './completion-draft';
 import { collectGitCompletionReport, getCurrentGitRoot, reportCompletion } from './completion-panel';
-import { configureFlowX, getFlowXConfig } from './config';
+import { completeFlowXSignIn, configureFlowX, getFlowXConfig } from './config';
 import type { FlowXTaskItem } from './flowx-client';
 import { FlowXClient } from './flowx-client';
 import { getLocalGitReport, startInChat, writeTaskPromptFile } from './handoff';
@@ -10,6 +10,12 @@ import { FlowXTasksProvider } from './tasks-provider';
 export function activate(context: vscode.ExtensionContext) {
   const provider = new FlowXTasksProvider(vscode, context);
   context.subscriptions.push(
+    vscode.window.registerUriHandler({
+      handleUri: async (uri) => {
+        await completeFlowXSignIn(context, uri);
+        provider.refresh();
+      },
+    }),
     vscode.window.registerTreeDataProvider('flowxTasks', provider),
     vscode.commands.registerCommand('flowx.configure', () => configureFlowX(context)),
     vscode.commands.registerCommand('flowx.refreshTasks', () => provider.refresh()),
