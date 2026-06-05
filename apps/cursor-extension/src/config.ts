@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import {
   buildFlowXLoginUrl,
+  buildCursorAuthCallbackUri,
   normalizeApiBaseUrl,
   parseFlowXAuthCallback,
   type FlowXConfig,
@@ -21,7 +22,7 @@ export async function getFlowXConfig(context: vscode.ExtensionContext): Promise<
   return { apiBaseUrl, apiToken };
 }
 
-export async function signInToFlowX(context: vscode.ExtensionContext, extensionUri: vscode.Uri) {
+export async function signInToFlowX(context: vscode.ExtensionContext) {
   const currentApiBaseUrl = context.workspaceState.get<string>(API_BASE_URL_KEY) ?? 'http://127.0.0.1:3000';
 
   const inputApiBaseUrl = await vscode.window.showInputBox({
@@ -37,7 +38,9 @@ export async function signInToFlowX(context: vscode.ExtensionContext, extensionU
   const apiBaseUrl = normalizeApiBaseUrl(inputApiBaseUrl);
   await context.workspaceState.update(API_BASE_URL_KEY, apiBaseUrl);
 
-  const callbackUri = await vscode.env.asExternalUri(vscode.Uri.joinPath(extensionUri, 'auth-callback'));
+  const callbackUri = await vscode.env.asExternalUri(
+    vscode.Uri.parse(buildCursorAuthCallbackUri(vscode.env.uriScheme, context.extension.id)),
+  );
   await vscode.env.openExternal(
     vscode.Uri.parse(
       buildFlowXLoginUrl({
@@ -112,5 +115,5 @@ async function selectOrganizationAndExchangeToken(
 }
 
 export async function configureFlowX(context: vscode.ExtensionContext) {
-  return signInToFlowX(context, context.extensionUri);
+  return signInToFlowX(context);
 }

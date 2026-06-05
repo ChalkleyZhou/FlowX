@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildFlowXLoginUrl, normalizeApiBaseUrl, parseFlowXAuthCallback } from './config-model';
+import {
+  buildCursorAuthCallbackUri,
+  buildFlowXLoginUrl,
+  normalizeApiBaseUrl,
+  parseFlowXAuthCallback,
+} from './config-model';
 
 describe('normalizeApiBaseUrl', () => {
   it('normalizes web and api urls to the API origin', () => {
@@ -24,6 +29,12 @@ describe('parseFlowXAuthCallback', () => {
 });
 
 describe('buildFlowXLoginUrl', () => {
+  it('builds a Cursor URI handler callback for the extension id', () => {
+    expect(buildCursorAuthCallbackUri('cursor', 'flowx.flowx-cursor-extension')).toBe(
+      'cursor://flowx.flowx-cursor-extension/auth-callback',
+    );
+  });
+
   it('builds DingTalk login url with Cursor callback', () => {
     expect(
       buildFlowXLoginUrl({

@@ -31,6 +31,10 @@ export function buildFlowXLoginUrl(input: { apiBaseUrl: string; callbackUrl: str
   return url.toString();
 }
 
+export function buildCursorAuthCallbackUri(uriScheme: string, extensionId: string): string {
+  return `${uriScheme}://${extensionId}/auth-callback`;
+}
+
 export function parseFlowXAuthCallback(query: string): FlowXAuthCallback {
   const params = new URLSearchParams(query);
   const error = params.get('error_description') ?? params.get('error');

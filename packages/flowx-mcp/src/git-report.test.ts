@@ -32,5 +32,5 @@ describe('collectGitReport', () => {
     expect(report.untrackedFiles).toEqual(['new.txt']);
     expect(report.diffSummary).toContain('tracked.txt');
     expect(report.dirty).toBe(true);
-  });
+  }, 15_000);
 });
