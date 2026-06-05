@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { AiModule } from './ai/ai.module';
 import { AuthModule } from './auth/auth.module';
 import { BriefingsModule } from './briefings/briefings.module';
+import { CursorLocalModule } from './cursor-local/cursor-local.module';
 import { DeployModule } from './deploy/deploy.module';
 import { DevPreviewModule } from './dev-preview/dev-preview.module';
 import { SessionAuthGuard } from './auth/session-auth.guard';
@@ -25,6 +26,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
     AiModule,
     AuthModule,
     BriefingsModule,
+    CursorLocalModule,
     DeployModule,
     DevPreviewModule,
     ProjectsModule,

@@ -1,0 +1,79 @@
+{
+  "name": "flowx-cursor-extension",
+  "displayName": "FlowX",
+  "version": "0.1.0",
+  "private": true,
+  "publisher": "flowx",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "flowx",
+          "title": "FlowX",
+          "icon": "resources/flowx.svg"
+        }
+      ]
+    },
+    "views": {
+      "flowx": [
+        {
+          "id": "flowxTasks",
+          "name": "Tasks"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "flowx.configure",
+        "title": "FlowX: Configure"
+      },
+      {
+        "command": "flowx.refreshTasks",
+        "title": "FlowX: Refresh Tasks"
+      },
+      {
+        "command": "flowx.startInChat",
+        "title": "FlowX: Start in Chat"
+      },
+      {
+        "command": "flowx.reportCompletion",
+        "title": "FlowX: Report Completion"
+      }
+    ],
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "flowx.startInChat",
+          "when": "view == flowxTasks && viewItem == flowxTask.startable",
+          "group": "inline"
+        },
+        {
+          "command": "flowx.reportCompletion",
+          "when": "view == flowxTasks && viewItem == flowxTask.reportable",
+          "group": "inline"
+        },
+        {
+          "command": "flowx.refreshTasks",
+          "when": "view == flowxTasks",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.8.2",
+    "vitest": "^3.2.4"
+  }
+}

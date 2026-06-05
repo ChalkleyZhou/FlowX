@@ -133,6 +133,10 @@ export class WorkflowStateMachine {
     return runType === WorkflowRunType.BUG_FIX;
   }
 
+  canBootstrapLocalChatWorkflow(runType: WorkflowRunType): boolean {
+    return runType === WorkflowRunType.LOCAL_CHAT;
+  }
+
   canTransitionWorkflow(from: WorkflowRunStatus, to: WorkflowRunStatus): boolean {
     return workflowTransitions[from].includes(to);
   }

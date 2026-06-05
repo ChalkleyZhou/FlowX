@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { GeneratePlanOutput } from '../common/types';
 import { WorkflowArtifactService } from './workflow-artifact.service';
 import { WorkflowGitRemoteService } from './workflow-git-remote.service';
+import { buildExecutionOutputFromLocalReport } from './workflow-local-execution-output';
 import { WorkflowService } from './workflow.service';
 
 const confirmedPlan: GeneratePlanOutput = {
@@ -140,5 +141,64 @@ describe('WorkflowService local execution', () => {
         ],
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('buildExecutionOutputFromLocalReport', () => {
+  it('includes local chat implementation metadata in patch summary', () => {
+    const output = buildExecutionOutputFromLocalReport(
+      {
+        workflowRunId: 'workflow-run-local-001',
+        status: 'EXECUTION_RUNNING',
+        executor: 'LOCAL',
+        requirement: {
+          id: 'req-1',
+          title: 'Local handoff feature',
+          description: 'desc',
+          acceptanceCriteria: 'criteria',
+        },
+        plan: confirmedPlan,
+        tasks: [],
+        repositories: [
+          {
+            workflowRepositoryId: 'wr-1',
+            repositoryId: 'repo-1',
+            name: 'flowx',
+            url: '',
+            baseBranch: 'main',
+            workingBranch: 'flowx/work/local-handoff/workflow-run-local-001',
+            checkout: {
+              fetch: 'git fetch origin',
+              checkout: 'git checkout',
+              push: 'git push',
+            },
+            suggestedCommitMessage: 'feat(flowx): local handoff',
+          },
+        ],
+        artifacts: {
+          planMetaPath: null,
+          planHtmlPath: null,
+        },
+      },
+      {
+        pushed: false,
+        implementationSummary: 'Added Cursor task handoff',
+        testResult: 'pnpm --filter flowx-api test passed',
+        diffSummary: '1 file changed',
+        repositories: [
+          {
+            workflowRepositoryId: 'wr-1',
+            headSha: 'deadbeef',
+            changedFiles: ['src/App.tsx'],
+            patchSummary: 'Updated app shell',
+          },
+        ],
+      },
+    );
+
+    expect(output.patchSummary).toContain('[Local Chat]');
+    expect(output.patchSummary).toContain('Summary: Added Cursor task handoff');
+    expect(output.patchSummary).toContain('Tests: pnpm --filter flowx-api test passed');
+    expect(output.patchSummary).toContain('Diff: 1 file changed');
   });
 });

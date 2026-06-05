@@ -2,6 +2,16 @@ import type { ExecuteTaskOutput } from '../common/types';
 import type { CompleteLocalExecutionDto } from './dto/complete-local-execution.dto';
 import type { LocalHandoffPayload } from './workflow-local-handoff';
 
+function buildLocalChatSummary(dto: CompleteLocalExecutionDto) {
+  const lines = [
+    dto.implementationSummary?.trim() ? `Summary: ${dto.implementationSummary.trim()}` : '',
+    dto.testResult?.trim() ? `Tests: ${dto.testResult.trim()}` : '',
+    dto.diffSummary?.trim() ? `Diff: ${dto.diffSummary.trim()}` : '',
+  ].filter(Boolean);
+
+  return lines.length > 0 ? ['[Local Chat]', ...lines].join('\n') : '';
+}
+
 export function buildExecutionOutputFromLocalReport(
   handoff: LocalHandoffPayload,
   dto: CompleteLocalExecutionDto,
@@ -40,14 +50,17 @@ export function buildExecutionOutputFromLocalReport(
       repository: repository.name,
       branch: repository.workingBranch,
       localPath: '',
-      diffStat: `local commit ${report.headSha.slice(0, 12)}`,
+      diffStat: dto.diffSummary?.trim() || `local commit ${report.headSha.slice(0, 12)}`,
       diffText: '',
-      untrackedFiles: [],
+      untrackedFiles: dto.untrackedFiles ?? [],
     });
   }
 
+  const localChatSummary = buildLocalChatSummary(dto);
+  const repositorySummary = summaries.join('\n') || 'Local execution completed';
+
   return {
-    patchSummary: summaries.join('\n') || 'Local execution completed',
+    patchSummary: [localChatSummary, repositorySummary].filter(Boolean).join('\n\n'),
     changedFiles: [...changedFiles],
     codeChanges,
     diffArtifacts,

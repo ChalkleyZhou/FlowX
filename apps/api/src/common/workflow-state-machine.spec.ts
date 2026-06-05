@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { StageExecutionStatus, StageType, WorkflowRunStatus } from './enums';
+import { StageExecutionStatus, StageType, WorkflowRunStatus, WorkflowRunType } from './enums';
 import { WorkflowStateMachine } from './workflow-state-machine';
 
 describe('WorkflowStateMachine', () => {
@@ -12,6 +12,13 @@ describe('WorkflowStateMachine', () => {
         WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING,
       ),
     ).toBe(true);
+  });
+
+  it('allows local chat workflow bootstrap like bug fix workflows', () => {
+    const machine = new WorkflowStateMachine();
+
+    expect(machine.canBootstrapLocalChatWorkflow(WorkflowRunType.LOCAL_CHAT)).toBe(true);
+    expect(machine.canBootstrapLocalChatWorkflow(WorkflowRunType.FULL)).toBe(false);
   });
 
   it('routes repository grounding into brainstorm before task split', () => {

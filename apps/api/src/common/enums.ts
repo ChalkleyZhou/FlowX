@@ -1,6 +1,7 @@
 export enum WorkflowRunType {
   FULL = 'FULL',
   BUG_FIX = 'BUG_FIX',
+  LOCAL_CHAT = 'LOCAL_CHAT',
 }
 
 export enum WorkflowRunStatus {
