@@ -20,19 +20,17 @@ function pushEvent(overrides: Partial<NormalizedBriefingEvent> = {}): Normalized
 }
 
 const aiOutput = {
-  headline: '完成简报 AI 总结',
-  summaryParagraph: '新增 AI 归纳能力，并保留提交附录。',
-  features: [
+  headline: '简报内容更适合项目成员阅读',
+  summaryParagraph: '当天提交主要调整了简报内容组织。',
+  topics: [
     {
-      title: '简报 AI 总结',
-      detail: '根据当日 webhook 事实生成管理层可读摘要。',
-      repositories: ['flowx-api'],
+      title: '简报内容组织调整',
+      summary: '简报从提交分类调整为项目变化主题。',
+      modules: ['briefing'],
+      commitReferences: [{ repository: 'flowx-api', commitId: 'a1' }],
     },
   ],
-  fixes: [],
-  others: [],
-  risks: [],
-  otherNotes: [],
+  openQuestions: [],
 };
 
 describe('BriefingAiSummarizerService', () => {
@@ -95,6 +93,13 @@ describe('BriefingAiSummarizerService', () => {
     expect(codexRunStructuredJsonStage).toHaveBeenCalled();
     expect(cursorRunStructuredJsonStage).not.toHaveBeenCalled();
     expect(resolveInvocationContext).toHaveBeenCalledWith('codex', null);
+    expect(summary.topics[0]?.commitReferences).toEqual([
+      {
+        repository: 'flowx-api',
+        commitId: 'a1',
+        title: 'feat(briefing): add AI summary',
+      },
+    ]);
   });
 
   it('uses Cursor when FLOWX_BRIEFING_AI_PROVIDER=cursor', async () => {
@@ -113,7 +118,7 @@ describe('BriefingAiSummarizerService', () => {
     expect(resolveInvocationContext).toHaveBeenCalledWith('cursor', null);
   });
 
-  it('falls back to rule-based summary when AI is disabled', async () => {
+  it('falls back to a conservative summary when AI is disabled', async () => {
     process.env.FLOWX_BRIEFING_AI_DISABLED = 'true';
 
     const summary = await createService().summarize({
@@ -121,19 +126,57 @@ describe('BriefingAiSummarizerService', () => {
       projectName: 'FlowX',
       events: [
         pushEvent(),
-        pushEvent({
-          eventType: 'merge_request',
-          objectKind: 'merge_request',
-          action: 'merge',
-          subject: 'Merge briefing AI',
-          summary: { state: 'merged' },
-        }),
       ],
     });
 
     expect(summary.source).toBe('fallback');
     expect(codexRunStructuredJsonStage).not.toHaveBeenCalled();
     expect(cursorRunStructuredJsonStage).not.toHaveBeenCalled();
-    expect(summary.features.some((item) => item.title.includes('feat(briefing)'))).toBe(true);
+    expect(summary.topics).toEqual([]);
+    expect(summary.openQuestions).toEqual([]);
+  });
+
+  it('rejects the whole AI summary when it references a missing commit', async () => {
+    codexRunStructuredJsonStage.mockResolvedValue({
+      ...aiOutput,
+      topics: [
+        {
+          ...aiOutput.topics[0],
+          commitReferences: [{ repository: 'flowx-api', commitId: 'missing' }],
+        },
+      ],
+    });
+
+    const summary = await createService().summarize({
+      date: '2026-06-03',
+      projectName: 'FlowX',
+      events: [pushEvent()],
+    });
+
+    expect(summary.source).toBe('fallback');
+    expect(summary.topics).toEqual([]);
+    expect(summary.openQuestions).toEqual([]);
+  });
+
+  it('rejects the whole AI summary when topics reuse the same commit', async () => {
+    codexRunStructuredJsonStage.mockResolvedValue({
+      ...aiOutput,
+      topics: [
+        aiOutput.topics[0],
+        {
+          ...aiOutput.topics[0],
+          title: '重复主题',
+        },
+      ],
+    });
+
+    const summary = await createService().summarize({
+      date: '2026-06-03',
+      projectName: 'FlowX',
+      events: [pushEvent()],
+    });
+
+    expect(summary.source).toBe('fallback');
+    expect(summary.topics).toEqual([]);
   });
 });

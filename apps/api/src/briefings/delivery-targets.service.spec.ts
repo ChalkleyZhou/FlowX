@@ -261,7 +261,7 @@ describe('DeliveryTargetsService', () => {
     expect(sendPersonalMarkdown).toHaveBeenCalledWith({
       flowxUserId: 'user-bob',
       corpId: 'corp-1',
-      title: '信息化系统 · 研发日报 · 2026-06-03',
+      title: '信息化系统 · 项目变化简报 · 2026-06-03',
       markdown: '# Briefing',
     });
   });

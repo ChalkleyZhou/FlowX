@@ -21,11 +21,8 @@ describe('BriefingsService', () => {
       source: 'fallback',
       headline: '测试摘要',
       summaryParagraph: '规则归纳。',
-      features: [],
-      fixes: [],
-      others: [],
-      risks: [],
-      otherNotes: [],
+      topics: [],
+      openQuestions: [],
     });
   });
 
@@ -209,7 +206,7 @@ describe('BriefingsService', () => {
     eventFindMany.mockResolvedValue([]);
     briefingUpdate.mockResolvedValue({
       id: 'existing-briefing',
-      markdownContent: '# FlowX · 研发日报 · 2026-06-03',
+      markdownContent: '# FlowX · 项目变化简报 · 2026-06-03',
     });
 
     await expect(
@@ -219,13 +216,13 @@ describe('BriefingsService', () => {
       }),
     ).resolves.toEqual({
       id: 'existing-briefing',
-      markdownContent: '# FlowX · 研发日报 · 2026-06-03',
+      markdownContent: '# FlowX · 项目变化简报 · 2026-06-03',
     });
 
     expect(briefingUpdate).toHaveBeenCalledWith({
       where: { id: 'existing-briefing' },
       data: expect.objectContaining({
-        markdownContent: expect.stringContaining('# FlowX · 研发日报 · 2026-06-03'),
+        markdownContent: expect.stringContaining('# FlowX · 项目变化简报 · 2026-06-03'),
       }),
     });
     expect(briefingCreate).not.toHaveBeenCalled();
@@ -276,4 +273,3 @@ describe('BriefingsService', () => {
     });
   });
 });
-

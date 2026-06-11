@@ -3,48 +3,52 @@
   "title": "BriefingSummaryOutput",
   "type": "object",
   "additionalProperties": false,
-  "required": ["headline", "summaryParagraph", "features", "fixes", "risks", "otherNotes"],
+  "required": ["headline", "summaryParagraph", "topics", "openQuestions"],
   "properties": {
     "headline": {
       "type": "string",
-      "description": "一句话概括当日研发重点，面向项目负责人。"
+      "description": "一句话概括 commits 能够明确支持的项目变化。"
     },
     "summaryParagraph": {
       "type": "string",
-      "description": "2-4 句自然语言总结，说明今天整体做了什么、影响范围与结论。"
+      "description": "1-2 句自然语言总结，不补充 commits 未表达的结论。"
     },
-    "features": {
+    "topics": {
       "type": "array",
-      "items": { "$ref": "#/$defs/workItem" }
+      "items": { "$ref": "#/$defs/topic" }
     },
-    "fixes": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/workItem" }
-    },
-    "risks": {
+    "openQuestions": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "需要关注的失败流水线、阻塞或质量风险；无则空数组。"
-    },
-    "otherNotes": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "不属于功能/修复但值得提及的事项，如发布、重构、文档。"
+      "description": "commit 描述中缺失且需要人工确认的信息；无则空数组。"
     }
   },
   "$defs": {
-    "workItem": {
+    "topic": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["title", "detail", "repositories"],
+      "required": ["title", "summary", "modules", "commitReferences"],
       "properties": {
         "title": { "type": "string" },
-        "detail": { "type": "string" },
-        "repositories": {
+        "summary": { "type": "string" },
+        "modules": {
           "type": "array",
-          "items": { "type": "string" },
-          "minItems": 1
+          "items": { "type": "string" }
+        },
+        "commitReferences": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/commitReference" }
         }
+      }
+    },
+    "commitReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "commitId"],
+      "properties": {
+        "repository": { "type": "string" },
+        "commitId": { "type": "string" }
       }
     }
   }

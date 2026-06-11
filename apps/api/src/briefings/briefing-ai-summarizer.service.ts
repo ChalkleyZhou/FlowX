@@ -8,17 +8,19 @@ import { AiInvocationContextService } from '../ai/ai-invocation-context.service'
 import { CodexAiExecutor } from '../ai/codex-ai.executor';
 import { buildBriefingSummaryPrompt } from '../prompts/briefing-summary.prompt';
 import { buildBriefingFacts, type BriefingFactsPayload } from './briefing-facts';
-import {
-  collectDailyCommits,
-  orderedCommitCategoryGroups,
-  summarizeDailyCommits,
-} from './briefing-commits';
 import type { NormalizedBriefingEvent } from './briefing-events';
 
-export interface BriefingAiWorkItem {
+export interface BriefingCommitReference {
+  repository: string;
+  commitId: string;
   title: string;
-  detail: string;
-  repositories: string[];
+}
+
+export interface BriefingAiTopic {
+  title: string;
+  summary: string;
+  modules: string[];
+  commitReferences: BriefingCommitReference[];
 }
 
 export interface BriefingAiSummary {
@@ -26,11 +28,18 @@ export interface BriefingAiSummary {
   aiProvider?: AIExecutorProvider;
   headline: string;
   summaryParagraph: string;
-  features: BriefingAiWorkItem[];
-  fixes: BriefingAiWorkItem[];
-  others: BriefingAiWorkItem[];
-  risks: string[];
-  otherNotes: string[];
+  topics: BriefingAiTopic[];
+  openQuestions: string[];
+}
+
+interface RawBriefingAiTopic {
+  title: string;
+  summary: string;
+  modules: string[];
+  commitReferences: Array<{
+    repository: string;
+    commitId: string;
+  }>;
 }
 
 interface SummarizeInput {
@@ -52,8 +61,8 @@ export class BriefingAiSummarizerService {
 
   async summarize(input: SummarizeInput): Promise<BriefingAiSummary> {
     const facts = buildBriefingFacts(input);
-    if (!this.isAiEnabled()) {
-      return this.buildFallbackSummary(facts, input);
+    if (facts.overview.commitCount === 0 || !this.isAiEnabled()) {
+      return this.buildFallbackSummary(facts);
     }
 
     try {
@@ -64,10 +73,8 @@ export class BriefingAiSummarizerService {
       const raw = await executor.runStructuredJsonStage<{
         headline: string;
         summaryParagraph: string;
-        features: BriefingAiWorkItem[];
-        fixes: BriefingAiWorkItem[];
-        risks: string[];
-        otherNotes: string[];
+        topics: RawBriefingAiTopic[];
+        openQuestions: string[];
       }>(
         'briefing-summary.output.schema.json',
         prompt,
@@ -80,16 +87,13 @@ export class BriefingAiSummarizerService {
         aiProvider: provider,
         headline: raw.headline.trim(),
         summaryParagraph: raw.summaryParagraph.trim(),
-        features: raw.features ?? [],
-        fixes: raw.fixes ?? [],
-        others: [],
-        risks: raw.risks ?? [],
-        otherNotes: raw.otherNotes ?? [],
+        topics: this.resolveTopics(raw.topics ?? [], facts),
+        openQuestions: (raw.openQuestions ?? []).map((item) => item.trim()).filter(Boolean),
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`Briefing AI summary failed, using fallback: ${message}`);
-      return this.buildFallbackSummary(facts, input);
+      return this.buildFallbackSummary(facts);
     }
   }
 
@@ -117,71 +121,67 @@ export class BriefingAiSummarizerService {
     return process.env.FLOWX_BRIEFING_AI_ENABLED !== 'false';
   }
 
-  private buildFallbackSummary(
-    facts: BriefingFactsPayload,
-    input: SummarizeInput,
-  ): BriefingAiSummary {
-    const eventInputs = input.events.map((event, index) => ({
-      event,
-      rawPayload: input.rawPayloadByEventIndex?.[index],
-    }));
-    const categorized = summarizeDailyCommits(collectDailyCommits(eventInputs));
-
-    const features: BriefingAiWorkItem[] = [];
-    const fixes: BriefingAiWorkItem[] = [];
-    const others: BriefingAiWorkItem[] = [];
-    for (const group of orderedCommitCategoryGroups(categorized)) {
-      const items = group.commits.map((item) => ({
-        title: item.title,
-        detail: '',
-        repositories: [item.projectName],
-      }));
-      if (group.category === 'feat') {
-        features.push(...items);
-      } else if (group.category === 'fix') {
-        fixes.push(...items);
-      } else {
-        others.push(...items);
-      }
-    }
-
-    for (const mr of facts.mergeRequests.filter(
-      (item) => item.action === 'merge' || item.state === 'merged',
-    )) {
-      features.push({
-        title: mr.title,
-        detail: '',
-        repositories: [mr.repository],
-      });
-    }
-
-    const risks: string[] = [];
-    for (const pipeline of facts.pipelines) {
-      if (pipeline.status === 'failed' || pipeline.action === 'failed' || pipeline.action === 'failure') {
-        risks.push(
-          `[${pipeline.repository}] 流水线失败：${pipeline.ref ?? 'unknown'} (${pipeline.status ?? pipeline.action})`,
-        );
-      }
-    }
-
-    const hasWork =
-      features.length > 0 || fixes.length > 0 || others.length > 0 || risks.length > 0;
-
+  private buildFallbackSummary(facts: BriefingFactsPayload): BriefingAiSummary {
     return {
       source: 'fallback',
       headline:
         facts.overview.commitCount > 0 ? `共 ${facts.overview.commitCount} 次提交` : '',
       summaryParagraph:
-        facts.overview.eventCount === 0
-          ? '本日暂无研发活动记录。'
-          : !hasWork && facts.overview.commitCount === 0
-            ? '本日有研发事件，但未解析到可归纳的提交说明。'
-            : '',
-      features,
-      fixes,
-      others,
-      risks,
-      otherNotes: [],
+        facts.overview.commitCount === 0 ? '今日暂无可归纳的项目变化。' : '',
+      topics: [],
+      openQuestions: [],
     };
+  }
+
+  private resolveTopics(
+    topics: RawBriefingAiTopic[],
+    facts: BriefingFactsPayload,
+  ): BriefingAiTopic[] {
+    const commits = new Map(
+      facts.commits.map((commit) => [`${commit.repository}:${commit.id}`, commit]),
+    );
+    const usedCommitKeys = new Set<string>();
+
+    return topics.map((topic) => {
+      if (topic.commitReferences.length === 0) {
+        throw new Error(`Briefing topic has no commit references: ${topic.title}`);
+      }
+
+      const referencedCommits = topic.commitReferences.map((reference) => {
+        const key = `${reference.repository}:${reference.commitId}`;
+        const commit = commits.get(key);
+        if (!commit) {
+          throw new Error(
+            `Briefing topic references unknown commit: ${reference.repository}:${reference.commitId}`,
+          );
+        }
+        if (usedCommitKeys.has(key)) {
+          throw new Error(`Briefing topics reuse commit: ${key}`);
+        }
+        usedCommitKeys.add(key);
+        return commit;
+      });
+      const allowedModules = new Set(
+        referencedCommits.flatMap((commit) =>
+          commit.scope ? [commit.repository, commit.scope] : [commit.repository],
+        ),
+      );
+      const modules = topic.modules.map((module) => module.trim()).filter(Boolean);
+      const invalidModule = modules.find((module) => !allowedModules.has(module));
+      if (invalidModule) {
+        throw new Error(`Briefing topic references unknown module: ${invalidModule}`);
+      }
+
+      return {
+        title: topic.title.trim(),
+        summary: topic.summary.trim(),
+        modules,
+        commitReferences: referencedCommits.map((commit) => ({
+          repository: commit.repository,
+          commitId: commit.id,
+          title: commit.message,
+        })),
+      };
+    });
   }
 }

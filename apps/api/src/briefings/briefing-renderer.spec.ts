@@ -48,7 +48,7 @@ describe('briefing renderer', () => {
     });
   });
 
-  it('renders a concise summary and omits empty sections', () => {
+  it('renders project change topics before the development record', () => {
     const markdown = renderBriefingMarkdown({
       date: '2026-06-03',
       projectName: 'FlowX',
@@ -60,29 +60,45 @@ describe('briefing renderer', () => {
           ],
           summary: { ref: 'main', commitCount: 2 },
         }),
-        event({
-          eventType: 'merge_request',
-          objectKind: 'merge_request',
-          action: 'merge',
-          subject: 'Add briefing page',
-          projectName: 'flowx-web',
-          summary: { state: 'merged' },
-        }),
       ],
+      aiSummary: {
+        source: 'ai',
+        aiProvider: 'codex',
+        headline: '简报内容组织发生调整',
+        summaryParagraph: '当天提交主要调整了简报内容组织。',
+        topics: [
+          {
+            title: '简报内容组织调整',
+            summary: '简报从提交分类调整为项目变化主题。',
+            modules: ['briefing'],
+            commitReferences: [
+              {
+                repository: 'flowx',
+                commitId: 'abc',
+                title: 'feat(briefing): add daily summary',
+              },
+            ],
+          },
+        ],
+        openQuestions: ['commit 未说明历史简报是否同步调整。'],
+      },
     });
 
-    expect(markdown).toContain('# FlowX · 研发日报 · 2026-06-03');
-    expect(markdown).toContain('## 今日研发摘要');
-    expect(markdown).toContain('共 2 次提交');
+    expect(markdown).toContain('# FlowX · 项目变化简报 · 2026-06-03');
+    expect(markdown).toContain('## 今日概览');
+    expect(markdown).toContain('简报内容组织发生调整');
+    expect(markdown).toContain('## 主要变化');
+    expect(markdown).toContain('### 简报内容组织调整');
+    expect(markdown).toContain('简报从提交分类调整为项目变化主题。');
+    expect(markdown).toContain('涉及模块：briefing');
+    expect(markdown).toContain('依据：feat(briefing): add daily summary [flowx]');
+    expect(markdown).toContain('## 待确认事项');
+    expect(markdown).toContain('commit 未说明历史简报是否同步调整。');
+    expect(markdown).toContain('## 研发记录');
     expect(markdown).toContain('### 新功能');
     expect(markdown).toContain('feat(briefing): add daily summary');
     expect(markdown).toContain('### 问题修复');
     expect(markdown).toContain('fix(renderer): escape html output');
-    expect(markdown).toContain('Add briefing page');
-    expect(markdown).not.toContain('本日无相关记录');
-    expect(markdown).not.toContain('活动概览');
-    expect(markdown).not.toContain('代码推送');
-    expect(markdown).not.toContain('AI_EXECUTOR_PROVIDER');
   });
 
   it('renders commitlint category sections for docs and chore commits', () => {
@@ -104,6 +120,10 @@ describe('briefing renderer', () => {
     expect(markdown).toContain('docs(readme): update setup guide');
     expect(markdown).toContain('### 杂项维护');
     expect(markdown).toContain('chore(deps): bump vitest');
+    expect(markdown).toContain('## 今日概览');
+    expect(markdown).not.toContain('## 主要变化');
+    expect(markdown).not.toContain('## 待确认事项');
+    expect(markdown).toContain('## 研发记录');
   });
 
   it('escapes HTML content from commit messages', () => {
