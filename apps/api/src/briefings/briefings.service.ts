@@ -180,7 +180,9 @@ export class BriefingsService {
     );
     const rawPayloadByEventIndex = eventRows.map((row) => row.rawPayload);
     const aiSummary = await this.briefingAiSummarizerService.summarize({
+      period: 'DAILY',
       date: briefingDate,
+      rangeLabel: briefingDate,
       projectName: project.name,
       events,
       rawPayloadByEventIndex,
@@ -296,4 +298,3 @@ function normalizeStoredEvent(value: Prisma.JsonValue): NormalizedBriefingEvent 
   }
   return value as unknown as NormalizedBriefingEvent;
 }
-
