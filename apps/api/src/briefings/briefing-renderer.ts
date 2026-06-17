@@ -8,6 +8,7 @@ import {
   type CommitCategory,
 } from './briefing-commits';
 import type { BriefingEventType, NormalizedBriefingEvent } from './briefing-events';
+import type { BriefingPeriod } from './dto/generate-briefing.dto';
 
 export interface BriefingAggregate {
   overview: {
@@ -21,7 +22,9 @@ export interface BriefingAggregate {
 }
 
 interface RenderInput {
+  period: BriefingPeriod;
   date: string;
+  rangeLabel: string;
   projectName: string;
   events: NormalizedBriefingEvent[];
   rawPayloadByEventIndex?: unknown[];
@@ -34,12 +37,17 @@ interface DevelopmentRecordSection {
   commits: BriefingCommit[];
 }
 
-export function formatBriefingTitle(projectName: string, date: string) {
+export function formatBriefingTitle(
+  projectName: string,
+  date: string,
+  period: BriefingPeriod = 'DAILY',
+) {
   const name = projectName.trim();
+  const title = period === 'WEEKLY' ? '项目变化周报' : '项目变化简报';
   if (!name) {
-    return `项目变化简报 - ${date}`;
+    return `${title} - ${date}`;
   }
-  return `${name} · 项目变化简报 · ${date}`;
+  return `${name} · ${title} · ${date}`;
 }
 
 function renderEventInputs(input: RenderInput) {
@@ -107,9 +115,21 @@ function overviewLines(input: RenderInput, commitCount: number) {
     return [headline, paragraph].filter(Boolean);
   }
   if (commitCount === 0) {
-    return ['今日暂无可归纳的项目变化。'];
+    return [
+      input.period === 'WEEKLY'
+        ? '本周暂无可归纳的项目变化。'
+        : '今日暂无可归纳的项目变化。',
+    ];
   }
-  return [`今日共记录 ${commitCount} 次提交，现有信息不足以形成可靠的项目变化主题。`];
+  return [
+    input.period === 'WEEKLY'
+      ? `本周共记录 ${commitCount} 次提交，现有信息不足以形成可靠的项目变化主题。`
+      : `今日共记录 ${commitCount} 次提交，现有信息不足以形成可靠的项目变化主题。`,
+  ];
+}
+
+function overviewTitle(period: BriefingPeriod) {
+  return period === 'WEEKLY' ? '本周概览' : '今日概览';
 }
 
 function appendMarkdownTopic(lines: string[], topic: BriefingAiTopic) {
@@ -125,7 +145,7 @@ function appendMarkdownTopic(lines: string[], topic: BriefingAiTopic) {
 function renderMarkdownContent(input: RenderInput) {
   const commits = collectCommits(input);
   const sections = developmentRecordSections(commits);
-  const lines = ['## 今日概览', '', ...overviewLines(input, commits.length)];
+  const lines = [`## ${overviewTitle(input.period)}`, '', ...overviewLines(input, commits.length)];
 
   if (input.aiSummary?.topics.length) {
     lines.push('', '## 主要变化');
@@ -159,9 +179,11 @@ function renderMarkdownContent(input: RenderInput) {
 }
 
 export function renderBriefingMarkdown(input: RenderInput) {
-  return [`# ${formatBriefingTitle(input.projectName, input.date)}`, '', renderMarkdownContent(input)].join(
-    '\n',
-  );
+  return [
+    `# ${formatBriefingTitle(input.projectName, input.rangeLabel, input.period)}`,
+    '',
+    renderMarkdownContent(input),
+  ].join('\n');
 }
 
 function escapeHtml(value: string) {
@@ -191,7 +213,7 @@ function renderHtmlTopic(topic: BriefingAiTopic) {
 function renderHtmlContent(input: RenderInput) {
   const commits = collectCommits(input);
   const sections = developmentRecordSections(commits);
-  const parts = ['<h2>今日概览</h2>'];
+  const parts = [`<h2>${escapeHtml(overviewTitle(input.period))}</h2>`];
   for (const line of overviewLines(input, commits.length)) {
     parts.push(`<p>${escapeHtml(line)}</p>`);
   }
@@ -230,7 +252,7 @@ function renderHtmlContent(input: RenderInput) {
 
 export function renderBriefingHtml(input: RenderInput) {
   return [
-    `<h1>${escapeHtml(formatBriefingTitle(input.projectName, input.date))}</h1>`,
+    `<h1>${escapeHtml(formatBriefingTitle(input.projectName, input.rangeLabel, input.period))}</h1>`,
     renderHtmlContent(input),
   ].join('\n');
 }

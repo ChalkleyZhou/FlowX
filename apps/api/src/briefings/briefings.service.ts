@@ -188,14 +188,18 @@ export class BriefingsService {
       rawPayloadByEventIndex,
     });
     const markdownContent = renderBriefingMarkdown({
+      period: 'DAILY',
       date: briefingDate,
+      rangeLabel: briefingDate,
       projectName: project.name,
       events,
       rawPayloadByEventIndex,
       aiSummary,
     });
     const htmlContent = renderBriefingHtml({
+      period: 'DAILY',
       date: briefingDate,
+      rangeLabel: briefingDate,
       projectName: project.name,
       events,
       rawPayloadByEventIndex,

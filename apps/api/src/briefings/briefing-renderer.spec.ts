@@ -50,7 +50,9 @@ describe('briefing renderer', () => {
 
   it('renders project change topics before the development record', () => {
     const markdown = renderBriefingMarkdown({
+      period: 'DAILY',
       date: '2026-06-03',
+      rangeLabel: '2026-06-03',
       projectName: 'FlowX',
       events: [
         event({
@@ -103,7 +105,9 @@ describe('briefing renderer', () => {
 
   it('renders commitlint category sections for docs and chore commits', () => {
     const markdown = renderBriefingMarkdown({
+      period: 'DAILY',
       date: '2026-06-03',
+      rangeLabel: '2026-06-03',
       projectName: 'FlowX',
       events: [
         event({
@@ -128,7 +132,9 @@ describe('briefing renderer', () => {
 
   it('escapes HTML content from commit messages', () => {
     const html = renderBriefingHtml({
+      period: 'DAILY',
       date: '2026-06-03',
+      rangeLabel: '2026-06-03',
       projectName: 'FlowX',
       events: [
         event({
@@ -141,5 +147,33 @@ describe('briefing renderer', () => {
     expect(html).toContain('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;');
     expect(html).toContain('flowx &amp; api');
     expect(html).not.toContain('<script>alert("x")</script>');
+  });
+
+  it('renders weekly markdown with a weekly title and overview heading', () => {
+    const markdown = renderBriefingMarkdown({
+      period: 'WEEKLY',
+      date: '2026-06-15',
+      rangeLabel: '2026-06-15 至 2026-06-21',
+      projectName: 'FlowX',
+      events: [],
+    });
+
+    expect(markdown).toContain('# FlowX · 项目变化周报 · 2026-06-15 至 2026-06-21');
+    expect(markdown).toContain('## 本周概览');
+    expect(markdown).toContain('本周暂无可归纳的项目变化。');
+  });
+
+  it('renders weekly html with a weekly title and overview heading', () => {
+    const html = renderBriefingHtml({
+      period: 'WEEKLY',
+      date: '2026-06-15',
+      rangeLabel: '2026-06-15 至 2026-06-21',
+      projectName: 'FlowX',
+      events: [],
+    });
+
+    expect(html).toContain('<h1>FlowX · 项目变化周报 · 2026-06-15 至 2026-06-21</h1>');
+    expect(html).toContain('<h2>本周概览</h2>');
+    expect(html).toContain('<p>本周暂无可归纳的项目变化。</p>');
   });
 });
