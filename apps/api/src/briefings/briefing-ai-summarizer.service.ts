@@ -12,6 +12,8 @@ import { buildBriefingFacts, type BriefingFactsPayload } from './briefing-facts'
 import type { NormalizedBriefingEvent } from './briefing-events';
 import type { BriefingPeriod } from './dto/generate-briefing.dto';
 
+const DEFAULT_BRIEFING_AI_TIMEOUT_MS = 20_000;
+
 export interface BriefingCommitReference {
   repository: string;
   commitId: string;
@@ -88,6 +90,7 @@ export class BriefingAiSummarizerService {
         prompt,
         'briefing summary',
         context,
+        { timeoutMs: resolveBriefingAiTimeoutMs() },
       );
 
       return {
@@ -196,4 +199,11 @@ export class BriefingAiSummarizerService {
       };
     });
   }
+}
+
+function resolveBriefingAiTimeoutMs() {
+  const configured = Number(process.env.FLOWX_BRIEFING_AI_TIMEOUT_MS?.trim());
+  return Number.isFinite(configured) && configured > 0
+    ? Math.floor(configured)
+    : DEFAULT_BRIEFING_AI_TIMEOUT_MS;
 }

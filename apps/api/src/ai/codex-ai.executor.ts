@@ -52,6 +52,10 @@ const CODEX_AUTH_ERROR_PATTERNS = [
   /unauthorized/i,
 ];
 
+export interface StructuredJsonStageOptions {
+  timeoutMs?: number;
+}
+
 @Injectable()
 export class CodexAiExecutor implements AIExecutor {
   private readonly logger = new Logger(CodexAiExecutor.name);
@@ -76,8 +80,9 @@ export class CodexAiExecutor implements AIExecutor {
     prompt: string,
     stageName: string,
     context?: AIInvocationContext,
+    options?: StructuredJsonStageOptions,
   ): Promise<T> {
-    return this.runJsonStage<T>(schemaFile, prompt, stageName, [], context);
+    return this.runJsonStage<T>(schemaFile, prompt, stageName, [], context, options);
   }
 
   async generateDesign(
@@ -1086,6 +1091,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     stageName: string,
     addDirs: string[] = [],
     context?: AIInvocationContext,
+    options?: StructuredJsonStageOptions,
   ): Promise<T> {
     const tempDir = await mkdtemp(join(tmpdir(), 'flowx-codex-'));
     const outputPath = join(tempDir, `${stageName.replace(/\s+/g, '-')}.json`);
@@ -1118,6 +1124,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
         stageName,
         prompt,
         context,
+        options,
       );
 
       const rawOutput = (await readFile(outputPath, 'utf8')).trim();
@@ -1198,6 +1205,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     stageName: string,
     prompt?: string,
     context?: AIInvocationContext,
+    options?: { timeoutMs?: number },
   ) {
     return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
       let stdout = '';
@@ -1228,6 +1236,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
         env: this.buildInvocationEnv(context),
         stdio: ['pipe', 'pipe', 'pipe'],
       });
+      const timeoutMs = options?.timeoutMs ?? CODEX_TIMEOUT_MS;
 
       const timeout = setTimeout(() => {
         if (finished) {
@@ -1240,13 +1249,13 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
           finishedAt: new Date().toISOString(),
           stdout,
           stderr,
-          errorMessage: `${this.providerLabel} ${stageName} timed out after ${CODEX_TIMEOUT_MS}ms.`,
+          errorMessage: `${this.providerLabel} ${stageName} timed out after ${timeoutMs}ms.`,
         }).catch((error) => {
           const message = error instanceof Error ? error.message : String(error);
           this.logger.warn(`Failed to persist timed out ${this.providerLabel} artifact: ${message}`);
         });
-        reject(new Error(`${this.providerLabel} ${stageName} timed out after ${CODEX_TIMEOUT_MS}ms.`));
-      }, CODEX_TIMEOUT_MS);
+        reject(new Error(`${this.providerLabel} ${stageName} timed out after ${timeoutMs}ms.`));
+      }, timeoutMs);
 
       child.stdout.on('data', (chunk) => {
         stdout += chunk.toString();

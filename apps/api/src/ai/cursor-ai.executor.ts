@@ -6,7 +6,7 @@ import { delimiter, join } from 'path';
 import type { BrainstormInput, BrainstormOutput, GenerateDesignInput, GenerateDesignOutput } from '../common/types';
 import { assertStrictGenerateDesignOutput } from './design-output-validate';
 import { type AIInvocationContext } from './ai-executor';
-import { CodexAiExecutor } from './codex-ai.executor';
+import { CodexAiExecutor, type StructuredJsonStageOptions } from './codex-ai.executor';
 
 const CURSOR_TIMEOUT_MS = Number(process.env.CURSOR_TIMEOUT_MS?.trim()) || 600_000;
 /** Brainstorm outputs large JSON; allow longer wall time than generic stages (truncated stdout → parse errors). */
@@ -68,6 +68,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
     stageName: string,
     addDirs: string[] = [],
     context?: AIInvocationContext,
+    options?: StructuredJsonStageOptions,
   ): Promise<T> {
     const tempCwd = addDirs[0] ? null : await mkdtemp(join(tmpdir(), 'flowx-cursor-json-'));
     // Avoid using the FlowX service repo as implicit context when no target repo is provided.
@@ -80,7 +81,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
     args.push(prompt);
 
     try {
-      const timeoutMs = this.resolveStageTimeoutMs(stageName, prompt);
+      const timeoutMs = options?.timeoutMs ?? this.resolveStageTimeoutMs(stageName, prompt);
       const { stdout, stderr } = await this.runCursorProcess(
         args,
         cursorCwd,

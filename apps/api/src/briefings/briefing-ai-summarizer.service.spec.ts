@@ -41,11 +41,13 @@ describe('BriefingAiSummarizerService', () => {
   const getConfiguredDefaultProvider = vi.fn();
   const originalDisabled = process.env.FLOWX_BRIEFING_AI_DISABLED;
   const originalBriefingProvider = process.env.FLOWX_BRIEFING_AI_PROVIDER;
+  const originalBriefingTimeout = process.env.FLOWX_BRIEFING_AI_TIMEOUT_MS;
 
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.FLOWX_BRIEFING_AI_DISABLED;
     delete process.env.FLOWX_BRIEFING_AI_PROVIDER;
+    delete process.env.FLOWX_BRIEFING_AI_TIMEOUT_MS;
     getConfiguredDefaultProvider.mockReturnValue('codex');
     resolveInvocationContext.mockResolvedValue({ codexCredentialSource: 'instance' });
     codexRunStructuredJsonStage.mockResolvedValue(aiOutput);
@@ -68,6 +70,11 @@ describe('BriefingAiSummarizerService', () => {
       delete process.env.FLOWX_BRIEFING_AI_PROVIDER;
     } else {
       process.env.FLOWX_BRIEFING_AI_PROVIDER = originalBriefingProvider;
+    }
+    if (originalBriefingTimeout === undefined) {
+      delete process.env.FLOWX_BRIEFING_AI_TIMEOUT_MS;
+    } else {
+      process.env.FLOWX_BRIEFING_AI_TIMEOUT_MS = originalBriefingTimeout;
     }
   });
 
@@ -98,6 +105,7 @@ describe('BriefingAiSummarizerService', () => {
     expect(codexRunStructuredJsonStage.mock.calls[0]?.[1]).toContain('一个周期的 commit');
     expect(cursorRunStructuredJsonStage).not.toHaveBeenCalled();
     expect(resolveInvocationContext).toHaveBeenCalledWith('codex', null);
+    expect(codexRunStructuredJsonStage.mock.calls[0]?.[4]).toEqual({ timeoutMs: 20_000 });
     expect(summary.topics[0]?.commitReferences).toEqual([
       {
         repository: 'flowx-api',
@@ -123,6 +131,20 @@ describe('BriefingAiSummarizerService', () => {
     expect(cursorRunStructuredJsonStage).toHaveBeenCalled();
     expect(codexRunStructuredJsonStage).not.toHaveBeenCalled();
     expect(resolveInvocationContext).toHaveBeenCalledWith('cursor', null);
+  });
+
+  it('allows overriding the briefing AI timeout', async () => {
+    process.env.FLOWX_BRIEFING_AI_TIMEOUT_MS = '3500';
+
+    await createService().summarize({
+      period: 'DAILY',
+      date: '2026-06-03',
+      rangeLabel: '2026-06-03',
+      projectName: 'FlowX',
+      events: [pushEvent()],
+    });
+
+    expect(codexRunStructuredJsonStage.mock.calls[0]?.[4]).toEqual({ timeoutMs: 3500 });
   });
 
   it('falls back to a conservative summary when AI is disabled', async () => {
