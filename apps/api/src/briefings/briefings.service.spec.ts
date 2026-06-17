@@ -188,9 +188,68 @@ describe('BriefingsService', () => {
         projectId: 'project-1',
         workspaceId: 'workspace-1',
         scopeKey: expect.stringContaining('source-1'),
+        period: 'DAILY',
+        periodStart: new Date('2026-06-02T14:00:00.000Z'),
+        periodEnd: new Date('2026-06-03T14:00:00.000Z'),
         eventCount: 1,
       },
     });
+    expect(summarize).toHaveBeenCalledWith(expect.objectContaining({
+      period: 'DAILY',
+      date: '2026-06-03',
+      rangeLabel: '2026-06-03',
+      projectName: 'FlowX',
+    }));
+  });
+
+  it('generates a weekly project briefing from natural week events', async () => {
+    projectFindUnique.mockResolvedValue({
+      id: 'project-1',
+      name: 'FlowX',
+      workspaceId: 'workspace-1',
+      workspace: { repositories: [{ id: 'repo-1' }] },
+    });
+    configFindUnique.mockResolvedValue({ dailyHour: 22 });
+    sourceFindMany.mockResolvedValue([{ id: 'source-1', repositoryId: 'repo-1' }]);
+    briefingFindFirst.mockResolvedValue(null);
+    eventFindMany.mockResolvedValue([]);
+    briefingCreate.mockResolvedValue({ id: 'weekly-briefing' });
+
+    await expect(
+      createService().generateProjectBriefing('project-1', {
+        period: 'WEEKLY',
+        date: '2026-06-17',
+      }),
+    ).resolves.toEqual({ id: 'weekly-briefing' });
+
+    expect(eventFindMany.mock.calls[0]?.[0]).toMatchObject({
+      where: {
+        briefingSourceId: { in: ['source-1'] },
+        occurredAt: {
+          gte: new Date('2026-06-14T16:00:00.000Z'),
+          lt: new Date('2026-06-21T16:00:00.000Z'),
+        },
+      },
+      orderBy: { occurredAt: 'asc' },
+    });
+    expect(summarize).toHaveBeenCalledWith(expect.objectContaining({
+      period: 'WEEKLY',
+      date: '2026-06-15',
+      rangeLabel: '2026-06-15 至 2026-06-21',
+      projectName: 'FlowX',
+    }));
+    expect(briefingCreate.mock.calls[0]?.[0]).toMatchObject({
+      data: {
+        projectId: 'project-1',
+        workspaceId: 'workspace-1',
+        date: new Date('2026-06-14T16:00:00.000Z'),
+        period: 'WEEKLY',
+        periodStart: new Date('2026-06-14T16:00:00.000Z'),
+        periodEnd: new Date('2026-06-21T16:00:00.000Z'),
+        eventCount: 0,
+      },
+    });
+    expect(briefingCreate.mock.calls[0]?.[0].data.scopeKey).toContain('"period":"WEEKLY"');
   });
 
   it('updates an existing briefing when regenerate is true', async () => {
@@ -223,6 +282,7 @@ describe('BriefingsService', () => {
       where: { id: 'existing-briefing' },
       data: expect.objectContaining({
         markdownContent: expect.stringContaining('# FlowX · 项目变化简报 · 2026-06-03'),
+        sentAt: null,
       }),
     });
     expect(briefingCreate).not.toHaveBeenCalled();
