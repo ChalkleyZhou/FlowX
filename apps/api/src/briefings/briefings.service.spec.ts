@@ -202,6 +202,45 @@ describe('BriefingsService', () => {
     }));
   });
 
+  it('passes the authenticated organization context to the AI summarizer', async () => {
+    projectFindUnique.mockResolvedValue({
+      id: 'project-1',
+      name: 'FlowX',
+      workspaceId: 'workspace-1',
+      workspace: {
+        repositories: [{ id: 'repo-1' }],
+      },
+    });
+    configFindUnique.mockResolvedValue({ dailyHour: 22 });
+    sourceFindMany.mockResolvedValue([{ id: 'source-1', repositoryId: 'repo-1' }]);
+    briefingFindFirst.mockResolvedValue(null);
+    eventFindMany.mockResolvedValue([]);
+    briefingCreate.mockResolvedValue({ id: 'briefing-1' });
+
+    await createService().generateProjectBriefing(
+      'project-1',
+      { date: '2026-06-03' },
+      {
+        user: { id: 'user-1', displayName: '张三' },
+        organization: {
+          id: 'org-1',
+          name: '研发组织',
+          providerOrganizationId: 'corp-1',
+        },
+      },
+    );
+
+    expect(summarize).toHaveBeenCalledWith(expect.objectContaining({
+      recipient: {
+        flowxUserId: 'user-1',
+        flowxOrganizationId: 'org-1',
+        displayName: '张三',
+        providerOrganizationId: 'corp-1',
+        organizationName: '研发组织',
+      },
+    }));
+  });
+
   it('generates a weekly project briefing from natural week events', async () => {
     projectFindUnique.mockResolvedValue({
       id: 'project-1',

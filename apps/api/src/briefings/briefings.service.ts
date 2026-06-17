@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import type { AiInvocationRecipient } from '../ai/ai-invocation-context.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   renderBriefingHtml,
@@ -38,6 +39,18 @@ interface BriefingPeriodPlan {
   windowEnd: Date;
   recordDate: Date;
 }
+
+type BriefingAuthSession = {
+  user?: {
+    id?: string;
+    displayName?: string;
+  } | null;
+  organization?: {
+    id?: string | null;
+    name?: string | null;
+    providerOrganizationId?: string | null;
+  } | null;
+};
 
 @Injectable()
 export class BriefingsService {
@@ -137,7 +150,11 @@ export class BriefingsService {
     return briefing;
   }
 
-  async generateProjectBriefing(projectId: string, dto: GenerateBriefingDto) {
+  async generateProjectBriefing(
+    projectId: string,
+    dto: GenerateBriefingDto,
+    authSession?: BriefingAuthSession,
+  ) {
     const project = await this.getProjectForBriefing(projectId);
     const config = await this.prisma.projectBriefingConfig.findUnique({
       where: { projectId },
@@ -201,6 +218,7 @@ export class BriefingsService {
       date: periodPlan.date,
       rangeLabel: periodPlan.rangeLabel,
       projectName: project.name,
+      recipient: toAiInvocationRecipient(authSession),
       events,
       rawPayloadByEventIndex,
     });
@@ -349,4 +367,22 @@ function normalizeStoredEvent(value: Prisma.JsonValue): NormalizedBriefingEvent 
     throw new Error('Stored normalized briefing event is invalid.');
   }
   return value as unknown as NormalizedBriefingEvent;
+}
+
+function toAiInvocationRecipient(session?: BriefingAuthSession): AiInvocationRecipient | null {
+  const userId = session?.user?.id?.trim();
+  const displayName = session?.user?.displayName?.trim();
+  if (!userId || !displayName) {
+    return null;
+  }
+
+  const organization = session?.organization;
+  const organizationId = organization?.id?.trim();
+  return {
+    flowxUserId: userId,
+    flowxOrganizationId: organizationId || null,
+    displayName,
+    providerOrganizationId: organization?.providerOrganizationId ?? null,
+    organizationName: organization?.name ?? null,
+  };
 }

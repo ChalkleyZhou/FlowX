@@ -5,6 +5,7 @@ import {
   type AIExecutorRegistry,
 } from '../ai/ai-executor';
 import { AiInvocationContextService } from '../ai/ai-invocation-context.service';
+import type { AiInvocationRecipient } from '../ai/ai-invocation-context.service';
 import { CodexAiExecutor } from '../ai/codex-ai.executor';
 import { buildBriefingSummaryPrompt } from '../prompts/briefing-summary.prompt';
 import { buildBriefingFacts, type BriefingFactsPayload } from './briefing-facts';
@@ -48,6 +49,7 @@ interface SummarizeInput {
   date: string;
   rangeLabel: string;
   projectName: string;
+  recipient?: AiInvocationRecipient | null;
   events: NormalizedBriefingEvent[];
   rawPayloadByEventIndex?: unknown[];
 }
@@ -70,7 +72,10 @@ export class BriefingAiSummarizerService {
 
     try {
       const provider = this.resolveProvider();
-      const context = await this.aiInvocationContextService.resolveInvocationContext(provider, null);
+      const context = await this.aiInvocationContextService.resolveInvocationContext(
+        provider,
+        input.recipient ?? null,
+      );
       const executor = this.resolveStructuredExecutor(provider);
       const prompt = buildBriefingSummaryPrompt(facts);
       const raw = await executor.runStructuredJsonStage<{
