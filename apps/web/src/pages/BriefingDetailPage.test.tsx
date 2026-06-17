@@ -29,6 +29,9 @@ describe('BriefingDetailPage', () => {
       projectId: 'project-1',
       workspaceId: 'workspace-1',
       date: '2026-06-03T00:00:00.000Z',
+      period: 'DAILY',
+      periodStart: '2026-06-02T14:00:00.000Z',
+      periodEnd: '2026-06-03T14:00:00.000Z',
       scopeKey: 'scope',
       scope: { repositoryIds: ['repo-1'], briefingSourceIds: ['source-1'] },
       status: 'GENERATED',
@@ -102,4 +105,3 @@ describe('BriefingDetailPage', () => {
     expect(api.sendBriefing).toHaveBeenCalledWith('briefing-1');
   });
 });
-

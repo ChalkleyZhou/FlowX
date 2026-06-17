@@ -3,6 +3,7 @@ import type {
   AuthSession,
   AiCredentialStatus,
   Briefing,
+  BriefingPeriod,
   BriefingSource,
   Bug,
   DeliveryTarget,
@@ -364,6 +365,7 @@ export const api = {
   generateProjectBriefing: (
     projectId: string,
     payload: {
+      period?: BriefingPeriod;
       date?: string;
       regenerate?: boolean;
     },
