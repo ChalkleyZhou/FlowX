@@ -209,7 +209,7 @@ describe('BriefingAiSummarizerService', () => {
     expect(summary.openQuestions).toEqual([]);
   });
 
-  it('rejects the whole AI summary when topics reuse the same commit', async () => {
+  it('deduplicates reused commits and keeps the first topic', async () => {
     codexRunStructuredJsonStage.mockResolvedValue({
       ...aiOutput,
       topics: [
@@ -229,7 +229,50 @@ describe('BriefingAiSummarizerService', () => {
       events: [pushEvent()],
     });
 
-    expect(summary.source).toBe('fallback');
-    expect(summary.topics).toEqual([]);
+    expect(summary.source).toBe('ai');
+    expect(summary.topics).toHaveLength(1);
+    expect(summary.topics[0]?.title).toBe('简报内容组织调整');
+  });
+
+  it('keeps later topics when only duplicate commits are removed', async () => {
+    codexRunStructuredJsonStage.mockResolvedValue({
+      ...aiOutput,
+      topics: [
+        aiOutput.topics[0],
+        {
+          title: '第二个主题',
+          summary: '引用另一条提交。',
+          modules: ['briefing'],
+          commitReferences: [
+            { repository: 'flowx-api', commitId: 'a1' },
+            { repository: 'flowx-api', commitId: 'b2' },
+          ],
+        },
+      ],
+    });
+
+    const summary = await createService().summarize({
+      period: 'DAILY',
+      date: '2026-06-03',
+      rangeLabel: '2026-06-03',
+      projectName: 'FlowX',
+      events: [
+        pushEvent(),
+        pushEvent({
+          commits: [{ id: 'b2', message: 'fix(briefing): dedupe topics' }],
+        }),
+      ],
+    });
+
+    expect(summary.source).toBe('ai');
+    expect(summary.topics).toHaveLength(2);
+    expect(summary.topics[1]?.title).toBe('第二个主题');
+    expect(summary.topics[1]?.commitReferences).toEqual([
+      {
+        repository: 'flowx-api',
+        commitId: 'b2',
+        title: 'fix(briefing): dedupe topics',
+      },
+    ]);
   });
 });

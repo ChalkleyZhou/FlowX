@@ -156,26 +156,31 @@ export class BriefingAiSummarizerService {
       facts.commits.map((commit) => [`${commit.repository}:${commit.id}`, commit]),
     );
     const usedCommitKeys = new Set<string>();
+    const resolved: BriefingAiTopic[] = [];
 
-    return topics.map((topic) => {
+    for (const topic of topics) {
       if (topic.commitReferences.length === 0) {
         throw new Error(`Briefing topic has no commit references: ${topic.title}`);
       }
 
-      const referencedCommits = topic.commitReferences.map((reference) => {
+      const referencedCommits = topic.commitReferences.flatMap((reference) => {
         const key = `${reference.repository}:${reference.commitId}`;
+        if (usedCommitKeys.has(key)) {
+          return [];
+        }
         const commit = commits.get(key);
         if (!commit) {
           throw new Error(
             `Briefing topic references unknown commit: ${reference.repository}:${reference.commitId}`,
           );
         }
-        if (usedCommitKeys.has(key)) {
-          throw new Error(`Briefing topics reuse commit: ${key}`);
-        }
         usedCommitKeys.add(key);
-        return commit;
+        return [commit];
       });
+      if (referencedCommits.length === 0) {
+        continue;
+      }
+
       const allowedModules = new Set(
         referencedCommits.flatMap((commit) =>
           commit.scope ? [commit.repository, commit.scope] : [commit.repository],
@@ -187,7 +192,7 @@ export class BriefingAiSummarizerService {
         throw new Error(`Briefing topic references unknown module: ${invalidModule}`);
       }
 
-      return {
+      resolved.push({
         title: topic.title.trim(),
         summary: topic.summary.trim(),
         modules,
@@ -196,8 +201,10 @@ export class BriefingAiSummarizerService {
           commitId: commit.id,
           title: commit.message,
         })),
-      };
-    });
+      });
+    }
+
+    return resolved;
   }
 }
 
