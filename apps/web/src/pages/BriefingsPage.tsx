@@ -13,16 +13,41 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
 import { formatBeijingDateTime } from '../utils/datetime';
-import type { Briefing, Project } from '../types';
+import type { Briefing, BriefingPeriod, Project } from '../types';
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function periodLabel(period: BriefingPeriod | string | undefined) {
+  return period === 'WEEKLY' ? '周报' : '日报';
+}
+
+function briefingRangeLabel(briefing: Briefing) {
+  if (briefing.period === 'WEEKLY') {
+    const scopeRange =
+      typeof briefing.scope === 'object' && briefing.scope && 'rangeLabel' in briefing.scope
+        ? String((briefing.scope as { rangeLabel?: unknown }).rangeLabel ?? '')
+        : '';
+    if (scopeRange) {
+      return scopeRange;
+    }
+    if (briefing.periodStart && briefing.periodEnd) {
+      const start = briefing.periodStart.slice(0, 10);
+      const end = new Date(new Date(briefing.periodEnd).getTime() - 24 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 10);
+      return `${start} 至 ${end}`;
+    }
+  }
+  return briefing.date.slice(0, 10);
 }
 
 export function BriefingsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [briefings, setBriefings] = useState<Briefing[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [period, setPeriod] = useState<BriefingPeriod>('DAILY');
   const [date, setDate] = useState(today());
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -73,11 +98,12 @@ export function BriefingsPage() {
     setGenerating(true);
     try {
       const briefing = await api.generateProjectBriefing(selectedProjectId, {
+        period,
         date,
         regenerate: true,
       });
       await refresh(selectedProjectId);
-      toast.success('简报已生成');
+      toast.success(period === 'WEEKLY' ? '周报已生成' : '简报已生成');
       navigate(`/briefings/${briefing.id}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '生成简报失败');
@@ -138,8 +164,22 @@ export function BriefingsPage() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="flex w-full flex-col gap-1.5 sm:w-[140px]">
+                <label className="text-xs font-medium text-muted-foreground">类型</label>
+                <Select value={period} onValueChange={(value) => setPeriod(value as BriefingPeriod)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DAILY">日报</SelectItem>
+                    <SelectItem value="WEEKLY">周报</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex w-full flex-col gap-1.5 sm:w-[168px]">
-                <label className="text-xs font-medium text-muted-foreground">日期</label>
+                <label className="text-xs font-medium text-muted-foreground">
+                  {period === 'WEEKLY' ? '周内日期' : '日期'}
+                </label>
                 <Input
                   type="date"
                   className="w-full"
@@ -156,7 +196,7 @@ export function BriefingsPage() {
                   onClick={handleGenerate}
                   disabled={!selectedProjectId || generating}
                 >
-                  {generating ? '生成中...' : '生成简报'}
+                  {generating ? '生成中...' : period === 'WEEKLY' ? '生成周报' : '生成简报'}
                 </Button>
               </div>
             </div>
@@ -184,6 +224,7 @@ export function BriefingsPage() {
                 <thead className="bg-muted/40 text-left text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 font-medium">日期</th>
+                    <th className="px-4 py-3 font-medium">类型</th>
                     <th className="px-4 py-3 font-medium">状态</th>
                     <th className="px-4 py-3 font-medium">事件</th>
                     <th className="px-4 py-3 font-medium">生成时间</th>
@@ -194,7 +235,8 @@ export function BriefingsPage() {
                 <tbody>
                   {briefings.map((briefing) => (
                     <tr key={briefing.id} className="border-t border-border">
-                      <td className="px-4 py-3">{briefing.date.slice(0, 10)}</td>
+                      <td className="px-4 py-3">{briefingRangeLabel(briefing)}</td>
+                      <td className="px-4 py-3">{periodLabel(briefing.period)}</td>
                       <td className="px-4 py-3"><Badge variant="secondary">{briefing.status}</Badge></td>
                       <td className="px-4 py-3">{briefing.eventCount}</td>
                       <td className="px-4 py-3">{formatBeijingDateTime(briefing.generatedAt)}</td>
@@ -219,4 +261,3 @@ export function BriefingsPage() {
     </>
   );
 }
-

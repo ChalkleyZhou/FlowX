@@ -6,9 +6,12 @@ import {
   type BriefingCommit,
   type CommitCategory,
 } from './briefing-commits';
+import type { BriefingPeriod } from './dto/generate-briefing.dto';
 
 export interface BriefingFactsPayload {
+  period: BriefingPeriod;
   date: string;
+  rangeLabel: string;
   projectName: string;
   overview: {
     repositoryCount: number;
@@ -26,7 +29,9 @@ export interface BriefingFactsPayload {
 }
 
 interface BuildFactsInput {
+  period: BriefingPeriod;
   date: string;
+  rangeLabel: string;
   projectName: string;
   events: NormalizedBriefingEvent[];
   rawPayloadByEventIndex?: unknown[];
@@ -67,7 +72,9 @@ export function buildBriefingFacts(input: BuildFactsInput): BriefingFactsPayload
   const commits = collectDailyCommits(eventInputs);
   const commitSummary = summarizeDailyCommits(commits);
   return {
+    period: input.period,
     date: input.date,
+    rangeLabel: input.rangeLabel,
     projectName: input.projectName,
     overview: {
       repositoryCount: commitSummary.repositoryCount,

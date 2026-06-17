@@ -83,7 +83,9 @@ describe('BriefingAiSummarizerService', () => {
 
   it('uses Codex when AI_EXECUTOR_PROVIDER defaults to codex', async () => {
     const summary = await createService().summarize({
+      period: 'DAILY',
       date: '2026-06-03',
+      rangeLabel: '2026-06-03',
       projectName: 'FlowX',
       events: [pushEvent()],
     });
@@ -91,6 +93,9 @@ describe('BriefingAiSummarizerService', () => {
     expect(summary.source).toBe('ai');
     expect(summary.aiProvider).toBe('codex');
     expect(codexRunStructuredJsonStage).toHaveBeenCalled();
+    expect(codexRunStructuredJsonStage.mock.calls[0]?.[1]).toContain('周期：DAILY');
+    expect(codexRunStructuredJsonStage.mock.calls[0]?.[1]).toContain('范围：2026-06-03');
+    expect(codexRunStructuredJsonStage.mock.calls[0]?.[1]).toContain('一个周期的 commit');
     expect(cursorRunStructuredJsonStage).not.toHaveBeenCalled();
     expect(resolveInvocationContext).toHaveBeenCalledWith('codex', null);
     expect(summary.topics[0]?.commitReferences).toEqual([
@@ -106,7 +111,9 @@ describe('BriefingAiSummarizerService', () => {
     process.env.FLOWX_BRIEFING_AI_PROVIDER = 'cursor';
 
     const summary = await createService().summarize({
+      period: 'DAILY',
       date: '2026-06-03',
+      rangeLabel: '2026-06-03',
       projectName: 'FlowX',
       events: [pushEvent()],
     });
@@ -122,7 +129,9 @@ describe('BriefingAiSummarizerService', () => {
     process.env.FLOWX_BRIEFING_AI_DISABLED = 'true';
 
     const summary = await createService().summarize({
+      period: 'DAILY',
       date: '2026-06-03',
+      rangeLabel: '2026-06-03',
       projectName: 'FlowX',
       events: [
         pushEvent(),
@@ -134,6 +143,24 @@ describe('BriefingAiSummarizerService', () => {
     expect(cursorRunStructuredJsonStage).not.toHaveBeenCalled();
     expect(summary.topics).toEqual([]);
     expect(summary.openQuestions).toEqual([]);
+  });
+
+  it('uses weekly fallback copy when a weekly briefing has no commits', async () => {
+    const summary = await createService().summarize({
+      period: 'WEEKLY',
+      date: '2026-06-15',
+      rangeLabel: '2026-06-15 至 2026-06-21',
+      projectName: 'FlowX',
+      events: [],
+    });
+
+    expect(summary).toMatchObject({
+      source: 'fallback',
+      headline: '',
+      summaryParagraph: '本周暂无可归纳的项目变化。',
+      topics: [],
+      openQuestions: [],
+    });
   });
 
   it('rejects the whole AI summary when it references a missing commit', async () => {
@@ -148,7 +175,9 @@ describe('BriefingAiSummarizerService', () => {
     });
 
     const summary = await createService().summarize({
+      period: 'DAILY',
       date: '2026-06-03',
+      rangeLabel: '2026-06-03',
       projectName: 'FlowX',
       events: [pushEvent()],
     });
@@ -171,7 +200,9 @@ describe('BriefingAiSummarizerService', () => {
     });
 
     const summary = await createService().summarize({
+      period: 'DAILY',
       date: '2026-06-03',
+      rangeLabel: '2026-06-03',
       projectName: 'FlowX',
       events: [pushEvent()],
     });

@@ -169,14 +169,23 @@ export interface DeliveryLog {
   deliveryTarget?: DeliveryTarget;
 }
 
+export type BriefingPeriod = 'DAILY' | 'WEEKLY';
+
 export interface Briefing {
   id: string;
   projectId: string;
   workspaceId: string;
   date: string;
+  period: BriefingPeriod;
+  periodStart?: string | null;
+  periodEnd?: string | null;
   scopeKey: string;
   scope: {
+    period?: BriefingPeriod;
     date?: string;
+    rangeLabel?: string;
+    periodStart?: string;
+    periodEnd?: string;
     projectId?: string;
     workspaceId?: string;
     repositoryIds?: string[];

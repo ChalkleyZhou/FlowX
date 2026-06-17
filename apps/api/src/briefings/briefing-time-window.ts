@@ -47,8 +47,27 @@ export function briefingDateWindow(date: string, cutoffHour: number) {
   return { start, end };
 }
 
+export function briefingWeekWindow(date: string) {
+  const startDate = startOfBeijingNaturalWeek(date);
+  const endDate = shiftCalendarDate(startDate, 6);
+  return {
+    start: beijingLocalDateTimeToUtc(startDate, 0, 0, 0),
+    end: beijingLocalDateTimeToUtc(shiftCalendarDate(startDate, 7), 0, 0, 0),
+    startDate,
+    endDate,
+  };
+}
+
 export function dateAtBeijingMidnight(date: string) {
   return beijingLocalDateTimeToUtc(date, 0, 0, 0);
+}
+
+function startOfBeijingNaturalWeek(date: string) {
+  const [year, month, day] = date.split('-').map((part) => Number(part));
+  const utcDate = new Date(Date.UTC(year, month - 1, day));
+  const dayOfWeek = utcDate.getUTCDay();
+  const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  return shiftCalendarDate(date, -daysSinceMonday);
 }
 
 function shiftCalendarDate(date: string, deltaDays: number) {

@@ -240,6 +240,9 @@ model Briefing {
   workspaceId     String
   workspace       Workspace     @relation(fields: [workspaceId], references: [id])
   date            DateTime
+  period          String        @default("DAILY")
+  periodStart     DateTime?
+  periodEnd       DateTime?
   scopeKey        String
   scope           Json
   status          String        @default("GENERATED")
@@ -256,6 +259,7 @@ model Briefing {
   @@unique([projectId, date, scopeKey])
   @@index([projectId, date])
   @@index([workspaceId, date])
+  @@index([projectId, period, periodStart])
 }
 
 model DeliveryTarget {

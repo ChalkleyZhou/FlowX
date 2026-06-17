@@ -8,10 +8,11 @@ import {
 import type { NormalizedBriefingEvent } from './briefing-events';
 import { BriefingAiSummarizerService } from './briefing-ai-summarizer.service';
 import { DeliveryTargetsService } from './delivery-targets.service';
-import { GenerateBriefingDto } from './dto/generate-briefing.dto';
+import { GenerateBriefingDto, type BriefingPeriod } from './dto/generate-briefing.dto';
 import { UpsertProjectBriefingConfigDto } from './dto/upsert-project-briefing-config.dto';
 import {
   briefingDateWindow,
+  briefingWeekWindow,
   BRIEFING_TIMEZONE,
   dateAtBeijingMidnight,
   DEFAULT_BRIEFING_CUTOFF_HOUR,
@@ -28,6 +29,15 @@ type ProjectWithWorkspace = {
     repositories: Array<{ id: string }>;
   };
 };
+
+interface BriefingPeriodPlan {
+  period: BriefingPeriod;
+  date: string;
+  rangeLabel: string;
+  windowStart: Date;
+  windowEnd: Date;
+  recordDate: Date;
+}
 
 @Injectable()
 export class BriefingsService {
@@ -133,8 +143,13 @@ export class BriefingsService {
       where: { projectId },
     });
     const cutoffHour = config?.dailyHour ?? DEFAULT_DAILY_HOUR;
-    const briefingDate =
+    const requestedDate =
       dto.date?.trim() || resolveBriefingDate(new Date(), cutoffHour);
+    const periodPlan = resolvePeriodPlan({
+      period: dto.period ?? 'DAILY',
+      date: requestedDate,
+      cutoffHour,
+    });
     const repositoryIds = project.workspace.repositories.map((repository) => repository.id).sort();
     const sources = await this.prisma.briefingSource.findMany({
       where: {
@@ -146,19 +161,22 @@ export class BriefingsService {
     });
     const sourceIds = sources.map((source) => source.id).sort();
     const scope = {
-      date: briefingDate,
+      period: periodPlan.period,
+      date: periodPlan.date,
+      rangeLabel: periodPlan.rangeLabel,
+      periodStart: periodPlan.windowStart.toISOString(),
+      periodEnd: periodPlan.windowEnd.toISOString(),
       projectId,
       workspaceId: project.workspaceId,
       repositoryIds,
       briefingSourceIds: sourceIds,
-      cutoffHour,
+      cutoffHour: periodPlan.period === 'DAILY' ? cutoffHour : null,
     };
     const scopeKey = stableJson(scope);
-    const date = dateAtBeijingMidnight(briefingDate);
     const existing = await this.prisma.briefing.findFirst({
       where: {
         projectId,
-        date,
+        date: periodPlan.recordDate,
         scopeKey,
       },
     });
@@ -167,11 +185,10 @@ export class BriefingsService {
       return existing;
     }
 
-    const { start, end } = briefingDateWindow(briefingDate, cutoffHour);
     const eventRows = await this.prisma.briefingEvent.findMany({
       where: {
         briefingSourceId: { in: sourceIds },
-        occurredAt: { gte: start, lt: end },
+        occurredAt: { gte: periodPlan.windowStart, lt: periodPlan.windowEnd },
       },
       orderBy: { occurredAt: 'asc' },
     });
@@ -180,20 +197,26 @@ export class BriefingsService {
     );
     const rawPayloadByEventIndex = eventRows.map((row) => row.rawPayload);
     const aiSummary = await this.briefingAiSummarizerService.summarize({
-      date: briefingDate,
+      period: periodPlan.period,
+      date: periodPlan.date,
+      rangeLabel: periodPlan.rangeLabel,
       projectName: project.name,
       events,
       rawPayloadByEventIndex,
     });
     const markdownContent = renderBriefingMarkdown({
-      date: briefingDate,
+      period: periodPlan.period,
+      date: periodPlan.date,
+      rangeLabel: periodPlan.rangeLabel,
       projectName: project.name,
       events,
       rawPayloadByEventIndex,
       aiSummary,
     });
     const htmlContent = renderBriefingHtml({
-      date: briefingDate,
+      period: periodPlan.period,
+      date: periodPlan.date,
+      rangeLabel: periodPlan.rangeLabel,
       projectName: project.name,
       events,
       rawPayloadByEventIndex,
@@ -202,6 +225,9 @@ export class BriefingsService {
 
     const generatedPayload = {
       scope: scope as Prisma.InputJsonValue,
+      period: periodPlan.period,
+      periodStart: periodPlan.windowStart,
+      periodEnd: periodPlan.windowEnd,
       status: 'GENERATED',
       markdownContent,
       htmlContent,
@@ -224,7 +250,7 @@ export class BriefingsService {
       data: {
         projectId,
         workspaceId: project.workspaceId,
-        date,
+        date: periodPlan.recordDate,
         scopeKey,
         ...generatedPayload,
       },
@@ -290,10 +316,37 @@ function stableJson(value: unknown): string {
   });
 }
 
+function resolvePeriodPlan(input: {
+  period: BriefingPeriod;
+  date: string;
+  cutoffHour: number;
+}): BriefingPeriodPlan {
+  if (input.period === 'WEEKLY') {
+    const week = briefingWeekWindow(input.date);
+    return {
+      period: 'WEEKLY',
+      date: week.startDate,
+      rangeLabel: `${week.startDate} 至 ${week.endDate}`,
+      windowStart: week.start,
+      windowEnd: week.end,
+      recordDate: week.start,
+    };
+  }
+
+  const window = briefingDateWindow(input.date, input.cutoffHour);
+  return {
+    period: 'DAILY',
+    date: input.date,
+    rangeLabel: input.date,
+    windowStart: window.start,
+    windowEnd: window.end,
+    recordDate: dateAtBeijingMidnight(input.date),
+  };
+}
+
 function normalizeStoredEvent(value: Prisma.JsonValue): NormalizedBriefingEvent {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Stored normalized briefing event is invalid.');
   }
   return value as unknown as NormalizedBriefingEvent;
 }
-

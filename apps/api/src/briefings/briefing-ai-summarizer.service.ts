@@ -9,6 +9,7 @@ import { CodexAiExecutor } from '../ai/codex-ai.executor';
 import { buildBriefingSummaryPrompt } from '../prompts/briefing-summary.prompt';
 import { buildBriefingFacts, type BriefingFactsPayload } from './briefing-facts';
 import type { NormalizedBriefingEvent } from './briefing-events';
+import type { BriefingPeriod } from './dto/generate-briefing.dto';
 
 export interface BriefingCommitReference {
   repository: string;
@@ -43,7 +44,9 @@ interface RawBriefingAiTopic {
 }
 
 interface SummarizeInput {
+  period: BriefingPeriod;
   date: string;
+  rangeLabel: string;
   projectName: string;
   events: NormalizedBriefingEvent[];
   rawPayloadByEventIndex?: unknown[];
@@ -122,12 +125,16 @@ export class BriefingAiSummarizerService {
   }
 
   private buildFallbackSummary(facts: BriefingFactsPayload): BriefingAiSummary {
+    const emptyCopy =
+      facts.period === 'WEEKLY'
+        ? '本周暂无可归纳的项目变化。'
+        : '今日暂无可归纳的项目变化。';
     return {
       source: 'fallback',
       headline:
         facts.overview.commitCount > 0 ? `共 ${facts.overview.commitCount} 次提交` : '',
       summaryParagraph:
-        facts.overview.commitCount === 0 ? '今日暂无可归纳的项目变化。' : '',
+        facts.overview.commitCount === 0 ? emptyCopy : '',
       topics: [],
       openQuestions: [],
     };

@@ -4,7 +4,7 @@ export function buildBriefingSummaryPrompt(facts: BriefingFactsPayload) {
   const factsJson = JSON.stringify(facts, null, 2);
 
   return [
-    '你需要把一天的 commit 整理成产品、测试和研发都能理解的「项目变化简报」。',
+    '你需要把一个周期的 commit 整理成产品、测试和研发都能理解的「项目变化简报」。',
     '',
     '要求：',
     '1. commit 是唯一事实来源。只能整理、合并和改写下方 JSON，不能补充未出现的业务背景、用户对象或结论。',
@@ -17,7 +17,9 @@ export function buildBriefingSummaryPrompt(facts: BriefingFactsPayload) {
     '8. headline 和 summaryParagraph 只概括可由 topics 支持的变化；topics 为空时应保守说明无法可靠归纳。',
     '9. 输出必须符合 JSON Schema（由 CLI 校验），不要输出 Markdown 或额外说明。',
     '',
+    `周期：${facts.period}`,
     `日期：${facts.date}`,
+    `范围：${facts.rangeLabel}`,
     `项目：${facts.projectName}`,
     '',
     '事实数据：',
