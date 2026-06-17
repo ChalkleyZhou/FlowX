@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   briefingDateWindow,
+  briefingWeekWindow,
   formatBriefingDate,
   isBriefingSchedulerDue,
   resolveBriefingDate,
@@ -26,5 +27,41 @@ describe('briefing-time-window', () => {
   it('marks the scheduler due only during the configured Beijing hour', () => {
     expect(isBriefingSchedulerDue(new Date('2026-06-05T14:30:00.000Z'), 22)).toBe(true);
     expect(isBriefingSchedulerDue(new Date('2026-06-05T12:00:00.000Z'), 22)).toBe(false);
+  });
+
+  it('resolves a Monday input to the same Beijing natural week', () => {
+    const window = briefingWeekWindow('2026-06-15');
+
+    expect(window.startDate).toBe('2026-06-15');
+    expect(window.endDate).toBe('2026-06-21');
+    expect(window.start.toISOString()).toBe('2026-06-14T16:00:00.000Z');
+    expect(window.end.toISOString()).toBe('2026-06-21T16:00:00.000Z');
+  });
+
+  it('resolves a Sunday input to the preceding Monday natural week', () => {
+    const window = briefingWeekWindow('2026-06-21');
+
+    expect(window.startDate).toBe('2026-06-15');
+    expect(window.endDate).toBe('2026-06-21');
+    expect(window.start.toISOString()).toBe('2026-06-14T16:00:00.000Z');
+    expect(window.end.toISOString()).toBe('2026-06-21T16:00:00.000Z');
+  });
+
+  it('resolves a natural week across month boundaries', () => {
+    const window = briefingWeekWindow('2026-07-01');
+
+    expect(window.startDate).toBe('2026-06-29');
+    expect(window.endDate).toBe('2026-07-05');
+    expect(window.start.toISOString()).toBe('2026-06-28T16:00:00.000Z');
+    expect(window.end.toISOString()).toBe('2026-07-05T16:00:00.000Z');
+  });
+
+  it('resolves a natural week across year boundaries', () => {
+    const window = briefingWeekWindow('2027-01-01');
+
+    expect(window.startDate).toBe('2026-12-28');
+    expect(window.endDate).toBe('2027-01-03');
+    expect(window.start.toISOString()).toBe('2026-12-27T16:00:00.000Z');
+    expect(window.end.toISOString()).toBe('2027-01-03T16:00:00.000Z');
   });
 });
