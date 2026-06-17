@@ -66,6 +66,7 @@ describe('BriefingDetailPage', () => {
       root?.unmount();
     });
     container.remove();
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
@@ -103,5 +104,58 @@ describe('BriefingDetailPage', () => {
     });
 
     expect(api.sendBriefing).toHaveBeenCalledWith('briefing-1');
+  });
+
+  it('polls while briefing generation is still running', async () => {
+    vi.useFakeTimers();
+    vi.mocked(api.getBriefing)
+      .mockResolvedValueOnce({
+        id: 'briefing-1',
+        projectId: 'project-1',
+        workspaceId: 'workspace-1',
+        date: '2026-06-03T00:00:00.000Z',
+        period: 'WEEKLY',
+        periodStart: '2026-06-02T14:00:00.000Z',
+        periodEnd: '2026-06-09T14:00:00.000Z',
+        scopeKey: 'scope',
+        scope: {},
+        status: 'GENERATING',
+        markdownContent: '# Weekly Briefing\n\nAI 正在后台整理项目变化。',
+        htmlContent: '<h1>Weekly Briefing</h1>',
+        eventCount: 3,
+        createdAt: '2026-06-03T00:00:00.000Z',
+        updatedAt: '2026-06-03T00:00:00.000Z',
+        deliveryLogs: [],
+      })
+      .mockResolvedValueOnce({
+        id: 'briefing-1',
+        projectId: 'project-1',
+        workspaceId: 'workspace-1',
+        date: '2026-06-03T00:00:00.000Z',
+        period: 'WEEKLY',
+        periodStart: '2026-06-02T14:00:00.000Z',
+        periodEnd: '2026-06-09T14:00:00.000Z',
+        scopeKey: 'scope',
+        scope: {},
+        status: 'GENERATED',
+        markdownContent: '# Weekly Briefing\n\n最终 AI 总结',
+        htmlContent: '<h1>Weekly Briefing</h1>',
+        eventCount: 3,
+        createdAt: '2026-06-03T00:00:00.000Z',
+        updatedAt: '2026-06-03T00:00:00.000Z',
+        deliveryLogs: [],
+      });
+
+    await renderPage();
+
+    expect(document.body.textContent).toContain('GENERATING');
+
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+      await Promise.resolve();
+    });
+
+    expect(api.getBriefing).toHaveBeenCalledTimes(2);
+    expect(document.body.textContent).toContain('最终 AI 总结');
   });
 });

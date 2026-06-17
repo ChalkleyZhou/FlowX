@@ -241,6 +241,57 @@ describe('BriefingsService', () => {
     }));
   });
 
+  it('starts manual briefing generation asynchronously without waiting for AI summary', async () => {
+    vi.useFakeTimers();
+    try {
+      projectFindUnique.mockResolvedValue({
+        id: 'project-1',
+        name: 'FlowX',
+        workspaceId: 'workspace-1',
+        workspace: {
+          repositories: [{ id: 'repo-1' }],
+        },
+      });
+      configFindUnique.mockResolvedValue({ dailyHour: 22 });
+      sourceFindMany.mockResolvedValue([{ id: 'source-1', repositoryId: 'repo-1' }]);
+      briefingFindFirst.mockResolvedValue(null);
+      eventFindMany.mockResolvedValue([]);
+      summarize.mockResolvedValue(new Promise(() => undefined));
+      briefingCreate.mockResolvedValue({
+        id: 'briefing-1',
+        status: 'GENERATING',
+        markdownContent: '# FlowX · 项目变化周报 · 2026-06-15 至 2026-06-21',
+      });
+
+      await expect(
+        createService().generateProjectBriefing(
+          'project-1',
+          { period: 'WEEKLY', date: '2026-06-17', regenerate: true },
+          {
+            user: { id: 'user-1', displayName: '张三' },
+            organization: { id: 'org-1', name: '研发组织' },
+          },
+          { async: true },
+        ),
+      ).resolves.toMatchObject({
+        id: 'briefing-1',
+        status: 'GENERATING',
+      });
+
+      expect(briefingCreate).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'GENERATING',
+          generatedAt: null,
+          errorMessage: null,
+          sentAt: null,
+        }),
+      }));
+      expect(summarize).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('generates a weekly project briefing from natural week events', async () => {
     projectFindUnique.mockResolvedValue({
       id: 'project-1',

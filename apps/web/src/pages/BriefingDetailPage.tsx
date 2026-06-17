@@ -37,6 +37,16 @@ export function BriefingDetailPage() {
     void refresh();
   }, [briefingId]);
 
+  useEffect(() => {
+    if (briefing?.status !== 'GENERATING') {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void refresh();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [briefing?.status, briefingId]);
+
   async function resend() {
     if (!briefingId) {
       return;
@@ -66,6 +76,7 @@ export function BriefingDetailPage() {
   }
 
   const logs = briefing.deliveryLogs ?? [];
+  const isGenerating = briefing.status === 'GENERATING';
 
   return (
     <>
@@ -75,7 +86,7 @@ export function BriefingDetailPage() {
         description={`${briefing.date.slice(0, 10)} · ${briefing.eventCount} 个事件`}
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button onClick={resend} disabled={sending}>
+            <Button onClick={resend} disabled={sending || isGenerating}>
               {sending ? '发送中...' : '重新发送'}
             </Button>
             <Button variant="outline" asChild>
@@ -159,4 +170,3 @@ export function BriefingDetailPage() {
     </>
   );
 }
-

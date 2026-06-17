@@ -17,6 +17,8 @@ describe('BriefingsController', () => {
       id: 'briefing-1',
     });
 
-    expect(generateProjectBriefing).toHaveBeenCalledWith('project-1', dto, authSession);
+    expect(generateProjectBriefing).toHaveBeenCalledWith('project-1', dto, authSession, {
+      async: true,
+    });
   });
 });

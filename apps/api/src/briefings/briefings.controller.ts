@@ -28,7 +28,9 @@ export class BriefingsController {
     @Body() dto: GenerateBriefingDto,
     @Req() req: BriefingRequest,
   ) {
-    return this.briefingsService.generateProjectBriefing(id, dto, req.authSession);
+    return this.briefingsService.generateProjectBriefing(id, dto, req.authSession, {
+      async: true,
+    });
   }
 
   @Get('briefings/:id')

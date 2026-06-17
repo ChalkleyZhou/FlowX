@@ -69,17 +69,21 @@ export function BriefingsPage() {
     }
   }
 
-  async function refresh(projectId = selectedProjectId) {
+  async function refresh(projectId = selectedProjectId, options?: { silent?: boolean }) {
     if (!projectId) {
       return;
     }
-    setLoading(true);
+    if (!options?.silent) {
+      setLoading(true);
+    }
     try {
       setBriefings(await api.getProjectBriefings(projectId));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '加载简报失败');
     } finally {
-      setLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
   }
 
@@ -89,6 +93,16 @@ export function BriefingsPage() {
       .catch((error) => toast.error(error instanceof Error ? error.message : '加载项目失败'))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!selectedProjectId || !briefings.some((briefing) => briefing.status === 'GENERATING')) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void refresh(selectedProjectId, { silent: true });
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [selectedProjectId, briefings]);
 
   async function handleGenerate() {
     if (!selectedProjectId) {
@@ -103,7 +117,15 @@ export function BriefingsPage() {
         regenerate: true,
       });
       await refresh(selectedProjectId);
-      toast.success(period === 'WEEKLY' ? '周报已生成' : '简报已生成');
+      toast.success(
+        briefing.status === 'GENERATING'
+          ? period === 'WEEKLY'
+            ? '周报已开始生成'
+            : '简报已开始生成'
+          : period === 'WEEKLY'
+            ? '周报已生成'
+            : '简报已生成',
+      );
       navigate(`/briefings/${briefing.id}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '生成简报失败');

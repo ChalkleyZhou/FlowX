@@ -105,7 +105,7 @@ describe('BriefingAiSummarizerService', () => {
     expect(codexRunStructuredJsonStage.mock.calls[0]?.[1]).toContain('一个周期的 commit');
     expect(cursorRunStructuredJsonStage).not.toHaveBeenCalled();
     expect(resolveInvocationContext).toHaveBeenCalledWith('codex', null);
-    expect(codexRunStructuredJsonStage.mock.calls[0]?.[4]).toEqual({ timeoutMs: 20_000 });
+    expect(codexRunStructuredJsonStage.mock.calls[0]?.[4]).toEqual({ timeoutMs: 180_000 });
     expect(summary.topics[0]?.commitReferences).toEqual([
       {
         repository: 'flowx-api',

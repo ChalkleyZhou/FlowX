@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { AiInvocationRecipient } from '../ai/ai-invocation-context.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -40,6 +40,18 @@ interface BriefingPeriodPlan {
   recordDate: Date;
 }
 
+interface GenerateBriefingOptions {
+  async?: boolean;
+}
+
+interface BuildBriefingContentInput {
+  periodPlan: BriefingPeriodPlan;
+  projectName: string;
+  recipient: AiInvocationRecipient | null;
+  events: NormalizedBriefingEvent[];
+  rawPayloadByEventIndex: unknown[];
+}
+
 type BriefingAuthSession = {
   user?: {
     id?: string;
@@ -54,6 +66,8 @@ type BriefingAuthSession = {
 
 @Injectable()
 export class BriefingsService {
+  private readonly logger = new Logger(BriefingsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly deliveryTargetsService: DeliveryTargetsService,
@@ -154,6 +168,7 @@ export class BriefingsService {
     projectId: string,
     dto: GenerateBriefingDto,
     authSession?: BriefingAuthSession,
+    options?: GenerateBriefingOptions,
   ) {
     const project = await this.getProjectForBriefing(projectId);
     const config = await this.prisma.projectBriefingConfig.findUnique({
@@ -213,51 +228,81 @@ export class BriefingsService {
       normalizeStoredEvent(row.normalizedPayload),
     );
     const rawPayloadByEventIndex = eventRows.map((row) => row.rawPayload);
-    const aiSummary = await this.briefingAiSummarizerService.summarize({
-      period: periodPlan.period,
-      date: periodPlan.date,
-      rangeLabel: periodPlan.rangeLabel,
-      projectName: project.name,
-      recipient: toAiInvocationRecipient(authSession),
-      events,
-      rawPayloadByEventIndex,
-    });
-    const markdownContent = renderBriefingMarkdown({
-      period: periodPlan.period,
-      date: periodPlan.date,
-      rangeLabel: periodPlan.rangeLabel,
-      projectName: project.name,
-      events,
-      rawPayloadByEventIndex,
-      aiSummary,
-    });
-    const htmlContent = renderBriefingHtml({
-      period: periodPlan.period,
-      date: periodPlan.date,
-      rangeLabel: periodPlan.rangeLabel,
-      projectName: project.name,
-      events,
-      rawPayloadByEventIndex,
-      aiSummary,
-    });
+    const recipient = toAiInvocationRecipient(authSession);
 
-    const generatedPayload = {
-      scope: scope as Prisma.InputJsonValue,
-      period: periodPlan.period,
-      periodStart: periodPlan.windowStart,
-      periodEnd: periodPlan.windowEnd,
-      status: 'GENERATED',
-      markdownContent,
-      htmlContent,
-      eventCount: events.length,
-      generatedAt: new Date(),
-      errorMessage: null,
-    };
+    if (options?.async) {
+      const pendingPayload = {
+        scope: scope as Prisma.InputJsonValue,
+        period: periodPlan.period,
+        periodStart: periodPlan.windowStart,
+        periodEnd: periodPlan.windowEnd,
+        status: 'GENERATING',
+        markdownContent: renderBriefingMarkdown({
+          period: periodPlan.period,
+          date: periodPlan.date,
+          rangeLabel: periodPlan.rangeLabel,
+          projectName: project.name,
+          events,
+          rawPayloadByEventIndex,
+          aiSummary: buildGeneratingSummary(periodPlan.period),
+        }),
+        htmlContent: renderBriefingHtml({
+          period: periodPlan.period,
+          date: periodPlan.date,
+          rangeLabel: periodPlan.rangeLabel,
+          projectName: project.name,
+          events,
+          rawPayloadByEventIndex,
+          aiSummary: buildGeneratingSummary(periodPlan.period),
+        }),
+        eventCount: events.length,
+        generatedAt: null,
+        errorMessage: null,
+        sentAt: null,
+      };
+
+      const briefing = existing
+        ? await this.prisma.briefing.update({
+            where: { id: existing.id },
+            data: pendingPayload,
+          })
+        : await this.prisma.briefing.create({
+            data: {
+              projectId,
+              workspaceId: project.workspaceId,
+              date: periodPlan.recordDate,
+              scopeKey,
+              ...pendingPayload,
+            },
+          });
+
+      this.enqueueBriefingCompletion({
+        briefingId: briefing.id,
+        periodPlan,
+        projectName: project.name,
+        recipient,
+        events,
+        rawPayloadByEventIndex,
+      });
+      return briefing;
+    }
+
+    const generatedPayload = await this.buildGeneratedBriefingPayload({
+      periodPlan,
+      projectName: project.name,
+      recipient,
+      events,
+      rawPayloadByEventIndex,
+    });
 
     if (existing) {
       return this.prisma.briefing.update({
         where: { id: existing.id },
         data: {
+          scope: scope as Prisma.InputJsonValue,
+          period: periodPlan.period,
+          periodStart: periodPlan.windowStart,
+          periodEnd: periodPlan.windowEnd,
           ...generatedPayload,
           ...(dto.regenerate ? { sentAt: null } : {}),
         },
@@ -270,9 +315,79 @@ export class BriefingsService {
         workspaceId: project.workspaceId,
         date: periodPlan.recordDate,
         scopeKey,
+        scope: scope as Prisma.InputJsonValue,
+        period: periodPlan.period,
+        periodStart: periodPlan.windowStart,
+        periodEnd: periodPlan.windowEnd,
         ...generatedPayload,
       },
     });
+  }
+
+  private async buildGeneratedBriefingPayload(input: BuildBriefingContentInput) {
+    const aiSummary = await this.briefingAiSummarizerService.summarize({
+      period: input.periodPlan.period,
+      date: input.periodPlan.date,
+      rangeLabel: input.periodPlan.rangeLabel,
+      projectName: input.projectName,
+      recipient: input.recipient,
+      events: input.events,
+      rawPayloadByEventIndex: input.rawPayloadByEventIndex,
+    });
+    const markdownContent = renderBriefingMarkdown({
+      period: input.periodPlan.period,
+      date: input.periodPlan.date,
+      rangeLabel: input.periodPlan.rangeLabel,
+      projectName: input.projectName,
+      events: input.events,
+      rawPayloadByEventIndex: input.rawPayloadByEventIndex,
+      aiSummary,
+    });
+    const htmlContent = renderBriefingHtml({
+      period: input.periodPlan.period,
+      date: input.periodPlan.date,
+      rangeLabel: input.periodPlan.rangeLabel,
+      projectName: input.projectName,
+      events: input.events,
+      rawPayloadByEventIndex: input.rawPayloadByEventIndex,
+      aiSummary,
+    });
+
+    return {
+      status: 'GENERATED',
+      markdownContent,
+      htmlContent,
+      eventCount: input.events.length,
+      generatedAt: new Date(),
+      errorMessage: null,
+    };
+  }
+
+  private enqueueBriefingCompletion(input: BuildBriefingContentInput & { briefingId: string }) {
+    setTimeout(() => {
+      void this.completeBriefingGeneration(input);
+    }, 0);
+  }
+
+  private async completeBriefingGeneration(input: BuildBriefingContentInput & { briefingId: string }) {
+    try {
+      const generatedPayload = await this.buildGeneratedBriefingPayload(input);
+      await this.prisma.briefing.update({
+        where: { id: input.briefingId },
+        data: generatedPayload,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Briefing background generation failed: ${message}`);
+      await this.prisma.briefing.update({
+        where: { id: input.briefingId },
+        data: {
+          status: 'FAILED',
+          errorMessage: message,
+          generatedAt: new Date(),
+        },
+      });
+    }
   }
 
   async sendBriefing(briefingId: string) {
@@ -318,6 +433,16 @@ export class BriefingsService {
     }
     return project;
   }
+}
+
+function buildGeneratingSummary(period: BriefingPeriod) {
+  return {
+    source: 'fallback' as const,
+    headline: period === 'WEEKLY' ? '本周概览生成中' : '今日概览生成中',
+    summaryParagraph: 'AI 正在后台整理项目变化，稍后会自动更新。',
+    topics: [],
+    openQuestions: [],
+  };
 }
 
 function stableJson(value: unknown): string {
