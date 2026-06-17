@@ -13,6 +13,7 @@ import { FlowXClient } from './flowx-client';
 import {
   buildPromptFromLocalHandoff,
   getLocalGitReport,
+  openPromptInChat,
   readTaskPromptFile,
   startInChat,
   writeTaskPromptFile,
@@ -119,7 +120,15 @@ export function activate(context: vscode.ExtensionContext) {
               return;
             }
             await vscode.env.clipboard.writeText(prompt);
-            vscode.window.showInformationMessage('FlowX prompt copied.');
+            const openedInChat = await openPromptInChat(
+              {
+                executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args),
+              },
+              prompt,
+            );
+            vscode.window.showInformationMessage(
+              openedInChat ? 'FlowX prompt opened in chat.' : 'FlowX prompt copied.',
+            );
           },
           openChat: async () => {
             await vscode.commands.executeCommand('workbench.action.chat.open');

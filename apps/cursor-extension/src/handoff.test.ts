@@ -44,7 +44,7 @@ function createDeps(overrides: Partial<Parameters<typeof startInChat>[0]> = {}) 
 }
 
 describe('startInChat', () => {
-  it('writes and copies the handoff prompt when the repository matches', async () => {
+  it('writes, copies, and opens the handoff prompt in chat when the repository matches', async () => {
     const deps = createDeps();
 
     await startInChat(deps, task);
@@ -56,7 +56,10 @@ describe('startInChat', () => {
     });
     expect(deps.writeTaskFile).toHaveBeenCalledWith('/repo/flowx', 'req-1', '# FlowX handoff');
     expect(deps.copyToClipboard).toHaveBeenCalledWith('# FlowX handoff');
-    expect(deps.executeCommand).toHaveBeenCalledWith('workbench.action.chat.open');
+    expect(deps.executeCommand).toHaveBeenCalledWith('workbench.action.chat.open', {
+      isPartialQuery: true,
+      query: '# FlowX handoff',
+    });
   });
 
   it('blocks when the local repository does not match FlowX', async () => {

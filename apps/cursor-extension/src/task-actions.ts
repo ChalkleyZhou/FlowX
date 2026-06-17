@@ -62,8 +62,8 @@ function buildTaskActionItems(task: FlowXTaskItem): TaskActionItem[] {
         action: 'openChat',
       },
       {
-        label: 'Copy Saved Prompt',
-        description: 'Copy the local .flowx prompt created by Start in Chat',
+        label: 'Open Prompt in Chat',
+        description: 'Open the saved .flowx prompt in Cursor Chat',
         action: 'copyPrompt',
       },
       {

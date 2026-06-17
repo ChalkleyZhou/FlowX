@@ -58,7 +58,7 @@ describe('showTaskActions', () => {
     expect(deps.startInChat).not.toHaveBeenCalled();
   });
 
-  it('labels prompt copying as a saved local prompt action', async () => {
+  it('labels saved local prompts as chat-open actions', async () => {
     const workingTask = {
       ...readyTask,
       eligible: false,
@@ -73,7 +73,7 @@ describe('showTaskActions', () => {
     expect(deps.showQuickPick).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
-          label: 'Copy Saved Prompt',
+          label: 'Open Prompt in Chat',
         }),
       ]),
       'FlowX: Add local handoff',

@@ -28,7 +28,7 @@ export interface StartInChatDeps {
   writeTaskFile(gitRoot: string, taskId: string, content: string): Promise<string>;
   saveHandoffSnapshot?(gitRoot: string, handoff: LocalChatHandoff): PromiseLike<unknown>;
   copyToClipboard(content: string): PromiseLike<void>;
-  executeCommand(command: string): PromiseLike<unknown>;
+  executeCommand(command: string, ...args: unknown[]): PromiseLike<unknown>;
 }
 
 export async function startInChat(deps: StartInChatDeps, task: FlowXTaskItem): Promise<void> {
@@ -65,12 +65,30 @@ export async function startInChat(deps: StartInChatDeps, task: FlowXTaskItem): P
   const filePath = await deps.writeTaskFile(gitReport.gitRoot, task.id, handoff.chatPrompt);
   await deps.saveHandoffSnapshot?.(gitReport.gitRoot, handoff);
   await deps.copyToClipboard(handoff.chatPrompt);
+  const openedInChat = await openPromptInChat(deps, handoff.chatPrompt);
+  deps.showInfo(
+    openedInChat
+      ? `FlowX prompt opened in chat and saved to ${filePath}.`
+      : `FlowX prompt copied and saved to ${filePath}.`,
+  );
+}
+
+export async function openPromptInChat(
+  deps: {
+    executeCommand(command: string, ...args: unknown[]): PromiseLike<unknown>;
+  },
+  prompt: string,
+): Promise<boolean> {
   try {
-    await deps.executeCommand('workbench.action.chat.open');
+    await deps.executeCommand('workbench.action.chat.open', {
+      query: prompt,
+      isPartialQuery: true,
+    });
+    return true;
   } catch {
     // Cursor/VS Code variants may expose different chat commands; clipboard is the reliable handoff.
+    return false;
   }
-  deps.showInfo(`FlowX prompt copied and saved to ${filePath}.`);
 }
 
 export async function getLocalGitReport(workspacePaths: readonly string[] | undefined): Promise<LocalGitReport> {
