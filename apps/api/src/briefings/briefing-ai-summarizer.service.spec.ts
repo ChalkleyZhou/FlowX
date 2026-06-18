@@ -275,4 +275,58 @@ describe('BriefingAiSummarizerService', () => {
       },
     ]);
   });
+
+  it('skips malformed topics missing commitReferences instead of failing the summary', async () => {
+    codexRunStructuredJsonStage.mockResolvedValue({
+      ...aiOutput,
+      topics: [
+        aiOutput.topics[0],
+        {
+          title: '缺少引用',
+          summary: '没有 commitReferences 字段。',
+          modules: [],
+        },
+      ],
+    });
+
+    const summary = await createService().summarize({
+      period: 'DAILY',
+      date: '2026-06-03',
+      rangeLabel: '2026-06-03',
+      projectName: 'FlowX',
+      events: [pushEvent()],
+    });
+
+    expect(summary.source).toBe('ai');
+    expect(summary.topics).toHaveLength(1);
+    expect(summary.topics[0]?.title).toBe('简报内容组织调整');
+  });
+
+  it('tolerates missing headline and modules fields from AI output', async () => {
+    codexRunStructuredJsonStage.mockResolvedValue({
+      headline: undefined,
+      summaryParagraph: '当天提交主要调整了简报内容组织。',
+      topics: [
+        {
+          title: '简报内容组织调整',
+          summary: '简报从提交分类调整为项目变化主题。',
+          commitReferences: [{ repository: 'flowx-api', commitId: 'a1' }],
+        },
+      ],
+      openQuestions: undefined,
+    });
+
+    const summary = await createService().summarize({
+      period: 'DAILY',
+      date: '2026-06-03',
+      rangeLabel: '2026-06-03',
+      projectName: 'FlowX',
+      events: [pushEvent()],
+    });
+
+    expect(summary.source).toBe('ai');
+    expect(summary.headline).toBe('');
+    expect(summary.openQuestions).toEqual([]);
+    expect(summary.topics[0]?.modules).toEqual([]);
+  });
 });

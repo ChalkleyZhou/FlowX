@@ -96,10 +96,10 @@ export class BriefingAiSummarizerService {
       return {
         source: 'ai',
         aiProvider: provider,
-        headline: raw.headline.trim(),
-        summaryParagraph: raw.summaryParagraph.trim(),
+        headline: (raw.headline ?? '').trim(),
+        summaryParagraph: (raw.summaryParagraph ?? '').trim(),
         topics: this.resolveTopics(raw.topics ?? [], facts),
-        openQuestions: (raw.openQuestions ?? []).map((item) => item.trim()).filter(Boolean),
+        openQuestions: (raw.openQuestions ?? []).map((item) => String(item).trim()).filter(Boolean),
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -159,20 +159,31 @@ export class BriefingAiSummarizerService {
     const resolved: BriefingAiTopic[] = [];
 
     for (const topic of topics) {
-      if (topic.commitReferences.length === 0) {
-        throw new Error(`Briefing topic has no commit references: ${topic.title}`);
+      if (!topic || typeof topic !== 'object') {
+        continue;
       }
 
-      const referencedCommits = topic.commitReferences.flatMap((reference) => {
-        const key = `${reference.repository}:${reference.commitId}`;
+      const commitReferences = Array.isArray(topic.commitReferences) ? topic.commitReferences : [];
+      if (commitReferences.length === 0) {
+        continue;
+      }
+
+      const referencedCommits = commitReferences.flatMap((reference) => {
+        if (!reference || typeof reference !== 'object') {
+          return [];
+        }
+        const repository = String(reference.repository ?? '').trim();
+        const commitId = String(reference.commitId ?? '').trim();
+        if (!repository || !commitId) {
+          return [];
+        }
+        const key = `${repository}:${commitId}`;
         if (usedCommitKeys.has(key)) {
           return [];
         }
         const commit = commits.get(key);
         if (!commit) {
-          throw new Error(
-            `Briefing topic references unknown commit: ${reference.repository}:${reference.commitId}`,
-          );
+          throw new Error(`Briefing topic references unknown commit: ${repository}:${commitId}`);
         }
         usedCommitKeys.add(key);
         return [commit];
@@ -186,15 +197,17 @@ export class BriefingAiSummarizerService {
           commit.scope ? [commit.repository, commit.scope] : [commit.repository],
         ),
       );
-      const modules = topic.modules.map((module) => module.trim()).filter(Boolean);
+      const modules = (Array.isArray(topic.modules) ? topic.modules : [])
+        .map((module) => String(module).trim())
+        .filter(Boolean);
       const invalidModule = modules.find((module) => !allowedModules.has(module));
       if (invalidModule) {
         throw new Error(`Briefing topic references unknown module: ${invalidModule}`);
       }
 
       resolved.push({
-        title: topic.title.trim(),
-        summary: topic.summary.trim(),
+        title: String(topic.title ?? '').trim(),
+        summary: String(topic.summary ?? '').trim(),
         modules,
         commitReferences: referencedCommits.map((commit) => ({
           repository: commit.repository,
