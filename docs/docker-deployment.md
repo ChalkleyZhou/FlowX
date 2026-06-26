@@ -59,6 +59,7 @@ FlowX 容器内部包含两个服务：
 | `CODEX_WRITE_SANDBOX`                  | Codex 写入阶段沙箱模式，默认 `workspace-write`                                              | 否              |
 | `OPENAI_API_KEY`                       | Codex/API 认证方式之一                                                                 | 否              |
 | `CURSOR_API_KEY`                       | Cursor CLI 服务端认证                                                                 | `cursor` 时建议填写 |
+| `OPENDESIGN_MCP_ENABLED`               | 设计阶段是否提示 agent 用 OpenDesign MCP 取材生成高保真 HTML 设计稿；需 host 预装 `od` 并 `od mcp install` | 否，默认关闭         |
 | `CURSOR_DEMO_WALL_TIMEOUT_MS`          | Demo 生成最大墙钟超时（毫秒），有持续进度时允许长跑                                                     | 否，默认 `1200000` |
 | `CURSOR_NO_PROGRESS_TIMEOUT_MS`        | Cursor 进程无输出/无进展判定超时（毫秒）；设 `0` 关闭该判定                                            | 否，默认 `0`       |
 | `FLOWX_DEMO_GENERATION_TIMEOUT_MS`     | 需求服务层 Demo 生成总超时（毫秒）                                                            | 否，默认 `1200000` |
@@ -86,6 +87,7 @@ FlowX 容器内部包含两个服务：
 - 若希望 Codex 也彻底禁用共享身份回退，可设置 `FLOWX_CODEX_REQUIRE_USER_CREDENTIAL=true`
 - `FRONTEND_BUILD_MODE=nginx` 表示前端走同源 `/api` 代理，不在构建时写死完整 API 域名
 - `FRONTEND_BUILD_MODE=direct` 表示前端直接请求 `DIRECT_API_BASE_URL`
+- 要让设计阶段接入 OpenDesign，需在运行 API 的同一环境安装 `od` CLI、对所用 agent 执行 `od mcp install codex|cursor`，并设置 `OPENDESIGN_MCP_ENABLED=1` 后重启；详见 [docs/opendesign-design-stage.md](opendesign-design-stage.md)
 
 ## 4. 构建镜像
 

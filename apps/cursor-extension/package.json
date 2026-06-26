@@ -56,6 +56,10 @@
       {
         "command": "flowx.reportCompletion",
         "title": "FlowX: Report Completion"
+      },
+      {
+        "command": "flowx.openRunDetail",
+        "title": "FlowX: Open Workflow Run"
       }
     ],
     "menus": {

@@ -24,6 +24,7 @@ import type {
   Repository,
   Requirement,
   ReviewFinding,
+  WorkflowDesignArtifact,
   WorkflowRun,
   Workspace,
 } from './types';
@@ -676,6 +677,8 @@ export const api = {
       ).toString()}`,
     ),
   getWorkflowRun: (id: string) => request<WorkflowRun>(`/workflow-runs/${id}`),
+  getWorkflowDesignArtifact: (id: string) =>
+    request<WorkflowDesignArtifact>(`/workflow-runs/${id}/design-artifact`),
   fetchPlanArtifact: async (id: string) => {
     const token = getAuthToken();
     const response = await fetch(buildApiUrl(`/workflow-runs/${id}/artifacts/plan`), {

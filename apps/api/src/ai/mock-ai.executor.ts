@@ -5,6 +5,7 @@ import {
   ExecuteTaskInput,
   ExecuteTaskOutput,
   GenerateDesignInput,
+  GenerateDesignOptions,
   GenerateDesignOutput,
   GeneratePlanInput,
   GeneratePlanOutput,
@@ -96,7 +97,66 @@ export class MockAiExecutor implements AIExecutor {
   async generateDesign(
     input: GenerateDesignInput,
     _context?: AIInvocationContext,
+    options?: GenerateDesignOptions,
   ): Promise<GenerateDesignOutput> {
+    const base = this.buildMockDesignOutput(input);
+    if (options?.phase === 'design') {
+      return {
+        design: base.design,
+        demo: base.demo,
+        demoPages: [],
+        designArtifact: {
+          html: this.buildMockDesignArtifactHtml(input, base),
+          generatedAt: new Date().toISOString(),
+        },
+      };
+    }
+    return base;
+  }
+
+  /** 设计阶段占位 HTML（无 od / CI 环境也能跑通预览链路）。 */
+  private buildMockDesignArtifactHtml(input: GenerateDesignInput, base: GenerateDesignOutput): string {
+    const title = input.requirementTitle || 'FlowX 设计稿';
+    const pages = base.design.pages
+      .map(
+        (p) =>
+          `<section class="card"><h2>${p.name}<span class="route">${p.route}</span></h2><pre>${p.layout}</pre><div class="tags">${p.keyComponents
+            .map((c) => `<span class="tag">${c}</span>`)
+            .join('')}</div></section>`,
+      )
+      .join('\n');
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${title} · 设计稿</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; background: #f6f7f9; color: #16181d; }
+header { padding: 32px 40px; background: linear-gradient(135deg, #4f46e5, #0ea5e9); color: #fff; }
+header h1 { margin: 0 0 8px; font-size: 24px; letter-spacing: -0.01em; }
+header p { margin: 0; opacity: 0.92; font-size: 14px; max-width: 60ch; }
+main { padding: 28px 40px; display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 20px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.card h2 { margin: 0 0 12px; font-size: 16px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.route { font: 500 12px ui-monospace, monospace; color: #6366f1; background: #eef2ff; padding: 2px 8px; border-radius: 999px; }
+pre { margin: 0 0 12px; white-space: pre-wrap; font: 12px/1.6 ui-monospace, monospace; color: #475569; background: #f8fafc; padding: 12px; border-radius: 8px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { font-size: 12px; background: #f1f5f9; color: #334155; padding: 3px 9px; border-radius: 999px; }
+footer { padding: 20px 40px 40px; color: #64748b; font-size: 13px; }
+</style>
+</head>
+<body>
+<header><h1>${title}</h1><p>${base.design.overview}</p></header>
+<main>${pages}</main>
+<footer>Mock 设计稿占位 · 真实环境由 OpenDesign 设计系统驱动生成。场景：${base.design.demoScenario.split('\n')[0]}</footer>
+</body>
+</html>`;
+  }
+
+  private buildMockDesignOutput(input: GenerateDesignInput): GenerateDesignOutput {
     return {
       design: {
         overview: '采用简洁直观的界面设计，遵循现有设计系统规范，确保一致性和低学习成本。',

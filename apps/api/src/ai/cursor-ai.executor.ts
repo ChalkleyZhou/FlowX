@@ -3,8 +3,14 @@ import { spawn } from 'child_process';
 import { access, mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { delimiter, join } from 'path';
-import type { BrainstormInput, BrainstormOutput, GenerateDesignInput, GenerateDesignOutput } from '../common/types';
-import { assertStrictGenerateDesignOutput } from './design-output-validate';
+import type {
+  BrainstormInput,
+  BrainstormOutput,
+  GenerateDesignInput,
+  GenerateDesignOptions,
+  GenerateDesignOutput,
+} from '../common/types';
+import { assertDesignSpecOutput, assertStrictGenerateDesignOutput } from './design-output-validate';
 import { type AIInvocationContext } from './ai-executor';
 import { CodexAiExecutor, type StructuredJsonStageOptions } from './codex-ai.executor';
 
@@ -37,8 +43,27 @@ export class CursorAiExecutor extends CodexAiExecutor {
   override async generateDesign(
     input: GenerateDesignInput,
     context?: AIInvocationContext,
+    options?: GenerateDesignOptions,
   ): Promise<GenerateDesignOutput> {
-    const prompt = this.buildDesignGenerationPrompt(input);
+    if (options?.phase === 'design') {
+      const prompt = this.buildDesignGenerationPrompt(input, options);
+      const raw = await this.runJsonStage<unknown>(
+        'design-spec.output.schema.json',
+        prompt,
+        'design artifact generation',
+        [],
+        context,
+      );
+      const parsed = assertDesignSpecOutput(raw);
+      return {
+        design: parsed.design,
+        demo: parsed.demo,
+        designArtifact: parsed.designArtifact,
+        demoPages: parsed.demoPages ?? [],
+      };
+    }
+
+    const prompt = this.buildDesignGenerationPrompt(input, options);
     const raw = await this.runJsonStage<unknown>(
       'design-generation.output.schema.json',
       prompt,

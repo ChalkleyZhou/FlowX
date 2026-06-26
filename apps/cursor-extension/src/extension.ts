@@ -18,6 +18,15 @@ import {
   startInChat,
   writeTaskPromptFile,
 } from './handoff';
+import { claimAndHandoffLocalExecution } from './local-execution';
+import {
+  buildLocalDesignPrompt,
+  generateLocalDesign,
+  readLocalDesignFile,
+  submitLocalDesignFromFile,
+} from './local-design';
+import { dispatchStageAction } from './run-detail-actions';
+import { openRunDetailPanel } from './run-detail-panel';
 import { showTaskActions } from './task-actions';
 import { FlowXTasksProvider } from './tasks-provider';
 
@@ -43,6 +52,80 @@ export function activate(context: vscode.ExtensionContext) {
         writeTaskFile: writeTaskPromptFile,
       },
       task,
+    );
+  };
+  const openRunDetailForTask = async (task: FlowXTaskItem) => {
+    if (!task.workflowRunId) {
+      vscode.window.showErrorMessage('该任务还没有关联的工作流 run。');
+      return;
+    }
+    const config = await getFlowXConfig(context);
+    if (!config) {
+      vscode.window.showErrorMessage('Configure FlowX before opening a workflow run.');
+      return;
+    }
+    const client = new FlowXClient(config);
+    const workspacePaths = () => vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath);
+
+    const claimDeps = {
+      claimLocal: (runId: string) => client.claimLocal(runId),
+      getLocalHandoff: (runId: string) => client.getLocalHandoff(runId),
+      getGitRoot: () => getCurrentGitRoot(workspacePaths()),
+      buildPrompt: buildPromptFromLocalHandoff,
+      writeTaskFile: writeTaskPromptFile,
+      saveHandoff: (gitRoot: string, currentTask: FlowXTaskItem, handoff: Awaited<ReturnType<typeof client.getLocalHandoff>>) =>
+        saveRestoredHandoffSnapshot(gitRoot, currentTask, handoff),
+      copyToClipboard: (content: string) => Promise.resolve(vscode.env.clipboard.writeText(content)).then(() => undefined),
+      openPromptInChat: (prompt: string) =>
+        openPromptInChat({ executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args) }, prompt),
+      showError: (message: string) => vscode.window.showErrorMessage(message),
+      showInfo: (message: string) => vscode.window.showInformationMessage(message),
+    };
+
+    const openInChat = (prompt: string) =>
+      openPromptInChat({ executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args) }, prompt);
+
+    const execDeps = {
+      claimLocalExecution: () => claimAndHandoffLocalExecution(claimDeps, task),
+      cancelLocalExecution: (runId: string) => client.cancelLocal(runId).then(() => undefined),
+      completeLocalExecution: () => reportTaskCompletion(task),
+      generateLocalDesign: () =>
+        generateLocalDesign(
+          {
+            getGitRoot: () => getCurrentGitRoot(workspacePaths()),
+            buildPrompt: buildLocalDesignPrompt,
+            copyToClipboard: (content: string) =>
+              Promise.resolve(vscode.env.clipboard.writeText(content)).then(() => undefined),
+            openPromptInChat: openInChat,
+            showError: (message: string) => vscode.window.showErrorMessage(message),
+            showInfo: (message: string) => vscode.window.showInformationMessage(message),
+          },
+          task,
+        ),
+      submitLocalDesign: (runId: string) =>
+        submitLocalDesignFromFile(
+          {
+            getGitRoot: () => getCurrentGitRoot(workspacePaths()),
+            readDesignFile: (gitRoot: string, rid: string) => readLocalDesignFile(gitRoot, rid),
+            submit: (rid: string, body) => client.submitLocalDesign(rid, body).then(() => undefined),
+            showError: (message: string) => vscode.window.showErrorMessage(message),
+            showInfo: (message: string) => vscode.window.showInformationMessage(message),
+          },
+          runId,
+        ),
+    };
+
+    openRunDetailPanel(
+      vscode,
+      {
+        getRun: (runId) => client.getRun(runId),
+        dispatch: (request) => dispatchStageAction(client, execDeps, request),
+        promptFeedback: (label) => Promise.resolve(vscode.window.showInputBox({ ignoreFocusOut: true, prompt: label })),
+        showError: (message) => vscode.window.showErrorMessage(message),
+        showInfo: (message) => vscode.window.showInformationMessage(message),
+        onChanged: () => provider.refresh(),
+      },
+      task.workflowRunId,
     );
   };
   const reportTaskCompletion = async (task: FlowXTaskItem) => {
@@ -138,6 +221,7 @@ export function activate(context: vscode.ExtensionContext) {
             const apiBaseUrl = config?.apiBaseUrl ?? 'http://127.0.0.1:3000';
             await vscode.env.openExternal(vscode.Uri.parse(buildFlowXWebUrl(apiBaseUrl, '/requirements', process.env)));
           },
+          openRunDetail: openRunDetailForTask,
           refreshTasks: () => provider.refresh(),
           reportCompletion: reportTaskCompletion,
           showQuickPick: (items, placeHolder) => vscode.window.showQuickPick(items, { ignoreFocusOut: true, placeHolder }),
@@ -148,6 +232,7 @@ export function activate(context: vscode.ExtensionContext) {
     ),
     vscode.commands.registerCommand('flowx.startInChat', startTaskInChat),
     vscode.commands.registerCommand('flowx.reportCompletion', reportTaskCompletion),
+    vscode.commands.registerCommand('flowx.openRunDetail', openRunDetailForTask),
   );
 }
 

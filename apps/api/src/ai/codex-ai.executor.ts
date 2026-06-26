@@ -11,6 +11,7 @@ import {
   ExecuteTaskInput,
   ExecuteTaskOutput,
   GenerateDesignInput,
+  GenerateDesignOptions,
   GenerateDesignOutput,
   GeneratePlanInput,
   GeneratePlanOutput,
@@ -21,14 +22,20 @@ import {
   SplitTasksInput,
   SplitTasksOutput,
 } from '../common/types';
-import { assertStrictGenerateDesignOutput } from './design-output-validate';
+import { assertDesignSpecOutput, assertStrictGenerateDesignOutput } from './design-output-validate';
 import { brainstormPrompt } from '../prompts/brainstorm.prompt';
 import {
   getDesignJsonSchemaContractBlock,
   getDesignJsonSchemaSummaryContractBlock,
+  getDesignSpecSchemaContractBlock,
+  getDesignSpecSchemaSummaryContractBlock,
 } from '../prompts/design-schema-contract';
 import { getBrainstormJsonSchemaContractBlock } from '../prompts/brainstorm-schema-contract';
-import { designGenerationPrompt } from '../prompts/design-generation.prompt';
+import {
+  designArtifactPrompt,
+  designGenerationPrompt,
+  openDesignMcpAddon,
+} from '../prompts/design-generation.prompt';
 import { demoNavPlacementPrompt } from '../prompts/demo-nav-placement.prompt';
 import { executionPrompt } from '../prompts/execution.prompt';
 import { reviewPrompt } from '../prompts/review.prompt';
@@ -44,6 +51,8 @@ const CODEX_TIMEOUT_MS = Number(process.env.CODEX_TIMEOUT_MS?.trim()) || 600_000
 const CODEX_DEBUG_ROOT = join(process.cwd(), '.flowx-data', 'codex-debug');
 const CODEX_READ_SANDBOX = process.env.CODEX_READ_SANDBOX?.trim() || 'read-only';
 const CODEX_WRITE_SANDBOX = process.env.CODEX_WRITE_SANDBOX?.trim() || 'workspace-write';
+/** When enabled (and the host ran `od mcp install <agent>`), the design phase prompts the agent to ground the HTML artifact via OpenDesign MCP. */
+const OPENDESIGN_MCP_ENABLED = /^(1|true|yes|on)$/i.test(process.env.OPENDESIGN_MCP_ENABLED?.trim() ?? '');
 const CODEX_AUTH_ERROR_PATTERNS = [
   /invalid_api_key/i,
   /authentication failed/i,
@@ -88,8 +97,27 @@ export class CodexAiExecutor implements AIExecutor {
   async generateDesign(
     input: GenerateDesignInput,
     context?: AIInvocationContext,
+    options?: GenerateDesignOptions,
   ): Promise<GenerateDesignOutput> {
-    const prompt = this.buildDesignGenerationPrompt(input);
+    if (options?.phase === 'design') {
+      const prompt = this.buildDesignGenerationPrompt(input, options);
+      const raw = await this.runJsonStage<unknown>(
+        'design-spec.output.schema.json',
+        prompt,
+        'design artifact generation',
+        [],
+        context,
+      );
+      const parsed = assertDesignSpecOutput(raw);
+      return {
+        design: parsed.design,
+        demo: parsed.demo,
+        designArtifact: parsed.designArtifact,
+        demoPages: parsed.demoPages ?? [],
+      };
+    }
+
+    const prompt = this.buildDesignGenerationPrompt(input, options);
     const raw = await this.runJsonStage<unknown>(
       'design-generation.output.schema.json',
       prompt,
@@ -723,7 +751,10 @@ ${revisionSection}
 `;
   }
 
-  protected buildDesignGenerationPrompt(input: GenerateDesignInput) {
+  protected buildDesignGenerationPrompt(input: GenerateDesignInput, options?: GenerateDesignOptions) {
+    if (options?.phase === 'design') {
+      return this.buildDesignArtifactPrompt(input);
+    }
     const revisionSection = input.humanFeedback
       ? `
 
@@ -788,6 +819,45 @@ ${this.providerName === 'cursor' ? getDesignJsonSchemaSummaryContractBlock() : g
 - 设计阶段禁止输出 API 设计、接口草案、数据模型方案等技术产物。
 - JSON 顶层 demoPages 至少 2 条：含单段前缀入口页 + 子场景页；入口用 Link 列子路由；入口 navLabel 可选。有仓库上下文则 import 须真实；否则仅用 React、react-router-dom、DOM。每条含 route、componentName、componentCode、mockData、filePath；具名 export。Demo 仅评审：路由/守卫对齐仓库，演示路径须可达（鉴权短路或等价放行）。
 ${input.repositoryComponentContext?.routingAndAccessHints ? '\n- 与上文「路由与权限约定」一致；勿换路由 API。' : ''}
+`;
+  }
+
+  /** 设计阶段（OpenDesign 高保真单页 HTML）提示词；产出 design + demo + designArtifact.html，不产 demoPages。 */
+  protected buildDesignArtifactPrompt(input: GenerateDesignInput) {
+    const revisionSection = input.humanFeedback
+      ? `
+
+人工反馈:
+${input.humanFeedback}
+
+上一版设计方案:
+${input.previousDesigns?.length ? JSON.stringify(input.previousDesigns[input.previousDesigns.length - 1], null, 2) : ''}
+
+请根据人工反馈精修设计稿，保留仍然合理的部分，仅改动反馈指向之处。`
+      : '';
+
+    const mcpSection = OPENDESIGN_MCP_ENABLED ? `\n\n${openDesignMcpAddon}` : '';
+
+    return `${designArtifactPrompt.system}
+
+你必须只返回符合 JSON Schema 的 JSON，不要输出解释文字或 Markdown。
+
+${designArtifactPrompt.user}${mcpSection}
+
+需求信息:
+- 标题: ${input.requirementTitle}
+- 描述: ${input.requirementDescription}
+
+已确认产品简报:
+${JSON.stringify(input.confirmedBrief, null, 2)}
+${revisionSection}
+
+${this.providerName === 'cursor' ? getDesignSpecSchemaSummaryContractBlock() : getDesignSpecSchemaContractBlock()}
+
+硬约束:
+- 只输出 design、demo、designArtifact 三个顶层字段；本阶段不要求 demoPages。
+- designArtifact.html 必须是完整、自包含的单页 HTML 文档（<!doctype html> 起始，样式内联，无任何外部资源依赖），可直接在 sandbox iframe 中渲染。
+- 设计阶段禁止输出 API 设计、接口草案、数据模型方案等技术产物。
 `;
   }
 

@@ -4,6 +4,7 @@ import { AiInvocationContextService } from '../ai/ai-invocation-context.service'
 import type { AiCredentialsService } from '../auth/ai-credentials.service';
 import { WorkflowRunStatus } from '../common/enums';
 import type { GeneratePlanOutput } from '../common/types';
+import { WorkflowStateMachine } from '../common/workflow-state-machine';
 import type { PlanArtifactMeta } from './workflow-artifact.service';
 import { WorkflowArtifactService } from './workflow-artifact.service';
 import { WorkflowService } from './workflow.service';
@@ -454,6 +455,149 @@ describe('WorkflowService optional ideation stages', () => {
     expect(normalized.demo.scope.included).toContain('列表');
     expect(normalized.demoPages?.[0]?.componentName).toBe('DemoHubPage');
     expect(normalized.demoPages?.[1]?.componentName).toBe('CreateDemoPage');
+  });
+});
+
+function makeServiceWithPrisma(prisma: unknown): WorkflowService {
+  return new WorkflowService(
+    prisma as never,
+    new WorkflowStateMachine(),
+    {} as never,
+    {} as never,
+    {} as never,
+    { get: () => ({}) } as never,
+    { writePlanArtifact: vi.fn() } as never,
+    {} as never,
+  );
+}
+
+const validLocalDesign = {
+  design: {
+    overview: '高保真设计',
+    pages: [{ name: 'P', route: '/p', layout: 'L', keyComponents: [], interactions: [] }],
+    demoScenario: 'D',
+    designRationale: 'R',
+  },
+  demo: {
+    summary: 'S',
+    flows: [{ name: 'n', goal: 'g', entry: 'e', states: [] }],
+    scope: { included: [], excluded: [] },
+    knownGaps: [],
+  },
+  designArtifact: { html: '<!doctype html><html><body><h1>X</h1></body></html>' },
+};
+
+describe('WorkflowService submitLocalDesign', () => {
+  afterEach(async () => {
+    const { rm } = await import('fs/promises');
+    const { join } = await import('path');
+    await rm(join(process.cwd(), '.flowx-data', 'design-artifacts', 'run-ld'), { recursive: true, force: true });
+  });
+
+  it('rejects when the workflow is not in a design stage', async () => {
+    const prisma = {
+      workflowRun: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          id: 'run-ld',
+          status: 'TASK_SPLIT_PENDING',
+          stageExecutions: [],
+        }),
+      },
+    };
+    await expect(makeServiceWithPrisma(prisma).submitLocalDesign('run-ld', validLocalDesign)).rejects.toThrow(
+      /pending or waiting/,
+    );
+  });
+
+  it('rejects invalid design output before mutating state', async () => {
+    const prisma = {
+      workflowRun: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          id: 'run-ld',
+          status: 'DESIGN_PENDING',
+          stageExecutions: [{ id: 'se-1', stage: 'DESIGN', status: 'PENDING', attempt: 1 }],
+        }),
+      },
+    };
+    await expect(
+      makeServiceWithPrisma(prisma).submitLocalDesign('run-ld', { design: {}, demo: {}, designArtifact: {} }),
+    ).rejects.toThrow(/DESIGN_OUTPUT_INVALID/);
+  });
+
+  it('persists the artifact and moves the design stage to WAITING_CONFIRMATION', async () => {
+    let stageStatus = 'PENDING';
+    let capturedOutput: Record<string, unknown> | undefined;
+    let finalStatus = 'DESIGN_PENDING';
+
+    const tx = {
+      stageExecution: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'se-1', stage: 'DESIGN', status: stageStatus, attempt: 1 }),
+        findUniqueOrThrow: vi.fn().mockImplementation(async () => ({ id: 'se-1', status: stageStatus })),
+        update: vi.fn().mockImplementation(async ({ data }: { data: { status: string; output?: Record<string, unknown> } }) => {
+          stageStatus = data.status;
+          if (data.output) {
+            capturedOutput = data.output;
+          }
+          return { id: 'se-1', status: data.status };
+        }),
+      },
+      workflowRun: {
+        update: vi.fn().mockImplementation(async ({ data }: { data: { status: string } }) => {
+          finalStatus = data.status;
+          return { id: 'run-ld', status: data.status };
+        }),
+        findUniqueOrThrow: vi.fn().mockImplementation(async () => ({
+          id: 'run-ld',
+          status: finalStatus,
+          stageExecutions: [{ id: 'se-1', stage: 'DESIGN', status: stageStatus, attempt: 1 }],
+        })),
+      },
+    };
+
+    const prisma = {
+      workflowRun: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          id: 'run-ld',
+          status: 'DESIGN_PENDING',
+          stageExecutions: [{ id: 'se-1', stage: 'DESIGN', status: 'PENDING', attempt: 1 }],
+        }),
+      },
+      $transaction: vi.fn().mockImplementation((cb: (t: typeof tx) => unknown) => cb(tx)),
+    };
+
+    const result = (await makeServiceWithPrisma(prisma).submitLocalDesign('run-ld', validLocalDesign)) as {
+      status: string;
+    };
+
+    expect(result.status).toBe('DESIGN_WAITING_CONFIRMATION');
+    expect(capturedOutput?.designArtifact).toMatchObject({ relPath: expect.stringContaining('run-ld/') });
+    expect(capturedOutput?.design).toBeDefined();
+    expect(stageStatus).toBe('WAITING_CONFIRMATION');
+  });
+});
+
+describe('WorkflowService design artifact persistence', () => {
+  it('persists design HTML to disk and reads it back via the stored ref (rejecting traversal)', async () => {
+    const { service } = createService();
+    const helpers = service as unknown as {
+      persistWorkflowDesignArtifact: (runId: string, html: string) => Promise<{ relPath: string; bytes: number }>;
+      readWorkflowDesignArtifactHtml: (relPath: string) => Promise<string | null>;
+    };
+
+    const runId = `test-${Date.now()}`;
+    const html = '<!doctype html><html><body><h1>FlowX</h1></body></html>';
+    const ref = await helpers.persistWorkflowDesignArtifact(runId, html);
+
+    expect(ref.relPath.startsWith(`${runId}/`)).toBe(true);
+    expect(ref.bytes).toBe(Buffer.byteLength(html, 'utf8'));
+    expect(await helpers.readWorkflowDesignArtifactHtml(ref.relPath)).toBe(html);
+
+    expect(await helpers.readWorkflowDesignArtifactHtml('../../etc/passwd')).toBeNull();
+    expect(await helpers.readWorkflowDesignArtifactHtml('/etc/passwd')).toBeNull();
+
+    const { rm } = await import('fs/promises');
+    const { join } = await import('path');
+    await rm(join(process.cwd(), '.flowx-data', 'design-artifacts', runId), { recursive: true, force: true });
   });
 });
 

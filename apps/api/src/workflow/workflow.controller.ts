@@ -3,6 +3,7 @@ import { CompleteLocalExecutionDto } from './dto/complete-local-execution.dto';
 import { CreateWorkflowRunDto } from './dto/create-workflow-run.dto';
 import { HumanReviewDecisionDto } from './dto/human-review-decision.dto';
 import { StageFeedbackDto } from './dto/stage-feedback.dto';
+import { SubmitLocalDesignDto } from './dto/submit-local-design.dto';
 import { StageManualEditDto } from './dto/stage-manual-edit.dto';
 import { WorkflowService } from './workflow.service';
 
@@ -42,6 +43,11 @@ export class WorkflowController {
     return this.workflowService.getLocalHandoff(id);
   }
 
+  @Get(':id/design-artifact')
+  getDesignArtifact(@Param('id') id: string) {
+    return this.workflowService.getWorkflowDesignArtifact(id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.workflowService.findOne(id);
@@ -75,6 +81,11 @@ export class WorkflowController {
   @Post(':id/design/run')
   runDesign(@Param('id') id: string, @Req() req: WorkflowRequest) {
     return this.workflowService.runDesign(id, undefined, req.authSession);
+  }
+
+  @Post(':id/design/submit-local')
+  submitLocalDesign(@Param('id') id: string, @Body() dto: SubmitLocalDesignDto) {
+    return this.workflowService.submitLocalDesign(id, dto);
   }
 
   @Post(':id/design/revise')

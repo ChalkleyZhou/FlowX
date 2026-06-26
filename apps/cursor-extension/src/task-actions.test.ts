@@ -21,6 +21,7 @@ function createDeps(overrides: Partial<Parameters<typeof showTaskActions>[0]> = 
     copyPrompt: vi.fn(),
     openFlowX: vi.fn(),
     openChat: vi.fn(),
+    openRunDetail: vi.fn(),
     refreshTasks: vi.fn(),
     reportCompletion: vi.fn(),
     showQuickPick: vi.fn(),

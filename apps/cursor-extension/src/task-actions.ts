@@ -1,6 +1,6 @@
 import type { FlowXTaskItem } from './flowx-client';
 
-type TaskAction = 'start' | 'openChat' | 'copyPrompt' | 'report' | 'openFlowX';
+type TaskAction = 'start' | 'openChat' | 'copyPrompt' | 'report' | 'openFlowX' | 'openRunDetail';
 
 interface TaskActionItem {
   label: string;
@@ -14,6 +14,7 @@ export interface TaskActionDeps {
   openChat(task: FlowXTaskItem): PromiseLike<void>;
   copyPrompt(task: FlowXTaskItem): PromiseLike<void>;
   openFlowX(task: FlowXTaskItem): PromiseLike<void>;
+  openRunDetail(task: FlowXTaskItem): PromiseLike<void>;
   refreshTasks?(): void;
   reportCompletion(task: FlowXTaskItem): PromiseLike<void>;
 }
@@ -41,6 +42,10 @@ export async function showTaskActions(deps: TaskActionDeps, task: FlowXTaskItem)
     await deps.openFlowX(task);
     return;
   }
+  if (choice.action === 'openRunDetail') {
+    await deps.openRunDetail(task);
+    return;
+  }
   await deps.reportCompletion(task);
   deps.refreshTasks?.();
 }
@@ -56,6 +61,11 @@ function buildTaskActionItems(task: FlowXTaskItem): TaskActionItem[] {
   }
   if (task.workflowRunId) {
     items.push(
+      {
+        label: 'Open Workflow Run',
+        description: '查看阶段时间线并在 IDE 内确认/驳回/反馈',
+        action: 'openRunDetail',
+      },
       {
         label: 'Open Chat',
         description: 'Open Cursor Chat without submitting completion',

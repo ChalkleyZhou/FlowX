@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { execFile as execFileCallback } from 'child_process';
-import { access, mkdir, writeFile } from 'fs/promises';
+import { access, mkdir, readFile, writeFile } from 'fs/promises';
 import { Prisma } from '@prisma/client';
 import { promisify } from 'util';
 import {
@@ -18,7 +18,7 @@ import {
 } from '../ai/ai-executor';
 import { createNavPlacementAgent } from '../ai/demo-nav-agent-factory';
 import { AiInvocationContextService } from '../ai/ai-invocation-context.service';
-import { assertStrictGenerateDesignOutput } from '../ai/design-output-validate';
+import { assertDesignSpecOutput, assertStrictGenerateDesignOutput } from '../ai/design-output-validate';
 import {
   HumanReviewDecision,
   StageExecutionStatus,
@@ -39,6 +39,7 @@ import {
   BrainstormBrief,
   DemoArtifact,
   DemoPage,
+  DesignArtifactRef,
   DesignSpec,
   GenerateDesignOutput,
   GeneratePlanOutput,
@@ -61,6 +62,13 @@ import { WorkflowArtifactService } from './workflow-artifact.service';
 import { WorkflowGitRemoteService } from './workflow-git-remote.service';
 
 const execFile = promisify(execFileCallback);
+
+/** 工作流设计阶段 OpenDesign HTML 设计稿落盘根目录。 */
+const DESIGN_ARTIFACT_ROOT = join(process.cwd(), '.flowx-data', 'design-artifacts');
+/** 单页设计稿落盘上限（防止异常大对象写入磁盘 / 占满预览）。 */
+const DESIGN_ARTIFACT_MAX_BYTES = 5 * 1024 * 1024;
+/** 注入 Demo 阶段提示的设计稿 HTML 上限（避免提示过长）。 */
+const DESIGN_ARTIFACT_DEMO_CONTEXT_MAX_CHARS = 12000;
 
 const workflowStatusMap: Record<WorkflowRunStatus, string> = {
   [WorkflowRunStatus.CREATED]: 'CREATED',
@@ -1071,21 +1079,24 @@ export class WorkflowService {
           ...(revisionPreviousDesign ? [revisionPreviousDesign] : []),
         ];
 
-        const normalized = this.normalizeDesignOutput(
-          await aiExecutor.generateDesign(
-            {
-              requirementTitle: wf.requirement.title,
-              requirementDescription: wf.requirement.description,
-              confirmedBrief: this.getWorkflowBriefContext(wf),
-              previousDesigns: previousDesigns.length > 0 ? previousDesigns : undefined,
-              humanFeedback: humanFeedback?.trim(),
-              repositoryComponentContext: repositoryComponentContext ?? undefined,
-            },
-            invocationContext,
-          ),
+        const designResult = await aiExecutor.generateDesign(
+          {
+            requirementTitle: wf.requirement.title,
+            requirementDescription: wf.requirement.description,
+            confirmedBrief: this.getWorkflowBriefContext(wf),
+            previousDesigns: previousDesigns.length > 0 ? previousDesigns : undefined,
+            humanFeedback: humanFeedback?.trim(),
+            repositoryComponentContext: repositoryComponentContext ?? undefined,
+          },
+          invocationContext,
+          { phase: 'design' },
         );
 
-        const persistedOutput = this.toPersistedDesignStageOutput(normalized);
+        const artifactRef = designResult.designArtifact?.html
+          ? await this.persistWorkflowDesignArtifact(id, designResult.designArtifact.html)
+          : undefined;
+
+        const persistedOutput = this.toPersistedDesignStageOutput(designResult, artifactRef);
 
         await this.prisma.$transaction(async (tx) => {
           const designStage = await tx.stageExecution.findFirstOrThrow({
@@ -1115,6 +1126,62 @@ export class WorkflowService {
     });
 
     return startedWorkflow;
+  }
+
+  /**
+   * Accept a design generated locally (e.g. via OpenDesign MCP in the IDE) and move the
+   * design stage to WAITING_CONFIRMATION — the local-execution counterpart for the design stage.
+   * No server-side AI call is made; the provided output is validated and persisted directly.
+   */
+  async submitLocalDesign(id: string, rawOutput: unknown) {
+    const workflow = await this.getWorkflowOrThrow(id);
+    this.assertStageNotRunning(workflow, StageType.DESIGN);
+    const workflowStatus = this.fromPrismaWorkflowStatus(workflow.status);
+    if (
+      workflowStatus !== WorkflowRunStatus.DESIGN_PENDING &&
+      workflowStatus !== WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION
+    ) {
+      throw new BadRequestException(
+        'Local design can only be submitted while the design stage is pending or waiting for confirmation.',
+      );
+    }
+
+    const parsed = assertDesignSpecOutput(rawOutput);
+    const artifactRef = await this.persistWorkflowDesignArtifact(id, parsed.designArtifact.html ?? '');
+    const persistedOutput = this.toPersistedDesignStageOutput(
+      { design: parsed.design, demo: parsed.demo, demoPages: [] },
+      artifactRef,
+    );
+
+    return this.prisma.$transaction(async (tx) => {
+      if (workflowStatus === WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION) {
+        await this.transitionWorkflow(tx, id, WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION, {
+          to: WorkflowRunStatus.DESIGN_PENDING,
+          stage: StageType.DESIGN,
+        });
+      }
+
+      const stageExecution = await this.getOrCreateRunnableSkippableStageExecution(tx, id, StageType.DESIGN);
+      await this.updateStageExecution(tx, stageExecution.id, StageExecutionStatus.RUNNING, {
+        input: { source: 'LOCAL_OD_MCP' },
+        statusMessage: '本地 OpenDesign 设计已提交，正在记录',
+        startedAt: new Date(),
+      });
+      await this.updateStageExecution(tx, stageExecution.id, StageExecutionStatus.WAITING_CONFIRMATION, {
+        output: persistedOutput,
+        statusMessage: '请确认本地生成的设计方案（DesignSpec）后再生成 Demo',
+        finishedAt: new Date(),
+      });
+      await this.transitionWorkflow(tx, id, WorkflowRunStatus.DESIGN_PENDING, {
+        to: WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION,
+        stage: StageType.DESIGN,
+      });
+
+      return tx.workflowRun.findUniqueOrThrow({
+        where: { id },
+        include: this.workflowInclude(),
+      });
+    });
   }
 
   async confirmDesign(id: string, notifyRecipient?: WorkflowNotificationSession) {
@@ -1251,6 +1318,8 @@ export class WorkflowService {
           await this.buildWorkflowRepositoryComponentContext(aiExecutor, workflow),
         );
 
+        const designArtifactContext = await this.buildDemoDesignArtifactContext(workflow);
+
         const result = this.normalizeDesignOutput(
           await aiExecutor.generateDesign(
             {
@@ -1261,6 +1330,7 @@ export class WorkflowService {
               humanFeedback: [
                 humanFeedback?.trim(),
                 '请基于当前设计方案生成 demoPages：须含统一前缀根路径上的入口/导航页（单段 route，用 Link 列出子场景）+ 至少一个子路径场景页；不要只生孤立子路由导致必须手输 URL。',
+                designArtifactContext,
               ]
                 .filter(Boolean)
                 .join('\n\n'),
@@ -3425,11 +3495,104 @@ export class WorkflowService {
   }
 
   /**
-   * Persist only the design spec and demo intent for the design-confirmation gate.
+   * Persist only the design spec, demo intent, and the persisted design-artifact reference
+   * (without the inline HTML — that is stored on disk) for the design-confirmation gate.
    * Runnable demo pages are generated in the Demo stage after the spec is confirmed.
    */
-  private toPersistedDesignStageOutput(output: GenerateDesignOutput): Pick<GenerateDesignOutput, 'design' | 'demo'> {
-    return { design: output.design, demo: output.demo };
+  private toPersistedDesignStageOutput(
+    output: GenerateDesignOutput,
+    artifactRef?: DesignArtifactRef,
+  ): Pick<GenerateDesignOutput, 'design' | 'demo'> & { designArtifact?: DesignArtifactRef } {
+    return {
+      design: output.design,
+      demo: output.demo,
+      ...(artifactRef ? { designArtifact: artifactRef } : {}),
+    };
+  }
+
+  /** 把设计阶段生成的单页 HTML 落盘到 `.flowx-data/design-artifacts/<runId>/`，返回不含 html 的引用。 */
+  private async persistWorkflowDesignArtifact(
+    workflowRunId: string,
+    html: string,
+  ): Promise<DesignArtifactRef> {
+    const bytes = Buffer.byteLength(html, 'utf8');
+    if (bytes > DESIGN_ARTIFACT_MAX_BYTES) {
+      throw new Error(
+        `DESIGN_ARTIFACT_TOO_LARGE: design artifact HTML is ${bytes} bytes, exceeds limit ${DESIGN_ARTIFACT_MAX_BYTES}.`,
+      );
+    }
+    const generatedAt = new Date().toISOString();
+    const fileName = `design-${generatedAt.replace(/[:.]/g, '-')}.html`;
+    const relPath = `${workflowRunId}/${fileName}`;
+    const absDir = join(DESIGN_ARTIFACT_ROOT, workflowRunId);
+    await mkdir(absDir, { recursive: true });
+    await writeFile(join(absDir, fileName), html, 'utf8');
+    return { relPath, bytes, generatedAt };
+  }
+
+  /** Resolve and read a persisted design-artifact HTML by its stored relative path (guards against traversal). */
+  private async readWorkflowDesignArtifactHtml(relPath: string): Promise<string | null> {
+    const normalized = relPath.replace(/\\/g, '/');
+    if (normalized.includes('..') || normalized.startsWith('/')) {
+      return null;
+    }
+    const abs = join(DESIGN_ARTIFACT_ROOT, normalized);
+    if (!abs.startsWith(DESIGN_ARTIFACT_ROOT + sep)) {
+      return null;
+    }
+    try {
+      return await readFile(abs, 'utf8');
+    } catch {
+      return null;
+    }
+  }
+
+  /** Latest design-stage designArtifact ref (WAITING_CONFIRMATION 优先，其次最近 COMPLETED)。 */
+  private getLatestDesignArtifactRef(workflow: WorkflowPayload): DesignArtifactRef | null {
+    const designStages = workflow.stageExecutions
+      .filter((item) => item.stage === stageTypeMap[StageType.DESIGN])
+      .sort((a, b) => b.attempt - a.attempt);
+    for (const stage of designStages) {
+      const output =
+        stage.output && typeof stage.output === 'object' && !Array.isArray(stage.output)
+          ? (stage.output as Record<string, unknown>)
+          : null;
+      const ref = output?.designArtifact;
+      if (ref && typeof ref === 'object' && !Array.isArray(ref) && typeof (ref as DesignArtifactRef).relPath === 'string') {
+        return ref as DesignArtifactRef;
+      }
+    }
+    return null;
+  }
+
+  /** Demo 阶段把已确认的设计稿 HTML 作为额外上下文喂给 agent（截断以控制提示长度）。 */
+  private async buildDemoDesignArtifactContext(workflow: WorkflowPayload): Promise<string | null> {
+    const ref = this.getLatestDesignArtifactRef(workflow);
+    if (!ref?.relPath) {
+      return null;
+    }
+    const html = await this.readWorkflowDesignArtifactHtml(ref.relPath);
+    if (!html) {
+      return null;
+    }
+    const truncated =
+      html.length > DESIGN_ARTIFACT_DEMO_CONTEXT_MAX_CHARS
+        ? `${html.slice(0, DESIGN_ARTIFACT_DEMO_CONTEXT_MAX_CHARS)}\n<!-- ...(已截断) -->`
+        : html;
+    return `已确认的高保真设计稿（OpenDesign 单页 HTML，作为视觉与布局参照；请让 demoPages 的结构、信息层级与视觉风格对齐它，但仍用目标仓库的真实组件实现）:\n${truncated}`;
+  }
+
+  /** 读取工作流最新设计稿 HTML，供只读预览端点使用。 */
+  async getWorkflowDesignArtifact(
+    id: string,
+  ): Promise<{ exists: boolean; html: string | null; generatedAt?: string }> {
+    const workflow = await this.getWorkflowOrThrow(id);
+    const ref = this.getLatestDesignArtifactRef(workflow);
+    if (!ref?.relPath) {
+      return { exists: false, html: null };
+    }
+    const html = await this.readWorkflowDesignArtifactHtml(ref.relPath);
+    return { exists: Boolean(html), html, generatedAt: ref.generatedAt };
   }
 
   private getWorkflowDemoContext(workflow: WorkflowPayload): DemoArtifact | null {

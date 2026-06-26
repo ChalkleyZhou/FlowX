@@ -289,6 +289,12 @@ export interface StageExecution {
   output: unknown;
 }
 
+export interface WorkflowDesignArtifact {
+  exists: boolean;
+  html: string | null;
+  generatedAt?: string;
+}
+
 export interface WorkflowRun {
   id: string;
   status: string;

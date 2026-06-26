@@ -173,6 +173,16 @@ export interface GenerateDesignInput {
   repositoryComponentContext?: RepositoryComponentContext;
 }
 
+/**
+ * 'design' = OpenDesign-grounded high-fidelity HTML artifact phase (DesignSpec + 单页 HTML，无需 demoPages)。
+ * 'demo' (默认) = 现有可运行 demoPages 落地阶段（保持原有严格契约）。
+ */
+export type GenerateDesignPhase = 'design' | 'demo';
+
+export interface GenerateDesignOptions {
+  phase?: GenerateDesignPhase;
+}
+
 export interface DesignSpec {
   overview: string;
   pages: Array<{
@@ -224,8 +234,31 @@ export interface RepositoryComponentContext {
   routingAndAccessHints?: string;
 }
 
+/**
+ * OpenDesign 产出的高保真单页 HTML 设计稿引用。
+ * 设计阶段 agent 通过 OpenDesign MCP 读取设计系统/技能后，内联返回 `html`；
+ * FlowX 落盘到 `.flowx-data/design-artifacts/<runId>/...` 并以 `relPath` 记录位置。
+ */
+export interface DesignArtifactRef {
+  /** 内联单页 HTML（agent / mock 返回；落盘后持久化输出中可不再保留以减小体积）。 */
+  html?: string;
+  /** 相对 design-artifacts 根目录的持久化路径（落盘后写入）。 */
+  relPath?: string;
+  generatedAt?: string;
+  bytes?: number;
+}
+
 export interface GenerateDesignOutput {
   design: DesignSpec;
   demo: DemoArtifact;
   demoPages: DemoPage[];
+  designArtifact?: DesignArtifactRef;
+}
+
+/** 设计阶段（OpenDesign HTML artifact）的 executor 输出形态：必含 designArtifact，demoPages 可选。 */
+export interface DesignPhaseOutput {
+  design: DesignSpec;
+  demo: DemoArtifact;
+  designArtifact: DesignArtifactRef;
+  demoPages?: DemoPage[];
 }

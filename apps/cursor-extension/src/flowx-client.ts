@@ -71,6 +71,35 @@ export interface CompleteLocalInput {
   untrackedFiles?: string[];
 }
 
+export interface LocalDesignSubmission {
+  design: Record<string, unknown>;
+  demo: Record<string, unknown>;
+  designArtifact: { html: string } & Record<string, unknown>;
+}
+
+export interface WorkflowStageExecution {
+  stage: string;
+  status: string;
+  attempt?: number;
+  statusMessage?: string | null;
+  input?: unknown;
+  output?: unknown;
+}
+
+export interface WorkflowRunDetail {
+  id: string;
+  status: string;
+  runType?: string;
+  requirement?: { id: string; title: string };
+  stageExecutions: WorkflowStageExecution[];
+  workflowRepositories?: Array<{
+    id: string;
+    name: string;
+    url: string | null;
+    workingBranch?: string;
+  }>;
+}
+
 export class FlowXClient {
   constructor(private readonly config: FlowXConfig) {}
 
@@ -92,10 +121,93 @@ export class FlowXClient {
   }
 
   async completeLocal(workflowRunId: string, input: CompleteLocalInput): Promise<unknown> {
-    return this.request(`/workflow-runs/${encodeURIComponent(workflowRunId)}/complete-local`, {
+    return this.request(`/workflow-runs/${encodeURIComponent(workflowRunId)}/execution/complete-local`, {
       method: 'POST',
       body: JSON.stringify(input),
     });
+  }
+
+  async getRun(workflowRunId: string): Promise<WorkflowRunDetail> {
+    return this.request<WorkflowRunDetail>(`/workflow-runs/${encodeURIComponent(workflowRunId)}`);
+  }
+
+  /** POST a stage control endpoint, e.g. `design/confirm`, `plan/run`. */
+  private post<T = unknown>(workflowRunId: string, action: string, body?: unknown): Promise<T> {
+    return this.request<T>(`/workflow-runs/${encodeURIComponent(workflowRunId)}/${action}`, {
+      method: 'POST',
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+  }
+
+  runDesign(id: string) {
+    return this.post(id, 'design/run');
+  }
+  /** Submit a design generated locally (OpenDesign MCP) so it enters the confirmation gate. */
+  submitLocalDesign(id: string, body: LocalDesignSubmission) {
+    return this.post(id, 'design/submit-local', body);
+  }
+  confirmDesign(id: string) {
+    return this.post(id, 'design/confirm');
+  }
+  rejectDesign(id: string) {
+    return this.post(id, 'design/reject');
+  }
+  reviseDesign(id: string, feedback: string) {
+    return this.post(id, 'design/revise', { feedback });
+  }
+
+  runDemo(id: string) {
+    return this.post(id, 'demo/run');
+  }
+  confirmDemo(id: string) {
+    return this.post(id, 'demo/confirm');
+  }
+  reviseDemo(id: string, feedback: string) {
+    return this.post(id, 'demo/revise', { feedback });
+  }
+
+  runTaskSplit(id: string) {
+    return this.post(id, 'task-split/run');
+  }
+  confirmTaskSplit(id: string) {
+    return this.post(id, 'task-split/confirm');
+  }
+  rejectTaskSplit(id: string) {
+    return this.post(id, 'task-split/reject');
+  }
+  reviseTaskSplit(id: string, feedback: string) {
+    return this.post(id, 'task-split/revise', { feedback });
+  }
+
+  runPlan(id: string) {
+    return this.post(id, 'plan/run');
+  }
+  confirmPlan(id: string) {
+    return this.post(id, 'plan/confirm');
+  }
+  rejectPlan(id: string) {
+    return this.post(id, 'plan/reject');
+  }
+  revisePlan(id: string, feedback: string) {
+    return this.post(id, 'plan/revise', { feedback });
+  }
+
+  runExecution(id: string) {
+    return this.post(id, 'execution/run');
+  }
+
+  runReview(id: string) {
+    return this.post(id, 'review/run');
+  }
+  decideHumanReview(id: string, decision: string) {
+    return this.post(id, 'human-review/decision', { decision });
+  }
+
+  claimLocal(id: string): Promise<LocalChatHandoff | unknown> {
+    return this.post(id, 'execution/claim-local');
+  }
+  cancelLocal(id: string) {
+    return this.post(id, 'execution/cancel-local');
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {

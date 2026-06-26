@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { ContextPanel } from '../components/ContextPanel';
+import { DesignArtifactPreview } from '../components/DesignArtifactPreview';
 import { DiffFileListPanel } from '../components/DiffFileListPanel';
 import { DiffViewerPanel } from '../components/DiffViewerPanel';
 import { EmptyState } from '../components/EmptyState';
@@ -2149,6 +2150,24 @@ export function WorkflowRunDetailPage() {
                   </CardContent>
                 </Card>
               )}
+
+              {selectedStage === 'DESIGN' && workflowRun ? (
+                <Card className="rounded-md border-border bg-card shadow-sm">
+                  <CardHeader className="p-5 pb-0">
+                    <SectionHeader
+                      eyebrow="Design Preview"
+                      title="设计稿预览"
+                      description="OpenDesign 生成的高保真单页设计稿。可通过下方反馈让 AI 迭代修改后重新生成。"
+                    />
+                  </CardHeader>
+                  <CardContent className="p-5 pt-4">
+                    <DesignArtifactPreview
+                      workflowRunId={workflowRun.id}
+                      reloadKey={`${workflowRun.status}:${getStage(workflowRun, 'DESIGN')?.attempt ?? 0}`}
+                    />
+                  </CardContent>
+                </Card>
+              ) : null}
 
               {selectedStage === 'TECHNICAL_PLAN' && planHtml ? (
                 <Card className="rounded-md border-border bg-card shadow-sm">

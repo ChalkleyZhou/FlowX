@@ -94,6 +94,10 @@ VITE_API_BASE_URL="http://localhost:3000"
 DINGTALK_APP_ID=""
 DINGTALK_APP_SECRET=""
 DINGTALK_AGENT_ID=""
+# Optional: enable OpenDesign-grounded HTML design artifacts in the workflow DESIGN stage.
+# Requires `od` CLI installed on the API host + `od mcp install codex|cursor`.
+# See docs/opendesign-design-stage.md
+OPENDESIGN_MCP_ENABLED=""
 ```
 
 1. Install dependencies:
@@ -187,6 +191,7 @@ Notes:
   - git identity configured, e.g. `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL`
 - `AI_EXECUTOR_PROVIDER="codex"` still requires valid Codex authentication in the container; in server environments the simplest way is `OPENAI_API_KEY`
 - If Docker/host kernel blocks Codex `read-only` sandbox with `bwrap: No permissions to create a new namespace`, set `CODEX_READ_SANDBOX="danger-full-access"`
+- To ground the workflow DESIGN stage with OpenDesign, install the `od` CLI on the API host, run `od mcp install codex|cursor`, set `OPENDESIGN_MCP_ENABLED=1`, then restart. See [docs/opendesign-design-stage.md](/Users/chalkley/workspace/FlowX/docs/opendesign-design-stage.md)
 
 ### Using manual `codex login` in Docker
 

@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "GenerateDesignOutput",
-  "description": "设计/Demo 生成统一输出：顶层含 design、demo 与非空 demoPages；有仓库扫描上下文时页面须对齐真实路径。",
+  "title": "DesignPhaseOutput",
+  "description": "设计阶段（OpenDesign 高保真）输出：顶层含 design、demo 与 designArtifact（内联单页 HTML）。本阶段不要求 demoPages。",
   "type": "object",
   "additionalProperties": false,
-  "required": ["design", "demo", "demoPages"],
+  "required": ["design", "demo", "designArtifact"],
   "properties": {
     "design": {
       "type": "object",
@@ -87,37 +87,17 @@
         }
       }
     },
-    "demoPages": {
-      "type": "array",
-      "minItems": 2,
-      "description": "可运行 Demo：至少 2 页 — 含前缀根路径上的入口/导航页（Link 到子场景）+ 至少一个子场景页。",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["route", "componentName", "componentCode", "mockData", "filePath"],
-        "properties": {
-          "route": { "type": "string", "minLength": 1 },
-          "componentName": { "type": "string", "minLength": 1 },
-          "componentCode": { "type": "string", "minLength": 1 },
-          "mockData": {
-            "type": "object",
-            "additionalProperties": true
-          },
-          "filePath": { "type": "string", "minLength": 1 },
-          "navLabel": {
-            "type": "string",
-            "minLength": 1,
-            "description": "侧栏/主导航菜单标题（与 FlowX 自动写菜单项一致，优先于 mockData.navLabel）。"
-          }
-        }
-      }
-    },
     "designArtifact": {
       "type": "object",
-      "description": "可选：OpenDesign 高保真单页 HTML 设计稿引用（设计阶段产出，Demo 阶段一般不需要）。",
       "additionalProperties": false,
+      "required": ["html"],
+      "description": "OpenDesign 高保真单页 HTML 设计稿：html 为完整自包含 HTML 文档字符串（内联样式，可在 sandbox iframe 直接渲染）。",
       "properties": {
-        "html": { "type": "string", "minLength": 1 },
+        "html": {
+          "type": "string",
+          "minLength": 1,
+          "description": "完整单页 HTML 文档（<!doctype html> 起始，内联 CSS，无需外部资源）。"
+        },
         "relPath": { "type": "string" },
         "generatedAt": { "type": "string" },
         "bytes": { "type": "number" }

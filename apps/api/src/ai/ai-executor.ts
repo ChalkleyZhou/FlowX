@@ -4,6 +4,7 @@ import {
   ExecuteTaskInput,
   ExecuteTaskOutput,
   GenerateDesignInput,
+  GenerateDesignOptions,
   GenerateDesignOutput,
   GeneratePlanInput,
   GeneratePlanOutput,
@@ -31,7 +32,11 @@ export interface AIInvocationContext {
 
 export interface AIExecutor {
   brainstorm(input: BrainstormInput, context?: AIInvocationContext): Promise<BrainstormOutput>;
-  generateDesign(input: GenerateDesignInput, context?: AIInvocationContext): Promise<GenerateDesignOutput>;
+  generateDesign(
+    input: GenerateDesignInput,
+    context?: AIInvocationContext,
+    options?: GenerateDesignOptions,
+  ): Promise<GenerateDesignOutput>;
   splitTasks(input: SplitTasksInput, context?: AIInvocationContext): Promise<SplitTasksOutput>;
   generatePlan(input: GeneratePlanInput, context?: AIInvocationContext): Promise<GeneratePlanOutput>;
   executeTask(input: ExecuteTaskInput, context?: AIInvocationContext): Promise<ExecuteTaskOutput>;
