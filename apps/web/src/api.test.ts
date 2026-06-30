@@ -145,6 +145,24 @@ describe('api helpers', () => {
     );
   });
 
+  it('calls github git credential endpoint for updates', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ provider: 'github', configured: true }),
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.upsertGithubCredential({ accessToken: 'ghp_test_token' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3000/auth/git-credentials/github',
+      expect.objectContaining({
+        method: 'PUT',
+      }),
+    );
+  });
+
   it('calls briefing endpoints with expected methods and payloads', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

@@ -358,6 +358,19 @@ model OrganizationAiCredential {
   @@unique([organizationId, provider])
 }
 
+model OrganizationGitCredential {
+  id              String       @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  provider        String
+  encryptedSecret String
+  keyVersion      Int          @default(1)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([organizationId, provider])
+}
+
 model AuthIdentity {
   id                 String    @id @default(cuid())
   userId             String
@@ -380,6 +393,7 @@ model Organization {
   name                   String
   logoUrl                String?
   aiCredentials          OrganizationAiCredential[]
+  gitCredentials         OrganizationGitCredential[]
   memberships            UserOrganization[]
   sessions               UserSession[]
   createdAt              DateTime           @default(now())

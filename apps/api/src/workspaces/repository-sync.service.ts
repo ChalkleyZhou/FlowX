@@ -1,5 +1,14 @@
 import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { GitCredentialsService } from '../auth/git-credentials.service';
+import { parseRepositoryRemote } from '../briefings/repository-remote';
+import {
+  buildGitAuthEnv,
+  resolveCloneUrl,
+  resolveGitRemoteAuth,
+  shouldNormalizeRemoteToHttps,
+  toHttpsCloneUrl,
+} from './git-remote-auth';
 import { access, mkdir, readdir, readFile, rm } from 'fs/promises';
 import { promisify } from 'util';
 import { execFile as execFileCallback } from 'child_process';
@@ -25,7 +34,10 @@ export class RepositorySyncService {
   private readonly logger = new Logger(RepositorySyncService.name);
   private readonly syncingRepositoryIds = new Set<string>();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly gitCredentialsService: GitCredentialsService,
+  ) {}
 
   scheduleRepositorySync(repository: RepositoryRecord) {
     if (this.syncingRepositoryIds.has(repository.id)) {
@@ -58,26 +70,33 @@ export class RepositorySyncService {
 
     try {
       await mkdir(this.getWorkspaceStoragePath(repository.workspaceId), { recursive: true });
+      const remoteAuth = await this.resolveRemoteAuth(repository.url);
 
       if (!(await this.pathExists(join(repoRoot, '.git')))) {
         await rm(repoRoot, { recursive: true, force: true });
-        await this.runGit(['clone', repository.url, repoRoot]);
+        const cloneUrl = resolveCloneUrl(repository.url, remoteAuth);
+        await this.runGit(['clone', cloneUrl, repoRoot], undefined, remoteAuth);
+      } else if (remoteAuth && shouldNormalizeRemoteToHttps(repository.url, remoteAuth)) {
+        const httpsUrl = toHttpsCloneUrl(repository.url);
+        if (httpsUrl) {
+          await this.runGit(['remote', 'set-url', 'origin', httpsUrl], repoRoot, remoteAuth);
+        }
       }
 
-      await this.runGit(['fetch', 'origin', '--prune'], repoRoot);
+      await this.runGit(['fetch', 'origin', '--prune'], repoRoot, remoteAuth);
 
       let currentBranch = targetBranch;
       if (targetBranch) {
         const remoteBranchExists = await this.remoteBranchExists(repoRoot, targetBranch);
         if (remoteBranchExists) {
-          await this.runGit(['checkout', '-B', targetBranch, `origin/${targetBranch}`], repoRoot);
-          await this.runGit(['pull', '--ff-only', 'origin', targetBranch], repoRoot);
+          await this.runGit(['checkout', '-B', targetBranch, `origin/${targetBranch}`], repoRoot, remoteAuth);
+          await this.runGit(['pull', '--ff-only', 'origin', targetBranch], repoRoot, remoteAuth);
         } else {
-          await this.runGit(['checkout', '-B', targetBranch], repoRoot);
+          await this.runGit(['checkout', '-B', targetBranch], repoRoot, remoteAuth);
         }
       } else {
         currentBranch = await this.getCurrentBranch(repoRoot);
-        await this.runGit(['pull', '--ff-only'], repoRoot);
+        await this.runGit(['pull', '--ff-only'], repoRoot, remoteAuth);
       }
 
       const resolvedBranch = currentBranch || (await this.getCurrentBranch(repoRoot));
@@ -169,6 +188,10 @@ export class RepositorySyncService {
         recursive: true,
       });
 
+      const remoteAuth = workflowRepository.repository
+        ? await this.resolveRemoteAuth(workflowRepository.repository.url)
+        : null;
+
       if (workflowRepository.repository) {
         await this.syncRepository(workflowRepository.repository);
         const sourcePath = workflowRepository.repository.localPath;
@@ -189,7 +212,7 @@ export class RepositorySyncService {
       await this.removeStaleIndexLock(workflowRepository.localPath);
 
       if (await this.remoteNamedOriginExists(workflowRepository.localPath)) {
-        await this.runGit(['fetch', 'origin', '--prune'], workflowRepository.localPath);
+        await this.runGit(['fetch', 'origin', '--prune'], workflowRepository.localPath, remoteAuth);
       }
 
       const remoteBaseExists = await this.remoteBranchExists(
@@ -201,10 +224,12 @@ export class RepositorySyncService {
         await this.runGit(
           ['checkout', '-B', workflowRepository.baseBranch, `origin/${workflowRepository.baseBranch}`],
           workflowRepository.localPath,
+          remoteAuth,
         );
         await this.runGit(
           ['pull', '--ff-only', 'origin', workflowRepository.baseBranch],
           workflowRepository.localPath,
+          remoteAuth,
         );
       } else {
         await this.runGit(
@@ -261,10 +286,21 @@ export class RepositorySyncService {
     await rm(repositoryPath, { recursive: true, force: true });
   }
 
-  private buildGitEnv() {
+  private async resolveRemoteAuth(remoteUrl: string) {
+    const parsed = parseRepositoryRemote(remoteUrl);
+    if (!parsed) {
+      return null;
+    }
+
+    const token = await this.gitCredentialsService.getAccessTokenForProvider(parsed.provider);
+    return resolveGitRemoteAuth(remoteUrl, token);
+  }
+
+  private buildGitEnv(auth?: ReturnType<typeof resolveGitRemoteAuth>) {
     return {
       ...process.env,
       GIT_TERMINAL_PROMPT: '0',
+      ...buildGitAuthEnv(auth ?? null),
     };
   }
 
@@ -285,10 +321,14 @@ export class RepositorySyncService {
     return error.message;
   }
 
-  private async runGit(args: string[], cwd?: string) {
+  private async runGit(
+    args: string[],
+    cwd?: string,
+    auth?: ReturnType<typeof resolveGitRemoteAuth>,
+  ) {
     const { stderr } = await execFile('git', args, {
       cwd,
-      env: this.buildGitEnv(),
+      env: this.buildGitEnv(auth),
       maxBuffer: 1024 * 1024 * 8,
       timeout: this.resolveGitTimeoutMs(args),
       killSignal: 'SIGTERM',

@@ -8,7 +8,9 @@ describe('RepositorySyncService scheduling', () => {
         update: vi.fn().mockResolvedValue({}),
       },
     } as any;
-    const service = new RepositorySyncService(prisma);
+    const service = new RepositorySyncService(prisma, {
+      getAccessTokenForProvider: vi.fn().mockResolvedValue(null),
+    } as never);
     const repository = {
       id: 'repo-1',
       workspaceId: 'ws-1',

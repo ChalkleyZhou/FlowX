@@ -524,6 +524,12 @@ export interface AiCredentialStatus {
   updatedAt?: string;
 }
 
+export interface GitCredentialStatus {
+  provider: 'github' | 'gitlab';
+  configured: boolean;
+  updatedAt?: string;
+}
+
 export interface IdeationSession {
   id: string;
   stage: 'BRAINSTORM' | 'DESIGN' | 'DEMO';

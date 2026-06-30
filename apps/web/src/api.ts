@@ -2,6 +2,7 @@ import type {
   AuthOrganization,
   AuthSession,
   AiCredentialStatus,
+  GitCredentialStatus,
   Briefing,
   BriefingPeriod,
   BriefingSource,
@@ -489,6 +490,28 @@ export const api = {
     }),
   deleteCodexCredential: () =>
     request<AiCredentialStatus>('/auth/ai-credentials/codex', {
+      method: 'DELETE',
+    }),
+  getGithubCredentialStatus: () =>
+    request<GitCredentialStatus>('/auth/git-credentials/github'),
+  upsertGithubCredential: (payload: { accessToken: string }) =>
+    request<GitCredentialStatus>('/auth/git-credentials/github', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteGithubCredential: () =>
+    request<GitCredentialStatus>('/auth/git-credentials/github', {
+      method: 'DELETE',
+    }),
+  getGitlabCredentialStatus: () =>
+    request<GitCredentialStatus>('/auth/git-credentials/gitlab'),
+  upsertGitlabCredential: (payload: { accessToken: string }) =>
+    request<GitCredentialStatus>('/auth/git-credentials/gitlab', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteGitlabCredential: () =>
+    request<GitCredentialStatus>('/auth/git-credentials/gitlab', {
       method: 'DELETE',
     }),
   getRequirements: () => request<Requirement[]>('/requirements'),
