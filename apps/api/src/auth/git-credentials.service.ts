@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CredentialCryptoService } from './credential-crypto.service';
 
@@ -52,7 +52,12 @@ export class GitCredentialsService {
   async getAccessTokenForProvider(provider: GitCredentialProvider): Promise<string | null> {
     const envToken = this.getEnvAccessToken(provider);
     if (envToken) {
-      return envToken;
+      if (isPlausibleGitAccessToken(provider, envToken)) {
+        return envToken;
+      }
+      this.logger.warn(
+        `Ignoring invalid ${provider} token from environment variable; falling back to organization credential.`,
+      );
     }
 
     const organizations = await this.prisma.organization.findMany({
@@ -148,7 +153,16 @@ export class GitCredentialsService {
     provider: GitCredentialProvider,
     accessToken: string,
   ): Promise<GitCredentialStatusResponse> {
-    const encryptedSecret = this.credentialCryptoService.encrypt(accessToken);
+    const trimmedToken = accessToken.trim();
+    if (!isPlausibleGitAccessToken(provider, trimmedToken)) {
+      throw new BadRequestException(
+        provider === 'gitlab'
+          ? 'GitLab Access Token 格式不正确，请填写 Personal Access Token（通常以 glpat- 开头）。'
+          : 'GitHub Access Token 格式不正确，请填写 Personal Access Token（通常以 ghp_ 或 github_pat_ 开头）。',
+      );
+    }
+
+    const encryptedSecret = this.credentialCryptoService.encrypt(trimmedToken);
     const updated = await this.prisma.organizationGitCredential.upsert({
       where: {
         organizationId_provider: {
@@ -198,4 +212,20 @@ export class GitCredentialsService {
       configured: false,
     };
   }
+}
+
+function isPlausibleGitAccessToken(provider: GitCredentialProvider, token: string) {
+  const trimmed = token.trim();
+  if (trimmed.length < 8 || trimmed.length > 512) {
+    return false;
+  }
+  if (/\s/.test(trimmed)) {
+    return false;
+  }
+
+  if (provider === 'github') {
+    return /^(ghp_|github_pat_|gho_|ghu_|ghs_|ghr_)/.test(trimmed) || /^[A-Za-z0-9_\-]{20,}$/.test(trimmed);
+  }
+
+  return /^glpat-/.test(trimmed) || /^[A-Za-z0-9_\-]{20,}$/.test(trimmed);
 }

@@ -37,9 +37,9 @@ describe('GitCredentialsService', () => {
     upsert.mockResolvedValue({ updatedAt: new Date('2026-06-30T10:00:00.000Z') });
 
     const service = createService();
-    const result = await service.upsertGithubCredential('org-1', 'ghp_testtoken');
+    const result = await service.upsertGithubCredential('org-1', 'ghp_testtoken1234567890');
 
-    expect(encrypt).toHaveBeenCalledWith('ghp_testtoken');
+    expect(encrypt).toHaveBeenCalledWith('ghp_testtoken1234567890');
     expect(upsert.mock.calls[0]?.[0]).toMatchObject({
       create: { provider: 'github' },
       where: { organizationId_provider: { provider: 'github' } },
@@ -59,11 +59,30 @@ describe('GitCredentialsService', () => {
   });
 
   it('prefers environment token over organization credential', async () => {
-    process.env.GITHUB_TOKEN = 'env-github-token';
+    process.env.GITHUB_TOKEN = 'env-github-token-1234567890';
     const service = createService();
 
-    await expect(service.getAccessTokenForProvider('github')).resolves.toBe('env-github-token');
+    await expect(service.getAccessTokenForProvider('github')).resolves.toBe('env-github-token-1234567890');
     expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects implausible gitlab token on upsert', async () => {
+    const service = createService();
+
+    await expect(
+      service.upsertGitlabCredential('org-1', '==> Restarting with Docker Compose'),
+    ).rejects.toThrow(/GitLab Access Token 格式不正确/);
+    expect(encrypt).not.toHaveBeenCalled();
+  });
+
+  it('ignores invalid environment token and falls back to organization credential', async () => {
+    process.env.GITLAB_TOKEN = '==> Restarting with Docker Compose';
+    findMany.mockResolvedValueOnce([{ id: 'org-1' }]);
+    findUnique.mockResolvedValue({ encryptedSecret: 'encrypted-value' });
+    decrypt.mockReturnValue('glpat-real-token');
+    const service = createService();
+
+    await expect(service.getAccessTokenForProvider('gitlab')).resolves.toBe('glpat-real-token');
   });
 
   it('uses singleton organization credential when env is unset', async () => {
