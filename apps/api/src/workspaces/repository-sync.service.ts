@@ -3,7 +3,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { GitCredentialsService } from '../auth/git-credentials.service';
 import { parseRepositoryRemote } from '../briefings/repository-remote';
 import {
+  applyHttpAccessTokenToCloneUrl,
   buildGitAuthEnv,
+  isHttpRepositoryUrl,
   resolveGitRemoteAuth,
 } from './git-remote-auth';
 import { access, mkdir, readdir, readFile, rm } from 'fs/promises';
@@ -68,10 +70,16 @@ export class RepositorySyncService {
     try {
       await mkdir(this.getWorkspaceStoragePath(repository.workspaceId), { recursive: true });
       const remoteAuth = await this.resolveRemoteAuth(repository.url);
+      if (isHttpRepositoryUrl(repository.url) && !remoteAuth) {
+        throw new InternalServerErrorException(
+          'HTTP 仓库同步需要 Git 凭据：请在「Git 凭据」中配置 GitLab Access Token，或设置 GITLAB_TOKEN 环境变量。',
+        );
+      }
 
       if (!(await this.pathExists(join(repoRoot, '.git')))) {
         await rm(repoRoot, { recursive: true, force: true });
-        await this.runGit(['clone', repository.url.trim(), repoRoot], undefined, remoteAuth);
+        const cloneUrl = applyHttpAccessTokenToCloneUrl(repository.url, remoteAuth);
+        await this.runGit(['clone', cloneUrl, repoRoot], undefined, remoteAuth);
       }
 
       await this.runGit(['fetch', 'origin', '--prune'], repoRoot, remoteAuth);
@@ -307,6 +315,10 @@ export class RepositorySyncService {
     const errorWithCode = error as Error & { code?: string; killed?: boolean; signal?: string };
     if (errorWithCode.code === 'ETIMEDOUT' || errorWithCode.killed) {
       return `Git 命令超时（${error.message}）`;
+    }
+
+    if (error.message.includes('could not read Username')) {
+      return `HTTP 仓库认证失败：请确认已在「Git 凭据」配置 GitLab Access Token（或 GITLAB_TOKEN 环境变量）。原始错误：${error.message}`;
     }
 
     return error.message;
