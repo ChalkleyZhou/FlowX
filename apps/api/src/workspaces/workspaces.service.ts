@@ -169,6 +169,12 @@ export class WorkspacesService {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      await tx.briefingEvent.deleteMany({
+        where: { repositoryId },
+      });
+      await tx.briefingSource.deleteMany({
+        where: { repositoryId },
+      });
       await tx.requirementRepository.deleteMany({
         where: { repositoryId },
       });
@@ -183,6 +189,13 @@ export class WorkspacesService {
       await tx.bug.updateMany({
         where: { repositoryId },
         data: { repositoryId: null },
+      });
+      await tx.deployJobRecord.updateMany({
+        where: { repositoryId },
+        data: { repositoryId: null },
+      });
+      await tx.repositoryDeployConfig.deleteMany({
+        where: { repositoryId },
       });
       await tx.repository.delete({
         where: { id: repositoryId },
