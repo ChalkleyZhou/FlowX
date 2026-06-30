@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseRepositoryRemote } from './repository-remote';
+import { parseRepositoryRemote, buildHttpsCloneUrl } from './repository-remote';
 
 describe('parseRepositoryRemote', () => {
   it('parses GitHub https remotes', () => {
@@ -24,6 +24,42 @@ describe('parseRepositoryRemote', () => {
       externalPath: 'rokid/platform/flowx',
       host: 'gitlab.example.com',
     });
+  });
+
+  it('parses self-hosted GitLab remotes with explicit https port', () => {
+    expect(parseRepositoryRemote('https://ops.r2d2cn.com:1022/r2/platform/r2crm.git')).toEqual({
+      provider: 'gitlab',
+      externalPath: 'r2/platform/r2crm',
+      host: 'ops.r2d2cn.com',
+      port: 1022,
+    });
+  });
+
+  it('parses scp-style remotes where port was mistakenly placed before group path', () => {
+    expect(parseRepositoryRemote('git@ops.r2d2cn.com:1022:r2/platform/r2crm.git')).toEqual({
+      provider: 'gitlab',
+      externalPath: 'r2/platform/r2crm',
+      host: 'ops.r2d2cn.com',
+      port: 1022,
+    });
+  });
+
+  it('builds https clone urls with non-default ports', () => {
+    expect(buildHttpsCloneUrl('git@ops.r2d2cn.com:1022:r2/platform/r2crm.git')).toBe(
+      'https://ops.r2d2cn.com:1022/r2/platform/r2crm.git',
+    );
+  });
+
+  it('repairs malformed https remotes where port was embedded in the path', () => {
+    expect(parseRepositoryRemote('https://ops.r2d2cn.com/1022:r2/platform/r2crm.git')).toEqual({
+      provider: 'gitlab',
+      externalPath: 'r2/platform/r2crm',
+      host: 'ops.r2d2cn.com',
+      port: 1022,
+    });
+    expect(buildHttpsCloneUrl('https://ops.r2d2cn.com/1022:r2/platform/r2crm.git')).toBe(
+      'https://ops.r2d2cn.com:1022/r2/platform/r2crm.git',
+    );
   });
 
   it('returns null for unsupported remotes', () => {

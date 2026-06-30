@@ -4,6 +4,7 @@ export interface ParsedRepositoryRemote {
   provider: BriefingProvider;
   externalPath: string;
   host: string;
+  port?: number;
 }
 
 function normalizePath(pathname: string) {
@@ -11,6 +12,68 @@ function normalizePath(pathname: string) {
     .replace(/^\//, '')
     .replace(/\/$/, '')
     .replace(/\.git$/i, '');
+}
+
+function normalizePort(protocol: string, portValue: string | undefined) {
+  if (!portValue) {
+    return undefined;
+  }
+
+  const port = Number(portValue);
+  if (!Number.isInteger(port) || port <= 0) {
+    return undefined;
+  }
+
+  if (protocol === 'https:' && port === 443) {
+    return undefined;
+  }
+  if (protocol === 'http:' && port === 80) {
+    return undefined;
+  }
+  if (protocol === 'ssh:' && port === 22) {
+    return undefined;
+  }
+
+  return port;
+}
+
+function parseMisplacedPortInScpPath(rawPath: string) {
+  const match = rawPath.match(/^(\d{2,5})[:/](.+)$/);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    port: Number(match[1]),
+    repoPath: match[2]!,
+  };
+}
+
+function buildParsedRemote(
+  host: string,
+  path: string,
+  options?: { port?: number },
+): ParsedRepositoryRemote | null {
+  const segments = path.split('/').filter(Boolean);
+  if (segments.length < 2) {
+    return null;
+  }
+
+  if (host === 'github.com') {
+    return {
+      provider: 'github',
+      externalPath: `${segments[0]}/${segments[1]}`,
+      host,
+      port: options?.port,
+    };
+  }
+
+  return {
+    provider: 'gitlab',
+    externalPath: path,
+    host,
+    port: options?.port,
+  };
 }
 
 function parseHttpsRemote(url: string): ParsedRepositoryRemote | null {
@@ -22,25 +85,16 @@ function parseHttpsRemote(url: string): ParsedRepositoryRemote | null {
   }
 
   const host = parsed.hostname.toLowerCase();
-  const path = normalizePath(parsed.pathname);
-  const segments = path.split('/').filter(Boolean);
-  if (segments.length < 2) {
-    return null;
+  let path = normalizePath(parsed.pathname);
+  let port = normalizePort(parsed.protocol, parsed.port || undefined);
+
+  const misplacedPort = parseMisplacedPortInScpPath(path);
+  if (misplacedPort) {
+    path = normalizePath(`/${misplacedPort.repoPath}`);
+    port = port ?? misplacedPort.port;
   }
 
-  if (host === 'github.com') {
-    return {
-      provider: 'github',
-      externalPath: `${segments[0]}/${segments[1]}`,
-      host,
-    };
-  }
-
-  return {
-    provider: 'gitlab',
-    externalPath: path,
-    host,
-  };
+  return buildParsedRemote(host, path, { port });
 }
 
 function parseScpStyleRemote(url: string): ParsedRepositoryRemote | null {
@@ -50,25 +104,24 @@ function parseScpStyleRemote(url: string): ParsedRepositoryRemote | null {
   }
 
   const host = match[1].toLowerCase();
-  const path = normalizePath(`/${match[2]}`);
-  const segments = path.split('/').filter(Boolean);
-  if (segments.length < 2) {
+  const misplacedPort = parseMisplacedPortInScpPath(match[2]!);
+  const path = misplacedPort
+    ? normalizePath(`/${misplacedPort.repoPath}`)
+    : normalizePath(`/${match[2]}`);
+
+  return buildParsedRemote(host, path, {
+    port: misplacedPort?.port,
+  });
+}
+
+export function buildHttpsCloneUrl(remoteUrl: string): string | null {
+  const parsed = parseRepositoryRemote(remoteUrl);
+  if (!parsed) {
     return null;
   }
 
-  if (host === 'github.com') {
-    return {
-      provider: 'github',
-      externalPath: `${segments[0]}/${segments[1]}`,
-      host,
-    };
-  }
-
-  return {
-    provider: 'gitlab',
-    externalPath: path,
-    host,
-  };
+  const portSuffix = parsed.port ? `:${parsed.port}` : '';
+  return `https://${parsed.host}${portSuffix}/${parsed.externalPath}.git`;
 }
 
 export function parseRepositoryRemote(url: string): ParsedRepositoryRemote | null {

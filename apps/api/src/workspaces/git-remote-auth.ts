@@ -1,4 +1,5 @@
 import {
+  buildHttpsCloneUrl,
   parseRepositoryRemote,
   type BriefingProvider,
 } from '../briefings/repository-remote';
@@ -29,12 +30,7 @@ export function resolveGitRemoteAuth(
 }
 
 export function toHttpsCloneUrl(remoteUrl: string): string | null {
-  const parsed = parseRepositoryRemote(remoteUrl);
-  if (!parsed) {
-    return null;
-  }
-
-  return `https://${parsed.host}/${parsed.externalPath}.git`;
+  return buildHttpsCloneUrl(remoteUrl);
 }
 
 export function buildGitAuthEnv(auth: GitRemoteAuth | null): NodeJS.ProcessEnv {
@@ -65,11 +61,12 @@ export function resolveCloneUrl(remoteUrl: string, auth: GitRemoteAuth | null) {
     return trimmed;
   }
 
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    return trimmed;
+  const normalizedHttpsUrl = toHttpsCloneUrl(trimmed);
+  if (normalizedHttpsUrl) {
+    return normalizedHttpsUrl;
   }
 
-  return toHttpsCloneUrl(trimmed) ?? trimmed;
+  return trimmed;
 }
 
 export function shouldNormalizeRemoteToHttps(remoteUrl: string, auth: GitRemoteAuth | null) {

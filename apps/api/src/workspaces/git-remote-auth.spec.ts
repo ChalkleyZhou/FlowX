@@ -22,6 +22,9 @@ describe('git-remote-auth', () => {
     expect(toHttpsCloneUrl('git@gitlab.example.com:group/project.git')).toBe(
       'https://gitlab.example.com/group/project.git',
     );
+    expect(toHttpsCloneUrl('git@ops.r2d2cn.com:1022:r2/platform/r2crm.git')).toBe(
+      'https://ops.r2d2cn.com:1022/r2/platform/r2crm.git',
+    );
   });
 
   it('uses https clone url for ssh remotes when auth is available', () => {
