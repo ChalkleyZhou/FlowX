@@ -66,11 +66,13 @@ export class WorkspacesService {
       throw new NotFoundException('Workspace not found.');
     }
 
+    const repositoryUrl = dto.url.trim();
+
     const repository = await this.prisma.repository.create({
       data: {
         workspaceId,
         name: dto.name,
-        url: dto.url,
+        url: repositoryUrl,
         defaultBranch: dto.defaultBranch?.trim() || null,
         currentBranch: dto.defaultBranch?.trim() || null,
       },

@@ -2,9 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildGitAuthEnv,
   buildGitHttpExtraHeader,
-  resolveCloneUrl,
   resolveGitRemoteAuth,
-  toHttpsCloneUrl,
 } from './git-remote-auth';
 
 describe('git-remote-auth', () => {
@@ -17,22 +15,18 @@ describe('git-remote-auth', () => {
     expect(buildGitHttpExtraHeader('gitlab', 'glpat-test')).toBe('PRIVATE-TOKEN: glpat-test');
   });
 
-  it('converts scp-style remote to https clone url', () => {
-    expect(toHttpsCloneUrl('git@github.com:acme/demo.git')).toBe('https://github.com/acme/demo.git');
-    expect(toHttpsCloneUrl('git@gitlab.example.com:group/project.git')).toBe(
-      'https://gitlab.example.com/group/project.git',
-    );
-    expect(toHttpsCloneUrl('git@ops.r2d2cn.com:1022:r2/platform/r2crm.git')).toBe(
-      'http://ops.r2d2cn.com:1022/r2/platform/r2crm.git',
-    );
+  it('applies http auth only for http(s) remotes', () => {
+    expect(resolveGitRemoteAuth('https://gitlab.example.com/group/project.git', 'glpat-test')).toEqual({
+      provider: 'gitlab',
+      token: 'glpat-test',
+    });
+    expect(
+      resolveGitRemoteAuth('ssh://git@gitlab.example.com:1022/group/project.git', 'glpat-test'),
+    ).toBeNull();
+    expect(resolveGitRemoteAuth('git@gitlab.example.com:group/project.git', 'glpat-test')).toBeNull();
   });
 
-  it('uses https clone url for ssh remotes when auth is available', () => {
-    const auth = resolveGitRemoteAuth('git@github.com:acme/demo.git', 'ghp_test');
-    expect(resolveCloneUrl('git@github.com:acme/demo.git', auth)).toBe('https://github.com/acme/demo.git');
-  });
-
-  it('injects git auth env for clone and fetch', () => {
+  it('injects git auth env for http clone and fetch', () => {
     const auth = resolveGitRemoteAuth('https://github.com/acme/demo.git', 'ghp_test');
     const env = buildGitAuthEnv(auth);
     expect(env.GIT_CONFIG_KEY_0).toBe('http.extraHeader');

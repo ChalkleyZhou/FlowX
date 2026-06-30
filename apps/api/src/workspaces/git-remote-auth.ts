@@ -1,8 +1,5 @@
-import {
-  buildCloneUrl,
-  parseRepositoryRemote,
-  type BriefingProvider,
-} from '../briefings/repository-remote';
+import { parseRepositoryRemote } from '../briefings/repository-remote';
+import type { BriefingProvider } from '../briefings/repository-remote';
 import type { GitCredentialProvider } from '../auth/git-credentials.service';
 
 export type GitRemoteAuth = {
@@ -10,11 +7,16 @@ export type GitRemoteAuth = {
   token: string;
 };
 
+function isHttpRepositoryUrl(url: string) {
+  const trimmed = url.trim();
+  return trimmed.startsWith('http://') || trimmed.startsWith('https://');
+}
+
 export function resolveGitRemoteAuth(
   remoteUrl: string,
   token: string | null | undefined,
 ): GitRemoteAuth | null {
-  if (!token?.trim()) {
+  if (!token?.trim() || !isHttpRepositoryUrl(remoteUrl)) {
     return null;
   }
 
@@ -27,14 +29,6 @@ export function resolveGitRemoteAuth(
     provider: parsed.provider,
     token: token.trim(),
   };
-}
-
-export function toHttpsCloneUrl(remoteUrl: string): string | null {
-  return buildCloneUrl(remoteUrl);
-}
-
-export function toCloneUrl(remoteUrl: string): string | null {
-  return buildCloneUrl(remoteUrl);
 }
 
 export function buildGitAuthEnv(auth: GitRemoteAuth | null): NodeJS.ProcessEnv {
@@ -57,23 +51,4 @@ export function buildGitHttpExtraHeader(provider: BriefingProvider, token: strin
   }
 
   return `PRIVATE-TOKEN: ${token}`;
-}
-
-export function resolveCloneUrl(remoteUrl: string, _auth: GitRemoteAuth | null) {
-  const trimmed = remoteUrl.trim();
-  const normalizedCloneUrl = toCloneUrl(trimmed);
-  if (normalizedCloneUrl) {
-    return normalizedCloneUrl;
-  }
-
-  return trimmed;
-}
-
-export function shouldNormalizeRemoteToHttps(remoteUrl: string, auth: GitRemoteAuth | null) {
-  if (!auth) {
-    return false;
-  }
-
-  const trimmed = remoteUrl.trim();
-  return trimmed.startsWith('git@') || trimmed.startsWith('ssh://');
 }

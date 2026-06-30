@@ -4,10 +4,7 @@ import { GitCredentialsService } from '../auth/git-credentials.service';
 import { parseRepositoryRemote } from '../briefings/repository-remote';
 import {
   buildGitAuthEnv,
-  resolveCloneUrl,
   resolveGitRemoteAuth,
-  shouldNormalizeRemoteToHttps,
-  toHttpsCloneUrl,
 } from './git-remote-auth';
 import { access, mkdir, readdir, readFile, rm } from 'fs/promises';
 import { promisify } from 'util';
@@ -74,13 +71,7 @@ export class RepositorySyncService {
 
       if (!(await this.pathExists(join(repoRoot, '.git')))) {
         await rm(repoRoot, { recursive: true, force: true });
-        const cloneUrl = resolveCloneUrl(repository.url, remoteAuth);
-        await this.runGit(['clone', cloneUrl, repoRoot], undefined, remoteAuth);
-      } else if (remoteAuth && shouldNormalizeRemoteToHttps(repository.url, remoteAuth)) {
-        const httpsUrl = toHttpsCloneUrl(repository.url);
-        if (httpsUrl) {
-          await this.runGit(['remote', 'set-url', 'origin', httpsUrl], repoRoot, remoteAuth);
-        }
+        await this.runGit(['clone', repository.url.trim(), repoRoot], undefined, remoteAuth);
       }
 
       await this.runGit(['fetch', 'origin', '--prune'], repoRoot, remoteAuth);
@@ -316,10 +307,6 @@ export class RepositorySyncService {
     const errorWithCode = error as Error & { code?: string; killed?: boolean; signal?: string };
     if (errorWithCode.code === 'ETIMEDOUT' || errorWithCode.killed) {
       return `Git 命令超时（${error.message}）`;
-    }
-
-    if (error.message.includes('unexpected TLS packet') || error.message.includes('gnutls_handshake')) {
-      return `Git TLS 握手失败，请确认仓库 URL 是否应使用 http:// 而非 https://（常见于自建 GitLab 非标准端口）：${error.message}`;
     }
 
     return error.message;

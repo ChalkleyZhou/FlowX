@@ -387,7 +387,7 @@ export function WorkspacesPage() {
                 id="repository-url"
                 value={repositoryDraft.url}
                 onChange={(event) => setRepositoryDraft((current) => ({ ...current, url: event.target.value }))}
-                placeholder="https://github.com/org/repo"
+                placeholder="git clone 可用的仓库地址"
               />
             </div>
             <div className="flex flex-col gap-2">
