@@ -23,7 +23,7 @@ describe('git-remote-auth', () => {
       'https://gitlab.example.com/group/project.git',
     );
     expect(toHttpsCloneUrl('git@ops.r2d2cn.com:1022:r2/platform/r2crm.git')).toBe(
-      'https://ops.r2d2cn.com:1022/r2/platform/r2crm.git',
+      'http://ops.r2d2cn.com:1022/r2/platform/r2crm.git',
     );
   });
 

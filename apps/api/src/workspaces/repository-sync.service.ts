@@ -318,6 +318,10 @@ export class RepositorySyncService {
       return `Git 命令超时（${error.message}）`;
     }
 
+    if (error.message.includes('unexpected TLS packet') || error.message.includes('gnutls_handshake')) {
+      return `Git TLS 握手失败，请确认仓库 URL 是否应使用 http:// 而非 https://（常见于自建 GitLab 非标准端口）：${error.message}`;
+    }
+
     return error.message;
   }
 

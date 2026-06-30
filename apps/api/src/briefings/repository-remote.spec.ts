@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseRepositoryRemote, buildHttpsCloneUrl } from './repository-remote';
+import { parseRepositoryRemote, buildCloneUrl } from './repository-remote';
 
 describe('parseRepositoryRemote', () => {
   it('parses GitHub https remotes', () => {
@@ -7,6 +7,7 @@ describe('parseRepositoryRemote', () => {
       provider: 'github',
       externalPath: 'rokid/flowx',
       host: 'github.com',
+      protocol: 'https',
     });
   });
 
@@ -15,6 +16,7 @@ describe('parseRepositoryRemote', () => {
       provider: 'github',
       externalPath: 'rokid/flowx',
       host: 'github.com',
+      protocol: 'https',
     });
   });
 
@@ -23,6 +25,7 @@ describe('parseRepositoryRemote', () => {
       provider: 'gitlab',
       externalPath: 'rokid/platform/flowx',
       host: 'gitlab.example.com',
+      protocol: 'https',
     });
   });
 
@@ -32,6 +35,17 @@ describe('parseRepositoryRemote', () => {
       externalPath: 'r2/platform/r2crm',
       host: 'ops.r2d2cn.com',
       port: 1022,
+      protocol: 'https',
+    });
+  });
+
+  it('parses self-hosted GitLab remotes with explicit http port', () => {
+    expect(parseRepositoryRemote('http://ops.r2d2cn.com:1022/r2/platform/r2crm.git')).toEqual({
+      provider: 'gitlab',
+      externalPath: 'r2/platform/r2crm',
+      host: 'ops.r2d2cn.com',
+      port: 1022,
+      protocol: 'http',
     });
   });
 
@@ -41,12 +55,16 @@ describe('parseRepositoryRemote', () => {
       externalPath: 'r2/platform/r2crm',
       host: 'ops.r2d2cn.com',
       port: 1022,
+      protocol: 'http',
     });
   });
 
-  it('builds https clone urls with non-default ports', () => {
-    expect(buildHttpsCloneUrl('git@ops.r2d2cn.com:1022:r2/platform/r2crm.git')).toBe(
-      'https://ops.r2d2cn.com:1022/r2/platform/r2crm.git',
+  it('builds http clone urls for self-hosted gitlab on custom ports', () => {
+    expect(buildCloneUrl('git@ops.r2d2cn.com:1022:r2/platform/r2crm.git')).toBe(
+      'http://ops.r2d2cn.com:1022/r2/platform/r2crm.git',
+    );
+    expect(buildCloneUrl('http://ops.r2d2cn.com:1022/r2/platform/r2crm.git')).toBe(
+      'http://ops.r2d2cn.com:1022/r2/platform/r2crm.git',
     );
   });
 
@@ -56,9 +74,10 @@ describe('parseRepositoryRemote', () => {
       externalPath: 'r2/platform/r2crm',
       host: 'ops.r2d2cn.com',
       port: 1022,
+      protocol: 'http',
     });
-    expect(buildHttpsCloneUrl('https://ops.r2d2cn.com/1022:r2/platform/r2crm.git')).toBe(
-      'https://ops.r2d2cn.com:1022/r2/platform/r2crm.git',
+    expect(buildCloneUrl('https://ops.r2d2cn.com/1022:r2/platform/r2crm.git')).toBe(
+      'http://ops.r2d2cn.com:1022/r2/platform/r2crm.git',
     );
   });
 

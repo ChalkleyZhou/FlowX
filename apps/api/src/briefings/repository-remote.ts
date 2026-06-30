@@ -1,10 +1,12 @@
 export type BriefingProvider = 'github' | 'gitlab';
+export type CloneProtocol = 'http' | 'https';
 
 export interface ParsedRepositoryRemote {
   provider: BriefingProvider;
   externalPath: string;
   host: string;
   port?: number;
+  protocol?: CloneProtocol;
 }
 
 function normalizePath(pathname: string) {
@@ -49,15 +51,33 @@ function parseMisplacedPortInScpPath(rawPath: string) {
   };
 }
 
+function inferCloneProtocol(host: string, options?: { port?: number; protocol?: CloneProtocol }) {
+  if (options?.protocol) {
+    return options.protocol;
+  }
+
+  if (host === 'github.com') {
+    return 'https';
+  }
+
+  if (options?.port) {
+    return 'http';
+  }
+
+  return 'https';
+}
+
 function buildParsedRemote(
   host: string,
   path: string,
-  options?: { port?: number },
+  options?: { port?: number; protocol?: CloneProtocol },
 ): ParsedRepositoryRemote | null {
   const segments = path.split('/').filter(Boolean);
   if (segments.length < 2) {
     return null;
   }
+
+  const protocol = inferCloneProtocol(host, options);
 
   if (host === 'github.com') {
     return {
@@ -65,6 +85,7 @@ function buildParsedRemote(
       externalPath: `${segments[0]}/${segments[1]}`,
       host,
       port: options?.port,
+      protocol,
     };
   }
 
@@ -73,6 +94,7 @@ function buildParsedRemote(
     externalPath: path,
     host,
     port: options?.port,
+    protocol,
   };
 }
 
@@ -87,14 +109,18 @@ function parseHttpsRemote(url: string): ParsedRepositoryRemote | null {
   const host = parsed.hostname.toLowerCase();
   let path = normalizePath(parsed.pathname);
   let port = normalizePort(parsed.protocol, parsed.port || undefined);
+  let protocol: CloneProtocol = parsed.protocol === 'http:' ? 'http' : 'https';
 
   const misplacedPort = parseMisplacedPortInScpPath(path);
   if (misplacedPort) {
     path = normalizePath(`/${misplacedPort.repoPath}`);
     port = port ?? misplacedPort.port;
+    if (host !== 'github.com' && !parsed.port) {
+      protocol = 'http';
+    }
   }
 
-  return buildParsedRemote(host, path, { port });
+  return buildParsedRemote(host, path, { port, protocol });
 }
 
 function parseScpStyleRemote(url: string): ParsedRepositoryRemote | null {
@@ -114,14 +140,23 @@ function parseScpStyleRemote(url: string): ParsedRepositoryRemote | null {
   });
 }
 
-export function buildHttpsCloneUrl(remoteUrl: string): string | null {
+export function buildCloneUrl(remoteUrl: string): string | null {
   const parsed = parseRepositoryRemote(remoteUrl);
   if (!parsed) {
     return null;
   }
 
+  const protocol = inferCloneProtocol(parsed.host, {
+    port: parsed.port,
+    protocol: parsed.protocol,
+  });
   const portSuffix = parsed.port ? `:${parsed.port}` : '';
-  return `https://${parsed.host}${portSuffix}/${parsed.externalPath}.git`;
+  return `${protocol}://${parsed.host}${portSuffix}/${parsed.externalPath}.git`;
+}
+
+/** @deprecated Use buildCloneUrl instead. */
+export function buildHttpsCloneUrl(remoteUrl: string): string | null {
+  return buildCloneUrl(remoteUrl);
 }
 
 export function parseRepositoryRemote(url: string): ParsedRepositoryRemote | null {
