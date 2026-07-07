@@ -47,7 +47,7 @@ describe('groupCommitsForDailyReview', () => {
 describe('resolveRepositoryForCommit', () => {
   it('matches repositories case-insensitively', () => {
     const lookup = buildRepositoryLookup([
-      { id: 'repo-1', name: 'FlowX-API', localPath: '/tmp/flowx-api' },
+      { id: 'repo-1', name: 'FlowX-API', url: 'https://example.com/a.git', defaultBranch: 'main', currentBranch: 'main', localPath: '/tmp/flowx-api', syncStatus: 'READY' },
     ]);
 
     expect(resolveRepositoryForCommit('flowx-api', lookup)?.id).toBe('repo-1');

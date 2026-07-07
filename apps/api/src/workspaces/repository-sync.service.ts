@@ -54,9 +54,13 @@ export class RepositorySyncService {
       });
   }
 
-  async syncRepository(repository: RepositoryRecord) {
+  async syncRepository(repository: RepositoryRecord, options?: { branch?: string | null }) {
     const repoRoot = this.resolveRepositoryPath(repository.workspaceId, repository.id, repository.name);
-    const targetBranch = repository.currentBranch?.trim() || repository.defaultBranch?.trim() || null;
+    const targetBranch =
+      options?.branch?.trim() ||
+      repository.currentBranch?.trim() ||
+      repository.defaultBranch?.trim() ||
+      null;
 
     await this.prisma.repository.update({
       where: { id: repository.id },
@@ -122,6 +126,28 @@ export class RepositorySyncService {
       });
       throw new InternalServerErrorException(`代码库同步失败：${message}`);
     }
+  }
+
+  async ensureRepositoryReadyForReview(
+    repository: RepositoryRecord,
+    branch?: string | null,
+  ) {
+    const targetBranch = this.resolveReviewBranch(repository, branch);
+    const synced = await this.syncRepository(repository, { branch: targetBranch });
+    if (synced.syncStatus !== 'READY' || !synced.localPath) {
+      throw new InternalServerErrorException(
+        synced.syncError?.trim() || '代码库同步失败，无法运行 Code Review。',
+      );
+    }
+    return synced;
+  }
+
+  private resolveReviewBranch(repository: RepositoryRecord, branch?: string | null) {
+    const normalized = branch?.trim();
+    if (normalized && normalized !== 'unknown') {
+      return normalized;
+    }
+    return repository.currentBranch?.trim() || repository.defaultBranch?.trim() || null;
   }
 
   async syncWorkspaceRepositories(workspaceId: string) {

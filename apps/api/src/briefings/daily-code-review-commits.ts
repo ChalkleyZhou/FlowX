@@ -37,7 +37,11 @@ export function groupCommitsForDailyReview(commits: BriefingCommit[]): DailyCode
 export interface RepositoryLookupEntry {
   id: string;
   name: string;
+  url: string;
+  defaultBranch: string | null;
+  currentBranch: string | null;
   localPath: string | null;
+  syncStatus: string;
 }
 
 export function buildRepositoryLookup(

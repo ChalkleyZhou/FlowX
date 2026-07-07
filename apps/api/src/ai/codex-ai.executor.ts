@@ -518,6 +518,8 @@ ${dailyCodeReviewPrompt.user}
 仓库: ${input.unit.repositoryName}
 分支: ${input.unit.ref}
 本地路径: ${input.unit.localPath ?? '未提供'}
+目标分支: ${input.unit.ref}
+说明: 仓库已同步，当前工作区应已切换到目标分支。
 待审查 commit:
 ${commitLines || '  - 无'}
 ${workspaceSection}

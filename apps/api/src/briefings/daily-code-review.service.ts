@@ -26,6 +26,8 @@ import {
 } from './daily-code-review.types';
 import { DeliveryTargetsService } from './delivery-targets.service';
 import type { WorkspaceContext } from '../common/types';
+import { RepositorySyncService } from '../workspaces/repository-sync.service';
+import type { RepositoryLookupEntry } from './daily-code-review-commits';
 
 const DEFAULT_DAILY_HOUR = DEFAULT_BRIEFING_CUTOFF_HOUR;
 
@@ -52,6 +54,7 @@ export class DailyCodeReviewService {
     private readonly prisma: PrismaService,
     private readonly dailyCodeReviewAiService: DailyCodeReviewAiService,
     private readonly deliveryTargetsService: DeliveryTargetsService,
+    private readonly repositorySyncService: RepositorySyncService,
   ) {}
 
   async listProjectDailyCodeReviews(projectId: string) {
@@ -148,9 +151,18 @@ export class DailyCodeReviewService {
     }));
     const commits = collectDailyCommits(eventInputs);
     const groups = groupCommitsForDailyReview(commits);
-    const repositoryLookup = buildRepositoryLookup(project.workspace.repositories);
+    const repositoryLookup = buildRepositoryLookup(
+      project.workspace.repositories.map((repository) => ({
+        id: repository.id,
+        name: repository.name,
+        url: repository.url,
+        defaultBranch: repository.defaultBranch,
+        currentBranch: repository.currentBranch,
+        localPath: repository.localPath,
+        syncStatus: repository.syncStatus,
+      })),
+    );
     const recipient = toAiInvocationRecipient(authSession);
-    const workspaceContext = toWorkspaceContext(project.workspace);
 
     const units: DailyCodeReviewUnitResult[] = [];
     for (const group of groups) {
@@ -161,14 +173,62 @@ export class DailyCodeReviewService {
         author: commit.author,
       }));
 
-      if (!repository?.localPath) {
+      if (!repository) {
         units.push({
           repositoryName: group.repositoryName,
-          repositoryId: repository?.id ?? null,
+          repositoryId: null,
           ref: group.ref,
           commits: unitCommits,
           status: 'SKIPPED_NO_REPO',
-          errorMessage: '仓库尚未同步到本地，无法运行 Code Review。',
+          errorMessage: `未找到仓库「${group.repositoryName}」，请确认简报数据源与登记仓库名称一致。`,
+        });
+        continue;
+      }
+
+      let preparedRepository: RepositoryLookupEntry;
+      try {
+        const synced = await this.repositorySyncService.ensureRepositoryReadyForReview(
+          {
+            id: repository.id,
+            workspaceId: project.workspaceId,
+            name: repository.name,
+            url: repository.url,
+            defaultBranch: repository.defaultBranch,
+            currentBranch: repository.currentBranch,
+            localPath: repository.localPath,
+          },
+          group.ref,
+        );
+        preparedRepository = {
+          id: synced.id,
+          name: synced.name,
+          url: synced.url,
+          defaultBranch: synced.defaultBranch,
+          currentBranch: synced.currentBranch,
+          localPath: synced.localPath,
+          syncStatus: synced.syncStatus,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        units.push({
+          repositoryName: group.repositoryName,
+          repositoryId: repository.id,
+          ref: group.ref,
+          commits: unitCommits,
+          status: 'FAILED',
+          errorMessage: message,
+        });
+        continue;
+      }
+
+      if (!preparedRepository.localPath) {
+        units.push({
+          repositoryName: group.repositoryName,
+          repositoryId: repository.id,
+          ref: group.ref,
+          commits: unitCommits,
+          status: 'FAILED',
+          errorMessage: '仓库同步后仍缺少本地路径，无法运行 Code Review。',
         });
         continue;
       }
@@ -176,20 +236,25 @@ export class DailyCodeReviewService {
       const aiOutput = await this.dailyCodeReviewAiService.reviewUnit({
         unit: {
           repositoryName: group.repositoryName,
-          repositoryId: repository.id,
-          localPath: repository.localPath,
+          repositoryId: preparedRepository.id,
+          localPath: preparedRepository.localPath,
           ref: group.ref,
           commits: unitCommits,
           date,
           rangeLabel: date,
         },
-        workspace: workspaceContext,
+        workspace: toWorkspaceContext({
+          ...project.workspace,
+          repositories: project.workspace.repositories.map((item) =>
+            item.id === preparedRepository.id ? { ...item, ...preparedRepository } : item,
+          ),
+        }),
         recipient,
       });
 
       units.push({
         repositoryName: group.repositoryName,
-        repositoryId: repository.id,
+        repositoryId: preparedRepository.id,
         ref: group.ref,
         commits: unitCommits,
         status: aiOutput.status,
