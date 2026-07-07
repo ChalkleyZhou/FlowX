@@ -12,7 +12,9 @@ vi.mock('../api', () => ({
   api: {
     getProjects: vi.fn(),
     getProjectBriefings: vi.fn(),
+    listProjectDailyCodeReviews: vi.fn(),
     generateProjectBriefing: vi.fn(),
+    generateProjectDailyCodeReview: vi.fn(),
   },
 }));
 
@@ -34,6 +36,7 @@ describe('BriefingsPage', () => {
       },
     ]);
     vi.mocked(api.getProjectBriefings).mockResolvedValue([]);
+    vi.mocked(api.listProjectDailyCodeReviews).mockResolvedValue([]);
     vi.mocked(api.generateProjectBriefing).mockResolvedValue({
       id: 'briefing-1',
       projectId: 'project-1',

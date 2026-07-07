@@ -13,7 +13,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
 import { formatBeijingDateTime } from '../utils/datetime';
-import type { Briefing, BriefingPeriod, Project } from '../types';
+import type { Briefing, BriefingPeriod, DailyCodeReview, Project } from '../types';
+
+type BriefingsView = 'briefings' | 'code-reviews';
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -46,11 +48,14 @@ function briefingRangeLabel(briefing: Briefing) {
 export function BriefingsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [briefings, setBriefings] = useState<Briefing[]>([]);
+  const [codeReviews, setCodeReviews] = useState<DailyCodeReview[]>([]);
+  const [activeView, setActiveView] = useState<BriefingsView>('briefings');
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [period, setPeriod] = useState<BriefingPeriod>('DAILY');
   const [date, setDate] = useState(today());
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generatingReview, setGeneratingReview] = useState(false);
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -65,7 +70,12 @@ export function BriefingsPage() {
     const nextProjectId = selectedProjectId || projectList[0]?.id || '';
     setSelectedProjectId(nextProjectId);
     if (nextProjectId) {
-      setBriefings(await api.getProjectBriefings(nextProjectId));
+      const [projectBriefings, projectCodeReviews] = await Promise.all([
+        api.getProjectBriefings(nextProjectId),
+        api.listProjectDailyCodeReviews(nextProjectId),
+      ]);
+      setBriefings(projectBriefings);
+      setCodeReviews(projectCodeReviews);
     }
   }
 
@@ -77,7 +87,12 @@ export function BriefingsPage() {
       setLoading(true);
     }
     try {
-      setBriefings(await api.getProjectBriefings(projectId));
+      const [projectBriefings, projectCodeReviews] = await Promise.all([
+        api.getProjectBriefings(projectId),
+        api.listProjectDailyCodeReviews(projectId),
+      ]);
+      setBriefings(projectBriefings);
+      setCodeReviews(projectCodeReviews);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '加载简报失败');
     } finally {
@@ -134,12 +149,33 @@ export function BriefingsPage() {
     }
   }
 
+  async function handleGenerateReview() {
+    if (!selectedProjectId) {
+      toast.error('请先选择项目');
+      return;
+    }
+    setGeneratingReview(true);
+    try {
+      const review = await api.generateProjectDailyCodeReview(selectedProjectId, {
+        date,
+        regenerate: true,
+      });
+      await refresh(selectedProjectId);
+      toast.success('每日 Code Review 已生成');
+      navigate(`/daily-code-reviews/${review.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '生成 Code Review 失败');
+    } finally {
+      setGeneratingReview(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
         eyebrow="Briefings"
-        title="项目简报"
-        description="按项目所属工作区的 GitLab 数据源生成每日研发简报，并跟踪发送状态。"
+        title="项目简报与 Code Review"
+        description="按项目生成每日研发简报和 Code Review，查看历史记录并跟踪发送状态。"
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild>
@@ -155,14 +191,31 @@ export function BriefingsPage() {
       <div className="grid gap-5 md:grid-cols-3">
         <MetricCard label="项目数" value={projects.length} />
         <MetricCard label="当前简报" value={briefings.length} />
-        <MetricCard label="事件总数" value={briefings.reduce((sum, item) => sum + item.eventCount, 0)} />
+        <MetricCard label="Code Review" value={codeReviews.length} />
       </div>
 
       <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="pb-4">
-          <SectionHeader eyebrow="Generate" title="生成简报" />
+          <SectionHeader
+            eyebrow="Generate"
+            title={activeView === 'code-reviews' ? '生成 Code Review' : '生成简报'}
+          />
         </CardHeader>
         <CardContent className="p-5 pt-0">
+          <div className="mb-4 flex flex-wrap gap-2">
+            <Button
+              variant={activeView === 'briefings' ? 'default' : 'outline'}
+              onClick={() => setActiveView('briefings')}
+            >
+              简报
+            </Button>
+            <Button
+              variant={activeView === 'code-reviews' ? 'default' : 'outline'}
+              onClick={() => setActiveView('code-reviews')}
+            >
+              Code Review
+            </Button>
+          </div>
           <div className="rounded-xl border border-border bg-muted/70 p-3">
             <div className="flex flex-wrap items-end gap-3">
               <div className="flex min-w-[220px] flex-1 flex-col gap-1.5 sm:max-w-xs">
@@ -188,15 +241,19 @@ export function BriefingsPage() {
               </div>
               <div className="flex w-full flex-col gap-1.5 sm:w-[140px]">
                 <label className="text-xs font-medium text-muted-foreground">类型</label>
-                <Select value={period} onValueChange={(value) => setPeriod(value as BriefingPeriod)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="DAILY">日报</SelectItem>
-                    <SelectItem value="WEEKLY">周报</SelectItem>
-                  </SelectContent>
-                </Select>
+                {activeView === 'briefings' ? (
+                  <Select value={period} onValueChange={(value) => setPeriod(value as BriefingPeriod)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="DAILY">日报</SelectItem>
+                      <SelectItem value="WEEKLY">周报</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input className="w-full" value="日报" disabled />
+                )}
               </div>
               <div className="flex w-full flex-col gap-1.5 sm:w-[168px]">
                 <label className="text-xs font-medium text-muted-foreground">
@@ -215,10 +272,21 @@ export function BriefingsPage() {
                 </span>
                 <Button
                   className="h-10 w-full sm:w-auto"
-                  onClick={handleGenerate}
-                  disabled={!selectedProjectId || generating}
+                  onClick={activeView === 'code-reviews' ? handleGenerateReview : handleGenerate}
+                  disabled={
+                    !selectedProjectId ||
+                    (activeView === 'code-reviews' ? generatingReview : generating)
+                  }
                 >
-                  {generating ? '生成中...' : period === 'WEEKLY' ? '生成周报' : '生成简报'}
+                  {activeView === 'code-reviews'
+                    ? generatingReview
+                      ? '生成中...'
+                      : '生成 Code Review'
+                    : generating
+                      ? '生成中...'
+                      : period === 'WEEKLY'
+                        ? '生成周报'
+                        : '生成简报'}
                 </Button>
               </div>
             </div>
@@ -233,13 +301,56 @@ export function BriefingsPage() {
 
       <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="pb-4">
-          <SectionHeader eyebrow="History" title="简报历史" />
+          <SectionHeader
+            eyebrow="History"
+            title={activeView === 'code-reviews' ? 'Code Review 历史' : '简报历史'}
+          />
         </CardHeader>
         <CardContent className="p-5 pt-0">
           {loading ? (
             <div className="flex min-h-40 items-center justify-center">
               <Spinner className="h-7 w-7" />
             </div>
+          ) : activeView === 'code-reviews' ? (
+            codeReviews.length > 0 ? (
+              <div className="overflow-x-auto rounded-xl border border-border">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-muted/40 text-left text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">日期</th>
+                      <th className="px-4 py-3 font-medium">状态</th>
+                      <th className="px-4 py-3 font-medium">审查单元</th>
+                      <th className="px-4 py-3 font-medium">生成时间</th>
+                      <th className="px-4 py-3 font-medium">发送时间</th>
+                      <th className="px-4 py-3 font-medium">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {codeReviews.map((review) => (
+                      <tr key={review.id} className="border-t border-border">
+                        <td className="px-4 py-3">{review.date.slice(0, 10)}</td>
+                        <td className="px-4 py-3"><Badge variant="secondary">{review.status}</Badge></td>
+                        <td className="px-4 py-3">{review.unitsJson?.length ?? 0}</td>
+                        <td className="px-4 py-3">{formatBeijingDateTime(review.generatedAt)}</td>
+                        <td className="px-4 py-3">
+                          {review.sentAt ? formatBeijingDateTime(review.sentAt) : '未发送'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Button variant="outline" size="sm" asChild>
+                            <Link to={`/daily-code-reviews/${review.id}`}>查看详情</Link>
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <EmptyState
+                title="暂无 Code Review"
+                description="选择项目和日期后生成第一份每日 Code Review。"
+              />
+            )
           ) : briefings.length > 0 ? (
             <div className="overflow-x-auto rounded-xl border border-border">
               <table className="min-w-full text-sm">

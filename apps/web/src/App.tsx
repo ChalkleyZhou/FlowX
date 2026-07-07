@@ -3,6 +3,7 @@ import { AuthProvider } from './auth';
 import { BugsPage } from './pages/BugsPage';
 import { BugDetailPage } from './pages/BugDetailPage';
 import { BriefingDetailPage } from './pages/BriefingDetailPage';
+import { DailyCodeReviewDetailPage } from './pages/DailyCodeReviewDetailPage';
 import { BriefingSourcesPage } from './pages/BriefingSourcesPage';
 import { BriefingsPage } from './pages/BriefingsPage';
 import { DeliveryTargetsPage } from './pages/DeliveryTargetsPage';
@@ -48,6 +49,7 @@ export default function App() {
             <Route path="/projects/:projectId/schedule" element={<ProjectScheduleRedirect />} />
             <Route path="/briefings" element={<BriefingsPage />} />
             <Route path="/briefings/:briefingId" element={<BriefingDetailPage />} />
+            <Route path="/daily-code-reviews/:reviewId" element={<DailyCodeReviewDetailPage />} />
             <Route path="/requirements" element={<RequirementsPage />} />
             <Route path="/requirements/:id" element={<RequirementDetailPage />} />
             <Route path="/workflow-runs" element={<WorkflowRunsPage />} />

@@ -56,7 +56,7 @@ export function ProjectBriefingConfigPanel({ projectId }: { projectId: string })
     await api.generateProjectDailyCodeReview(projectId, {
       regenerate: true,
     });
-    toast.success('每日 Code Review 已生成，可在历史记录中查看并手动发送');
+    toast.success('每日 Code Review 已生成，可在简报页的 Code Review 历史中查看');
   }
 
   return (
