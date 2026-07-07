@@ -52,6 +52,13 @@ export function ProjectBriefingConfigPanel({ projectId }: { projectId: string })
     toast.success('当前周期简报已生成，可在简报详情中手动发送');
   }
 
+  async function generateCodeReviewToday() {
+    await api.generateProjectDailyCodeReview(projectId, {
+      regenerate: true,
+    });
+    toast.success('每日 Code Review 已生成，可在历史记录中查看并手动发送');
+  }
+
   return (
     <Card className="rounded-2xl border border-border bg-card shadow-sm">
       <CardHeader className="pb-4">
@@ -60,8 +67,8 @@ export function ProjectBriefingConfigPanel({ projectId }: { projectId: string })
           title="简报配置"
           description={
             config?.enabled
-              ? '到点会自动生成并投递到本项目的投递目标。'
-              : '开启后按下方时刻自动生成并投递；也可随时手动生成预览。'
+              ? '到点会自动生成简报与每日 Code Review，并投递到本项目的投递目标。审查规则由各仓库内的 review skill 决定。'
+              : '开启后按下方时刻自动生成简报与每日 Code Review 并投递；也可随时手动生成预览。'
           }
         />
       </CardHeader>
@@ -101,12 +108,18 @@ export function ProjectBriefingConfigPanel({ projectId }: { projectId: string })
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void generateToday()} disabled={saving}>
-            仅生成预览（不投递）
+            仅生成简报预览
+          </Button>
+          <Button variant="outline" onClick={() => void generateCodeReviewToday()} disabled={saving}>
+            仅生成 Code Review
           </Button>
           <Button variant="outline" asChild>
             <Link to="/briefings">查看历史</Link>
           </Button>
         </div>
+        <p className="text-sm text-muted-foreground">
+          若仓库未配置 review skill（如 `.cursor/skills/code-review/SKILL.md`），Agent 会在报告中提示需要添加。
+        </p>
         {config?.enabled ? (
           <p className="text-sm text-muted-foreground">
             上次定时执行：{formatBeijingDateTime(config.lastSchedulerRunAt)}

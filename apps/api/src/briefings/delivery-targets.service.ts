@@ -8,6 +8,7 @@ import {
   sendEmail,
 } from './delivery-senders';
 import { formatBriefingTitle } from './briefing-renderer';
+import { formatDailyCodeReviewTitle } from './daily-code-review-renderer';
 import { CreateDeliveryTargetDto } from './dto/create-delivery-target.dto';
 import { UpdateDeliveryTargetDto } from './dto/update-delivery-target.dto';
 
@@ -26,6 +27,8 @@ type BriefingSendRecord = {
   markdownContent: string;
   htmlContent: string;
 };
+
+type DailyCodeReviewSendRecord = BriefingSendRecord;
 
 @Injectable()
 export class DeliveryTargetsService {
@@ -145,6 +148,63 @@ export class DeliveryTargetsService {
     return { successCount, targetCount: targets.length };
   }
 
+  async sendDailyCodeReview(review: DailyCodeReviewSendRecord) {
+    const targets = await this.prisma.deliveryTarget.findMany({
+      where: {
+        projectId: review.projectId,
+        isActive: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    let successCount = 0;
+
+    for (const target of targets) {
+      try {
+        const providerResponse = await this.sendDailyCodeReviewToTarget(review, target);
+        successCount += 1;
+        await this.prisma.deliveryLog.create({
+          data: {
+            dailyCodeReviewId: review.id,
+            deliveryTargetId: target.id,
+            channel: target.type,
+            status: 'SUCCESS',
+            providerResponse: providerResponse as Prisma.InputJsonValue,
+            sentAt: new Date(),
+          },
+        });
+      } catch (error) {
+        await this.prisma.deliveryLog.create({
+          data: {
+            dailyCodeReviewId: review.id,
+            deliveryTargetId: target.id,
+            channel: target.type,
+            status: 'FAILED',
+            errorMessage: error instanceof Error ? error.message : String(error),
+          },
+        });
+      }
+    }
+
+    if (successCount > 0) {
+      await this.prisma.dailyCodeReview.update({
+        where: { id: review.id },
+        data: { sentAt: new Date(), errorMessage: null },
+      });
+    } else if (targets.length === 0) {
+      await this.prisma.dailyCodeReview.update({
+        where: { id: review.id },
+        data: { errorMessage: '未配置启用的投递目标' },
+      });
+    } else {
+      await this.prisma.dailyCodeReview.update({
+        where: { id: review.id },
+        data: { errorMessage: '所有投递目标均失败，请查看投递记录' },
+      });
+    }
+
+    return { successCount, targetCount: targets.length };
+  }
+
   private async toCreateData(dto: CreateDeliveryTargetDto, organizationId?: string) {
     const project = await this.prisma.project.findUnique({
       where: { id: dto.projectId.trim() },
@@ -224,11 +284,11 @@ export class DeliveryTargetsService {
       dingtalkWebhookUrl: string | null;
       dingtalkSecret: string | null;
     },
+    subjectOverride?: string,
   ) {
-    const subject = formatBriefingTitle(
-      briefing.projectName,
-      briefing.date.toISOString().slice(0, 10),
-    );
+    const subject =
+      subjectOverride ??
+      formatBriefingTitle(briefing.projectName, briefing.date.toISOString().slice(0, 10));
 
     if (target.type === 'EMAIL') {
       if (!target.emailAddress) {
@@ -284,6 +344,24 @@ export class DeliveryTargetsService {
     }
 
     throw new BadRequestException(`Unsupported delivery target type: ${target.type}`);
+  }
+
+  private async sendDailyCodeReviewToTarget(
+    review: DailyCodeReviewSendRecord,
+    target: {
+      type: string;
+      userId: string | null;
+      organizationId: string | null;
+      emailAddress: string | null;
+      dingtalkWebhookUrl: string | null;
+      dingtalkSecret: string | null;
+    },
+  ) {
+    return this.sendToTarget(
+      review,
+      target,
+      formatDailyCodeReviewTitle(review.projectName, review.date.toISOString().slice(0, 10)),
+    );
   }
 }
 

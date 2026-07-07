@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BriefingsService } from './briefings.service';
+import { DailyCodeReviewService } from './daily-code-review.service';
 import {
   formatBriefingDate,
   isBriefingSchedulerDue,
@@ -16,6 +17,7 @@ export class BriefingSchedulerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly briefingsService: BriefingsService,
+    private readonly dailyCodeReviewService: DailyCodeReviewService,
   ) {}
 
   onModuleInit() {
@@ -82,31 +84,54 @@ export class BriefingSchedulerService implements OnModuleInit, OnModuleDestroy {
         });
         generatedCount += 1;
 
+        let briefingMessage = '简报已生成';
+        let briefingDelivered = Boolean(briefing.sentAt);
         if (briefing.sentAt) {
-          await this.recordSchedulerRun(config.projectId, slot, '已发送（跳过重复投递）');
-          continue;
+          briefingMessage = '简报已发送（跳过重复投递）';
+        } else {
+          const briefingDelivery = await this.briefingsService.sendBriefing(briefing.id);
+          briefingDelivered = briefingDelivery.successCount > 0;
+          briefingMessage =
+            briefingDelivery.targetCount === 0
+              ? '简报未配置启用的投递目标'
+              : `简报投递 ${briefingDelivery.successCount}/${briefingDelivery.targetCount}`;
         }
 
-        const delivery = await this.briefingsService.sendBriefing(briefing.id);
-        const message =
-          delivery.targetCount === 0
-            ? '未配置启用的投递目标'
-            : `投递 ${delivery.successCount}/${delivery.targetCount}`;
+        const codeReview = await this.dailyCodeReviewService.generateProjectDailyCodeReview(
+          config.projectId,
+          { date, regenerate: true },
+        );
+        let codeReviewMessage = 'Code Review 已生成';
+        let codeReviewDelivered = Boolean(codeReview.sentAt);
+        if (codeReview.sentAt) {
+          codeReviewMessage = 'Code Review 已发送（跳过重复投递）';
+        } else {
+          const codeReviewDelivery = await this.dailyCodeReviewService.sendDailyCodeReview(
+            codeReview.id,
+          );
+          codeReviewDelivered = codeReviewDelivery.successCount > 0;
+          codeReviewMessage =
+            codeReviewDelivery.targetCount === 0
+              ? 'Code Review 未配置启用的投递目标'
+              : `Code Review 投递 ${codeReviewDelivery.successCount}/${codeReviewDelivery.targetCount}`;
+        }
 
-        if (delivery.successCount > 0) {
-          await this.recordSchedulerRun(config.projectId, slot, message);
+        const message = `${briefingMessage}；${codeReviewMessage}`;
+
+        if (briefingDelivered || codeReviewDelivered) {
+          await this.recordSchedulerRun(config.projectId, slot, message, slot);
           this.logger.log(
-            `Scheduled briefing delivered for project ${config.projectId} (${config.project.name}) at slot ${slot}: ${message}.`,
+            `Scheduled briefing and code review delivered for project ${config.projectId} (${config.project.name}) at slot ${slot}: ${message}.`,
           );
         } else {
-          await this.recordSchedulerRun(config.projectId, null, message);
+          await this.recordSchedulerRun(config.projectId, null, message, null);
           this.logger.warn(
-            `Scheduled briefing generated but not delivered for project ${config.projectId} (${config.project.name}) at slot ${slot}: ${message}.`,
+            `Scheduled briefing/code review generated but not delivered for project ${config.projectId} (${config.project.name}) at slot ${slot}: ${message}.`,
           );
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        await this.recordSchedulerRun(config.projectId, null, message);
+        await this.recordSchedulerRun(config.projectId, null, message, null);
         this.logger.warn(
           `Scheduled briefing failed for project ${config.projectId} (${config.project.name}) at slot ${slot}: ${message}`,
         );
@@ -120,6 +145,7 @@ export class BriefingSchedulerService implements OnModuleInit, OnModuleDestroy {
     projectId: string,
     slot: string | null,
     message: string,
+    codeReviewSlot: string | null,
   ) {
     await this.prisma.projectBriefingConfig.update({
       where: { projectId },
@@ -127,6 +153,9 @@ export class BriefingSchedulerService implements OnModuleInit, OnModuleDestroy {
         lastSchedulerRunAt: new Date(),
         lastSchedulerMessage: message,
         ...(slot ? { lastSchedulerSlot: slot } : {}),
+        ...(codeReviewSlot ? { lastCodeReviewSchedulerSlot: codeReviewSlot } : {}),
+        lastCodeReviewSchedulerRunAt: new Date(),
+        lastCodeReviewSchedulerMessage: message,
       },
     });
   }

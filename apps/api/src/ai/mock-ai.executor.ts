@@ -13,6 +13,8 @@ import {
   RepositoryContext,
   ReviewCodeInput,
   ReviewCodeOutput,
+  ReviewDailyChangesInput,
+  DailyCodeReviewUnitOutput,
   SplitTaskItem,
   SplitTasksInput,
   SplitTasksOutput,
@@ -330,6 +332,34 @@ footer { padding: 20px 40px 40px; color: #64748b; font-size: 13px; }
         'Add idempotency protection for run-stage endpoints.',
       ],
       impactScope: ['Backend workflow orchestration', 'Operator review UI', 'Prisma data model'],
+    };
+  }
+
+  async reviewDailyChanges(
+    input: ReviewDailyChangesInput,
+    _context?: AIInvocationContext,
+  ): Promise<DailyCodeReviewUnitOutput> {
+    const mockStatus = process.env.MOCK_DAILY_CODE_REVIEW_STATUS?.trim();
+    if (mockStatus === 'SKIPPED_NO_SKILL') {
+      return {
+        status: 'SKIPPED_NO_SKILL',
+        skillHint:
+          '未找到 review skill。请在仓库中添加，例如 `.cursor/skills/code-review/SKILL.md`。',
+        issues: [],
+        bugs: [],
+        missingTests: [],
+        suggestions: [],
+        impactScope: [],
+      };
+    }
+
+    return {
+      status: 'COMPLETED',
+      issues: [`Mock daily review for ${input.unit.repositoryName}/${input.unit.ref}.`],
+      bugs: [],
+      missingTests: ['Add daily code review scheduler integration tests.'],
+      suggestions: ['Keep review skill instructions close to repository conventions.'],
+      impactScope: [input.unit.repositoryName],
     };
   }
 }

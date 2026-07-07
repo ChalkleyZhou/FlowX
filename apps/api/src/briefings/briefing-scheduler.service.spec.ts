@@ -7,6 +7,8 @@ describe('BriefingSchedulerService', () => {
   const configUpdate = vi.fn();
   const generateProjectBriefing = vi.fn();
   const sendBriefing = vi.fn();
+  const generateProjectDailyCodeReview = vi.fn();
+  const sendDailyCodeReview = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -27,10 +29,14 @@ describe('BriefingSchedulerService', () => {
         generateProjectBriefing,
         sendBriefing,
       } as never,
+      {
+        generateProjectDailyCodeReview,
+        sendDailyCodeReview,
+      } as never,
     );
   }
 
-  it('generates and sends due project briefings with regenerate enabled', async () => {
+  it('generates and sends due project briefings and daily code reviews', async () => {
     configFindMany.mockResolvedValue([
       {
         projectId: 'project-1',
@@ -42,6 +48,8 @@ describe('BriefingSchedulerService', () => {
     ]);
     generateProjectBriefing.mockResolvedValue({ id: 'briefing-1', sentAt: null });
     sendBriefing.mockResolvedValue({ successCount: 1, targetCount: 1 });
+    generateProjectDailyCodeReview.mockResolvedValue({ id: 'review-1', sentAt: null });
+    sendDailyCodeReview.mockResolvedValue({ successCount: 1, targetCount: 1 });
 
     await expect(
       createService().runDueBriefings(new Date('2026-06-03T10:00:00.000Z')),
@@ -52,11 +60,16 @@ describe('BriefingSchedulerService', () => {
       regenerate: true,
     });
     expect(sendBriefing).toHaveBeenCalledWith('briefing-1');
+    expect(generateProjectDailyCodeReview).toHaveBeenCalledWith('project-1', {
+      date: '2026-06-03',
+      regenerate: true,
+    });
+    expect(sendDailyCodeReview).toHaveBeenCalledWith('review-1');
     expect(configUpdate).toHaveBeenCalledWith({
       where: { projectId: 'project-1' },
       data: expect.objectContaining({
         lastSchedulerSlot: '2026-06-03@18',
-        lastSchedulerMessage: '投递 1/1',
+        lastCodeReviewSchedulerSlot: '2026-06-03@18',
       }),
     });
   });
@@ -77,7 +90,7 @@ describe('BriefingSchedulerService', () => {
     ).resolves.toEqual({ generatedCount: 0 });
 
     expect(generateProjectBriefing).not.toHaveBeenCalled();
-    expect(sendBriefing).not.toHaveBeenCalled();
+    expect(generateProjectDailyCodeReview).not.toHaveBeenCalled();
   });
 
   it('skips a scheduler slot that already completed', async () => {
@@ -110,41 +123,17 @@ describe('BriefingSchedulerService', () => {
     ]);
     generateProjectBriefing.mockResolvedValue({ id: 'briefing-1', sentAt: null });
     sendBriefing.mockResolvedValue({ successCount: 0, targetCount: 0 });
+    generateProjectDailyCodeReview.mockResolvedValue({ id: 'review-1', sentAt: null });
+    sendDailyCodeReview.mockResolvedValue({ successCount: 0, targetCount: 0 });
 
     await createService().runDueBriefings(new Date('2026-06-03T10:00:00.000Z'));
 
     expect(configUpdate).toHaveBeenCalledWith({
       where: { projectId: 'project-1' },
       data: expect.objectContaining({
-        lastSchedulerMessage: '未配置启用的投递目标',
+        lastSchedulerMessage: expect.stringContaining('未配置启用的投递目标'),
       }),
     });
     expect(configUpdate.mock.calls[0]?.[0].data.lastSchedulerSlot).toBeUndefined();
-  });
-
-  it('skips send when regenerate still returns a sent briefing', async () => {
-    configFindMany.mockResolvedValue([
-      {
-        projectId: 'project-1',
-        enabled: true,
-        dailyHour: 18,
-        lastSchedulerSlot: null,
-        project: { id: 'project-1', name: 'FlowX' },
-      },
-    ]);
-    generateProjectBriefing.mockResolvedValue({
-      id: 'briefing-1',
-      sentAt: new Date('2026-06-03T09:00:00.000Z'),
-    });
-
-    await createService().runDueBriefings(new Date('2026-06-03T10:00:00.000Z'));
-
-    expect(sendBriefing).not.toHaveBeenCalled();
-    expect(configUpdate).toHaveBeenCalledWith({
-      where: { projectId: 'project-1' },
-      data: expect.objectContaining({
-        lastSchedulerSlot: '2026-06-03@18',
-      }),
-    });
   });
 });

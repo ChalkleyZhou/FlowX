@@ -115,6 +115,40 @@ export interface ReviewCodeOutput {
   impactScope: string[];
 }
 
+export type DailyCodeReviewUnitStatus =
+  | 'COMPLETED'
+  | 'SKIPPED_NO_SKILL'
+  | 'SKIPPED_NO_CHANGES'
+  | 'SKIPPED_NO_REPO'
+  | 'FAILED';
+
+export interface DailyCodeReviewUnitOutput extends ReviewCodeOutput {
+  status: DailyCodeReviewUnitStatus;
+  skillHint?: string;
+  errorMessage?: string;
+}
+
+export interface DailyCodeReviewCommitRef {
+  id: string;
+  message: string;
+  author?: string;
+}
+
+export interface DailyCodeReviewUnitInput {
+  repositoryName: string;
+  repositoryId: string | null;
+  localPath: string | null;
+  ref: string;
+  commits: DailyCodeReviewCommitRef[];
+  date: string;
+  rangeLabel: string;
+}
+
+export interface ReviewDailyChangesInput {
+  unit: DailyCodeReviewUnitInput;
+  workspace?: WorkspaceContext | null;
+}
+
 export interface PromptTemplate {
   name: string;
   version: string;

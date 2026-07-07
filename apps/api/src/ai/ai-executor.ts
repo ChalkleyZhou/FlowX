@@ -10,6 +10,8 @@ import {
   GeneratePlanOutput,
   ReviewCodeInput,
   ReviewCodeOutput,
+  ReviewDailyChangesInput,
+  DailyCodeReviewUnitOutput,
   SplitTasksInput,
   SplitTasksOutput,
 } from '../common/types';
@@ -41,6 +43,10 @@ export interface AIExecutor {
   generatePlan(input: GeneratePlanInput, context?: AIInvocationContext): Promise<GeneratePlanOutput>;
   executeTask(input: ExecuteTaskInput, context?: AIInvocationContext): Promise<ExecuteTaskOutput>;
   reviewCode(input: ReviewCodeInput, context?: AIInvocationContext): Promise<ReviewCodeOutput>;
+  reviewDailyChanges(
+    input: ReviewDailyChangesInput,
+    context?: AIInvocationContext,
+  ): Promise<DailyCodeReviewUnitOutput>;
 }
 
 export interface AIExecutorRegistry {

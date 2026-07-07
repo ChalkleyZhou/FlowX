@@ -19,6 +19,8 @@ import {
   RepositoryContext,
   ReviewCodeInput,
   ReviewCodeOutput,
+  ReviewDailyChangesInput,
+  DailyCodeReviewUnitOutput,
   SplitTasksInput,
   SplitTasksOutput,
 } from '../common/types';
@@ -39,6 +41,7 @@ import {
 import { demoNavPlacementPrompt } from '../prompts/demo-nav-placement.prompt';
 import { executionPrompt } from '../prompts/execution.prompt';
 import { reviewPrompt } from '../prompts/review.prompt';
+import { dailyCodeReviewPrompt } from '../prompts/daily-code-review.prompt';
 import { taskSplitPrompt } from '../prompts/task-split.prompt';
 import { technicalPlanPrompt } from '../prompts/technical-plan.prompt';
 import { BRAINSTORM_MIN_EDGE_CASES, BRAINSTORM_MIN_USER_STORIES } from './brainstorm-schema-limits';
@@ -255,6 +258,23 @@ ${body}
       await this.buildReviewPrompt(input, repositoryDiffSection),
       'review',
       this.getReadableRepositoryDirs(input.workspace?.repositories),
+      context,
+    );
+  }
+
+  async reviewDailyChanges(
+    input: ReviewDailyChangesInput,
+    context?: AIInvocationContext,
+  ): Promise<DailyCodeReviewUnitOutput> {
+    const repositoryDirs = input.unit.localPath
+      ? [input.unit.localPath]
+      : this.getReadableRepositoryDirs(input.workspace?.repositories);
+
+    return this.runJsonStage<DailyCodeReviewUnitOutput>(
+      'daily-code-review.output.schema.json',
+      await this.buildDailyCodeReviewPrompt(input),
+      'daily code review',
+      repositoryDirs,
       context,
     );
   }
@@ -476,6 +496,31 @@ ${input.execution.codeChanges
   .map((item, index) => `${index + 1}. ${item.file} | ${item.changeType} | ${item.summary}`)
   .join('\n')}
 ${diffSection}
+`;
+  }
+
+  protected async buildDailyCodeReviewPrompt(input: ReviewDailyChangesInput) {
+    const workspaceSection = await this.buildWorkspaceSection(input.workspace, 'live');
+    const commitLines = input.unit.commits
+      .map((commit, index) => {
+        const author = commit.author ? ` | ${commit.author}` : '';
+        return `${index + 1}. ${commit.id} | ${commit.message.split('\n')[0]}${author}`;
+      })
+      .join('\n');
+
+    return `${dailyCodeReviewPrompt.system}
+
+你必须只返回符合 JSON Schema 的 JSON，不要输出解释文字或 Markdown。
+
+${dailyCodeReviewPrompt.user}
+
+统计周期: ${input.unit.rangeLabel}
+仓库: ${input.unit.repositoryName}
+分支: ${input.unit.ref}
+本地路径: ${input.unit.localPath ?? '未提供'}
+待审查 commit:
+${commitLines || '  - 无'}
+${workspaceSection}
 `;
   }
 

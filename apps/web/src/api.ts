@@ -7,6 +7,7 @@ import type {
   BriefingPeriod,
   BriefingSource,
   Bug,
+  DailyCodeReview,
   DeliveryTarget,
   DeployJobRecord,
   Issue,
@@ -379,6 +380,24 @@ export const api = {
   getBriefing: (id: string) => request<Briefing>(`/briefings/${id}`),
   sendBriefing: (id: string) =>
     request<{ successCount: number; targetCount: number }>(`/briefings/${id}/send`, {
+      method: 'POST',
+    }),
+  listProjectDailyCodeReviews: (projectId: string) =>
+    request<DailyCodeReview[]>(`/projects/${projectId}/daily-code-reviews`),
+  generateProjectDailyCodeReview: (
+    projectId: string,
+    payload: {
+      date?: string;
+      regenerate?: boolean;
+    },
+  ) =>
+    request<DailyCodeReview>(`/projects/${projectId}/daily-code-reviews/generate`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  getDailyCodeReview: (id: string) => request<DailyCodeReview>(`/daily-code-reviews/${id}`),
+  sendDailyCodeReview: (id: string) =>
+    request<{ successCount: number; targetCount: number }>(`/daily-code-reviews/${id}/send`, {
       method: 'POST',
     }),
   getDeliveryTargets: (params?: { workspaceId?: string; projectId?: string }) =>

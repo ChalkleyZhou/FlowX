@@ -137,8 +137,47 @@ export interface ProjectBriefingConfig {
   lastSchedulerSlot?: string | null;
   lastSchedulerRunAt?: string | null;
   lastSchedulerMessage?: string | null;
+  lastCodeReviewSchedulerSlot?: string | null;
+  lastCodeReviewSchedulerRunAt?: string | null;
+  lastCodeReviewSchedulerMessage?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+}
+
+export interface DailyCodeReviewUnit {
+  repositoryName: string;
+  repositoryId: string | null;
+  ref: string;
+  commits: Array<{ id: string; message: string; author?: string }>;
+  status: string;
+  skillHint?: string;
+  errorMessage?: string;
+  findings?: {
+    issues: string[];
+    bugs: string[];
+    missingTests: string[];
+    suggestions: string[];
+    impactScope: string[];
+  };
+}
+
+export interface DailyCodeReview {
+  id: string;
+  projectId: string;
+  workspaceId: string;
+  date: string;
+  scopeKey: string;
+  scope: Record<string, unknown>;
+  status: string;
+  unitsJson: DailyCodeReviewUnit[];
+  markdownContent: string;
+  htmlContent: string;
+  generatedAt?: string | null;
+  sentAt?: string | null;
+  errorMessage?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deliveryLogs?: DeliveryLog[];
 }
 
 export interface DeliveryTarget {
@@ -158,7 +197,8 @@ export interface DeliveryTarget {
 
 export interface DeliveryLog {
   id: string;
-  briefingId: string;
+  briefingId?: string | null;
+  dailyCodeReviewId?: string | null;
   deliveryTargetId: string;
   channel: string;
   status: string;

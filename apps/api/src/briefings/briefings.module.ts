@@ -9,6 +9,8 @@ import { BriefingSourcesService } from './briefing-sources.service';
 import { BriefingSchedulerService } from './briefing-scheduler.service';
 import { BriefingsController } from './briefings.controller';
 import { BriefingsService } from './briefings.service';
+import { DailyCodeReviewAiService } from './daily-code-review-ai.service';
+import { DailyCodeReviewService } from './daily-code-review.service';
 import { BRIEFING_DELIVERY_SENDERS, DeliveryTargetsService } from './delivery-targets.service';
 import { DeliveryTargetsController } from './delivery-targets.controller';
 import { sendDingTalkMarkdown, sendEmail } from './delivery-senders';
@@ -20,6 +22,8 @@ import { sendDingTalkMarkdown, sendEmail } from './delivery-senders';
     BriefingSourcesService,
     BriefingsService,
     BriefingAiSummarizerService,
+    DailyCodeReviewAiService,
+    DailyCodeReviewService,
     DeliveryTargetsService,
     BriefingSchedulerService,
     {
@@ -30,7 +34,7 @@ import { sendDingTalkMarkdown, sendEmail } from './delivery-senders';
       },
     },
   ],
-  exports: [BriefingsService, BriefingSourcesService, DeliveryTargetsService],
+  exports: [BriefingsService, BriefingSourcesService, DeliveryTargetsService, DailyCodeReviewService],
 })
 export class BriefingsModule {}
 

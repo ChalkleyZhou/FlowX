@@ -67,6 +67,7 @@ model Workspace {
   briefingSources BriefingSource[]
   briefingEvents BriefingEvent[]
   briefings    Briefing[]
+  dailyCodeReviews DailyCodeReview[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }
@@ -83,6 +84,7 @@ model Project {
   bugs         Bug[]
   briefingConfig ProjectBriefingConfig?
   briefings    Briefing[]
+  dailyCodeReviews DailyCodeReview[]
   deliveryTargets DeliveryTarget[]
   legacyDeployConfig ProjectDeployConfig?
   deployJobs   DeployJobRecord[]
@@ -229,8 +231,36 @@ model ProjectBriefingConfig {
   lastSchedulerSlot      String?
   lastSchedulerRunAt     DateTime?
   lastSchedulerMessage   String?
+  lastCodeReviewSchedulerSlot    String?
+  lastCodeReviewSchedulerRunAt   DateTime?
+  lastCodeReviewSchedulerMessage String?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
+}
+
+model DailyCodeReview {
+  id              String        @id @default(cuid())
+  projectId       String
+  project         Project       @relation(fields: [projectId], references: [id])
+  workspaceId     String
+  workspace       Workspace     @relation(fields: [workspaceId], references: [id])
+  date            DateTime
+  scopeKey        String
+  scope           Json
+  status          String        @default("GENERATED")
+  unitsJson       Json
+  markdownContent String
+  htmlContent     String
+  generatedAt     DateTime?
+  sentAt          DateTime?
+  errorMessage    String?
+  deliveryLogs    DeliveryLog[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([projectId, scopeKey])
+  @@index([projectId, date])
+  @@index([workspaceId, date])
 }
 
 model Briefing {
@@ -285,9 +315,11 @@ model DeliveryTarget {
 }
 
 model DeliveryLog {
-  id               String         @id @default(cuid())
-  briefingId       String
-  briefing         Briefing       @relation(fields: [briefingId], references: [id])
+  id               String          @id @default(cuid())
+  briefingId       String?
+  briefing         Briefing?       @relation(fields: [briefingId], references: [id])
+  dailyCodeReviewId String?
+  dailyCodeReview  DailyCodeReview? @relation(fields: [dailyCodeReviewId], references: [id])
   deliveryTargetId String
   deliveryTarget   DeliveryTarget @relation(fields: [deliveryTargetId], references: [id])
   channel          String
