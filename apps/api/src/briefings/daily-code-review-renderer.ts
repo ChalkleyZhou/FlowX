@@ -115,6 +115,36 @@ function renderUnitHtml(unit: DailyCodeReviewUnitResult) {
     .join('');
 }
 
+export function renderGeneratingDailyCodeReviewContent(input: {
+  projectName: string;
+  date: string;
+  rangeLabel: string;
+  unitCount: number;
+}) {
+  const title = formatDailyCodeReviewTitle(input.projectName, input.date);
+  const unitSummary =
+    input.unitCount > 0
+      ? `已识别 ${input.unitCount} 个仓库/分支审查单元，AI 正在后台审查代码变更，稍后会自动更新。`
+      : '今日无代码变更，AI 正在后台确认并生成报告，稍后会自动更新。';
+
+  return {
+    markdownContent: [
+      `# ${title}`,
+      '',
+      `统计周期：${input.rangeLabel}`,
+      '总体状态：GENERATING',
+      '',
+      unitSummary,
+    ].join('\n'),
+    htmlContent: [
+      `<h1>${escapeHtml(title)}</h1>`,
+      `<p>统计周期：${escapeHtml(input.rangeLabel)}</p>`,
+      `<p>总体状态：GENERATING</p>`,
+      `<p>${escapeHtml(unitSummary)}</p>`,
+    ].join(''),
+  };
+}
+
 export function renderDailyCodeReviewMarkdown(input: {
   projectName: string;
   date: string;

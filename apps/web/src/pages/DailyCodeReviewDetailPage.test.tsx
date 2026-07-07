@@ -64,6 +64,7 @@ describe('DailyCodeReviewDetailPage', () => {
       root?.unmount();
     });
     container.remove();
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
@@ -101,5 +102,71 @@ describe('DailyCodeReviewDetailPage', () => {
     });
 
     expect(api.sendDailyCodeReview).toHaveBeenCalledWith('review-1');
+  });
+
+  it('polls while code review generation is still running', async () => {
+    vi.useFakeTimers();
+    vi.mocked(api.getDailyCodeReview)
+      .mockResolvedValueOnce({
+        id: 'review-1',
+        projectId: 'project-1',
+        workspaceId: 'workspace-1',
+        date: '2026-07-07T00:00:00.000Z',
+        scopeKey: 'scope',
+        scope: {},
+        status: 'GENERATING',
+        unitsJson: [],
+        markdownContent: '# Daily Code Review\n\nAI 正在后台审查代码变更。',
+        htmlContent: '<h1>Daily Code Review</h1>',
+        generatedAt: null,
+        sentAt: null,
+        createdAt: '2026-07-07T10:00:00.000Z',
+        updatedAt: '2026-07-07T10:00:00.000Z',
+        deliveryLogs: [],
+      })
+      .mockResolvedValueOnce({
+        id: 'review-1',
+        projectId: 'project-1',
+        workspaceId: 'workspace-1',
+        date: '2026-07-07T00:00:00.000Z',
+        scopeKey: 'scope',
+        scope: {},
+        status: 'COMPLETED',
+        unitsJson: [
+          {
+            repositoryName: 'flowx-api',
+            repositoryId: 'repo-1',
+            ref: 'main',
+            commits: [{ id: 'abc123', message: 'feat: add review' }],
+            status: 'COMPLETED',
+            findings: {
+              issues: [],
+              bugs: [],
+              missingTests: [],
+              suggestions: [],
+              impactScope: [],
+            },
+          },
+        ],
+        markdownContent: '# Daily Code Review\n\n最终审查报告',
+        htmlContent: '<h1>Daily Code Review</h1>',
+        generatedAt: '2026-07-07T10:05:00.000Z',
+        sentAt: null,
+        createdAt: '2026-07-07T10:00:00.000Z',
+        updatedAt: '2026-07-07T10:05:00.000Z',
+        deliveryLogs: [],
+      });
+
+    await renderPage();
+
+    expect(document.body.textContent).toContain('GENERATING');
+
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+      await Promise.resolve();
+    });
+
+    expect(api.getDailyCodeReview).toHaveBeenCalledTimes(2);
+    expect(document.body.textContent).toContain('最终审查报告');
   });
 });

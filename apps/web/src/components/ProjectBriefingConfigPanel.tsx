@@ -53,10 +53,14 @@ export function ProjectBriefingConfigPanel({ projectId }: { projectId: string })
   }
 
   async function generateCodeReviewToday() {
-    await api.generateProjectDailyCodeReview(projectId, {
+    const review = await api.generateProjectDailyCodeReview(projectId, {
       regenerate: true,
     });
-    toast.success('每日 Code Review 已生成，可在简报页的 Code Review 历史中查看');
+    toast.success(
+      review.status === 'GENERATING'
+        ? '每日 Code Review 已开始生成，可在简报页的 Code Review 历史中查看'
+        : '每日 Code Review 已生成，可在简报页的 Code Review 历史中查看',
+    );
   }
 
   return (

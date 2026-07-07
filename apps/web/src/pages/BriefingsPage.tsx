@@ -110,14 +110,19 @@ export function BriefingsPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedProjectId || !briefings.some((briefing) => briefing.status === 'GENERATING')) {
+    if (!selectedProjectId) {
+      return;
+    }
+    const hasGeneratingBriefing = briefings.some((briefing) => briefing.status === 'GENERATING');
+    const hasGeneratingReview = codeReviews.some((review) => review.status === 'GENERATING');
+    if (!hasGeneratingBriefing && !hasGeneratingReview) {
       return;
     }
     const timer = window.setInterval(() => {
       void refresh(selectedProjectId, { silent: true });
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [selectedProjectId, briefings]);
+  }, [selectedProjectId, briefings, codeReviews]);
 
   async function handleGenerate() {
     if (!selectedProjectId) {
@@ -161,7 +166,11 @@ export function BriefingsPage() {
         regenerate: true,
       });
       await refresh(selectedProjectId);
-      toast.success('每日 Code Review 已生成');
+      toast.success(
+        review.status === 'GENERATING'
+          ? '每日 Code Review 已开始生成'
+          : '每日 Code Review 已生成',
+      );
       navigate(`/daily-code-reviews/${review.id}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '生成 Code Review 失败');

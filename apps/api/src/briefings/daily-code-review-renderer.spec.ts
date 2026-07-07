@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatDailyCodeReviewTitle,
   renderDailyCodeReviewMarkdown,
+  renderGeneratingDailyCodeReviewContent,
 } from './daily-code-review-renderer';
 import type { DailyCodeReviewUnitResult } from './daily-code-review.types';
 
@@ -63,5 +64,18 @@ describe('daily-code-review-renderer', () => {
     });
 
     expect(markdown).toContain('今日无代码变更，跳过审查。');
+  });
+
+  it('renders generating placeholder content', () => {
+    const content = renderGeneratingDailyCodeReviewContent({
+      projectName: 'FlowX',
+      date: '2026-07-07',
+      rangeLabel: '2026-07-07',
+      unitCount: 2,
+    });
+
+    expect(content.markdownContent).toContain('GENERATING');
+    expect(content.markdownContent).toContain('已识别 2 个仓库/分支审查单元');
+    expect(content.htmlContent).toContain('稍后会自动更新');
   });
 });

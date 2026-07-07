@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { AiInvocationRecipient } from '../ai/ai-invocation-context.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -20,6 +20,7 @@ import {
 import {
   renderDailyCodeReviewHtml,
   renderDailyCodeReviewMarkdown,
+  renderGeneratingDailyCodeReviewContent,
 } from './daily-code-review-renderer';
 import {
   deriveDailyCodeReviewStatus,
@@ -37,6 +38,19 @@ interface GenerateDailyCodeReviewOptions {
   regenerate?: boolean;
 }
 
+interface GenerateDailyCodeReviewRuntimeOptions {
+  async?: boolean;
+}
+
+type BuildDailyCodeReviewInput = {
+  project: Awaited<ReturnType<DailyCodeReviewService['getProjectForReview']>>;
+  date: string;
+  groups: ReturnType<typeof groupCommitsForDailyReview>;
+  repositoryLookupById: ReturnType<typeof buildRepositoryLookupById>;
+  repositoryLookupByName: ReturnType<typeof buildRepositoryLookupByName>;
+  recipient: AiInvocationRecipient | null;
+};
+
 type BriefingAuthSession = {
   user?: {
     id?: string;
@@ -51,6 +65,8 @@ type BriefingAuthSession = {
 
 @Injectable()
 export class DailyCodeReviewService {
+  private readonly logger = new Logger(DailyCodeReviewService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly dailyCodeReviewAiService: DailyCodeReviewAiService,
@@ -94,6 +110,7 @@ export class DailyCodeReviewService {
     projectId: string,
     options: GenerateDailyCodeReviewOptions = {},
     authSession?: BriefingAuthSession,
+    runtimeOptions?: GenerateDailyCodeReviewRuntimeOptions,
   ) {
     const project = await this.getProjectForReview(projectId);
     const config = await this.prisma.projectBriefingConfig.findUnique({
@@ -164,7 +181,84 @@ export class DailyCodeReviewService {
     const repositoryLookupById = buildRepositoryLookupById(repositoryRecords);
     const repositoryLookupByName = buildRepositoryLookupByName(repositoryRecords);
     const recipient = toAiInvocationRecipient(authSession);
+    const buildInput: BuildDailyCodeReviewInput = {
+      project,
+      date,
+      groups,
+      repositoryLookupById,
+      repositoryLookupByName,
+      recipient,
+    };
 
+    if (runtimeOptions?.async) {
+      const generatingContent = renderGeneratingDailyCodeReviewContent({
+        projectName: project.name,
+        date,
+        rangeLabel: date,
+        unitCount: groups.length,
+      });
+      const pendingPayload = {
+        scope: scope as Prisma.InputJsonValue,
+        status: 'GENERATING',
+        unitsJson: [] as unknown as Prisma.InputJsonValue,
+        markdownContent: generatingContent.markdownContent,
+        htmlContent: generatingContent.htmlContent,
+        generatedAt: null,
+        errorMessage: null,
+        sentAt: null,
+      };
+
+      const review = existing
+        ? await this.prisma.dailyCodeReview.update({
+            where: { id: existing.id },
+            data: pendingPayload,
+          })
+        : await this.prisma.dailyCodeReview.create({
+            data: {
+              projectId,
+              workspaceId: project.workspaceId,
+              date: recordDate,
+              scopeKey,
+              ...pendingPayload,
+            },
+          });
+
+      this.enqueueDailyCodeReviewCompletion({
+        reviewId: review.id,
+        scope,
+        regenerate: options.regenerate,
+        ...buildInput,
+      });
+      return review;
+    }
+
+    const generatedPayload = await this.buildGeneratedDailyCodeReviewPayload(buildInput);
+    const payload = {
+      scope: scope as Prisma.InputJsonValue,
+      ...generatedPayload,
+      ...(options.regenerate ? { sentAt: null } : {}),
+    };
+
+    if (existing) {
+      return this.prisma.dailyCodeReview.update({
+        where: { id: existing.id },
+        data: payload,
+      });
+    }
+
+    return this.prisma.dailyCodeReview.create({
+      data: {
+        projectId,
+        workspaceId: project.workspaceId,
+        date: recordDate,
+        scopeKey,
+        ...payload,
+      },
+    });
+  }
+
+  private async buildGeneratedDailyCodeReviewPayload(input: BuildDailyCodeReviewInput) {
+    const { project, date, groups, repositoryLookupById, repositoryLookupByName, recipient } = input;
     const units: DailyCodeReviewUnitResult[] = [];
     for (const group of groups) {
       const repository = resolveRepositoryForReview(
@@ -296,33 +390,57 @@ export class DailyCodeReviewService {
       overallStatus,
     });
 
-    const payload = {
-      scope: scope as Prisma.InputJsonValue,
+    return {
       status: overallStatus,
       unitsJson: units as unknown as Prisma.InputJsonValue,
       markdownContent,
       htmlContent,
       generatedAt: new Date(),
       errorMessage: null,
-      ...(options.regenerate ? { sentAt: null } : {}),
     };
+  }
 
-    if (existing) {
-      return this.prisma.dailyCodeReview.update({
-        where: { id: existing.id },
-        data: payload,
+  private enqueueDailyCodeReviewCompletion(
+    input: BuildDailyCodeReviewInput & {
+      reviewId: string;
+      scope: Record<string, unknown>;
+      regenerate?: boolean;
+    },
+  ) {
+    setTimeout(() => {
+      void this.completeDailyCodeReviewGeneration(input);
+    }, 0);
+  }
+
+  private async completeDailyCodeReviewGeneration(
+    input: BuildDailyCodeReviewInput & {
+      reviewId: string;
+      scope: Record<string, unknown>;
+      regenerate?: boolean;
+    },
+  ) {
+    try {
+      const generatedPayload = await this.buildGeneratedDailyCodeReviewPayload(input);
+      await this.prisma.dailyCodeReview.update({
+        where: { id: input.reviewId },
+        data: {
+          scope: input.scope as Prisma.InputJsonValue,
+          ...generatedPayload,
+          ...(input.regenerate ? { sentAt: null } : {}),
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Daily code review background generation failed: ${message}`);
+      await this.prisma.dailyCodeReview.update({
+        where: { id: input.reviewId },
+        data: {
+          status: 'FAILED',
+          errorMessage: message,
+          generatedAt: new Date(),
+        },
       });
     }
-
-    return this.prisma.dailyCodeReview.create({
-      data: {
-        projectId,
-        workspaceId: project.workspaceId,
-        date: recordDate,
-        scopeKey,
-        ...payload,
-      },
-    });
   }
 
   async sendDailyCodeReview(reviewId: string) {

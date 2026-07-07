@@ -276,6 +276,80 @@ describe('DailyCodeReviewService', () => {
     );
   });
 
+  it('starts manual code review generation asynchronously without waiting for AI review', async () => {
+    vi.useFakeTimers();
+    try {
+      findUniqueProject.mockResolvedValue({
+        id: 'project-1',
+        name: 'FlowX',
+        workspaceId: 'workspace-1',
+        workspace: {
+          id: 'workspace-1',
+          name: '研发平台',
+          repositories: [
+            {
+              id: 'repo-1',
+              name: 'flowx-api',
+              url: 'https://example.com/flowx-api.git',
+              defaultBranch: 'main',
+              currentBranch: 'main',
+              localPath: '/tmp/flowx-api',
+              syncStatus: 'READY',
+            },
+          ],
+        },
+      });
+      findUniqueConfig.mockResolvedValue({ dailyHour: 22 });
+      findFirstReview.mockResolvedValue(null);
+      findManySources.mockResolvedValue([{ id: 'source-1', repositoryId: 'repo-1' }]);
+      findManyEvents.mockResolvedValue([
+        {
+          repositoryId: 'repo-1',
+          normalizedPayload: {
+            eventType: 'push',
+            projectName: 'flowx-api',
+            occurredAt: '2026-07-07T10:00:00.000Z',
+            summary: { ref: 'main', commitCount: 1 },
+            commits: [{ id: 'abc111', message: 'feat: one' }],
+          },
+          rawPayload: {},
+        },
+      ]);
+      reviewUnit.mockReturnValue(new Promise(() => undefined));
+      createReview.mockResolvedValue({
+        id: 'review-1',
+        status: 'GENERATING',
+        markdownContent: '# FlowX · 每日 Code Review · 2026-07-07',
+      });
+
+      await expect(
+        createService().generateProjectDailyCodeReview(
+          'project-1',
+          { date: '2026-07-07', regenerate: true },
+          undefined,
+          { async: true },
+        ),
+      ).resolves.toMatchObject({
+        id: 'review-1',
+        status: 'GENERATING',
+      });
+
+      expect(createReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'GENERATING',
+            generatedAt: null,
+            errorMessage: null,
+            sentAt: null,
+          }),
+        }),
+      );
+      expect(reviewUnit).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('resolves repositories by briefing event repositoryId when webhook projectName differs', async () => {
     findUniqueProject.mockResolvedValue({
       id: 'project-1',

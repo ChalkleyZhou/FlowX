@@ -59,7 +59,9 @@ export class BriefingsController {
     @Body() dto: GenerateDailyCodeReviewDto,
     @Req() req: BriefingRequest,
   ) {
-    return this.dailyCodeReviewService.generateProjectDailyCodeReview(id, dto, req.authSession);
+    return this.dailyCodeReviewService.generateProjectDailyCodeReview(id, dto, req.authSession, {
+      async: true,
+    });
   }
 
   @Get('daily-code-reviews/:id')

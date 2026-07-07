@@ -53,6 +53,16 @@ export function DailyCodeReviewDetailPage() {
     void refresh();
   }, [reviewId]);
 
+  useEffect(() => {
+    if (review?.status !== 'GENERATING') {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void refresh();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [review?.status, reviewId]);
+
   async function resend() {
     if (!reviewId) {
       return;
@@ -83,6 +93,7 @@ export function DailyCodeReviewDetailPage() {
 
   const logs = review.deliveryLogs ?? [];
   const units = review.unitsJson ?? [];
+  const isGenerating = review.status === 'GENERATING';
 
   return (
     <>
@@ -92,7 +103,7 @@ export function DailyCodeReviewDetailPage() {
         description={`${review.date.slice(0, 10)} · ${unitCountLabel(units)}`}
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button onClick={resend} disabled={sending}>
+            <Button onClick={resend} disabled={sending || isGenerating}>
               {sending ? '发送中...' : '重新发送'}
             </Button>
             <Button variant="outline" asChild>
