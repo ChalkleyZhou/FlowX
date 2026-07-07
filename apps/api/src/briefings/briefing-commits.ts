@@ -5,6 +5,7 @@ export interface BriefingCommit {
   message: string;
   author?: string;
   projectName: string;
+  repositoryId?: string;
   ref?: string;
   occurredAt: string;
 }
@@ -270,23 +271,34 @@ export function extractCommitsFromPush(
 }
 
 export function collectDailyCommits(
-  events: Array<{ event: NormalizedBriefingEvent; rawPayload?: unknown }>,
+  events: Array<{
+    event: NormalizedBriefingEvent;
+    rawPayload?: unknown;
+    repositoryId?: string;
+  }>,
 ): BriefingCommit[] {
   const seen = new Set<string>();
   const commits: BriefingCommit[] = [];
 
-  for (const { event, rawPayload } of events) {
+  for (const { event, rawPayload, repositoryId } of events) {
     const extracted =
       event.eventType === 'push'
         ? extractCommitsFromPush(event, rawPayload)
         : [];
     for (const commit of extracted) {
-      const key = `${event.projectName}:${commit.id}`;
+      const key = `${repositoryId ?? event.projectName}:${commit.id}`;
       if (seen.has(key)) {
         continue;
       }
       seen.add(key);
-      commits.push(commit);
+      commits.push(
+        repositoryId
+          ? {
+              ...commit,
+              repositoryId,
+            }
+          : commit,
+      );
     }
   }
 

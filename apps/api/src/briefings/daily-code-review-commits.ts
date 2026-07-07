@@ -1,6 +1,7 @@
 import type { BriefingCommit } from './briefing-commits';
 
 export interface DailyCodeReviewCommitGroup {
+  repositoryId: string | null;
   repositoryName: string;
   ref: string;
   commits: BriefingCommit[];
@@ -10,15 +11,17 @@ export function groupCommitsForDailyReview(commits: BriefingCommit[]): DailyCode
   const groups = new Map<string, DailyCodeReviewCommitGroup>();
 
   for (const commit of commits) {
+    const repositoryId = commit.repositoryId?.trim() || null;
     const repositoryName = commit.projectName.trim();
     const ref = commit.ref?.trim() || 'unknown';
-    const key = `${repositoryName}::${ref}`;
+    const key = repositoryId ? `${repositoryId}::${ref}` : `${repositoryName}::${ref}`;
     const existing = groups.get(key);
     if (existing) {
       existing.commits.push(commit);
       continue;
     }
     groups.set(key, {
+      repositoryId,
       repositoryName,
       ref,
       commits: [commit],
@@ -26,7 +29,9 @@ export function groupCommitsForDailyReview(commits: BriefingCommit[]): DailyCode
   }
 
   return [...groups.values()].sort((left, right) => {
-    const repoCompare = left.repositoryName.localeCompare(right.repositoryName);
+    const leftName = left.repositoryName;
+    const rightName = right.repositoryName;
+    const repoCompare = leftName.localeCompare(rightName);
     if (repoCompare !== 0) {
       return repoCompare;
     }
@@ -44,7 +49,17 @@ export interface RepositoryLookupEntry {
   syncStatus: string;
 }
 
-export function buildRepositoryLookup(
+export function buildRepositoryLookupById(
+  repositories: RepositoryLookupEntry[],
+): Map<string, RepositoryLookupEntry> {
+  const lookup = new Map<string, RepositoryLookupEntry>();
+  for (const repository of repositories) {
+    lookup.set(repository.id, repository);
+  }
+  return lookup;
+}
+
+export function buildRepositoryLookupByName(
   repositories: RepositoryLookupEntry[],
 ): Map<string, RepositoryLookupEntry> {
   const lookup = new Map<string, RepositoryLookupEntry>();
@@ -54,9 +69,13 @@ export function buildRepositoryLookup(
   return lookup;
 }
 
-export function resolveRepositoryForCommit(
-  repositoryName: string,
-  lookup: Map<string, RepositoryLookupEntry>,
+export function resolveRepositoryForReview(
+  group: Pick<DailyCodeReviewCommitGroup, 'repositoryId' | 'repositoryName'>,
+  lookupById: Map<string, RepositoryLookupEntry>,
+  lookupByName: Map<string, RepositoryLookupEntry>,
 ): RepositoryLookupEntry | null {
-  return lookup.get(repositoryName.trim().toLowerCase()) ?? null;
+  if (group.repositoryId) {
+    return lookupById.get(group.repositoryId) ?? null;
+  }
+  return lookupByName.get(group.repositoryName.trim().toLowerCase()) ?? null;
 }

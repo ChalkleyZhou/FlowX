@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { BriefingCommit } from './briefing-commits';
 import {
-  buildRepositoryLookup,
+  buildRepositoryLookupById,
+  buildRepositoryLookupByName,
   groupCommitsForDailyReview,
-  resolveRepositoryForCommit,
+  resolveRepositoryForReview,
 } from './daily-code-review-commits';
 
 function commit(input: Partial<BriefingCommit> & Pick<BriefingCommit, 'id' | 'message'>): BriefingCommit {
@@ -42,14 +43,60 @@ describe('groupCommitsForDailyReview', () => {
       ref: 'unknown',
     });
   });
-});
 
-describe('resolveRepositoryForCommit', () => {
-  it('matches repositories case-insensitively', () => {
-    const lookup = buildRepositoryLookup([
-      { id: 'repo-1', name: 'FlowX-API', url: 'https://example.com/a.git', defaultBranch: 'main', currentBranch: 'main', localPath: '/tmp/flowx-api', syncStatus: 'READY' },
+  it('groups by repositoryId when present even if projectName differs', () => {
+    const groups = groupCommitsForDailyReview([
+      commit({ id: 'a1', message: 'feat: one', projectName: 'r2crm', repositoryId: 'repo-r2', ref: 'main' }),
+      commit({ id: 'a2', message: 'fix: two', projectName: 'r2crm', repositoryId: 'repo-r2', ref: 'main' }),
     ]);
 
-    expect(resolveRepositoryForCommit('flowx-api', lookup)?.id).toBe('repo-1');
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({
+      repositoryId: 'repo-r2',
+      repositoryName: 'r2crm',
+      ref: 'main',
+      commits: expect.arrayContaining([
+        expect.objectContaining({ id: 'a1' }),
+        expect.objectContaining({ id: 'a2' }),
+      ]),
+    });
+  });
+});
+
+describe('resolveRepositoryForReview', () => {
+  const repository = {
+    id: 'repo-1',
+    name: 'R2CRM-Backend',
+    url: 'https://example.com/a.git',
+    defaultBranch: 'main',
+    currentBranch: 'main',
+    localPath: '/tmp/r2crm',
+    syncStatus: 'READY',
+  };
+
+  it('resolves by repositoryId when available', () => {
+    const lookupById = buildRepositoryLookupById([repository]);
+    const lookupByName = buildRepositoryLookupByName([repository]);
+
+    expect(
+      resolveRepositoryForReview(
+        { repositoryId: 'repo-1', repositoryName: 'r2crm' },
+        lookupById,
+        lookupByName,
+      )?.name,
+    ).toBe('R2CRM-Backend');
+  });
+
+  it('falls back to name matching case-insensitively when repositoryId is absent', () => {
+    const lookupById = buildRepositoryLookupById([repository]);
+    const lookupByName = buildRepositoryLookupByName([repository]);
+
+    expect(
+      resolveRepositoryForReview(
+        { repositoryId: null, repositoryName: 'r2crm-backend' },
+        lookupById,
+        lookupByName,
+      )?.id,
+    ).toBe('repo-1');
   });
 });

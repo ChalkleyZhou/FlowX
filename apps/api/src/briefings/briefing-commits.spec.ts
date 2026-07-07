@@ -148,4 +148,45 @@ describe('briefing commits', () => {
     expect(summary.byCategory.feat).toHaveLength(1);
     expect(summary.byCategory.fix).toHaveLength(1);
   });
+
+  it('carries repositoryId from briefing events onto commits', () => {
+    const commits = collectDailyCommits([
+      {
+        event: pushEvent({ projectName: 'r2crm' }),
+        rawPayload: {
+          commits: [{ id: 'abc', message: 'feat: first' }],
+        },
+        repositoryId: 'repo-r2',
+      },
+    ]);
+
+    expect(commits).toHaveLength(1);
+    expect(commits[0]).toMatchObject({
+      id: 'abc',
+      projectName: 'r2crm',
+      repositoryId: 'repo-r2',
+    });
+  });
+
+  it('dedupes by repositoryId when projectName differs across events', () => {
+    const commits = collectDailyCommits([
+      {
+        event: pushEvent({ projectName: 'r2crm' }),
+        rawPayload: {
+          commits: [{ id: 'abc', message: 'feat: first' }],
+        },
+        repositoryId: 'repo-r2',
+      },
+      {
+        event: pushEvent({ projectName: 'R2CRM' }),
+        rawPayload: {
+          commits: [{ id: 'abc', message: 'feat: first' }],
+        },
+        repositoryId: 'repo-r2',
+      },
+    ]);
+
+    expect(commits).toHaveLength(1);
+    expect(commits[0]?.repositoryId).toBe('repo-r2');
+  });
 });

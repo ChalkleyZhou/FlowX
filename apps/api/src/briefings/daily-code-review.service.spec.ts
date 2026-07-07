@@ -67,6 +67,7 @@ describe('DailyCodeReviewService', () => {
     ]);
     findManyEvents.mockResolvedValue([
       {
+        repositoryId: 'repo-1',
         normalizedPayload: {
           eventType: 'push',
           projectName: 'flowx-api',
@@ -80,6 +81,7 @@ describe('DailyCodeReviewService', () => {
         rawPayload: {},
       },
       {
+        repositoryId: 'repo-1',
         normalizedPayload: {
           eventType: 'push',
           projectName: 'flowx-api',
@@ -159,6 +161,7 @@ describe('DailyCodeReviewService', () => {
     findManySources.mockResolvedValue([{ id: 'source-1', repositoryId: 'repo-1' }]);
     findManyEvents.mockResolvedValue([
       {
+        repositoryId: 'repo-1',
         normalizedPayload: {
           eventType: 'push',
           projectName: 'flowx-api',
@@ -236,6 +239,7 @@ describe('DailyCodeReviewService', () => {
     findManySources.mockResolvedValue([{ id: 'source-1', repositoryId: 'repo-1' }]);
     findManyEvents.mockResolvedValue([
       {
+        repositoryId: 'repo-1',
         normalizedPayload: {
           eventType: 'push',
           projectName: 'flowx-api',
@@ -265,6 +269,91 @@ describe('DailyCodeReviewService', () => {
             expect.objectContaining({
               status: 'FAILED',
               errorMessage: '代码库同步失败：auth required',
+            }),
+          ],
+        }),
+      }),
+    );
+  });
+
+  it('resolves repositories by briefing event repositoryId when webhook projectName differs', async () => {
+    findUniqueProject.mockResolvedValue({
+      id: 'project-1',
+      name: 'R2CRM',
+      workspaceId: 'workspace-1',
+      workspace: {
+        id: 'workspace-1',
+        name: '研发平台',
+        repositories: [
+          {
+            id: 'repo-r2',
+            name: 'R2CRM-Backend',
+            url: 'https://example.com/r2crm.git',
+            defaultBranch: 'main',
+            currentBranch: 'main',
+            localPath: '/tmp/r2crm',
+            syncStatus: 'READY',
+          },
+        ],
+      },
+    });
+    findUniqueConfig.mockResolvedValue({ dailyHour: 22 });
+    findFirstReview.mockResolvedValue(null);
+    findManySources.mockResolvedValue([{ id: 'source-1', repositoryId: 'repo-r2' }]);
+    findManyEvents.mockResolvedValue([
+      {
+        repositoryId: 'repo-r2',
+        normalizedPayload: {
+          eventType: 'push',
+          projectName: 'r2crm',
+          occurredAt: '2026-07-07T10:00:00.000Z',
+          summary: { ref: 'main', commitCount: 1 },
+          commits: [{ id: 'abc111', message: 'feat: one' }],
+        },
+        rawPayload: {},
+      },
+    ]);
+    ensureRepositoryReadyForReview.mockImplementation(async (repository, branch) => ({
+      ...repository,
+      localPath: '/tmp/r2crm',
+      currentBranch: branch,
+      syncStatus: 'READY',
+    }));
+    reviewUnit.mockResolvedValue({
+      status: 'COMPLETED',
+      issues: [],
+      bugs: [],
+      missingTests: [],
+      suggestions: [],
+      impactScope: [],
+    });
+    createReview.mockImplementation(async ({ data }) => ({
+      id: 'review-1',
+      ...data,
+    }));
+
+    await createService().generateProjectDailyCodeReview('project-1', {
+      date: '2026-07-07',
+      regenerate: true,
+    });
+
+    expect(reviewUnit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        unit: expect.objectContaining({
+          repositoryName: 'R2CRM-Backend',
+          repositoryId: 'repo-r2',
+          ref: 'main',
+        }),
+      }),
+    );
+    expect(createReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          unitsJson: [
+            expect.objectContaining({
+              repositoryName: 'R2CRM-Backend',
+              repositoryId: 'repo-r2',
+              status: 'COMPLETED',
             }),
           ],
         }),

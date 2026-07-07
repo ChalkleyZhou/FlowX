@@ -12,9 +12,10 @@ import {
 } from './briefing-time-window';
 import { DailyCodeReviewAiService } from './daily-code-review-ai.service';
 import {
-  buildRepositoryLookup,
+  buildRepositoryLookupById,
+  buildRepositoryLookupByName,
   groupCommitsForDailyReview,
-  resolveRepositoryForCommit,
+  resolveRepositoryForReview,
 } from './daily-code-review-commits';
 import {
   renderDailyCodeReviewHtml,
@@ -143,30 +144,34 @@ export class DailyCodeReviewService {
       },
       orderBy: { occurredAt: 'asc' },
     });
-    const events = eventRows.map((row) => normalizeStoredEvent(row.normalizedPayload));
     const rawPayloadByEventIndex = eventRows.map((row) => row.rawPayload);
-    const eventInputs = events.map((event, index) => ({
-      event,
+    const eventInputs = eventRows.map((row, index) => ({
+      event: normalizeStoredEvent(row.normalizedPayload),
       rawPayload: rawPayloadByEventIndex[index],
+      repositoryId: row.repositoryId,
     }));
     const commits = collectDailyCommits(eventInputs);
     const groups = groupCommitsForDailyReview(commits);
-    const repositoryLookup = buildRepositoryLookup(
-      project.workspace.repositories.map((repository) => ({
-        id: repository.id,
-        name: repository.name,
-        url: repository.url,
-        defaultBranch: repository.defaultBranch,
-        currentBranch: repository.currentBranch,
-        localPath: repository.localPath,
-        syncStatus: repository.syncStatus,
-      })),
-    );
+    const repositoryRecords = project.workspace.repositories.map((repository) => ({
+      id: repository.id,
+      name: repository.name,
+      url: repository.url,
+      defaultBranch: repository.defaultBranch,
+      currentBranch: repository.currentBranch,
+      localPath: repository.localPath,
+      syncStatus: repository.syncStatus,
+    }));
+    const repositoryLookupById = buildRepositoryLookupById(repositoryRecords);
+    const repositoryLookupByName = buildRepositoryLookupByName(repositoryRecords);
     const recipient = toAiInvocationRecipient(authSession);
 
     const units: DailyCodeReviewUnitResult[] = [];
     for (const group of groups) {
-      const repository = resolveRepositoryForCommit(group.repositoryName, repositoryLookup);
+      const repository = resolveRepositoryForReview(
+        group,
+        repositoryLookupById,
+        repositoryLookupByName,
+      );
       const unitCommits = group.commits.map((commit) => ({
         id: commit.id,
         message: commit.message,
@@ -176,14 +181,16 @@ export class DailyCodeReviewService {
       if (!repository) {
         units.push({
           repositoryName: group.repositoryName,
-          repositoryId: null,
+          repositoryId: group.repositoryId,
           ref: group.ref,
           commits: unitCommits,
           status: 'SKIPPED_NO_REPO',
-          errorMessage: `未找到仓库「${group.repositoryName}」，请确认简报数据源与登记仓库名称一致。`,
+          errorMessage: `未找到仓库「${group.repositoryName}」对应的登记记录，请确认简报数据源已绑定到工作区仓库。`,
         });
         continue;
       }
+
+      const repositoryName = repository.name;
 
       let preparedRepository: RepositoryLookupEntry;
       try {
@@ -223,7 +230,7 @@ export class DailyCodeReviewService {
 
       if (!preparedRepository.localPath) {
         units.push({
-          repositoryName: group.repositoryName,
+          repositoryName,
           repositoryId: repository.id,
           ref: group.ref,
           commits: unitCommits,
@@ -235,7 +242,7 @@ export class DailyCodeReviewService {
 
       const aiOutput = await this.dailyCodeReviewAiService.reviewUnit({
         unit: {
-          repositoryName: group.repositoryName,
+          repositoryName,
           repositoryId: preparedRepository.id,
           localPath: preparedRepository.localPath,
           ref: group.ref,
@@ -253,7 +260,7 @@ export class DailyCodeReviewService {
       });
 
       units.push({
-        repositoryName: group.repositoryName,
+        repositoryName,
         repositoryId: preparedRepository.id,
         ref: group.ref,
         commits: unitCommits,
