@@ -101,4 +101,30 @@ describe('daily-code-review-renderer', () => {
     expect(markdown).toContain('**优化建议**');
     expect(markdown).toContain('Keep review skill instructions in repo');
   });
+
+  it('renders object findings as readable copy instead of [object Object]', () => {
+    const markdown = renderDailyCodeReviewMarkdown({
+      projectName: 'FlowX',
+      date: '2026-07-07',
+      rangeLabel: '2026-07-07',
+      overallStatus: 'COMPLETED',
+      units: [
+        unit({
+          findings: {
+            issues: [{ title: '校验缺失', description: '提交空数据未拦截' }] as never,
+            bugs: [{ message: '空指针异常' }] as never,
+            missingTests: [{ summary: '补充调度器集成测试' }] as never,
+            suggestions: [{ title: '规范', text: '把 review skill 放进仓库' }] as never,
+            impactScope: ['briefings'],
+          },
+        }),
+      ],
+    });
+
+    expect(markdown).not.toContain('[object Object]');
+    expect(markdown).toContain('校验缺失：提交空数据未拦截');
+    expect(markdown).toContain('空指针异常');
+    expect(markdown).toContain('补充调度器集成测试');
+    expect(markdown).toContain('规范：把 review skill 放进仓库');
+  });
 });
