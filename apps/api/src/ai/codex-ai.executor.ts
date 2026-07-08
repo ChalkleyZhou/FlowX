@@ -526,6 +526,12 @@ ${diffSection}
         return `${index + 1}. ${commit.id} | ${commit.message.split('\n')[0]}${author}`;
       })
       .join('\n');
+    const diffSection = input.unit.commitDiffBundle?.trim()
+      ? `
+
+待审查 commit diff（由 FlowX 服务端预先收集，请以此为准）:
+${input.unit.commitDiffBundle.trim()}`
+      : '';
 
     return `${dailyCodeReviewPrompt.system}
 
@@ -538,9 +544,9 @@ ${dailyCodeReviewPrompt.user}
 分支: ${input.unit.ref}
 本地路径: ${input.unit.localPath ?? '未提供'}
 目标分支: ${input.unit.ref}
-说明: 仓库已同步，当前工作区应已切换到目标分支。
+说明: 仓库已同步，当前工作区应已切换到目标分支。请使用下方 diff 完成审查，不要依赖 shell 执行 git。
 待审查 commit:
-${commitLines || '  - 无'}
+${commitLines || '  - 无'}${diffSection}
 ${workspaceSection}
 `;
   }

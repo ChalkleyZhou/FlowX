@@ -142,6 +142,8 @@ export interface DailyCodeReviewUnitInput {
   commits: DailyCodeReviewCommitRef[];
   date: string;
   rangeLabel: string;
+  /** Server-collected git diffs so the agent does not need shell access. */
+  commitDiffBundle?: string;
 }
 
 export interface ReviewDailyChangesInput {

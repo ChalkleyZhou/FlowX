@@ -12,10 +12,12 @@ describe('DailyCodeReviewService', () => {
   const reviewUnit = vi.fn();
   const sendDailyCodeReview = vi.fn();
   const ensureRepositoryReadyForReview = vi.fn();
+  const buildCommitDiffBundle = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.AI_EXECUTOR_PROVIDER = 'mock';
+    buildCommitDiffBundle.mockResolvedValue('diff --git a/file.ts b/file.ts\n+change');
   });
 
   function createService() {
@@ -35,7 +37,7 @@ describe('DailyCodeReviewService', () => {
       } as never,
       { reviewUnit } as never,
       { sendDailyCodeReview } as never,
-      { ensureRepositoryReadyForReview } as never,
+      { ensureRepositoryReadyForReview, buildCommitDiffBundle } as never,
     );
   }
 
@@ -118,9 +120,13 @@ describe('DailyCodeReviewService', () => {
 
     expect(ensureRepositoryReadyForReview).toHaveBeenCalledTimes(2);
     expect(ensureRepositoryReadyForReview.mock.calls[0]?.[1]).toBe('feature/login');
+    expect(ensureRepositoryReadyForReview.mock.calls[0]?.[2]).toEqual(['def111']);
     expect(ensureRepositoryReadyForReview.mock.calls[1]?.[1]).toBe('main');
+    expect(ensureRepositoryReadyForReview.mock.calls[1]?.[2]).toEqual(['abc111', 'abc222']);
+    expect(buildCommitDiffBundle).toHaveBeenCalledTimes(2);
     expect(reviewUnit).toHaveBeenCalledTimes(2);
     expect(reviewUnit.mock.calls[0]?.[0].unit.ref).toBe('feature/login');
+    expect(reviewUnit.mock.calls[0]?.[0].unit.commitDiffBundle).toContain('diff --git');
     expect(reviewUnit.mock.calls[1]?.[0].unit.ref).toBe('main');
     expect(createReview).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -202,12 +208,17 @@ describe('DailyCodeReviewService', () => {
     expect(ensureRepositoryReadyForReview).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'repo-1', localPath: null }),
       'feature/login',
+      ['abc111'],
     );
+    expect(buildCommitDiffBundle).toHaveBeenCalledWith('/tmp/flowx-api', [
+      { id: 'abc111', message: 'feat: one' },
+    ]);
     expect(reviewUnit).toHaveBeenCalledWith(
       expect.objectContaining({
         unit: expect.objectContaining({
           localPath: '/tmp/flowx-api',
           ref: 'feature/login',
+          commitDiffBundle: expect.stringContaining('diff --git'),
         }),
       }),
     );

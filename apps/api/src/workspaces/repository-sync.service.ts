@@ -54,13 +54,15 @@ export class RepositorySyncService {
       });
   }
 
-  async syncRepository(repository: RepositoryRecord, options?: { branch?: string | null }) {
+  async syncRepository(
+    repository: RepositoryRecord,
+    options?: { branch?: string | null; requireRemoteBranch?: boolean },
+  ) {
     const repoRoot = this.resolveRepositoryPath(repository.workspaceId, repository.id, repository.name);
     const targetBranch =
-      options?.branch?.trim() ||
-      repository.currentBranch?.trim() ||
-      repository.defaultBranch?.trim() ||
-      null;
+      this.normalizeBranchRef(options?.branch) ||
+      this.normalizeBranchRef(repository.currentBranch) ||
+      this.normalizeBranchRef(repository.defaultBranch);
 
     await this.prisma.repository.update({
       where: { id: repository.id },
@@ -94,6 +96,10 @@ export class RepositorySyncService {
         if (remoteBranchExists) {
           await this.runGit(['checkout', '-B', targetBranch, `origin/${targetBranch}`], repoRoot, remoteAuth);
           await this.runGit(['pull', '--ff-only', 'origin', targetBranch], repoRoot, remoteAuth);
+        } else if (options?.requireRemoteBranch) {
+          throw new InternalServerErrorException(
+            `远端不存在分支「${targetBranch}」，无法检出待审查提交。请确认 webhook 中的分支名与远端一致。`,
+          );
         } else {
           await this.runGit(['checkout', '-B', targetBranch], repoRoot, remoteAuth);
         }
@@ -131,23 +137,201 @@ export class RepositorySyncService {
   async ensureRepositoryReadyForReview(
     repository: RepositoryRecord,
     branch?: string | null,
+    commitIds: string[] = [],
+    options?: { retryCloneOnMissingCommits?: boolean },
   ) {
     const targetBranch = this.resolveReviewBranch(repository, branch);
-    const synced = await this.syncRepository(repository, { branch: targetBranch });
-    if (synced.syncStatus !== 'READY' || !synced.localPath) {
+    const repoRoot = this.resolveRepositoryPath(repository.workspaceId, repository.id, repository.name);
+
+    try {
+      const synced = await this.syncRepository(repository, {
+        branch: targetBranch,
+        requireRemoteBranch: true,
+      });
+      if (synced.syncStatus !== 'READY' || !synced.localPath) {
+        throw new InternalServerErrorException(
+          synced.syncError?.trim() || '代码库同步失败，无法运行 Code Review。',
+        );
+      }
+
+      if (commitIds.length > 0) {
+        await this.ensureCommitsAvailable(
+          synced.localPath,
+          repository.url,
+          targetBranch ?? synced.currentBranch,
+          commitIds,
+        );
+      }
+
+      return synced;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const shouldRetryClone =
+        options?.retryCloneOnMissingCommits !== false &&
+        commitIds.length > 0 &&
+        message.includes('缺少待审查 commit');
+
+      if (!shouldRetryClone) {
+        throw error;
+      }
+
+      this.logger.warn(
+        `Repository ${repository.id} missing review commits after sync; re-cloning once from remote.`,
+      );
+      await rm(repoRoot, { recursive: true, force: true });
+      return this.ensureRepositoryReadyForReview(repository, branch, commitIds, {
+        retryCloneOnMissingCommits: false,
+      });
+    }
+  }
+
+  async buildCommitDiffBundle(
+    localPath: string,
+    commits: Array<{ id: string; message: string }>,
+  ): Promise<string> {
+    const sections: string[] = [];
+    let totalChars = 0;
+    const maxTotalChars = 100_000;
+    const maxCharsPerCommit = 15_000;
+
+    for (const commit of commits) {
+      const shortMessage = commit.message.split('\n')[0]?.trim() || '(no message)';
+      const header = `### commit ${commit.id}\n${shortMessage}`;
+
+      try {
+        const { stdout: stat } = await execFile(
+          'git',
+          ['show', '--stat', '--format=fuller', commit.id, '--no-color'],
+          { cwd: localPath, env: process.env, maxBuffer: 2 * 1024 * 1024 },
+        );
+        const { stdout: patch } = await execFile(
+          'git',
+          ['show', commit.id, '--no-color', '-p', '--format='],
+          { cwd: localPath, env: process.env, maxBuffer: 8 * 1024 * 1024 },
+        );
+
+        let body = `${stat.trim()}\n\n${patch.trim()}`;
+        if (body.length > maxCharsPerCommit) {
+          body = `${body.slice(0, maxCharsPerCommit)}\n...[diff truncated]`;
+        }
+
+        if (totalChars + body.length > maxTotalChars) {
+          sections.push('...[剩余 commit diff 已省略，请缩小审查范围]');
+          break;
+        }
+
+        sections.push(`${header}\n\n${body}`);
+        totalChars += body.length;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new InternalServerErrorException(
+          `无法读取 commit ${commit.id} 的 diff：${message}`,
+        );
+      }
+    }
+
+    return sections.join('\n\n');
+  }
+
+  private async ensureCommitsAvailable(
+    cwd: string,
+    remoteUrl: string,
+    branch: string | null | undefined,
+    commitIds: string[],
+  ) {
+    const auth = await this.resolveRemoteAuth(remoteUrl);
+    const uniqueIds = [...new Set(commitIds.map((id) => id.trim()).filter(Boolean))];
+    if (uniqueIds.length === 0) {
+      return;
+    }
+
+    if (await this.isShallowRepository(cwd)) {
+      try {
+        await this.runGit(['fetch', '--unshallow', 'origin'], cwd, auth);
+      } catch {
+        await this.runGit(['fetch', 'origin', '--depth', '500'], cwd, auth);
+      }
+    }
+
+    const normalizedBranch = branch?.trim();
+    if (normalizedBranch && normalizedBranch !== 'unknown') {
+      try {
+        await this.runGit(['fetch', 'origin', normalizedBranch, '--depth', '300'], cwd, auth);
+      } catch {
+        // Branch fetch may fail for protected or deleted branches; per-commit fetch below.
+      }
+    }
+
+    let missing = await this.findMissingCommits(cwd, uniqueIds);
+    for (const commitId of missing) {
+      try {
+        await this.runGit(['fetch', 'origin', commitId], cwd, auth);
+      } catch {
+        // Continue; we'll report all still-missing commits together.
+      }
+    }
+
+    missing = await this.findMissingCommits(cwd, uniqueIds);
+    if (missing.length > 0) {
+      const preview = missing.slice(0, 3).join(', ');
+      const suffix = missing.length > 3 ? ` 等 ${missing.length} 个` : '';
       throw new InternalServerErrorException(
-        synced.syncError?.trim() || '代码库同步失败，无法运行 Code Review。',
+        `本地仓库缺少待审查 commit（${preview}${suffix}），无法获取 diff。请确认 Git 凭据有效且远端仍存在这些提交。`,
       );
     }
-    return synced;
+  }
+
+  private async findMissingCommits(cwd: string, commitIds: string[]) {
+    const missing: string[] = [];
+    for (const commitId of commitIds) {
+      if (!(await this.commitExists(cwd, commitId))) {
+        missing.push(commitId);
+      }
+    }
+    return missing;
+  }
+
+  private async commitExists(cwd: string, commitId: string) {
+    try {
+      await execFile('git', ['cat-file', '-e', `${commitId}^{commit}`], {
+        cwd,
+        env: process.env,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async isShallowRepository(cwd: string) {
+    try {
+      const { stdout } = await execFile('git', ['rev-parse', '--is-shallow-repository'], {
+        cwd,
+        env: process.env,
+      });
+      return stdout.trim() === 'true';
+    } catch {
+      return false;
+    }
   }
 
   private resolveReviewBranch(repository: RepositoryRecord, branch?: string | null) {
-    const normalized = branch?.trim();
-    if (normalized && normalized !== 'unknown') {
+    const normalized = this.normalizeBranchRef(branch);
+    if (normalized) {
       return normalized;
     }
-    return repository.currentBranch?.trim() || repository.defaultBranch?.trim() || null;
+    return (
+      this.normalizeBranchRef(repository.currentBranch) ||
+      this.normalizeBranchRef(repository.defaultBranch)
+    );
+  }
+
+  private normalizeBranchRef(branch?: string | null) {
+    const normalized = branch?.trim().replace(/^refs\/(heads|tags)\//, '');
+    if (!normalized || normalized === 'unknown') {
+      return null;
+    }
+    return normalized;
   }
 
   async syncWorkspaceRepositories(workspaceId: string) {

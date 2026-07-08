@@ -281,6 +281,7 @@ export class DailyCodeReviewService {
       const repositoryName = repository.name;
 
       let preparedRepository: RepositoryLookupEntry;
+      let commitDiffBundle = '';
       try {
         const synced = await this.repositorySyncService.ensureRepositoryReadyForReview(
           {
@@ -293,6 +294,7 @@ export class DailyCodeReviewService {
             localPath: repository.localPath,
           },
           group.ref,
+          unitCommits.map((commit) => commit.id),
         );
         preparedRepository = {
           id: synced.id,
@@ -303,6 +305,12 @@ export class DailyCodeReviewService {
           localPath: synced.localPath,
           syncStatus: synced.syncStatus,
         };
+        if (preparedRepository.localPath && unitCommits.length > 0) {
+          commitDiffBundle = await this.repositorySyncService.buildCommitDiffBundle(
+            preparedRepository.localPath,
+            unitCommits,
+          );
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         units.push({
@@ -328,6 +336,18 @@ export class DailyCodeReviewService {
         continue;
       }
 
+      if (unitCommits.length > 0 && !commitDiffBundle.trim()) {
+        units.push({
+          repositoryName,
+          repositoryId: repository.id,
+          ref: group.ref,
+          commits: unitCommits,
+          status: 'FAILED',
+          errorMessage: '未能收集到待审查 commit 的 diff，无法运行 Code Review。',
+        });
+        continue;
+      }
+
       const aiOutput = await this.dailyCodeReviewAiService.reviewUnit({
         unit: {
           repositoryName,
@@ -337,6 +357,7 @@ export class DailyCodeReviewService {
           commits: unitCommits,
           date,
           rangeLabel: date,
+          commitDiffBundle,
         },
         workspace: toWorkspaceContext({
           ...project.workspace,
