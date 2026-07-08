@@ -105,3 +105,46 @@ export function deriveDailyCodeReviewStatus(units: DailyCodeReviewUnitResult[]) 
   }
   return 'GENERATED';
 }
+
+/** Prefer explicit errorMessage; otherwise recover reasons AI put into finding arrays. */
+export function resolveFailedReviewErrorMessage(
+  output: Partial<{
+    errorMessage?: string | null;
+    skillHint?: string | null;
+    issues?: unknown;
+    bugs?: unknown;
+    missingTests?: unknown;
+    suggestions?: unknown;
+  }> | null | undefined,
+  fallback = '每日 Code Review 失败，AI 未返回具体原因。',
+): string {
+  const explicit = output?.errorMessage?.trim() || output?.skillHint?.trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  const recovered = [
+    ...coerceStringArray(output?.issues),
+    ...coerceStringArray(output?.bugs),
+    ...coerceStringArray(output?.missingTests),
+    ...coerceStringArray(output?.suggestions),
+  ];
+  if (recovered.length > 0) {
+    return recovered.join('；');
+  }
+
+  return fallback;
+}
+
+export function summarizeDailyCodeReviewErrors(units: DailyCodeReviewUnitResult[]): string | null {
+  const messages = units
+    .filter((unit) => unit.status === 'FAILED' || unit.status === 'SKIPPED_NO_REPO')
+    .map((unit) => {
+      const reason = unit.errorMessage?.trim() || '失败，未返回具体原因';
+      return `${unit.repositoryName}/${unit.ref}：${reason}`;
+    });
+  if (messages.length === 0) {
+    return null;
+  }
+  return messages.join('\n');
+}

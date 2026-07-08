@@ -11,5 +11,7 @@ export const dailyCodeReviewPrompt: PromptTemplate = {
   user:
     '请审查下方列出的仓库、分支与 commit。返回 status、issues、bugs、missingTests、suggestions、impactScope；' +
     'issues/bugs/missingTests/suggestions/impactScope 必须是字符串数组，每一项都是一句完整中文说明，禁止返回对象或嵌套结构。' +
-    '若 status 为 SKIPPED_NO_SKILL，请填写 skillHint 并令 findings 数组为空。所有文本使用中文，简洁明确，不要输出额外说明。',
+    '若 status 为 SKIPPED_NO_SKILL，请填写 skillHint 并令 findings 数组为空。' +
+    '若 status 为 FAILED，必须填写中文 errorMessage 说明失败原因，不要只返回 FAILED。' +
+    '未找到 review skill 时请用 SKIPPED_NO_SKILL，不要用 FAILED。所有文本使用中文，简洁明确，不要输出额外说明。',
 };

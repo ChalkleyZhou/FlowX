@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { coerceStringArray, normalizeReviewFindings } from './daily-code-review.types';
+import {
+  coerceStringArray,
+  normalizeReviewFindings,
+  resolveFailedReviewErrorMessage,
+  summarizeDailyCodeReviewErrors,
+} from './daily-code-review.types';
 
 describe('daily-code-review.types', () => {
   it('coerces string findings into single-item arrays', () => {
@@ -39,5 +44,40 @@ describe('daily-code-review.types', () => {
 
     expect(coerceStringArray([{ severity: 'high', file: 'a.ts' }])).toEqual(['high；a.ts']);
     expect(String({ title: 'x' })).toBe('[object Object]');
+  });
+
+  it('recovers FAILED reasons from finding arrays when errorMessage is empty', () => {
+    expect(
+      resolveFailedReviewErrorMessage({
+        status: 'FAILED',
+        issues: ['无法读取仓库 diff'],
+        suggestions: ['检查 git fetch 权限'],
+      } as never),
+    ).toBe('无法读取仓库 diff；检查 git fetch 权限');
+
+    expect(resolveFailedReviewErrorMessage({ errorMessage: '  auth failed  ' })).toBe('auth failed');
+    expect(resolveFailedReviewErrorMessage({})).toBe('每日 Code Review 失败，AI 未返回具体原因。');
+  });
+
+  it('summarizes per-unit failures for top-level errorMessage', () => {
+    expect(
+      summarizeDailyCodeReviewErrors([
+        {
+          repositoryName: 'flowx-api',
+          repositoryId: 'repo-1',
+          ref: 'main',
+          commits: [],
+          status: 'FAILED',
+          errorMessage: 'Cursor auth missing',
+        },
+        {
+          repositoryName: 'flowx-web',
+          repositoryId: 'repo-2',
+          ref: 'main',
+          commits: [],
+          status: 'COMPLETED',
+        },
+      ]),
+    ).toBe('flowx-api/main：Cursor auth missing');
   });
 });

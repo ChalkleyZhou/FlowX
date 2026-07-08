@@ -25,6 +25,7 @@ import {
 import {
   deriveDailyCodeReviewStatus,
   normalizeReviewFindings,
+  summarizeDailyCodeReviewErrors,
   type DailyCodeReviewUnitResult,
 } from './daily-code-review.types';
 import { DeliveryTargetsService } from './delivery-targets.service';
@@ -381,7 +382,7 @@ export class DailyCodeReviewService {
       markdownContent,
       htmlContent,
       generatedAt: new Date(),
-      errorMessage: null,
+      errorMessage: summarizeDailyCodeReviewErrors(units),
     };
   }
 

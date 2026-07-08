@@ -12,7 +12,10 @@ import type {
   ReviewCodeOutput,
   WorkspaceContext,
 } from '../common/types';
-import { normalizeReviewFindings } from './daily-code-review.types';
+import {
+  normalizeReviewFindings,
+  resolveFailedReviewErrorMessage,
+} from './daily-code-review.types';
 
 @Injectable()
 export class DailyCodeReviewAiService {
@@ -89,7 +92,7 @@ export class DailyCodeReviewAiService {
       return {
         ...this.emptyFindings(),
         status: 'FAILED',
-        errorMessage: output.errorMessage?.trim() || 'Daily code review failed.',
+        errorMessage: resolveFailedReviewErrorMessage(output),
       };
     }
 
