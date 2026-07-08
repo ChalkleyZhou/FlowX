@@ -50,7 +50,25 @@ import { applyDemoNavAgentPatches } from '../common/apply-demo-nav-agent-patches
 import { collectNavAgentSourceExcerpts, resolveDemoNavMenuSpec } from '../common/demo-nav-integration';
 
 const execFile = promisify(execFileCallback);
+
+export function resolveOptionalTimeoutMs(raw: string | undefined, defaultMs: number): number {
+  const trimmed = raw?.trim();
+  if (trimmed === undefined || trimmed === '') {
+    return defaultMs;
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return defaultMs;
+  }
+  return parsed;
+}
+
 const CODEX_TIMEOUT_MS = Number(process.env.CODEX_TIMEOUT_MS?.trim()) || 600_000;
+/** Daily code review can run for a long time; `0` disables wall-clock timeout (default). */
+export const CODEX_DAILY_CODE_REVIEW_TIMEOUT_MS = resolveOptionalTimeoutMs(
+  process.env.CODEX_DAILY_CODE_REVIEW_TIMEOUT_MS,
+  0,
+);
 const CODEX_DEBUG_ROOT = join(process.cwd(), '.flowx-data', 'codex-debug');
 const CODEX_READ_SANDBOX = process.env.CODEX_READ_SANDBOX?.trim() || 'read-only';
 const CODEX_WRITE_SANDBOX = process.env.CODEX_WRITE_SANDBOX?.trim() || 'workspace-write';
@@ -276,6 +294,7 @@ ${body}
       'daily code review',
       repositoryDirs,
       context,
+      { timeoutMs: CODEX_DAILY_CODE_REVIEW_TIMEOUT_MS },
     );
   }
 
@@ -1355,24 +1374,33 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
       });
       const timeoutMs = options?.timeoutMs ?? CODEX_TIMEOUT_MS;
 
-      const timeout = setTimeout(() => {
-        if (finished) {
-          return;
+      let wallTimeout: ReturnType<typeof setTimeout> | undefined;
+      const clearWallTimeout = () => {
+        if (wallTimeout) {
+          clearTimeout(wallTimeout);
+          wallTimeout = undefined;
         }
-        finished = true;
-        child.kill('SIGTERM');
-        void persistArtifact({
-          status: 'TIMED_OUT',
-          finishedAt: new Date().toISOString(),
-          stdout,
-          stderr,
-          errorMessage: `${this.providerLabel} ${stageName} timed out after ${timeoutMs}ms.`,
-        }).catch((error) => {
-          const message = error instanceof Error ? error.message : String(error);
-          this.logger.warn(`Failed to persist timed out ${this.providerLabel} artifact: ${message}`);
-        });
-        reject(new Error(`${this.providerLabel} ${stageName} timed out after ${timeoutMs}ms.`));
-      }, timeoutMs);
+      };
+      if (timeoutMs > 0) {
+        wallTimeout = setTimeout(() => {
+          if (finished) {
+            return;
+          }
+          finished = true;
+          child.kill('SIGTERM');
+          void persistArtifact({
+            status: 'TIMED_OUT',
+            finishedAt: new Date().toISOString(),
+            stdout,
+            stderr,
+            errorMessage: `${this.providerLabel} ${stageName} timed out after ${timeoutMs}ms.`,
+          }).catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            this.logger.warn(`Failed to persist timed out ${this.providerLabel} artifact: ${message}`);
+          });
+          reject(new Error(`${this.providerLabel} ${stageName} timed out after ${timeoutMs}ms.`));
+        }, timeoutMs);
+      }
 
       child.stdout.on('data', (chunk) => {
         stdout += chunk.toString();
@@ -1386,7 +1414,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
             return;
           }
           finished = true;
-          clearTimeout(timeout);
+          clearWallTimeout();
           child.kill('SIGTERM');
           const errorMessage = this.buildCodexAuthErrorMessage(context);
           void persistArtifact({
@@ -1408,7 +1436,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
           return;
         }
         finished = true;
-        clearTimeout(timeout);
+        clearWallTimeout();
         void persistArtifact({
           status: 'ERROR',
           finishedAt: new Date().toISOString(),
@@ -1428,7 +1456,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
           return;
         }
         finished = true;
-        clearTimeout(timeout);
+        clearWallTimeout();
         if (code === 0) {
           void persistArtifact({
             status: 'COMPLETED',

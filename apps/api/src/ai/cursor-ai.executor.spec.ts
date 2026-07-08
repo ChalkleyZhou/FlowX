@@ -383,4 +383,45 @@ describe('CursorAiExecutor', () => {
 
     expect(parse<{ x: number }>('```json\n{"x":1}\n```')).toEqual({ x: 1 });
   });
+
+  it('does not apply default wall-clock timeout for daily code review', async () => {
+    vi.useFakeTimers();
+    delete process.env.CURSOR_DAILY_CODE_REVIEW_TIMEOUT_MS;
+
+    accessMock.mockImplementation(async (targetPath: string) => {
+      if (targetPath === '/mock/bin/agent') {
+        return;
+      }
+      throw new Error('missing');
+    });
+
+    let child: FakeChildProcess | undefined;
+    spawnMock.mockImplementation(() => {
+      child = new FakeChildProcess();
+      return child;
+    });
+
+    const { CursorAiExecutor } = await import('./cursor-ai.executor');
+    const executor = new CursorAiExecutor();
+    const pending = (executor as unknown as {
+      runJsonStage: <T>(
+        schemaFile: string,
+        prompt: string,
+        stageName: string,
+        addDirs?: string[],
+      ) => Promise<T>;
+    }).runJsonStage<{ ok: boolean }>('schema.json', 'review prompt', 'daily code review', ['/tmp/workspace']);
+
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(child?.kill).not.toHaveBeenCalled();
+
+    child?.stdout.emit(
+      'data',
+      Buffer.from(JSON.stringify({ subtype: 'success', is_error: false, result: '{"ok":true}' })),
+    );
+    child?.emit('close', 0);
+
+    await expect(pending).resolves.toEqual({ ok: true });
+    vi.useRealTimers();
+  });
 });

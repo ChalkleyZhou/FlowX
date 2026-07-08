@@ -12,7 +12,7 @@ import type {
 } from '../common/types';
 import { assertDesignSpecOutput, assertStrictGenerateDesignOutput } from './design-output-validate';
 import { type AIInvocationContext } from './ai-executor';
-import { CodexAiExecutor, type StructuredJsonStageOptions } from './codex-ai.executor';
+import { CodexAiExecutor, resolveOptionalTimeoutMs, type StructuredJsonStageOptions } from './codex-ai.executor';
 
 const CURSOR_TIMEOUT_MS = Number(process.env.CURSOR_TIMEOUT_MS?.trim()) || 600_000;
 /** Brainstorm outputs large JSON; allow longer wall time than generic stages (truncated stdout → parse errors). */
@@ -21,6 +21,11 @@ const CURSOR_BRAINSTORM_TIMEOUT_MS =
 /** Design matches brainstorm output size (design+demo+demoPages); default aligned to reduce truncation parse failures. */
 const CURSOR_DESIGN_TIMEOUT_MS =
   Number(process.env.CURSOR_DESIGN_TIMEOUT_MS?.trim()) || CURSOR_BRAINSTORM_TIMEOUT_MS;
+/** Daily code review can run for a long time; `0` disables wall-clock timeout (default). */
+const CURSOR_DAILY_CODE_REVIEW_TIMEOUT_MS = resolveOptionalTimeoutMs(
+  process.env.CURSOR_DAILY_CODE_REVIEW_TIMEOUT_MS,
+  0,
+);
 const CURSOR_NO_PROGRESS_TIMEOUT_MS = Number(process.env.CURSOR_NO_PROGRESS_TIMEOUT_MS?.trim()) || 0;
 const CURSOR_DEBUG_ROOT = join(process.cwd(), '.flowx-data', 'cursor-debug');
 const CURSOR_MODEL = process.env.CURSOR_MODEL?.trim();
@@ -203,27 +208,36 @@ export class CursorAiExecutor extends CodexAiExecutor {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
-      const timeout = setTimeout(() => {
-        if (finished) {
-          return;
+      let wallTimeout: ReturnType<typeof setTimeout> | undefined;
+      const clearWallTimeout = () => {
+        if (wallTimeout) {
+          clearTimeout(wallTimeout);
+          wallTimeout = undefined;
         }
-        finished = true;
-        if (noProgressTimer) {
-          clearTimeout(noProgressTimer);
-        }
-        child.kill('SIGTERM');
-        void persistArtifact({
-          status: 'TIMED_OUT',
-          finishedAt: new Date().toISOString(),
-          stdout,
-          stderr,
-          errorMessage: `Cursor ${stageName} timed out after ${timeoutMs}ms.`,
-        }).catch((error) => {
-          const message = error instanceof Error ? error.message : String(error);
-          this.cursorLogger.warn(`Failed to persist timed out Cursor artifact: ${message}`);
-        });
-        reject(new Error(`Cursor ${stageName} timed out after ${timeoutMs}ms.`));
-      }, timeoutMs);
+      };
+      if (timeoutMs > 0) {
+        wallTimeout = setTimeout(() => {
+          if (finished) {
+            return;
+          }
+          finished = true;
+          if (noProgressTimer) {
+            clearTimeout(noProgressTimer);
+          }
+          child.kill('SIGTERM');
+          void persistArtifact({
+            status: 'TIMED_OUT',
+            finishedAt: new Date().toISOString(),
+            stdout,
+            stderr,
+            errorMessage: `Cursor ${stageName} timed out after ${timeoutMs}ms.`,
+          }).catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            this.cursorLogger.warn(`Failed to persist timed out Cursor artifact: ${message}`);
+          });
+          reject(new Error(`Cursor ${stageName} timed out after ${timeoutMs}ms.`));
+        }, timeoutMs);
+      }
 
 
       let noProgressTimer: ReturnType<typeof setTimeout> | null = null;
@@ -239,7 +253,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
             return;
           }
           finished = true;
-          clearTimeout(timeout);
+          clearWallTimeout();
           if (noProgressTimer) {
             clearTimeout(noProgressTimer);
           }
@@ -300,7 +314,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
             return;
           }
           finished = true;
-          clearTimeout(timeout);
+          clearWallTimeout();
           if (noProgressTimer) {
             clearTimeout(noProgressTimer);
           }
@@ -325,7 +339,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
           return;
         }
         finished = true;
-        clearTimeout(timeout);
+        clearWallTimeout();
         if (noProgressTimer) {
           clearTimeout(noProgressTimer);
         }
@@ -348,7 +362,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
           return;
         }
         finished = true;
-        clearTimeout(timeout);
+        clearWallTimeout();
         if (noProgressTimer) {
           clearTimeout(noProgressTimer);
         }
@@ -395,6 +409,9 @@ export class CursorAiExecutor extends CodexAiExecutor {
     }
     if (normalized.includes('design')) {
       return CURSOR_DESIGN_TIMEOUT_MS;
+    }
+    if (normalized.includes('daily code review')) {
+      return CURSOR_DAILY_CODE_REVIEW_TIMEOUT_MS;
     }
     return CURSOR_TIMEOUT_MS;
   }
