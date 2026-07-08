@@ -1,4 +1,5 @@
 import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { Repository } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GitCredentialsService } from '../auth/git-credentials.service';
 import { parseRepositoryRemote } from '../briefings/repository-remote';
@@ -139,7 +140,7 @@ export class RepositorySyncService {
     branch?: string | null,
     commitIds: string[] = [],
     options?: { retryCloneOnMissingCommits?: boolean },
-  ) {
+  ): Promise<Repository> {
     const targetBranch = this.resolveReviewBranch(repository, branch);
     const repoRoot = this.resolveRepositoryPath(repository.workspaceId, repository.id, repository.name);
 
