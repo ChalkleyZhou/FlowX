@@ -1,6 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BriefingSchedulerService } from './briefing-scheduler.service';
 
+vi.mock('./briefing-auth-session', () => ({
+  resolveProjectOrganizationId: vi.fn(),
+  buildSchedulerAuthSession: vi.fn(),
+}));
+
+import {
+  buildSchedulerAuthSession,
+  resolveProjectOrganizationId,
+} from './briefing-auth-session';
+
 describe('BriefingSchedulerService', () => {
   const configFindMany = vi.fn();
   const configUpdateMany = vi.fn();
@@ -14,6 +24,10 @@ describe('BriefingSchedulerService', () => {
     vi.clearAllMocks();
     configUpdateMany.mockResolvedValue({ count: 0 });
     configUpdate.mockResolvedValue({});
+    vi.mocked(resolveProjectOrganizationId).mockResolvedValue('org-1');
+    vi.mocked(buildSchedulerAuthSession).mockResolvedValue({
+      organization: { id: 'org-1', name: '研发组织' },
+    });
   });
 
   function createService() {
@@ -55,15 +69,27 @@ describe('BriefingSchedulerService', () => {
       createService().runDueBriefings(new Date('2026-06-03T10:00:00.000Z')),
     ).resolves.toEqual({ generatedCount: 1 });
 
-    expect(generateProjectBriefing).toHaveBeenCalledWith('project-1', {
-      date: '2026-06-03',
-      regenerate: true,
-    });
+    expect(generateProjectBriefing).toHaveBeenCalledWith(
+      'project-1',
+      {
+        date: '2026-06-03',
+        regenerate: true,
+      },
+      {
+        organization: { id: 'org-1', name: '研发组织' },
+      },
+    );
     expect(sendBriefing).toHaveBeenCalledWith('briefing-1');
-    expect(generateProjectDailyCodeReview).toHaveBeenCalledWith('project-1', {
-      date: '2026-06-03',
-      regenerate: true,
-    });
+    expect(generateProjectDailyCodeReview).toHaveBeenCalledWith(
+      'project-1',
+      {
+        date: '2026-06-03',
+        regenerate: true,
+      },
+      {
+        organization: { id: 'org-1', name: '研发组织' },
+      },
+    );
     expect(sendDailyCodeReview).toHaveBeenCalledWith('review-1');
     expect(configUpdate).toHaveBeenCalledWith({
       where: { projectId: 'project-1' },

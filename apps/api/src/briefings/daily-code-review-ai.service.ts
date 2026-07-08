@@ -12,8 +12,7 @@ import type {
   ReviewCodeOutput,
   WorkspaceContext,
 } from '../common/types';
-
-const DEFAULT_DAILY_CODE_REVIEW_TIMEOUT_MS = 300_000;
+import { normalizeReviewFindings } from './daily-code-review.types';
 
 @Injectable()
 export class DailyCodeReviewAiService {
@@ -43,22 +42,14 @@ export class DailyCodeReviewAiService {
         input.recipient ?? null,
       );
       const executor = this.executorRegistry.get(provider);
-      const timeoutMs =
-        Number(process.env.DAILY_CODE_REVIEW_TIMEOUT_MS?.trim()) ||
-        DEFAULT_DAILY_CODE_REVIEW_TIMEOUT_MS;
 
-      const result = await Promise.race([
-        executor.reviewDailyChanges(
-          {
-            unit: input.unit,
-            workspace: input.workspace,
-          },
-          context,
-        ),
-        new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('Daily code review timed out.')), timeoutMs);
-        }),
-      ]);
+      const result = await executor.reviewDailyChanges(
+        {
+          unit: input.unit,
+          workspace: input.workspace,
+        },
+        context,
+      );
 
       return this.normalizeOutput(result);
     } catch (error) {
@@ -104,11 +95,7 @@ export class DailyCodeReviewAiService {
 
     return {
       status: 'COMPLETED',
-      issues: output.issues ?? [],
-      bugs: output.bugs ?? [],
-      missingTests: output.missingTests ?? [],
-      suggestions: output.suggestions ?? [],
-      impactScope: output.impactScope ?? [],
+      ...normalizeReviewFindings(output),
     };
   }
 
@@ -121,13 +108,7 @@ export class DailyCodeReviewAiService {
   }
 
   private emptyFindings(): ReviewCodeOutput {
-    return {
-      issues: [],
-      bugs: [],
-      missingTests: [],
-      suggestions: [],
-      impactScope: [],
-    };
+    return normalizeReviewFindings(null);
   }
 
   private isAiEnabled() {

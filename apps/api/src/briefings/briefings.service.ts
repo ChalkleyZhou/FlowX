@@ -19,6 +19,10 @@ import {
   DEFAULT_BRIEFING_CUTOFF_HOUR,
   resolveBriefingDate,
 } from './briefing-time-window';
+import {
+  type BriefingAuthSession,
+  toAiInvocationRecipient,
+} from './briefing-auth-session';
 
 const DEFAULT_DAILY_HOUR = DEFAULT_BRIEFING_CUTOFF_HOUR;
 
@@ -51,18 +55,6 @@ interface BuildBriefingContentInput {
   events: NormalizedBriefingEvent[];
   rawPayloadByEventIndex: unknown[];
 }
-
-type BriefingAuthSession = {
-  user?: {
-    id?: string;
-    displayName?: string;
-  } | null;
-  organization?: {
-    id?: string | null;
-    name?: string | null;
-    providerOrganizationId?: string | null;
-  } | null;
-};
 
 @Injectable()
 export class BriefingsService {
@@ -492,22 +484,4 @@ function normalizeStoredEvent(value: Prisma.JsonValue): NormalizedBriefingEvent 
     throw new Error('Stored normalized briefing event is invalid.');
   }
   return value as unknown as NormalizedBriefingEvent;
-}
-
-function toAiInvocationRecipient(session?: BriefingAuthSession): AiInvocationRecipient | null {
-  const userId = session?.user?.id?.trim();
-  const displayName = session?.user?.displayName?.trim();
-  if (!userId || !displayName) {
-    return null;
-  }
-
-  const organization = session?.organization;
-  const organizationId = organization?.id?.trim();
-  return {
-    flowxUserId: userId,
-    flowxOrganizationId: organizationId || null,
-    displayName,
-    providerOrganizationId: organization?.providerOrganizationId ?? null,
-    organizationName: organization?.name ?? null,
-  };
 }

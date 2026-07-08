@@ -24,12 +24,17 @@ import {
 } from './daily-code-review-renderer';
 import {
   deriveDailyCodeReviewStatus,
+  normalizeReviewFindings,
   type DailyCodeReviewUnitResult,
 } from './daily-code-review.types';
 import { DeliveryTargetsService } from './delivery-targets.service';
 import type { WorkspaceContext } from '../common/types';
 import { RepositorySyncService } from '../workspaces/repository-sync.service';
 import type { RepositoryLookupEntry } from './daily-code-review-commits';
+import {
+  type BriefingAuthSession,
+  toAiInvocationRecipient,
+} from './briefing-auth-session';
 
 const DEFAULT_DAILY_HOUR = DEFAULT_BRIEFING_CUTOFF_HOUR;
 
@@ -49,18 +54,6 @@ type BuildDailyCodeReviewInput = {
   repositoryLookupById: ReturnType<typeof buildRepositoryLookupById>;
   repositoryLookupByName: ReturnType<typeof buildRepositoryLookupByName>;
   recipient: AiInvocationRecipient | null;
-};
-
-type BriefingAuthSession = {
-  user?: {
-    id?: string;
-    displayName?: string;
-  } | null;
-  organization?: {
-    id?: string | null;
-    name?: string | null;
-    providerOrganizationId?: string | null;
-  } | null;
 };
 
 @Injectable()
@@ -362,15 +355,7 @@ export class DailyCodeReviewService {
         skillHint: aiOutput.skillHint,
         errorMessage: aiOutput.errorMessage,
         findings:
-          aiOutput.status === 'COMPLETED'
-            ? {
-                issues: aiOutput.issues,
-                bugs: aiOutput.bugs,
-                missingTests: aiOutput.missingTests,
-                suggestions: aiOutput.suggestions,
-                impactScope: aiOutput.impactScope,
-              }
-            : undefined,
+          aiOutput.status === 'COMPLETED' ? normalizeReviewFindings(aiOutput) : undefined,
       });
     }
 
@@ -510,24 +495,6 @@ function normalizeStoredEvent(value: Prisma.JsonValue): NormalizedBriefingEvent 
     throw new Error('Stored normalized briefing event is invalid.');
   }
   return value as unknown as NormalizedBriefingEvent;
-}
-
-function toAiInvocationRecipient(session?: BriefingAuthSession): AiInvocationRecipient | null {
-  const userId = session?.user?.id?.trim();
-  const displayName = session?.user?.displayName?.trim();
-  if (!userId || !displayName) {
-    return null;
-  }
-
-  const organization = session?.organization;
-  const organizationId = organization?.id?.trim();
-  return {
-    flowxUserId: userId,
-    flowxOrganizationId: organizationId || null,
-    displayName,
-    providerOrganizationId: organization?.providerOrganizationId ?? null,
-    organizationName: organization?.name ?? null,
-  };
 }
 
 function toWorkspaceContext(

@@ -1,5 +1,5 @@
 import type { DailyCodeReviewUnitStatus } from '../common/types';
-import type { DailyCodeReviewUnitResult } from './daily-code-review.types';
+import { coerceStringArray, normalizeReviewFindings, type DailyCodeReviewUnitResult } from './daily-code-review.types';
 
 export function formatDailyCodeReviewTitle(projectName: string, date: string) {
   const name = projectName.trim();
@@ -26,11 +26,12 @@ function escapeHtml(value: string) {
     .replaceAll('"', '&quot;');
 }
 
-function renderFindingsList(title: string, items: string[]) {
-  if (items.length === 0) {
+function renderFindingsList(title: string, items: unknown) {
+  const normalized = coerceStringArray(items);
+  if (normalized.length === 0) {
     return [];
   }
-  return ['', `**${title}**`, ...items.map((item) => `- ${item}`)];
+  return ['', `**${title}**`, ...normalized.map((item) => `- ${item}`)];
 }
 
 function renderUnitMarkdown(unit: DailyCodeReviewUnitResult) {
@@ -79,12 +80,12 @@ function renderUnitHtml(unit: DailyCodeReviewUnitResult) {
           })
           .join('')}</ul>`;
 
-  const findings = unit.findings;
+  const findings = unit.findings ? normalizeReviewFindings(unit.findings) : null;
   const findingSections = findings
-    ? ['issues', 'bugs', 'missingTests', 'suggestions', 'impactScope']
+    ? (['issues', 'bugs', 'missingTests', 'suggestions', 'impactScope'] as const)
         .map((key) => {
-          const items = findings[key as keyof typeof findings];
-          if (!Array.isArray(items) || items.length === 0) {
+          const items = findings[key];
+          if (items.length === 0) {
             return '';
           }
           const label =

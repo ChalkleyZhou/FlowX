@@ -78,4 +78,27 @@ describe('daily-code-review-renderer', () => {
     expect(content.markdownContent).toContain('已识别 2 个仓库/分支审查单元');
     expect(content.htmlContent).toContain('稍后会自动更新');
   });
+
+  it('renders findings when AI returns string fields instead of arrays', () => {
+    const markdown = renderDailyCodeReviewMarkdown({
+      projectName: 'FlowX',
+      date: '2026-07-07',
+      rangeLabel: '2026-07-07',
+      overallStatus: 'COMPLETED',
+      units: [
+        unit({
+          findings: {
+            issues: ['Missing validation'],
+            bugs: [],
+            missingTests: [],
+            suggestions: 'Keep review skill instructions in repo',
+            impactScope: [],
+          } as never,
+        }),
+      ],
+    });
+
+    expect(markdown).toContain('**优化建议**');
+    expect(markdown).toContain('Keep review skill instructions in repo');
+  });
 });

@@ -1,5 +1,9 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  buildSchedulerAuthSession,
+  resolveProjectOrganizationId,
+} from './briefing-auth-session';
 import { BriefingsService } from './briefings.service';
 import { DailyCodeReviewService } from './daily-code-review.service';
 import {
@@ -78,10 +82,19 @@ export class BriefingSchedulerService implements OnModuleInit, OnModuleDestroy {
       }
 
       try {
-        const briefing = await this.briefingsService.generateProjectBriefing(config.projectId, {
-          date,
-          regenerate: true,
-        });
+        const organizationId = await resolveProjectOrganizationId(this.prisma, config.projectId);
+        const schedulerAuthSession = organizationId
+          ? await buildSchedulerAuthSession(this.prisma, organizationId)
+          : undefined;
+
+        const briefing = await this.briefingsService.generateProjectBriefing(
+          config.projectId,
+          {
+            date,
+            regenerate: true,
+          },
+          schedulerAuthSession,
+        );
         generatedCount += 1;
 
         let briefingMessage = '简报已生成';
@@ -100,6 +113,7 @@ export class BriefingSchedulerService implements OnModuleInit, OnModuleDestroy {
         const codeReview = await this.dailyCodeReviewService.generateProjectDailyCodeReview(
           config.projectId,
           { date, regenerate: true },
+          schedulerAuthSession,
         );
         let codeReviewMessage = 'Code Review 已生成';
         let codeReviewDelivered = Boolean(codeReview.sentAt);
