@@ -24,6 +24,7 @@ describe('BriefingsPage', () => {
 
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    window.localStorage.clear();
     HTMLElement.prototype.scrollIntoView = vi.fn();
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -140,6 +141,32 @@ describe('BriefingsPage', () => {
       date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       regenerate: true,
     });
+  });
+
+  it('restores the last selected project when re-entering the page', async () => {
+    vi.mocked(api.getProjects).mockResolvedValue([
+      {
+        id: 'project-1',
+        name: 'FlowX',
+        workspace: { id: 'workspace-1', name: '研发平台', repositories: [] },
+      },
+      {
+        id: 'project-2',
+        name: 'Portal',
+        workspace: { id: 'workspace-2', name: '业务平台', repositories: [] },
+      },
+    ]);
+    window.localStorage.setItem(
+      'flowx-briefings-page-preferences',
+      JSON.stringify({ projectId: 'project-2', activeView: 'code-reviews', period: 'WEEKLY' }),
+    );
+
+    await renderPage();
+
+    expect(api.getProjectBriefings).toHaveBeenCalledWith('project-2');
+    expect(api.listProjectDailyCodeReviews).toHaveBeenCalledWith('project-2');
+    expect(document.body.textContent).toContain('Portal');
+    expect(document.body.textContent).toContain('Code Review 历史');
   });
 
   it('shows weekly briefing type and range in history', async () => {

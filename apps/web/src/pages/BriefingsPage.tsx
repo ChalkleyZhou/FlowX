@@ -12,10 +12,13 @@ import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
+import {
+  readBriefingsPagePreferences,
+  writeBriefingsPagePreferences,
+  type BriefingsView,
+} from '../utils/briefings-page-preferences';
 import { formatBeijingDateTime } from '../utils/datetime';
 import type { Briefing, BriefingPeriod, DailyCodeReview, Project } from '../types';
-
-type BriefingsView = 'briefings' | 'code-reviews';
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -49,9 +52,15 @@ export function BriefingsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [briefings, setBriefings] = useState<Briefing[]>([]);
   const [codeReviews, setCodeReviews] = useState<DailyCodeReview[]>([]);
-  const [activeView, setActiveView] = useState<BriefingsView>('briefings');
-  const [selectedProjectId, setSelectedProjectId] = useState('');
-  const [period, setPeriod] = useState<BriefingPeriod>('DAILY');
+  const [activeView, setActiveView] = useState<BriefingsView>(
+    () => readBriefingsPagePreferences().activeView ?? 'briefings',
+  );
+  const [selectedProjectId, setSelectedProjectId] = useState(
+    () => readBriefingsPagePreferences().projectId ?? '',
+  );
+  const [period, setPeriod] = useState<BriefingPeriod>(
+    () => readBriefingsPagePreferences().period ?? 'DAILY',
+  );
   const [date, setDate] = useState(today());
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -67,8 +76,14 @@ export function BriefingsPage() {
   async function loadProjects() {
     const projectList = await api.getProjects();
     setProjects(projectList);
-    const nextProjectId = selectedProjectId || projectList[0]?.id || '';
+    const persistedProjectId = selectedProjectId;
+    const nextProjectId = projectList.some((project) => project.id === persistedProjectId)
+      ? persistedProjectId
+      : projectList[0]?.id || '';
     setSelectedProjectId(nextProjectId);
+    if (nextProjectId) {
+      writeBriefingsPagePreferences({ projectId: nextProjectId });
+    }
     if (nextProjectId) {
       const [projectBriefings, projectCodeReviews] = await Promise.all([
         api.getProjectBriefings(nextProjectId),
@@ -214,13 +229,19 @@ export function BriefingsPage() {
           <div className="mb-4 flex flex-wrap gap-2">
             <Button
               variant={activeView === 'briefings' ? 'default' : 'outline'}
-              onClick={() => setActiveView('briefings')}
+              onClick={() => {
+                setActiveView('briefings');
+                writeBriefingsPagePreferences({ activeView: 'briefings' });
+              }}
             >
               简报
             </Button>
             <Button
               variant={activeView === 'code-reviews' ? 'default' : 'outline'}
-              onClick={() => setActiveView('code-reviews')}
+              onClick={() => {
+                setActiveView('code-reviews');
+                writeBriefingsPagePreferences({ activeView: 'code-reviews' });
+              }}
             >
               Code Review
             </Button>
@@ -233,6 +254,7 @@ export function BriefingsPage() {
                   value={selectedProjectId || undefined}
                   onValueChange={(value) => {
                     setSelectedProjectId(value);
+                    writeBriefingsPagePreferences({ projectId: value });
                     void refresh(value);
                   }}
                 >
@@ -251,7 +273,14 @@ export function BriefingsPage() {
               <div className="flex w-full flex-col gap-1.5 sm:w-[140px]">
                 <label className="text-xs font-medium text-muted-foreground">类型</label>
                 {activeView === 'briefings' ? (
-                  <Select value={period} onValueChange={(value) => setPeriod(value as BriefingPeriod)}>
+                  <Select
+                    value={period}
+                    onValueChange={(value) => {
+                      const nextPeriod = value as BriefingPeriod;
+                      setPeriod(nextPeriod);
+                      writeBriefingsPagePreferences({ period: nextPeriod });
+                    }}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
