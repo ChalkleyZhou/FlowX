@@ -847,10 +847,25 @@ export class AuthService {
     };
   }
 
+  async createShortLivedSession(
+    userId: string,
+    organizationId: string | null,
+    ttlMs = 2 * 60 * 60 * 1000,
+  ) {
+    const session = await this.createSession(userId, organizationId, {
+      allowSingletonFallback: false,
+      ttlMs,
+    });
+    return {
+      token: session.token,
+      expiresAt: session.expiresAt,
+    };
+  }
+
   private async createSession(
     userId: string,
     organizationId: string | null,
-    options?: { allowSingletonFallback?: boolean },
+    options?: { allowSingletonFallback?: boolean; ttlMs?: number },
   ) {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
@@ -865,7 +880,8 @@ export class AuthService {
       : null;
 
     const token = this.createToken(32);
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const ttlMs = options?.ttlMs ?? 7 * 24 * 60 * 60 * 1000;
+    const expiresAt = new Date(Date.now() + ttlMs);
     await this.prisma.userSession.create({
       data: {
         token,
