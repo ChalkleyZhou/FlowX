@@ -2,6 +2,8 @@
 
 FlowX supports **local execution** for the EXECUTION stage: the server tells developers which Git branch to use; work happens in the developer's own clone (not a server sandbox). After commit and push, the UI or API records the result and advances the workflow toward AI review.
 
+**Preferred Web entry:** [web-local-ide-launch.md](./web-local-ide-launch.md) (Workflow detail → **本地启动** → Cursor/Codex via `flowx-local`).
+
 Cursor local Chat uses this same local execution contract with a shorter task picker and Chat prompt handoff. See [cursor-plugin-local-chat.md](./cursor-plugin-local-chat.md).
 
 ## Flow
