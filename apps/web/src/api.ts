@@ -163,6 +163,21 @@ export const authTokenStorageKey = AUTH_TOKEN_STORAGE_KEY;
 export const apiBaseUrl = API_BASE_URL;
 export const toApiUrl = buildApiUrl;
 
+/**
+ * Absolute FlowX API base for local daemons (e.g. flowx-local redeem).
+ * Prefer VITE_API_BASE_URL when it is an absolute URL; do not use the Vite
+ * `${origin}/api` proxy — the daemon must reach Nest directly.
+ */
+export function getFlowxApiBaseUrl(): string {
+  if (configuredApiBaseUrl) {
+    const base = configuredApiBaseUrl.replace(/\/$/, '');
+    if (base.startsWith('http://') || base.startsWith('https://')) {
+      return base;
+    }
+  }
+  return 'http://127.0.0.1:3000';
+}
+
 export function getBugScreenshotUrl(bugId: string, screenshotId: string) {
   return buildApiUrl(`/bugs/${bugId}/screenshots/${screenshotId}`);
 }
@@ -745,6 +760,11 @@ export const api = {
     request<LocalExecutionClaimResponse>(`/workflow-runs/${id}/execution/claim-local`, {
       method: 'POST',
     }),
+  issueLocalLaunchTicket: (id: string) =>
+    request<{ ticket: string; expiresAt: string; loopbackPort: number }>(
+      `/workflow-runs/${id}/execution/local-launch-ticket`,
+      { method: 'POST' },
+    ),
   getLocalHandoff: (id: string) =>
     request<LocalHandoffPayload>(`/workflow-runs/${id}/execution/local-handoff`),
   completeLocalExecution: (
