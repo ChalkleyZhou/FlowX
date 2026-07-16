@@ -1,15 +1,31 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  Res,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { CompleteLocalExecutionDto } from './dto/complete-local-execution.dto';
 import { CreateWorkflowRunDto } from './dto/create-workflow-run.dto';
 import { HumanReviewDecisionDto } from './dto/human-review-decision.dto';
 import { StageFeedbackDto } from './dto/stage-feedback.dto';
 import { SubmitLocalDesignDto } from './dto/submit-local-design.dto';
 import { StageManualEditDto } from './dto/stage-manual-edit.dto';
+import { LocalLaunchService } from './local-launch.service';
 import { WorkflowService } from './workflow.service';
 
 @Controller('workflow-runs')
 export class WorkflowController {
-  constructor(private readonly workflowService: WorkflowService) {}
+  constructor(
+    private readonly workflowService: WorkflowService,
+    private readonly localLaunchService: LocalLaunchService,
+  ) {}
 
   @Post()
   create(@Body() dto: CreateWorkflowRunDto) {
@@ -186,6 +202,14 @@ export class WorkflowController {
   @Post(':id/execution/claim-local')
   claimLocalExecution(@Param('id') id: string, @Req() req: WorkflowRequest) {
     return this.workflowService.claimLocalExecution(id, req.authSession);
+  }
+
+  @Post(':id/execution/local-launch-ticket')
+  issueLocalLaunchTicket(@Param('id') id: string, @Req() req: WorkflowRequest) {
+    if (!req.authSession?.user?.id) {
+      throw new UnauthorizedException('Missing authenticated user.');
+    }
+    return this.localLaunchService.issueTicket(id, req.authSession);
   }
 
   @Post(':id/execution/complete-local')
