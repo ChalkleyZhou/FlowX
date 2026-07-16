@@ -43,7 +43,21 @@ vi.mock('../api', () => ({
     fixReviewFinding: vi.fn(),
     convertReviewFindingToIssue: vi.fn(),
     convertReviewFindingToBug: vi.fn(),
+    claimLocalExecution: vi.fn(),
+    issueLocalLaunchTicket: vi.fn(),
+    getLocalHandoff: vi.fn(),
   },
+  getFlowxApiBaseUrl: () => 'http://127.0.0.1:3000',
+}));
+
+const { probeFlowxLocal, launchFlowxLocal } = vi.hoisted(() => ({
+  probeFlowxLocal: vi.fn(),
+  launchFlowxLocal: vi.fn(),
+}));
+
+vi.mock('../lib/flowx-local-bridge', () => ({
+  probeFlowxLocal,
+  launchFlowxLocal,
 }));
 
 vi.mock('../components/ui/toast', () => ({
@@ -1252,5 +1266,95 @@ describe('WorkflowRunDetailPage', () => {
     });
 
     expect(api.startLocalDevPreview).toHaveBeenCalledWith('repository-1', 'workflow-1');
+  });
+
+  it('claims local execution and launches Cursor through flowx-local', async () => {
+    const localExecution = createWorkflowRun({
+      status: 'EXECUTION_RUNNING',
+      stageExecutions: [
+        {
+          id: 'execution-1',
+          stage: 'EXECUTION',
+          status: 'RUNNING',
+          statusMessage: null,
+          attempt: 1,
+          input: { executor: 'LOCAL' },
+          output: null,
+        },
+      ],
+    });
+    vi.mocked(api.getWorkflowRun)
+      .mockResolvedValueOnce(
+        createWorkflowRun({
+          status: 'EXECUTION_PENDING',
+          stageExecutions: [
+            {
+              id: 'execution-1',
+              stage: 'EXECUTION',
+              status: 'PENDING',
+              statusMessage: null,
+              attempt: 0,
+              output: null,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValue(localExecution);
+    vi.mocked(api.claimLocalExecution).mockResolvedValue({
+      workflow: localExecution,
+      handoff: { repositories: [] },
+    } as never);
+    vi.mocked(api.issueLocalLaunchTicket).mockResolvedValue({
+      ticket: 'ticket-1',
+      expiresAt: '2026-07-16T12:00:00.000Z',
+      loopbackPort: 3920,
+    });
+    vi.mocked(api.getLocalHandoff).mockResolvedValue({ repositories: [] } as never);
+    probeFlowxLocal.mockResolvedValue(true);
+    launchFlowxLocal.mockResolvedValue({
+      ok: true,
+      gitRoot: '/tmp/flowx',
+      ide: 'cursor',
+      prefilled: true,
+      promptPath: '/tmp/flowx/.flowx/prompt.md',
+    });
+
+    await renderPage();
+
+    const executionStep = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('开发执行'),
+    );
+    await act(async () => {
+      executionStep?.click();
+      await Promise.resolve();
+    });
+
+    const launchButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '本地启动',
+    );
+    expect(launchButton).toBeTruthy();
+
+    await act(async () => {
+      launchButton?.click();
+      await Promise.resolve();
+    });
+
+    const cursorButton = Array.from(document.body.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Cursor',
+    );
+    expect(cursorButton).toBeTruthy();
+
+    await act(async () => {
+      cursorButton?.click();
+      await Promise.resolve();
+    });
+
+    expect(api.claimLocalExecution).toHaveBeenCalledWith('workflow-1');
+    expect(api.issueLocalLaunchTicket).toHaveBeenCalledWith('workflow-1');
+    expect(probeFlowxLocal).toHaveBeenCalledWith(3920);
+    expect(launchFlowxLocal).toHaveBeenCalledWith(
+      { ticket: 'ticket-1', ide: 'cursor', apiBaseUrl: 'http://127.0.0.1:3000' },
+      3920,
+    );
   });
 });

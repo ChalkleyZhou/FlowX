@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
-import { api } from '../api';
+import { api, getFlowxApiBaseUrl } from '../api';
 import { ContextPanel } from '../components/ContextPanel';
 import { DesignArtifactPreview } from '../components/DesignArtifactPreview';
 import { DiffFileListPanel } from '../components/DiffFileListPanel';
@@ -23,6 +23,7 @@ import { Spinner } from '../components/ui/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Textarea as UiTextarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
+import { launchFlowxLocal, probeFlowxLocal, type FlowxLocalLaunchBody } from '../lib/flowx-local-bridge';
 import type {
   DemoArtifact,
   DemoPage,
@@ -410,6 +411,9 @@ export function WorkflowRunDetailPage() {
   const [lastPublishedRepositories, setLastPublishedRepositories] = useState<PublishRepositorySummary[]>([]);
   const [planHtml, setPlanHtml] = useState<string | null>(null);
   const [localHandoff, setLocalHandoff] = useState<LocalHandoffPayload | null>(null);
+  const [localLaunchOpen, setLocalLaunchOpen] = useState(false);
+  const [localLaunchBusy, setLocalLaunchBusy] = useState(false);
+  const [localLaunchSetupRequired, setLocalLaunchSetupRequired] = useState(false);
   const [executionHtml, setExecutionHtml] = useState<string | null>(null);
   const [completeLocalOpen, setCompleteLocalOpen] = useState(false);
   const [completeLocalPushed, setCompleteLocalPushed] = useState(true);
@@ -983,6 +987,52 @@ export function WorkflowRunDetailPage() {
     }
   }
 
+  async function launchLocalExecution(ide: FlowxLocalLaunchBody['ide']) {
+    if (
+      !workflowRun ||
+      (workflowRun.status !== 'EXECUTION_PENDING' && !localExecutionActive) ||
+      localLaunchBusy
+    ) {
+      return;
+    }
+
+    setLocalLaunchBusy(true);
+    setLocalLaunchSetupRequired(false);
+    try {
+      if (workflowRun.status === 'EXECUTION_PENDING') {
+        const result = await api.claimLocalExecution(workflowRun.id);
+        setLocalHandoff(result.handoff);
+        setWorkflowRun(result.workflow);
+      }
+
+      const { ticket, loopbackPort } = await api.issueLocalLaunchTicket(workflowRun.id);
+      const daemonReachable = await probeFlowxLocal(loopbackPort);
+      if (!daemonReachable) {
+        setLocalLaunchSetupRequired(true);
+        setLocalLaunchOpen(false);
+        await refresh({ silent: true });
+        toast.error('未检测到本机 flowx-local，请先启动服务后重试');
+        return;
+      }
+
+      const result = await launchFlowxLocal(
+        { ticket, ide, apiBaseUrl: getFlowxApiBaseUrl() },
+        loopbackPort,
+      );
+      setLocalLaunchOpen(false);
+      await refresh({ silent: true });
+      toast.success(
+        result.prefilled
+          ? `已打开 ${ide === 'cursor' ? 'Cursor' : 'Codex'} 并预填执行上下文`
+          : `已打开 ${ide === 'cursor' ? 'Cursor' : 'Codex'}；提示词文件已生成，内容已复制到剪贴板`,
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '本地启动失败');
+    } finally {
+      setLocalLaunchBusy(false);
+    }
+  }
+
   function getEditableStageForSelectedStage(stageKey: WorkflowStageKey): EditableStage | null {
     if (stageKey === 'TASK_SPLIT') {
       return 'task-split';
@@ -1546,15 +1596,11 @@ export function WorkflowRunDetailPage() {
           },
           {
             key: 'claim-local',
-            label: '本地执行',
-            onClick: () =>
-              void runAction('EXECUTION', async () => {
-                const result = await api.claimLocalExecution(workflowRun.id);
-                setLocalHandoff(result.handoff);
-                return result.workflow;
-              }, '本地执行已认领，请按指引切分支开发'),
-            disabled: workflowRun.status !== 'EXECUTION_PENDING' || stageActionsLocked,
-            loading: busyStage === 'EXECUTION',
+            label: '本地启动',
+            onClick: () => setLocalLaunchOpen(true),
+            disabled:
+              (workflowRun.status !== 'EXECUTION_PENDING' && !localExecutionActive) || busyStage !== null,
+            loading: localLaunchBusy,
           },
           {
             key: 'complete-local',
@@ -1673,7 +1719,7 @@ export function WorkflowRunDetailPage() {
         ],
       },
     };
-  }, [workflowRun, busyStage, stageActionsLocked, localHandoff, localExecutionActive]);
+  }, [workflowRun, busyStage, stageActionsLocked, localHandoff, localExecutionActive, localLaunchBusy]);
 
   if (!workflowRunId) {
     return <Navigate to="/workflow-runs" replace />;
@@ -1694,6 +1740,9 @@ export function WorkflowRunDetailPage() {
 
     const actionsByKey = new Map(selectedStageContent.actions.map((action) => [action.key, action]));
     const runActionView = actionsByKey.get('run');
+    const localLaunchAction = actionsByKey.get('claim-local');
+    const completeLocalAction = actionsByKey.get('complete-local');
+    const cancelLocalAction = actionsByKey.get('cancel-local');
     const confirmAction = actionsByKey.get('confirm');
     const rejectAction = actionsByKey.get('reject');
     const acceptAction = actionsByKey.get('accept');
@@ -1709,6 +1758,15 @@ export function WorkflowRunDetailPage() {
           loading: submittingAction === 'feedback',
           variant: 'primary',
         }
+      : selectedStage === 'EXECUTION' && localLaunchAction
+        ? {
+            key: localLaunchAction.key,
+            label: localLaunchAction.label,
+            onClick: localLaunchAction.onClick,
+            disabled: localLaunchAction.disabled,
+            loading: localLaunchAction.loading,
+            variant: 'primary',
+          }
       : {
           key: runActionView?.key ?? 'noop',
           label: runActionView?.label ?? '当前阶段暂无可执行操作',
@@ -1720,7 +1778,14 @@ export function WorkflowRunDetailPage() {
 
     const secondaryActions: WorkflowWorkspaceAction[] = [];
 
-    [confirmAction, rejectAction, acceptAction]
+    [
+      selectedStage === 'EXECUTION' ? runActionView : undefined,
+      selectedStage === 'EXECUTION' ? completeLocalAction : undefined,
+      selectedStage === 'EXECUTION' ? cancelLocalAction : undefined,
+      confirmAction,
+      rejectAction,
+      acceptAction,
+    ]
       .filter((action): action is StageActionView => Boolean(action))
       .forEach((action) => {
         secondaryActions.push({
@@ -1753,6 +1818,36 @@ export function WorkflowRunDetailPage() {
 
   return (
     <>
+      <Dialog open={localLaunchOpen} onOpenChange={setLocalLaunchOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>选择 IDE</DialogTitle>
+            <DialogDescription>
+              FlowX 会通过本机 flowx-local 打开所选 IDE，并将当前工作流的执行上下文交给它。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3">
+            <UiButton
+              type="button"
+              className="flex-1"
+              disabled={localLaunchBusy}
+              onClick={() => void launchLocalExecution('cursor')}
+            >
+              {localLaunchBusy ? '启动中...' : 'Cursor'}
+            </UiButton>
+            <UiButton
+              type="button"
+              variant="outline"
+              className="flex-1"
+              disabled={localLaunchBusy}
+              onClick={() => void launchLocalExecution('codex')}
+            >
+              Codex
+            </UiButton>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={completeLocalOpen} onOpenChange={setCompleteLocalOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -2191,16 +2286,29 @@ export function WorkflowRunDetailPage() {
                     <SectionHeader
                       eyebrow="Local Handoff"
                       title="本地执行指引"
-                      description="在本地 clone 中切到工作分支，开发后提交并 push，再填写完成表单。"
+                      description="使用「本地启动」通过 flowx-local 打开 IDE；开发后提交并 push，再填写完成表单。"
                     />
                   </CardHeader>
                   <CardContent className="flex flex-col gap-5 p-5 pt-4">
                     <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+                      <li>点击「本地启动」并选择 Cursor 或 Codex</li>
+                      <li>若未启动 flowx-local，先在终端运行 <code className="text-foreground">pnpm --filter flowx-local exec node dist/index.js serve</code></li>
                       <li>拉取远程并切换到工作分支</li>
                       <li>按技术方案完成开发</li>
                       <li>提交并推送到远程</li>
                       <li>点击「完成本地执行」回写工作流</li>
                     </ol>
+                    {localLaunchSetupRequired ? (
+                      <div className="rounded-md border border-warning/40 bg-muted/30 p-3 text-sm text-foreground">
+                        <div className="font-semibold">未检测到本机 flowx-local</div>
+                        <div className="mt-1 text-muted-foreground">
+                          请先在终端运行：
+                          <code className="ml-1 text-foreground">
+                            pnpm --filter flowx-local exec node dist/index.js serve
+                          </code>
+                        </div>
+                      </div>
+                    ) : null}
                     {localHandoff.repositories.map((repository) => (
                       <div
                         key={repository.workflowRepositoryId}
