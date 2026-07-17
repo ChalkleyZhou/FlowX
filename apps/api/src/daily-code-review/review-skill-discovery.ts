@@ -23,46 +23,68 @@ interface SkillFile {
  * SKILL.md whose folder name or frontmatter mentions "review". Pure fs walk,
  * synchronous, no AI calls, so the caller can gate an AI review before spending
  * a model invocation on a repo that has no review skill on disk.
+ *
+ * Unreadable entries (EACCES/ENOENT/etc.) are skipped; this function does not throw.
  */
 export function findReviewSkill(repoRoot: string): ReviewSkillMatch | null {
-  const root = repoRoot.trim();
-  if (!root || !existsSync(root)) {
+  try {
+    const root = repoRoot.trim();
+    if (!root || !safeExists(root)) {
+      return null;
+    }
+
+    const skillFiles: SkillFile[] = [];
+    for (const searchRoot of SKILL_SEARCH_ROOTS) {
+      collectSkillFiles(root, join(root, searchRoot), skillFiles);
+    }
+
+    const matches = skillFiles.filter(isReviewSkill);
+    if (matches.length === 0) {
+      return null;
+    }
+
+    const preferred =
+      matches.find((match) => match.relativePath.toLowerCase().includes(PREFERRED_PATH_HINT)) ??
+      matches[0];
+
+    return {
+      absolutePath: preferred.absolutePath,
+      relativePath: preferred.relativePath,
+      content: preferred.content,
+    };
+  } catch {
     return null;
   }
-
-  const skillFiles: SkillFile[] = [];
-  for (const searchRoot of SKILL_SEARCH_ROOTS) {
-    collectSkillFiles(root, join(root, searchRoot), skillFiles);
-  }
-
-  const matches = skillFiles.filter(isReviewSkill);
-  if (matches.length === 0) {
-    return null;
-  }
-
-  const preferred =
-    matches.find((match) => match.relativePath.toLowerCase().includes(PREFERRED_PATH_HINT)) ??
-    matches[0];
-
-  return {
-    absolutePath: preferred.absolutePath,
-    relativePath: preferred.relativePath,
-    content: preferred.content,
-  };
 }
 
 function collectSkillFiles(repoRoot: string, dir: string, out: SkillFile[]): void {
-  if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+  if (!safeIsDirectory(dir)) {
     return;
   }
 
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  let entries: ReturnType<typeof readdirSync>;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
     const absolutePath = join(dir, entry.name);
-    if (entry.isDirectory()) {
+    let isDirectory: boolean;
+    let isFile: boolean;
+    try {
+      isDirectory = entry.isDirectory();
+      isFile = entry.isFile();
+    } catch {
+      continue;
+    }
+
+    if (isDirectory) {
       collectSkillFiles(repoRoot, absolutePath, out);
       continue;
     }
-    if (!entry.isFile() || entry.name.toLowerCase() !== SKILL_FILE_NAME) {
+    if (!isFile || entry.name.toLowerCase() !== SKILL_FILE_NAME) {
       continue;
     }
 
@@ -87,10 +109,28 @@ function isReviewSkill(file: SkillFile): boolean {
   if (file.folderName.toLowerCase().includes('review')) {
     return true;
   }
-  return extractFrontmatter(file.content).toLowerCase().includes('review');
+  const frontmatter = extractFrontmatter(file.content);
+  return frontmatter !== null && frontmatter.toLowerCase().includes('review');
 }
 
-function extractFrontmatter(content: string): string {
+/** Returns YAML frontmatter body, or null when the file has no frontmatter fence. */
+function extractFrontmatter(content: string): string | null {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  return match ? match[1] : content;
+  return match ? match[1] : null;
+}
+
+function safeExists(path: string): boolean {
+  try {
+    return existsSync(path);
+  } catch {
+    return false;
+  }
+}
+
+function safeIsDirectory(path: string): boolean {
+  try {
+    return existsSync(path) && statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
 }

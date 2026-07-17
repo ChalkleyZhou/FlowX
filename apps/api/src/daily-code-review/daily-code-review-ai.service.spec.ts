@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { DailyCodeReviewAiService } from './daily-code-review-ai.service';
+import * as reviewSkillDiscovery from './review-skill-discovery';
 
 describe('DailyCodeReviewAiService', () => {
   const reviewDailyChanges = vi.fn();
@@ -29,6 +30,7 @@ describe('DailyCodeReviewAiService', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     rmSync(repoWithSkill, { recursive: true, force: true });
   });
 
@@ -156,6 +158,68 @@ describe('DailyCodeReviewAiService', () => {
     expect(callInput.unit.discoveredSkill).toEqual({
       relativePath: '.cursor/skills/code-review/SKILL.md',
       content: expect.stringContaining('Review code changes for bugs and missing tests'),
+    });
+  });
+
+  it('does not throw out of reviewUnit when skills root is unreadable', async () => {
+    const repo = mkdtempSync(join(tmpdir(), 'flowx-daily-cr-ai-eacces-'));
+    const skillsRoot = join(repo, '.cursor/skills');
+    mkdirSync(skillsRoot, { recursive: true });
+    chmodSync(skillsRoot, 0o000);
+
+    try {
+      const result = await createService().reviewUnit({
+        unit: {
+          repositoryName: 'flowx-api',
+          repositoryId: 'repo-1',
+          localPath: repo,
+          ref: 'main',
+          commits: [{ id: 'abc', message: 'feat' }],
+          date: '2026-07-08',
+          rangeLabel: '2026-07-08',
+        },
+        workspace: null,
+      });
+
+      expect(reviewDailyChanges).not.toHaveBeenCalled();
+      expect(result.status).toBe('SKIPPED_NO_SKILL');
+    } finally {
+      try {
+        chmodSync(skillsRoot, 0o755);
+      } catch {
+        // ignore restore failures during cleanup
+      }
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it('returns FAILED when skill discovery unexpectedly throws', async () => {
+    vi.spyOn(reviewSkillDiscovery, 'findReviewSkill').mockImplementation(() => {
+      throw new Error('unexpected discovery failure');
+    });
+
+    const result = await createService().reviewUnit({
+      unit: {
+        repositoryName: 'flowx-api',
+        repositoryId: 'repo-1',
+        localPath: repoWithSkill,
+        ref: 'main',
+        commits: [{ id: 'abc', message: 'feat' }],
+        date: '2026-07-08',
+        rangeLabel: '2026-07-08',
+      },
+      workspace: null,
+    });
+
+    expect(reviewDailyChanges).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      status: 'FAILED',
+      errorMessage: 'unexpected discovery failure',
+      issues: [],
+      bugs: [],
+      missingTests: [],
+      suggestions: [],
+      impactScope: [],
     });
   });
 });

@@ -42,12 +42,12 @@ export class DailyCodeReviewAiService {
       );
     }
 
-    const skill = input.unit.localPath ? findReviewSkill(input.unit.localPath) : null;
-    if (!skill) {
-      return this.buildSkippedNoSkillOutput(DEFAULT_SKILL_HINT);
-    }
-
     try {
+      const skill = this.discoverSkill(input.unit.localPath);
+      if (!skill) {
+        return this.buildSkippedNoSkillOutput(DEFAULT_SKILL_HINT);
+      }
+
       const provider = this.resolveProvider();
       const context = await this.aiInvocationContextService.resolveInvocationContext(
         provider,
@@ -80,6 +80,13 @@ export class DailyCodeReviewAiService {
         impactScope: [],
       };
     }
+  }
+
+  private discoverSkill(localPath: string | null) {
+    if (!localPath) {
+      return null;
+    }
+    return findReviewSkill(localPath);
   }
 
   private normalizeOutput(output: DailyCodeReviewUnitOutput): DailyCodeReviewUnitOutput {

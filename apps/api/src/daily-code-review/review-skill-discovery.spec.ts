@@ -1,19 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { findReviewSkill } from './review-skill-discovery';
 
 describe('findReviewSkill', () => {
   let repoRoot: string;
+  const unreadableDirs: string[] = [];
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'flowx-review-skill-'));
+    unreadableDirs.length = 0;
   });
 
   afterEach(() => {
+    for (const dir of unreadableDirs) {
+      try {
+        chmodSync(dir, 0o755);
+      } catch {
+        // ignore restore failures during cleanup
+      }
+    }
     rmSync(repoRoot, { recursive: true, force: true });
   });
+
+  function makeUnreadable(dir: string): void {
+    chmodSync(dir, 0o000);
+    unreadableDirs.push(dir);
+  }
 
   function writeSkill(
     relativeDir: string,
@@ -111,5 +125,39 @@ describe('findReviewSkill', () => {
 
     const found = findReviewSkill(repoRoot);
     expect(found?.relativePath).toBe('.claude/skills/code-review/SKILL.md');
+  });
+
+  it('does not match on body text when YAML frontmatter is absent', () => {
+    const dir = join(repoRoot, '.cursor/skills/quality-gate');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'SKILL.md'),
+      '# Quality Gate\n\nPlease review every change carefully.\n',
+      'utf8',
+    );
+
+    expect(findReviewSkill(repoRoot)).toBeNull();
+  });
+
+  it('returns null instead of throwing when skills root is unreadable', () => {
+    const skillsRoot = join(repoRoot, '.cursor/skills');
+    mkdirSync(skillsRoot, { recursive: true });
+    makeUnreadable(skillsRoot);
+
+    expect(() => findReviewSkill(repoRoot)).not.toThrow();
+    expect(findReviewSkill(repoRoot)).toBeNull();
+  });
+
+  it('skips an unreadable nested directory and still finds a sibling skill', () => {
+    writeSkill('.cursor/skills/code-review', {
+      name: 'code-review',
+      description: 'Review code changes',
+    });
+    const lockedDir = join(repoRoot, '.cursor/skills/locked');
+    mkdirSync(lockedDir, { recursive: true });
+    makeUnreadable(lockedDir);
+
+    const found = findReviewSkill(repoRoot);
+    expect(found?.relativePath).toBe('.cursor/skills/code-review/SKILL.md');
   });
 });
