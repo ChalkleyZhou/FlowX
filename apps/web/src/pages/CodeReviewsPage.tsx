@@ -143,6 +143,9 @@ export function CodeReviewsPage() {
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild>
+              <Link to="/settings/code-review-sources">Code Review 数据源</Link>
+            </Button>
+            <Button variant="outline" asChild>
               <Link to="/settings/delivery-targets">投递目标</Link>
             </Button>
           </div>
@@ -259,7 +262,12 @@ export function CodeReviewsPage() {
           ) : (
             <EmptyState
               title="暂无 Code Review"
-              description="选择项目和日期后生成第一份每日 Code Review。"
+              description="选择项目和日期后生成第一份每日 Code Review。若生成结果为空跑，请先在「Code Review 数据源」中为需要审查的仓库添加数据源。"
+              action={
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/settings/code-review-sources">前往配置数据源</Link>
+                </Button>
+              }
             />
           )}
         </CardContent>

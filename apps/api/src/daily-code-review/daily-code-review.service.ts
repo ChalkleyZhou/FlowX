@@ -116,7 +116,7 @@ export class DailyCodeReviewService {
     const recordDate = dateAtBeijingMidnight(date);
 
     const repositoryIds = project.workspace.repositories.map((repository) => repository.id).sort();
-    const sources = await this.prisma.briefingSource.findMany({
+    const codeReviewSources = await this.prisma.codeReviewSource.findMany({
       where: {
         workspaceId: project.workspaceId,
         repositoryId: { in: repositoryIds },
@@ -124,8 +124,10 @@ export class DailyCodeReviewService {
       },
       orderBy: { createdAt: 'asc' },
     });
-    const sourceIds = sources.map((source) => source.id).sort();
-    const scope = {
+    const allowedRepoIds = new Set(codeReviewSources.map((source) => source.repositoryId));
+    const codeReviewSourceIds = codeReviewSources.map((source) => source.id).sort();
+
+    const scopeBase = {
       date,
       rangeLabel: date,
       periodStart: window.start.toISOString(),
@@ -133,9 +135,44 @@ export class DailyCodeReviewService {
       projectId,
       workspaceId: project.workspaceId,
       repositoryIds,
-      briefingSourceIds: sourceIds,
+      codeReviewSourceIds,
       cutoffHour,
     };
+
+    if (allowedRepoIds.size === 0) {
+      const scope = { ...scopeBase, briefingSourceIds: [] as string[] };
+      const scopeKey = stableJson(scope);
+      const existing = await this.prisma.dailyCodeReview.findFirst({
+        where: { projectId, scopeKey },
+      });
+      if (existing && !options.regenerate) {
+        return existing;
+      }
+
+      const payload = {
+        scope: scope as Prisma.InputJsonValue,
+        ...this.buildEmptyCodeReviewSourcesPayload(project.name, date),
+        ...(options.regenerate ? { sentAt: null } : {}),
+      };
+
+      if (existing) {
+        return this.prisma.dailyCodeReview.update({ where: { id: existing.id }, data: payload });
+      }
+      return this.prisma.dailyCodeReview.create({
+        data: { projectId, workspaceId: project.workspaceId, date: recordDate, scopeKey, ...payload },
+      });
+    }
+
+    const sources = await this.prisma.briefingSource.findMany({
+      where: {
+        workspaceId: project.workspaceId,
+        repositoryId: { in: [...allowedRepoIds] },
+        isActive: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const sourceIds = sources.map((source) => source.id).sort();
+    const scope = { ...scopeBase, briefingSourceIds: sourceIds };
     const scopeKey = stableJson(scope);
 
     const existing = await this.prisma.dailyCodeReview.findFirst({
@@ -148,21 +185,6 @@ export class DailyCodeReviewService {
       return existing;
     }
 
-    const eventRows = await this.prisma.briefingEvent.findMany({
-      where: {
-        briefingSourceId: { in: sourceIds },
-        occurredAt: { gte: window.start, lt: window.end },
-      },
-      orderBy: { occurredAt: 'asc' },
-    });
-    const rawPayloadByEventIndex = eventRows.map((row) => row.rawPayload);
-    const eventInputs = eventRows.map((row, index) => ({
-      event: normalizeStoredEvent(row.normalizedPayload),
-      rawPayload: rawPayloadByEventIndex[index],
-      repositoryId: row.repositoryId,
-    }));
-    const commits = collectDailyCommits(eventInputs);
-    const groups = groupCommitsForDailyReview(commits);
     const repositoryRecords = project.workspace.repositories.map((repository) => ({
       id: repository.id,
       name: repository.name,
@@ -174,6 +196,69 @@ export class DailyCodeReviewService {
     }));
     const repositoryLookupById = buildRepositoryLookupById(repositoryRecords);
     const repositoryLookupByName = buildRepositoryLookupByName(repositoryRecords);
+
+    const eventRows = await this.prisma.briefingEvent.findMany({
+      where: {
+        briefingSourceId: { in: sourceIds },
+        occurredAt: { gte: window.start, lt: window.end },
+      },
+      orderBy: { occurredAt: 'asc' },
+    });
+    const rawPayloadByEventIndex = eventRows.map((row) => row.rawPayload);
+    const eventInputs = eventRows
+      .filter((row) => allowedRepoIds.has(row.repositoryId))
+      .map((row, index) => ({
+        event: normalizeStoredEvent(row.normalizedPayload),
+        rawPayload: rawPayloadByEventIndex[index],
+        repositoryId: row.repositoryId,
+      }));
+    const commits = collectDailyCommits(eventInputs);
+
+    // Repos scoped to Code Review but without any BriefingSource-derived evidence
+    // still need to be reviewed: collect their commits directly via git log.
+    const repoIdsWithEvidence = new Set(
+      commits.map((commit) => commit.repositoryId).filter((id): id is string => Boolean(id)),
+    );
+    const gitFallbackRepoIds = [...allowedRepoIds].filter((id) => !repoIdsWithEvidence.has(id));
+    for (const repositoryId of gitFallbackRepoIds) {
+      const repository = repositoryLookupById.get(repositoryId);
+      if (!repository) {
+        continue;
+      }
+      try {
+        const branch = repository.currentBranch || repository.defaultBranch || null;
+        const gitCommits = await this.repositorySyncService.collectRecentCommits(
+          {
+            id: repository.id,
+            workspaceId: project.workspaceId,
+            name: repository.name,
+            url: repository.url,
+            defaultBranch: repository.defaultBranch,
+            currentBranch: repository.currentBranch,
+            localPath: repository.localPath,
+          },
+          { branch, since: window.start, until: window.end },
+        );
+        for (const commit of gitCommits) {
+          commits.push({
+            id: commit.id,
+            message: commit.message,
+            author: commit.author,
+            projectName: repository.name,
+            repositoryId: repository.id,
+            ref: branch || 'unknown',
+            occurredAt: commit.occurredAt,
+          });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `Failed to collect git commits for CodeReviewSource repository ${repositoryId} without a briefing source: ${message}`,
+        );
+      }
+    }
+
+    const groups = groupCommitsForDailyReview(commits);
     const recipient = toAiInvocationRecipient(authSession);
     const buildInput: BuildDailyCodeReviewInput = {
       project,
@@ -249,6 +334,40 @@ export class DailyCodeReviewService {
         ...payload,
       },
     });
+  }
+
+  /**
+   * Records an explicit empty-run result instead of a fake successful review when the
+   * project's workspace has no active CodeReviewSource. Code Review scope is now
+   * independent of BriefingSource, so this is the honest "nothing was reviewed" outcome.
+   */
+  private buildEmptyCodeReviewSourcesPayload(projectName: string, date: string) {
+    const units: DailyCodeReviewUnitResult[] = [];
+    const overallStatus = 'SKIPPED_NO_CR_SOURCES';
+    const markdownContent = renderDailyCodeReviewMarkdown({
+      projectName,
+      date,
+      rangeLabel: date,
+      units,
+      overallStatus,
+    });
+    const htmlContent = renderDailyCodeReviewHtml({
+      projectName,
+      date,
+      rangeLabel: date,
+      units,
+      overallStatus,
+    });
+
+    return {
+      status: overallStatus,
+      unitsJson: units as unknown as Prisma.InputJsonValue,
+      markdownContent,
+      htmlContent,
+      generatedAt: new Date(),
+      errorMessage:
+        '未配置 Code Review 数据源（CodeReviewSource），本次为空跑，未审查任何仓库。请在设置中为需要审查的仓库添加 Code Review 数据源。',
+    };
   }
 
   private async buildGeneratedDailyCodeReviewPayload(input: BuildDailyCodeReviewInput) {

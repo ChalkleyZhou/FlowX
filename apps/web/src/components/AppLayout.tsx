@@ -33,6 +33,7 @@ const secondaryItems = [
   { key: '/settings/ai-credentials', label: 'AI 凭据' },
   { key: '/settings/git-credentials', label: 'Git 凭据' },
   { key: '/settings/briefing-sources', label: '简报数据源' },
+  { key: '/settings/code-review-sources', label: 'Code Review 数据源' },
   { key: '/settings/delivery-targets', label: '投递目标' },
 ];
 

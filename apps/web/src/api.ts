@@ -7,6 +7,7 @@ import type {
   BriefingPeriod,
   BriefingSource,
   Bug,
+  CodeReviewSource,
   DailyCodeReview,
   DeliveryTarget,
   DeployJobRecord,
@@ -428,6 +429,24 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
+  getCodeReviewSources: (params?: { workspaceId?: string }) =>
+    request<CodeReviewSource[]>(`/code-review-sources${queryString(params)}`),
+  createCodeReviewSource: (payload: {
+    workspaceId: string;
+    repositoryId: string;
+    isActive?: boolean;
+  }) =>
+    request<CodeReviewSource>('/code-review-sources', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateCodeReviewSource: (id: string, payload: { isActive?: boolean }) =>
+    request<CodeReviewSource>(`/code-review-sources/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteCodeReviewSource: (id: string) =>
+    request<{ success: true }>(`/code-review-sources/${id}`, { method: 'DELETE' }),
   getDeliveryTargets: (params?: { workspaceId?: string; projectId?: string }) =>
     request<DeliveryTarget[]>(`/delivery-targets${queryString(params)}`),
   createDeliveryTarget: (payload: {

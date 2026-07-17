@@ -127,6 +127,17 @@ export interface BriefingSource {
   updatedAt?: string;
 }
 
+export interface CodeReviewSource {
+  id: string;
+  workspaceId: string;
+  repositoryId: string;
+  isActive: boolean;
+  workspace?: Workspace;
+  repository?: Repository;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ProjectBriefingConfig {
   id?: string;
   projectId: string;

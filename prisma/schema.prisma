@@ -67,6 +67,7 @@ model Workspace {
   briefingSources BriefingSource[]
   briefingEvents BriefingEvent[]
   briefings    Briefing[]
+  codeReviewSources CodeReviewSource[]
   dailyCodeReviews DailyCodeReview[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -158,6 +159,7 @@ model Repository {
   bugs                    Bug[]
   briefingSources         BriefingSource[]
   briefingEvents          BriefingEvent[]
+  codeReviewSource        CodeReviewSource?
   createdAt               DateTime                @default(now())
   updatedAt               DateTime                @updatedAt
 }
@@ -219,6 +221,21 @@ model BriefingEvent {
   @@index([workspaceId, occurredAt])
   @@index([repositoryId, occurredAt])
   @@index([eventType, occurredAt])
+}
+
+model CodeReviewSource {
+  id            String     @id @default(cuid())
+  workspaceId   String
+  workspace     Workspace  @relation(fields: [workspaceId], references: [id])
+  repositoryId  String
+  repository    Repository @relation(fields: [repositoryId], references: [id])
+  isActive      Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([repositoryId])
+  @@index([workspaceId])
+  @@index([isActive])
 }
 
 model ProjectBriefingConfig {

@@ -7,17 +7,21 @@ describe('DailyCodeReviewService', () => {
   const findFirstReview = vi.fn();
   const findManySources = vi.fn();
   const findManyEvents = vi.fn();
+  const findManyCodeReviewSources = vi.fn();
   const createReview = vi.fn();
   const updateReview = vi.fn();
   const reviewUnit = vi.fn();
   const sendDailyCodeReview = vi.fn();
   const ensureRepositoryReadyForReview = vi.fn();
   const buildCommitDiffBundle = vi.fn();
+  const collectRecentCommits = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.AI_EXECUTOR_PROVIDER = 'mock';
     buildCommitDiffBundle.mockResolvedValue('diff --git a/file.ts b/file.ts\n+change');
+    collectRecentCommits.mockResolvedValue([]);
+    findManyCodeReviewSources.mockResolvedValue([]);
   });
 
   function createService() {
@@ -34,10 +38,11 @@ describe('DailyCodeReviewService', () => {
         },
         briefingSource: { findMany: findManySources },
         briefingEvent: { findMany: findManyEvents },
+        codeReviewSource: { findMany: findManyCodeReviewSources },
       } as never,
       { reviewUnit } as never,
       { sendDailyCodeReview } as never,
-      { ensureRepositoryReadyForReview, buildCommitDiffBundle } as never,
+      { ensureRepositoryReadyForReview, buildCommitDiffBundle, collectRecentCommits } as never,
     );
   }
 
@@ -64,6 +69,7 @@ describe('DailyCodeReviewService', () => {
     });
     findUniqueConfig.mockResolvedValue({ dailyHour: 22 });
     findFirstReview.mockResolvedValue(null);
+    findManyCodeReviewSources.mockResolvedValue([{ id: 'cr-source-1', repositoryId: 'repo-1' }]);
     findManySources.mockResolvedValue([
       { id: 'source-1', repositoryId: 'repo-1' },
     ]);
@@ -213,6 +219,7 @@ describe('DailyCodeReviewService', () => {
     });
     findUniqueConfig.mockResolvedValue({ dailyHour: 22 });
     findFirstReview.mockResolvedValue(null);
+    findManyCodeReviewSources.mockResolvedValue([{ id: 'cr-source-1', repositoryId: 'repo-1' }]);
     findManySources.mockResolvedValue([{ id: 'source-1', repositoryId: 'repo-1' }]);
     findManyEvents.mockResolvedValue([
       {
@@ -296,6 +303,7 @@ describe('DailyCodeReviewService', () => {
     });
     findUniqueConfig.mockResolvedValue({ dailyHour: 22 });
     findFirstReview.mockResolvedValue(null);
+    findManyCodeReviewSources.mockResolvedValue([{ id: 'cr-source-1', repositoryId: 'repo-1' }]);
     findManySources.mockResolvedValue([{ id: 'source-1', repositoryId: 'repo-1' }]);
     findManyEvents.mockResolvedValue([
       {
@@ -361,6 +369,7 @@ describe('DailyCodeReviewService', () => {
       });
       findUniqueConfig.mockResolvedValue({ dailyHour: 22 });
       findFirstReview.mockResolvedValue(null);
+      findManyCodeReviewSources.mockResolvedValue([{ id: 'cr-source-1', repositoryId: 'repo-1' }]);
       findManySources.mockResolvedValue([{ id: 'source-1', repositoryId: 'repo-1' }]);
       findManyEvents.mockResolvedValue([
         {
@@ -433,6 +442,7 @@ describe('DailyCodeReviewService', () => {
     });
     findUniqueConfig.mockResolvedValue({ dailyHour: 22 });
     findFirstReview.mockResolvedValue(null);
+    findManyCodeReviewSources.mockResolvedValue([{ id: 'cr-source-r2', repositoryId: 'repo-r2' }]);
     findManySources.mockResolvedValue([{ id: 'source-1', repositoryId: 'repo-r2' }]);
     findManyEvents.mockResolvedValue([
       {
@@ -490,6 +500,167 @@ describe('DailyCodeReviewService', () => {
               status: 'COMPLETED',
             }),
           ],
+        }),
+      }),
+    );
+  });
+
+  it('only reviews CodeReviewSource-scoped repositories even when a different repo only has a BriefingSource', async () => {
+    findUniqueProject.mockResolvedValue({
+      id: 'project-1',
+      name: 'FlowX',
+      workspaceId: 'workspace-1',
+      workspace: {
+        id: 'workspace-1',
+        name: '研发平台',
+        repositories: [
+          {
+            id: 'repo-a',
+            name: 'repo-a-briefing-only',
+            url: 'https://example.com/repo-a.git',
+            defaultBranch: 'main',
+            currentBranch: 'main',
+            localPath: '/tmp/repo-a',
+            syncStatus: 'READY',
+          },
+          {
+            id: 'repo-b',
+            name: 'repo-b-cr-only',
+            url: 'https://example.com/repo-b.git',
+            defaultBranch: 'main',
+            currentBranch: 'main',
+            localPath: '/tmp/repo-b',
+            syncStatus: 'READY',
+          },
+        ],
+      },
+    });
+    findUniqueConfig.mockResolvedValue({ dailyHour: 22 });
+    findFirstReview.mockResolvedValue(null);
+
+    // Repo A only has a BriefingSource; Repo B only has a CodeReviewSource.
+    findManyCodeReviewSources.mockResolvedValue([{ id: 'cr-source-b', repositoryId: 'repo-b' }]);
+
+    const briefingSources = [{ id: 'bs-a', repositoryId: 'repo-a' }];
+    findManySources.mockImplementation(async ({ where }: { where: { repositoryId: { in: string[] } } }) =>
+      briefingSources.filter((source) => where.repositoryId.in.includes(source.repositoryId)),
+    );
+
+    const briefingEvents = [
+      {
+        repositoryId: 'repo-a',
+        briefingSourceId: 'bs-a',
+        normalizedPayload: {
+          eventType: 'push',
+          projectName: 'repo-a-briefing-only',
+          occurredAt: '2026-07-07T10:00:00.000Z',
+          summary: { ref: 'main', commitCount: 1 },
+          commits: [{ id: 'aaa111', message: 'feat: repo a change' }],
+        },
+        rawPayload: {},
+      },
+    ];
+    findManyEvents.mockImplementation(
+      async ({ where }: { where: { briefingSourceId: { in: string[] } } }) =>
+        briefingEvents.filter((event) => where.briefingSourceId.in.includes(event.briefingSourceId)),
+    );
+
+    // Repo B has no BriefingSource, so its evidence comes from git log via repo sync.
+    collectRecentCommits.mockImplementation(async (repository: { id: string }) => {
+      if (repository.id !== 'repo-b') {
+        return [];
+      }
+      return [
+        {
+          id: 'bbb111',
+          message: 'feat: repo b change from git log',
+          author: 'dev',
+          occurredAt: '2026-07-07T09:00:00.000Z',
+        },
+      ];
+    });
+
+    ensureRepositoryReadyForReview.mockImplementation(
+      async (repository: { id: string; name: string }, branch: string) => ({
+        id: repository.id,
+        name: repository.name,
+        url: `https://example.com/${repository.name}.git`,
+        defaultBranch: 'main',
+        currentBranch: branch,
+        localPath: `/tmp/${repository.name}`,
+        syncStatus: 'READY',
+      }),
+    );
+    reviewUnit.mockResolvedValue({
+      status: 'COMPLETED',
+      issues: [],
+      bugs: [],
+      missingTests: [],
+      suggestions: [],
+      impactScope: [],
+    });
+    createReview.mockImplementation(async ({ data }) => ({ id: 'review-1', ...data }));
+
+    await createService().generateProjectDailyCodeReview('project-1', {
+      date: '2026-07-07',
+      regenerate: true,
+    });
+
+    expect(reviewUnit).toHaveBeenCalledTimes(1);
+    expect(reviewUnit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        unit: expect.objectContaining({ repositoryId: 'repo-b' }),
+      }),
+    );
+    expect(createReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          unitsJson: [expect.objectContaining({ repositoryId: 'repo-b', status: 'COMPLETED' })],
+        }),
+      }),
+    );
+  });
+
+  it('records an explicit empty-run result when no active CodeReviewSource exists', async () => {
+    findUniqueProject.mockResolvedValue({
+      id: 'project-1',
+      name: 'FlowX',
+      workspaceId: 'workspace-1',
+      workspace: {
+        id: 'workspace-1',
+        name: '研发平台',
+        repositories: [
+          {
+            id: 'repo-1',
+            name: 'flowx-api',
+            url: 'https://example.com/flowx-api.git',
+            defaultBranch: 'main',
+            currentBranch: 'main',
+            localPath: '/tmp/flowx-api',
+            syncStatus: 'READY',
+          },
+        ],
+      },
+    });
+    findUniqueConfig.mockResolvedValue({ dailyHour: 22 });
+    findFirstReview.mockResolvedValue(null);
+    findManyCodeReviewSources.mockResolvedValue([]);
+    createReview.mockImplementation(async ({ data }) => ({ id: 'review-1', ...data }));
+
+    await createService().generateProjectDailyCodeReview('project-1', {
+      date: '2026-07-07',
+      regenerate: true,
+    });
+
+    expect(findManySources).not.toHaveBeenCalled();
+    expect(findManyEvents).not.toHaveBeenCalled();
+    expect(reviewUnit).not.toHaveBeenCalled();
+    expect(createReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'SKIPPED_NO_CR_SOURCES',
+          unitsJson: [],
+          errorMessage: expect.stringContaining('CodeReviewSource'),
         }),
       }),
     );

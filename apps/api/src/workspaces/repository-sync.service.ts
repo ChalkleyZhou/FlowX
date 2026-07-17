@@ -19,6 +19,29 @@ const execFile = promisify(execFileCallback);
 const GIT_CLONE_TIMEOUT_MS = 900_000;
 const GIT_OPERATION_TIMEOUT_MS = 180_000;
 
+const GIT_LOG_FIELD_SEP = '\x1f';
+const GIT_LOG_FORMAT = `%H${GIT_LOG_FIELD_SEP}%an${GIT_LOG_FIELD_SEP}%aI${GIT_LOG_FIELD_SEP}%s`;
+
+export function parseGitLogOutput(
+  stdout: string,
+  fallbackOccurredAt: string,
+): Array<{ id: string; message: string; author?: string; occurredAt: string }> {
+  return stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [id, author, occurredAt, message] = line.split(GIT_LOG_FIELD_SEP);
+      return {
+        id: id ?? '',
+        message: message ?? '',
+        author: author?.trim() || undefined,
+        occurredAt: occurredAt?.trim() || fallbackOccurredAt,
+      };
+    })
+    .filter((commit) => Boolean(commit.id));
+}
+
 type RepositoryRecord = {
   id: string;
   workspaceId: string;
@@ -184,6 +207,38 @@ export class RepositorySyncService {
         retryCloneOnMissingCommits: false,
       });
     }
+  }
+
+  /**
+   * Collects commits directly from git for repositories that have no BriefingSource
+   * (and therefore no webhook-derived evidence). Syncs the repository, then reads
+   * `git log` on the target branch within [since, until).
+   */
+  async collectRecentCommits(
+    repository: RepositoryRecord,
+    options: { branch?: string | null; since: Date; until: Date },
+  ): Promise<Array<{ id: string; message: string; author?: string; occurredAt: string }>> {
+    const targetBranch = this.resolveReviewBranch(repository, options.branch);
+    const synced = await this.syncRepository(repository, { branch: targetBranch });
+    if (synced.syncStatus !== 'READY' || !synced.localPath) {
+      throw new InternalServerErrorException(
+        synced.syncError?.trim() || '代码库同步失败，无法收集提交记录。',
+      );
+    }
+
+    const { stdout } = await execFile(
+      'git',
+      [
+        'log',
+        `--since=${options.since.toISOString()}`,
+        `--until=${options.until.toISOString()}`,
+        `--pretty=format:${GIT_LOG_FORMAT}`,
+        '--no-color',
+      ],
+      { cwd: synced.localPath, env: process.env, maxBuffer: 4 * 1024 * 1024 },
+    );
+
+    return parseGitLogOutput(stdout, options.since.toISOString());
   }
 
   async buildCommitDiffBundle(

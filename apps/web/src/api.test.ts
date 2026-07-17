@@ -219,4 +219,28 @@ describe('api helpers', () => {
       ['http://localhost:3000/delivery-targets/target-1', 'DELETE'],
     ]);
   });
+
+  it('calls code review source endpoints with expected methods and payloads', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.getCodeReviewSources({ workspaceId: 'workspace-1' });
+    await api.createCodeReviewSource({
+      workspaceId: 'workspace-1',
+      repositoryId: 'repo-1',
+    });
+    await api.updateCodeReviewSource('cr-source-1', { isActive: false });
+    await api.deleteCodeReviewSource('cr-source-1');
+
+    expect(fetchMock.mock.calls.map((call) => [call[0], call[1]?.method ?? 'GET'])).toEqual([
+      ['http://localhost:3000/code-review-sources?workspaceId=workspace-1', 'GET'],
+      ['http://localhost:3000/code-review-sources', 'POST'],
+      ['http://localhost:3000/code-review-sources/cr-source-1', 'PATCH'],
+      ['http://localhost:3000/code-review-sources/cr-source-1', 'DELETE'],
+    ]);
+  });
 });
