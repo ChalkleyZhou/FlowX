@@ -3,12 +3,14 @@ import { DeliveryTargetsService } from './delivery-targets.service';
 
 describe('DeliveryTargetsService', () => {
   const targetFindMany = vi.fn();
+  const targetFindUnique = vi.fn();
   const targetCreate = vi.fn();
   const targetUpdate = vi.fn();
   const targetDelete = vi.fn();
   const logDeleteMany = vi.fn();
   const logCreate = vi.fn();
   const briefingUpdate = vi.fn();
+  const dailyCodeReviewUpdate = vi.fn();
   const projectFindUnique = vi.fn();
   const userOrganizationFindUnique = vi.fn();
   const organizationFindUnique = vi.fn();
@@ -35,11 +37,13 @@ describe('DeliveryTargetsService', () => {
       {
         deliveryTarget: {
           findMany: targetFindMany,
+          findUnique: targetFindUnique,
           create: targetCreate,
           update: targetUpdate,
         },
         deliveryLog: { create: logCreate },
         briefing: { update: briefingUpdate },
+        dailyCodeReview: { update: dailyCodeReviewUpdate },
         project: { findUnique: projectFindUnique },
         userOrganization: { findUnique: userOrganizationFindUnique },
         organization: { findUnique: organizationFindUnique },
@@ -75,7 +79,76 @@ describe('DeliveryTargetsService', () => {
         dingtalkWebhookUrl: null,
         dingtalkSecret: null,
         isActive: true,
+        forBriefing: true,
+        forCodeReview: true,
       },
+    });
+  });
+
+  it('allows creating a target scoped to a single delivery purpose', async () => {
+    targetCreate.mockResolvedValue({ id: 'target-cr-only' });
+
+    await createService().createTarget({
+      projectId: 'project-1',
+      type: 'EMAIL',
+      name: 'CR only',
+      emailAddress: 'cr@example.com',
+      forBriefing: false,
+      forCodeReview: true,
+    });
+
+    expect(targetCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        forBriefing: false,
+        forCodeReview: true,
+      }),
+    });
+  });
+
+  it('rejects creating a delivery target with both purposes disabled', async () => {
+    await expect(
+      createService().createTarget({
+        projectId: 'project-1',
+        type: 'EMAIL',
+        name: 'Nowhere',
+        emailAddress: 'nowhere@example.com',
+        forBriefing: false,
+        forCodeReview: false,
+      }),
+    ).rejects.toThrow('At least one delivery purpose');
+
+    expect(targetCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects updating a delivery target when both purposes would end up disabled', async () => {
+    targetFindUnique.mockResolvedValue({
+      id: 'target-1',
+      forBriefing: true,
+      forCodeReview: false,
+    });
+
+    await expect(
+      createService().updateTarget('target-1', { forBriefing: false }),
+    ).rejects.toThrow('At least one delivery purpose');
+
+    expect(targetUpdate).not.toHaveBeenCalled();
+  });
+
+  it('allows updating a single purpose flag when the other stays enabled', async () => {
+    targetFindUnique.mockResolvedValue({
+      id: 'target-1',
+      forBriefing: true,
+      forCodeReview: true,
+    });
+    targetUpdate.mockResolvedValue({ id: 'target-1' });
+
+    await expect(
+      createService().updateTarget('target-1', { forBriefing: false }),
+    ).resolves.toEqual({ id: 'target-1' });
+
+    expect(targetUpdate).toHaveBeenCalledWith({
+      where: { id: 'target-1' },
+      data: { forBriefing: false },
     });
   });
 
@@ -121,6 +194,8 @@ describe('DeliveryTargetsService', () => {
         dingtalkWebhookUrl: null,
         dingtalkSecret: null,
         isActive: true,
+        forBriefing: true,
+        forCodeReview: true,
       },
     });
   });
@@ -152,6 +227,8 @@ describe('DeliveryTargetsService', () => {
         dingtalkWebhookUrl: null,
         dingtalkSecret: null,
         isActive: true,
+        forBriefing: true,
+        forCodeReview: true,
       },
     });
   });
@@ -204,7 +281,7 @@ describe('DeliveryTargetsService', () => {
     ).resolves.toEqual({ successCount: 1, targetCount: 2 });
 
     expect(targetFindMany).toHaveBeenCalledWith({
-      where: { projectId: 'project-1', isActive: true },
+      where: { projectId: 'project-1', isActive: true, forBriefing: true },
       orderBy: { createdAt: 'asc' },
     });
     expect(logCreate).toHaveBeenCalledTimes(2);
@@ -263,6 +340,73 @@ describe('DeliveryTargetsService', () => {
       corpId: 'corp-1',
       title: '信息化系统 · 项目变化简报 · 2026-06-03',
       markdown: '# Briefing',
+    });
+  });
+
+  it('sendBriefing only queries active targets with forBriefing enabled', async () => {
+    targetFindMany.mockResolvedValue([
+      {
+        id: 'target-briefing-only',
+        type: 'EMAIL',
+        name: 'Briefing only',
+        userId: null,
+        organizationId: null,
+        emailAddress: 'briefing@example.com',
+        dingtalkWebhookUrl: null,
+        dingtalkSecret: null,
+      },
+    ]);
+    sendEmail.mockResolvedValue({ messageId: 'msg-briefing' });
+
+    const result = await createService().sendBriefing({
+      id: 'briefing-1',
+      projectId: 'project-1',
+      projectName: '信息化系统',
+      date: new Date('2026-06-03T00:00:00.000Z'),
+      markdownContent: '# Briefing',
+      htmlContent: '<h1>Briefing</h1>',
+    });
+
+    expect(result.targetCount).toBe(1);
+    expect(targetFindMany).toHaveBeenCalledWith({
+      where: { projectId: 'project-1', isActive: true, forBriefing: true },
+      orderBy: { createdAt: 'asc' },
+    });
+  });
+
+  it('sendDailyCodeReview only queries active targets with forCodeReview enabled', async () => {
+    targetFindMany.mockResolvedValue([
+      {
+        id: 'target-cr-only',
+        type: 'EMAIL',
+        name: 'Code review only',
+        userId: null,
+        organizationId: null,
+        emailAddress: 'cr@example.com',
+        dingtalkWebhookUrl: null,
+        dingtalkSecret: null,
+      },
+    ]);
+    sendEmail.mockResolvedValue({ messageId: 'msg-cr' });
+    dailyCodeReviewUpdate.mockResolvedValue({ id: 'review-1' });
+
+    const result = await createService().sendDailyCodeReview({
+      id: 'review-1',
+      projectId: 'project-1',
+      projectName: '信息化系统',
+      date: new Date('2026-06-03T00:00:00.000Z'),
+      markdownContent: '# Code Review',
+      htmlContent: '<h1>Code Review</h1>',
+    });
+
+    expect(result.targetCount).toBe(1);
+    expect(targetFindMany).toHaveBeenCalledWith({
+      where: { projectId: 'project-1', isActive: true, forCodeReview: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(dailyCodeReviewUpdate).toHaveBeenCalledWith({
+      where: { id: 'review-1' },
+      data: { sentAt: expect.any(Date), errorMessage: null },
     });
   });
 });

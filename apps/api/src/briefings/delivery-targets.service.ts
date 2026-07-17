@@ -64,7 +64,17 @@ export class DeliveryTargetsService {
     return this.prisma.deliveryTarget.create({ data });
   }
 
-  updateTarget(id: string, dto: UpdateDeliveryTargetDto) {
+  async updateTarget(id: string, dto: UpdateDeliveryTargetDto) {
+    if (dto.forBriefing !== undefined || dto.forCodeReview !== undefined) {
+      const current = await this.prisma.deliveryTarget.findUnique({ where: { id } });
+      if (!current) {
+        throw new NotFoundException('Delivery target not found.');
+      }
+      const nextForBriefing = dto.forBriefing ?? current.forBriefing;
+      const nextForCodeReview = dto.forCodeReview ?? current.forCodeReview;
+      this.assertHasDeliveryPurpose(nextForBriefing, nextForCodeReview);
+    }
+
     return this.prisma.deliveryTarget.update({
       where: { id },
       data: {
@@ -80,6 +90,8 @@ export class DeliveryTargetsService {
           ? {}
           : { dingtalkSecret: dto.dingtalkSecret.trim() || null }),
         ...(dto.isActive === undefined ? {} : { isActive: dto.isActive }),
+        ...(dto.forBriefing === undefined ? {} : { forBriefing: dto.forBriefing }),
+        ...(dto.forCodeReview === undefined ? {} : { forCodeReview: dto.forCodeReview }),
       },
     });
   }
@@ -96,6 +108,7 @@ export class DeliveryTargetsService {
       where: {
         projectId: briefing.projectId,
         isActive: true,
+        forBriefing: true,
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -153,6 +166,7 @@ export class DeliveryTargetsService {
       where: {
         projectId: review.projectId,
         isActive: true,
+        forCodeReview: true,
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -247,6 +261,10 @@ export class DeliveryTargetsService {
       targetOrganizationId = null;
     }
 
+    const forBriefing = dto.forBriefing ?? true;
+    const forCodeReview = dto.forCodeReview ?? true;
+    this.assertHasDeliveryPurpose(forBriefing, forCodeReview);
+
     return {
       projectId: project.id,
       type,
@@ -257,7 +275,17 @@ export class DeliveryTargetsService {
       dingtalkWebhookUrl: dto.dingtalkWebhookUrl?.trim() || null,
       dingtalkSecret: dto.dingtalkSecret?.trim() || null,
       isActive: dto.isActive ?? true,
+      forBriefing,
+      forCodeReview,
     };
+  }
+
+  private assertHasDeliveryPurpose(forBriefing: boolean, forCodeReview: boolean) {
+    if (!forBriefing && !forCodeReview) {
+      throw new BadRequestException(
+        'At least one delivery purpose (briefing or code review) must stay enabled.',
+      );
+    }
   }
 
   private async assertOrganizationMember(organizationId: string, userId: string) {

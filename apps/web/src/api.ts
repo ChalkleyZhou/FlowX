@@ -439,6 +439,8 @@ export const api = {
     dingtalkWebhookUrl?: string;
     dingtalkSecret?: string;
     isActive?: boolean;
+    forBriefing?: boolean;
+    forCodeReview?: boolean;
   }) =>
     request<DeliveryTarget>('/delivery-targets', {
       method: 'POST',
@@ -453,6 +455,8 @@ export const api = {
       dingtalkWebhookUrl?: string;
       dingtalkSecret?: string;
       isActive?: boolean;
+      forBriefing?: boolean;
+      forCodeReview?: boolean;
     },
   ) =>
     request<DeliveryTarget>(`/delivery-targets/${id}`, {

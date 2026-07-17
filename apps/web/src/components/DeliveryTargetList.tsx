@@ -31,10 +31,14 @@ function TargetRow({
   target,
   onToggle,
   onDelete,
+  onToggleForBriefing,
+  onToggleForCodeReview,
 }: {
   target: DeliveryTarget;
   onToggle: (target: DeliveryTarget) => void;
   onDelete: (target: DeliveryTarget) => void;
+  onToggleForBriefing: (target: DeliveryTarget) => void;
+  onToggleForCodeReview: (target: DeliveryTarget) => void;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2.5">
@@ -48,6 +52,18 @@ function TargetRow({
         </Badge>
         <Button variant="outline" size="sm" onClick={() => onToggle(target)}>
           {target.isActive ? '停用' : '启用'}
+        </Button>
+        <Badge variant={target.forBriefing ? 'default' : 'outline'}>
+          简报{target.forBriefing ? '开' : '关'}
+        </Badge>
+        <Button variant="outline" size="sm" onClick={() => onToggleForBriefing(target)}>
+          {target.forBriefing ? '停用简报' : '启用简报'}
+        </Button>
+        <Badge variant={target.forCodeReview ? 'default' : 'outline'}>
+          Code Review{target.forCodeReview ? '开' : '关'}
+        </Badge>
+        <Button variant="outline" size="sm" onClick={() => onToggleForCodeReview(target)}>
+          {target.forCodeReview ? '停用 Code Review' : '启用 Code Review'}
         </Button>
         <Button variant="destructive" size="sm" onClick={() => onDelete(target)}>
           删除
@@ -63,12 +79,16 @@ function TargetTypeGroups({
   onToggleType,
   onToggleTarget,
   onDeleteTarget,
+  onToggleTargetForBriefing,
+  onToggleTargetForCodeReview,
 }: {
   targets: DeliveryTarget[];
   expandedTypes: Set<string>;
   onToggleType: (type: string) => void;
   onToggleTarget: (target: DeliveryTarget) => void;
   onDeleteTarget: (target: DeliveryTarget) => void;
+  onToggleTargetForBriefing: (target: DeliveryTarget) => void;
+  onToggleTargetForCodeReview: (target: DeliveryTarget) => void;
 }) {
   const targetsByType = useMemo(() => {
     const groups = new Map<string, DeliveryTarget[]>();
@@ -122,6 +142,8 @@ function TargetTypeGroups({
                     target={target}
                     onToggle={onToggleTarget}
                     onDelete={onDeleteTarget}
+                    onToggleForBriefing={onToggleTargetForBriefing}
+                    onToggleForCodeReview={onToggleTargetForCodeReview}
                   />
                 ))}
               </div>
@@ -142,6 +164,8 @@ function ProjectTargetSection({
   onToggleType,
   onToggleTarget,
   onDeleteTarget,
+  onToggleTargetForBriefing,
+  onToggleTargetForCodeReview,
 }: {
   project: Project;
   targets: DeliveryTarget[];
@@ -151,6 +175,8 @@ function ProjectTargetSection({
   onToggleType: (type: string) => void;
   onToggleTarget: (target: DeliveryTarget) => void;
   onDeleteTarget: (target: DeliveryTarget) => void;
+  onToggleTargetForBriefing: (target: DeliveryTarget) => void;
+  onToggleTargetForCodeReview: (target: DeliveryTarget) => void;
 }) {
   const activeCount = targets.filter((item) => item.isActive).length;
 
@@ -181,6 +207,8 @@ function ProjectTargetSection({
             onToggleType={onToggleType}
             onToggleTarget={onToggleTarget}
             onDeleteTarget={onDeleteTarget}
+            onToggleTargetForBriefing={onToggleTargetForBriefing}
+            onToggleTargetForCodeReview={onToggleTargetForCodeReview}
           />
         </div>
       ) : null}
@@ -193,11 +221,15 @@ export function DeliveryTargetList({
   targets,
   onToggleTarget,
   onDeleteTarget,
+  onToggleTargetForBriefing,
+  onToggleTargetForCodeReview,
 }: {
   projects: Project[];
   targets: DeliveryTarget[];
   onToggleTarget: (target: DeliveryTarget) => void;
   onDeleteTarget: (target: DeliveryTarget) => void;
+  onToggleTargetForBriefing: (target: DeliveryTarget) => void;
+  onToggleTargetForCodeReview: (target: DeliveryTarget) => void;
 }) {
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => new Set());
   const [expandedTypesByProject, setExpandedTypesByProject] = useState<Map<string, Set<string>>>(
@@ -272,6 +304,8 @@ export function DeliveryTargetList({
             onToggleType={(type) => toggleType(project.id, type)}
             onToggleTarget={onToggleTarget}
             onDeleteTarget={onDeleteTarget}
+            onToggleTargetForBriefing={onToggleTargetForBriefing}
+            onToggleTargetForCodeReview={onToggleTargetForCodeReview}
           />
         );
       })}

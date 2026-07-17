@@ -54,6 +54,8 @@ describe('BriefingDetailPage', () => {
             type: 'EMAIL',
             name: 'Team',
             isActive: true,
+            forBriefing: true,
+            forCodeReview: true,
           },
         },
       ],

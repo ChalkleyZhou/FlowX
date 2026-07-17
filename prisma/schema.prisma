@@ -317,6 +317,8 @@ model DeliveryTarget {
   dingtalkWebhookUrl String?
   dingtalkSecret     String?
   isActive           Boolean       @default(true)
+  forBriefing        Boolean       @default(true)
+  forCodeReview      Boolean       @default(true)
   deliveryLogs       DeliveryLog[]
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt

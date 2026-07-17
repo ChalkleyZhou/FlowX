@@ -202,6 +202,8 @@ export interface DeliveryTarget {
   dingtalkWebhookUrl?: string | null;
   dingtalkSecret?: string | null;
   isActive: boolean;
+  forBriefing: boolean;
+  forCodeReview: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

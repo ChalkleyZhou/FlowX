@@ -32,5 +32,13 @@ export class CreateDeliveryTargetDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  forBriefing?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  forCodeReview?: boolean;
 }
 

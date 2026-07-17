@@ -25,6 +25,8 @@ export function DeliveryTargetsPage() {
   const [selectedMemberId, setSelectedMemberId] = useState(MANUAL_MEMBER_VALUE);
   const [address, setAddress] = useState('');
   const [secret, setSecret] = useState('');
+  const [forBriefing, setForBriefing] = useState(true);
+  const [forCodeReview, setForCodeReview] = useState(true);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
@@ -91,6 +93,8 @@ export function DeliveryTargetsPage() {
     setAddress('');
     setSecret('');
     setSelectedMemberId(MANUAL_MEMBER_VALUE);
+    setForBriefing(true);
+    setForCodeReview(true);
   }
 
   async function createTarget() {
@@ -106,6 +110,10 @@ export function DeliveryTargetsPage() {
       toast.error('请填写钉钉机器人 Webhook');
       return;
     }
+    if (!forBriefing && !forCodeReview) {
+      toast.error('请至少启用一个投递用途（简报或 Code Review）');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -113,6 +121,8 @@ export function DeliveryTargetsPage() {
         projectId,
         type,
         name,
+        forBriefing,
+        forCodeReview,
         ...(usesMemberPicker && selectedMemberId !== MANUAL_MEMBER_VALUE
           ? { userId: selectedMemberId }
           : {}),
@@ -130,6 +140,20 @@ export function DeliveryTargetsPage() {
   async function toggleTarget(target: DeliveryTarget) {
     await api.updateDeliveryTarget(target.id, { isActive: !target.isActive });
     await refresh(workspaceId);
+  }
+
+  async function toggleTargetPurpose(target: DeliveryTarget, purpose: 'forBriefing' | 'forCodeReview') {
+    const nextValue = !target[purpose];
+    if (!nextValue && !target[purpose === 'forBriefing' ? 'forCodeReview' : 'forBriefing']) {
+      toast.error('请至少保留一个投递用途（简报或 Code Review）');
+      return;
+    }
+    try {
+      await api.updateDeliveryTarget(target.id, { [purpose]: nextValue });
+      await refresh(workspaceId);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '更新投递用途失败');
+    }
   }
 
   async function deleteTarget(target: DeliveryTarget) {
@@ -202,6 +226,28 @@ export function DeliveryTargetsPage() {
               onChange={(event) => setAddress(event.target.value)}
             />
           ) : null}
+          <div className="flex flex-wrap items-center gap-4 md:col-span-2 xl:col-span-3">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-border accent-primary"
+                checked={forBriefing}
+                onChange={(event) => setForBriefing(event.target.checked)}
+                aria-label="用于简报"
+              />
+              用于简报
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-border accent-primary"
+                checked={forCodeReview}
+                onChange={(event) => setForCodeReview(event.target.checked)}
+                aria-label="用于 Code Review"
+              />
+              用于 Code Review
+            </label>
+          </div>
           <div className="flex gap-2 md:col-span-2 xl:col-span-3">
             {usesWebhook ? <Input placeholder="签名密钥" value={secret} onChange={(event) => setSecret(event.target.value)} /> : null}
             <Button onClick={() => void createTarget()} disabled={saving || !projectId}>
@@ -223,6 +269,8 @@ export function DeliveryTargetsPage() {
               targets={targets}
               onToggleTarget={(target) => void toggleTarget(target)}
               onDeleteTarget={(target) => void deleteTarget(target)}
+              onToggleTargetForBriefing={(target) => void toggleTargetPurpose(target, 'forBriefing')}
+              onToggleTargetForCodeReview={(target) => void toggleTargetPurpose(target, 'forCodeReview')}
             />
           )}
         </CardContent>
