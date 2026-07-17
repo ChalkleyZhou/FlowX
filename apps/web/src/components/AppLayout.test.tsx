@@ -274,6 +274,26 @@ describe('AppLayout', () => {
     expect(sidebar?.className).toContain('overflow-y-auto');
   });
 
+  it('includes an independent Code Review nav entry', async () => {
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/workspaces']}>
+          <ThemeProvider>
+            <AppLayout>
+              <div>content</div>
+            </AppLayout>
+          </ThemeProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    const codeReviewLink = Array.from(container.querySelectorAll('a')).find(
+      (link) => link.getAttribute('href') === '/code-reviews',
+    );
+    expect(codeReviewLink).toBeTruthy();
+    expect(codeReviewLink?.textContent).toContain('Code Review');
+  });
+
   it('uses compact settings entry in profile area', async () => {
     await act(async () => {
       root?.render(

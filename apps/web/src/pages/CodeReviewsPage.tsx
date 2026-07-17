@@ -12,50 +12,42 @@ import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
-import {
-  readBriefingsPagePreferences,
-  writeBriefingsPagePreferences,
-} from '../utils/briefings-page-preferences';
 import { formatBeijingDateTime } from '../utils/datetime';
-import type { Briefing, BriefingPeriod, Project } from '../types';
+import type { DailyCodeReview, Project } from '../types';
+
+const STORAGE_KEY = 'flowx-code-reviews-page-preferences';
 
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function periodLabel(period: BriefingPeriod | string | undefined) {
-  return period === 'WEEKLY' ? '周报' : '日报';
-}
-
-function briefingRangeLabel(briefing: Briefing) {
-  if (briefing.period === 'WEEKLY') {
-    const scopeRange =
-      typeof briefing.scope === 'object' && briefing.scope && 'rangeLabel' in briefing.scope
-        ? String((briefing.scope as { rangeLabel?: unknown }).rangeLabel ?? '')
-        : '';
-    if (scopeRange) {
-      return scopeRange;
-    }
-    if (briefing.periodStart && briefing.periodEnd) {
-      const start = briefing.periodStart.slice(0, 10);
-      const end = new Date(new Date(briefing.periodEnd).getTime() - 24 * 60 * 60 * 1000)
-        .toISOString()
-        .slice(0, 10);
-      return `${start} 至 ${end}`;
-    }
+function readPreferredProjectId(): string {
+  if (typeof window === 'undefined') {
+    return '';
   }
-  return briefing.date.slice(0, 10);
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return '';
+    }
+    const parsed = JSON.parse(raw) as { projectId?: unknown };
+    return typeof parsed.projectId === 'string' ? parsed.projectId : '';
+  } catch {
+    return '';
+  }
 }
 
-export function BriefingsPage() {
+function writePreferredProjectId(projectId: string) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ projectId }));
+}
+
+export function CodeReviewsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [briefings, setBriefings] = useState<Briefing[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState(
-    () => readBriefingsPagePreferences().projectId ?? '',
-  );
-  const [period, setPeriod] = useState<BriefingPeriod>(
-    () => readBriefingsPagePreferences().period ?? 'DAILY',
-  );
+  const [reviews, setReviews] = useState<DailyCodeReview[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState(() => readPreferredProjectId());
   const [date, setDate] = useState(today());
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -73,8 +65,8 @@ export function BriefingsPage() {
       : projectList[0]?.id || '';
     setSelectedProjectId(nextProjectId);
     if (nextProjectId) {
-      writeBriefingsPagePreferences({ projectId: nextProjectId });
-      setBriefings(await api.getProjectBriefings(nextProjectId));
+      writePreferredProjectId(nextProjectId);
+      setReviews(await api.listProjectDailyCodeReviews(nextProjectId));
     }
   }
 
@@ -86,9 +78,9 @@ export function BriefingsPage() {
       setLoading(true);
     }
     try {
-      setBriefings(await api.getProjectBriefings(projectId));
+      setReviews(await api.listProjectDailyCodeReviews(projectId));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载简报失败');
+      toast.error(error instanceof Error ? error.message : '加载 Code Review 失败');
     } finally {
       if (!options?.silent) {
         setLoading(false);
@@ -107,15 +99,15 @@ export function BriefingsPage() {
     if (!selectedProjectId) {
       return;
     }
-    const hasGeneratingBriefing = briefings.some((briefing) => briefing.status === 'GENERATING');
-    if (!hasGeneratingBriefing) {
+    const hasGenerating = reviews.some((review) => review.status === 'GENERATING');
+    if (!hasGenerating) {
       return;
     }
     const timer = window.setInterval(() => {
       void refresh(selectedProjectId, { silent: true });
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [selectedProjectId, briefings]);
+  }, [selectedProjectId, reviews]);
 
   async function handleGenerate() {
     if (!selectedProjectId) {
@@ -124,24 +116,19 @@ export function BriefingsPage() {
     }
     setGenerating(true);
     try {
-      const briefing = await api.generateProjectBriefing(selectedProjectId, {
-        period,
+      const review = await api.generateProjectDailyCodeReview(selectedProjectId, {
         date,
         regenerate: true,
       });
       await refresh(selectedProjectId);
       toast.success(
-        briefing.status === 'GENERATING'
-          ? period === 'WEEKLY'
-            ? '周报已开始生成'
-            : '简报已开始生成'
-          : period === 'WEEKLY'
-            ? '周报已生成'
-            : '简报已生成',
+        review.status === 'GENERATING'
+          ? '每日 Code Review 已开始生成'
+          : '每日 Code Review 已生成',
       );
-      navigate(`/briefings/${briefing.id}`);
+      navigate(`/daily-code-reviews/${review.id}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '生成简报失败');
+      toast.error(error instanceof Error ? error.message : '生成 Code Review 失败');
     } finally {
       setGenerating(false);
     }
@@ -150,14 +137,11 @@ export function BriefingsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Briefings"
-        title="项目简报"
-        description="按项目生成每日/每周研发简报，查看历史记录并跟踪发送状态。"
+        eyebrow="Code Review"
+        title="Code Review"
+        description="按项目 review skill 驱动每日 Code Review，查看历史记录并跟踪发送状态。"
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" asChild>
-              <Link to="/settings/briefing-sources">数据源</Link>
-            </Button>
             <Button variant="outline" asChild>
               <Link to="/settings/delivery-targets">投递目标</Link>
             </Button>
@@ -167,12 +151,12 @@ export function BriefingsPage() {
 
       <div className="grid gap-5 md:grid-cols-2">
         <MetricCard label="项目数" value={projects.length} />
-        <MetricCard label="当前简报" value={briefings.length} />
+        <MetricCard label="Code Review" value={reviews.length} />
       </div>
 
       <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="pb-4">
-          <SectionHeader eyebrow="Generate" title="生成简报" />
+          <SectionHeader eyebrow="Generate" title="生成 Code Review" />
         </CardHeader>
         <CardContent className="p-5 pt-0">
           <div className="rounded-xl border border-border bg-muted/70 p-3">
@@ -183,7 +167,7 @@ export function BriefingsPage() {
                   value={selectedProjectId || undefined}
                   onValueChange={(value) => {
                     setSelectedProjectId(value);
-                    writeBriefingsPagePreferences({ projectId: value });
+                    writePreferredProjectId(value);
                     void refresh(value);
                   }}
                 >
@@ -199,29 +183,8 @@ export function BriefingsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex w-full flex-col gap-1.5 sm:w-[140px]">
-                <label className="text-xs font-medium text-muted-foreground">类型</label>
-                <Select
-                  value={period}
-                  onValueChange={(value) => {
-                    const nextPeriod = value as BriefingPeriod;
-                    setPeriod(nextPeriod);
-                    writeBriefingsPagePreferences({ period: nextPeriod });
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="DAILY">日报</SelectItem>
-                    <SelectItem value="WEEKLY">周报</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
               <div className="flex w-full flex-col gap-1.5 sm:w-[168px]">
-                <label className="text-xs font-medium text-muted-foreground">
-                  {period === 'WEEKLY' ? '周内日期' : '日期'}
-                </label>
+                <label className="text-xs font-medium text-muted-foreground">日期</label>
                 <Input
                   type="date"
                   className="w-full"
@@ -238,7 +201,7 @@ export function BriefingsPage() {
                   onClick={handleGenerate}
                   disabled={!selectedProjectId || generating}
                 >
-                  {generating ? '生成中...' : period === 'WEEKLY' ? '生成周报' : '生成简报'}
+                  {generating ? '生成中...' : '生成 Code Review'}
                 </Button>
               </div>
             </div>
@@ -253,41 +216,39 @@ export function BriefingsPage() {
 
       <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="pb-4">
-          <SectionHeader eyebrow="History" title="简报历史" />
+          <SectionHeader eyebrow="History" title="Code Review 历史" />
         </CardHeader>
         <CardContent className="p-5 pt-0">
           {loading ? (
             <div className="flex min-h-40 items-center justify-center">
               <Spinner className="h-7 w-7" />
             </div>
-          ) : briefings.length > 0 ? (
+          ) : reviews.length > 0 ? (
             <div className="overflow-x-auto rounded-xl border border-border">
               <table className="min-w-full text-sm">
                 <thead className="bg-muted/40 text-left text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 font-medium">日期</th>
-                    <th className="px-4 py-3 font-medium">类型</th>
                     <th className="px-4 py-3 font-medium">状态</th>
-                    <th className="px-4 py-3 font-medium">事件</th>
+                    <th className="px-4 py-3 font-medium">审查单元</th>
                     <th className="px-4 py-3 font-medium">生成时间</th>
                     <th className="px-4 py-3 font-medium">发送时间</th>
                     <th className="px-4 py-3 font-medium">操作</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {briefings.map((briefing) => (
-                    <tr key={briefing.id} className="border-t border-border">
-                      <td className="px-4 py-3">{briefingRangeLabel(briefing)}</td>
-                      <td className="px-4 py-3">{periodLabel(briefing.period)}</td>
-                      <td className="px-4 py-3"><Badge variant="secondary">{briefing.status}</Badge></td>
-                      <td className="px-4 py-3">{briefing.eventCount}</td>
-                      <td className="px-4 py-3">{formatBeijingDateTime(briefing.generatedAt)}</td>
+                  {reviews.map((review) => (
+                    <tr key={review.id} className="border-t border-border">
+                      <td className="px-4 py-3">{review.date.slice(0, 10)}</td>
+                      <td className="px-4 py-3"><Badge variant="secondary">{review.status}</Badge></td>
+                      <td className="px-4 py-3">{review.unitsJson?.length ?? 0}</td>
+                      <td className="px-4 py-3">{formatBeijingDateTime(review.generatedAt)}</td>
                       <td className="px-4 py-3">
-                        {briefing.sentAt ? formatBeijingDateTime(briefing.sentAt) : '未发送'}
+                        {review.sentAt ? formatBeijingDateTime(review.sentAt) : '未发送'}
                       </td>
                       <td className="px-4 py-3">
                         <Button variant="outline" size="sm" asChild>
-                          <Link to={`/briefings/${briefing.id}`}>查看详情</Link>
+                          <Link to={`/daily-code-reviews/${review.id}`}>查看详情</Link>
                         </Button>
                       </td>
                     </tr>
@@ -296,7 +257,10 @@ export function BriefingsPage() {
               </table>
             </div>
           ) : (
-            <EmptyState title="暂无简报" description="选择项目和日期后生成第一份简报。" />
+            <EmptyState
+              title="暂无 Code Review"
+              description="选择项目和日期后生成第一份每日 Code Review。"
+            />
           )}
         </CardContent>
       </Card>

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { PageHeader } from '../components/PageHeader';
 import { ProjectBriefingConfigPanel } from '../components/ProjectBriefingConfigPanel';
+import { ProjectCodeReviewConfigPanel } from '../components/ProjectCodeReviewConfigPanel';
 import { SectionHeader } from '../components/SectionHeader';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -77,7 +78,10 @@ export function ProjectDetailPage() {
         <Badge variant="default">{project.requirements?.length ?? 0} 条需求</Badge>
       </div>
 
-      <ProjectBriefingConfigPanel projectId={projectId} />
+      <div className="grid gap-5 lg:grid-cols-2">
+        <ProjectBriefingConfigPanel projectId={projectId} />
+        <ProjectCodeReviewConfigPanel projectId={projectId} />
+      </div>
 
       <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="pb-4">

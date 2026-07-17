@@ -107,7 +107,7 @@ export function DailyCodeReviewDetailPage() {
               {sending ? '发送中...' : '重新发送'}
             </Button>
             <Button variant="outline" asChild>
-              <Link to="/briefings">返回列表</Link>
+              <Link to="/code-reviews">返回列表</Link>
             </Button>
           </div>
         }

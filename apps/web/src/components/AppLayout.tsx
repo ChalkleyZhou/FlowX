@@ -20,6 +20,7 @@ const primaryItems = [
   { key: '/workflow-runs', label: '工作流' },
   { key: '/projects', label: '项目' },
   { key: '/briefings', label: '简报' },
+  { key: '/code-reviews', label: 'Code Review' },
   { key: '/schedule', label: '排期' },
   { key: '/bugs', label: '缺陷' },
   { key: '/issues', label: '问题项' },

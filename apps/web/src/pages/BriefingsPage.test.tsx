@@ -12,9 +12,7 @@ vi.mock('../api', () => ({
   api: {
     getProjects: vi.fn(),
     getProjectBriefings: vi.fn(),
-    listProjectDailyCodeReviews: vi.fn(),
     generateProjectBriefing: vi.fn(),
-    generateProjectDailyCodeReview: vi.fn(),
   },
 }));
 
@@ -37,7 +35,6 @@ describe('BriefingsPage', () => {
       },
     ]);
     vi.mocked(api.getProjectBriefings).mockResolvedValue([]);
-    vi.mocked(api.listProjectDailyCodeReviews).mockResolvedValue([]);
     vi.mocked(api.generateProjectBriefing).mockResolvedValue({
       id: 'briefing-1',
       projectId: 'project-1',
@@ -85,6 +82,7 @@ describe('BriefingsPage', () => {
 
     expect(document.body.textContent).toContain('项目简报');
     expect(document.body.textContent).toContain('FlowX');
+    expect(document.body.textContent).not.toContain('Code Review');
 
     const button = Array.from(document.querySelectorAll('button')).find((item) =>
       item.textContent?.includes('生成简报'),
@@ -100,6 +98,12 @@ describe('BriefingsPage', () => {
       date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       regenerate: true,
     });
+  });
+
+  it('does not call the daily code review API on mount', async () => {
+    await renderPage();
+
+    expect((api as unknown as Record<string, unknown>).listProjectDailyCodeReviews).toBeUndefined();
   });
 
   it('generates a weekly project briefing when weekly period is selected', async () => {
@@ -158,15 +162,13 @@ describe('BriefingsPage', () => {
     ]);
     window.localStorage.setItem(
       'flowx-briefings-page-preferences',
-      JSON.stringify({ projectId: 'project-2', activeView: 'code-reviews', period: 'WEEKLY' }),
+      JSON.stringify({ projectId: 'project-2', period: 'WEEKLY' }),
     );
 
     await renderPage();
 
     expect(api.getProjectBriefings).toHaveBeenCalledWith('project-2');
-    expect(api.listProjectDailyCodeReviews).toHaveBeenCalledWith('project-2');
     expect(document.body.textContent).toContain('Portal');
-    expect(document.body.textContent).toContain('Code Review 历史');
   });
 
   it('shows weekly briefing type and range in history', async () => {

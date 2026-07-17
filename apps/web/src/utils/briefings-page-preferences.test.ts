@@ -15,13 +15,12 @@ describe('briefings-page-preferences', () => {
     expect(readBriefingsPagePreferences()).toEqual({});
   });
 
-  it('persists and merges project, view, and period preferences', () => {
-    writeBriefingsPagePreferences({ projectId: 'project-1', activeView: 'code-reviews' });
+  it('persists and merges project and period preferences', () => {
+    writeBriefingsPagePreferences({ projectId: 'project-1' });
     writeBriefingsPagePreferences({ period: 'WEEKLY' });
 
     expect(readBriefingsPagePreferences()).toEqual({
       projectId: 'project-1',
-      activeView: 'code-reviews',
       period: 'WEEKLY',
     });
   });
@@ -31,11 +30,22 @@ describe('briefings-page-preferences', () => {
       'flowx-briefings-page-preferences',
       JSON.stringify({
         projectId: '',
-        activeView: 'invalid',
         period: 'MONTHLY',
       }),
     );
 
     expect(readBriefingsPagePreferences()).toEqual({});
+  });
+
+  it('does not persist a code-reviews view (removed concept)', () => {
+    window.localStorage.setItem(
+      'flowx-briefings-page-preferences',
+      JSON.stringify({
+        projectId: 'project-1',
+        activeView: 'code-reviews',
+      }),
+    );
+
+    expect(readBriefingsPagePreferences()).toEqual({ projectId: 'project-1' });
   });
 });

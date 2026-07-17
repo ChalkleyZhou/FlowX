@@ -6,6 +6,7 @@ import { BriefingDetailPage } from './pages/BriefingDetailPage';
 import { DailyCodeReviewDetailPage } from './pages/DailyCodeReviewDetailPage';
 import { BriefingSourcesPage } from './pages/BriefingSourcesPage';
 import { BriefingsPage } from './pages/BriefingsPage';
+import { CodeReviewsPage } from './pages/CodeReviewsPage';
 import { DeliveryTargetsPage } from './pages/DeliveryTargetsPage';
 import { IssuesPage } from './pages/IssuesPage';
 import { IssueDetailPage } from './pages/IssueDetailPage';
@@ -49,6 +50,7 @@ export default function App() {
             <Route path="/projects/:projectId/schedule" element={<ProjectScheduleRedirect />} />
             <Route path="/briefings" element={<BriefingsPage />} />
             <Route path="/briefings/:briefingId" element={<BriefingDetailPage />} />
+            <Route path="/code-reviews" element={<CodeReviewsPage />} />
             <Route path="/daily-code-reviews/:reviewId" element={<DailyCodeReviewDetailPage />} />
             <Route path="/requirements" element={<RequirementsPage />} />
             <Route path="/requirements/:id" element={<RequirementDetailPage />} />
