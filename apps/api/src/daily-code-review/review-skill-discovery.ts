@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, statSync, type Dirent } from 'fs';
 import { join, relative, sep } from 'path';
 
 export interface ReviewSkillMatch {
@@ -62,7 +62,7 @@ function collectSkillFiles(repoRoot: string, dir: string, out: SkillFile[]): voi
     return;
   }
 
-  let entries: ReturnType<typeof readdirSync>;
+  let entries: Dirent[];
   try {
     entries = readdirSync(dir, { withFileTypes: true });
   } catch {

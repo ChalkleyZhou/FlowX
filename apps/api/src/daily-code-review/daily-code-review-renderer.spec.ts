@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatDailyCodeReviewTitle,
+  renderDailyCodeReviewHtml,
   renderDailyCodeReviewMarkdown,
   renderGeneratingDailyCodeReviewContent,
 } from './daily-code-review-renderer';
@@ -64,6 +65,28 @@ describe('daily-code-review-renderer', () => {
     });
 
     expect(markdown).toContain('今日无代码变更，跳过审查。');
+  });
+
+  it('renders missing Code Review source message instead of empty-day copy', () => {
+    const markdown = renderDailyCodeReviewMarkdown({
+      projectName: 'FlowX',
+      date: '2026-07-07',
+      rangeLabel: '2026-07-07',
+      overallStatus: 'SKIPPED_NO_CR_SOURCES',
+      units: [],
+    });
+    const html = renderDailyCodeReviewHtml({
+      projectName: 'FlowX',
+      date: '2026-07-07',
+      rangeLabel: '2026-07-07',
+      overallStatus: 'SKIPPED_NO_CR_SOURCES',
+      units: [],
+    });
+
+    expect(markdown).toContain('未配置 Code Review 数据源');
+    expect(markdown).not.toContain('今日无代码变更');
+    expect(html).toContain('未配置 Code Review 数据源');
+    expect(html).not.toContain('今日无代码变更');
   });
 
   it('renders generating placeholder content', () => {

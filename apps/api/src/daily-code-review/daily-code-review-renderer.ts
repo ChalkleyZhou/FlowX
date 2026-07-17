@@ -162,7 +162,7 @@ export function renderDailyCodeReviewMarkdown(input: {
   ];
 
   if (input.units.length === 0) {
-    lines.push('今日无代码变更，跳过审查。');
+    lines.push(emptyUnitsMessage(input.overallStatus));
     return lines.join('\n');
   }
 
@@ -182,7 +182,7 @@ export function renderDailyCodeReviewHtml(input: {
 }) {
   const body =
     input.units.length === 0
-      ? '<p>今日无代码变更，跳过审查。</p>'
+      ? `<p>${escapeHtml(emptyUnitsMessage(input.overallStatus))}</p>`
       : input.units.map((unit) => renderUnitHtml(unit)).join('');
 
   return [
@@ -191,4 +191,11 @@ export function renderDailyCodeReviewHtml(input: {
     `<p>总体状态：${escapeHtml(input.overallStatus)}</p>`,
     body,
   ].join('');
+}
+
+function emptyUnitsMessage(overallStatus: string) {
+  if (overallStatus === 'SKIPPED_NO_CR_SOURCES') {
+    return '未配置 Code Review 数据源，本次为空跑，未审查任何仓库。请在设置中为需要审查的仓库添加 Code Review 数据源。';
+  }
+  return '今日无代码变更，跳过审查。';
 }

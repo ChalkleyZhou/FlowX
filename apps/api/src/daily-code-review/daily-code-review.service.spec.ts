@@ -661,8 +661,66 @@ describe('DailyCodeReviewService', () => {
           status: 'SKIPPED_NO_CR_SOURCES',
           unitsJson: [],
           errorMessage: expect.stringContaining('CodeReviewSource'),
+          markdownContent: expect.stringContaining('未配置 Code Review 数据源'),
         }),
       }),
     );
+    const created = createReview.mock.calls[0]?.[0].data;
+    expect(created.markdownContent).not.toContain('今日无代码变更');
+    expect(created.htmlContent).not.toContain('今日无代码变更');
+  });
+
+  it('records a FAILED unit when git evidence collection fails for a CR-only repository', async () => {
+    findUniqueProject.mockResolvedValue({
+      id: 'project-1',
+      name: 'FlowX',
+      workspaceId: 'workspace-1',
+      workspace: {
+        id: 'workspace-1',
+        name: '研发平台',
+        repositories: [
+          {
+            id: 'repo-b',
+            name: 'repo-b-cr-only',
+            url: 'https://example.com/repo-b.git',
+            defaultBranch: 'main',
+            currentBranch: 'main',
+            localPath: '/tmp/repo-b',
+            syncStatus: 'READY',
+          },
+        ],
+      },
+    });
+    findUniqueConfig.mockResolvedValue({ dailyHour: 22 });
+    findFirstReview.mockResolvedValue(null);
+    findManyCodeReviewSources.mockResolvedValue([{ id: 'cr-source-b', repositoryId: 'repo-b' }]);
+    findManySources.mockResolvedValue([]);
+    findManyEvents.mockResolvedValue([]);
+    collectRecentCommits.mockRejectedValue(new Error('代码库同步失败：auth required'));
+    createReview.mockImplementation(async ({ data }) => ({ id: 'review-1', ...data }));
+
+    await createService().generateProjectDailyCodeReview('project-1', {
+      date: '2026-07-07',
+      regenerate: true,
+    });
+
+    expect(reviewUnit).not.toHaveBeenCalled();
+    expect(createReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'FAILED',
+          unitsJson: [
+            expect.objectContaining({
+              repositoryId: 'repo-b',
+              status: 'FAILED',
+              errorMessage: expect.stringContaining('无法收集待审查提交证据'),
+            }),
+          ],
+        }),
+      }),
+    );
+    const created = createReview.mock.calls[0]?.[0].data;
+    expect(created.status).not.toBe('SKIPPED_NO_CHANGES');
+    expect(created.markdownContent).not.toContain('今日无代码变更');
   });
 });

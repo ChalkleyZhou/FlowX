@@ -55,6 +55,8 @@ type BuildDailyCodeReviewInput = {
   repositoryLookupById: ReturnType<typeof buildRepositoryLookupById>;
   repositoryLookupByName: ReturnType<typeof buildRepositoryLookupByName>;
   recipient: AiInvocationRecipient | null;
+  /** Units that failed while collecting git evidence (CR-only repos without BriefingSource). */
+  evidenceFailures?: DailyCodeReviewUnitResult[];
 };
 
 @Injectable()
@@ -220,13 +222,14 @@ export class DailyCodeReviewService {
       commits.map((commit) => commit.repositoryId).filter((id): id is string => Boolean(id)),
     );
     const gitFallbackRepoIds = [...allowedRepoIds].filter((id) => !repoIdsWithEvidence.has(id));
+    const evidenceFailures: DailyCodeReviewUnitResult[] = [];
     for (const repositoryId of gitFallbackRepoIds) {
       const repository = repositoryLookupById.get(repositoryId);
       if (!repository) {
         continue;
       }
+      const branch = repository.currentBranch || repository.defaultBranch || null;
       try {
-        const branch = repository.currentBranch || repository.defaultBranch || null;
         const gitCommits = await this.repositorySyncService.collectRecentCommits(
           {
             id: repository.id,
@@ -255,6 +258,14 @@ export class DailyCodeReviewService {
         this.logger.warn(
           `Failed to collect git commits for CodeReviewSource repository ${repositoryId} without a briefing source: ${message}`,
         );
+        evidenceFailures.push({
+          repositoryName: repository.name,
+          repositoryId: repository.id,
+          ref: branch || 'unknown',
+          commits: [],
+          status: 'FAILED',
+          errorMessage: `无法收集待审查提交证据：${message}`,
+        });
       }
     }
 
@@ -267,6 +278,7 @@ export class DailyCodeReviewService {
       repositoryLookupById,
       repositoryLookupByName,
       recipient,
+      evidenceFailures,
     };
 
     if (runtimeOptions?.async) {
@@ -274,7 +286,7 @@ export class DailyCodeReviewService {
         projectName: project.name,
         date,
         rangeLabel: date,
-        unitCount: groups.length,
+        unitCount: groups.length + evidenceFailures.length,
       });
       const pendingPayload = {
         scope: scope as Prisma.InputJsonValue,
@@ -371,8 +383,16 @@ export class DailyCodeReviewService {
   }
 
   private async buildGeneratedDailyCodeReviewPayload(input: BuildDailyCodeReviewInput) {
-    const { project, date, groups, repositoryLookupById, repositoryLookupByName, recipient } = input;
-    const units: DailyCodeReviewUnitResult[] = [];
+    const {
+      project,
+      date,
+      groups,
+      repositoryLookupById,
+      repositoryLookupByName,
+      recipient,
+      evidenceFailures = [],
+    } = input;
+    const units: DailyCodeReviewUnitResult[] = [...evidenceFailures];
     for (const group of groups) {
       const repository = resolveRepositoryForReview(
         group,
