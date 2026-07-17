@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { BriefingCommit } from './briefing-commits';
+import type { BriefingCommit } from '../briefings/briefing-commits';
 import {
   buildRepositoryLookupById,
   buildRepositoryLookupByName,

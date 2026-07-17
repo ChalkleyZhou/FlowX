@@ -5,7 +5,7 @@ import {
   resolveProjectOrganizationId,
 } from './briefing-auth-session';
 import { BriefingsService } from './briefings.service';
-import { DailyCodeReviewService } from './daily-code-review.service';
+import { DailyCodeReviewService } from '../daily-code-review/daily-code-review.service';
 import {
   formatBriefingDate,
   isBriefingSchedulerDue,

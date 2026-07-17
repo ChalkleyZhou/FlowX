@@ -8,7 +8,7 @@ import {
   sendEmail,
 } from './delivery-senders';
 import { formatBriefingTitle } from './briefing-renderer';
-import { formatDailyCodeReviewTitle } from './daily-code-review-renderer';
+import { formatDailyCodeReviewTitle } from '../daily-code-review/daily-code-review-renderer';
 import { CreateDeliveryTargetDto } from './dto/create-delivery-target.dto';
 import { UpdateDeliveryTargetDto } from './dto/update-delivery-target.dto';
 

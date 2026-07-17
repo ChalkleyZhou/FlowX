@@ -1,16 +1,11 @@
 import { Body, Controller, Get, Param, Post, Put, Req } from '@nestjs/common';
 import { BriefingsService } from './briefings.service';
-import { DailyCodeReviewService } from './daily-code-review.service';
 import { GenerateBriefingDto } from './dto/generate-briefing.dto';
-import { GenerateDailyCodeReviewDto } from './dto/generate-daily-code-review.dto';
 import { UpsertProjectBriefingConfigDto } from './dto/upsert-project-briefing-config.dto';
 
 @Controller()
 export class BriefingsController {
-  constructor(
-    private readonly briefingsService: BriefingsService,
-    private readonly dailyCodeReviewService: DailyCodeReviewService,
-  ) {}
+  constructor(private readonly briefingsService: BriefingsService) {}
 
   @Get('projects/:id/briefing-config')
   getProjectConfig(@Param('id') id: string) {
@@ -46,32 +41,6 @@ export class BriefingsController {
   @Post('briefings/:id/send')
   sendBriefing(@Param('id') id: string) {
     return this.briefingsService.sendBriefing(id);
-  }
-
-  @Get('projects/:id/daily-code-reviews')
-  listProjectDailyCodeReviews(@Param('id') id: string) {
-    return this.dailyCodeReviewService.listProjectDailyCodeReviews(id);
-  }
-
-  @Post('projects/:id/daily-code-reviews/generate')
-  generateProjectDailyCodeReview(
-    @Param('id') id: string,
-    @Body() dto: GenerateDailyCodeReviewDto,
-    @Req() req: BriefingRequest,
-  ) {
-    return this.dailyCodeReviewService.generateProjectDailyCodeReview(id, dto, req.authSession, {
-      async: true,
-    });
-  }
-
-  @Get('daily-code-reviews/:id')
-  getDailyCodeReview(@Param('id') id: string) {
-    return this.dailyCodeReviewService.getDailyCodeReview(id);
-  }
-
-  @Post('daily-code-reviews/:id/send')
-  sendDailyCodeReview(@Param('id') id: string) {
-    return this.dailyCodeReviewService.sendDailyCodeReview(id);
   }
 }
 

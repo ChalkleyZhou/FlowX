@@ -2,14 +2,14 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { AiInvocationRecipient } from '../ai/ai-invocation-context.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { collectDailyCommits } from './briefing-commits';
-import type { NormalizedBriefingEvent } from './briefing-events';
+import { collectDailyCommits } from '../briefings/briefing-commits';
+import type { NormalizedBriefingEvent } from '../briefings/briefing-events';
 import {
   briefingDateWindow,
   dateAtBeijingMidnight,
   DEFAULT_BRIEFING_CUTOFF_HOUR,
   resolveBriefingDate,
-} from './briefing-time-window';
+} from '../briefings/briefing-time-window';
 import { DailyCodeReviewAiService } from './daily-code-review-ai.service';
 import {
   buildRepositoryLookupById,
@@ -28,14 +28,14 @@ import {
   summarizeDailyCodeReviewErrors,
   type DailyCodeReviewUnitResult,
 } from './daily-code-review.types';
-import { DeliveryTargetsService } from './delivery-targets.service';
+import { DeliveryTargetsService } from '../briefings/delivery-targets.service';
 import type { WorkspaceContext } from '../common/types';
 import { RepositorySyncService } from '../workspaces/repository-sync.service';
 import type { RepositoryLookupEntry } from './daily-code-review-commits';
 import {
   type BriefingAuthSession,
   toAiInvocationRecipient,
-} from './briefing-auth-session';
+} from '../briefings/briefing-auth-session';
 
 const DEFAULT_DAILY_HOUR = DEFAULT_BRIEFING_CUTOFF_HOUR;
 

@@ -1,4 +1,4 @@
-import type { BriefingCommit } from './briefing-commits';
+import type { BriefingCommit } from '../briefings/briefing-commits';
 
 export interface DailyCodeReviewCommitGroup {
   repositoryId: string | null;

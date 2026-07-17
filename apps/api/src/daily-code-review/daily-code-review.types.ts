@@ -1,5 +1,5 @@
 import type { DailyCodeReviewUnitStatus, ReviewCodeOutput } from '../common/types';
-import type { BriefingCommit } from './briefing-commits';
+import type { BriefingCommit } from '../briefings/briefing-commits';
 
 export interface DailyCodeReviewUnitResult {
   repositoryName: string;
