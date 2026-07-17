@@ -13,6 +13,8 @@ describe('DailyCodeReviewAiService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.FLOWX_CODE_REVIEW_AI_DISABLED;
+    delete process.env.FLOWX_CODE_REVIEW_AI_ENABLED;
     delete process.env.FLOWX_BRIEFING_AI_DISABLED;
     delete process.env.FLOWX_BRIEFING_AI_ENABLED;
     delete process.env.FLOWX_DAILY_CODE_REVIEW_AI_PROVIDER;
@@ -191,6 +193,76 @@ describe('DailyCodeReviewAiService', () => {
       }
       rmSync(repo, { recursive: true, force: true });
     }
+  });
+
+  it('is disabled by the new FLOWX_CODE_REVIEW_AI_DISABLED env var', async () => {
+    process.env.FLOWX_CODE_REVIEW_AI_DISABLED = 'true';
+
+    const result = await createService().reviewUnit({
+      unit: {
+        repositoryName: 'flowx-api',
+        repositoryId: 'repo-1',
+        localPath: repoWithSkill,
+        ref: 'main',
+        commits: [{ id: 'abc', message: 'feat' }],
+        date: '2026-07-08',
+        rangeLabel: '2026-07-08',
+      },
+      workspace: null,
+    });
+
+    expect(reviewDailyChanges).not.toHaveBeenCalled();
+    expect(result.status).toBe('SKIPPED_NO_SKILL');
+    expect(result.skillHint).toContain('FLOWX_CODE_REVIEW_AI_DISABLED');
+  });
+
+  it('falls back to the legacy FLOWX_BRIEFING_AI_DISABLED env var when the new one is unset', async () => {
+    process.env.FLOWX_BRIEFING_AI_DISABLED = 'true';
+
+    const result = await createService().reviewUnit({
+      unit: {
+        repositoryName: 'flowx-api',
+        repositoryId: 'repo-1',
+        localPath: repoWithSkill,
+        ref: 'main',
+        commits: [{ id: 'abc', message: 'feat' }],
+        date: '2026-07-08',
+        rangeLabel: '2026-07-08',
+      },
+      workspace: null,
+    });
+
+    expect(reviewDailyChanges).not.toHaveBeenCalled();
+    expect(result.status).toBe('SKIPPED_NO_SKILL');
+  });
+
+  it('prefers the new FLOWX_CODE_REVIEW_AI_ENABLED env var over the legacy one', async () => {
+    process.env.FLOWX_CODE_REVIEW_AI_ENABLED = 'true';
+    process.env.FLOWX_BRIEFING_AI_ENABLED = 'false';
+    reviewDailyChanges.mockResolvedValue({
+      status: 'COMPLETED',
+      issues: [],
+      bugs: [],
+      missingTests: [],
+      suggestions: [],
+      impactScope: [],
+    });
+
+    const result = await createService().reviewUnit({
+      unit: {
+        repositoryName: 'flowx-api',
+        repositoryId: 'repo-1',
+        localPath: repoWithSkill,
+        ref: 'main',
+        commits: [{ id: 'abc', message: 'feat' }],
+        date: '2026-07-08',
+        rangeLabel: '2026-07-08',
+      },
+      workspace: null,
+    });
+
+    expect(reviewDailyChanges).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe('COMPLETED');
   });
 
   it('returns FAILED when skill discovery unexpectedly throws', async () => {

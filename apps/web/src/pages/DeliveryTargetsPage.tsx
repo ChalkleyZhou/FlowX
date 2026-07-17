@@ -169,7 +169,7 @@ export function DeliveryTargetsPage() {
       <PageHeader
         eyebrow="Delivery"
         title="投递目标"
-        description="按项目配置简报的钉钉工作通知与群机器人投递目标；发送时仅投递到对应项目的目标。"
+        description="按项目配置简报与 Code Review 的钉钉工作通知与群机器人投递目标；每个目标可分别开启用于简报、用于 Code Review，发送时仅投递到对应项目且启用了该用途的目标。"
       />
       <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="pb-4">

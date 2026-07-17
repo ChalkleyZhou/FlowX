@@ -38,7 +38,7 @@ export class DailyCodeReviewAiService {
   }): Promise<DailyCodeReviewUnitOutput> {
     if (!this.isAiEnabled()) {
       return this.buildSkippedNoSkillOutput(
-        '每日 Code Review 已禁用。请检查 FLOWX_BRIEFING_AI_DISABLED / FLOWX_BRIEFING_AI_ENABLED 配置。',
+        '每日 Code Review 已禁用。请检查 FLOWX_CODE_REVIEW_AI_DISABLED / FLOWX_CODE_REVIEW_AI_ENABLED 配置。',
       );
     }
 
@@ -132,10 +132,14 @@ export class DailyCodeReviewAiService {
   }
 
   private isAiEnabled() {
-    if (process.env.FLOWX_BRIEFING_AI_DISABLED === 'true') {
+    // Prefer FLOWX_CODE_REVIEW_AI_*; fall back to the legacy FLOWX_BRIEFING_AI_*
+    // names for one release so existing deployments keep working unchanged.
+    const disabled = process.env.FLOWX_CODE_REVIEW_AI_DISABLED ?? process.env.FLOWX_BRIEFING_AI_DISABLED;
+    if (disabled === 'true') {
       return false;
     }
-    return process.env.FLOWX_BRIEFING_AI_ENABLED !== 'false';
+    const enabled = process.env.FLOWX_CODE_REVIEW_AI_ENABLED ?? process.env.FLOWX_BRIEFING_AI_ENABLED;
+    return enabled !== 'false';
   }
 
   private resolveProvider(): AIExecutorProvider {
