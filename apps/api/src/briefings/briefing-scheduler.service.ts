@@ -133,19 +133,22 @@ export class BriefingSchedulerService implements OnModuleInit, OnModuleDestroy {
         const message = `${briefingMessage}；${codeReviewMessage}`;
 
         if (briefingDelivered || codeReviewDelivered) {
-          await this.recordSchedulerRun(config.projectId, slot, message, slot);
+          await this.recordSchedulerRun(config.projectId, slot, message);
+          await this.recordCodeReviewSchedulerRun(config.projectId, slot, message);
           this.logger.log(
             `Scheduled briefing and code review delivered for project ${config.projectId} (${config.project.name}) at slot ${slot}: ${message}.`,
           );
         } else {
-          await this.recordSchedulerRun(config.projectId, null, message, null);
+          await this.recordSchedulerRun(config.projectId, null, message);
+          await this.recordCodeReviewSchedulerRun(config.projectId, null, message);
           this.logger.warn(
             `Scheduled briefing/code review generated but not delivered for project ${config.projectId} (${config.project.name}) at slot ${slot}: ${message}.`,
           );
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        await this.recordSchedulerRun(config.projectId, null, message, null);
+        await this.recordSchedulerRun(config.projectId, null, message);
+        await this.recordCodeReviewSchedulerRun(config.projectId, null, message);
         this.logger.warn(
           `Scheduled briefing failed for project ${config.projectId} (${config.project.name}) at slot ${slot}: ${message}`,
         );
@@ -155,21 +158,34 @@ export class BriefingSchedulerService implements OnModuleInit, OnModuleDestroy {
     return { generatedCount };
   }
 
-  private async recordSchedulerRun(
-    projectId: string,
-    slot: string | null,
-    message: string,
-    codeReviewSlot: string | null,
-  ) {
+  private async recordSchedulerRun(projectId: string, slot: string | null, message: string) {
     await this.prisma.projectBriefingConfig.update({
       where: { projectId },
       data: {
         lastSchedulerRunAt: new Date(),
         lastSchedulerMessage: message,
         ...(slot ? { lastSchedulerSlot: slot } : {}),
-        ...(codeReviewSlot ? { lastCodeReviewSchedulerSlot: codeReviewSlot } : {}),
-        lastCodeReviewSchedulerRunAt: new Date(),
-        lastCodeReviewSchedulerMessage: message,
+      },
+    });
+  }
+
+  private async recordCodeReviewSchedulerRun(
+    projectId: string,
+    slot: string | null,
+    message: string,
+  ) {
+    await this.prisma.projectCodeReviewConfig.upsert({
+      where: { projectId },
+      create: {
+        projectId,
+        lastSchedulerRunAt: new Date(),
+        lastSchedulerMessage: message,
+        ...(slot ? { lastSchedulerSlot: slot } : {}),
+      },
+      update: {
+        lastSchedulerRunAt: new Date(),
+        lastSchedulerMessage: message,
+        ...(slot ? { lastSchedulerSlot: slot } : {}),
       },
     });
   }

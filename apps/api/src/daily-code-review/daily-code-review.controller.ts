@@ -1,10 +1,25 @@
-import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Req } from '@nestjs/common';
+import { CodeReviewConfigService } from './code-review-config.service';
 import { DailyCodeReviewService } from './daily-code-review.service';
 import { GenerateDailyCodeReviewDto } from './dto/generate-daily-code-review.dto';
+import { UpsertCodeReviewConfigDto } from './dto/upsert-code-review-config.dto';
 
 @Controller()
 export class DailyCodeReviewController {
-  constructor(private readonly dailyCodeReviewService: DailyCodeReviewService) {}
+  constructor(
+    private readonly dailyCodeReviewService: DailyCodeReviewService,
+    private readonly codeReviewConfigService: CodeReviewConfigService,
+  ) {}
+
+  @Get('projects/:id/code-review-config')
+  getProjectCodeReviewConfig(@Param('id') id: string) {
+    return this.codeReviewConfigService.getProjectConfig(id);
+  }
+
+  @Put('projects/:id/code-review-config')
+  updateProjectCodeReviewConfig(@Param('id') id: string, @Body() dto: UpsertCodeReviewConfigDto) {
+    return this.codeReviewConfigService.upsertProjectConfig(id, dto);
+  }
 
   @Get('projects/:id/daily-code-reviews')
   listProjectDailyCodeReviews(@Param('id') id: string) {

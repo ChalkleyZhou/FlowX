@@ -137,9 +137,20 @@ export interface ProjectBriefingConfig {
   lastSchedulerSlot?: string | null;
   lastSchedulerRunAt?: string | null;
   lastSchedulerMessage?: string | null;
-  lastCodeReviewSchedulerSlot?: string | null;
-  lastCodeReviewSchedulerRunAt?: string | null;
-  lastCodeReviewSchedulerMessage?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface ProjectCodeReviewConfig {
+  id?: string;
+  projectId: string;
+  enabled: boolean;
+  dailyHour: number;
+  timezone: string;
+  autoSend: boolean;
+  lastSchedulerSlot?: string | null;
+  lastSchedulerRunAt?: string | null;
+  lastSchedulerMessage?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 }

@@ -83,6 +83,7 @@ model Project {
   requirements Requirement[]
   bugs         Bug[]
   briefingConfig ProjectBriefingConfig?
+  codeReviewConfig ProjectCodeReviewConfig?
   briefings    Briefing[]
   dailyCodeReviews DailyCodeReview[]
   deliveryTargets DeliveryTarget[]
@@ -231,11 +232,23 @@ model ProjectBriefingConfig {
   lastSchedulerSlot      String?
   lastSchedulerRunAt     DateTime?
   lastSchedulerMessage   String?
-  lastCodeReviewSchedulerSlot    String?
-  lastCodeReviewSchedulerRunAt   DateTime?
-  lastCodeReviewSchedulerMessage String?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
+}
+
+model ProjectCodeReviewConfig {
+  id                       String    @id @default(cuid())
+  projectId                String    @unique
+  project                  Project   @relation(fields: [projectId], references: [id])
+  enabled                  Boolean   @default(false)
+  dailyHour                Int       @default(22)
+  timezone                 String    @default("Asia/Shanghai")
+  autoSend                 Boolean   @default(false)
+  lastSchedulerSlot        String?
+  lastSchedulerRunAt       DateTime?
+  lastSchedulerMessage     String?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 }
 
 model DailyCodeReview {

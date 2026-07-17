@@ -21,6 +21,7 @@ import type {
   OrganizationMember,
   Project,
   ProjectBriefingConfig,
+  ProjectCodeReviewConfig,
   RequirementAssignment,
   RepositoryDeployConfig,
   Repository,
@@ -414,6 +415,18 @@ export const api = {
   sendDailyCodeReview: (id: string) =>
     request<{ successCount: number; targetCount: number }>(`/daily-code-reviews/${id}/send`, {
       method: 'POST',
+    }),
+  getProjectCodeReviewConfig: (projectId: string) =>
+    request<ProjectCodeReviewConfig>(`/projects/${projectId}/code-review-config`),
+  updateProjectCodeReviewConfig: (
+    projectId: string,
+    payload: Partial<
+      Pick<ProjectCodeReviewConfig, 'enabled' | 'dailyHour' | 'timezone' | 'autoSend'>
+    >,
+  ) =>
+    request<ProjectCodeReviewConfig>(`/projects/${projectId}/code-review-config`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
     }),
   getDeliveryTargets: (params?: { workspaceId?: string; projectId?: string }) =>
     request<DeliveryTarget[]>(`/delivery-targets${queryString(params)}`),

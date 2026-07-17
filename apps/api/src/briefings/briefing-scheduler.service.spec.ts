@@ -15,6 +15,7 @@ describe('BriefingSchedulerService', () => {
   const configFindMany = vi.fn();
   const configUpdateMany = vi.fn();
   const configUpdate = vi.fn();
+  const codeReviewConfigUpsert = vi.fn();
   const generateProjectBriefing = vi.fn();
   const sendBriefing = vi.fn();
   const generateProjectDailyCodeReview = vi.fn();
@@ -24,6 +25,7 @@ describe('BriefingSchedulerService', () => {
     vi.clearAllMocks();
     configUpdateMany.mockResolvedValue({ count: 0 });
     configUpdate.mockResolvedValue({});
+    codeReviewConfigUpsert.mockResolvedValue({});
     vi.mocked(resolveProjectOrganizationId).mockResolvedValue('org-1');
     vi.mocked(buildSchedulerAuthSession).mockResolvedValue({
       organization: { id: 'org-1', name: '研发组织' },
@@ -37,6 +39,9 @@ describe('BriefingSchedulerService', () => {
           findMany: configFindMany,
           updateMany: configUpdateMany,
           update: configUpdate,
+        },
+        projectCodeReviewConfig: {
+          upsert: codeReviewConfigUpsert,
         },
       } as never,
       {
@@ -95,7 +100,16 @@ describe('BriefingSchedulerService', () => {
       where: { projectId: 'project-1' },
       data: expect.objectContaining({
         lastSchedulerSlot: '2026-06-03@18',
-        lastCodeReviewSchedulerSlot: '2026-06-03@18',
+      }),
+    });
+    expect(codeReviewConfigUpsert).toHaveBeenCalledWith({
+      where: { projectId: 'project-1' },
+      create: expect.objectContaining({
+        projectId: 'project-1',
+        lastSchedulerSlot: '2026-06-03@18',
+      }),
+      update: expect.objectContaining({
+        lastSchedulerSlot: '2026-06-03@18',
       }),
     });
   });
@@ -161,5 +175,16 @@ describe('BriefingSchedulerService', () => {
       }),
     });
     expect(configUpdate.mock.calls[0]?.[0].data.lastSchedulerSlot).toBeUndefined();
+    expect(codeReviewConfigUpsert).toHaveBeenCalledWith({
+      where: { projectId: 'project-1' },
+      create: expect.objectContaining({
+        projectId: 'project-1',
+        lastSchedulerMessage: expect.stringContaining('未配置启用的投递目标'),
+      }),
+      update: expect.objectContaining({
+        lastSchedulerMessage: expect.stringContaining('未配置启用的投递目标'),
+      }),
+    });
+    expect(codeReviewConfigUpsert.mock.calls[0]?.[0].update.lastSchedulerSlot).toBeUndefined();
   });
 });
