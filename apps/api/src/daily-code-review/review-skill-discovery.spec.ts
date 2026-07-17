@@ -1,0 +1,115 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { findReviewSkill } from './review-skill-discovery';
+
+describe('findReviewSkill', () => {
+  let repoRoot: string;
+
+  beforeEach(() => {
+    repoRoot = mkdtempSync(join(tmpdir(), 'flowx-review-skill-'));
+  });
+
+  afterEach(() => {
+    rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  function writeSkill(
+    relativeDir: string,
+    frontmatter: Record<string, string> = {},
+    body = '# Skill\n',
+  ): void {
+    const dir = join(repoRoot, relativeDir);
+    mkdirSync(dir, { recursive: true });
+    const frontmatterBlock = Object.entries(frontmatter)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join('\n');
+    const content = `---\n${frontmatterBlock}\n---\n\n${body}`;
+    writeFileSync(join(dir, 'SKILL.md'), content, 'utf8');
+  }
+
+  it('finds .cursor/skills/code-review/SKILL.md', () => {
+    writeSkill('.cursor/skills/code-review', {
+      name: 'code-review',
+      description: 'Review code changes for correctness, style and missing tests',
+    });
+
+    const found = findReviewSkill(repoRoot);
+
+    expect(found?.relativePath).toBe('.cursor/skills/code-review/SKILL.md');
+    expect(found?.absolutePath).toBe(join(repoRoot, '.cursor/skills/code-review/SKILL.md'));
+    expect(found?.content).toContain('code-review');
+  });
+
+  it('returns null when no review skill exists', () => {
+    writeSkill('.cursor/skills/openspec-propose', {
+      name: 'openspec-propose',
+      description: 'Propose a new change with all artifacts generated in one step',
+    });
+
+    expect(findReviewSkill(repoRoot)).toBeNull();
+  });
+
+  it('returns null when no skills directories exist at all', () => {
+    expect(findReviewSkill(repoRoot)).toBeNull();
+  });
+
+  it('returns null when the repo root does not exist on disk', () => {
+    expect(findReviewSkill(join(repoRoot, 'does-not-exist'))).toBeNull();
+  });
+
+  it('matches by folder name containing "review" even without a description mention', () => {
+    writeSkill('.agents/skills/awesome-review', {
+      name: 'awesome-review',
+      description: 'Some unrelated description',
+    });
+
+    const found = findReviewSkill(repoRoot);
+    expect(found?.relativePath).toBe('.agents/skills/awesome-review/SKILL.md');
+  });
+
+  it('matches by frontmatter description containing "review" even without a folder name mention', () => {
+    writeSkill('.claude/skills/quality-gate', {
+      name: 'quality-gate',
+      description: 'Review code quality before merging',
+    });
+
+    const found = findReviewSkill(repoRoot);
+    expect(found?.relativePath).toBe('.claude/skills/quality-gate/SKILL.md');
+  });
+
+  it('prefers a path containing "code-review" when multiple review skills match', () => {
+    writeSkill('.cursor/skills/review-general', {
+      name: 'review-general',
+      description: 'General review skill',
+    });
+    writeSkill('.cursor/skills/code-review', {
+      name: 'code-review',
+      description: 'Review code changes',
+    });
+
+    const found = findReviewSkill(repoRoot);
+    expect(found?.relativePath).toBe('.cursor/skills/code-review/SKILL.md');
+  });
+
+  it('searches nested skill directories under each root', () => {
+    writeSkill('.agents/skills/superpowers/code-review', {
+      name: 'code-review',
+      description: 'Review code changes for correctness',
+    });
+
+    const found = findReviewSkill(repoRoot);
+    expect(found?.relativePath).toBe('.agents/skills/superpowers/code-review/SKILL.md');
+  });
+
+  it('searches .claude/skills as a fallback root', () => {
+    writeSkill('.claude/skills/code-review', {
+      name: 'code-review',
+      description: 'Review code changes',
+    });
+
+    const found = findReviewSkill(repoRoot);
+    expect(found?.relativePath).toBe('.claude/skills/code-review/SKILL.md');
+  });
+});

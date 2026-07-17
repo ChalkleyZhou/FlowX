@@ -16,6 +16,10 @@ import {
   normalizeReviewFindings,
   resolveFailedReviewErrorMessage,
 } from './daily-code-review.types';
+import { findReviewSkill } from './review-skill-discovery';
+
+const DEFAULT_SKILL_HINT =
+  '未找到 review skill。请在仓库中添加，例如 `.cursor/skills/code-review/SKILL.md`。';
 
 @Injectable()
 export class DailyCodeReviewAiService {
@@ -38,6 +42,11 @@ export class DailyCodeReviewAiService {
       );
     }
 
+    const skill = input.unit.localPath ? findReviewSkill(input.unit.localPath) : null;
+    if (!skill) {
+      return this.buildSkippedNoSkillOutput(DEFAULT_SKILL_HINT);
+    }
+
     try {
       const provider = this.resolveProvider();
       const context = await this.aiInvocationContextService.resolveInvocationContext(
@@ -48,7 +57,10 @@ export class DailyCodeReviewAiService {
 
       const result = await executor.reviewDailyChanges(
         {
-          unit: input.unit,
+          unit: {
+            ...input.unit,
+            discoveredSkill: { relativePath: skill.relativePath, content: skill.content },
+          },
           workspace: input.workspace,
         },
         context,
@@ -75,9 +87,7 @@ export class DailyCodeReviewAiService {
       return {
         ...this.emptyFindings(),
         status: 'SKIPPED_NO_SKILL',
-        skillHint:
-          output.skillHint?.trim() ||
-          '未找到 review skill。请在仓库中添加，例如 `.cursor/skills/code-review/SKILL.md`。',
+        skillHint: output.skillHint?.trim() || DEFAULT_SKILL_HINT,
       };
     }
 

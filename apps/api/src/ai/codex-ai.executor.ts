@@ -532,6 +532,12 @@ ${diffSection}
 待审查 commit diff（由 FlowX 服务端预先收集，请以此为准）:
 ${input.unit.commitDiffBundle.trim()}`
       : '';
+    const skillSection = input.unit.discoveredSkill
+      ? `
+
+FlowX 已在服务端仓库中发现 review skill（路径: ${input.unit.discoveredSkill.relativePath}），请严格按其内容执行本次审查:
+${input.unit.discoveredSkill.content.trim()}`
+      : '';
 
     return `${dailyCodeReviewPrompt.system}
 
@@ -546,7 +552,7 @@ ${dailyCodeReviewPrompt.user}
 目标分支: ${input.unit.ref}
 说明: 仓库已同步，当前工作区应已切换到目标分支。请使用下方 diff 完成审查，不要依赖 shell 执行 git。
 待审查 commit:
-${commitLines || '  - 无'}${diffSection}
+${commitLines || '  - 无'}${diffSection}${skillSection}
 ${workspaceSection}
 `;
   }

@@ -144,6 +144,8 @@ export interface DailyCodeReviewUnitInput {
   rangeLabel: string;
   /** Server-collected git diffs so the agent does not need shell access. */
   commitDiffBundle?: string;
+  /** Review skill discovered on disk before invoking the AI; server-side gate result. */
+  discoveredSkill?: { relativePath: string; content: string } | null;
 }
 
 export interface ReviewDailyChangesInput {
