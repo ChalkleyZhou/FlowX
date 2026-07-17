@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BriefingSchedulerService } from './briefing-scheduler.service';
 
 vi.mock('./briefing-auth-session', () => ({
@@ -15,21 +15,21 @@ describe('BriefingSchedulerService', () => {
   const configFindMany = vi.fn();
   const configUpdateMany = vi.fn();
   const configUpdate = vi.fn();
-  const codeReviewConfigUpsert = vi.fn();
   const generateProjectBriefing = vi.fn();
   const sendBriefing = vi.fn();
-  const generateProjectDailyCodeReview = vi.fn();
-  const sendDailyCodeReview = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     configUpdateMany.mockResolvedValue({ count: 0 });
     configUpdate.mockResolvedValue({});
-    codeReviewConfigUpsert.mockResolvedValue({});
     vi.mocked(resolveProjectOrganizationId).mockResolvedValue('org-1');
     vi.mocked(buildSchedulerAuthSession).mockResolvedValue({
       organization: { id: 'org-1', name: '研发组织' },
     });
+  });
+
+  afterEach(() => {
+    delete process.env.FLOWX_BRIEFING_SCHEDULER_DISABLED;
   });
 
   function createService() {
@@ -40,22 +40,15 @@ describe('BriefingSchedulerService', () => {
           updateMany: configUpdateMany,
           update: configUpdate,
         },
-        projectCodeReviewConfig: {
-          upsert: codeReviewConfigUpsert,
-        },
       } as never,
       {
         generateProjectBriefing,
         sendBriefing,
       } as never,
-      {
-        generateProjectDailyCodeReview,
-        sendDailyCodeReview,
-      } as never,
     );
   }
 
-  it('generates and sends due project briefings and daily code reviews', async () => {
+  it('generates and sends due project briefings', async () => {
     configFindMany.mockResolvedValue([
       {
         projectId: 'project-1',
@@ -67,8 +60,6 @@ describe('BriefingSchedulerService', () => {
     ]);
     generateProjectBriefing.mockResolvedValue({ id: 'briefing-1', sentAt: null });
     sendBriefing.mockResolvedValue({ successCount: 1, targetCount: 1 });
-    generateProjectDailyCodeReview.mockResolvedValue({ id: 'review-1', sentAt: null });
-    sendDailyCodeReview.mockResolvedValue({ successCount: 1, targetCount: 1 });
 
     await expect(
       createService().runDueBriefings(new Date('2026-06-03T10:00:00.000Z')),
@@ -85,30 +76,9 @@ describe('BriefingSchedulerService', () => {
       },
     );
     expect(sendBriefing).toHaveBeenCalledWith('briefing-1');
-    expect(generateProjectDailyCodeReview).toHaveBeenCalledWith(
-      'project-1',
-      {
-        date: '2026-06-03',
-        regenerate: true,
-      },
-      {
-        organization: { id: 'org-1', name: '研发组织' },
-      },
-    );
-    expect(sendDailyCodeReview).toHaveBeenCalledWith('review-1');
     expect(configUpdate).toHaveBeenCalledWith({
       where: { projectId: 'project-1' },
       data: expect.objectContaining({
-        lastSchedulerSlot: '2026-06-03@18',
-      }),
-    });
-    expect(codeReviewConfigUpsert).toHaveBeenCalledWith({
-      where: { projectId: 'project-1' },
-      create: expect.objectContaining({
-        projectId: 'project-1',
-        lastSchedulerSlot: '2026-06-03@18',
-      }),
-      update: expect.objectContaining({
         lastSchedulerSlot: '2026-06-03@18',
       }),
     });
@@ -130,7 +100,6 @@ describe('BriefingSchedulerService', () => {
     ).resolves.toEqual({ generatedCount: 0 });
 
     expect(generateProjectBriefing).not.toHaveBeenCalled();
-    expect(generateProjectDailyCodeReview).not.toHaveBeenCalled();
   });
 
   it('skips a scheduler slot that already completed', async () => {
@@ -163,8 +132,6 @@ describe('BriefingSchedulerService', () => {
     ]);
     generateProjectBriefing.mockResolvedValue({ id: 'briefing-1', sentAt: null });
     sendBriefing.mockResolvedValue({ successCount: 0, targetCount: 0 });
-    generateProjectDailyCodeReview.mockResolvedValue({ id: 'review-1', sentAt: null });
-    sendDailyCodeReview.mockResolvedValue({ successCount: 0, targetCount: 0 });
 
     await createService().runDueBriefings(new Date('2026-06-03T10:00:00.000Z'));
 
@@ -175,16 +142,17 @@ describe('BriefingSchedulerService', () => {
       }),
     });
     expect(configUpdate.mock.calls[0]?.[0].data.lastSchedulerSlot).toBeUndefined();
-    expect(codeReviewConfigUpsert).toHaveBeenCalledWith({
-      where: { projectId: 'project-1' },
-      create: expect.objectContaining({
-        projectId: 'project-1',
-        lastSchedulerMessage: expect.stringContaining('未配置启用的投递目标'),
-      }),
-      update: expect.objectContaining({
-        lastSchedulerMessage: expect.stringContaining('未配置启用的投递目标'),
-      }),
-    });
-    expect(codeReviewConfigUpsert.mock.calls[0]?.[0].update.lastSchedulerSlot).toBeUndefined();
+  });
+
+  it('does not run when FLOWX_BRIEFING_SCHEDULER_DISABLED is true', () => {
+    process.env.FLOWX_BRIEFING_SCHEDULER_DISABLED = 'true';
+    const service = createService();
+
+    service.onModuleInit();
+
+    expect(configFindMany).not.toHaveBeenCalled();
+    expect(configUpdateMany).not.toHaveBeenCalled();
+
+    service.onModuleDestroy();
   });
 });

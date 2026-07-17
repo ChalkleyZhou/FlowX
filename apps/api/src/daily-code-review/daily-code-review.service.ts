@@ -107,7 +107,7 @@ export class DailyCodeReviewService {
     runtimeOptions?: GenerateDailyCodeReviewRuntimeOptions,
   ) {
     const project = await this.getProjectForReview(projectId);
-    const config = await this.prisma.projectBriefingConfig.findUnique({
+    const config = await this.prisma.projectCodeReviewConfig.findUnique({
       where: { projectId },
     });
     const cutoffHour = config?.dailyHour ?? DEFAULT_DAILY_HOUR;

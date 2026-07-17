@@ -24,7 +24,7 @@ describe('DailyCodeReviewService', () => {
     return new DailyCodeReviewService(
       {
         project: { findUnique: findUniqueProject },
-        projectBriefingConfig: { findUnique: findUniqueConfig },
+        projectCodeReviewConfig: { findUnique: findUniqueConfig },
         dailyCodeReview: {
           findFirst: findFirstReview,
           create: createReview,
@@ -136,6 +136,55 @@ describe('DailyCodeReviewService', () => {
             expect.objectContaining({ ref: 'feature/login' }),
             expect.objectContaining({ ref: 'main', commits: expect.any(Array) }),
           ]),
+        }),
+      }),
+    );
+  });
+
+  it('uses ProjectCodeReviewConfig.dailyHour for the cutoff window', async () => {
+    findUniqueProject.mockResolvedValue({
+      id: 'project-1',
+      name: 'FlowX',
+      workspaceId: 'workspace-1',
+      workspace: { id: 'workspace-1', name: '研发平台', repositories: [] },
+    });
+    findUniqueConfig.mockResolvedValue({ dailyHour: 9 });
+    findFirstReview.mockResolvedValue(null);
+    findManySources.mockResolvedValue([]);
+    findManyEvents.mockResolvedValue([]);
+    createReview.mockImplementation(async ({ data }) => ({ id: 'review-1', ...data }));
+
+    await createService().generateProjectDailyCodeReview('project-1', { date: '2026-07-07' });
+
+    expect(findUniqueConfig).toHaveBeenCalledWith({ where: { projectId: 'project-1' } });
+    expect(createReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          scope: expect.objectContaining({ cutoffHour: 9 }),
+        }),
+      }),
+    );
+  });
+
+  it('falls back to the default daily hour when ProjectCodeReviewConfig is missing', async () => {
+    findUniqueProject.mockResolvedValue({
+      id: 'project-1',
+      name: 'FlowX',
+      workspaceId: 'workspace-1',
+      workspace: { id: 'workspace-1', name: '研发平台', repositories: [] },
+    });
+    findUniqueConfig.mockResolvedValue(null);
+    findFirstReview.mockResolvedValue(null);
+    findManySources.mockResolvedValue([]);
+    findManyEvents.mockResolvedValue([]);
+    createReview.mockImplementation(async ({ data }) => ({ id: 'review-1', ...data }));
+
+    await createService().generateProjectDailyCodeReview('project-1', { date: '2026-07-07' });
+
+    expect(createReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          scope: expect.objectContaining({ cutoffHour: 22 }),
         }),
       }),
     );
