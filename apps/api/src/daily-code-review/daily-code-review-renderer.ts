@@ -195,7 +195,7 @@ export function renderDailyCodeReviewHtml(input: {
 
 function emptyUnitsMessage(overallStatus: string) {
   if (overallStatus === 'SKIPPED_NO_CR_SOURCES') {
-    return '未配置 Code Review 数据源，本次为空跑，未审查任何仓库。请在设置中为需要审查的仓库添加 Code Review 数据源。';
+    return '本次 Code Review 范围内没有可审查的仓库（工作区无仓库，或仓库均已排除）。默认会审查工作区全部仓库；可在「Code Review 数据源」中调整排除项。';
   }
   return '今日无代码变更，跳过审查。';
 }

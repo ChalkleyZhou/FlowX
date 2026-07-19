@@ -262,10 +262,10 @@ export function CodeReviewsPage() {
           ) : (
             <EmptyState
               title="暂无 Code Review"
-              description="选择项目和日期后生成第一份每日 Code Review。若生成结果为空跑，请先在「Code Review 数据源」中为需要审查的仓库添加数据源。"
+              description="选择项目和日期后生成第一份每日 Code Review。默认会审查该项目所属工作区的全部仓库；可在「Code Review 数据源」中排除个别仓库。"
               action={
                 <Button variant="outline" size="sm" asChild>
-                  <Link to="/settings/code-review-sources">前往配置数据源</Link>
+                  <Link to="/settings/code-review-sources">管理排除项</Link>
                 </Button>
               }
             />

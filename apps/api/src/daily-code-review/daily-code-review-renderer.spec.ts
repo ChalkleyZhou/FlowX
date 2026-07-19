@@ -67,7 +67,7 @@ describe('daily-code-review-renderer', () => {
     expect(markdown).toContain('今日无代码变更，跳过审查。');
   });
 
-  it('renders missing Code Review source message instead of empty-day copy', () => {
+  it('renders empty Code Review scope message instead of empty-day copy', () => {
     const markdown = renderDailyCodeReviewMarkdown({
       projectName: 'FlowX',
       date: '2026-07-07',
@@ -83,9 +83,10 @@ describe('daily-code-review-renderer', () => {
       units: [],
     });
 
-    expect(markdown).toContain('未配置 Code Review 数据源');
+    expect(markdown).toContain('没有可审查的仓库');
+    expect(markdown).toContain('默认会审查工作区全部仓库');
     expect(markdown).not.toContain('今日无代码变更');
-    expect(html).toContain('未配置 Code Review 数据源');
+    expect(html).toContain('没有可审查的仓库');
     expect(html).not.toContain('今日无代码变更');
   });
 

@@ -118,16 +118,21 @@ export class DailyCodeReviewService {
     const recordDate = dateAtBeijingMidnight(date);
 
     const repositoryIds = project.workspace.repositories.map((repository) => repository.id).sort();
-    const codeReviewSources = await this.prisma.codeReviewSource.findMany({
+    // Default scope is every repository in the workspace. CodeReviewSource rows with
+    // isActive=false are explicit opt-outs; missing/active rows do not limit inclusion.
+    const excludedSources = await this.prisma.codeReviewSource.findMany({
       where: {
         workspaceId: project.workspaceId,
         repositoryId: { in: repositoryIds },
-        isActive: true,
+        isActive: false,
       },
       orderBy: { createdAt: 'asc' },
     });
-    const allowedRepoIds = new Set(codeReviewSources.map((source) => source.repositoryId));
-    const codeReviewSourceIds = codeReviewSources.map((source) => source.id).sort();
+    const excludedRepoIds = excludedSources.map((source) => source.repositoryId).sort();
+    const excludedRepoIdSet = new Set(excludedRepoIds);
+    const allowedRepoIds = new Set(
+      repositoryIds.filter((repositoryId) => !excludedRepoIdSet.has(repositoryId)),
+    );
 
     const scopeBase = {
       date,
@@ -137,11 +142,11 @@ export class DailyCodeReviewService {
       projectId,
       workspaceId: project.workspaceId,
       repositoryIds,
-      codeReviewSourceIds,
+      excludedRepositoryIds: excludedRepoIds,
       cutoffHour,
     };
 
-    if (allowedRepoIds.size === 0) {
+    if (repositoryIds.length === 0 || allowedRepoIds.size === 0) {
       const scope = { ...scopeBase, briefingSourceIds: [] as string[] };
       const scopeKey = stableJson(scope);
       const existing = await this.prisma.dailyCodeReview.findFirst({
@@ -153,7 +158,9 @@ export class DailyCodeReviewService {
 
       const payload = {
         scope: scope as Prisma.InputJsonValue,
-        ...this.buildEmptyCodeReviewSourcesPayload(project.name, date),
+        ...this.buildEmptyCodeReviewSourcesPayload(project.name, date, {
+          reason: repositoryIds.length === 0 ? 'NO_REPOSITORIES' : 'ALL_EXCLUDED',
+        }),
         ...(options.regenerate ? { sentAt: null } : {}),
       };
 
@@ -349,11 +356,14 @@ export class DailyCodeReviewService {
   }
 
   /**
-   * Records an explicit empty-run result instead of a fake successful review when the
-   * project's workspace has no active CodeReviewSource. Code Review scope is now
-   * independent of BriefingSource, so this is the honest "nothing was reviewed" outcome.
+   * Empty-run when the workspace has no repositories, or every repository was
+   * explicitly excluded via inactive CodeReviewSource rows.
    */
-  private buildEmptyCodeReviewSourcesPayload(projectName: string, date: string) {
+  private buildEmptyCodeReviewSourcesPayload(
+    projectName: string,
+    date: string,
+    options: { reason: 'NO_REPOSITORIES' | 'ALL_EXCLUDED' },
+  ) {
     const units: DailyCodeReviewUnitResult[] = [];
     const overallStatus = 'SKIPPED_NO_CR_SOURCES';
     const markdownContent = renderDailyCodeReviewMarkdown({
@@ -370,6 +380,10 @@ export class DailyCodeReviewService {
       units,
       overallStatus,
     });
+    const errorMessage =
+      options.reason === 'NO_REPOSITORIES'
+        ? '工作区尚未登记任何代码仓库，无法进行 Code Review。'
+        : '工作区仓库均已从 Code Review 范围中排除，本次为空跑。可在「Code Review 数据源」中恢复纳入。';
 
     return {
       status: overallStatus,
@@ -377,8 +391,7 @@ export class DailyCodeReviewService {
       markdownContent,
       htmlContent,
       generatedAt: new Date(),
-      errorMessage:
-        '未配置 Code Review 数据源（CodeReviewSource），本次为空跑，未审查任何仓库。请在设置中为需要审查的仓库添加 Code Review 数据源。',
+      errorMessage,
     };
   }
 

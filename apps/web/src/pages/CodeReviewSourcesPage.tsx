@@ -32,6 +32,11 @@ export function CodeReviewSourcesPage() {
     return map;
   }, [sources]);
 
+  function isExcluded(repositoryId: string) {
+    const source = sourceByRepositoryId.get(repositoryId);
+    return Boolean(source && !source.isActive);
+  }
+
   async function refresh(nextWorkspaceId = workspaceId) {
     if (!nextWorkspaceId) {
       return;
@@ -55,46 +60,44 @@ export function CodeReviewSourcesPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  async function enableRepository(repository: Repository) {
+  async function excludeRepository(repository: Repository) {
     if (!workspaceId) {
       return;
     }
     setPendingRepositoryId(repository.id);
     try {
-      await api.createCodeReviewSource({ workspaceId, repositoryId: repository.id, isActive: true });
+      const existing = sourceByRepositoryId.get(repository.id);
+      if (existing) {
+        await api.updateCodeReviewSource(existing.id, { isActive: false });
+      } else {
+        await api.createCodeReviewSource({
+          workspaceId,
+          repositoryId: repository.id,
+          isActive: false,
+        });
+      }
       await refresh(workspaceId);
-      toast.success(`已将「${repository.name}」加入 Code Review 数据源`);
+      toast.success(`已将「${repository.name}」排除出 Code Review`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '添加数据源失败');
+      toast.error(error instanceof Error ? error.message : '排除仓库失败');
     } finally {
       setPendingRepositoryId(null);
     }
   }
 
-  async function toggleSource(source: CodeReviewSource, repositoryName: string) {
-    setPendingRepositoryId(source.repositoryId);
-    try {
-      await api.updateCodeReviewSource(source.id, { isActive: !source.isActive });
-      await refresh(workspaceId);
-      toast.success(source.isActive ? `已停用「${repositoryName}」` : `已启用「${repositoryName}」`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '更新数据源失败');
-    } finally {
-      setPendingRepositoryId(null);
-    }
-  }
-
-  async function removeSource(source: CodeReviewSource, repositoryName: string) {
-    if (!window.confirm(`确认从 Code Review 数据源中移除「${repositoryName}」吗？`)) {
+  async function includeRepository(repository: Repository) {
+    const existing = sourceByRepositoryId.get(repository.id);
+    if (!existing) {
       return;
     }
-    setPendingRepositoryId(source.repositoryId);
+    setPendingRepositoryId(repository.id);
     try {
-      await api.deleteCodeReviewSource(source.id);
+      // Delete exclusion row so the repo returns to the default "all included" set.
+      await api.deleteCodeReviewSource(existing.id);
       await refresh(workspaceId);
-      toast.success(`已移除「${repositoryName}」`);
+      toast.success(`已恢复纳入「${repository.name}」`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '移除数据源失败');
+      toast.error(error instanceof Error ? error.message : '恢复纳入失败');
     } finally {
       setPendingRepositoryId(null);
     }
@@ -105,7 +108,7 @@ export function CodeReviewSourcesPage() {
       <PageHeader
         eyebrow="Code Review Sources"
         title="Code Review 数据源"
-        description="选择需要纳入每日 Code Review 审查范围的仓库；未加入的仓库不会被审查，与简报数据源相互独立。"
+        description="默认审查工作区全部仓库。仅需在此排除不想纳入每日 Code Review 的仓库；与简报数据源相互独立。"
       />
       <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <CardHeader className="pb-4">
@@ -142,7 +145,7 @@ export function CodeReviewSourcesPage() {
           ) : repositories.length > 0 ? (
             <div className="flex flex-col gap-3">
               {repositories.map((repository) => {
-                const source = sourceByRepositoryId.get(repository.id);
+                const excluded = isExcluded(repository.id);
                 const isPending = pendingRepositoryId === repository.id;
                 return (
                   <div
@@ -154,35 +157,25 @@ export function CodeReviewSourcesPage() {
                       <div className="text-xs text-muted-foreground">{repository.url}</div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      {source ? (
-                        <>
-                          <Badge variant={source.isActive ? 'default' : 'outline'}>
-                            {source.isActive ? '已加入 Code Review' : '已停用'}
-                          </Badge>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={isPending}
-                            onClick={() => void toggleSource(source, repository.name)}
-                          >
-                            {source.isActive ? '停用' : '启用'}
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            disabled={isPending}
-                            onClick={() => void removeSource(source, repository.name)}
-                          >
-                            移除
-                          </Button>
-                        </>
-                      ) : (
+                      <Badge variant={excluded ? 'outline' : 'default'}>
+                        {excluded ? '已排除' : '默认纳入'}
+                      </Badge>
+                      {excluded ? (
                         <Button
                           size="sm"
                           disabled={isPending}
-                          onClick={() => void enableRepository(repository)}
+                          onClick={() => void includeRepository(repository)}
                         >
-                          加入 Code Review
+                          恢复纳入
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isPending}
+                          onClick={() => void excludeRepository(repository)}
+                        >
+                          排除
                         </Button>
                       )}
                     </div>
