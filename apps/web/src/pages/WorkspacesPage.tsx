@@ -72,14 +72,20 @@ export function WorkspacesPage() {
     };
   }, [workspaces]);
 
-  async function refresh() {
-    setLoading(true);
+  async function refresh(options?: { silent?: boolean }) {
+    if (!options?.silent) {
+      setLoading(true);
+    }
     try {
       setWorkspaces(await api.getWorkspaces());
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载工作区失败');
+      if (!options?.silent) {
+        toast.error(error instanceof Error ? error.message : '加载工作区失败');
+      }
     } finally {
-      setLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
   }
 
@@ -103,7 +109,7 @@ export function WorkspacesPage() {
     }
 
     const timer = window.setInterval(() => {
-      void refresh();
+      void refresh({ silent: true });
     }, 3000);
 
     return () => window.clearInterval(timer);
@@ -569,7 +575,7 @@ export function WorkspacesPage() {
           />
         </CardHeader>
         <CardContent className="p-5 pt-0">
-          {loading ? (
+          {loading && workspaces.length === 0 ? (
             <div className="flex min-h-40 items-center justify-center">
               <Spinner className="h-7 w-7" />
             </div>
