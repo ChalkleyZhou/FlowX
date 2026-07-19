@@ -48,7 +48,7 @@ describe('briefing renderer', () => {
     });
   });
 
-  it('renders project change topics before the development record', () => {
+  it('renders overview and open questions without the main changes section', () => {
     const markdown = renderBriefingMarkdown({
       period: 'DAILY',
       date: '2026-06-03',
@@ -89,11 +89,8 @@ describe('briefing renderer', () => {
     expect(markdown).toContain('# FlowX · 项目变化简报 · 2026-06-03');
     expect(markdown).toContain('## 今日概览');
     expect(markdown).toContain('简报内容组织发生调整');
-    expect(markdown).toContain('## 主要变化');
-    expect(markdown).toContain('### 简报内容组织调整');
-    expect(markdown).toContain('简报从提交分类调整为项目变化主题。');
-    expect(markdown).toContain('涉及模块：briefing');
-    expect(markdown).toContain('依据：feat(briefing): add daily summary [flowx]');
+    expect(markdown).not.toContain('## 主要变化');
+    expect(markdown).not.toContain('### 简报内容组织调整');
     expect(markdown).toContain('## 待确认事项');
     expect(markdown).toContain('commit 未说明历史简报是否同步调整。');
     expect(markdown).toContain('## 研发记录');

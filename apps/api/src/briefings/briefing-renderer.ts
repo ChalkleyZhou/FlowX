@@ -1,4 +1,4 @@
-import type { BriefingAiSummary, BriefingAiTopic } from './briefing-ai-summarizer.service';
+import type { BriefingAiSummary } from './briefing-ai-summarizer.service';
 import {
   categorizeCommitMessage,
   collectDailyCommits,
@@ -132,27 +132,10 @@ function overviewTitle(period: BriefingPeriod) {
   return period === 'WEEKLY' ? '本周概览' : '今日概览';
 }
 
-function appendMarkdownTopic(lines: string[], topic: BriefingAiTopic) {
-  lines.push('', `### ${topic.title}`, '', topic.summary);
-  if (topic.modules.length > 0) {
-    lines.push('', `涉及模块：${topic.modules.join('、')}`);
-  }
-  for (const reference of topic.commitReferences) {
-    lines.push('', `依据：${reference.title} [${reference.repository}]`);
-  }
-}
-
 function renderMarkdownContent(input: RenderInput) {
   const commits = collectCommits(input);
   const sections = developmentRecordSections(commits);
   const lines = [`## ${overviewTitle(input.period)}`, '', ...overviewLines(input, commits.length)];
-
-  if (input.aiSummary?.topics.length) {
-    lines.push('', '## 主要变化');
-    for (const topic of input.aiSummary.topics) {
-      appendMarkdownTopic(lines, topic);
-    }
-  }
 
   if (input.aiSummary?.openQuestions.length) {
     lines.push(
@@ -195,34 +178,12 @@ function escapeHtml(value: string) {
     .replaceAll("'", '&#39;');
 }
 
-function renderHtmlTopic(topic: BriefingAiTopic) {
-  const parts = [`<h3>${escapeHtml(topic.title)}</h3>`, `<p>${escapeHtml(topic.summary)}</p>`];
-  if (topic.modules.length > 0) {
-    parts.push(`<p>涉及模块：${escapeHtml(topic.modules.join('、'))}</p>`);
-  }
-  parts.push('<ul>');
-  for (const reference of topic.commitReferences) {
-    parts.push(
-      `<li>依据：${escapeHtml(reference.title)} [${escapeHtml(reference.repository)}]</li>`,
-    );
-  }
-  parts.push('</ul>');
-  return parts.join('');
-}
-
 function renderHtmlContent(input: RenderInput) {
   const commits = collectCommits(input);
   const sections = developmentRecordSections(commits);
   const parts = [`<h2>${escapeHtml(overviewTitle(input.period))}</h2>`];
   for (const line of overviewLines(input, commits.length)) {
     parts.push(`<p>${escapeHtml(line)}</p>`);
-  }
-
-  if (input.aiSummary?.topics.length) {
-    parts.push('<h2>主要变化</h2>');
-    for (const topic of input.aiSummary.topics) {
-      parts.push(renderHtmlTopic(topic));
-    }
   }
 
   if (input.aiSummary?.openQuestions.length) {
