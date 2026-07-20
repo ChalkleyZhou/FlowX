@@ -284,9 +284,14 @@ ${body}
     input: ReviewDailyChangesInput,
     context?: AIInvocationContext,
   ): Promise<DailyCodeReviewUnitOutput> {
-    const repositoryDirs = input.unit.localPath
-      ? [input.unit.localPath]
-      : this.getReadableRepositoryDirs(input.workspace?.repositories);
+    // Skill-led whole-repo review may need to resolve sibling repos by name (workspaceRepositoryMap);
+    // add every sandboxed repo's localPath to the cwd allowlist, not just the unit's own repo.
+    const mapDirs = input.unit.workspaceRepositoryMap?.map((entry) => entry.localPath) ?? [];
+    const unitDirs = [input.unit.localPath, ...mapDirs].filter((dir): dir is string => Boolean(dir));
+    const repositoryDirs =
+      unitDirs.length > 0
+        ? Array.from(new Set(unitDirs))
+        : this.getReadableRepositoryDirs(input.workspace?.repositories);
 
     return this.runJsonStage<DailyCodeReviewUnitOutput>(
       'daily-code-review.output.schema.json',
@@ -529,14 +534,20 @@ ${diffSection}
     const diffSection = input.unit.commitDiffBundle?.trim()
       ? `
 
-待审查 commit diff（由 FlowX 服务端预先收集，请以此为准）:
+当日 commit diff（由 FlowX 服务端预先收集，仅作可选上下文，不是审查范围的唯一依据）:
 ${input.unit.commitDiffBundle.trim()}`
       : '';
     const skillSection = input.unit.discoveredSkill
       ? `
 
-FlowX 已在服务端仓库中发现 review skill（路径: ${input.unit.discoveredSkill.relativePath}），请严格按其内容执行本次审查:
+FlowX 已在服务端仓库中发现 review skill（路径: ${input.unit.discoveredSkill.relativePath}），请严格按其内容对整仓当前代码树执行本次审查:
 ${input.unit.discoveredSkill.content.trim()}`
+      : '';
+    const repositoryMapSection = input.unit.workspaceRepositoryMap?.length
+      ? `
+
+workspaceRepositoryMap（工作区仓库名称 → 本地路径映射，如需引用其它仓库请按仓库名称在此解析 localPath，不要依赖磁盘目录名中的 slug-id）:
+${JSON.stringify(input.unit.workspaceRepositoryMap, null, 2)}`
       : '';
 
     return `${dailyCodeReviewPrompt.system}
@@ -548,11 +559,10 @@ ${dailyCodeReviewPrompt.user}
 统计周期: ${input.unit.rangeLabel}
 仓库: ${input.unit.repositoryName}
 分支: ${input.unit.ref}
-本地路径: ${input.unit.localPath ?? '未提供'}
-目标分支: ${input.unit.ref}
-说明: 仓库已同步，当前工作区应已切换到目标分支。请使用下方 diff 完成审查，不要依赖 shell 执行 git。
-待审查 commit:
-${commitLines || '  - 无'}${diffSection}${skillSection}
+本地路径（当前仓库完整代码树，本次审查的主要对象）: ${input.unit.localPath ?? '未提供'}
+说明: 请审查 localPath 下当前仓库完整代码树；仓库已同步并已切换到目标分支。下方 commit/diff 仅作可选上下文，无 commit 也必须照常完成整仓审查，不要执行 shell 或 git 命令，严禁修改任何业务文件、执行 git commit 或 git push。
+当日 commit（可选上下文）:
+${commitLines || '  - 无'}${diffSection}${skillSection}${repositoryMapSection}
 ${workspaceSection}
 `;
   }
