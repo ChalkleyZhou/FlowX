@@ -16,12 +16,14 @@ describe('DailyCodeReviewService', () => {
   const ensureRepositoryReadyForReview = vi.fn();
   const buildCommitDiffBundle = vi.fn();
   const collectRecentCommits = vi.fn();
+  const collectRecentCommitsFromLocalPath = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.AI_EXECUTOR_PROVIDER = 'mock';
     buildCommitDiffBundle.mockResolvedValue('diff --git a/file.ts b/file.ts\n+change');
     collectRecentCommits.mockResolvedValue([]);
+    collectRecentCommitsFromLocalPath.mockResolvedValue([]);
     findManyCodeReviewSources.mockResolvedValue([]);
     ensureCodeReviewSandbox.mockImplementation(async (repository, branch) => ({
       localPath: `/tmp/code-review/${repository.name}`,
@@ -53,6 +55,7 @@ describe('DailyCodeReviewService', () => {
         ensureRepositoryReadyForReview,
         buildCommitDiffBundle,
         collectRecentCommits,
+        collectRecentCommitsFromLocalPath,
       } as never,
     );
   }
@@ -134,6 +137,8 @@ describe('DailyCodeReviewService', () => {
       expect.objectContaining({ id: 'repo-1', workspaceId: 'workspace-1', name: 'flowx-api' }),
       'main',
     );
+    expect(collectRecentCommits).not.toHaveBeenCalled();
+    expect(collectRecentCommitsFromLocalPath).not.toHaveBeenCalled();
     expect(ensureRepositoryReadyForReview).not.toHaveBeenCalled();
     expect(buildCommitDiffBundle).toHaveBeenCalledWith('/tmp/code-review/flowx-api', expect.any(Array));
     expect(reviewUnit).toHaveBeenCalledTimes(1);
@@ -192,7 +197,6 @@ describe('DailyCodeReviewService', () => {
     findManyCodeReviewSources.mockResolvedValue([]);
     findManySources.mockResolvedValue([{ id: 'source-1', repositoryId: 'repo-1' }]);
     findManyEvents.mockResolvedValue([]);
-    collectRecentCommits.mockResolvedValue([]);
     reviewUnit.mockResolvedValue({
       status: 'COMPLETED',
       issues: [],
@@ -214,6 +218,15 @@ describe('DailyCodeReviewService', () => {
     expect(ensureCodeReviewSandbox).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'repo-1' }),
       'develop',
+    );
+    expect(collectRecentCommits).not.toHaveBeenCalled();
+    expect(collectRecentCommitsFromLocalPath).toHaveBeenCalledWith(
+      '/tmp/code-review/flowx-api',
+      expect.objectContaining({
+        branch: 'develop',
+        since: expect.any(Date),
+        until: expect.any(Date),
+      }),
     );
     expect(ensureRepositoryReadyForReview).not.toHaveBeenCalled();
     expect(reviewUnit).toHaveBeenCalledTimes(1);
@@ -643,8 +656,8 @@ describe('DailyCodeReviewService', () => {
         briefingEvents.filter((event) => where.briefingSourceId.in.includes(event.briefingSourceId)),
     );
 
-    collectRecentCommits.mockImplementation(async (repository: { id: string }) => {
-      if (repository.id !== 'repo-b') {
+    collectRecentCommitsFromLocalPath.mockImplementation(async (localPath: string) => {
+      if (localPath !== '/tmp/code-review/repo-b-cr-only') {
         return [];
       }
       return [
@@ -674,6 +687,19 @@ describe('DailyCodeReviewService', () => {
 
     expect(ensureCodeReviewSandbox).toHaveBeenCalledTimes(2);
     expect(ensureRepositoryReadyForReview).not.toHaveBeenCalled();
+    expect(collectRecentCommits).not.toHaveBeenCalled();
+    expect(collectRecentCommitsFromLocalPath).toHaveBeenCalledWith(
+      '/tmp/code-review/repo-b-cr-only',
+      expect.objectContaining({
+        branch: 'main',
+        since: expect.any(Date),
+        until: expect.any(Date),
+      }),
+    );
+    expect(collectRecentCommitsFromLocalPath).not.toHaveBeenCalledWith(
+      '/tmp/code-review/repo-a-briefing-only',
+      expect.anything(),
+    );
     expect(reviewUnit).toHaveBeenCalledTimes(2);
     expect(reviewUnit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -688,6 +714,7 @@ describe('DailyCodeReviewService', () => {
         unit: expect.objectContaining({
           repositoryId: 'repo-b',
           localPath: '/tmp/code-review/repo-b-cr-only',
+          commits: [expect.objectContaining({ id: 'bbb111' })],
         }),
       }),
     );
@@ -730,19 +757,14 @@ describe('DailyCodeReviewService', () => {
     ]);
     findManySources.mockResolvedValue([]);
     findManyEvents.mockResolvedValue([]);
-    collectRecentCommits.mockImplementation(async (repository: { id: string }) => {
-      if (repository.id !== 'repo-b') {
-        return [];
-      }
-      return [
-        {
-          id: 'bbb111',
-          message: 'feat: repo b only',
-          author: 'dev',
-          occurredAt: '2026-07-07T09:00:00.000Z',
-        },
-      ];
-    });
+    collectRecentCommitsFromLocalPath.mockResolvedValue([
+      {
+        id: 'bbb111',
+        message: 'feat: repo b only',
+        author: 'dev',
+        occurredAt: '2026-07-07T09:00:00.000Z',
+      },
+    ]);
     reviewUnit.mockResolvedValue({
       status: 'COMPLETED',
       issues: [],
@@ -767,6 +789,11 @@ describe('DailyCodeReviewService', () => {
     expect(ensureCodeReviewSandbox).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'repo-b' }),
       'main',
+    );
+    expect(collectRecentCommits).not.toHaveBeenCalled();
+    expect(collectRecentCommitsFromLocalPath).toHaveBeenCalledWith(
+      '/tmp/code-review/repo-b',
+      expect.objectContaining({ branch: 'main' }),
     );
     expect(ensureRepositoryReadyForReview).not.toHaveBeenCalled();
     expect(reviewUnit).toHaveBeenCalledTimes(1);
@@ -844,7 +871,7 @@ describe('DailyCodeReviewService', () => {
     findManyCodeReviewSources.mockResolvedValue([]);
     findManySources.mockResolvedValue([]);
     findManyEvents.mockResolvedValue([]);
-    collectRecentCommits.mockRejectedValue(new Error('代码库同步失败：auth required'));
+    collectRecentCommitsFromLocalPath.mockRejectedValue(new Error('git log failed'));
     reviewUnit.mockResolvedValue({
       status: 'COMPLETED',
       issues: [],
@@ -864,6 +891,8 @@ describe('DailyCodeReviewService', () => {
       expect.objectContaining({ id: 'repo-b' }),
       'main',
     );
+    expect(collectRecentCommits).not.toHaveBeenCalled();
+    expect(collectRecentCommitsFromLocalPath).toHaveBeenCalled();
     expect(ensureRepositoryReadyForReview).not.toHaveBeenCalled();
     expect(reviewUnit).toHaveBeenCalledWith(
       expect.objectContaining({

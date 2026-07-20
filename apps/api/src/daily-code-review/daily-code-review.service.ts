@@ -56,6 +56,8 @@ type BuildDailyCodeReviewInput = {
   repositoryLookupById: ReturnType<typeof buildRepositoryLookupById>;
   repositoryLookupByName: ReturnType<typeof buildRepositoryLookupByName>;
   recipient: AiInvocationRecipient | null;
+  periodStart: Date;
+  periodEnd: Date;
 };
 
 @Injectable()
@@ -221,52 +223,6 @@ export class DailyCodeReviewService {
         repositoryId: row.repositoryId,
       }));
     const commits = collectDailyCommits(eventInputs);
-
-    // Repos scoped to Code Review but without any BriefingSource-derived evidence
-    // still need to be reviewed: collect their commits directly via git log.
-    const repoIdsWithEvidence = new Set(
-      commits.map((commit) => commit.repositoryId).filter((id): id is string => Boolean(id)),
-    );
-    const gitFallbackRepoIds = [...allowedRepoIds].filter((id) => !repoIdsWithEvidence.has(id));
-    for (const repositoryId of gitFallbackRepoIds) {
-      const repository = repositoryLookupById.get(repositoryId);
-      if (!repository) {
-        continue;
-      }
-      const branch = repository.currentBranch || repository.defaultBranch || null;
-      try {
-        const gitCommits = await this.repositorySyncService.collectRecentCommits(
-          {
-            id: repository.id,
-            workspaceId: project.workspaceId,
-            name: repository.name,
-            url: repository.url,
-            defaultBranch: repository.defaultBranch,
-            currentBranch: repository.currentBranch,
-            localPath: repository.localPath,
-          },
-          { branch, since: window.start, until: window.end },
-        );
-        for (const commit of gitCommits) {
-          commits.push({
-            id: commit.id,
-            message: commit.message,
-            author: commit.author,
-            projectName: repository.name,
-            repositoryId: repository.id,
-            ref: branch || 'unknown',
-            occurredAt: commit.occurredAt,
-          });
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        // Optional context only — still review the sandbox even without commit evidence.
-        this.logger.warn(
-          `Failed to collect git commits for CodeReviewSource repository ${repositoryId} without a briefing source: ${message}`,
-        );
-      }
-    }
-
     const groups = groupCommitsForDailyReview(commits);
     const recipient = toAiInvocationRecipient(authSession);
     const allowedRepoIdList = [...allowedRepoIds].sort();
@@ -278,6 +234,8 @@ export class DailyCodeReviewService {
       repositoryLookupById,
       repositoryLookupByName,
       recipient,
+      periodStart: window.start,
+      periodEnd: window.end,
     };
 
     if (runtimeOptions?.async) {
@@ -396,6 +354,8 @@ export class DailyCodeReviewService {
       repositoryLookupById,
       repositoryLookupByName,
       recipient,
+      periodStart,
+      periodEnd,
     } = input;
 
     const commitsByRepositoryId = new Map<
@@ -430,7 +390,7 @@ export class DailyCodeReviewService {
       }
 
       const branch = repository.currentBranch || repository.defaultBranch || 'main';
-      const unitCommits = commitsByRepositoryId.get(repository.id) ?? [];
+      let unitCommits = commitsByRepositoryId.get(repository.id) ?? [];
       const repositoryName = repository.name;
 
       const sandbox = await this.repositorySyncService.ensureCodeReviewSandbox(
@@ -455,6 +415,26 @@ export class DailyCodeReviewService {
           errorMessage: sandbox.syncError?.trim() || 'Code Review 沙箱同步失败，无法运行审查。',
         });
         continue;
+      }
+
+      // Optional commit context from the sandbox only — never sync/checkout the main tree.
+      if (unitCommits.length === 0) {
+        try {
+          const gitCommits = await this.repositorySyncService.collectRecentCommitsFromLocalPath(
+            sandbox.localPath,
+            { branch, since: periodStart, until: periodEnd },
+          );
+          unitCommits = gitCommits.map((commit) => ({
+            id: commit.id,
+            message: commit.message,
+            author: commit.author,
+          }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.warn(
+            `Failed to collect sandbox git commits for repository ${repository.id}: ${message}`,
+          );
+        }
       }
 
       let commitDiffBundle = '';

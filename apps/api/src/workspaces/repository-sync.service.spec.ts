@@ -157,6 +157,49 @@ describe('RepositorySyncService.collectRecentCommits', () => {
   });
 });
 
+describe('RepositorySyncService.collectRecentCommitsFromLocalPath', () => {
+  it('runs git log in the given path without syncing the repository', async () => {
+    const prisma = {
+      repository: {
+        update: vi.fn().mockResolvedValue({}),
+      },
+    } as any;
+    const service = new RepositorySyncService(prisma, {
+      getAccessTokenForProvider: vi.fn().mockResolvedValue(null),
+    } as never);
+    const syncSpy = vi.spyOn(service, 'syncRepository');
+    const fieldSep = '\x1f';
+    const readGitLogStdout = vi.spyOn(service as any, 'readGitLogStdout').mockResolvedValue(
+      `abc111${fieldSep}dev${fieldSep}2026-07-07T09:00:00.000Z${fieldSep}feat: sandbox only`,
+    );
+
+    const result = await service.collectRecentCommitsFromLocalPath('/tmp/code-review/demo', {
+      branch: 'main',
+      since: new Date('2026-07-07T00:00:00.000Z'),
+      until: new Date('2026-07-08T00:00:00.000Z'),
+    });
+
+    expect(syncSpy).not.toHaveBeenCalled();
+    expect(readGitLogStdout).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        'log',
+        'main',
+        '--since=2026-07-07T00:00:00.000Z',
+        '--until=2026-07-08T00:00:00.000Z',
+      ]),
+      '/tmp/code-review/demo',
+    );
+    expect(result).toEqual([
+      {
+        id: 'abc111',
+        message: 'feat: sandbox only',
+        author: 'dev',
+        occurredAt: '2026-07-07T09:00:00.000Z',
+      },
+    ]);
+  });
+});
+
 describe('parseGitLogOutput', () => {
   it('parses commit id, author, date and message from git log output', () => {
     const fieldSep = '\x1f';

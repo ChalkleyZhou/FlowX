@@ -290,6 +290,9 @@ export class RepositorySyncService {
    * Collects commits directly from git for repositories that have no BriefingSource
    * (and therefore no webhook-derived evidence). Syncs the repository, then reads
    * `git log` on the target branch within [since, until).
+   *
+   * Prefer {@link collectRecentCommitsFromLocalPath} for Code Review generate — it never
+   * mutates the main workspace tree.
    */
   async collectRecentCommits(
     repository: RepositoryRecord,
@@ -303,19 +306,44 @@ export class RepositorySyncService {
       );
     }
 
-    const { stdout } = await execFile(
-      'git',
-      [
-        'log',
-        `--since=${options.since.toISOString()}`,
-        `--until=${options.until.toISOString()}`,
-        `--pretty=format:${GIT_LOG_FORMAT}`,
-        '--no-color',
-      ],
-      { cwd: synced.localPath, env: process.env, maxBuffer: 4 * 1024 * 1024 },
+    return this.collectRecentCommitsFromLocalPath(synced.localPath, {
+      branch: targetBranch,
+      since: options.since,
+      until: options.until,
+    });
+  }
+
+  /**
+   * Read-only `git log` against an already-synced local clone (e.g. Code Review sandbox).
+   * Does not call syncRepository / checkout the main workspace tree.
+   */
+  async collectRecentCommitsFromLocalPath(
+    localPath: string,
+    options: { branch?: string | null; since: Date; until: Date },
+  ): Promise<Array<{ id: string; message: string; author?: string; occurredAt: string }>> {
+    const args = ['log'];
+    const branch = options.branch?.trim();
+    if (branch) {
+      args.push(branch);
+    }
+    args.push(
+      `--since=${options.since.toISOString()}`,
+      `--until=${options.until.toISOString()}`,
+      `--pretty=format:${GIT_LOG_FORMAT}`,
+      '--no-color',
     );
 
+    const stdout = await this.readGitLogStdout(args, localPath);
     return parseGitLogOutput(stdout, options.since.toISOString());
+  }
+
+  private async readGitLogStdout(args: string[], cwd: string): Promise<string> {
+    const { stdout } = await execFile('git', args, {
+      cwd,
+      env: process.env,
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    return stdout;
   }
 
   async buildCommitDiffBundle(
