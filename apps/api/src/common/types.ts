@@ -134,6 +134,12 @@ export interface DailyCodeReviewCommitRef {
   author?: string;
 }
 
+export interface DailyCodeReviewRepositoryMapEntry {
+  name: string;
+  repositoryId: string;
+  localPath: string;
+}
+
 export interface DailyCodeReviewUnitInput {
   repositoryName: string;
   repositoryId: string | null;
@@ -146,6 +152,12 @@ export interface DailyCodeReviewUnitInput {
   commitDiffBundle?: string;
   /** Review skill discovered on disk before invoking the AI; server-side gate result. */
   discoveredSkill?: { relativePath: string; content: string } | null;
+  /**
+   * Name → sandbox path map for every repo successfully sandboxed in this
+   * generate run, so a skill can resolve sibling repos by name instead of
+   * guessing at slug-id folder names.
+   */
+  workspaceRepositoryMap?: DailyCodeReviewRepositoryMapEntry[];
 }
 
 export interface ReviewDailyChangesInput {

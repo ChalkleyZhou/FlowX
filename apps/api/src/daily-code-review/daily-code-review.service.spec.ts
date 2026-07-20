@@ -720,6 +720,171 @@ describe('DailyCodeReviewService', () => {
     );
   });
 
+  it('passes a workspaceRepositoryMap of every successfully sandboxed repo into each unit', async () => {
+    findUniqueProject.mockResolvedValue({
+      id: 'project-1',
+      name: 'FlowX',
+      workspaceId: 'workspace-1',
+      workspace: {
+        id: 'workspace-1',
+        name: '研发平台',
+        repositories: [
+          {
+            id: 'repo-a',
+            name: 'repo-a',
+            url: 'https://example.com/repo-a.git',
+            defaultBranch: 'main',
+            currentBranch: 'main',
+            localPath: '/tmp/repo-a',
+            syncStatus: 'READY',
+          },
+          {
+            id: 'repo-b',
+            name: 'repo-b',
+            url: 'https://example.com/repo-b.git',
+            defaultBranch: 'main',
+            currentBranch: 'main',
+            localPath: '/tmp/repo-b',
+            syncStatus: 'READY',
+          },
+        ],
+      },
+    });
+    findUniqueConfig.mockResolvedValue({ dailyHour: 22 });
+    findFirstReview.mockResolvedValue(null);
+    findManyCodeReviewSources.mockResolvedValue([]);
+    findManySources.mockResolvedValue([]);
+    findManyEvents.mockResolvedValue([]);
+    collectRecentCommitsFromLocalPath.mockResolvedValue([]);
+    reviewUnit.mockResolvedValue({
+      status: 'COMPLETED',
+      issues: [],
+      bugs: [],
+      missingTests: [],
+      suggestions: [],
+      impactScope: [],
+    });
+    createReview.mockImplementation(async ({ data }) => ({ id: 'review-1', ...data }));
+
+    await createService().generateProjectDailyCodeReview('project-1', {
+      date: '2026-07-07',
+      regenerate: true,
+    });
+
+    expect(reviewUnit).toHaveBeenCalledTimes(2);
+    const expectedMap = expect.arrayContaining([
+      expect.objectContaining({
+        name: 'repo-a',
+        repositoryId: 'repo-a',
+        localPath: expect.stringContaining('code-review'),
+      }),
+      expect.objectContaining({
+        name: 'repo-b',
+        repositoryId: 'repo-b',
+        localPath: expect.stringContaining('code-review'),
+      }),
+    ]);
+    expect(reviewUnit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        unit: expect.objectContaining({
+          repositoryId: 'repo-a',
+          workspaceRepositoryMap: expectedMap,
+        }),
+      }),
+    );
+    expect(reviewUnit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        unit: expect.objectContaining({
+          repositoryId: 'repo-b',
+          workspaceRepositoryMap: expectedMap,
+        }),
+      }),
+    );
+    const [firstCall, secondCall] = reviewUnit.mock.calls;
+    expect(firstCall[0].unit.workspaceRepositoryMap).toEqual(
+      secondCall[0].unit.workspaceRepositoryMap,
+    );
+  });
+
+  it('excludes a failed-sandbox repo from workspaceRepositoryMap but still reviews other repos', async () => {
+    findUniqueProject.mockResolvedValue({
+      id: 'project-1',
+      name: 'FlowX',
+      workspaceId: 'workspace-1',
+      workspace: {
+        id: 'workspace-1',
+        name: '研发平台',
+        repositories: [
+          {
+            id: 'repo-a',
+            name: 'repo-a',
+            url: 'https://example.com/repo-a.git',
+            defaultBranch: 'main',
+            currentBranch: 'main',
+            localPath: '/tmp/repo-a',
+            syncStatus: 'READY',
+          },
+          {
+            id: 'repo-b',
+            name: 'repo-b',
+            url: 'https://example.com/repo-b.git',
+            defaultBranch: 'main',
+            currentBranch: 'main',
+            localPath: '/tmp/repo-b',
+            syncStatus: 'READY',
+          },
+        ],
+      },
+    });
+    findUniqueConfig.mockResolvedValue({ dailyHour: 22 });
+    findFirstReview.mockResolvedValue(null);
+    findManyCodeReviewSources.mockResolvedValue([]);
+    findManySources.mockResolvedValue([]);
+    findManyEvents.mockResolvedValue([]);
+    collectRecentCommitsFromLocalPath.mockResolvedValue([]);
+    ensureCodeReviewSandbox.mockImplementation(async (repository: { id: string; name: string }, branch: string) => {
+      if (repository.id === 'repo-b') {
+        return {
+          localPath: `/tmp/code-review/${repository.name}`,
+          branch,
+          syncStatus: 'ERROR' as const,
+          syncError: '代码库同步失败：auth required',
+        };
+      }
+      return {
+        localPath: `/tmp/code-review/${repository.name}`,
+        branch,
+        syncStatus: 'READY' as const,
+      };
+    });
+    reviewUnit.mockResolvedValue({
+      status: 'COMPLETED',
+      issues: [],
+      bugs: [],
+      missingTests: [],
+      suggestions: [],
+      impactScope: [],
+    });
+    createReview.mockImplementation(async ({ data }) => ({ id: 'review-1', ...data }));
+
+    await createService().generateProjectDailyCodeReview('project-1', {
+      date: '2026-07-07',
+      regenerate: true,
+    });
+
+    expect(reviewUnit).toHaveBeenCalledTimes(1);
+    expect(reviewUnit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        unit: expect.objectContaining({
+          repositoryId: 'repo-a',
+          workspaceRepositoryMap: [
+            expect.objectContaining({ name: 'repo-a', repositoryId: 'repo-a' }),
+          ],
+        }),
+      }),
+    );
+  });
+
   it('excludes workspace repositories marked inactive on CodeReviewSource', async () => {
     findUniqueProject.mockResolvedValue({
       id: 'project-1',

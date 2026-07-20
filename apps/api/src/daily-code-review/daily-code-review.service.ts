@@ -29,7 +29,7 @@ import {
   type DailyCodeReviewUnitResult,
 } from './daily-code-review.types';
 import { DeliveryTargetsService } from '../briefings/delivery-targets.service';
-import type { WorkspaceContext } from '../common/types';
+import type { DailyCodeReviewRepositoryMapEntry, WorkspaceContext } from '../common/types';
 import { RepositorySyncService } from '../workspaces/repository-sync.service';
 import type { RepositoryLookupEntry } from './daily-code-review-commits';
 import {
@@ -382,17 +382,19 @@ export class DailyCodeReviewService {
       commitsByRepositoryId.set(repository.id, existing);
     }
 
-    const units: DailyCodeReviewUnitResult[] = [];
+    // Sandbox every included repo up front so `workspaceRepositoryMap` reflects
+    // the full, successfully-sandboxed set on every unit sent to the AI —
+    // not just the repos processed before a given repo in the loop.
+    const sandboxByRepositoryId = new Map<
+      string,
+      { localPath: string; branch: string; syncStatus: 'READY' | 'ERROR'; syncError?: string }
+    >();
     for (const repositoryId of allowedRepoIds) {
       const repository = repositoryLookupById.get(repositoryId);
       if (!repository) {
         continue;
       }
-
       const branch = repository.currentBranch || repository.defaultBranch || 'main';
-      let unitCommits = commitsByRepositoryId.get(repository.id) ?? [];
-      const repositoryName = repository.name;
-
       const sandbox = await this.repositorySyncService.ensureCodeReviewSandbox(
         {
           id: repository.id,
@@ -404,15 +406,44 @@ export class DailyCodeReviewService {
         },
         branch,
       );
+      sandboxByRepositoryId.set(repositoryId, sandbox);
+    }
 
-      if (sandbox.syncStatus === 'ERROR') {
+    const workspaceRepositoryMap: DailyCodeReviewRepositoryMapEntry[] = allowedRepoIds
+      .map((repositoryId) => {
+        const repository = repositoryLookupById.get(repositoryId);
+        const sandbox = sandboxByRepositoryId.get(repositoryId);
+        if (!repository || !sandbox || sandbox.syncStatus !== 'READY') {
+          return null;
+        }
+        return {
+          name: repository.name,
+          repositoryId: repository.id,
+          localPath: sandbox.localPath,
+        };
+      })
+      .filter((entry): entry is DailyCodeReviewRepositoryMapEntry => entry !== null);
+
+    const units: DailyCodeReviewUnitResult[] = [];
+    for (const repositoryId of allowedRepoIds) {
+      const repository = repositoryLookupById.get(repositoryId);
+      if (!repository) {
+        continue;
+      }
+
+      const branch = repository.currentBranch || repository.defaultBranch || 'main';
+      let unitCommits = commitsByRepositoryId.get(repository.id) ?? [];
+      const repositoryName = repository.name;
+      const sandbox = sandboxByRepositoryId.get(repositoryId);
+
+      if (!sandbox || sandbox.syncStatus === 'ERROR') {
         units.push({
           repositoryName,
           repositoryId: repository.id,
           ref: branch,
           commits: unitCommits,
           status: 'FAILED',
-          errorMessage: sandbox.syncError?.trim() || 'Code Review 沙箱同步失败，无法运行审查。',
+          errorMessage: sandbox?.syncError?.trim() || 'Code Review 沙箱同步失败，无法运行审查。',
         });
         continue;
       }
@@ -472,6 +503,7 @@ export class DailyCodeReviewService {
           date,
           rangeLabel: date,
           commitDiffBundle,
+          workspaceRepositoryMap,
         },
         workspace: toWorkspaceContext({
           ...project.workspace,
