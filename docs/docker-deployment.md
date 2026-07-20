@@ -378,6 +378,7 @@ scp dev-current.db user@server:/opt/flowx-data/dev-current.db
 
 - `/data` 主要保存数据库和 Codex 登录态
 - `/app/.flowx-data` 主要保存工作区仓库、本地副本和 workflow 仓库副本
+- `/app/.flowx-data/code-review/workspaces` 是每日 Code Review 独立的 sandbox 克隆目录（可用 `CODE_REVIEW_REPOS_ROOT` 覆盖），与开发用的工作区仓库副本分离
 - 如果不持久化 `/app/.flowx-data`，容器重建后执行阶段可能会因为找不到仓库目录而失败
 
 ### 7.1 只清业务数据（保留用户与登录态）

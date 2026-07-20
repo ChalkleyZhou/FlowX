@@ -47,7 +47,7 @@ pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma
 - `src/workspaces`：工作区、仓库登记、仓库同步和分支元数据。
 - `src/projects`：项目管理 API。
 - `src/briefings`：项目简报来源、事件归档、AI 总结、简报定时生成、投递目标和投递日志，属于高风险区域。投递目标带 `forBriefing`/`forCodeReview` 用途标记，由简报和每日 Code Review 共用。
-- `src/daily-code-review`：独立的 `DailyCodeReviewModule`——控制器、`ProjectCodeReviewConfig`、CR 调度、`CodeReviewSource` 数据源、review skill 磁盘发现（`review-skill-discovery.ts`）和渲染，属于高风险区域。只从 `src/briefings` 导入共享的投递目标服务与提交/时间窗口工具，不复用简报的调度或配置。
+- `src/daily-code-review`：独立的 `DailyCodeReviewModule`——控制器、`ProjectCodeReviewConfig`、CR 调度、`CodeReviewSource` 数据源、review skill 磁盘发现（`review-skill-discovery.ts`）和渲染，属于高风险区域。只从 `src/briefings` 导入共享的投递目标服务与提交/时间窗口工具，不复用简报的调度或配置。CR 生成通过 `RepositorySyncService.ensureCodeReviewSandbox` 在每工作区独立 sandbox（`.flowx-data/code-review/workspaces/{workspaceId}/repositories/{slug}-{id8}`，可用 `CODE_REVIEW_REPOS_ROOT` 覆盖根目录）中 clone/fetch/checkout 后再审查，绝不能调用 `ensureRepositoryReadyForReview` 或写 `Repository.localPath`，以免污染主工作区的开发 clone。
 - `src/schedule`：需求/项目排期和甘特图数据，属于高风险区域。
 - `src/review-artifacts`：ReviewFinding、Issue、Bug 的维护和转换。
 - `src/deploy`：部署 provider 抽象和 provider 实现。

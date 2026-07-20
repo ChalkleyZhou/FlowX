@@ -65,7 +65,7 @@ pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma
 - `apps/api/src/deploy`：部署集成 provider 抽象与实现。
 - `apps/api/src/dev-preview`：本地预览命令探测和预览服务。
 - `apps/api/src/briefings`：项目简报、代码事件聚合、AI 总结、简报定时生成和投递目标（投递目标按 `forBriefing` / `forCodeReview` 用途区分，供简报和 Code Review 共用）。
-- `apps/api/src/daily-code-review`：独立的每日 Code Review 模块（配置、调度、数据源、skill 发现和渲染），与 `apps/api/src/briefings` 解耦，只复用其共享的投递目标与提交/时间窗口工具。
+- `apps/api/src/daily-code-review`：独立的每日 Code Review 模块（配置、调度、数据源、skill 发现和渲染），与 `apps/api/src/briefings` 解耦，只复用其共享的投递目标与提交/时间窗口工具。CR 生成使用独立的每工作区 sandbox 克隆（见下方 `.flowx-data` 说明），不复用主工作区开发仓库的 checkout。
 - `apps/api/src/schedule`：需求/项目排期与甘特图数据。
 - `apps/api/src/notifications`：DingTalk 等通知发送集成。
 - `apps/api/src/review-artifacts`：ReviewFinding、Issue、Bug 转换与维护。
@@ -79,7 +79,7 @@ pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma
 - `docs/user-manual.md`：用户手册内容来源。
 - `prisma`：Prisma schema 与迁移。
 - `docs`：系统设计、部署和架构文档。
-- `.flowx-data`：本地运行数据，通常不要提交或手动改动。
+- `.flowx-data`：本地运行数据，通常不要提交或手动改动。其中 `.flowx-data/code-review/workspaces/{workspaceId}/repositories/{slug}-{id8}` 是每日 Code Review 专用的 sandbox 克隆根目录，可通过环境变量 `CODE_REVIEW_REPOS_ROOT` 覆盖；CR 生成只在这个 sandbox 里 clone/fetch/checkout，不会读写 `Repository.localPath` 对应的主工作区开发仓库。
 
 ## 代码规范
 
