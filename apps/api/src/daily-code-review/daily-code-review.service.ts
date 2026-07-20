@@ -51,12 +51,11 @@ interface GenerateDailyCodeReviewRuntimeOptions {
 type BuildDailyCodeReviewInput = {
   project: Awaited<ReturnType<DailyCodeReviewService['getProjectForReview']>>;
   date: string;
+  allowedRepoIds: string[];
   groups: ReturnType<typeof groupCommitsForDailyReview>;
   repositoryLookupById: ReturnType<typeof buildRepositoryLookupById>;
   repositoryLookupByName: ReturnType<typeof buildRepositoryLookupByName>;
   recipient: AiInvocationRecipient | null;
-  /** Units that failed while collecting git evidence (CR-only repos without BriefingSource). */
-  evidenceFailures?: DailyCodeReviewUnitResult[];
 };
 
 @Injectable()
@@ -229,7 +228,6 @@ export class DailyCodeReviewService {
       commits.map((commit) => commit.repositoryId).filter((id): id is string => Boolean(id)),
     );
     const gitFallbackRepoIds = [...allowedRepoIds].filter((id) => !repoIdsWithEvidence.has(id));
-    const evidenceFailures: DailyCodeReviewUnitResult[] = [];
     for (const repositoryId of gitFallbackRepoIds) {
       const repository = repositoryLookupById.get(repositoryId);
       if (!repository) {
@@ -262,30 +260,24 @@ export class DailyCodeReviewService {
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        // Optional context only — still review the sandbox even without commit evidence.
         this.logger.warn(
           `Failed to collect git commits for CodeReviewSource repository ${repositoryId} without a briefing source: ${message}`,
         );
-        evidenceFailures.push({
-          repositoryName: repository.name,
-          repositoryId: repository.id,
-          ref: branch || 'unknown',
-          commits: [],
-          status: 'FAILED',
-          errorMessage: `无法收集待审查提交证据：${message}`,
-        });
       }
     }
 
     const groups = groupCommitsForDailyReview(commits);
     const recipient = toAiInvocationRecipient(authSession);
+    const allowedRepoIdList = [...allowedRepoIds].sort();
     const buildInput: BuildDailyCodeReviewInput = {
       project,
       date,
+      allowedRepoIds: allowedRepoIdList,
       groups,
       repositoryLookupById,
       repositoryLookupByName,
       recipient,
-      evidenceFailures,
     };
 
     if (runtimeOptions?.async) {
@@ -293,7 +285,7 @@ export class DailyCodeReviewService {
         projectName: project.name,
         date,
         rangeLabel: date,
-        unitCount: groups.length + evidenceFailures.length,
+        unitCount: allowedRepoIdList.length,
       });
       const pendingPayload = {
         scope: scope as Prisma.InputJsonValue,
@@ -399,113 +391,103 @@ export class DailyCodeReviewService {
     const {
       project,
       date,
+      allowedRepoIds,
       groups,
       repositoryLookupById,
       repositoryLookupByName,
       recipient,
-      evidenceFailures = [],
     } = input;
-    const units: DailyCodeReviewUnitResult[] = [...evidenceFailures];
+
+    const commitsByRepositoryId = new Map<
+      string,
+      Array<{ id: string; message: string; author?: string }>
+    >();
     for (const group of groups) {
       const repository = resolveRepositoryForReview(
         group,
         repositoryLookupById,
         repositoryLookupByName,
       );
-      const unitCommits = group.commits.map((commit) => ({
-        id: commit.id,
-        message: commit.message,
-        author: commit.author,
-      }));
-
       if (!repository) {
-        units.push({
-          repositoryName: group.repositoryName,
-          repositoryId: group.repositoryId,
-          ref: group.ref,
-          commits: unitCommits,
-          status: 'SKIPPED_NO_REPO',
-          errorMessage: `未找到仓库「${group.repositoryName}」对应的登记记录，请确认简报数据源已绑定到工作区仓库。`,
+        continue;
+      }
+      const existing = commitsByRepositoryId.get(repository.id) ?? [];
+      for (const commit of group.commits) {
+        existing.push({
+          id: commit.id,
+          message: commit.message,
+          author: commit.author,
         });
+      }
+      commitsByRepositoryId.set(repository.id, existing);
+    }
+
+    const units: DailyCodeReviewUnitResult[] = [];
+    for (const repositoryId of allowedRepoIds) {
+      const repository = repositoryLookupById.get(repositoryId);
+      if (!repository) {
         continue;
       }
 
+      const branch = repository.currentBranch || repository.defaultBranch || 'main';
+      const unitCommits = commitsByRepositoryId.get(repository.id) ?? [];
       const repositoryName = repository.name;
 
-      let preparedRepository: RepositoryLookupEntry;
+      const sandbox = await this.repositorySyncService.ensureCodeReviewSandbox(
+        {
+          id: repository.id,
+          workspaceId: project.workspaceId,
+          name: repository.name,
+          url: repository.url,
+          defaultBranch: repository.defaultBranch,
+          currentBranch: repository.currentBranch,
+        },
+        branch,
+      );
+
+      if (sandbox.syncStatus === 'ERROR') {
+        units.push({
+          repositoryName,
+          repositoryId: repository.id,
+          ref: branch,
+          commits: unitCommits,
+          status: 'FAILED',
+          errorMessage: sandbox.syncError?.trim() || 'Code Review 沙箱同步失败，无法运行审查。',
+        });
+        continue;
+      }
+
       let commitDiffBundle = '';
-      try {
-        const synced = await this.repositorySyncService.ensureRepositoryReadyForReview(
-          {
-            id: repository.id,
-            workspaceId: project.workspaceId,
-            name: repository.name,
-            url: repository.url,
-            defaultBranch: repository.defaultBranch,
-            currentBranch: repository.currentBranch,
-            localPath: repository.localPath,
-          },
-          group.ref,
-          unitCommits.map((commit) => commit.id),
-        );
-        preparedRepository = {
-          id: synced.id,
-          name: synced.name,
-          url: synced.url,
-          defaultBranch: synced.defaultBranch,
-          currentBranch: synced.currentBranch,
-          localPath: synced.localPath,
-          syncStatus: synced.syncStatus,
-        };
-        if (preparedRepository.localPath && unitCommits.length > 0) {
+      if (sandbox.localPath && unitCommits.length > 0) {
+        try {
           commitDiffBundle = await this.repositorySyncService.buildCommitDiffBundle(
-            preparedRepository.localPath,
+            sandbox.localPath,
             unitCommits,
           );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.warn(
+            `Failed to build commit diff bundle for repository ${repository.id}: ${message}`,
+          );
         }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        units.push({
-          repositoryName: group.repositoryName,
-          repositoryId: repository.id,
-          ref: group.ref,
-          commits: unitCommits,
-          status: 'FAILED',
-          errorMessage: message,
-        });
-        continue;
       }
 
-      if (!preparedRepository.localPath) {
-        units.push({
-          repositoryName,
-          repositoryId: repository.id,
-          ref: group.ref,
-          commits: unitCommits,
-          status: 'FAILED',
-          errorMessage: '仓库同步后仍缺少本地路径，无法运行 Code Review。',
-        });
-        continue;
-      }
-
-      if (unitCommits.length > 0 && !commitDiffBundle.trim()) {
-        units.push({
-          repositoryName,
-          repositoryId: repository.id,
-          ref: group.ref,
-          commits: unitCommits,
-          status: 'FAILED',
-          errorMessage: '未能收集到待审查 commit 的 diff，无法运行 Code Review。',
-        });
-        continue;
-      }
+      const preparedRepository: RepositoryLookupEntry = {
+        id: repository.id,
+        name: repository.name,
+        url: repository.url,
+        defaultBranch: repository.defaultBranch,
+        currentBranch: sandbox.branch || branch,
+        localPath: sandbox.localPath,
+        syncStatus: sandbox.syncStatus,
+      };
 
       const aiOutput = await this.dailyCodeReviewAiService.reviewUnit({
         unit: {
           repositoryName,
           repositoryId: preparedRepository.id,
           localPath: preparedRepository.localPath,
-          ref: group.ref,
+          ref: branch,
           commits: unitCommits,
           date,
           rangeLabel: date,
@@ -523,7 +505,7 @@ export class DailyCodeReviewService {
       units.push({
         repositoryName,
         repositoryId: preparedRepository.id,
-        ref: group.ref,
+        ref: branch,
         commits: unitCommits,
         status: aiOutput.status,
         skillHint: aiOutput.skillHint,
