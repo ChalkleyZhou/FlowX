@@ -1,5 +1,94 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { join } from 'path';
 import { parseGitLogOutput, RepositorySyncService } from './repository-sync.service';
+
+describe('RepositorySyncService code review sandbox', () => {
+  const originalCodeReviewReposRoot = process.env.CODE_REVIEW_REPOS_ROOT;
+
+  afterEach(() => {
+    if (originalCodeReviewReposRoot === undefined) {
+      delete process.env.CODE_REVIEW_REPOS_ROOT;
+    } else {
+      process.env.CODE_REVIEW_REPOS_ROOT = originalCodeReviewReposRoot;
+    }
+  });
+
+  function createService(prisma = { repository: { update: vi.fn().mockResolvedValue({}) } }) {
+    return {
+      prisma,
+      service: new RepositorySyncService(prisma as never, {
+        getAccessTokenForProvider: vi.fn().mockResolvedValue(null),
+      } as never),
+    };
+  }
+
+  it('resolves code review sandbox path under code-review/workspaces', () => {
+    delete process.env.CODE_REVIEW_REPOS_ROOT;
+    const { service } = createService();
+    const repositoryId = 'repoabcd12345678';
+    const path = (service as any).resolveCodeReviewRepositoryPath(
+      'ws-abc',
+      repositoryId,
+      'My Demo Repo',
+    );
+
+    expect(path).toContain(join('code-review', 'workspaces', 'ws-abc', 'repositories'));
+    expect(path.endsWith(`my-demo-repo-${repositoryId.slice(0, 8)}`)).toBe(true);
+  });
+
+  it('uses CODE_REVIEW_REPOS_ROOT when set', () => {
+    process.env.CODE_REVIEW_REPOS_ROOT = '/tmp/cr-root';
+    const { service } = createService();
+    const repositoryId = 'repoabcd12345678';
+    const path = (service as any).resolveCodeReviewRepositoryPath(
+      'ws-abc',
+      repositoryId,
+      'demo',
+    );
+
+    expect(path).toBe(
+      join('/tmp/cr-root', 'ws-abc', 'repositories', `demo-${repositoryId.slice(0, 8)}`),
+    );
+  });
+
+  it('ensureCodeReviewSandbox does not update Repository.localPath', async () => {
+    delete process.env.CODE_REVIEW_REPOS_ROOT;
+    const { prisma, service } = createService();
+    const repository = {
+      id: 'repoabcd12345678',
+      workspaceId: 'ws-abc',
+      name: 'demo',
+      url: 'git@example.com:org/demo.git',
+      defaultBranch: 'main',
+      currentBranch: 'main',
+    };
+    const sandboxPath = (service as any).resolveCodeReviewRepositoryPath(
+      repository.workspaceId,
+      repository.id,
+      repository.name,
+    );
+
+    vi.spyOn(service as any, 'pathExists').mockImplementation(async (path: string) => {
+      if (path === join(sandboxPath, '.git')) {
+        return true;
+      }
+      return false;
+    });
+    vi.spyOn(service as any, 'resolveRemoteAuth').mockResolvedValue(null);
+    vi.spyOn(service as any, 'runGit').mockResolvedValue('');
+    vi.spyOn(service as any, 'remoteBranchExists').mockResolvedValue(true);
+    vi.spyOn(service as any, 'removeStaleIndexLock').mockResolvedValue(undefined);
+
+    const result = await service.ensureCodeReviewSandbox(repository, 'feature/cr');
+
+    expect(result).toMatchObject({
+      localPath: sandboxPath,
+      branch: 'feature/cr',
+      syncStatus: 'READY',
+    });
+    expect(prisma.repository.update).not.toHaveBeenCalled();
+  });
+});
 
 describe('RepositorySyncService scheduling', () => {
   it('does not schedule duplicate syncs for the same repository', async () => {

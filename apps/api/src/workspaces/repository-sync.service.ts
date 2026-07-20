@@ -158,6 +158,83 @@ export class RepositorySyncService {
     }
   }
 
+  /**
+   * Clone/fetch/checkout a repository into the Code Review sandbox tree.
+   * Does not mutate Repository.localPath (main workspace checkout stays untouched).
+   */
+  async ensureCodeReviewSandbox(
+    repository: {
+      id: string;
+      workspaceId: string;
+      name: string;
+      url: string;
+      defaultBranch: string | null;
+      currentBranch: string | null;
+    },
+    branch: string,
+  ): Promise<{
+    localPath: string;
+    branch: string;
+    syncStatus: 'READY' | 'ERROR';
+    syncError?: string;
+  }> {
+    const sandboxPath = this.resolveCodeReviewRepositoryPath(
+      repository.workspaceId,
+      repository.id,
+      repository.name,
+    );
+    const targetBranch =
+      this.normalizeBranchRef(branch) ||
+      this.normalizeBranchRef(repository.currentBranch) ||
+      this.normalizeBranchRef(repository.defaultBranch) ||
+      'main';
+
+    try {
+      await mkdir(this.getCodeReviewStoragePath(repository.workspaceId), { recursive: true });
+      const remoteAuth = await this.resolveRemoteAuth(repository.url);
+      if (isHttpRepositoryUrl(repository.url) && !remoteAuth) {
+        throw new InternalServerErrorException(
+          'HTTP 仓库同步需要 Git 凭据：请在「Git 凭据」中配置 GitLab Access Token，或设置 GITLAB_TOKEN 环境变量。',
+        );
+      }
+
+      if (!(await this.pathExists(join(sandboxPath, '.git')))) {
+        await rm(sandboxPath, { recursive: true, force: true });
+        const cloneUrl = applyHttpAccessTokenToCloneUrl(repository.url, remoteAuth);
+        await this.runGit(['clone', cloneUrl, sandboxPath], undefined, remoteAuth);
+      }
+
+      await this.removeStaleIndexLock(sandboxPath);
+      await this.runGit(['fetch', 'origin', '--prune'], sandboxPath, remoteAuth);
+
+      const remoteBranchExists = await this.remoteBranchExists(sandboxPath, targetBranch);
+      if (remoteBranchExists) {
+        await this.runGit(
+          ['checkout', '-B', targetBranch, `origin/${targetBranch}`],
+          sandboxPath,
+          remoteAuth,
+        );
+      } else {
+        await this.runGit(['checkout', '-B', targetBranch], sandboxPath, remoteAuth);
+      }
+
+      return {
+        localPath: sandboxPath,
+        branch: targetBranch,
+        syncStatus: 'READY',
+      };
+    } catch (error) {
+      const message = this.formatGitSyncError(error);
+      this.logger.error(`Code review sandbox sync failed for ${repository.id}: ${message}`);
+      return {
+        localPath: sandboxPath,
+        branch: targetBranch,
+        syncStatus: 'ERROR',
+        syncError: message,
+      };
+    }
+  }
+
   async ensureRepositoryReadyForReview(
     repository: RepositoryRecord,
     branch?: string | null,
@@ -642,10 +719,28 @@ export class RepositorySyncService {
     );
   }
 
+  private resolveCodeReviewRepositoryPath(
+    workspaceId: string,
+    repositoryId: string,
+    repositoryName: string,
+  ) {
+    return join(
+      this.getCodeReviewStoragePath(workspaceId),
+      `${this.slugify(repositoryName)}-${repositoryId.slice(0, 8)}`,
+    );
+  }
+
   private getWorkspaceStoragePath(workspaceId: string) {
     const root = process.env.WORKSPACE_REPOS_ROOT?.trim()
       ? process.env.WORKSPACE_REPOS_ROOT.trim()
       : join(process.cwd(), '.flowx-data', 'workspaces');
+    return join(root, workspaceId, 'repositories');
+  }
+
+  private getCodeReviewStoragePath(workspaceId: string) {
+    const root = process.env.CODE_REVIEW_REPOS_ROOT?.trim()
+      ? process.env.CODE_REVIEW_REPOS_ROOT.trim()
+      : join(process.cwd(), '.flowx-data', 'code-review', 'workspaces');
     return join(root, workspaceId, 'repositories');
   }
 
