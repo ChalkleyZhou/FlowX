@@ -41,9 +41,12 @@ function createService() {
   const workflow = {
     createLocalDesignWorkflowRun: vi.fn(),
     claimLocalDesign: vi.fn(),
+    claimLocalBrainstorm: vi.fn(),
     getLocalDesignHandoff: vi.fn().mockResolvedValue(handoff),
+    getLocalBrainstormHandoff: vi.fn(),
     findOne: vi.fn(),
     completeLocalDesignSession: vi.fn(),
+    completeLocalBrainstormSession: vi.fn(),
   };
   const auth = {
     createShortLivedSession: vi.fn().mockResolvedValue({
@@ -83,8 +86,38 @@ describe('OpenDesignEdgeService', () => {
 
     const redeemed = await service.redeem(result.ticket);
     expect(redeemed.handoff).toEqual(handoff);
+    expect(redeemed.stage).toBe('design');
     expect(redeemed.accessToken).toBe('short-token');
     await expect(service.redeem(result.ticket)).rejects.toThrow(/invalid|expired/i);
+  });
+
+  it('claims brainstorm and redeems a brainstorm ticket', async () => {
+    const { service, workflow } = createService();
+    const brainstormHandoff = {
+      ...handoff,
+      contextPackage: {
+        ...handoff.contextPackage,
+        stage: 'BRAINSTORM' as const,
+        outputContract: {
+          resultFileName: 'brainstorm.md' as const,
+          format: 'flowx-brainstorm-markdown-v1' as const,
+        },
+      },
+      completionEndpoint: '/execution-sessions/session-1/brainstorm/complete',
+    };
+    workflow.findOne.mockResolvedValue({ id: 'workflow-1', status: 'BRAINSTORM_PENDING' });
+    workflow.claimLocalBrainstorm.mockResolvedValue({
+      workflow: { id: 'workflow-1', status: 'BRAINSTORM_PENDING' },
+      handoff: brainstormHandoff,
+    });
+    workflow.getLocalBrainstormHandoff.mockResolvedValue(brainstormHandoff);
+
+    const result = await service.retryBrainstormHandoff('workflow-1', session);
+    const redeemed = await service.redeem(result.ticket);
+
+    expect(redeemed.stage).toBe('brainstorm');
+    expect(redeemed.kind).toBe('opendesign-brainstorm');
+    expect(redeemed.handoff).toEqual(brainstormHandoff);
   });
 
   it('delegates design completion to the workflow lifecycle', async () => {

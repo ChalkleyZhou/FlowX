@@ -20,6 +20,7 @@ describe('OpenDesignAdapter', () => {
       { ...DEFAULT_LOCAL_CONFIG, openDesignCommand: '' },
       edgeClient as never,
       homeDir,
+      async () => ({ opened: true, imported: false }),
     );
     const launchInput: Parameters<OpenDesignAdapter['launch']>[0] = {
       kind: 'opendesign',
@@ -57,6 +58,10 @@ describe('OpenDesignAdapter', () => {
     const launched = await adapter.launch(launchInput);
 
     expect(readFileSync(launched.contextPath, 'utf8')).toContain('Design export');
+    expect(readFileSync(join(homeDir, '.flowx', 'active-design.json'), 'utf8')).toContain(
+      'workflow-1',
+    );
+    expect(launched.imported).toBe(false);
     const result = JSON.parse(readFileSync(launched.resultPath, 'utf8'));
     result.output.designArtifact.html = '<!doctype html><html><body>Done</body></html>';
     writeFileSync(launched.resultPath, JSON.stringify(result));

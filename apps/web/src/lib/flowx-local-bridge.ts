@@ -85,10 +85,14 @@ export type OpenDesignLocalLaunchBody = {
 export type OpenDesignLocalLaunchResult = {
   ok: true;
   executionSessionId: string;
+  workflowRunId?: string;
   workspacePath: string;
   contextPath: string;
   resultPath: string;
   opened: boolean;
+  imported?: boolean;
+  importError?: string;
+  activeDesignPath?: string;
 };
 
 export async function launchOpenDesignLocal(

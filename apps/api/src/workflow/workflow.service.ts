@@ -14,8 +14,11 @@ import { Prisma } from '@prisma/client';
 import { promisify } from 'util';
 import {
   FLOWX_PROTOCOL_VERSION,
+  type BrainstormCompletionReport,
   type CompletionReport,
   type DesignCompletionReport,
+  type OpenDesignBrainstormContextPackage,
+  type OpenDesignBrainstormHandoff,
   type OpenDesignContextPackage,
   type OpenDesignHandoff,
   type SourceTool,
@@ -1255,14 +1258,7 @@ export class WorkflowService {
     if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.DESIGN_PENDING) {
       throw new BadRequestException('Local OpenDesign can only be claimed while design is pending.');
     }
-    const existing = await this.prisma.executionSession.findFirst({
-      where: {
-        workflowRunId: id,
-        sourceTool: 'opendesign',
-        status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const existing = await this.findActiveOpenDesignSession(id, 'DESIGN');
     if (existing) {
       return {
         workflow,
@@ -1326,20 +1322,96 @@ export class WorkflowService {
     };
   }
 
+  async claimLocalBrainstorm(
+    id: string,
+    notifyRecipient?: WorkflowNotificationSession,
+  ): Promise<{ workflow: WorkflowPayload; handoff: OpenDesignBrainstormHandoff }> {
+    const workflow = await this.getWorkflowOrThrow(id);
+    if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.BRAINSTORM_PENDING) {
+      throw new BadRequestException(
+        'Local OpenDesign brainstorm can only be claimed while brainstorm is pending.',
+      );
+    }
+    const existing = await this.findActiveOpenDesignSession(id, 'BRAINSTORM');
+    if (existing) {
+      return {
+        workflow,
+        handoff: this.buildOpenDesignBrainstormHandoff(workflow, existing),
+      };
+    }
+
+    const recipient = this.toNotificationRecipient(notifyRecipient);
+    const sessionRef = {
+      id: randomUUID(),
+      traceId: randomUUID(),
+      protocolVersion: FLOWX_PROTOCOL_VERSION,
+    };
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const brainstormStage = await this.getOrCreateRunnableSkippableStageExecution(
+        tx,
+        id,
+        StageType.BRAINSTORM,
+      );
+      await this.updateStageExecution(tx, brainstormStage.id, StageExecutionStatus.RUNNING, {
+        input: {
+          source: 'LOCAL_OPENDESIGN',
+          claimedByUserId: recipient?.flowxUserId ?? null,
+          claimedAt: new Date().toISOString(),
+        },
+        statusMessage: '本地 OpenDesign 产品构思中',
+        startedAt: new Date(),
+      });
+      await tx.executionSession.create({
+        data: {
+          id: sessionRef.id,
+          workflowRunId: id,
+          stageExecutionId: brainstormStage.id,
+          organizationId: recipient?.flowxOrganizationId ?? null,
+          workspaceId:
+            workflow.requirement.workspaceId ?? workflow.requirement.project.workspaceId,
+          projectId: workflow.requirement.projectId,
+          status: 'RUNNING',
+          executorType: 'LOCAL',
+          sourceTool: 'opendesign',
+          protocolVersion: sessionRef.protocolVersion,
+          traceId: sessionRef.traceId,
+          idempotencyKey: `local-brainstorm:${id}:${brainstormStage.id}`,
+          claimedByUserId: recipient?.flowxUserId ?? null,
+          startedAt: new Date(),
+          lastHeartbeatAt: new Date(),
+          metadata: { stage: 'BRAINSTORM', outputFormat: 'flowx-brainstorm-markdown-v1' },
+        },
+      });
+      return tx.workflowRun.findUniqueOrThrow({
+        where: { id },
+        include: this.workflowInclude(),
+      });
+    });
+
+    return {
+      workflow: updated,
+      handoff: this.buildOpenDesignBrainstormHandoff(updated, {
+        ...sessionRef,
+      }),
+    };
+  }
+
   async getLocalDesignHandoff(id: string): Promise<OpenDesignHandoff> {
     const workflow = await this.getWorkflowOrThrow(id);
-    const session = await this.prisma.executionSession.findFirst({
-      where: {
-        workflowRunId: id,
-        sourceTool: 'opendesign',
-        status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const session = await this.findActiveOpenDesignSession(id, 'DESIGN');
     if (!session) {
       throw new NotFoundException('No active OpenDesign execution session was found.');
     }
     return this.buildOpenDesignHandoff(workflow, session);
+  }
+
+  async getLocalBrainstormHandoff(id: string): Promise<OpenDesignBrainstormHandoff> {
+    const workflow = await this.getWorkflowOrThrow(id);
+    const session = await this.findActiveOpenDesignSession(id, 'BRAINSTORM');
+    if (!session) {
+      throw new NotFoundException('No active OpenDesign brainstorm session was found.');
+    }
+    return this.buildOpenDesignBrainstormHandoff(workflow, session);
   }
 
   async completeLocalDesignSession(
@@ -1352,6 +1424,9 @@ export class WorkflowService {
     });
     if (!session || session.sourceTool !== 'opendesign') {
       throw new NotFoundException('OpenDesign execution session not found.');
+    }
+    if (!this.isOpenDesignSessionStage(session, 'DESIGN')) {
+      throw new BadRequestException('Execution session is not an OpenDesign design session.');
     }
     if (session.organizationId && session.organizationId !== scope.organizationId?.trim()) {
       throw new ConflictException('OpenDesign execution session belongs to another organization.');
@@ -1463,6 +1538,137 @@ export class WorkflowService {
     return {
       workflow: updated,
       handoff: this.buildOpenDesignHandoff(updated, {
+        id: session.id,
+        traceId: session.traceId,
+        protocolVersion: session.protocolVersion,
+      }),
+    };
+  }
+
+  async completeLocalBrainstormSession(
+    executionSessionId: string,
+    report: BrainstormCompletionReport,
+    scope: { organizationId?: string | null } = {},
+  ) {
+    const session = await this.prisma.executionSession.findUnique({
+      where: { id: executionSessionId },
+    });
+    if (!session || session.sourceTool !== 'opendesign') {
+      throw new NotFoundException('OpenDesign brainstorm session not found.');
+    }
+    if (!this.isOpenDesignSessionStage(session, 'BRAINSTORM')) {
+      throw new BadRequestException('Execution session is not an OpenDesign brainstorm session.');
+    }
+    if (session.organizationId && session.organizationId !== scope.organizationId?.trim()) {
+      throw new ConflictException('OpenDesign brainstorm session belongs to another organization.');
+    }
+    const workflow = await this.getWorkflowOrThrow(session.workflowRunId);
+    const existingKey = this.readCompletionIdempotencyKey(session.metadata);
+    if (session.status === 'COMPLETED') {
+      if (existingKey === report.idempotencyKey) {
+        return {
+          workflow,
+          handoff: this.buildOpenDesignBrainstormHandoff(workflow, session),
+        };
+      }
+      throw new ConflictException({
+        code: 'EXECUTION_SESSION_TERMINAL',
+        message: 'OpenDesign brainstorm session was already completed with another report.',
+      });
+    }
+    if (!ACTIVE_EXECUTION_SESSION_STATUSES.includes(session.status as never)) {
+      throw new ConflictException({
+        code: 'EXECUTION_SESSION_TERMINAL',
+        message: `OpenDesign brainstorm session is already ${session.status}.`,
+      });
+    }
+    if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.BRAINSTORM_PENDING) {
+      throw new BadRequestException('Workflow is no longer waiting for a local brainstorm.');
+    }
+
+    const markdown = report.markdown?.trim() ?? '';
+    if (!markdown) {
+      throw new BadRequestException('Brainstorm markdown is required.');
+    }
+    const persistedOutput = {
+      format: 'markdown' as const,
+      markdown,
+      summary: report.summary?.trim() || undefined,
+      source: 'LOCAL_OPENDESIGN',
+    };
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (!session.stageExecutionId) {
+        throw new BadRequestException('OpenDesign session is missing its brainstorm stage.');
+      }
+      await this.updateStageExecution(
+        tx,
+        session.stageExecutionId,
+        StageExecutionStatus.COMPLETED,
+        {
+          output: persistedOutput,
+          statusMessage: null,
+          finishedAt: new Date(),
+        },
+      );
+      await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.BRAINSTORM_PENDING, {
+        to: WorkflowRunStatus.DESIGN_PENDING,
+        stage: StageType.DESIGN,
+      });
+      await this.createStageExecution(tx, workflow.id, StageType.DESIGN, {
+        input: {
+          workflowRunId: workflow.id,
+          previousStage: stageTypeMap[StageType.BRAINSTORM],
+        },
+        status: StageExecutionStatus.PENDING,
+        statusMessage: '可生成设计方案，也可以跳过设计继续',
+      });
+      const transition = await tx.executionSession.updateMany({
+        where: {
+          id: executionSessionId,
+          status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] },
+        },
+        data: {
+          status: 'COMPLETED',
+          completedAt: new Date(),
+          summary: report.summary ?? 'OpenDesign brainstorm completed.',
+          metadata: JSON.parse(
+            JSON.stringify({
+              ...(session.metadata && typeof session.metadata === 'object' && !Array.isArray(session.metadata)
+                ? session.metadata
+                : {}),
+              completionIdempotencyKey: report.idempotencyKey,
+              completionMetadata: report.metadata ?? {},
+            }),
+          ) as Prisma.InputJsonObject,
+        },
+      });
+      if (transition.count !== 1) {
+        throw new ConflictException('OpenDesign brainstorm session changed during completion.');
+      }
+      await tx.evidence.create({
+        data: {
+          executionSessionId,
+          evidenceType: 'AGENT_SUMMARY',
+          sourceTool: 'opendesign',
+          title: 'OpenDesign brainstorm submission',
+          summary: report.summary ?? markdown.slice(0, 200),
+          status: 'REPORTED',
+          occurredAt: new Date(),
+          metadata: report.metadata
+            ? (JSON.parse(JSON.stringify(report.metadata)) as Prisma.InputJsonObject)
+            : undefined,
+        },
+      });
+      return tx.workflowRun.findUniqueOrThrow({
+        where: { id: workflow.id },
+        include: this.workflowInclude(),
+      });
+    });
+
+    return {
+      workflow: updated,
+      handoff: this.buildOpenDesignBrainstormHandoff(updated, {
         id: session.id,
         traceId: session.traceId,
         protocolVersion: session.protocolVersion,
@@ -2993,6 +3199,7 @@ export class WorkflowService {
       metadata: {
         workflowStatus: workflow.status,
         runType: workflow.runType,
+        stage: 'DESIGN',
       },
     };
     return {
@@ -3003,6 +3210,85 @@ export class WorkflowService {
       contextPackage,
       completionEndpoint: `/execution-sessions/${session.id}/design/complete`,
     };
+  }
+
+  private buildOpenDesignBrainstormHandoff(
+    workflow: WorkflowPayload,
+    session: {
+      id: string;
+      traceId: string;
+      protocolVersion: string;
+    },
+  ): OpenDesignBrainstormHandoff {
+    const contextPackage: OpenDesignBrainstormContextPackage = {
+      protocolVersion: session.protocolVersion,
+      generatedAt: new Date().toISOString(),
+      sourceTool: 'opendesign',
+      stage: 'BRAINSTORM',
+      workflowRunId: workflow.id,
+      executionSessionId: session.id,
+      traceId: session.traceId,
+      requirement: {
+        id: workflow.requirement.id,
+        title: workflow.requirement.title,
+        description: workflow.requirement.description,
+        acceptanceCriteria: workflow.requirement.acceptanceCriteria,
+      },
+      repositories: workflow.workflowRepositories.map((repository) => ({
+        repositoryId: repository.repositoryId ?? repository.id,
+        workflowRepositoryId: repository.id,
+        name: repository.name,
+        url: repository.url || null,
+        baseBranch: repository.baseBranch,
+        workingBranch: repository.workingBranch,
+      })),
+      outputContract: {
+        resultFileName: 'brainstorm.md',
+        format: 'flowx-brainstorm-markdown-v1',
+      },
+      metadata: {
+        workflowStatus: workflow.status,
+        runType: workflow.runType,
+      },
+    };
+    return {
+      protocolVersion: session.protocolVersion,
+      workflowRunId: workflow.id,
+      executionSessionId: session.id,
+      traceId: session.traceId,
+      contextPackage,
+      completionEndpoint: `/execution-sessions/${session.id}/brainstorm/complete`,
+    };
+  }
+
+  private async findActiveOpenDesignSession(
+    workflowRunId: string,
+    stage: 'BRAINSTORM' | 'DESIGN',
+  ) {
+    const sessions = await this.prisma.executionSession.findMany({
+      where: {
+        workflowRunId,
+        sourceTool: 'opendesign',
+        status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return sessions.find((session) => this.isOpenDesignSessionStage(session, stage)) ?? null;
+  }
+
+  private isOpenDesignSessionStage(
+    session: { metadata: unknown },
+    stage: 'BRAINSTORM' | 'DESIGN',
+  ) {
+    const metadata = session.metadata;
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      return stage === 'DESIGN';
+    }
+    const recorded = (metadata as { stage?: unknown }).stage;
+    if (typeof recorded !== 'string' || !recorded.trim()) {
+      return stage === 'DESIGN';
+    }
+    return recorded.trim().toUpperCase() === stage;
   }
 
   private isExecutionSessionProjectionEnabled() {

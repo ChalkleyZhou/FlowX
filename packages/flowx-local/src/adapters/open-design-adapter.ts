@@ -1,27 +1,35 @@
-import { spawn } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { homedir, platform } from 'node:os';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { DesignCompletionReport } from 'flowx-protocol';
+import type { BrainstormCompletionReport, DesignCompletionReport } from 'flowx-protocol';
+import { writeActiveDesignSession } from '../active-design-session.js';
 import type { LocalConfig } from '../config.js';
 import { EdgeClient, type RedeemedOpenDesignLaunch } from '../edge-client.js';
+import { openOpenDesignWorkspace } from '../open-design-app.js';
 import type { ToolAdapter } from './tool-adapter.js';
 
 type StoredDesignSession = {
   executionSessionId: string;
+  workflowRunId: string;
   apiBaseUrl: string;
   accessToken: string;
   accessTokenExpiresAt: string;
   resultPath: string;
+  stage: 'brainstorm' | 'design';
 };
 
 export type OpenDesignLaunchResult = {
   ok: true;
   executionSessionId: string;
+  workflowRunId: string;
   workspacePath: string;
   contextPath: string;
   resultPath: string;
   opened: boolean;
+  imported: boolean;
+  importError?: string;
+  activeDesignPath: string;
+  stage: 'brainstorm' | 'design';
 };
 
 export class OpenDesignAdapter
@@ -34,19 +42,30 @@ export class OpenDesignAdapter
     private readonly config: LocalConfig,
     private readonly edgeClient: EdgeClient,
     private readonly homeDir = homedir(),
+    private readonly openWorkspace: typeof openOpenDesignWorkspace = openOpenDesignWorkspace,
   ) {}
 
   async launch(input: RedeemedOpenDesignLaunch): Promise<OpenDesignLaunchResult> {
     const sessionId = input.handoff.executionSessionId;
+    const workflowRunId = input.handoff.workflowRunId;
+    const stage = resolveStage(input);
+    // Credential / fallback artifact dir only — not the designer's Open Design project root.
     const workspacePath = this.sessionRoot(sessionId);
     const contextPath = join(workspacePath, 'context.json');
-    const resultPath = join(workspacePath, input.handoff.contextPackage.outputContract.resultFileName);
+    const resultPath = join(
+      workspacePath,
+      input.handoff.contextPackage.outputContract.resultFileName,
+    );
     await mkdir(workspacePath, { recursive: true });
     await writeFile(contextPath, `${JSON.stringify(input.handoff.contextPackage, null, 2)}\n`, 'utf8');
-    await writeInitialResult(resultPath, input.handoff.executionSessionId);
+    if (stage === 'brainstorm') {
+      await writeInitialMarkdown(resultPath);
+    } else {
+      await writeInitialResult(resultPath, input.handoff.executionSessionId);
+    }
     await writeFile(
       join(workspacePath, 'README.md'),
-      buildInstructions(input.handoff.executionSessionId, resultPath),
+      buildInstructions(workflowRunId, input.handoff.executionSessionId, stage),
       'utf8',
     );
     await writeFile(
@@ -54,10 +73,12 @@ export class OpenDesignAdapter
       `${JSON.stringify(
         {
           executionSessionId: sessionId,
+          workflowRunId,
           apiBaseUrl: input.apiBaseUrl,
           accessToken: input.accessToken,
           accessTokenExpiresAt: input.accessTokenExpiresAt,
           resultPath,
+          stage,
         } satisfies StoredDesignSession,
         null,
         2,
@@ -65,18 +86,57 @@ export class OpenDesignAdapter
       { mode: 0o600 },
     );
 
+    const activeDesignPath = await writeActiveDesignSession(
+      {
+        workflowRunId,
+        executionSessionId: sessionId,
+        apiBaseUrl: input.apiBaseUrl,
+        accessToken: input.accessToken,
+        accessTokenExpiresAt: input.accessTokenExpiresAt,
+        stage,
+      },
+      this.homeDir,
+    );
+
+    const opened = await this.openWorkspace(workspacePath, {
+      openDesignCommand: this.config.openDesignCommand,
+      // Directory is chosen inside Open Design; FlowX only opens the app.
+      skipImport: true,
+    });
+
     return {
       ok: true,
       executionSessionId: sessionId,
+      workflowRunId,
       workspacePath,
       contextPath,
       resultPath,
-      opened: this.openWorkspace(workspacePath),
+      opened: opened.opened,
+      imported: false,
+      activeDesignPath,
+      stage,
+      ...(opened.importError ? { importError: opened.importError } : {}),
     };
   }
 
   async submit(executionSessionId: string) {
     const session = await this.loadSession(executionSessionId);
+    if (session.stage === 'brainstorm') {
+      const markdown = await readFile(session.resultPath, 'utf8');
+      const report: BrainstormCompletionReport = {
+        idempotencyKey: `brainstorm:${executionSessionId}:v1`,
+        markdown,
+      };
+      if (!report.markdown.trim()) {
+        throw new Error('OpenDesign brainstorm.md is empty.');
+      }
+      return this.edgeClient.submitBrainstorm({
+        apiBaseUrl: session.apiBaseUrl,
+        accessToken: session.accessToken,
+        executionSessionId,
+        report,
+      });
+    }
     const report = JSON.parse(await readFile(session.resultPath, 'utf8')) as DesignCompletionReport;
     validateReport(report);
     return this.edgeClient.submitDesign({
@@ -92,9 +152,18 @@ export class OpenDesignAdapter
   }
 
   private async loadSession(executionSessionId: string): Promise<StoredDesignSession> {
-    return JSON.parse(
+    const raw = JSON.parse(
       await readFile(join(this.sessionRoot(executionSessionId), 'session.json'), 'utf8'),
-    ) as StoredDesignSession;
+    ) as Partial<StoredDesignSession>;
+    return {
+      executionSessionId: raw.executionSessionId ?? executionSessionId,
+      workflowRunId: raw.workflowRunId ?? '',
+      apiBaseUrl: raw.apiBaseUrl ?? '',
+      accessToken: raw.accessToken ?? '',
+      accessTokenExpiresAt: raw.accessTokenExpiresAt ?? '',
+      resultPath: raw.resultPath ?? '',
+      stage: raw.stage === 'brainstorm' ? 'brainstorm' : 'design',
+    };
   }
 
   private sessionRoot(executionSessionId: string) {
@@ -105,21 +174,17 @@ export class OpenDesignAdapter
       executionSessionId.replace(/[^a-zA-Z0-9._-]/g, '-'),
     );
   }
+}
 
-  private openWorkspace(workspacePath: string) {
-    const command = this.config.openDesignCommand;
-    try {
-      const child = command
-        ? spawn(command, [workspacePath], { detached: true, stdio: 'ignore' })
-        : platform() === 'darwin'
-          ? spawn('open', [workspacePath], { detached: true, stdio: 'ignore' })
-          : null;
-      child?.unref();
-      return Boolean(child);
-    } catch {
-      return false;
-    }
+function resolveStage(input: RedeemedOpenDesignLaunch): 'brainstorm' | 'design' {
+  if (input.stage === 'brainstorm' || input.kind === 'opendesign-brainstorm') {
+    return 'brainstorm';
   }
+  const format = input.handoff.contextPackage.outputContract.format;
+  if (format === 'flowx-brainstorm-markdown-v1') {
+    return 'brainstorm';
+  }
+  return 'design';
 }
 
 function buildResultTemplate(executionSessionId: string): DesignCompletionReport {
@@ -156,18 +221,66 @@ async function writeInitialResult(resultPath: string, executionSessionId: string
   }
 }
 
+async function writeInitialMarkdown(resultPath: string) {
+  try {
+    await writeFile(
+      resultPath,
+      '# 产品构思\n\n在此撰写产品构思 Markdown，完成后通过 FlowX MCP `flowx_submit_brainstorm` 回传。\n',
+      { encoding: 'utf8', flag: 'wx' },
+    );
+  } catch (error) {
+    if (!isAlreadyExists(error)) throw error;
+  }
+}
+
 function isAlreadyExists(error: unknown) {
   return Boolean(error && typeof error === 'object' && 'code' in error && error.code === 'EEXIST');
 }
 
-function buildInstructions(executionSessionId: string, resultPath: string) {
+function buildInstructions(
+  workflowRunId: string,
+  executionSessionId: string,
+  stage: 'brainstorm' | 'design',
+) {
+  if (stage === 'brainstorm') {
+    return `# FlowX OpenDesign 本地产品构思
+
+本目录只保存 FlowX 会话凭据与调试副本，**不是**你的 Open Design 工程目录。
+
+推荐流程：
+1. 在 Open Design 中打开或创建你自己的项目目录。
+2. 通过 FlowX MCP 拉取上下文：
+   - \`flowx_get_active_design_session\`
+   - \`flowx_get_brainstorm_handoff\`（可省略参数，默认用当前活跃会话）
+3. 在你的项目里完成产品构思，产出一份 Markdown。
+4. 通过 MCP 回传：\`flowx_submit_brainstorm\`，提交 \`markdown\` 正文。
+
+会话标识：
+- workflowRunId: \`${workflowRunId}\`
+- executionSessionId: \`${executionSessionId}\`
+- stage: brainstorm
+
+兼容回传（可选）：若仍写入本目录 \`brainstorm.md\`，可执行 \`flowx-local design-submit ${executionSessionId}\`。
+`;
+  }
   return `# FlowX OpenDesign 本地设计任务
 
-1. 阅读 \`context.json\` 中的需求、验收标准和仓库上下文。
-2. 在 OpenDesign 中完成设计。
-3. 将设计结果写入 \`${resultPath}\`，保留 design、demo、designArtifact 三个顶层字段。
-4. designArtifact.html 必须是完整、自包含的 HTML 文档。
-5. 回传命令：\`flowx-local design-submit ${executionSessionId}\`。
+本目录只保存 FlowX 会话凭据与调试副本，**不是**你的 Open Design 工程目录。
+
+推荐流程：
+1. 在 Open Design 中打开或创建你自己的项目目录。
+2. 通过 FlowX MCP 拉取上下文：
+   - \`flowx_get_active_design_session\`
+   - \`flowx_get_design_handoff\`（可省略参数，默认用当前活跃会话）
+3. 在你的项目里完成设计。
+4. 通过 MCP 回传：\`flowx_submit_design\`，提交含完整 \`designArtifact.html\` 的 DesignCompletionReport。
+
+会话标识：
+- workflowRunId: \`${workflowRunId}\`
+- executionSessionId: \`${executionSessionId}\`
+- stage: design
+
+兼容回传（可选）：若仍写入本目录 \`result.json\`，可执行 \`flowx-local design-submit ${executionSessionId}\`。
 `;
 }
 

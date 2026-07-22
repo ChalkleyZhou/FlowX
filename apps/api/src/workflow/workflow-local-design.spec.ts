@@ -64,7 +64,7 @@ describe('WorkflowService local OpenDesign', () => {
       workflowRun: { findUniqueOrThrow: vi.fn().mockResolvedValue(workflow) },
     };
     const prisma = {
-      executionSession: { findFirst: vi.fn().mockResolvedValue(null) },
+      executionSession: { findMany: vi.fn().mockResolvedValue([]) },
       $transaction: vi.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
     };
     const service = createService(prisma);
@@ -93,6 +93,46 @@ describe('WorkflowService local OpenDesign', () => {
     expect(result.handoff.contextPackage.outputContract.resultFileName).toBe('result.json');
   });
 
+  it('claims the BRAINSTORM stage for markdown OpenDesign handoff', async () => {
+    const brainstormWorkflow = {
+      ...workflow,
+      status: 'BRAINSTORM_PENDING',
+      stageExecutions: [
+        { id: 'stage-brainstorm-1', stage: 'BRAINSTORM', status: 'PENDING', attempt: 1, input: null },
+      ],
+    };
+    const createSession = vi.fn().mockImplementation(({ data }) => data);
+    const tx = {
+      executionSession: { create: createSession },
+      workflowRun: { findUniqueOrThrow: vi.fn().mockResolvedValue(brainstormWorkflow) },
+    };
+    const prisma = {
+      executionSession: { findMany: vi.fn().mockResolvedValue([]) },
+      $transaction: vi.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
+    };
+    const service = createService(prisma);
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(brainstormWorkflow);
+    vi.spyOn(
+      service as never,
+      'getOrCreateRunnableSkippableStageExecution' as never,
+    ).mockResolvedValue({ id: 'stage-brainstorm-1', attempt: 1 });
+    vi.spyOn(service as never, 'updateStageExecution' as never).mockResolvedValue(undefined);
+
+    const result = await service.claimLocalBrainstorm('workflow-design-1', {
+      user: { id: 'user-1', displayName: 'Designer' },
+      organization: { id: 'org-1' },
+    });
+
+    expect(createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: expect.objectContaining({ stage: 'BRAINSTORM' }),
+        }),
+      }),
+    );
+    expect(result.handoff.contextPackage.outputContract.resultFileName).toBe('brainstorm.md');
+  });
+
   it('completes the design session and moves the workflow to confirmation', async () => {
     const activeSession = {
       id: 'session-1',
@@ -103,7 +143,7 @@ describe('WorkflowService local OpenDesign', () => {
       sourceTool: 'opendesign',
       protocolVersion: '1.0',
       traceId: 'trace-1',
-      metadata: null,
+      metadata: { stage: 'DESIGN' },
     };
     const completedWorkflow = { ...workflow, status: 'DESIGN_WAITING_CONFIRMATION' };
     const tx = {

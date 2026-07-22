@@ -12,7 +12,8 @@ interface Props {
 
 /**
  * Read-only preview of the OpenDesign high-fidelity HTML design artifact, rendered in a sandboxed iframe.
- * The iframe is sandboxed (no scripts, no same-origin) so untrusted generated HTML cannot touch the app.
+ * Scripts are allowed so interactive design drafts (modals, carousels, etc.) can render;
+ * same-origin is denied so the untrusted HTML cannot touch the FlowX app.
  */
 export function DesignArtifactPreview({ workflowRunId, reloadKey }: Props) {
   const [artifact, setArtifact] = useState<WorkflowDesignArtifact | null>(null);
@@ -80,7 +81,7 @@ export function DesignArtifactPreview({ workflowRunId, reloadKey }: Props) {
       ) : artifact?.html ? (
         <iframe
           title="OpenDesign 设计稿预览"
-          sandbox=""
+          sandbox="allow-scripts"
           srcDoc={artifact.html}
           className="h-[640px] w-full rounded-md border border-border bg-white"
         />

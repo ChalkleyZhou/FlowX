@@ -783,8 +783,14 @@ export const api = {
     request<OpenDesignHandoffResponse>(`/edge/design-handoffs/${workflowRunId}/retry`, {
       method: 'POST',
     }),
+  retryOpenDesignBrainstormHandoff: (workflowRunId: string) =>
+    request<OpenDesignHandoffResponse>(`/edge/brainstorm-handoffs/${workflowRunId}/retry`, {
+      method: 'POST',
+    }),
   getOpenDesignHandoff: (workflowRunId: string) =>
     request<OpenDesignHandoff>(`/workflow-runs/${workflowRunId}/design/local-handoff`),
+  getOpenDesignBrainstormHandoff: (workflowRunId: string) =>
+    request<OpenDesignHandoff>(`/workflow-runs/${workflowRunId}/brainstorm/local-handoff`),
   fetchPlanArtifact: async (id: string) => {
     const token = getAuthToken();
     const response = await fetch(buildApiUrl(`/workflow-runs/${id}/artifacts/plan`), {

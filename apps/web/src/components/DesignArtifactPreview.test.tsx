@@ -51,7 +51,7 @@ describe('DesignArtifactPreview', () => {
     expect(api.getWorkflowDesignArtifact).toHaveBeenCalledWith('run-1');
     const iframe = container.querySelector('iframe');
     expect(iframe).toBeTruthy();
-    expect(iframe?.getAttribute('sandbox')).toBe('');
+    expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts');
     expect(iframe?.getAttribute('srcdoc')).toBe(html);
   });
 

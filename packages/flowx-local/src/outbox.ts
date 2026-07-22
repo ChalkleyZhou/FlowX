@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 export type OutboxItem = {
   eventId: string;
-  kind: 'design-completion';
+  kind: 'design-completion' | 'brainstorm-completion';
   credentialRef: string;
   apiBaseUrl: string;
   path: string;

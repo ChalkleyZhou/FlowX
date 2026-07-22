@@ -1053,10 +1053,40 @@ export function WorkflowRunDetailPage() {
         { ticket: started.ticket, apiBaseUrl: getFlowxApiBaseUrl() },
         started.loopbackPort,
       );
-      toast.success(`OpenDesign 设计目录已准备：${local.workspacePath}`);
+      toast.success(
+        local.opened
+          ? '已打开 Open Design。请在应用内选择项目目录，并用 FlowX MCP 拉取上下文 / 回传设计。'
+          : '设计会话已就绪。请打开 Open Design，用 FlowX MCP 拉取上下文并回传设计。',
+      );
       await refresh({ silent: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '打开 OpenDesign 失败');
+    } finally {
+      setOpenDesignBusy(false);
+    }
+  }
+
+  async function launchLocalOpenDesignBrainstorm() {
+    if (!workflowRun || openDesignBusy) return;
+    setOpenDesignBusy(true);
+    try {
+      const started = await api.retryOpenDesignBrainstormHandoff(workflowRun.id);
+      if (!(await probeFlowxLocal(started.loopbackPort))) {
+        toast.error('未检测到本机 flowx-local，请先启动服务后重试');
+        return;
+      }
+      const local = await launchOpenDesignLocal(
+        { ticket: started.ticket, apiBaseUrl: getFlowxApiBaseUrl() },
+        started.loopbackPort,
+      );
+      toast.success(
+        local.opened
+          ? '已打开 Open Design。请在应用内选择项目目录，并用 FlowX MCP 拉取构思上下文 / 回传 Markdown。'
+          : '构思会话已就绪。请打开 Open Design，用 FlowX MCP 拉取上下文并回传 Markdown。',
+      );
+      await refresh({ silent: true });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '打开 OpenDesign 构思失败');
     } finally {
       setOpenDesignBusy(false);
     }
@@ -1080,6 +1110,29 @@ export function WorkflowRunDetailPage() {
       await refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '回传 OpenDesign 设计失败');
+    } finally {
+      setOpenDesignBusy(false);
+    }
+  }
+
+  async function submitLocalOpenDesignBrainstorm() {
+    if (!workflowRun || openDesignBusy) return;
+    setOpenDesignBusy(true);
+    try {
+      if (!(await probeFlowxLocal())) {
+        toast.error('未检测到本机 flowx-local，请先启动服务后重试');
+        return;
+      }
+      const handoff = await api.getOpenDesignBrainstormHandoff(workflowRun.id);
+      const result = await submitOpenDesignLocal(handoff.executionSessionId);
+      if (result.queued) {
+        toast.error('FlowX API 暂不可用，构思结果已进入本地 Outbox，稍后可运行 flowx-local sync');
+      } else {
+        toast.success('本地 OpenDesign 产品构思已回传');
+      }
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '回传 OpenDesign 构思失败');
     } finally {
       setOpenDesignBusy(false);
     }
@@ -1420,13 +1473,27 @@ export function WorkflowRunDetailPage() {
         output: sanitizeDisplayValue(brainstormStage?.output, repositoryPaths),
         actions: [
           {
+            key: 'open-local-opendesign-brainstorm',
+            label: '打开本地 OpenDesign',
+            onClick: () => void launchLocalOpenDesignBrainstorm(),
+            disabled: workflowRun.status !== 'BRAINSTORM_PENDING' || openDesignBusy,
+            loading: openDesignBusy,
+            variant: 'primary' as const,
+          },
+          {
+            key: 'submit-local-opendesign-brainstorm',
+            label: '回传本地构思',
+            onClick: () => void submitLocalOpenDesignBrainstorm(),
+            disabled: workflowRun.status !== 'BRAINSTORM_PENDING' || openDesignBusy,
+            loading: openDesignBusy,
+          },
+          {
             key: 'run',
             label: 'AI 生成产品简报',
             onClick: () =>
               void runAction('BRAINSTORM', () => api.runBrainstorm(workflowRun.id), '产品构思已启动'),
             disabled: workflowRun.status !== 'BRAINSTORM_PENDING' || stageActionsLocked,
             loading: busyStage === 'BRAINSTORM',
-            variant: 'primary' as const,
           },
           {
             key: 'skip',
@@ -1448,25 +1515,21 @@ export function WorkflowRunDetailPage() {
         attempt: designStage?.attempt,
         output: sanitizeDisplayValue(designStage?.output, repositoryPaths),
         actions: [
-          ...(workflowRun.runType === 'LOCAL_DESIGN'
-            ? [
-                {
-                  key: 'open-local-opendesign',
-                  label: '打开本地 OpenDesign',
-                  onClick: () => void launchLocalOpenDesign(),
-                  disabled: workflowRun.status !== 'DESIGN_PENDING' || openDesignBusy,
-                  loading: openDesignBusy,
-                  variant: 'primary' as const,
-                },
-                {
-                  key: 'submit-local-opendesign',
-                  label: '回传本地设计',
-                  onClick: () => void submitLocalOpenDesign(),
-                  disabled: workflowRun.status !== 'DESIGN_PENDING' || openDesignBusy,
-                  loading: openDesignBusy,
-                },
-              ]
-            : []),
+          {
+            key: 'open-local-opendesign',
+            label: '打开本地 OpenDesign',
+            onClick: () => void launchLocalOpenDesign(),
+            disabled: workflowRun.status !== 'DESIGN_PENDING' || openDesignBusy,
+            loading: openDesignBusy,
+            variant: 'primary' as const,
+          },
+          {
+            key: 'submit-local-opendesign',
+            label: '回传本地设计',
+            onClick: () => void submitLocalOpenDesign(),
+            disabled: workflowRun.status !== 'DESIGN_PENDING' || openDesignBusy,
+            loading: openDesignBusy,
+          },
           {
             key: 'run',
             label: 'AI 生成设计方案',
@@ -1477,7 +1540,6 @@ export function WorkflowRunDetailPage() {
               workflowRun.status !== 'DESIGN_PENDING' ||
               stageActionsLocked,
             loading: busyStage === 'DESIGN',
-            variant: 'primary' as const,
           },
           {
             key: 'confirm',

@@ -39,8 +39,10 @@ sequenceDiagram
 核心约束：
 
 - FlowX 是需求、工作流状态、版本化上下文、Artifact 和 Evidence 的事实来源。
-- OpenDesign 是设计师本地的专业执行环境，不需要部署在 FlowX API 主机。
+- OpenDesign 是设计师本地的专业执行环境；**项目目录由设计师在 Open Design 内自行选择**。
 - 浏览器只向本机 `127.0.0.1:3920` 发送一次性启动票据；长期登录态不会交给本地工具。
+- 推荐通过 `flowx-mcp` 拉取 ContextPackage（`flowx_get_design_handoff`）并回传结果（`flowx_submit_design`）。
+- `~/.flowx/active-design.json` 保存当前活跃设计会话的短期凭据，供 MCP 使用。
 - 结果通过 `idempotencyKey` 幂等回传；网络失败时写入 Outbox，恢复后重放。
 
 ## 启动 flowx-local
@@ -75,8 +77,15 @@ pnpm --filter flowx-local exec node dist/index.js status
 
 `openDesignCommand` 当前应是单个可执行文件路径，不要附带 shell 参数。未配置时：
 
-- macOS：打开本地设计任务目录。
-- 其他系统：生成任务文件但不自动打开，按返回的 `workspacePath` 手工导入 OpenDesign。
+- macOS：若存在 `/Applications/Open Design.app`，拉起桌面应用；设计师在 App 内选择自己的项目目录。
+- 找不到桌面应用且未配置命令时：不强制打开文件夹作为工程根（会话凭据仍写入 `~/.flowx`）。
+- 其他系统：生成会话凭据后按返回信息手工打开 OpenDesign。
+
+推荐用 FlowX MCP：
+
+1. `flowx_get_active_design_session`
+2. `flowx_get_design_handoff`
+3. 在自有项目中完成设计后 `flowx_submit_design`
 
 ## 从需求发起设计
 

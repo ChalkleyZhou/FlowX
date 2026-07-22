@@ -1,6 +1,11 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import type { DesignCompletionReport, OpenDesignHandoff } from 'flowx-protocol';
+import type {
+  BrainstormCompletionReport,
+  DesignCompletionReport,
+  OpenDesignBrainstormHandoff,
+  OpenDesignHandoff,
+} from 'flowx-protocol';
 import { AuthService } from '../auth/auth.service';
 import { WorkflowRunStatus, WorkflowRunType } from '../common/enums';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,10 +17,13 @@ const READY_TIMEOUT_MS = 15_000;
 const TICKET_TTL_MS = 5 * 60 * 1000;
 const LOOPBACK_PORT = 3920;
 
+type TicketStage = 'brainstorm' | 'design';
+
 type TicketRecord = {
   workflowRunId: string;
   userId: string;
   organizationId: string | null;
+  stage: TicketStage;
   expiresAt: number;
   consumed: boolean;
 };
@@ -54,7 +62,7 @@ export class OpenDesignEdgeService {
       throw new ConflictException('OpenDesign workflow is still preparing repositories. Please retry shortly.');
     }
     const claimed = await this.workflowService.claimLocalDesign(ready.id, session);
-    const ticket = this.issueTicket(claimed.handoff, session);
+    const ticket = this.issueTicket(claimed.handoff, session, 'design');
     return {
       ...claimed,
       ticket,
@@ -64,17 +72,32 @@ export class OpenDesignEdgeService {
 
   async retryHandoff(workflowRunId: string, session: EdgeWorkflowSession) {
     const workflow = await this.workflowService.findOne(workflowRunId);
-    const handoff = await this.workflowService.getLocalDesignHandoff(workflowRunId);
+    const claimed = await this.workflowService.claimLocalDesign(workflowRunId, session);
     return {
       workflow,
-      handoff,
-      ticket: this.issueTicket(handoff, session),
+      handoff: claimed.handoff,
+      ticket: this.issueTicket(claimed.handoff, session, 'design'),
+      loopbackPort: LOOPBACK_PORT,
+    };
+  }
+
+  async retryBrainstormHandoff(workflowRunId: string, session: EdgeWorkflowSession) {
+    const workflow = await this.workflowService.findOne(workflowRunId);
+    const claimed = await this.workflowService.claimLocalBrainstorm(workflowRunId, session);
+    return {
+      workflow,
+      handoff: claimed.handoff,
+      ticket: this.issueTicket(claimed.handoff, session, 'brainstorm'),
       loopbackPort: LOOPBACK_PORT,
     };
   }
 
   getHandoff(workflowRunId: string) {
     return this.workflowService.getLocalDesignHandoff(workflowRunId);
+  }
+
+  getBrainstormHandoff(workflowRunId: string) {
+    return this.workflowService.getLocalBrainstormHandoff(workflowRunId);
   }
 
   async redeem(ticket: string) {
@@ -84,13 +107,17 @@ export class OpenDesignEdgeService {
     }
     record.consumed = true;
     this.tickets.delete(ticket);
-    const handoff = await this.workflowService.getLocalDesignHandoff(record.workflowRunId);
+    const handoff =
+      record.stage === 'brainstorm'
+        ? await this.workflowService.getLocalBrainstormHandoff(record.workflowRunId)
+        : await this.workflowService.getLocalDesignHandoff(record.workflowRunId);
     const shortLived = await this.authService.createShortLivedSession(
       record.userId,
       record.organizationId,
     );
     return {
-      kind: 'opendesign',
+      kind: record.stage === 'brainstorm' ? 'opendesign-brainstorm' : 'opendesign',
+      stage: record.stage,
       apiBaseUrl: `http://127.0.0.1:${process.env.PORT || '3000'}`,
       handoff,
       accessToken: shortLived.token,
@@ -110,12 +137,29 @@ export class OpenDesignEdgeService {
     );
   }
 
-  private issueTicket(handoff: OpenDesignHandoff, session: EdgeWorkflowSession) {
+  completeBrainstorm(
+    executionSessionId: string,
+    report: BrainstormCompletionReport,
+    scope: { organizationId?: string | null },
+  ) {
+    return this.workflowService.completeLocalBrainstormSession(
+      executionSessionId,
+      report,
+      scope,
+    );
+  }
+
+  private issueTicket(
+    handoff: OpenDesignHandoff | OpenDesignBrainstormHandoff,
+    session: EdgeWorkflowSession,
+    stage: TicketStage,
+  ) {
     const ticket = randomBytes(32).toString('hex');
     this.tickets.set(ticket, {
       workflowRunId: handoff.workflowRunId,
       userId: session.user.id,
       organizationId: session.organization?.id ?? null,
+      stage,
       expiresAt: Date.now() + TICKET_TTL_MS,
       consumed: false,
     });

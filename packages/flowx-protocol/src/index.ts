@@ -1,4 +1,5 @@
 export * from './artifact.js';
+export * from './brainstorm.js';
 export * from './context-package.js';
 export * from './design.js';
 export * from './errors.js';

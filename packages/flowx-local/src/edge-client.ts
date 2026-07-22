@@ -1,10 +1,16 @@
-import type { DesignCompletionReport, OpenDesignHandoff } from 'flowx-protocol';
+import type {
+  BrainstormCompletionReport,
+  DesignCompletionReport,
+  OpenDesignBrainstormHandoff,
+  OpenDesignHandoff,
+} from 'flowx-protocol';
 import { Outbox, type OutboxItem } from './outbox.js';
 
 export type RedeemedOpenDesignLaunch = {
-  kind: 'opendesign';
+  kind: 'opendesign' | 'opendesign-brainstorm';
+  stage?: 'brainstorm' | 'design';
   apiBaseUrl: string;
-  handoff: OpenDesignHandoff;
+  handoff: OpenDesignHandoff | OpenDesignBrainstormHandoff;
   accessToken: string;
   accessTokenExpiresAt: string;
 };
@@ -47,6 +53,32 @@ export class EdgeClient {
       credentialRef: input.executionSessionId,
       apiBaseUrl: normalizeBase(input.apiBaseUrl),
       path: `/execution-sessions/${input.executionSessionId}/design/complete`,
+      method: 'POST' as const,
+      body: input.report,
+    };
+    try {
+      await this.sendItem(item, input.accessToken);
+      return { queued: false };
+    } catch (error) {
+      await this.outbox.enqueue(item);
+      return {
+        queued: true,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  async submitBrainstorm(input: {
+    apiBaseUrl: string;
+    accessToken: string;
+    executionSessionId: string;
+    report: BrainstormCompletionReport;
+  }) {
+    const item = {
+      kind: 'brainstorm-completion' as const,
+      credentialRef: input.executionSessionId,
+      apiBaseUrl: normalizeBase(input.apiBaseUrl),
+      path: `/execution-sessions/${input.executionSessionId}/brainstorm/complete`,
       method: 'POST' as const,
       body: input.report,
     };

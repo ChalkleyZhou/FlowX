@@ -23,6 +23,27 @@ export interface CompleteLocalInput {
   }>;
 }
 
+export interface DesignCompletionReportInput {
+  idempotencyKey: string;
+  summary?: string;
+  output: {
+    design: Record<string, unknown>;
+    demo: Record<string, unknown>;
+    designArtifact: {
+      html: string;
+      [key: string]: unknown;
+    };
+  };
+  metadata?: Record<string, unknown>;
+}
+
+export interface BrainstormCompletionReportInput {
+  idempotencyKey: string;
+  markdown: string;
+  summary?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export class FlowXApiClient {
   private readonly baseUrl: string;
   private readonly token: string;
@@ -30,6 +51,24 @@ export class FlowXApiClient {
   constructor(options: FlowXApiClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? process.env.FLOWX_API_BASE_URL ?? 'http://127.0.0.1:3000').replace(/\/$/, '');
     this.token = options.token ?? process.env.FLOWX_API_TOKEN ?? '';
+  }
+
+  /** Prefer explicit env token; fall back to ~/.flowx/active-design.json for design tools. */
+  static async forDesignTools(options: FlowXApiClientOptions = {}) {
+    if (options.token || process.env.FLOWX_API_TOKEN) {
+      const baseUrl = options.baseUrl ?? process.env.FLOWX_API_BASE_URL;
+      return new FlowXApiClient({ ...options, baseUrl });
+    }
+    const { readActiveDesignSession } = await import('./active-design-session.js');
+    const active = await readActiveDesignSession();
+    if (!active) {
+      return new FlowXApiClient(options);
+    }
+    return new FlowXApiClient({
+      ...options,
+      baseUrl: options.baseUrl ?? process.env.FLOWX_API_BASE_URL ?? active.apiBaseUrl,
+      token: active.accessToken,
+    });
   }
 
   listTasks(workspaceId?: string) {
@@ -57,6 +96,33 @@ export class FlowXApiClient {
       method: 'POST',
       body: JSON.stringify(body),
     });
+  }
+
+  getDesignHandoff(workflowRunId: string) {
+    return this.request(`/workflow-runs/${encodeURIComponent(workflowRunId)}/design/local-handoff`);
+  }
+
+  getBrainstormHandoff(workflowRunId: string) {
+    return this.request(
+      `/workflow-runs/${encodeURIComponent(workflowRunId)}/brainstorm/local-handoff`,
+    );
+  }
+
+  submitDesign(executionSessionId: string, report: DesignCompletionReportInput) {
+    return this.request(`/execution-sessions/${encodeURIComponent(executionSessionId)}/design/complete`, {
+      method: 'POST',
+      body: JSON.stringify(report),
+    });
+  }
+
+  submitBrainstorm(executionSessionId: string, report: BrainstormCompletionReportInput) {
+    return this.request(
+      `/execution-sessions/${encodeURIComponent(executionSessionId)}/brainstorm/complete`,
+      {
+        method: 'POST',
+        body: JSON.stringify(report),
+      },
+    );
   }
 
   private async request(path: string, init: RequestInit = {}) {

@@ -35,6 +35,7 @@ describe('flowx-local server', () => {
 
     const response = await fetch(`${url}/health`);
     expect(response.status).toBe(200);
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
       version: '0.1.0',
@@ -87,10 +88,13 @@ describe('flowx-local server', () => {
     const runOpenDesignLaunch = async () => ({
       ok: true as const,
       executionSessionId: 'session-1',
+      workflowRunId: 'workflow-1',
       workspacePath: '/tmp/design',
       contextPath: '/tmp/design/context.json',
       resultPath: '/tmp/design/result.json',
       opened: true,
+      imported: false,
+      activeDesignPath: '/tmp/.flowx/active-design.json',
     });
     const submitOpenDesignResult = async () => ({ queued: false });
     const server = createLocalServer({

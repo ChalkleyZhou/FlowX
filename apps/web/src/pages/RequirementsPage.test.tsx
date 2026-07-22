@@ -8,14 +8,7 @@ import { api } from '../api';
 import type { Requirement } from '../types';
 import { RequirementsPage } from './RequirementsPage';
 
-const {
-  probeFlowxLocal,
-  launchOpenDesignLocal,
-  successToast,
-  errorToast,
-} = vi.hoisted(() => ({
-  probeFlowxLocal: vi.fn(),
-  launchOpenDesignLocal: vi.fn(),
+const { successToast, errorToast } = vi.hoisted(() => ({
   successToast: vi.fn(),
   errorToast: vi.fn(),
 }));
@@ -28,14 +21,7 @@ vi.mock('../api', () => ({
     getWorkflowProviders: vi.fn(),
     createRequirement: vi.fn(),
     createWorkflowRun: vi.fn(),
-    startOpenDesignHandoff: vi.fn(),
   },
-  getFlowxApiBaseUrl: () => 'http://127.0.0.1:3000',
-}));
-
-vi.mock('../lib/flowx-local-bridge', () => ({
-  probeFlowxLocal,
-  launchOpenDesignLocal,
 }));
 
 vi.mock('../components/ui/toast', () => ({
@@ -105,29 +91,12 @@ describe('RequirementsPage', () => {
     vi.clearAllMocks();
   });
 
-  it('creates an OpenDesign handoff, launches flowx-local, and opens the workflow', async () => {
-    vi.mocked(api.startOpenDesignHandoff).mockResolvedValue({
-      workflow: { id: 'workflow-1' },
-      handoff: { executionSessionId: 'session-1' },
-      ticket: 'ticket-1',
-      loopbackPort: 3920,
-    } as Awaited<ReturnType<typeof api.startOpenDesignHandoff>>);
-    probeFlowxLocal.mockResolvedValue(true);
-    launchOpenDesignLocal.mockResolvedValue({
-      ok: true,
-      executionSessionId: 'session-1',
-      workspacePath: '/tmp/design-session',
-      contextPath: '/tmp/design-session/context.json',
-      resultPath: '/tmp/design-session/result.json',
-      opened: true,
-    });
-
+  it('does not expose OpenDesign launch from the requirements list', async () => {
     await act(async () => {
       root?.render(
         <MemoryRouter initialEntries={['/requirements']}>
           <Routes>
             <Route path="/requirements" element={<RequirementsPage />} />
-            <Route path="/workflow-runs/:workflowRunId" element={<div>workflow-detail</div>} />
           </Routes>
         </MemoryRouter>,
       );
@@ -138,27 +107,7 @@ describe('RequirementsPage', () => {
     const button = Array.from(container.querySelectorAll('button')).find(
       (element) => element.textContent?.trim() === 'OpenDesign 设计',
     );
-    expect(button).toBeTruthy();
-
-    await act(async () => {
-      button?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(api.startOpenDesignHandoff).toHaveBeenCalledWith(
-      'requirement-1',
-      ['repository-1'],
-    );
-    expect(probeFlowxLocal).toHaveBeenCalledWith(3920);
-    expect(launchOpenDesignLocal).toHaveBeenCalledWith(
-      { ticket: 'ticket-1', apiBaseUrl: 'http://127.0.0.1:3000' },
-      3920,
-    );
-    expect(successToast).toHaveBeenCalledWith(
-      'OpenDesign 本地设计目录已打开：/tmp/design-session',
-    );
-    expect(container.textContent).toContain('workflow-detail');
-    expect(errorToast).not.toHaveBeenCalled();
+    expect(button).toBeUndefined();
+    expect(container.textContent).toContain('启动工作流');
   });
 });

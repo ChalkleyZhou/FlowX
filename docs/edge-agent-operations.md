@@ -49,11 +49,17 @@ curl http://127.0.0.1:3920/health
 确认 `serve` 进程正在运行，且 `~/.flowx/local.json` 中的 `port` 与页面拿到的 loopback port 一致。
 本地服务只监听 `127.0.0.1`，不应暴露到局域网或公网。
 
-### 点击 OpenDesign 后只打开文件夹
+### 点击 OpenDesign 后只打开 App、没有挂载目录
 
-这是未配置 `openDesignCommand` 时的预期降级。把真实可执行文件绝对路径写入
-`~/.flowx/local.json`，重启 `flowx-local` 后重试。不要把 macOS 系统的 `/usr/bin/od`
-误认为 OpenDesign CLI。
+这是预期行为：项目目录由设计师在 Open Design 内自行选择。FlowX 通过
+`~/.flowx/active-design.json` 记录活跃会话，由 `flowx-mcp` 拉取上下文并回传结果：
+
+1. `flowx_get_active_design_session`
+2. `flowx_get_design_handoff`
+3. `flowx_submit_design`
+
+也可把可执行文件绝对路径写入 `~/.flowx/local.json` 的 `openDesignCommand`。
+不要把 macOS 系统的 `/usr/bin/od` 误认为 OpenDesign CLI。
 
 ### 回传进入 Outbox
 

@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFlowXToolHandlers } from './tools.js';
 
 describe('createFlowXToolHandlers', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('lists tasks through the FlowX API client', async () => {
     const apiClient = {
       listTasks: vi.fn().mockResolvedValue([{ id: 'req-1' }]),
@@ -83,5 +87,104 @@ describe('createFlowXToolHandlers', () => {
       ],
     });
     expect(result.content[0]?.text).toContain('workflow-1');
+  });
+
+  it('loads the active design session and fetches its handoff', async () => {
+    const apiClient = {
+      getDesignHandoff: vi.fn().mockResolvedValue({
+        executionSessionId: 'session-1',
+        contextPackage: { requirement: { title: 'Export' } },
+      }),
+    };
+    const handlers = createFlowXToolHandlers({
+      apiClient: apiClient as never,
+      collectGitReport: vi.fn() as never,
+      readActiveDesignSession: async () => ({
+        workflowRunId: 'workflow-1',
+        executionSessionId: 'session-1',
+        apiBaseUrl: 'http://127.0.0.1:3000',
+        accessToken: 'token-1',
+        accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
+        updatedAt: '2026-07-22T00:00:00.000Z',
+      }),
+      resolveDesignClient: async () => apiClient as never,
+    });
+
+    const active = await handlers.flowx_get_active_design_session({});
+    expect(active.content[0]?.text).toContain('workflow-1');
+
+    const handoff = await handlers.flowx_get_design_handoff({});
+    expect(apiClient.getDesignHandoff).toHaveBeenCalledWith('workflow-1');
+    expect(handoff.content[0]?.text).toContain('Export');
+  });
+
+  it('submits a design report for the active execution session', async () => {
+    const apiClient = {
+      submitDesign: vi.fn().mockResolvedValue({ ok: true }),
+    };
+    const handlers = createFlowXToolHandlers({
+      apiClient: apiClient as never,
+      collectGitReport: vi.fn() as never,
+      readActiveDesignSession: async () => ({
+        workflowRunId: 'workflow-1',
+        executionSessionId: 'session-1',
+        apiBaseUrl: 'http://127.0.0.1:3000',
+        accessToken: 'token-1',
+        accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
+        updatedAt: '2026-07-22T00:00:00.000Z',
+      }),
+      resolveDesignClient: async () => apiClient as never,
+    });
+
+    const result = await handlers.flowx_submit_design({
+      report: {
+        idempotencyKey: 'design:session-1:v1',
+        summary: 'Done',
+        output: {
+          design: { overview: 'A' },
+          demo: { summary: 'B' },
+          designArtifact: { html: '<!doctype html><html><body>Hi</body></html>' },
+        },
+      },
+    });
+
+    expect(apiClient.submitDesign).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({ idempotencyKey: 'design:session-1:v1' }),
+    );
+    expect(result.isError).toBeUndefined();
+  });
+
+  it('submits brainstorm markdown for the active execution session', async () => {
+    const apiClient = {
+      submitBrainstorm: vi.fn().mockResolvedValue({ ok: true }),
+    };
+    const handlers = createFlowXToolHandlers({
+      apiClient: apiClient as never,
+      collectGitReport: vi.fn() as never,
+      readActiveDesignSession: async () => ({
+        workflowRunId: 'workflow-1',
+        executionSessionId: 'session-1',
+        apiBaseUrl: 'http://127.0.0.1:3000',
+        accessToken: 'token-1',
+        accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
+        stage: 'brainstorm' as const,
+        updatedAt: '2026-07-22T00:00:00.000Z',
+      }),
+      resolveDesignClient: async () => apiClient as never,
+    });
+
+    const result = await handlers.flowx_submit_brainstorm({
+      report: {
+        idempotencyKey: 'brainstorm:session-1:v1',
+        markdown: '# Brief\n\nUser stories...',
+      },
+    });
+
+    expect(apiClient.submitBrainstorm).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({ markdown: '# Brief\n\nUser stories...' }),
+    );
+    expect(result.isError).toBeUndefined();
   });
 });

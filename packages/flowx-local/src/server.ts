@@ -76,6 +76,7 @@ export function createLocalServer(options: StartServerOptions = {}): Server {
       res.writeHead(200, {
         'content-type': 'application/json; charset=utf-8',
         'content-length': Buffer.byteLength(body),
+        'access-control-allow-origin': '*',
       });
       res.end(body);
       return;

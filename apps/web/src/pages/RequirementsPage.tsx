@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { api, getFlowxApiBaseUrl } from '../api';
+import { api } from '../api';
 import { EmptyState } from '../components/EmptyState';
 import { ListToolbar } from '../components/ListToolbar';
 import { MetricCard } from '../components/MetricCard';
@@ -31,7 +31,6 @@ import { useToast } from '../components/ui/toast';
 import type { Project, Requirement, Workspace } from '../types';
 import { formatAssignmentSummary, formatScheduleRange } from '../utils/business-days';
 import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
-import { launchOpenDesignLocal, probeFlowxLocal } from '../lib/flowx-local-bridge';
 
 const AI_PROVIDER_STORAGE_KEY = 'flowx-default-ai-provider';
 
@@ -54,7 +53,6 @@ export function RequirementsPage() {
     { id: 'cursor', label: 'Cursor CLI' },
   ]);
   const [launchSubmitting, setLaunchSubmitting] = useState(false);
-  const [openDesignBusyId, setOpenDesignBusyId] = useState<string | null>(null);
   const [createDraft, setCreateDraft] = useState({
     projectId: '',
     title: '',
@@ -182,41 +180,6 @@ export function RequirementsPage() {
       toast.error(error instanceof Error ? error.message : '启动工作流失败');
     } finally {
       setLaunchSubmitting(false);
-    }
-  }
-
-  async function startOpenDesign(requirement: Requirement) {
-    if (openDesignBusyId) return;
-    setOpenDesignBusyId(requirement.id);
-    try {
-      const repositoryIds = requirement.requirementRepositories?.map(
-        (entry) => entry.repository.id,
-      );
-      const started = await api.startOpenDesignHandoff(
-        requirement.id,
-        repositoryIds?.length ? repositoryIds : undefined,
-      );
-      if (!(await probeFlowxLocal(started.loopbackPort))) {
-        toast.error(
-          '设计会话已创建，但未检测到 flowx-local。请先启动 flowx-local，再重新点击 OpenDesign 设计。',
-        );
-        navigate(`/workflow-runs/${started.workflow.id}`);
-        return;
-      }
-      const local = await launchOpenDesignLocal(
-        { ticket: started.ticket, apiBaseUrl: getFlowxApiBaseUrl() },
-        started.loopbackPort,
-      );
-      toast.success(
-        local.opened
-          ? `OpenDesign 本地设计目录已打开：${local.workspacePath}`
-          : `设计上下文已写入：${local.workspacePath}`,
-      );
-      navigate(`/workflow-runs/${started.workflow.id}`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '启动 OpenDesign 设计失败');
-    } finally {
-      setOpenDesignBusyId(null);
     }
   }
 
@@ -646,13 +609,6 @@ export function RequirementsPage() {
                       </UiButton>
                       <UiButton variant="outline" asChild>
                         <Link to={`/requirements/${item.id}#scheduling`}>排期</Link>
-                      </UiButton>
-                      <UiButton
-                        variant="outline"
-                        disabled={openDesignBusyId === item.id}
-                        onClick={() => void startOpenDesign(item)}
-                      >
-                        {openDesignBusyId === item.id ? '准备中...' : 'OpenDesign 设计'}
                       </UiButton>
                       <UiButton
                         variant="outline"

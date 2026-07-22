@@ -127,6 +127,21 @@ describe('api helpers', () => {
     );
   });
 
+  it('retries an OpenDesign brainstorm handoff through the Edge API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ticket: 'ticket-2', loopbackPort: 3920 }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.retryOpenDesignBrainstormHandoff('workflow-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3000/edge/brainstorm-handoffs/workflow-1/retry',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
   it('calls cursor credential endpoint for updates', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

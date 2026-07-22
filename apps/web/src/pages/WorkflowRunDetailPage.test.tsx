@@ -46,18 +46,27 @@ vi.mock('../api', () => ({
     claimLocalExecution: vi.fn(),
     issueLocalLaunchTicket: vi.fn(),
     getLocalHandoff: vi.fn(),
+    retryOpenDesignHandoff: vi.fn(),
+    retryOpenDesignBrainstormHandoff: vi.fn(),
+    getOpenDesignHandoff: vi.fn(),
+    getOpenDesignBrainstormHandoff: vi.fn(),
   },
   getFlowxApiBaseUrl: () => 'http://127.0.0.1:3000',
 }));
 
-const { probeFlowxLocal, launchFlowxLocal } = vi.hoisted(() => ({
-  probeFlowxLocal: vi.fn(),
-  launchFlowxLocal: vi.fn(),
-}));
+const { probeFlowxLocal, launchFlowxLocal, launchOpenDesignLocal, submitOpenDesignLocal } =
+  vi.hoisted(() => ({
+    probeFlowxLocal: vi.fn(),
+    launchFlowxLocal: vi.fn(),
+    launchOpenDesignLocal: vi.fn(),
+    submitOpenDesignLocal: vi.fn(),
+  }));
 
 vi.mock('../lib/flowx-local-bridge', () => ({
   probeFlowxLocal,
   launchFlowxLocal,
+  launchOpenDesignLocal,
+  submitOpenDesignLocal,
 }));
 
 vi.mock('../components/ui/toast', () => ({
@@ -276,6 +285,7 @@ describe('WorkflowRunDetailPage', () => {
 
     const text = container.textContent ?? '';
     expect(text).toContain('产品构思');
+    expect(text).toContain('打开本地 OpenDesign');
     expect(text).toContain('AI 生成产品简报');
     expect(text).toContain('跳过构思');
     expect(text).toContain('设计方案');

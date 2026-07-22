@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { Public } from '../auth/public.decorator';
+import { CompleteOpenDesignBrainstormDto } from './dto/complete-open-design-brainstorm.dto';
 import { CompleteOpenDesignDto } from './dto/complete-open-design.dto';
 import { StartOpenDesignHandoffDto } from './dto/start-open-design-handoff.dto';
 import type { EdgeWorkflowSession } from './edge-tasks.service';
@@ -19,6 +20,11 @@ export class OpenDesignEdgeController {
     return this.openDesignEdgeService.retryHandoff(workflowRunId, requireSession(req));
   }
 
+  @Post('edge/brainstorm-handoffs/:workflowRunId/retry')
+  retryBrainstorm(@Param('workflowRunId') workflowRunId: string, @Req() req: OpenDesignRequest) {
+    return this.openDesignEdgeService.retryBrainstormHandoff(workflowRunId, requireSession(req));
+  }
+
   @Post('edge/design-launch/redeem')
   @Public()
   redeem(@Body() body: { ticket?: string }) {
@@ -36,11 +42,26 @@ export class OpenDesignEdgeController {
     });
   }
 
+  @Post('execution-sessions/:id/brainstorm/complete')
+  completeBrainstorm(
+    @Param('id') id: string,
+    @Body() dto: CompleteOpenDesignBrainstormDto,
+    @Req() req: OpenDesignRequest,
+  ) {
+    return this.openDesignEdgeService.completeBrainstorm(id, dto, {
+      organizationId: req.authSession?.organization?.id ?? null,
+    });
+  }
+
   @Get('workflow-runs/:id/design/local-handoff')
   getHandoff(@Param('id') id: string) {
     return this.openDesignEdgeService.getHandoff(id);
   }
 
+  @Get('workflow-runs/:id/brainstorm/local-handoff')
+  getBrainstormHandoff(@Param('id') id: string) {
+    return this.openDesignEdgeService.getBrainstormHandoff(id);
+  }
 }
 
 type OpenDesignRequest = { authSession?: EdgeWorkflowSession };
