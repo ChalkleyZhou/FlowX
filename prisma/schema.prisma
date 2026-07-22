@@ -69,6 +69,8 @@ model Workspace {
   briefings    Briefing[]
   codeReviewSources CodeReviewSource[]
   dailyCodeReviews DailyCodeReview[]
+  executionSessions ExecutionSession[]
+  artifacts         Artifact[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }
@@ -90,6 +92,8 @@ model Project {
   deliveryTargets DeliveryTarget[]
   legacyDeployConfig ProjectDeployConfig?
   deployJobs   DeployJobRecord[]
+  executionSessions  ExecutionSession[]
+  artifacts          Artifact[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -382,6 +386,8 @@ model User {
   reportedBugs    Bug[]              @relation("BugReportedBy")
   assignedBugs    Bug[]                    @relation("BugAssignedTo")
   assignments     RequirementAssignment[]
+  claimedExecutionSessions ExecutionSession[]      @relation("ExecutionSessionClaimedBy")
+  createdArtifacts         Artifact[]              @relation("ArtifactCreatedBy")
   createdAt       DateTime                 @default(now())
   updatedAt       DateTime                 @updatedAt
 }
@@ -460,6 +466,7 @@ model Organization {
   gitCredentials         OrganizationGitCredential[]
   memberships            UserOrganization[]
   sessions               UserSession[]
+  executionSessions      ExecutionSession[]
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
 
@@ -533,6 +540,8 @@ model WorkflowRun {
   reviewFindings       ReviewFinding[]
   issues               Issue[]
   bugs                 Bug[]                @relation("BugSourceWorkflow")
+  executionSessions    ExecutionSession[]
+  artifacts            Artifact[]
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 }
@@ -586,10 +595,131 @@ model StageExecution {
   startedAt      DateTime?
   finishedAt     DateTime?
   reviewFindings ReviewFinding[]
+  executionSessions ExecutionSession[]
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
   @@index([workflowRunId, stage, attempt])
+}
+
+model ExecutionSession {
+  id               String          @id @default(cuid())
+  workflowRunId    String
+  workflowRun      WorkflowRun     @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  stageExecutionId String?
+  stageExecution   StageExecution? @relation(fields: [stageExecutionId], references: [id], onDelete: SetNull)
+  organizationId   String?
+  organization     Organization?   @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  workspaceId      String?
+  workspace        Workspace?      @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  projectId        String?
+  project          Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  deviceId         String?
+  status           String          @default("CREATED")
+  executorType     String
+  sourceTool       String
+  protocolVersion  String
+  traceId          String          @unique
+  idempotencyKey   String?         @unique
+  claimedByUserId  String?
+  claimedByUser    User?           @relation("ExecutionSessionClaimedBy", fields: [claimedByUserId], references: [id], onDelete: SetNull)
+  startedAt        DateTime?
+  lastHeartbeatAt  DateTime?
+  completedAt      DateTime?
+  errorCode        String?
+  errorMessage     String?
+  summary          String?
+  metadata         Json?
+  syncEvents       SyncEvent[]
+  artifacts        Artifact[]
+  evidence         Evidence[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([workflowRunId, status, createdAt])
+  @@index([stageExecutionId, status])
+  @@index([organizationId, status, createdAt])
+  @@index([workspaceId, status, createdAt])
+  @@index([projectId, status, createdAt])
+  @@index([claimedByUserId, createdAt])
+}
+
+model SyncEvent {
+  id                 String           @id @default(cuid())
+  eventId            String           @unique
+  executionSessionId String
+  executionSession   ExecutionSession @relation(fields: [executionSessionId], references: [id], onDelete: Cascade)
+  schemaVersion      String
+  sequence           Int?
+  eventType          String
+  sourceTool         String
+  actorId            String?
+  deviceId           String?
+  traceId            String
+  occurredAt         DateTime
+  receivedAt         DateTime         @default(now())
+  idempotencyKey     String           @unique
+  payload            Json
+
+  @@index([executionSessionId, occurredAt])
+  @@index([traceId, occurredAt])
+  @@index([eventType, occurredAt])
+}
+
+model Artifact {
+  id                 String            @id @default(cuid())
+  workspaceId        String
+  workspace          Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  projectId          String?
+  project            Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  workflowRunId      String?
+  workflowRun        WorkflowRun?      @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
+  executionSessionId String?
+  executionSession   ExecutionSession? @relation(fields: [executionSessionId], references: [id], onDelete: SetNull)
+  artifactType       String
+  name               String
+  version            String            @default("1")
+  storageProvider    String            @default("local")
+  storageKey         String?
+  externalUrl        String?
+  mimeType           String?
+  byteSize           Int?
+  sha256             String?
+  status             String            @default("PENDING")
+  metadata           Json?
+  createdByUserId    String?
+  createdByUser      User?             @relation("ArtifactCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  evidence           Evidence[]
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([workspaceId, artifactType, createdAt])
+  @@index([projectId, createdAt])
+  @@index([workflowRunId, artifactType, createdAt])
+  @@index([executionSessionId, artifactType, createdAt])
+  @@index([sha256])
+  @@index([createdByUserId, createdAt])
+}
+
+model Evidence {
+  id                 String           @id @default(cuid())
+  executionSessionId String
+  executionSession   ExecutionSession @relation(fields: [executionSessionId], references: [id], onDelete: Cascade)
+  artifactId         String?
+  artifact           Artifact?        @relation(fields: [artifactId], references: [id], onDelete: SetNull)
+  evidenceType       String
+  sourceTool         String
+  title              String
+  summary            String?
+  status             String           @default("REPORTED")
+  occurredAt         DateTime         @default(now())
+  metadata           Json?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([executionSessionId, evidenceType, occurredAt])
+  @@index([artifactId, createdAt])
+  @@index([status, occurredAt])
 }
 
 model Task {

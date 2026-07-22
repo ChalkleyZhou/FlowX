@@ -333,12 +333,12 @@ flowchart LR
 
 **步骤：**
 
-- [ ] 定义 `FLOWX_PROTOCOL_VERSION = "1.0"`。
-- [ ] 定义执行状态、executor、source tool、事件名和错误码。
-- [ ] 定义 `FlowXSyncEvent<T>`、`ContextPackage`、`CompletionReport`。
-- [ ] 增加版本兼容函数和事件必填字段校验。
-- [ ] 提供可复用的幂等键生成规则，不在客户端随机拼字符串。
-- [ ] 测试未知版本、缺失 ID、非法终态流转和重复事件示例。
+- [x] 定义 `FLOWX_PROTOCOL_VERSION = "1.0"`。
+- [x] 定义执行状态、executor、source tool、事件名和错误码。
+- [x] 定义 `FlowXSyncEvent<T>`、`ContextPackage`、`CompletionReport`。
+- [x] 增加版本兼容函数和事件必填字段校验。
+- [x] 提供可复用的幂等键生成规则，不在客户端随机拼字符串。
+- [x] 测试未知版本、缺失 ID、非法终态流转和重复事件示例。
 
 **验收：**
 
@@ -358,12 +358,12 @@ flowchart LR
 
 **步骤：**
 
-- [ ] 新增 `ExecutionSession`、`SyncEvent`、`Artifact`、`Evidence`。
-- [ ] 补齐 `WorkflowRun`、`StageExecution`、`Workspace`、`Project`、`User` 的关系。
-- [ ] 为 `traceId`、`eventId`、`idempotencyKey`、`workflowRunId/status` 建索引或唯一约束。
-- [ ] 明确 SQLite 可执行的默认值和 migration 顺序。
-- [ ] 为历史数据保留所有可空关系，不进行破坏性 backfill。
-- [ ] 运行 Prisma generate 和 migration 测试。
+- [x] 新增 `ExecutionSession`、`SyncEvent`、`Artifact`、`Evidence`。
+- [x] 补齐 `WorkflowRun`、`StageExecution`、`Workspace`、`Project`、`User` 的关系。
+- [x] 为 `traceId`、`eventId`、`idempotencyKey`、`workflowRunId/status` 建索引或唯一约束。
+- [x] 明确 SQLite 可执行的默认值和 migration 顺序。
+- [x] 为历史数据保留所有可空关系，不进行破坏性 backfill。
+- [x] 运行 Prisma generate 和 migration 测试。
 
 **验收：**
 
