@@ -542,13 +542,13 @@ flowchart LR
 
 **步骤：**
 
-- [ ] 配置增加 `installationId`、`deviceId`、`apiBaseUrl` 和协议版本。
-- [ ] 不把短期 token 写入 Outbox Payload。
-- [ ] Outbox 使用 `~/.flowx/outbox/<eventId>.json`，临时文件写完后原子 rename。
-- [ ] 每项保存 attempt、nextRetryAt、lastError，不静默丢弃失败项。
-- [ ] 按指数退避重试，重复发送依赖服务端幂等。
-- [ ] 增加 `flowx-local status`、`flowx-local sync` 命令。
-- [ ] `/health` 返回 device、protocol、outbox pending 数量，不返回密钥。
+- [x] 配置增加 `installationId`、`deviceId`、`apiBaseUrl` 和协议版本。
+- [x] 不把短期 token 写入 Outbox Payload。
+- [x] Outbox 使用 `~/.flowx/outbox/<eventId>.json`，临时文件写完后原子 rename。
+- [x] 每项保存 attempt、nextRetryAt、lastError，不静默丢弃失败项。
+- [x] 按指数退避重试，重复发送依赖服务端幂等。
+- [x] 增加 `flowx-local status`、`flowx-local sync` 命令。
+- [x] `/health` 返回 device、protocol、outbox pending 数量，不返回密钥。
 
 **验收：**
 
@@ -585,6 +585,20 @@ flowchart LR
 - 现有 Cursor 本地启动体验保持一致。
 - Codex 与 Cursor 接收同版本 ContextPackage。
 - 新 Adapter 可以不修改 `launch.ts` 核心流程直接注册。
+
+#### Task 9A：OpenDesign 本地设计 Adapter（已完成的增量）
+
+本次先按黄金链路实现 OpenDesign Adapter，Cursor/Codex Adapter Registry 仍按 Task 9 后续推进。
+
+- [x] 定义 `OpenDesignContextPackage`、`OpenDesignHandoff` 和 `DesignCompletionReport`。
+- [x] 创建 `LOCAL_DESIGN` WorkflowRun 和 `sourceTool=opendesign` 的 ExecutionSession。
+- [x] 通过一次性 ticket 将短期凭据和版本化 ContextPackage 交给本机 `flowx-local`。
+- [x] 生成 `context.json`、`result.json`、`README.md` 和权限为 `0600` 的 `session.json`。
+- [x] 回传设计 Artifact、`AGENT_SUMMARY` Evidence 和幂等 CompletionReport。
+- [x] API 离线时进入可靠 Outbox，并支持 `design-submit` / `sync` 重放。
+- [x] Web 增加 `OpenDesign 设计`、`打开本地 OpenDesign` 和 `回传本地设计` 入口。
+
+当前限制：设备级长期凭据与 token 自动刷新尚未实现；`openDesignCommand` 先支持单个可执行文件路径。
 
 ### Task 10：迁移 MCP 和 Cursor Extension 到通用协议
 

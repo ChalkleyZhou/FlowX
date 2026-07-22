@@ -379,6 +379,11 @@ flowchart LR
 6. 质量门禁通过后触发发布，并记录环境、版本和部署结果。
 7. 运行指标和反馈回流项目简报与数字主线。
 
+OpenDesign 黄金链路当前已落地为：FlowX 创建 `LOCAL_DESIGN` 工作流与版本化
+`ContextPackage`，本机 `flowx-local` 通过一次性票据领取任务，OpenDesign 写入
+`DesignCompletionReport`，再由 Adapter 将 Artifact、Evidence 和完成状态幂等回传。设备长期凭据、
+自动刷新和通用 Adapter Registry 仍属于后续阶段。
+
 验收标准：
 
 - 同一任务可以从 FlowX Web、Cursor 或 Codex 获取一致上下文。

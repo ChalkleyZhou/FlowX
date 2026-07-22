@@ -24,8 +24,8 @@ flowchart LR
 
 1. `Workspace`、`Project`、`Requirement`、排期和项目简报。
 2. 需求 ideation、设计、任务拆分、技术方案、执行、AI Review 和人工确认工作流。
-3. Codex、Cursor、Mock executor 抽象与 OpenDesign 设计阶段集成。
-4. Cursor Extension、`flowx-local`、本地执行交接和本地完成回传。
+3. Codex、Cursor、Mock executor 抽象，以及 OpenDesign 本地设计会话。
+4. Cursor Extension、`flowx-local`、本地执行交接、可靠 Outbox 和本地完成回传。
 5. Workflow Repository、工作分支、Artifact 和本地预览。
 6. ReviewFinding、Issue、Bug、每日 Code Review 和投递目标。
 7. 部署 Provider、Git 凭据、AI 凭据、认证和组织用户管理。
@@ -43,7 +43,7 @@ flowchart LR
 
 - Backend: NestJS + TypeScript + Prisma + SQLite（当前 MVP）
 - Frontend: React + shadcn/ui + Tailwind + Vite
-- Local integration: Cursor Extension + `flowx-local`
+- Local integration: Cursor Extension + `flowx-local` + OpenDesign Adapter
 - AI integration: Codex / Cursor / Mock executor + OpenDesign
 - Target infrastructure: PostgreSQL + Redis/BullMQ + MinIO/S3 + Workers
 
@@ -75,10 +75,6 @@ VITE_API_BASE_URL="http://localhost:3000"
 DINGTALK_APP_ID=""
 DINGTALK_APP_SECRET=""
 DINGTALK_AGENT_ID=""
-# Optional: enable OpenDesign-grounded HTML design artifacts in the workflow DESIGN stage.
-# Requires `od` CLI installed on the API host + `od mcp install codex|cursor`.
-# See docs/opendesign-design-stage.md
-OPENDESIGN_MCP_ENABLED=""
 ```
 
 1. Install dependencies:
@@ -99,6 +95,43 @@ pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma
 ```bash
 pnpm dev
 ```
+
+### 本地 OpenDesign 设计
+
+新架构下，OpenDesign 在设计师本机运行，不需要安装到 FlowX API 主机：
+
+```text
+FlowX 需求 → flowx-local 领取 ContextPackage → OpenDesign 本地设计
+→ Artifact / Evidence / CompletionReport 回传 → FlowX 设计确认
+```
+
+先构建并启动本地 Agent：
+
+```bash
+pnpm --filter flowx-local build
+pnpm --filter flowx-local exec node dist/index.js serve
+```
+
+然后在 FlowX `需求` 页面点击 `OpenDesign 设计`。本地任务会写入
+`~/.flowx/design-sessions/<executionSessionId>/`。完成设计后，在工作流详情点击
+`回传本地设计`，或执行：
+
+```bash
+flowx-local design-submit <executionSessionId>
+flowx-local sync
+```
+
+如果 OpenDesign 有可直接启动的命令，可在 `~/.flowx/local.json` 配置：
+
+```json
+{
+  "openDesignCommand": "/absolute/path/to/opendesign"
+}
+```
+
+未配置时，macOS 会打开本地设计任务目录。完整说明见
+[OpenDesign 本地设计阶段](docs/opendesign-design-stage.md)和
+[Edge Agent 运维说明](docs/edge-agent-operations.md)。
 
 ## Deploy integration
 
@@ -172,7 +205,7 @@ Notes:
   - git identity configured, e.g. `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL`
 - `AI_EXECUTOR_PROVIDER="codex"` still requires valid Codex authentication in the container; in server environments the simplest way is `OPENAI_API_KEY`
 - If Docker/host kernel blocks Codex `read-only` sandbox with `bwrap: No permissions to create a new namespace`, set `CODEX_READ_SANDBOX="danger-full-access"`
-- To ground the workflow DESIGN stage with OpenDesign, install the `od` CLI on the API host, run `od mcp install codex|cursor`, set `OPENDESIGN_MCP_ENABLED=1`, then restart. See [docs/opendesign-design-stage.md](/Users/chalkley/workspace/FlowX/docs/opendesign-design-stage.md)
+- OpenDesign 推荐通过设计师本机的 `flowx-local` Adapter 接入；API 主机上的 `OPENDESIGN_MCP_ENABLED` 仅保留为旧服务端 AI 设计链路的兼容能力。见 [docs/opendesign-design-stage.md](/Users/chalkley/workspace/FlowX/docs/opendesign-design-stage.md)
 
 ### Using manual `codex login` in Docker
 
