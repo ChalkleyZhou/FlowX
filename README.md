@@ -1,72 +1,51 @@
-# AI R&D Orchestration MVP
+# FlowX
 
-This repository contains a staged, interruptible, human-confirmable AI研发调度系统 MVP.
+FlowX 是一个正在从 AI 研发流程编排 MVP 演进为端云协同 AI 产研平台的项目。
+
+Cursor、Codex、OpenDesign、IDE、CLI 和自动化测试工具继续作为端侧专业执行环境；FlowX 负责组织级项目、上下文、流程、状态、证据、质量、交付和治理。
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    U["用户 / 管理员"] --> W["Web 控制台\nReact + shadcn/ui + Tailwind + Vite"]
-    W --> A["API 服务\nNestJS + TypeScript"]
-    A --> DB["SQLite / Prisma"]
-
-    subgraph Orchestration["工作流编排层"]
-      REQ["Requirement\n需求"]
-      WF["WorkflowRun\n工作流"]
-      ST["StageExecution\n阶段执行"]
-      RF["ReviewFinding / Issue / Bug\n审查沉淀"]
-    end
-
-    A --> REQ
-    A --> WF
-    A --> ST
-    A --> RF
-
-    subgraph RepoLayer["代码库上下文层"]
-      WS["Workspace"]
-      RP["Repositories\n基线仓库"]
-      WR["Workflow Repositories\n工作流副本 / 工作分支"]
-    end
-
-    A --> WS
-    WS --> RP
-    WF --> WR
-    RP --> WR
-
-    subgraph AI["AI 执行器层"]
-      EX["AIExecutor 抽象"]
-      CX["Codex Executor"]
-      MX["Mock Executor"]
-      PT["Prompt Templates"]
-    end
-
-    A --> EX
-    EX --> CX
-    EX --> MX
-    CX --> PT
-    MX --> PT
-
-    WR --> CX
-    ST --> CX
-    CX --> ST
-    ST --> RF
+    Roles["产品、设计、开发、测试、运维"] --> Entrances["FlowX Web / Cursor / Codex / OpenDesign / IDE / CI"]
+    Entrances --> Edge["FlowX Edge Agent\n任务、上下文、Adapter、本地执行、Evidence"]
+    Edge <--> Sync["Sync Gateway\n命令、事件、状态、Artifact"]
+    Sync <--> Cloud["FlowX 云端控制平面\n项目、流程、AI 上下文、质量、发布、治理"]
+    Cloud <--> Integrations["Git / CI/CD / 制品库 / 测试平台 / 可观测性 / 通知"]
+    Cloud --> Thread["Project Digital Thread\n需求 → 设计 → 执行 → Commit → 测试 → 发布 → 反馈"]
 ```
 
+完整目标架构、同步协议、数据模型和 90 天实施路线见 [FlowX 端云协同 AI 产研平台目标架构](docs/architecture/edge-cloud-ai-rd-platform.md)。
 
+![FlowX 端云协同 AI 产研平台架构图](docs/architecture/assets/flowx-edge-cloud-ai-rd-platform.png)
 
-### Flow at a glance
+### 当前已具备的基础
 
-1. 在 `Workspace` 下登记代码库，系统拉取基线仓库并维护当前分支。
-2. 创建 `Requirement` 后发起 `WorkflowRun`。
-3. 工作流会为每个仓库准备独立的 workflow 副本和工作分支。
-4. `Task Split -> Technical Plan -> Execution -> AI Review` 按阶段推进，关键节点必须人工确认。
-5. 执行与审查结果结构化落库，并可沉淀为 `ReviewFinding / Issue / Bug`。
+1. `Workspace`、`Project`、`Requirement`、排期和项目简报。
+2. 需求 ideation、设计、任务拆分、技术方案、执行、AI Review 和人工确认工作流。
+3. Codex、Cursor、Mock executor 抽象与 OpenDesign 设计阶段集成。
+4. Cursor Extension、`flowx-local`、本地执行交接和本地完成回传。
+5. Workflow Repository、工作分支、Artifact 和本地预览。
+6. ReviewFinding、Issue、Bug、每日 Code Review 和投递目标。
+7. 部署 Provider、Git 凭据、AI 凭据、认证和组织用户管理。
+
+### 目标演进方向
+
+1. 将 `flowx-local` 演进为统一 FlowX Edge Agent。
+2. 通过 Tool Adapter SPI 接入 Cursor、Codex、OpenDesign、测试 Runner 和设备节点。
+3. 建立版本化、幂等、可追踪的端云同步协议。
+4. 建立独立测试与质量中心以及统一 Artifact/Evidence Center。
+5. 用 Project Digital Thread 串联需求、设计、执行、代码、测试、发布和运行反馈。
+6. 在保持模块化单体的前提下，逐步引入 PostgreSQL、队列、对象存储和独立 Worker。
 
 ## Stack
 
-- Backend: NestJS + TypeScript + Prisma + SQLite
+- Backend: NestJS + TypeScript + Prisma + SQLite（当前 MVP）
 - Frontend: React + shadcn/ui + Tailwind + Vite
-- AI integration: provider abstraction with Codex / Mock executor
+- Local integration: Cursor Extension + `flowx-local`
+- AI integration: Codex / Cursor / Mock executor + OpenDesign
+- Target infrastructure: PostgreSQL + Redis/BullMQ + MinIO/S3 + Workers
 
 ## Engineering guardrails
 
@@ -76,7 +55,8 @@ flowchart LR
 
 ## Structure
 
-- `docs/system-design.md`: MVP system design
+- `docs/system-design.md`: 当前系统设计与目标演进索引
+- `docs/architecture/edge-cloud-ai-rd-platform.md`: 端云协同目标架构、协议和实施路线
 - `docs/docker-deployment.md`: Docker 与 Nginx 部署指南
 - `docs/deploy-integration-design.md`: 部署集成设计与扩展方案
 - `apps/api`: backend service
@@ -277,4 +257,3 @@ codex login
 7. Run execution
 8. Run AI review
 9. Inspect full stage history
-
