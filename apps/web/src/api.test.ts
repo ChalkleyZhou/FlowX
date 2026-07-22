@@ -109,6 +109,24 @@ describe('api helpers', () => {
     );
   });
 
+  it('starts an OpenDesign handoff through the generic Edge API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ticket: 'ticket-1', loopbackPort: 3920 }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.startOpenDesignHandoff('req-1', ['repo-1']);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3000/edge/design-handoffs',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ requirementId: 'req-1', repositoryIds: ['repo-1'] }),
+      }),
+    );
+  });
+
   it('calls cursor credential endpoint for updates', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

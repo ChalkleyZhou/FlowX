@@ -3,7 +3,9 @@ import {
   FLOWX_LOCAL_DEFAULT_PORT,
   flowxLocalBaseUrl,
   launchFlowxLocal,
+  launchOpenDesignLocal,
   probeFlowxLocal,
+  submitOpenDesignLocal,
 } from './flowx-local-bridge';
 
 describe('flowx-local-bridge', () => {
@@ -108,5 +110,35 @@ describe('flowx-local-bridge', () => {
         apiBaseUrl: 'http://127.0.0.1:3000',
       }),
     ).rejects.toThrow('PATH_CANCELLED');
+  });
+
+  it('launches and submits OpenDesign sessions through loopback endpoints', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          executionSessionId: 'session-1',
+          workspacePath: '/tmp/design',
+          contextPath: '/tmp/design/context.json',
+          resultPath: '/tmp/design/result.json',
+          opened: true,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ queued: false }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await launchOpenDesignLocal(
+      { ticket: 'ticket-1', apiBaseUrl: 'http://127.0.0.1:3000' },
+      3923,
+    );
+    await submitOpenDesignLocal('session-1', 3923);
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('http://127.0.0.1:3923/design/launch');
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('http://127.0.0.1:3923/design/submit');
   });
 });

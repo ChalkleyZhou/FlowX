@@ -76,3 +76,44 @@ export async function launchFlowxLocal(
       : 'Launch failed';
   throw new Error(errorMessage);
 }
+
+export type OpenDesignLocalLaunchBody = {
+  ticket: string;
+  apiBaseUrl: string;
+};
+
+export type OpenDesignLocalLaunchResult = {
+  ok: true;
+  executionSessionId: string;
+  workspacePath: string;
+  contextPath: string;
+  resultPath: string;
+  opened: boolean;
+};
+
+export async function launchOpenDesignLocal(
+  body: OpenDesignLocalLaunchBody,
+  port?: number,
+): Promise<OpenDesignLocalLaunchResult> {
+  return postLocal('/design/launch', body, port) as Promise<OpenDesignLocalLaunchResult>;
+}
+
+export async function submitOpenDesignLocal(executionSessionId: string, port?: number) {
+  return postLocal('/design/submit', { executionSessionId }, port) as Promise<{
+    queued: boolean;
+    error?: string;
+  }>;
+}
+
+async function postLocal(path: string, body: unknown, port?: number) {
+  const response = await fetch(`${flowxLocalBaseUrl(port)}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = (await response.json()) as { ok?: boolean; error?: string };
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error || 'flowx-local request failed');
+  }
+  return data;
+}

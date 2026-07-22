@@ -23,7 +23,13 @@ import { Spinner } from '../components/ui/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Textarea as UiTextarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
-import { launchFlowxLocal, probeFlowxLocal, type FlowxLocalLaunchBody } from '../lib/flowx-local-bridge';
+import {
+  launchFlowxLocal,
+  launchOpenDesignLocal,
+  probeFlowxLocal,
+  submitOpenDesignLocal,
+  type FlowxLocalLaunchBody,
+} from '../lib/flowx-local-bridge';
 import type {
   DemoArtifact,
   DemoPage,
@@ -414,6 +420,7 @@ export function WorkflowRunDetailPage() {
   const [localLaunchOpen, setLocalLaunchOpen] = useState(false);
   const [localLaunchBusy, setLocalLaunchBusy] = useState(false);
   const [localLaunchSetupRequired, setLocalLaunchSetupRequired] = useState(false);
+  const [openDesignBusy, setOpenDesignBusy] = useState(false);
   const [executionHtml, setExecutionHtml] = useState<string | null>(null);
   const [completeLocalOpen, setCompleteLocalOpen] = useState(false);
   const [completeLocalPushed, setCompleteLocalPushed] = useState(true);
@@ -1033,6 +1040,51 @@ export function WorkflowRunDetailPage() {
     }
   }
 
+  async function launchLocalOpenDesign() {
+    if (!workflowRun || openDesignBusy) return;
+    setOpenDesignBusy(true);
+    try {
+      const started = await api.retryOpenDesignHandoff(workflowRun.id);
+      if (!(await probeFlowxLocal(started.loopbackPort))) {
+        toast.error('未检测到本机 flowx-local，请先启动服务后重试');
+        return;
+      }
+      const local = await launchOpenDesignLocal(
+        { ticket: started.ticket, apiBaseUrl: getFlowxApiBaseUrl() },
+        started.loopbackPort,
+      );
+      toast.success(`OpenDesign 设计目录已准备：${local.workspacePath}`);
+      await refresh({ silent: true });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '打开 OpenDesign 失败');
+    } finally {
+      setOpenDesignBusy(false);
+    }
+  }
+
+  async function submitLocalOpenDesign() {
+    if (!workflowRun || openDesignBusy) return;
+    setOpenDesignBusy(true);
+    try {
+      if (!(await probeFlowxLocal())) {
+        toast.error('未检测到本机 flowx-local，请先启动服务后重试');
+        return;
+      }
+      const handoff = await api.getOpenDesignHandoff(workflowRun.id);
+      const result = await submitOpenDesignLocal(handoff.executionSessionId);
+      if (result.queued) {
+        toast.error('FlowX API 暂不可用，设计结果已进入本地 Outbox，稍后可运行 flowx-local sync');
+      } else {
+        toast.success('本地 OpenDesign 设计已回传，进入确认环节');
+      }
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '回传 OpenDesign 设计失败');
+    } finally {
+      setOpenDesignBusy(false);
+    }
+  }
+
   function getEditableStageForSelectedStage(stageKey: WorkflowStageKey): EditableStage | null {
     if (stageKey === 'TASK_SPLIT') {
       return 'task-split';
@@ -1396,12 +1448,34 @@ export function WorkflowRunDetailPage() {
         attempt: designStage?.attempt,
         output: sanitizeDisplayValue(designStage?.output, repositoryPaths),
         actions: [
+          ...(workflowRun.runType === 'LOCAL_DESIGN'
+            ? [
+                {
+                  key: 'open-local-opendesign',
+                  label: '打开本地 OpenDesign',
+                  onClick: () => void launchLocalOpenDesign(),
+                  disabled: workflowRun.status !== 'DESIGN_PENDING' || openDesignBusy,
+                  loading: openDesignBusy,
+                  variant: 'primary' as const,
+                },
+                {
+                  key: 'submit-local-opendesign',
+                  label: '回传本地设计',
+                  onClick: () => void submitLocalOpenDesign(),
+                  disabled: workflowRun.status !== 'DESIGN_PENDING' || openDesignBusy,
+                  loading: openDesignBusy,
+                },
+              ]
+            : []),
           {
             key: 'run',
             label: 'AI 生成设计方案',
             onClick: () =>
               void runAction('DESIGN', () => api.runDesign(workflowRun.id), '设计方案生成已启动'),
-            disabled: workflowRun.status !== 'DESIGN_PENDING' || stageActionsLocked,
+            disabled:
+              workflowRun.runType === 'LOCAL_DESIGN' ||
+              workflowRun.status !== 'DESIGN_PENDING' ||
+              stageActionsLocked,
             loading: busyStage === 'DESIGN',
             variant: 'primary' as const,
           },
@@ -1719,7 +1793,7 @@ export function WorkflowRunDetailPage() {
         ],
       },
     };
-  }, [workflowRun, busyStage, stageActionsLocked, localHandoff, localExecutionActive, localLaunchBusy]);
+  }, [workflowRun, busyStage, stageActionsLocked, localHandoff, localExecutionActive, localLaunchBusy, openDesignBusy]);
 
   if (!workflowRunId) {
     return <Navigate to="/workflow-runs" replace />;

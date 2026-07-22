@@ -19,6 +19,8 @@ import type {
   LocalDevPreviewStatus,
   LocalExecutionClaimResponse,
   LocalHandoffPayload,
+  OpenDesignHandoff,
+  OpenDesignHandoffResponse,
   OrganizationMember,
   Project,
   ProjectBriefingConfig,
@@ -772,6 +774,17 @@ export const api = {
   getWorkflowRun: (id: string) => request<WorkflowRun>(`/workflow-runs/${id}`),
   getWorkflowDesignArtifact: (id: string) =>
     request<WorkflowDesignArtifact>(`/workflow-runs/${id}/design-artifact`),
+  startOpenDesignHandoff: (requirementId: string, repositoryIds?: string[]) =>
+    request<OpenDesignHandoffResponse>('/edge/design-handoffs', {
+      method: 'POST',
+      body: JSON.stringify({ requirementId, repositoryIds }),
+    }),
+  retryOpenDesignHandoff: (workflowRunId: string) =>
+    request<OpenDesignHandoffResponse>(`/edge/design-handoffs/${workflowRunId}/retry`, {
+      method: 'POST',
+    }),
+  getOpenDesignHandoff: (workflowRunId: string) =>
+    request<OpenDesignHandoff>(`/workflow-runs/${workflowRunId}/design/local-handoff`),
   fetchPlanArtifact: async (id: string) => {
     const token = getAuthToken();
     const response = await fetch(buildApiUrl(`/workflow-runs/${id}/artifacts/plan`), {

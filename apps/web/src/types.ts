@@ -474,6 +474,48 @@ export interface LocalExecutionClaimResponse {
   handoff: LocalHandoffPayload;
 }
 
+export interface OpenDesignHandoff {
+  protocolVersion: string;
+  workflowRunId: string;
+  executionSessionId: string;
+  traceId: string;
+  completionEndpoint: string;
+  contextPackage: {
+    protocolVersion: string;
+    generatedAt: string;
+    sourceTool: 'opendesign';
+    workflowRunId: string;
+    executionSessionId: string;
+    traceId: string;
+    requirement: {
+      id: string;
+      title: string;
+      description: string;
+      acceptanceCriteria: string;
+    };
+    repositories: Array<{
+      repositoryId: string;
+      workflowRepositoryId?: string;
+      name: string;
+      url: string | null;
+      baseBranch?: string;
+      workingBranch?: string;
+    }>;
+    outputContract: {
+      resultFileName: string;
+      format: 'flowx-design-result-v1';
+      requiredFields: readonly string[];
+    };
+  };
+}
+
+export interface OpenDesignHandoffResponse {
+  workflow: WorkflowRun;
+  handoff: OpenDesignHandoff;
+  ticket: string;
+  loopbackPort: number;
+}
+
 export interface CompleteLocalRepositoryReport {
   workflowRepositoryId: string;
   headSha: string;
