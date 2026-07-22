@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { WorkflowModule } from '../workflow/workflow.module';
+import { EdgeModule } from '../edge/edge.module';
 import { CursorLocalController } from './cursor-local.controller';
 import { CursorLocalService } from './cursor-local.service';
 
 @Module({
-  imports: [WorkflowModule],
+  imports: [EdgeModule],
   controllers: [CursorLocalController],
   providers: [CursorLocalService],
 })

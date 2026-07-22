@@ -510,12 +510,12 @@ flowchart LR
 
 **步骤：**
 
-- [ ] 先把现有 Cursor Local 测试转换为通用 Edge Service contract tests。
-- [ ] `EdgeTasksService` 统一 Requirement/Bug 的任务可认领规则。
-- [ ] `ContextPackageService` 输出带版本的上下文包。
-- [ ] `EdgeHandoffService` 负责创建/继续工作流和 ExecutionSession。
-- [ ] `CursorLocalService` 只保留兼容映射，不再复制业务判断。
-- [ ] 为 `sourceTool=cursor|codex` 生成不同启动提示，但共享任务上下文。
+- [x] 先把现有 Cursor Local 测试转换为通用 Edge Service contract tests。
+- [x] `EdgeTasksService` 统一 Requirement/Bug 的任务可认领规则。
+- [x] `ContextPackageService` 输出带版本的上下文包。
+- [x] `EdgeHandoffService` 负责创建/继续工作流和 ExecutionSession。
+- [x] `CursorLocalService` 只保留兼容映射，不再复制业务判断。
+- [x] 为 `sourceTool=cursor|codex` 生成不同启动提示，但共享任务上下文。
 
 **验收：**
 

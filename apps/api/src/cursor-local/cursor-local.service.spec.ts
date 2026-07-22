@@ -1,382 +1,45 @@
-import { ConflictException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { CursorLocalService } from './cursor-local.service';
 
 function createService() {
-  const prisma = {
-    requirement: {
-      findMany: vi.fn(),
-      findUniqueOrThrow: vi.fn(),
-    },
-    bug: {
-      findMany: vi.fn(),
-      findUniqueOrThrow: vi.fn(),
-    },
-    workflowRun: {
-      findMany: vi.fn().mockResolvedValue([]),
-    },
-    workspace: {
-      findMany: vi.fn(),
-    },
+  const edgeTasks = { listTasks: vi.fn().mockResolvedValue([{ id: 'req-1' }]) };
+  const edgeHandoff = { startHandoff: vi.fn().mockResolvedValue({ taskId: 'req-1' }) };
+  const contextPackage = {
+    getLegacyTaskContext: vi.fn().mockResolvedValue({ id: 'req-1', title: 'Export CSV' }),
   };
-  const workflowService = {
-    createLocalChatWorkflowRun: vi.fn(),
-    createLocalChatBugWorkflowRun: vi.fn(),
-    claimLocalExecution: vi.fn(),
-    getLocalHandoff: vi.fn(),
-    findOne: vi.fn(),
-  };
-
   return {
-    service: new CursorLocalService(prisma as never, workflowService as never),
-    prisma,
-    workflowService,
+    service: new CursorLocalService(edgeTasks as never, edgeHandoff as never, contextPackage as never),
+    edgeTasks,
+    edgeHandoff,
+    contextPackage,
   };
 }
 
-describe('CursorLocalService', () => {
-  it('lists eligible local chat requirements and bugs', async () => {
-    const { service, prisma } = createService();
-    prisma.requirement.findMany.mockResolvedValue([
-      {
-        id: 'req-1',
-        title: 'Export CSV',
-        status: 'ACTIVE',
-        priority: 'HIGH',
-        planningStatus: 'SCHEDULED',
-        requirementRepositories: [
-          {
-            repository: {
-              id: 'repo-1',
-              name: 'flowx-web',
-              url: 'https://github.com/acme/flowx-web.git',
-            },
-          },
-        ],
-        workflowRuns: [],
-      },
-    ]);
-    prisma.bug.findMany.mockResolvedValue([
-      {
-        id: 'bug-1',
-        title: 'Login fails',
-        status: 'OPEN',
-        priority: 'MEDIUM',
-        repository: {
-          id: 'repo-2',
-          name: 'flowx-api',
-          url: 'https://github.com/acme/flowx-api.git',
-        },
-        fixWorkflowRun: null,
-      },
-    ]);
+describe('CursorLocalService compatibility layer', () => {
+  it('delegates task listing to EdgeTasksService', async () => {
+    const { service, edgeTasks } = createService();
+    const filters = { workspaceId: 'workspace-1' };
 
-    const tasks = await service.listTasks({ workspaceId: 'workspace-1' });
-
-    expect(tasks).toEqual([
-      expect.objectContaining({
-        id: 'req-1',
-        type: 'requirement',
-        repository: expect.objectContaining({ id: 'repo-1' }),
-        eligible: true,
-      }),
-      expect.objectContaining({
-        id: 'bug-1',
-        type: 'bug',
-        repository: expect.objectContaining({ id: 'repo-2' }),
-        eligible: true,
-      }),
-    ]);
+    await expect(service.listTasks(filters)).resolves.toEqual([{ id: 'req-1' }]);
+    expect(edgeTasks.listTasks).toHaveBeenCalledWith(filters);
   });
 
-  it('does not require workspaceId when listing tasks for a signed-in user', async () => {
-    const { service, prisma } = createService();
-    prisma.requirement.findMany.mockResolvedValue([]);
-    prisma.bug.findMany.mockResolvedValue([]);
+  it('maps cursor-local handoff to sourceTool=cursor', async () => {
+    const { service, edgeHandoff } = createService();
+    await service.startHandoff({ taskType: 'requirement', taskId: 'req-1' });
 
-    await service.listTasks({
-      session: {
-        user: { id: 'user-1', displayName: 'User' },
-        organization: { id: 'org-1', name: 'FlowX Org' },
-      },
-    });
-
-    expect(prisma.workspace.findMany).not.toHaveBeenCalled();
-    expect(prisma.requirement.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { status: 'ACTIVE' },
-      }),
-    );
-    expect(prisma.bug.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { status: { in: ['OPEN', 'CONFIRMED'] } },
-      }),
+    expect(edgeHandoff.startHandoff).toHaveBeenCalledWith(
+      { taskType: 'requirement', taskId: 'req-1', sourceTool: 'cursor' },
+      undefined,
     );
   });
 
-  it('only marks local-chat execution-running workflows as reportable', async () => {
-    const { service, prisma } = createService();
-    prisma.requirement.findMany.mockResolvedValue([
-      {
-        id: 'req-1',
-        title: 'Export CSV',
-        status: 'ACTIVE',
-        priority: 'HIGH',
-        planningStatus: 'SCHEDULED',
-        requirementRepositories: [
-          {
-            repository: {
-              id: 'repo-1',
-              name: 'flowx-web',
-              url: 'https://github.com/acme/flowx-web.git',
-            },
-          },
-        ],
-        workflowRuns: [
-          {
-            id: 'workflow-plan-1',
-            runType: 'LOCAL_CHAT',
-            status: 'PLAN_PENDING',
-            workflowRepositories: [],
-          },
-          {
-            id: 'workflow-local-1',
-            runType: 'LOCAL_CHAT',
-            status: 'EXECUTION_RUNNING',
-            workflowRepositories: [],
-          },
-        ],
-      },
-    ]);
-    prisma.bug.findMany.mockResolvedValue([
-      {
-        id: 'bug-1',
-        title: 'Login fails',
-        status: 'OPEN',
-        priority: 'MEDIUM',
-        repository: {
-          id: 'repo-2',
-          name: 'flowx-api',
-          url: 'https://github.com/acme/flowx-api.git',
-        },
-        fixWorkflowRun: {
-          id: 'workflow-bug-1',
-          runType: 'BUG_FIX',
-          status: 'EXECUTION_RUNNING',
-        },
-      },
-    ]);
-
-    const tasks = await service.listTasks({});
-
-    expect(tasks).toEqual([
-      expect.objectContaining({
-        id: 'req-1',
-        eligible: false,
-        workflowRunId: 'workflow-local-1',
-      }),
-      expect.objectContaining({
-        id: 'bug-1',
-        eligible: false,
-        workflowRunId: null,
-      }),
-    ]);
-  });
-
-  it('creates a local chat workflow, claims local execution, and returns a chat prompt', async () => {
-    const { service, workflowService } = createService();
-    workflowService.createLocalChatWorkflowRun.mockResolvedValue({
-      id: 'workflow-1',
-      status: 'EXECUTION_PENDING',
+  it('keeps the legacy raw task context response', async () => {
+    const { service, contextPackage } = createService();
+    await expect(service.getTaskContext('requirement', 'req-1')).resolves.toEqual({
+      id: 'req-1',
+      title: 'Export CSV',
     });
-    workflowService.claimLocalExecution.mockResolvedValue({
-      workflow: { id: 'workflow-1', status: 'EXECUTION_RUNNING' },
-      handoff: {
-        workflowRunId: 'workflow-1',
-        requirement: {
-          id: 'req-1',
-          title: 'Export CSV',
-          description: 'Users need CSV export',
-          acceptanceCriteria: 'CSV downloads with headers',
-        },
-        repositories: [
-          {
-            name: 'flowx-web',
-            url: 'https://github.com/acme/flowx-web.git',
-            workingBranch: 'flowx/work/export/workflow-1',
-          },
-        ],
-      },
-    });
-
-    const result = await service.startHandoff(
-      { taskType: 'requirement', taskId: 'req-1', repositoryIds: ['repo-1'] },
-      { user: { id: 'user-1', displayName: 'User' } },
-    );
-
-    expect(workflowService.createLocalChatWorkflowRun).toHaveBeenCalledWith({
-      requirementId: 'req-1',
-      repositoryIds: ['repo-1'],
-    });
-    expect(workflowService.claimLocalExecution).toHaveBeenCalledWith('workflow-1', {
-      user: { id: 'user-1', displayName: 'User' },
-    });
-    expect(result.chatPrompt).toContain('Cursor Chat');
-    expect(result.chatPrompt).toContain('CSV downloads with headers');
-  });
-
-  it('claims an existing execution-pending local chat workflow instead of creating a duplicate', async () => {
-    const { service, prisma, workflowService } = createService();
-    prisma.workflowRun.findMany.mockResolvedValue([
-      {
-        id: 'workflow-existing',
-        status: 'EXECUTION_PENDING',
-        runType: 'LOCAL_CHAT',
-        workflowRepositories: [{ repositoryId: 'repo-1' }],
-      },
-    ]);
-    workflowService.claimLocalExecution.mockResolvedValue({
-      workflow: { id: 'workflow-existing', status: 'EXECUTION_RUNNING' },
-      handoff: {
-        workflowRunId: 'workflow-existing',
-        requirement: {
-          id: 'req-1',
-          title: 'Export CSV',
-          description: 'Users need CSV export',
-          acceptanceCriteria: 'CSV downloads with headers',
-        },
-        repositories: [
-          {
-            name: 'flowx-web',
-            url: 'https://github.com/acme/flowx-web.git',
-            workingBranch: 'flowx/work/export/workflow-existing',
-          },
-        ],
-      },
-    });
-
-    const result = await service.startHandoff(
-      { taskType: 'requirement', taskId: 'req-1', repositoryIds: ['repo-1'] },
-      { user: { id: 'user-1', displayName: 'User' } },
-    );
-
-    expect(workflowService.createLocalChatWorkflowRun).not.toHaveBeenCalled();
-    expect(workflowService.claimLocalExecution).toHaveBeenCalledWith('workflow-existing', {
-      user: { id: 'user-1', displayName: 'User' },
-    });
-    expect(result.workflow.id).toBe('workflow-existing');
-    expect(result.chatPrompt).toContain('CSV downloads with headers');
-  });
-
-  it('returns handoff for an existing execution-running local chat workflow', async () => {
-    const { service, prisma, workflowService } = createService();
-    prisma.workflowRun.findMany.mockResolvedValue([
-      {
-        id: 'workflow-running',
-        status: 'EXECUTION_RUNNING',
-        runType: 'LOCAL_CHAT',
-        workflowRepositories: [{ repositoryId: 'repo-1' }],
-      },
-    ]);
-    workflowService.getLocalHandoff.mockResolvedValue({
-      workflowRunId: 'workflow-running',
-      requirement: {
-        id: 'req-1',
-        title: 'Export CSV',
-        description: 'Users need CSV export',
-        acceptanceCriteria: 'CSV downloads with headers',
-      },
-      repositories: [
-        {
-          name: 'flowx-web',
-          url: 'https://github.com/acme/flowx-web.git',
-          workingBranch: 'flowx/work/export/workflow-running',
-        },
-      ],
-    });
-
-    const result = await service.startHandoff({
-      taskType: 'requirement',
-      taskId: 'req-1',
-      repositoryIds: ['repo-1'],
-    });
-
-    expect(workflowService.createLocalChatWorkflowRun).not.toHaveBeenCalled();
-    expect(workflowService.claimLocalExecution).not.toHaveBeenCalled();
-    expect(workflowService.getLocalHandoff).toHaveBeenCalledWith('workflow-running');
-    expect(result.workflow).toEqual(expect.objectContaining({ id: 'workflow-running', status: 'EXECUTION_RUNNING' }));
-    expect(result.chatPrompt).toContain('Cursor Chat');
-    expect(result.chatPrompt).toContain('CSV downloads with headers');
-  });
-
-  it('does not create a duplicate when an existing local chat workflow is still preparing', async () => {
-    const { service, prisma, workflowService } = createService();
-    prisma.workflowRun.findMany.mockResolvedValue([
-      {
-        id: 'workflow-preparing',
-        status: 'REPOSITORY_GROUNDING_PENDING',
-        runType: 'LOCAL_CHAT',
-        workflowRepositories: [{ repositoryId: 'repo-1' }],
-      },
-    ]);
-
-    await expect(
-      service.startHandoff({
-        taskType: 'requirement',
-        taskId: 'req-1',
-        repositoryIds: ['repo-1'],
-      }),
-    ).rejects.toBeInstanceOf(ConflictException);
-
-    expect(workflowService.createLocalChatWorkflowRun).not.toHaveBeenCalled();
-    expect(workflowService.claimLocalExecution).not.toHaveBeenCalled();
-    expect(workflowService.getLocalHandoff).not.toHaveBeenCalled();
-  });
-
-  it('creates a local chat bug workflow and returns bug-focused chat prompt', async () => {
-    const { service, prisma, workflowService } = createService();
-    prisma.bug.findUniqueOrThrow.mockResolvedValue({
-      id: 'bug-1',
-      title: 'Login fails',
-      description: 'Login button returns 500',
-      expectedBehavior: 'User reaches dashboard',
-      actualBehavior: 'The page shows a 500 toast',
-      reproductionSteps: ['Open login page', 'Submit valid credentials'],
-    });
-    workflowService.createLocalChatBugWorkflowRun.mockResolvedValue({
-      id: 'workflow-2',
-      status: 'EXECUTION_PENDING',
-    });
-    workflowService.claimLocalExecution.mockResolvedValue({
-      workflow: { id: 'workflow-2', status: 'EXECUTION_RUNNING' },
-      handoff: {
-        workflowRunId: 'workflow-2',
-        requirement: {
-          id: 'req-2',
-          title: '[BugFix] Login fails',
-          description: 'Login button returns 500',
-          acceptanceCriteria: 'User reaches dashboard',
-        },
-        repositories: [
-          {
-            name: 'flowx-api',
-            url: 'https://github.com/acme/flowx-api.git',
-            workingBranch: 'flowx/work/login/workflow-2',
-          },
-        ],
-      },
-    });
-
-    const result = await service.startHandoff(
-      { taskType: 'bug', taskId: 'bug-1', repositoryIds: ['repo-2'] },
-      { user: { id: 'user-1', displayName: 'User' } },
-    );
-
-    expect(workflowService.createLocalChatBugWorkflowRun).toHaveBeenCalledWith('bug-1', {
-      repositoryIds: ['repo-2'],
-    });
-    expect(result.chatPrompt).toContain('Reproduction');
-    expect(result.chatPrompt).toContain('Expected behavior');
-    expect(result.chatPrompt).toContain('Submit valid credentials');
+    expect(contextPackage.getLegacyTaskContext).toHaveBeenCalledWith('requirement', 'req-1');
   });
 });

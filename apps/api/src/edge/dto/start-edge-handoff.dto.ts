@@ -1,6 +1,6 @@
 import { IsArray, IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
-export class StartLocalChatDto {
+export class StartEdgeHandoffDto {
   @IsString()
   @IsIn(['requirement', 'bug'])
   taskType!: 'requirement' | 'bug';
@@ -18,4 +18,8 @@ export class StartLocalChatDto {
   @IsString()
   @IsIn(['codex', 'cursor'])
   aiProvider?: 'codex' | 'cursor';
+
+  @IsString()
+  @IsIn(['cursor', 'codex'])
+  sourceTool!: 'cursor' | 'codex';
 }

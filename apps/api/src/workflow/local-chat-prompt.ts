@@ -7,6 +7,7 @@ export interface LocalChatPromptRepository {
 }
 
 export interface BuildLocalChatPromptInput {
+  sourceTool?: 'cursor' | 'codex';
   taskType: LocalChatTaskType;
   taskId: string;
   workflowRunId: string;
@@ -43,6 +44,10 @@ function formatReproduction(steps?: string[] | null) {
 
 export function buildLocalChatPrompt(input: BuildLocalChatPromptInput) {
   const taskLabel = input.taskType === 'bug' ? 'Bug' : 'Requirement';
+  const toolInstruction =
+    input.sourceTool === 'codex'
+      ? '- Work in Codex and keep the implementation, tests, and completion report in the same task.'
+      : '- Work in Cursor Chat/Agent and iterate there until the change is ready.';
   const lines = [
     `# FlowX ${taskLabel}: ${input.title.trim()}`,
     '',
@@ -53,7 +58,7 @@ export function buildLocalChatPrompt(input: BuildLocalChatPromptInput) {
     `- Repository: ${input.repository.name}`,
     input.repository.url?.trim() ? `- Remote: ${input.repository.url.trim()}` : '',
     `- Working branch: ${input.repository.workingBranch}`,
-    '- Work in Cursor Chat/Agent and iterate there until the change is ready.',
+    toolInstruction,
     '',
     '## Description',
     input.description.trim(),

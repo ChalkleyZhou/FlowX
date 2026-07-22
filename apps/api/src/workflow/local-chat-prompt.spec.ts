@@ -49,6 +49,21 @@ describe('local chat workflow helpers', () => {
     expect(prompt).toContain('Submit valid credentials');
   });
 
+  it('builds a Codex-specific launch instruction from the shared context', () => {
+    const prompt = buildLocalChatPrompt({
+      sourceTool: 'codex',
+      taskType: 'requirement',
+      taskId: 'req-codex',
+      workflowRunId: 'wr-codex',
+      title: 'Add edge handoff',
+      description: 'Use the shared context package',
+      repository: { name: 'flowx', url: null, workingBranch: 'flowx/work/edge' },
+    });
+
+    expect(prompt).toContain('Work in Codex');
+    expect(prompt).not.toContain('Work in Cursor Chat/Agent');
+  });
+
   it('builds a minimal requirement bootstrap for local chat execution', () => {
     const bootstrap = buildLocalChatRequirementBootstrap({
       title: ' Add export ',
