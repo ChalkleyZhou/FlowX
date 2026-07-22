@@ -17,6 +17,7 @@ const workflowTransitions: Record<WorkflowRunStatus, WorkflowRunStatus[]> = {
   [WorkflowRunStatus.CREATED]: [WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING],
   [WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING]: [
     WorkflowRunStatus.BRAINSTORM_PENDING,
+    WorkflowRunStatus.DESIGN_PENDING,
     WorkflowRunStatus.FAILED,
   ],
   [WorkflowRunStatus.BRAINSTORM_PENDING]: [

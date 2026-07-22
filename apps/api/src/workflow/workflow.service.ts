@@ -15,6 +15,9 @@ import { promisify } from 'util';
 import {
   FLOWX_PROTOCOL_VERSION,
   type CompletionReport,
+  type DesignCompletionReport,
+  type OpenDesignContextPackage,
+  type OpenDesignHandoff,
   type SourceTool,
 } from 'flowx-protocol';
 import {
@@ -160,6 +163,10 @@ export class WorkflowService {
 
   async createLocalChatWorkflowRun(dto: CreateWorkflowRunDto) {
     return this.createRequirementWorkflowRun(dto, WorkflowRunType.LOCAL_CHAT);
+  }
+
+  async createLocalDesignWorkflowRun(dto: CreateWorkflowRunDto) {
+    return this.createRequirementWorkflowRun(dto, WorkflowRunType.LOCAL_DESIGN);
   }
 
   async createLocalChatBugWorkflowRun(bugId: string, dto: StartBugFixWorkflowDto) {
@@ -1240,6 +1247,229 @@ export class WorkflowService {
    * design stage to WAITING_CONFIRMATION — the local-execution counterpart for the design stage.
    * No server-side AI call is made; the provided output is validated and persisted directly.
    */
+  async claimLocalDesign(
+    id: string,
+    notifyRecipient?: WorkflowNotificationSession,
+  ): Promise<{ workflow: WorkflowPayload; handoff: OpenDesignHandoff }> {
+    const workflow = await this.getWorkflowOrThrow(id);
+    if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.DESIGN_PENDING) {
+      throw new BadRequestException('Local OpenDesign can only be claimed while design is pending.');
+    }
+    const existing = await this.prisma.executionSession.findFirst({
+      where: {
+        workflowRunId: id,
+        sourceTool: 'opendesign',
+        status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (existing) {
+      return {
+        workflow,
+        handoff: this.buildOpenDesignHandoff(workflow, existing),
+      };
+    }
+
+    const recipient = this.toNotificationRecipient(notifyRecipient);
+    const sessionRef = {
+      id: randomUUID(),
+      traceId: randomUUID(),
+      protocolVersion: FLOWX_PROTOCOL_VERSION,
+    };
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const designStage = await this.getOrCreateRunnableSkippableStageExecution(
+        tx,
+        id,
+        StageType.DESIGN,
+      );
+      await this.updateStageExecution(tx, designStage.id, StageExecutionStatus.RUNNING, {
+        input: {
+          source: 'LOCAL_OPENDESIGN',
+          claimedByUserId: recipient?.flowxUserId ?? null,
+          claimedAt: new Date().toISOString(),
+        },
+        statusMessage: '本地 OpenDesign 设计中',
+        startedAt: new Date(),
+      });
+      await tx.executionSession.create({
+        data: {
+          id: sessionRef.id,
+          workflowRunId: id,
+          stageExecutionId: designStage.id,
+          organizationId: recipient?.flowxOrganizationId ?? null,
+          workspaceId:
+            workflow.requirement.workspaceId ?? workflow.requirement.project.workspaceId,
+          projectId: workflow.requirement.projectId,
+          status: 'RUNNING',
+          executorType: 'LOCAL',
+          sourceTool: 'opendesign',
+          protocolVersion: sessionRef.protocolVersion,
+          traceId: sessionRef.traceId,
+          idempotencyKey: `local-design:${id}:${designStage.id}`,
+          claimedByUserId: recipient?.flowxUserId ?? null,
+          startedAt: new Date(),
+          lastHeartbeatAt: new Date(),
+          metadata: { stage: 'DESIGN', outputFormat: 'flowx-design-result-v1' },
+        },
+      });
+      return tx.workflowRun.findUniqueOrThrow({
+        where: { id },
+        include: this.workflowInclude(),
+      });
+    });
+
+    return {
+      workflow: updated,
+      handoff: this.buildOpenDesignHandoff(updated, {
+        ...sessionRef,
+      }),
+    };
+  }
+
+  async getLocalDesignHandoff(id: string): Promise<OpenDesignHandoff> {
+    const workflow = await this.getWorkflowOrThrow(id);
+    const session = await this.prisma.executionSession.findFirst({
+      where: {
+        workflowRunId: id,
+        sourceTool: 'opendesign',
+        status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!session) {
+      throw new NotFoundException('No active OpenDesign execution session was found.');
+    }
+    return this.buildOpenDesignHandoff(workflow, session);
+  }
+
+  async completeLocalDesignSession(
+    executionSessionId: string,
+    report: DesignCompletionReport,
+    scope: { organizationId?: string | null } = {},
+  ) {
+    const session = await this.prisma.executionSession.findUnique({
+      where: { id: executionSessionId },
+    });
+    if (!session || session.sourceTool !== 'opendesign') {
+      throw new NotFoundException('OpenDesign execution session not found.');
+    }
+    if (session.organizationId && session.organizationId !== scope.organizationId?.trim()) {
+      throw new ConflictException('OpenDesign execution session belongs to another organization.');
+    }
+    const workflow = await this.getWorkflowOrThrow(session.workflowRunId);
+    const existingKey = this.readCompletionIdempotencyKey(session.metadata);
+    if (session.status === 'COMPLETED') {
+      if (existingKey === report.idempotencyKey) {
+        return {
+          workflow,
+          handoff: this.buildOpenDesignHandoff(workflow, session),
+        };
+      }
+      throw new ConflictException({
+        code: 'EXECUTION_SESSION_TERMINAL',
+        message: 'OpenDesign execution session was already completed with another report.',
+      });
+    }
+    if (!ACTIVE_EXECUTION_SESSION_STATUSES.includes(session.status as never)) {
+      throw new ConflictException({
+        code: 'EXECUTION_SESSION_TERMINAL',
+        message: `OpenDesign execution session is already ${session.status}.`,
+      });
+    }
+    if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.DESIGN_PENDING) {
+      throw new BadRequestException('Workflow is no longer waiting for a local design.');
+    }
+
+    const parsed = assertDesignSpecOutput(report.output);
+    const artifactRef = await this.persistWorkflowDesignArtifact(
+      workflow.id,
+      parsed.designArtifact.html ?? '',
+    );
+    const persistedOutput = this.toPersistedDesignStageOutput(
+      { design: parsed.design, demo: parsed.demo, demoPages: [] },
+      artifactRef,
+    );
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (!session.stageExecutionId) {
+        throw new BadRequestException('OpenDesign session is missing its design stage.');
+      }
+      await this.updateStageExecution(
+        tx,
+        session.stageExecutionId,
+        StageExecutionStatus.WAITING_CONFIRMATION,
+        {
+          output: persistedOutput,
+          statusMessage: '本地 OpenDesign 设计已回传，请确认设计方案',
+          finishedAt: new Date(),
+        },
+      );
+      await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.DESIGN_PENDING, {
+        to: WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION,
+        stage: StageType.DESIGN,
+      });
+      const transition = await tx.executionSession.updateMany({
+        where: {
+          id: executionSessionId,
+          status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] },
+        },
+        data: {
+          status: 'COMPLETED',
+          completedAt: new Date(),
+          summary: report.summary ?? 'OpenDesign design completed.',
+          metadata: JSON.parse(
+            JSON.stringify({
+              ...(session.metadata && typeof session.metadata === 'object' && !Array.isArray(session.metadata)
+                ? session.metadata
+                : {}),
+              completionIdempotencyKey: report.idempotencyKey,
+              completionMetadata: report.metadata ?? {},
+            }),
+          ) as Prisma.InputJsonObject,
+        },
+      });
+      if (transition.count !== 1) {
+        throw new ConflictException('OpenDesign execution session changed during completion.');
+      }
+      const artifact = await tx.artifact.findFirst({
+        where: {
+          workflowRunId: workflow.id,
+          artifactType: 'DESIGN_HTML',
+          status: { not: 'DELETED' },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      await tx.evidence.create({
+        data: {
+          executionSessionId,
+          artifactId: artifact?.id ?? null,
+          evidenceType: 'AGENT_SUMMARY',
+          sourceTool: 'opendesign',
+          title: 'OpenDesign design submission',
+          summary: report.summary ?? null,
+          status: 'REPORTED',
+          occurredAt: new Date(),
+          metadata: report.metadata
+            ? (JSON.parse(JSON.stringify(report.metadata)) as Prisma.InputJsonObject)
+            : undefined,
+        },
+      });
+      return tx.workflowRun.findUniqueOrThrow({
+        where: { id: workflow.id },
+        include: this.workflowInclude(),
+      });
+    });
+
+    return {
+      workflow: updated,
+      handoff: this.buildOpenDesignHandoff(updated, {
+        id: session.id,
+        traceId: session.traceId,
+        protocolVersion: session.protocolVersion,
+      }),
+    };
+  }
+
   async submitLocalDesign(id: string, rawOutput: unknown) {
     const workflow = await this.getWorkflowOrThrow(id);
     this.assertStageNotRunning(workflow, StageType.DESIGN);
@@ -2726,6 +2956,55 @@ export class WorkflowService {
     });
   }
 
+  private buildOpenDesignHandoff(
+    workflow: WorkflowPayload,
+    session: {
+      id: string;
+      traceId: string;
+      protocolVersion: string;
+    },
+  ): OpenDesignHandoff {
+    const contextPackage: OpenDesignContextPackage = {
+      protocolVersion: session.protocolVersion,
+      generatedAt: new Date().toISOString(),
+      sourceTool: 'opendesign',
+      workflowRunId: workflow.id,
+      executionSessionId: session.id,
+      traceId: session.traceId,
+      requirement: {
+        id: workflow.requirement.id,
+        title: workflow.requirement.title,
+        description: workflow.requirement.description,
+        acceptanceCriteria: workflow.requirement.acceptanceCriteria,
+      },
+      repositories: workflow.workflowRepositories.map((repository) => ({
+        repositoryId: repository.repositoryId ?? repository.id,
+        workflowRepositoryId: repository.id,
+        name: repository.name,
+        url: repository.url || null,
+        baseBranch: repository.baseBranch,
+        workingBranch: repository.workingBranch,
+      })),
+      outputContract: {
+        resultFileName: 'result.json',
+        format: 'flowx-design-result-v1',
+        requiredFields: ['design', 'demo', 'designArtifact'],
+      },
+      metadata: {
+        workflowStatus: workflow.status,
+        runType: workflow.runType,
+      },
+    };
+    return {
+      protocolVersion: session.protocolVersion,
+      workflowRunId: workflow.id,
+      executionSessionId: session.id,
+      traceId: session.traceId,
+      contextPackage,
+      completionEndpoint: `/execution-sessions/${session.id}/design/complete`,
+    };
+  }
+
   private isExecutionSessionProjectionEnabled() {
     return process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED?.trim().toLowerCase() !== 'false';
   }
@@ -4172,17 +4451,29 @@ export class WorkflowService {
             },
           );
 
+          const localDesign = groundedWorkflow.runType === WorkflowRunType.LOCAL_DESIGN;
           await this.transitionWorkflow(
             tx,
             workflowId,
             WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING,
             {
-              to: WorkflowRunStatus.BRAINSTORM_PENDING,
-              stage: StageType.BRAINSTORM,
+              to: localDesign
+                ? WorkflowRunStatus.DESIGN_PENDING
+                : WorkflowRunStatus.BRAINSTORM_PENDING,
+              stage: localDesign ? StageType.DESIGN : StageType.BRAINSTORM,
             },
           );
 
-          if (groundedWorkflow.runType === WorkflowRunType.BUG_FIX) {
+          if (localDesign) {
+            await this.createStageExecution(tx, workflowId, StageType.DESIGN, {
+              input: {
+                requirementId: groundedWorkflow.requirementId,
+                source: 'opendesign-edge',
+              },
+              status: StageExecutionStatus.PENDING,
+              statusMessage: '等待本地 OpenDesign 领取设计任务',
+            });
+          } else if (groundedWorkflow.runType === WorkflowRunType.BUG_FIX) {
             const bug = await tx.bug.findFirst({
               where: { fixWorkflowRunId: workflowId },
             });

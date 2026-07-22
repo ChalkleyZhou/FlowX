@@ -38,6 +38,17 @@ describe('WorkflowStateMachine', () => {
     ).toBe(false);
   });
 
+  it('allows local design workflows to advance directly from grounding to design', () => {
+    const machine = new WorkflowStateMachine();
+
+    expect(
+      machine.canTransitionWorkflow(
+        WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING,
+        WorkflowRunStatus.DESIGN_PENDING,
+      ),
+    ).toBe(true);
+  });
+
   it('routes design through waiting confirmation before demo, and demo before task split', () => {
     const machine = new WorkflowStateMachine();
 

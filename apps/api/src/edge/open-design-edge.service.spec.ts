@@ -1,0 +1,109 @@
+import { describe, expect, it, vi } from 'vitest';
+import { OpenDesignEdgeService } from './open-design-edge.service';
+
+const session = {
+  user: { id: 'user-1', displayName: 'Designer' },
+  organization: { id: 'org-1', name: 'FlowX' },
+};
+
+const handoff = {
+  protocolVersion: '1.0',
+  workflowRunId: 'workflow-1',
+  executionSessionId: 'session-1',
+  traceId: 'trace-1',
+  contextPackage: {
+    protocolVersion: '1.0',
+    generatedAt: '2026-07-22T00:00:00.000Z',
+    sourceTool: 'opendesign' as const,
+    workflowRunId: 'workflow-1',
+    executionSessionId: 'session-1',
+    traceId: 'trace-1',
+    requirement: {
+      id: 'req-1',
+      title: 'Export design',
+      description: 'Design export flow',
+      acceptanceCriteria: 'Covers empty states',
+    },
+    repositories: [],
+    outputContract: {
+      resultFileName: 'result.json',
+      format: 'flowx-design-result-v1' as const,
+      requiredFields: ['design', 'demo', 'designArtifact'] as const,
+    },
+  },
+  completionEndpoint: '/execution-sessions/session-1/design/complete',
+};
+
+function createService() {
+  const prisma = {
+    workflowRun: { findFirst: vi.fn() },
+  };
+  const workflow = {
+    createLocalDesignWorkflowRun: vi.fn(),
+    claimLocalDesign: vi.fn(),
+    getLocalDesignHandoff: vi.fn().mockResolvedValue(handoff),
+    findOne: vi.fn(),
+    completeLocalDesignSession: vi.fn(),
+  };
+  const auth = {
+    createShortLivedSession: vi.fn().mockResolvedValue({
+      token: 'short-token',
+      expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+    }),
+  };
+  return {
+    service: new OpenDesignEdgeService(prisma as never, workflow as never, auth as never),
+    prisma,
+    workflow,
+    auth,
+  };
+}
+
+describe('OpenDesignEdgeService', () => {
+  it('creates, claims and issues a one-time local launch ticket', async () => {
+    const { service, prisma, workflow } = createService();
+    prisma.workflowRun.findFirst.mockResolvedValue(null);
+    workflow.createLocalDesignWorkflowRun.mockResolvedValue({
+      id: 'workflow-1',
+      status: 'DESIGN_PENDING',
+    });
+    workflow.claimLocalDesign.mockResolvedValue({
+      workflow: { id: 'workflow-1', status: 'DESIGN_PENDING' },
+      handoff,
+    });
+
+    const result = await service.startHandoff({ requirementId: 'req-1' }, session);
+
+    expect(result.ticket).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.loopbackPort).toBe(3920);
+    expect(workflow.createLocalDesignWorkflowRun).toHaveBeenCalledWith({
+      requirementId: 'req-1',
+      repositoryIds: undefined,
+    });
+
+    const redeemed = await service.redeem(result.ticket);
+    expect(redeemed.handoff).toEqual(handoff);
+    expect(redeemed.accessToken).toBe('short-token');
+    await expect(service.redeem(result.ticket)).rejects.toThrow(/invalid|expired/i);
+  });
+
+  it('delegates design completion to the workflow lifecycle', async () => {
+    const { service, workflow } = createService();
+    const report = {
+      idempotencyKey: 'design:session-1:v1',
+      output: {
+        design: { overview: 'Design' },
+        demo: { summary: 'Flow' },
+        designArtifact: { html: '<!doctype html><html></html>' },
+      },
+    };
+
+    await service.complete('session-1', report, { organizationId: 'org-1' });
+
+    expect(workflow.completeLocalDesignSession).toHaveBeenCalledWith(
+      'session-1',
+      report,
+      { organizationId: 'org-1' },
+    );
+  });
+});
