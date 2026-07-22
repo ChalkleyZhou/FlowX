@@ -6,6 +6,8 @@ import {
   isExecutionSessionTerminal,
   isSupportedProtocolVersion,
   validateSyncEvent,
+  type DesignCompletionReport,
+  type OpenDesignContextPackage,
   type FlowXSyncEvent,
 } from './index.js';
 
@@ -73,5 +75,39 @@ describe('flowx protocol', () => {
         'sequence must be a non-negative integer',
       ]),
     );
+  });
+
+  it('shares a versioned OpenDesign context and completion contract', () => {
+    const context: OpenDesignContextPackage = {
+      protocolVersion: FLOWX_PROTOCOL_VERSION,
+      generatedAt: '2026-07-22T00:00:00.000Z',
+      sourceTool: 'opendesign',
+      workflowRunId: 'workflow-1',
+      executionSessionId: 'session-1',
+      traceId: 'trace-1',
+      requirement: {
+        id: 'req-1',
+        title: 'Design export page',
+        description: 'Create an export experience.',
+        acceptanceCriteria: 'The design covers loading and error states.',
+      },
+      repositories: [],
+      outputContract: {
+        resultFileName: 'result.json',
+        format: 'flowx-design-result-v1',
+        requiredFields: ['design', 'demo', 'designArtifact'],
+      },
+    };
+    const report: DesignCompletionReport = {
+      idempotencyKey: 'design:session-1:v1',
+      output: {
+        design: { overview: 'Export page' },
+        demo: { summary: 'Primary flow' },
+        designArtifact: { html: '<!doctype html><html></html>' },
+      },
+    };
+
+    expect(context.sourceTool).toBe('opendesign');
+    expect(report.output.designArtifact.html).toContain('<!doctype html>');
   });
 });
