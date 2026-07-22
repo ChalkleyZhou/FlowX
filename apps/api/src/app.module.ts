@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { AiModule } from './ai/ai.module';
+import { ArtifactsModule } from './artifacts/artifacts.module';
 import { AuthModule } from './auth/auth.module';
 import { BriefingsModule } from './briefings/briefings.module';
 import { CursorLocalModule } from './cursor-local/cursor-local.module';
@@ -26,6 +27,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
     }),
     PrismaModule,
     AiModule,
+    ArtifactsModule,
     AuthModule,
     BriefingsModule,
     CursorLocalModule,

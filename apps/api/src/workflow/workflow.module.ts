@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AiModule } from '../ai/ai.module';
+import { ArtifactsModule } from '../artifacts/artifacts.module';
 import { AuthModule } from '../auth/auth.module';
 import { WorkflowStateMachine } from '../common/workflow-state-machine';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -13,7 +14,7 @@ import { WorkflowGitRemoteService } from './workflow-git-remote.service';
 import { WorkflowService } from './workflow.service';
 
 @Module({
-  imports: [AiModule, AuthModule, WorkspacesModule, NotificationsModule],
+  imports: [AiModule, ArtifactsModule, AuthModule, WorkspacesModule, NotificationsModule],
   controllers: [WorkflowController, LocalLaunchController],
   providers: [
     WorkflowService,

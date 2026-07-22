@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkflowArtifactService } from './workflow-artifact.service';
 
 const sampleOutput = {
@@ -109,5 +109,20 @@ describe('WorkflowArtifactService', () => {
 
   it('readPlanHtml returns null when no artifact', async () => {
     expect(await service.readPlanHtml('run_missing')).toBeNull();
+  });
+
+  it('keeps the written file when metadata registration fails', async () => {
+    const registerWorkflowArtifact = vi.fn().mockRejectedValue(new Error('database unavailable'));
+    const registeringService = new WorkflowArtifactService({ registerWorkflowArtifact } as never);
+
+    const result = await registeringService.writePlanArtifact({
+      workflowRunId: runId,
+      version: 2,
+      output: sampleOutput,
+      status: 'WAITING_HUMAN_CONFIRMATION',
+    });
+
+    await access(join(registeringService.getArtifactsRoot(runId), result.htmlPath));
+    expect(registerWorkflowArtifact).toHaveBeenCalledOnce();
   });
 });

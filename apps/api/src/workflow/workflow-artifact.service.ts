@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { GeneratePlanOutput } from '../common/types';
+import { ArtifactsService } from '../artifacts/artifacts.service';
 import { getWorkflowArtifactsRoot } from './workflow-artifact.paths';
 import { renderExecutionReportHtml, type ExecutionReportRepositoryRow } from './workflow-artifact.execution.render';
 import { renderPlanHtml } from './workflow-artifact.render';
@@ -67,6 +68,10 @@ function sha256Hex(content: string | Buffer): string {
 
 @Injectable()
 export class WorkflowArtifactService {
+  private readonly logger = new Logger(WorkflowArtifactService.name);
+
+  constructor(@Optional() private readonly artifactsService?: ArtifactsService) {}
+
   getArtifactsRoot(workflowRunId: string): string {
     return getWorkflowArtifactsRoot(workflowRunId);
   }
@@ -125,6 +130,20 @@ export class WorkflowArtifactService {
 
     await mkdir(root, { recursive: true });
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+
+    await this.registerArtifact({
+      workflowRunId,
+      artifactType: 'PLAN_HTML',
+      name: `实施方案 v${version}`,
+      version: String(version),
+      storageProvider: 'local',
+      storageKey: `workflow/${workflowRunId}/artifacts/${htmlRel}`,
+      mimeType: 'text/html; charset=utf-8',
+      byteSize: Buffer.byteLength(html, 'utf8'),
+      sha256,
+      status: 'AVAILABLE',
+      metadata: { metaPath: metaRel, confirmationStatus: status },
+    });
 
     return { htmlPath: htmlRel, metaPath: metaRel, sha256 };
   }
@@ -240,6 +259,20 @@ export class WorkflowArtifactService {
     };
     await writeFile(join(root, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 
+    await this.registerArtifact({
+      workflowRunId,
+      artifactType: 'EXECUTION_REPORT',
+      name: `执行报告 v${version}`,
+      version: String(version),
+      storageProvider: 'local',
+      storageKey: `workflow/${workflowRunId}/artifacts/${htmlRel}`,
+      mimeType: 'text/html; charset=utf-8',
+      byteSize: Buffer.byteLength(html, 'utf8'),
+      sha256,
+      status: 'AVAILABLE',
+      metadata: { metaPath: metaRel, executor: params.executor, completedAt },
+    });
+
     return { htmlPath: htmlRel, metaPath: metaRel, sha256 };
   }
 
@@ -252,6 +285,22 @@ export class WorkflowArtifactService {
       return await readFile(join(this.getArtifactsRoot(workflowRunId), manifest.execution.path), 'utf8');
     } catch {
       return null;
+    }
+  }
+
+  private async registerArtifact(
+    input: Parameters<ArtifactsService['registerWorkflowArtifact']>[0],
+  ): Promise<void> {
+    if (!this.artifactsService) {
+      return;
+    }
+    try {
+      await this.artifactsService.registerWorkflowArtifact(input);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Artifact file was written but metadata registration failed for workflow ${input.workflowRunId}: ${message}`,
+      );
     }
   }
 }

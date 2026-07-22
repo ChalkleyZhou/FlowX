@@ -4,7 +4,9 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { execFile as execFileCallback } from 'child_process';
 import { access, mkdir, readFile, writeFile } from 'fs/promises';
 import { Prisma } from '@prisma/client';
@@ -18,6 +20,7 @@ import {
 } from '../ai/ai-executor';
 import { createNavPlacementAgent } from '../ai/demo-nav-agent-factory';
 import { AiInvocationContextService } from '../ai/ai-invocation-context.service';
+import { ArtifactsService } from '../artifacts/artifacts.service';
 import { assertDesignSpecOutput, assertStrictGenerateDesignOutput } from '../ai/design-output-validate';
 import {
   HumanReviewDecision,
@@ -141,6 +144,7 @@ export class WorkflowService {
     @Inject(AI_EXECUTOR_REGISTRY) private readonly aiExecutorRegistry: AIExecutorRegistry,
     private readonly workflowArtifactService: WorkflowArtifactService,
     private readonly workflowGitRemoteService: WorkflowGitRemoteService,
+    @Optional() private readonly artifactsService?: ArtifactsService,
   ) {}
 
   async createWorkflowRun(dto: CreateWorkflowRunDto) {
@@ -3527,6 +3531,28 @@ export class WorkflowService {
     const absDir = join(DESIGN_ARTIFACT_ROOT, workflowRunId);
     await mkdir(absDir, { recursive: true });
     await writeFile(join(absDir, fileName), html, 'utf8');
+    if (this.artifactsService) {
+      try {
+        await this.artifactsService.registerWorkflowArtifact({
+          workflowRunId,
+          artifactType: 'DESIGN_HTML',
+          name: `设计稿 ${generatedAt}`,
+          version: generatedAt,
+          storageProvider: 'local',
+          storageKey: `design/${relPath}`,
+          mimeType: 'text/html; charset=utf-8',
+          byteSize: bytes,
+          sha256: createHash('sha256').update(html).digest('hex'),
+          status: 'AVAILABLE',
+          metadata: { generatedAt },
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `Design artifact file was written but metadata registration failed for workflow ${workflowRunId}: ${message}`,
+        );
+      }
+    }
     return { relPath, bytes, generatedAt };
   }
 

@@ -446,13 +446,13 @@ flowchart LR
 
 **步骤：**
 
-- [ ] 先测试路径穿越、重复 sha256、无效外部 URL 和越权读取。
-- [ ] 定义 `ArtifactStorageProvider`，首期实现本地文件 Provider。
-- [ ] 将本地文件写入和元数据登记分开。
-- [ ] 支持纯引用 Artifact，例如 Git Commit、MR URL。
-- [ ] 现有 plan/execution/design Artifact 写入成功后可选登记数据库记录。
-- [ ] Evidence 可以引用 Artifact，也可以只保存结构化 metadata。
-- [ ] 删除操作先标记 `DELETED`，不在主事务中物理删除大文件。
+- [x] 先测试路径穿越、重复 sha256、无效外部 URL 和越权读取。
+- [x] 定义 `ArtifactStorageProvider`，首期实现本地文件 Provider。
+- [x] 将本地文件写入和元数据登记分开。
+- [x] 支持纯引用 Artifact，例如 Git Commit、MR URL。
+- [x] 现有 plan/execution/design Artifact 写入成功后可选登记数据库记录。
+- [x] Evidence 可以引用 Artifact，也可以只保存结构化 metadata。
+- [x] 删除操作先标记 `DELETED`，不在主事务中物理删除大文件。
 
 **验收：**
 
