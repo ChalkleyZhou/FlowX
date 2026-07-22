@@ -67,6 +67,7 @@ describe('loadConfig / saveConfig', () => {
   it('saves and loads config under ~/.flowx/local.json', () => {
     const homeDir = makeHome();
     const config = {
+      ...DEFAULT_LOCAL_CONFIG,
       port: 4000,
       repositories: {
         'https://github.com/org/repo.git': '/tmp/repo',
@@ -91,6 +92,7 @@ describe('loadConfig / saveConfig', () => {
     });
 
     expect(loadConfig({ homeDir })).toEqual({
+      ...DEFAULT_LOCAL_CONFIG,
       port: 4000,
       repositories: {
         'https://github.com/org/repo': '/tmp/repo',

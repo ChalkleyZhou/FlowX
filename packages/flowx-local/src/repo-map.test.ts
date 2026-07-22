@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { LocalConfig } from './config.js';
+import { DEFAULT_LOCAL_CONFIG, type LocalConfig } from './config.js';
 import { resolveRepoPath } from './repo-map.js';
 
 const config: LocalConfig = {
+  ...DEFAULT_LOCAL_CONFIG,
   port: 3920,
   repositories: { 'https://github.com/org/repo': '/work/repo' },
   defaultIde: 'cursor',

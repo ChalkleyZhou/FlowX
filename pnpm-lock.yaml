@@ -172,6 +172,10 @@ importers:
         version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.15)(jiti@1.21.7)(jsdom@29.0.2)(tsx@4.21.0)
 
   packages/flowx-local:
+    dependencies:
+      flowx-protocol:
+        specifier: workspace:*
+        version: link:../flowx-protocol
     devDependencies:
       '@types/node':
         specifier: ^22.13.10

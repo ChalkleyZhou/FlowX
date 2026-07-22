@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { FLOWX_PROTOCOL_VERSION } from 'flowx-protocol';
 
 export const DEFAULT_PORT = 3920;
 export const PACKAGE_VERSION = '0.1.0';
@@ -11,12 +12,22 @@ export type LocalConfig = {
   port: number;
   repositories: Record<string, string>;
   defaultIde: DefaultIde;
+  installationId: string;
+  deviceId: string;
+  apiBaseUrl: string;
+  protocolVersion: string;
+  openDesignCommand: string;
 };
 
 export const DEFAULT_LOCAL_CONFIG: LocalConfig = {
   port: DEFAULT_PORT,
   repositories: {},
   defaultIde: 'cursor',
+  installationId: '',
+  deviceId: '',
+  apiBaseUrl: 'http://127.0.0.1:3000',
+  protocolVersion: FLOWX_PROTOCOL_VERSION,
+  openDesignCommand: '',
 };
 
 export type ConfigOptions = {
@@ -85,6 +96,18 @@ function normalizeConfig(raw: Partial<LocalConfig> | null | undefined): LocalCon
     port,
     repositories: normalizeRepositories(raw?.repositories),
     defaultIde,
+    installationId: typeof raw?.installationId === 'string' ? raw.installationId.trim() : '',
+    deviceId: typeof raw?.deviceId === 'string' ? raw.deviceId.trim() : '',
+    apiBaseUrl:
+      typeof raw?.apiBaseUrl === 'string' && raw.apiBaseUrl.trim()
+        ? raw.apiBaseUrl.trim().replace(/\/+$/, '')
+        : DEFAULT_LOCAL_CONFIG.apiBaseUrl,
+    protocolVersion:
+      typeof raw?.protocolVersion === 'string' && raw.protocolVersion.trim()
+        ? raw.protocolVersion.trim()
+        : FLOWX_PROTOCOL_VERSION,
+    openDesignCommand:
+      typeof raw?.openDesignCommand === 'string' ? raw.openDesignCommand.trim() : '',
   };
 }
 

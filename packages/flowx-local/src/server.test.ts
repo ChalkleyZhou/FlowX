@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Server } from 'node:http';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createLocalServer, startServer } from './server.js';
 
 const servers: Server[] = [];
+const homes: string[] = [];
 
 afterEach(async () => {
   await Promise.all(
@@ -13,20 +17,29 @@ afterEach(async () => {
         }),
     ),
   );
+  for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
 });
+
+function makeHome() {
+  const home = mkdtempSync(join(tmpdir(), 'flowx-server-'));
+  homes.push(home);
+  return home;
+}
 
 describe('flowx-local server', () => {
   it('serves GET /health on loopback', async () => {
-    const { server, url } = await startServer({ port: 0 });
+    const { server, url } = await startServer({ port: 0, homeDir: makeHome() });
     servers.push(server);
 
     expect(url.startsWith('http://127.0.0.1:')).toBe(true);
 
     const response = await fetch(`${url}/health`);
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       ok: true,
       version: '0.1.0',
+      protocolVersion: '1.0',
+      outboxPending: 0,
     });
   });
 
@@ -42,7 +55,7 @@ describe('flowx-local server', () => {
       prefilled: false,
       promptPath: '/work/repo/.flowx/tasks/workflow-1.md',
     });
-    const server = createLocalServer({ runLaunch });
+    const server = createLocalServer({ runLaunch, homeDir: makeHome() });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     servers.push(server);
     const address = server.address();
@@ -68,5 +81,44 @@ describe('flowx-local server', () => {
       gitRoot: '/work/repo',
       ide: 'cursor',
     });
+  });
+
+  it('accepts OpenDesign launch and submit requests', async () => {
+    const runOpenDesignLaunch = async () => ({
+      ok: true as const,
+      executionSessionId: 'session-1',
+      workspacePath: '/tmp/design',
+      contextPath: '/tmp/design/context.json',
+      resultPath: '/tmp/design/result.json',
+      opened: true,
+    });
+    const submitOpenDesignResult = async () => ({ queued: false });
+    const server = createLocalServer({
+      homeDir: makeHome(),
+      runOpenDesignLaunch,
+      submitOpenDesignResult,
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    servers.push(server);
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('No test address');
+    const url = `http://127.0.0.1:${address.port}`;
+
+    const launch = await fetch(`${url}/design/launch`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ticket: 'ticket-1', apiBaseUrl: 'http://127.0.0.1:3000' }),
+    });
+    await expect(launch.json()).resolves.toMatchObject({
+      ok: true,
+      executionSessionId: 'session-1',
+    });
+
+    const submit = await fetch(`${url}/design/submit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ executionSessionId: 'session-1' }),
+    });
+    await expect(submit.json()).resolves.toEqual({ queued: false });
   });
 });

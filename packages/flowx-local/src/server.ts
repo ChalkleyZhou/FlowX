@@ -1,11 +1,20 @@
 import { createServer, type Server } from 'node:http';
 import { DEFAULT_PORT, PACKAGE_VERSION, loadConfig, type ConfigOptions } from './config.js';
+import { ensureDeviceIdentity } from './device.js';
 import { runLaunch, type LaunchRequest } from './launch.js';
+import { Outbox } from './outbox.js';
+import {
+  runOpenDesignLaunch,
+  submitOpenDesignResult,
+  type OpenDesignLaunchRequest,
+} from './open-design.js';
 
 export type StartServerOptions = ConfigOptions & {
   port?: number;
   version?: string;
   runLaunch?: typeof runLaunch;
+  runOpenDesignLaunch?: typeof runOpenDesignLaunch;
+  submitOpenDesignResult?: typeof submitOpenDesignResult;
 };
 
 export type StartedServer = {
@@ -46,13 +55,24 @@ async function readJson(req: import('node:http').IncomingMessage): Promise<unkno
 export function createLocalServer(options: StartServerOptions = {}): Server {
   const version = options.version ?? PACKAGE_VERSION;
   const launch = options.runLaunch ?? runLaunch;
+  const designLaunch = options.runOpenDesignLaunch ?? runOpenDesignLaunch;
+  const designSubmit = options.submitOpenDesignResult ?? submitOpenDesignResult;
+  const config = ensureDeviceIdentity(options);
+  const outbox = new Outbox(options);
 
   return createServer(async (req, res) => {
     const method = req.method ?? 'GET';
     const path = req.url?.split('?')[0] ?? '/';
 
     if (method === 'GET' && path === '/health') {
-      const body = JSON.stringify({ ok: true, version });
+      const body = JSON.stringify({
+        ok: true,
+        version,
+        deviceId: config.deviceId,
+        installationId: config.installationId,
+        protocolVersion: config.protocolVersion,
+        outboxPending: await outbox.pendingCount(),
+      });
       res.writeHead(200, {
         'content-type': 'application/json; charset=utf-8',
         'content-length': Buffer.byteLength(body),
@@ -61,7 +81,7 @@ export function createLocalServer(options: StartServerOptions = {}): Server {
       return;
     }
 
-    if (path === '/launch' && method === 'OPTIONS') {
+    if (['/launch', '/design/launch', '/design/submit'].includes(path) && method === 'OPTIONS') {
       res.writeHead(204, {
         'access-control-allow-origin': '*',
         'access-control-allow-methods': 'POST, OPTIONS',
@@ -94,6 +114,54 @@ export function createLocalServer(options: StartServerOptions = {}): Server {
           res,
           code === 'REDEEM_FAILED' ? 502 : 400,
           { ok: false, error: code === 'PATH_CANCELLED' ? 'PATH_CANCELLED' : message },
+          true,
+        );
+      }
+      return;
+    }
+
+    if (path === '/design/launch' && method === 'POST') {
+      try {
+        const body = (await readJson(req)) as Partial<OpenDesignLaunchRequest>;
+        if (!body?.ticket?.trim() || !body.apiBaseUrl?.trim()) {
+          sendJson(res, 400, { ok: false, error: 'ticket and apiBaseUrl are required' }, true);
+          return;
+        }
+        sendJson(
+          res,
+          200,
+          await designLaunch(body as OpenDesignLaunchRequest, { homeDir: options.homeDir }),
+          true,
+        );
+      } catch (error) {
+        sendJson(
+          res,
+          400,
+          { ok: false, error: error instanceof Error ? error.message : 'OpenDesign launch failed' },
+          true,
+        );
+      }
+      return;
+    }
+
+    if (path === '/design/submit' && method === 'POST') {
+      try {
+        const body = (await readJson(req)) as { executionSessionId?: string };
+        if (!body?.executionSessionId?.trim()) {
+          sendJson(res, 400, { ok: false, error: 'executionSessionId is required' }, true);
+          return;
+        }
+        sendJson(
+          res,
+          200,
+          await designSubmit(body.executionSessionId, { homeDir: options.homeDir }),
+          true,
+        );
+      } catch (error) {
+        sendJson(
+          res,
+          400,
+          { ok: false, error: error instanceof Error ? error.message : 'OpenDesign submit failed' },
           true,
         );
       }
