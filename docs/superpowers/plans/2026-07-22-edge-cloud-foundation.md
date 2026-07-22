@@ -475,15 +475,15 @@ flowchart LR
 
 **步骤：**
 
-- [ ] 先为 `claim-local` 创建会话和 `complete-local` 幂等补测试。
-- [ ] `claimLocalExecution` 在同一事务中创建 `StageExecution` 和 `ExecutionSession`。
-- [ ] Handoff 响应追加 `executionSessionId`、`traceId`、`protocolVersion`。
-- [ ] `completeLocalExecution` 查找活动会话并转为统一 `CompletionReport`。
-- [ ] 远程分支验证结果写为 Evidence。
-- [ ] Git Commit、changed files、test result 和用户摘要写为 Evidence/Artifact。
-- [ ] 完成会话后调用现有 `finalizeExecutionSuccess`，不复制工作流流转逻辑。
-- [ ] `cancel-local` 同步取消会话，再恢复 `EXECUTION_PENDING`。
-- [ ] Feature Flag 关闭时保持旧实现路径。
+- [x] 先为 `claim-local` 创建会话和 `complete-local` 幂等补测试。
+- [x] `claimLocalExecution` 在同一事务中创建 `StageExecution` 和 `ExecutionSession`。
+- [x] Handoff 响应追加 `executionSessionId`、`traceId`、`protocolVersion`。
+- [x] `completeLocalExecution` 查找活动会话并转为统一 `CompletionReport`。
+- [x] 远程分支验证结果写为 Evidence。
+- [x] Git Commit、changed files、test result 和用户摘要写为 Evidence/Artifact。
+- [x] 完成会话后调用现有 `finalizeExecutionSuccess`，不复制工作流流转逻辑。
+- [x] `cancel-local` 同步取消会话，再恢复 `EXECUTION_PENDING`。
+- [x] Feature Flag 关闭时保持旧实现路径。
 
 **验收：**
 

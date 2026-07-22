@@ -1,16 +1,22 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   Logger,
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFile as execFileCallback } from 'child_process';
 import { access, mkdir, readFile, writeFile } from 'fs/promises';
 import { Prisma } from '@prisma/client';
 import { promisify } from 'util';
+import {
+  FLOWX_PROTOCOL_VERSION,
+  type CompletionReport,
+  type SourceTool,
+} from 'flowx-protocol';
 import {
   AI_EXECUTOR_REGISTRY,
   type AIExecutor,
@@ -58,6 +64,7 @@ import { DingTalkNotificationService } from '../notifications/dingtalk-notificat
 import { PrismaService } from '../prisma/prisma.service';
 import { RepositorySyncService } from '../workspaces/repository-sync.service';
 import { CompleteLocalExecutionDto } from './dto/complete-local-execution.dto';
+import { ACTIVE_EXECUTION_SESSION_STATUSES } from '../execution-sessions/execution-session-state';
 import { CreateWorkflowRunDto } from './dto/create-workflow-run.dto';
 import { buildExecutionOutputFromLocalReport } from './workflow-local-execution-output';
 import { buildLocalHandoff, type LocalHandoffPayload } from './workflow-local-handoff';
@@ -634,7 +641,11 @@ export class WorkflowService {
     return html;
   }
 
-  async claimLocalExecution(id: string, notifyRecipient?: WorkflowNotificationSession) {
+  async claimLocalExecution(
+    id: string,
+    notifyRecipient?: WorkflowNotificationSession,
+    sourceTool: SourceTool = 'cursor',
+  ) {
     const workflow = await this.getWorkflowOrThrow(id);
     this.assertStageNotRunning(workflow, StageType.EXECUTION);
     if (workflow.status !== 'EXECUTION_PENDING') {
@@ -644,7 +655,18 @@ export class WorkflowService {
 
     const recipient = this.toNotificationRecipient(notifyRecipient);
     const claimedAt = new Date().toISOString();
-    const handoffSnapshot = await this.buildLocalHandoffForWorkflow(workflow, 'EXECUTION_RUNNING');
+    const executionSession = this.isExecutionSessionProjectionEnabled()
+      ? {
+          id: randomUUID(),
+          traceId: randomUUID(),
+          protocolVersion: FLOWX_PROTOCOL_VERSION,
+        }
+      : null;
+    const handoffSnapshot = await this.buildLocalHandoffForWorkflow(
+      workflow,
+      'EXECUTION_RUNNING',
+      executionSession,
+    );
 
     const updatedWorkflow = await this.prisma.$transaction(async (tx) => {
       await this.transitionWorkflow(tx, id, WorkflowRunStatus.EXECUTION_PENDING, {
@@ -652,7 +674,7 @@ export class WorkflowService {
         stage: StageType.EXECUTION,
       });
 
-      await this.createStageExecution(tx, id, StageType.EXECUTION, {
+      const stageExecution = await this.createStageExecution(tx, id, StageType.EXECUTION, {
         input: {
           executor: 'LOCAL',
           claimedAt,
@@ -665,20 +687,54 @@ export class WorkflowService {
         startedAt: new Date(),
       });
 
+      if (executionSession) {
+        await tx.executionSession.create({
+          data: {
+            id: executionSession.id,
+            workflowRunId: id,
+            stageExecutionId: stageExecution.id,
+            organizationId: recipient?.flowxOrganizationId ?? null,
+            workspaceId:
+              workflow.requirement.workspaceId ?? workflow.requirement.project.workspaceId,
+            projectId: workflow.requirement.projectId,
+            status: 'RUNNING',
+            executorType: 'LOCAL',
+            sourceTool,
+            protocolVersion: executionSession.protocolVersion,
+            traceId: executionSession.traceId,
+            idempotencyKey: `local-claim:${id}:${stageExecution.id}`,
+            claimedByUserId: recipient?.flowxUserId ?? null,
+            startedAt: new Date(claimedAt),
+            lastHeartbeatAt: new Date(claimedAt),
+            metadata: {
+              claimSource: 'workflow.claim-local',
+              stageAttempt: stageExecution.attempt,
+            },
+          },
+        });
+      }
+
       return tx.workflowRun.findUniqueOrThrow({
         where: { id },
         include: this.workflowInclude(),
       });
     });
 
-    const handoff = await this.buildLocalHandoffForWorkflow(updatedWorkflow, 'EXECUTION_RUNNING');
+    const handoff = await this.buildLocalHandoffForWorkflow(
+      updatedWorkflow,
+      'EXECUTION_RUNNING',
+      executionSession,
+    );
     return { workflow: updatedWorkflow, handoff };
   }
 
   async getLocalHandoff(id: string) {
     const workflow = await this.getWorkflowOrThrow(id);
     this.assertLocalExecutionActive(workflow);
-    return this.buildLocalHandoffForWorkflow(workflow, workflow.status);
+    const executionSession = this.isExecutionSessionProjectionEnabled()
+      ? await this.findLatestLocalExecutionSession(id)
+      : null;
+    return this.buildLocalHandoffForWorkflow(workflow, workflow.status, executionSession);
   }
 
   async completeLocalExecution(
@@ -687,9 +743,30 @@ export class WorkflowService {
     notifyRecipient?: WorkflowNotificationSession,
   ) {
     const workflow = await this.getWorkflowOrThrow(id);
-    this.assertLocalExecutionActive(workflow);
+    const executionSession = this.isExecutionSessionProjectionEnabled()
+      ? await this.findLatestLocalExecutionSession(id)
+      : null;
 
-    const handoff = await this.buildLocalHandoffForWorkflow(workflow, workflow.status);
+    const handoff = await this.buildLocalHandoffForWorkflow(
+      workflow,
+      workflow.status,
+      executionSession,
+    );
+    const completionReport = executionSession
+      ? this.buildCompletionReport(executionSession.id, handoff, dto)
+      : null;
+    if (workflow.status !== 'EXECUTION_RUNNING') {
+      if (
+        executionSession?.status === 'COMPLETED' &&
+        completionReport &&
+        this.readCompletionIdempotencyKey(executionSession.metadata) ===
+          completionReport.idempotencyKey
+      ) {
+        return { workflow, handoff };
+      }
+      this.assertLocalExecutionActive(workflow);
+    }
+    this.assertLocalExecutionActive(workflow);
     const repoByWrId = new Map(handoff.repositories.map((repository) => [repository.workflowRepositoryId, repository]));
 
     for (const report of dto.repositories) {
@@ -749,6 +826,15 @@ export class WorkflowService {
       notifyRecipient: this.toNotificationRecipient(notifyRecipient),
       executor: 'LOCAL',
       requirementTitle: workflow.requirement.title,
+      localCompletion:
+        executionSession && completionReport
+          ? {
+              executionSession,
+              completionReport,
+              verificationRows,
+              repositories: handoff.repositories,
+            }
+          : undefined,
     });
 
     const updated = await this.getWorkflowOrThrow(id);
@@ -759,6 +845,9 @@ export class WorkflowService {
     const workflow = await this.getWorkflowOrThrow(id);
     this.assertLocalExecutionActive(workflow);
     const executionStage = this.getLatestStageOrThrow(workflow, StageType.EXECUTION);
+    const executionSession = this.isExecutionSessionProjectionEnabled()
+      ? await this.findLatestLocalExecutionSession(id, true)
+      : null;
 
     return this.prisma.$transaction(async (tx) => {
       await this.updateStageExecution(tx, executionStage.id, StageExecutionStatus.REJECTED, {
@@ -770,6 +859,20 @@ export class WorkflowService {
         to: WorkflowRunStatus.EXECUTION_PENDING,
         stage: StageType.EXECUTION,
       });
+      if (executionSession) {
+        await tx.executionSession.updateMany({
+          where: {
+            id: executionSession.id,
+            status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] },
+          },
+          data: {
+            status: 'CANCELLED',
+            completedAt: new Date(),
+            errorCode: 'LOCAL_EXECUTION_CANCELLED',
+            errorMessage: 'User cancelled local execution',
+          },
+        });
+      }
       return tx.workflowRun.findUniqueOrThrow({
         where: { id },
         include: this.workflowInclude(),
@@ -2595,6 +2698,11 @@ export class WorkflowService {
   private async buildLocalHandoffForWorkflow(
     workflow: WorkflowPayload,
     status: string,
+    executionSession?: {
+      id: string;
+      traceId: string;
+      protocolVersion: string;
+    } | null,
   ): Promise<LocalHandoffPayload> {
     const plan = await this.resolveConfirmedPlan(workflow);
     const manifest = await this.workflowArtifactService.readManifest(workflow.id);
@@ -2603,6 +2711,7 @@ export class WorkflowService {
     return buildLocalHandoff({
       workflowRunId: workflow.id,
       status,
+      executionSession,
       requirement: {
         id: workflow.requirement.id,
         title: workflow.requirement.title,
@@ -2615,6 +2724,61 @@ export class WorkflowService {
       planMetaPath,
       planHtmlPath,
     });
+  }
+
+  private isExecutionSessionProjectionEnabled() {
+    return process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED?.trim().toLowerCase() !== 'false';
+  }
+
+  private findLatestLocalExecutionSession(workflowRunId: string, activeOnly = false) {
+    return this.prisma.executionSession.findFirst({
+      where: {
+        workflowRunId,
+        executorType: 'LOCAL',
+        ...(activeOnly ? { status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] } } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  private buildCompletionReport(
+    executionSessionId: string,
+    handoff: LocalHandoffPayload,
+    dto: CompleteLocalExecutionDto,
+  ): CompletionReport {
+    const repositories = dto.repositories.map((report) => ({
+      workflowRepositoryId: report.workflowRepositoryId,
+      headSha: report.headSha,
+      changedFiles: report.changedFiles,
+      patchSummary: report.patchSummary,
+    }));
+    const stablePayload = JSON.stringify({
+      pushed: dto.pushed,
+      implementationSummary: dto.implementationSummary ?? null,
+      testResult: dto.testResult ?? null,
+      diffSummary: dto.diffSummary ?? null,
+      untrackedFiles: dto.untrackedFiles ?? [],
+      repositories,
+    });
+    return {
+      idempotencyKey:
+        dto.idempotencyKey?.trim() ||
+        `completion:${executionSessionId}:${createHash('sha256').update(stablePayload).digest('hex')}`,
+      pushed: dto.pushed,
+      implementationSummary: dto.implementationSummary,
+      testResult: dto.testResult,
+      diffSummary: dto.diffSummary,
+      untrackedFiles: dto.untrackedFiles,
+      repositories,
+    };
+  }
+
+  private readCompletionIdempotencyKey(metadata: unknown): string | null {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      return null;
+    }
+    const value = (metadata as Record<string, unknown>).completionIdempotencyKey;
+    return typeof value === 'string' ? value : null;
   }
 
   private assertLocalExecutionActive(workflow: WorkflowPayload) {
@@ -2725,6 +2889,12 @@ export class WorkflowService {
       executor: 'LOCAL' | 'CLOUD';
       requirementTitle: string;
       notificationStages?: WorkflowPayload['stageExecutions'];
+      localCompletion?: {
+        executionSession: LocalExecutionSessionProjection;
+        completionReport: CompletionReport;
+        verificationRows: Array<{ workflowRepositoryId: string; verified: boolean }>;
+        repositories: LocalHandoffPayload['repositories'];
+      };
     },
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
@@ -2775,6 +2945,10 @@ export class WorkflowService {
           stage: StageType.AI_REVIEW,
         });
       }
+
+      if (options.localCompletion) {
+        await this.completeExecutionSessionProjection(tx, id, options.localCompletion);
+      }
     });
 
     const stages = options.notificationStages;
@@ -2793,6 +2967,155 @@ export class WorkflowService {
             ? '等待 AI 审查与人工确认'
             : '可以开始 AI 审查阶段',
     });
+  }
+
+  private async completeExecutionSessionProjection(
+    tx: Prisma.TransactionClient,
+    workflowRunId: string,
+    input: {
+      executionSession: LocalExecutionSessionProjection;
+      completionReport: CompletionReport;
+      verificationRows: Array<{ workflowRepositoryId: string; verified: boolean }>;
+      repositories: LocalHandoffPayload['repositories'];
+    },
+  ) {
+    const completedAt = new Date();
+    const existingMetadata =
+      input.executionSession.metadata &&
+      typeof input.executionSession.metadata === 'object' &&
+      !Array.isArray(input.executionSession.metadata)
+        ? (input.executionSession.metadata as Record<string, unknown>)
+        : {};
+    const transition = await tx.executionSession.updateMany({
+      where: {
+        id: input.executionSession.id,
+        status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] },
+      },
+      data: {
+        status: 'COMPLETED',
+        completedAt,
+        summary:
+          input.completionReport.implementationSummary ??
+          input.completionReport.diffSummary ??
+          'Local execution completed.',
+        metadata: JSON.parse(
+          JSON.stringify({
+            ...existingMetadata,
+            completionIdempotencyKey: input.completionReport.idempotencyKey,
+            completionReport: input.completionReport,
+          }),
+        ) as Prisma.InputJsonObject,
+      },
+    });
+    if (transition.count !== 1) {
+      throw new ConflictException({
+        code: 'EXECUTION_SESSION_CONFLICT',
+        message: `Execution session ${input.executionSession.id} was already finalized.`,
+      });
+    }
+
+    const executionArtifact = await tx.artifact.findFirst({
+      where: {
+        workflowRunId,
+        artifactType: 'EXECUTION_REPORT',
+        status: { not: 'DELETED' },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    const repositories = new Map(
+      input.repositories.map((repository) => [repository.workflowRepositoryId, repository]),
+    );
+    const verification = new Map(
+      input.verificationRows.map((row) => [row.workflowRepositoryId, row.verified]),
+    );
+    const createEvidence = (data: {
+      artifactId?: string | null;
+      evidenceType: string;
+      title: string;
+      summary?: string | null;
+      metadata?: Record<string, unknown>;
+    }) =>
+      tx.evidence.create({
+        data: {
+          executionSessionId: input.executionSession.id,
+          artifactId: data.artifactId ?? null,
+          evidenceType: data.evidenceType,
+          sourceTool: input.executionSession.sourceTool,
+          title: data.title,
+          summary: data.summary ?? null,
+          status: 'REPORTED',
+          occurredAt: completedAt,
+          metadata: data.metadata
+            ? (JSON.parse(JSON.stringify(data.metadata)) as Prisma.InputJsonObject)
+            : undefined,
+        },
+      });
+
+    for (const report of input.completionReport.repositories) {
+      const repository = repositories.get(report.workflowRepositoryId);
+      await createEvidence({
+        evidenceType: 'GIT_COMMIT',
+        title: `${repository?.name ?? report.workflowRepositoryId} commit ${report.headSha.slice(0, 12)}`,
+        summary: report.patchSummary ?? null,
+        metadata: {
+          workflowRepositoryId: report.workflowRepositoryId,
+          repositoryId: repository?.repositoryId ?? null,
+          workingBranch: repository?.workingBranch ?? null,
+          headSha: report.headSha,
+          pushed: input.completionReport.pushed,
+        },
+      });
+      await createEvidence({
+        evidenceType: 'CHANGED_FILES',
+        title: `${repository?.name ?? report.workflowRepositoryId} changed files`,
+        summary: `${report.changedFiles.length} files changed`,
+        metadata: {
+          workflowRepositoryId: report.workflowRepositoryId,
+          changedFiles: report.changedFiles,
+        },
+      });
+      if (verification.has(report.workflowRepositoryId)) {
+        const verified = verification.get(report.workflowRepositoryId) ?? false;
+        await createEvidence({
+          evidenceType: 'REMOTE_BRANCH_VERIFICATION',
+          title: `${repository?.name ?? report.workflowRepositoryId} remote branch verification`,
+          summary: verified ? 'Remote branch tip verified.' : 'Repository has no remote verification.',
+          metadata: {
+            workflowRepositoryId: report.workflowRepositoryId,
+            workingBranch: repository?.workingBranch ?? null,
+            headSha: report.headSha,
+            verified,
+          },
+        });
+      }
+    }
+
+    if (input.completionReport.testResult) {
+      await createEvidence({
+        artifactId: executionArtifact?.id ?? null,
+        evidenceType: 'TEST_RESULT',
+        title: 'Local execution test result',
+        summary: input.completionReport.testResult,
+      });
+    }
+    if (
+      input.completionReport.implementationSummary ||
+      input.completionReport.diffSummary
+    ) {
+      await createEvidence({
+        artifactId: executionArtifact?.id ?? null,
+        evidenceType: 'AGENT_SUMMARY',
+        title: 'Local execution summary',
+        summary:
+          input.completionReport.implementationSummary ??
+          input.completionReport.diffSummary ??
+          null,
+        metadata: {
+          diffSummary: input.completionReport.diffSummary ?? null,
+          untrackedFiles: input.completionReport.untrackedFiles ?? [],
+        },
+      });
+    }
   }
 
   private async attachPlanArtifactToOutput(
@@ -4821,6 +5144,11 @@ type WorkflowPayload = Prisma.WorkflowRunGetPayload<{
   include: {
     requirement: {
       include: {
+        project: {
+          include: {
+            workspace: true;
+          };
+        };
         workspace: {
           include: {
             repositories: true;
@@ -4837,6 +5165,15 @@ type WorkflowPayload = Prisma.WorkflowRunGetPayload<{
     workflowRepositories: true;
   };
 }>;
+
+type LocalExecutionSessionProjection = {
+  id: string;
+  status: string;
+  sourceTool: string;
+  traceId: string;
+  protocolVersion: string;
+  metadata: Prisma.JsonValue | null;
+};
 
 type WorkflowNotificationSession = {
   user: {

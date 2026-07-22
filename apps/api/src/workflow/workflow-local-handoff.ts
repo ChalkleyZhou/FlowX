@@ -29,6 +29,9 @@ export interface LocalHandoffPayload {
   workflowRunId: string;
   status: string;
   executor: 'LOCAL';
+  executionSessionId?: string;
+  traceId?: string;
+  protocolVersion?: string;
   requirement: {
     id: string;
     title: string;
@@ -66,6 +69,11 @@ export interface BuildLocalHandoffInput {
   }>;
   planMetaPath?: string | null;
   planHtmlPath?: string | null;
+  executionSession?: {
+    id: string;
+    traceId: string;
+    protocolVersion: string;
+  } | null;
 }
 
 export function buildSuggestedCommitMessage(workflowRunId: string, requirementTitle: string) {
@@ -95,6 +103,13 @@ export function buildLocalHandoff(input: BuildLocalHandoffInput): LocalHandoffPa
     workflowRunId: input.workflowRunId,
     status: input.status,
     executor: 'LOCAL',
+    ...(input.executionSession
+      ? {
+          executionSessionId: input.executionSession.id,
+          traceId: input.executionSession.traceId,
+          protocolVersion: input.executionSession.protocolVersion,
+        }
+      : {}),
     requirement: input.requirement,
     plan: input.plan,
     tasks: input.tasks.map((task) => ({

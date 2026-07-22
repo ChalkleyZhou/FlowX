@@ -6,6 +6,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  MaxLength,
   ValidateNested,
 } from 'class-validator';
 
@@ -29,6 +30,11 @@ export class CompleteLocalRepositoryDto {
 }
 
 export class CompleteLocalExecutionDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  idempotencyKey?: string;
+
   @ValidateNested({ each: true })
   @Type(() => CompleteLocalRepositoryDto)
   @ArrayMinSize(1)

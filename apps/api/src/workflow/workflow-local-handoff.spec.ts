@@ -71,4 +71,40 @@ describe('buildLocalHandoff', () => {
     expect(handoff.repositories[0].suggestedCommitMessage).toContain('12345678');
     expect(handoff.repositories[0].suggestedCommitMessage).toContain('Login welcome modal');
   });
+
+  it('adds protocol session fields without changing the legacy handoff shape', () => {
+    const handoff = buildLocalHandoff({
+      workflowRunId: 'workflow-1',
+      status: 'EXECUTION_RUNNING',
+      executionSession: {
+        id: 'session-1',
+        traceId: 'trace-1',
+        protocolVersion: '1.0',
+      },
+      requirement: {
+        id: 'req-1',
+        title: 'Protocol handoff',
+        description: 'desc',
+        acceptanceCriteria: 'ac',
+      },
+      plan: {
+        summary: 'Plan',
+        implementationPlan: [],
+        filesToModify: [],
+        newFiles: [],
+        riskPoints: [],
+      },
+      tasks: [],
+      workflowRepositories: [],
+    });
+
+    expect(handoff).toEqual(
+      expect.objectContaining({
+        executor: 'LOCAL',
+        executionSessionId: 'session-1',
+        traceId: 'trace-1',
+        protocolVersion: '1.0',
+      }),
+    );
+  });
 });

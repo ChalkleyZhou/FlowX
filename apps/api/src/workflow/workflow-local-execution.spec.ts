@@ -15,6 +15,19 @@ const confirmedPlan: GeneratePlanOutput = {
 };
 
 function createLocalExecutionService(prisma: Record<string, unknown> = {}) {
+  const prismaWithDefaults = {
+    executionSession: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      ...((prisma.executionSession as Record<string, unknown> | undefined) ?? {}),
+    },
+    ...prisma,
+  };
+  if (prisma.executionSession) {
+    prismaWithDefaults.executionSession = {
+      findFirst: vi.fn().mockResolvedValue(null),
+      ...(prisma.executionSession as Record<string, unknown>),
+    };
+  }
   const workflowGitRemoteService = {
     verifyBranchTip: vi.fn().mockResolvedValue(true),
   } as unknown as WorkflowGitRemoteService;
@@ -30,7 +43,7 @@ function createLocalExecutionService(prisma: Record<string, unknown> = {}) {
   } as unknown as WorkflowArtifactService;
 
   const service = new WorkflowService(
-    prisma as never,
+    prismaWithDefaults as never,
     {} as never,
     {} as never,
     {} as never,
@@ -44,7 +57,12 @@ function createLocalExecutionService(prisma: Record<string, unknown> = {}) {
     workflowGitRemoteService,
   );
 
-  return { service, workflowGitRemoteService, workflowArtifactService };
+  return {
+    service,
+    prisma: prismaWithDefaults,
+    workflowGitRemoteService,
+    workflowArtifactService,
+  };
 }
 
 const baseWorkflow = {
@@ -52,6 +70,9 @@ const baseWorkflow = {
   status: 'EXECUTION_PENDING',
   requirement: {
     id: 'req-1',
+    workspaceId: 'workspace-1',
+    projectId: 'project-1',
+    project: { workspaceId: 'workspace-1' },
     title: 'Local handoff feature',
     description: 'desc',
     acceptanceCriteria: 'criteria',
@@ -72,6 +93,27 @@ const baseWorkflow = {
 } as const;
 
 describe('WorkflowService local execution', () => {
+  it('keeps the legacy path when the execution-session feature flag is disabled', () => {
+    const original = process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED;
+    process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED = 'false';
+    try {
+      const { service } = createLocalExecutionService();
+      expect(
+        (
+          service as unknown as {
+            isExecutionSessionProjectionEnabled: () => boolean;
+          }
+        ).isExecutionSessionProjectionEnabled(),
+      ).toBe(false);
+    } finally {
+      if (original === undefined) {
+        delete process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED;
+      } else {
+        process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED = original;
+      }
+    }
+  });
+
   it('claimLocalExecution returns handoff with working branch', async () => {
     const updatedWorkflow = {
       ...baseWorkflow,
@@ -88,6 +130,9 @@ describe('WorkflowService local execution', () => {
     const prisma = {
       $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
         callback({
+          executionSession: {
+            create: vi.fn().mockImplementation(({ data }: { data: unknown }) => data),
+          },
           workflowRun: {
             findUniqueOrThrow: vi.fn().mockResolvedValue(updatedWorkflow),
           },
@@ -100,7 +145,10 @@ describe('WorkflowService local execution', () => {
     vi.spyOn(service as never, 'resolveConfirmedPlan' as never).mockResolvedValue(confirmedPlan);
     vi.spyOn(service as never, 'assertStageNotRunning' as never).mockImplementation(() => undefined);
     vi.spyOn(service as never, 'transitionWorkflow' as never).mockResolvedValue(undefined);
-    vi.spyOn(service as never, 'createStageExecution' as never).mockResolvedValue(undefined);
+    vi.spyOn(service as never, 'createStageExecution' as never).mockResolvedValue({
+      id: 'stage-1',
+      attempt: 1,
+    });
 
     const result = await service.claimLocalExecution('workflow-run-local-001');
 
@@ -108,6 +156,8 @@ describe('WorkflowService local execution', () => {
       'flowx/work/local-handoff/workflow-run-local-001',
     );
     expect(result.handoff.executor).toBe('LOCAL');
+    expect(result.handoff.executionSessionId).toEqual(expect.any(String));
+    expect(result.handoff.protocolVersion).toBe('1.0');
   });
 
   it('completeLocalExecution rejects when remote verify fails', async () => {
@@ -141,6 +191,115 @@ describe('WorkflowService local execution', () => {
         ],
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('returns the completed workflow for an idempotent completion retry', async () => {
+    const { service, workflowArtifactService } = createLocalExecutionService({
+      executionSession: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'session-1',
+          status: 'COMPLETED',
+          sourceTool: 'cursor',
+          traceId: 'trace-1',
+          protocolVersion: '1.0',
+          metadata: { completionIdempotencyKey: 'complete-1' },
+        }),
+      },
+    });
+    const completedWorkflow = {
+      ...baseWorkflow,
+      status: 'REVIEW_PENDING',
+      stageExecutions: [
+        {
+          stage: 'EXECUTION',
+          attempt: 1,
+          status: 'COMPLETED',
+          input: { executor: 'LOCAL' },
+        },
+      ],
+    };
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(completedWorkflow);
+    vi.spyOn(service as never, 'resolveConfirmedPlan' as never).mockResolvedValue(confirmedPlan);
+
+    const result = await service.completeLocalExecution('workflow-run-local-001', {
+      idempotencyKey: 'complete-1',
+      pushed: true,
+      repositories: [
+        {
+          workflowRepositoryId: 'wr-1',
+          headSha: 'deadbeef',
+          changedFiles: ['src/App.tsx'],
+        },
+      ],
+    });
+
+    expect(result.workflow.status).toBe('REVIEW_PENDING');
+    expect(workflowArtifactService.writeExecutionArtifact).not.toHaveBeenCalled();
+  });
+
+  it('completes the execution session and records Git, changed-file, test and summary evidence', async () => {
+    const { service } = createLocalExecutionService();
+    const tx = {
+      executionSession: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      artifact: { findFirst: vi.fn().mockResolvedValue({ id: 'artifact-1' }) },
+      evidence: { create: vi.fn().mockImplementation(({ data }: { data: unknown }) => data) },
+    };
+
+    await (
+      service as unknown as {
+        completeExecutionSessionProjection: (
+          tx: unknown,
+          workflowRunId: string,
+          input: unknown,
+        ) => Promise<void>;
+      }
+    ).completeExecutionSessionProjection(tx, 'workflow-run-local-001', {
+      executionSession: {
+        id: 'session-1',
+        status: 'RUNNING',
+        sourceTool: 'cursor',
+        traceId: 'trace-1',
+        protocolVersion: '1.0',
+        metadata: null,
+      },
+      completionReport: {
+        idempotencyKey: 'complete-1',
+        pushed: true,
+        implementationSummary: 'Implemented local workflow projection',
+        testResult: 'pnpm test passed',
+        repositories: [
+          {
+            workflowRepositoryId: 'wr-1',
+            headSha: 'deadbeef1234',
+            changedFiles: ['src/App.tsx'],
+          },
+        ],
+      },
+      verificationRows: [{ workflowRepositoryId: 'wr-1', verified: true }],
+      repositories: [
+        {
+          workflowRepositoryId: 'wr-1',
+          repositoryId: 'repo-1',
+          name: 'flowx',
+          url: 'https://github.com/acme/flowx.git',
+          baseBranch: 'main',
+          workingBranch: 'flowx/work/test',
+          checkout: { fetch: '', checkout: '', push: '' },
+          suggestedCommitMessage: 'feat: test',
+        },
+      ],
+    });
+
+    expect(tx.executionSession.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'COMPLETED' }) }),
+    );
+    expect(tx.evidence.create.mock.calls.map(([call]) => call.data.evidenceType)).toEqual([
+      'GIT_COMMIT',
+      'CHANGED_FILES',
+      'REMOTE_BRANCH_VERIFICATION',
+      'TEST_RESULT',
+      'AGENT_SUMMARY',
+    ]);
   });
 });
 
