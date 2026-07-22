@@ -42,6 +42,9 @@ importers:
       class-validator:
         specifier: ^0.14.1
         version: 0.14.4
+      flowx-protocol:
+        specifier: workspace:*
+        version: link:../../packages/flowx-protocol
       nodemailer:
         specifier: ^8.0.10
         version: 8.0.10

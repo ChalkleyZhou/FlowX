@@ -8,6 +8,7 @@ import { CursorLocalModule } from './cursor-local/cursor-local.module';
 import { DailyCodeReviewModule } from './daily-code-review/daily-code-review.module';
 import { DeployModule } from './deploy/deploy.module';
 import { DevPreviewModule } from './dev-preview/dev-preview.module';
+import { ExecutionSessionsModule } from './execution-sessions/execution-sessions.module';
 import { SessionAuthGuard } from './auth/session-auth.guard';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProjectsModule } from './projects/projects.module';
@@ -31,6 +32,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
     DailyCodeReviewModule,
     DeployModule,
     DevPreviewModule,
+    ExecutionSessionsModule,
     ProjectsModule,
     ScheduleModule,
     ReviewArtifactsModule,
