@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, toApiUrl } from './api';
+import { api, getFlowxApiBaseUrl, toApiUrl } from './api';
 
 class LocalStorageMock {
   private readonly store = new Map<string, string>();
@@ -30,6 +30,19 @@ describe('api helpers', () => {
   it('builds localhost api urls by default in non-browser environments', () => {
     expect(toApiUrl('/requirements')).toBe('http://localhost:3000/requirements');
     expect(toApiUrl('workflow-runs')).toBe('http://localhost:3000/workflow-runs');
+  });
+
+  it('resolves relative VITE_API_BASE_URL against page origin for local daemons', () => {
+    expect(getFlowxApiBaseUrl('/api', 'https://flowx.example.com')).toBe(
+      'https://flowx.example.com/api',
+    );
+    expect(getFlowxApiBaseUrl('https://api.example.com/', 'https://ignored.example')).toBe(
+      'https://api.example.com',
+    );
+    expect(getFlowxApiBaseUrl(undefined, 'https://flowx.example.com')).toBe(
+      'https://flowx.example.com/api',
+    );
+    expect(getFlowxApiBaseUrl(undefined, undefined)).toBe('http://127.0.0.1:3000');
   });
 
   it('sends bearer token when local auth token exists', async () => {

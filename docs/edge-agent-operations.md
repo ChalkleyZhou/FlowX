@@ -3,6 +3,15 @@
 当前 `flowx-local` 是 FlowX Edge Agent 的本地承载包，负责浏览器到本地工具的安全交接、设备身份、
 设计上下文落盘、完成报告回传和离线 Outbox。
 
+部署到远程服务器时，API 进程必须配置本机 Agent 可达的公网地址，例如：
+
+```bash
+PUBLIC_API_BASE_URL=https://flowx.example.com/api
+```
+
+未设置时，本地启动 / OpenDesign redeem 会回退到 `http://127.0.0.1:$PORT`，仅适合本机联调。
+Web 在 `VITE_API_BASE_URL=/api` 时会把相对路径解析为当前页面的 `origin + /api` 再交给本机 `flowx-local`。
+
 ## 常用命令
 
 ### 终端用户

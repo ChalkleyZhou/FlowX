@@ -111,7 +111,7 @@ export async function runLaunch(
     workflowRunId: redeemed.workflowRunId,
     executionSessionId,
     chatPrompt: redeemed.chatPrompt,
-    apiBaseUrl: redeemed.apiBaseUrl,
+    apiBaseUrl: apiBaseUrl,
     mcpToken: redeemed.mcpToken,
     mcpEntryPath: dependencies.mcpEntryPath,
   });

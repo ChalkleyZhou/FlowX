@@ -119,6 +119,14 @@ docker build \
   -t flowx:latest .
 ```
 
+容器运行时还需设置 **API 对端侧可达的公网地址**（本机 `flowx-local` / MCP 回连用，不要用 `127.0.0.1`）：
+
+```bash
+-e PUBLIC_API_BASE_URL="https://flowx.example.com/api"
+```
+
+未设置时，本地启动 redeem 会回退到 `http://127.0.0.1:$PORT`，只适合本机开发。Web 在浏览器侧会把相对路径 `/api` 解析为当前页面的 `origin + /api` 再交给 `flowx-local`。
+
 ## 5. 方案一：直接运行单容器
 
 ### 5.1 使用 mock 执行器

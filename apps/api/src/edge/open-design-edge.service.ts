@@ -7,6 +7,7 @@ import type {
   OpenDesignHandoff,
 } from '@flowx-ai/protocol';
 import { AuthService } from '../auth/auth.service';
+import { resolvePublicApiBaseUrl } from '../common/public-api-base-url';
 import { WorkflowRunStatus, WorkflowRunType } from '../common/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import { WorkflowService } from '../workflow/workflow.service';
@@ -118,7 +119,7 @@ export class OpenDesignEdgeService {
     return {
       kind: record.stage === 'brainstorm' ? 'opendesign-brainstorm' : 'opendesign',
       stage: record.stage,
-      apiBaseUrl: `http://127.0.0.1:${process.env.PORT || '3000'}`,
+      apiBaseUrl: resolvePublicApiBaseUrl(),
       handoff,
       accessToken: shortLived.token,
       accessTokenExpiresAt: shortLived.expiresAt,

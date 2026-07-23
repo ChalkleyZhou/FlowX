@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { AuthService } from '../auth/auth.service';
+import { resolvePublicApiBaseUrl } from '../common/public-api-base-url';
 import { buildLocalChatPrompt } from './local-chat-prompt';
 import { LocalLaunchTicketStore } from './local-launch-ticket.store';
 import { WorkflowService } from './workflow.service';
@@ -79,9 +80,8 @@ export class LocalLaunchService {
       record.organizationId,
     );
 
-    const port = process.env.PORT || '3000';
     return {
-      apiBaseUrl: `http://127.0.0.1:${port}`,
+      apiBaseUrl: resolvePublicApiBaseUrl(),
       workflowRunId: record.workflowRunId,
       handoff,
       chatPrompt,

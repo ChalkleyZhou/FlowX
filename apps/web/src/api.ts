@@ -171,16 +171,28 @@ export const apiBaseUrl = API_BASE_URL;
 export const toApiUrl = buildApiUrl;
 
 /**
- * Absolute FlowX API base for local daemons (e.g. flowx-local redeem).
- * Prefer VITE_API_BASE_URL when it is an absolute URL; do not use the Vite
- * `${origin}/api` proxy — the daemon must reach Nest directly.
+ * Absolute FlowX API base for local daemons (e.g. flowx-local redeem / MCP).
+ * Prefer an absolute VITE_API_BASE_URL; resolve relative paths (e.g. `/api`)
+ * against the current page origin so deployed Web never sends 127.0.0.1 to the
+ * developer machine. Do not use the Vite `${origin}/api` proxy assumption alone
+ * without an origin — the daemon must reach Nest (or the reverse proxy) directly.
  */
-export function getFlowxApiBaseUrl(): string {
-  if (configuredApiBaseUrl) {
-    const base = configuredApiBaseUrl.replace(/\/$/, '');
-    if (base.startsWith('http://') || base.startsWith('https://')) {
-      return base;
+export function getFlowxApiBaseUrl(
+  envBaseUrl: string | undefined = configuredApiBaseUrl,
+  origin: string | undefined = typeof window !== 'undefined' ? window.location.origin : undefined,
+): string {
+  const configured = envBaseUrl?.trim().replace(/\/$/, '') ?? '';
+  if (configured) {
+    if (configured.startsWith('http://') || configured.startsWith('https://')) {
+      return configured;
     }
+    if (origin) {
+      const path = configured.startsWith('/') ? configured : `/${configured}`;
+      return `${origin.replace(/\/$/, '')}${path}`;
+    }
+  }
+  if (origin) {
+    return `${origin.replace(/\/$/, '')}/api`;
   }
   return 'http://127.0.0.1:3000';
 }

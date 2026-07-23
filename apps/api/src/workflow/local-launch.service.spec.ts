@@ -93,6 +93,23 @@ describe('LocalLaunchService', () => {
     await expect(service.redeemTicket(issued.ticket)).rejects.toThrow(/invalid|expired/i);
   });
 
+  it('uses PUBLIC_API_BASE_URL for redeemed apiBaseUrl when deployed', async () => {
+    const original = process.env.PUBLIC_API_BASE_URL;
+    process.env.PUBLIC_API_BASE_URL = 'https://flowx.example.com/api/';
+    try {
+      const { service } = createService();
+      const issued = await service.issueTicket('run-1', session);
+      const redeemed = await service.redeemTicket(issued.ticket);
+      expect(redeemed.apiBaseUrl).toBe('https://flowx.example.com/api');
+    } finally {
+      if (original === undefined) {
+        delete process.env.PUBLIC_API_BASE_URL;
+      } else {
+        process.env.PUBLIC_API_BASE_URL = original;
+      }
+    }
+  });
+
   it('rejects redemption without an execution session when projection is enabled', async () => {
     const { executionSessionId: _executionSessionId, ...handoffWithoutSession } = handoff;
     const original = process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED;
