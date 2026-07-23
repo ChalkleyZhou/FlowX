@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { act } from 'react';
+import { BookOpen } from 'lucide-react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -57,6 +58,14 @@ describe('MarkdownDocPage', () => {
               eyebrow="Local Agent"
               title="本地 Agent"
               description="guide"
+              menuItems={[
+                {
+                  anchor: '快速开始',
+                  title: '快速开始',
+                  description: '从这里开始',
+                  icon: BookOpen,
+                },
+              ]}
             />
           </ThemeProvider>
         </MemoryRouter>,
@@ -70,7 +79,9 @@ describe('MarkdownDocPage', () => {
     expect(fetchMock).toHaveBeenCalledWith('/local-agent-guide.md', { cache: 'no-store' });
     expect(container.textContent).toContain('本地 Agent');
     expect(container.textContent).toContain('标题');
-    expect(container.textContent).toContain('章节导航');
+    expect(container.textContent).toContain('手册菜单');
+    expect(container.textContent).toContain('目录');
+    expect(container.querySelector('a[href="#快速开始"]')).toBeTruthy();
     expect(container.querySelector('a[href="#快速开始"]')).toBeTruthy();
     expect(container.querySelector('h2#快速开始')).toBeTruthy();
     expect(container.querySelector('h3#登录')).toBeTruthy();

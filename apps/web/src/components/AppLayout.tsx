@@ -142,18 +142,6 @@ export function AppLayout({ children }: PropsWithChildren) {
               );
             })}
           </nav>
-          <nav aria-label="帮助" className="border-t border-nav-border pt-3 max-xl:w-full max-xl:border-t-0 max-xl:pt-0">
-            <Link
-              to="/user-manual"
-              className={[
-                'flex min-h-10 items-center gap-3 rounded-md border border-transparent px-3 py-2 text-sm text-nav-text no-underline transition-colors hover:bg-nav-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 max-xl:shrink-0',
-                selectedKey === '/user-manual' ? 'border-nav-border bg-nav-active font-medium text-foreground' : '',
-              ].filter(Boolean).join(' ')}
-            >
-              <BookOpen aria-hidden="true" className={selectedKey === '/user-manual' ? 'h-4 w-4 text-nav-accent' : 'h-4 w-4'} />
-              <span className="truncate">使用手册</span>
-            </Link>
-          </nav>
           {session ? (
             <div className="mt-auto border-t border-nav-border pt-3 max-xl:mt-0 max-xl:w-full max-xl:pt-2">
               <div className="flex w-full min-w-0 items-center gap-2.5 rounded-md border border-nav-border bg-nav-hover px-2 py-2">
@@ -198,6 +186,18 @@ export function AppLayout({ children }: PropsWithChildren) {
               </div>
             </div>
           ) : null}
+          <nav aria-label="帮助" className="border-t border-nav-border pt-3 max-xl:w-full max-xl:border-t-0 max-xl:pt-0">
+            <Link
+              to="/user-manual"
+              className={[
+                'flex min-h-10 items-center gap-3 rounded-md border border-transparent px-3 py-2 text-sm text-nav-text no-underline transition-colors hover:bg-nav-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 max-xl:shrink-0',
+                selectedKey === '/user-manual' ? 'border-nav-border bg-nav-active font-medium text-foreground' : '',
+              ].filter(Boolean).join(' ')}
+            >
+              <BookOpen aria-hidden="true" className={selectedKey === '/user-manual' ? 'h-4 w-4 text-nav-accent' : 'h-4 w-4'} />
+              <span className="truncate">使用手册</span>
+            </Link>
+          </nav>
           </aside>
         <div className="flex min-w-0 flex-1 flex-col">
           <main className="mx-auto flex w-full max-w-[1440px] flex-col gap-6 px-8 pb-10 pt-8 max-[1440px]:px-6 max-[960px]:gap-5 max-[960px]:px-5 max-[780px]:gap-4 max-[780px]:px-4 max-[780px]:pb-7">{children}</main>

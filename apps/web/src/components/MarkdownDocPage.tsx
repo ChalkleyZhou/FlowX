@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { List } from 'lucide-react';
+import { ArrowRight, List } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
@@ -14,7 +14,15 @@ export type MarkdownDocPageProps = {
   title: string;
   description: string;
   icon?: LucideIcon;
+  menuItems?: MarkdownDocMenuItem[];
   loadErrorFallback?: string;
+};
+
+export type MarkdownDocMenuItem = {
+  anchor: string;
+  title: string;
+  description: string;
+  icon: LucideIcon;
 };
 
 type DocumentHeading = {
@@ -90,6 +98,7 @@ export function MarkdownDocPage({
   title,
   description,
   icon,
+  menuItems,
   loadErrorFallback = '文档加载失败',
 }: MarkdownDocPageProps) {
   const [markdown, setMarkdown] = useState('');
@@ -135,16 +144,48 @@ export function MarkdownDocPage({
   return (
     <>
       <PageHeader eyebrow={eyebrow} title={title} description={description} icon={icon} />
+      {menuItems?.length ? (
+        <section aria-labelledby="document-menu-title" className="space-y-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h2 id="document-menu-title" className="flex items-center gap-2 text-base font-semibold text-foreground">
+              <List aria-hidden="true" className="h-4 w-4" />
+              手册菜单
+            </h2>
+            <span className="text-sm text-muted-foreground">按任务进入对应章节</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {menuItems.map((item) => {
+              const MenuIcon = item.icon;
+              return (
+                <a
+                  key={item.anchor}
+                  href={`#${item.anchor}`}
+                  className="group flex min-h-[92px] items-start gap-3 rounded-md border border-border bg-card p-4 text-foreground no-underline transition-colors hover:border-border-strong hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                >
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-foreground">
+                    <MenuIcon aria-hidden="true" className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold">{item.title}</span>
+                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">{item.description}</span>
+                  </span>
+                  <ArrowRight aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
+                </a>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
       <div className="grid items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
         {headings.length > 0 ? (
           <aside className="lg:sticky lg:top-6">
             <div className="border-b border-border pb-2 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
               <div className="flex items-center gap-2">
                 <List aria-hidden="true" className="h-4 w-4" />
-                章节导航
+                目录
               </div>
             </div>
-            <nav aria-label="文档章节" className="mt-2 flex flex-col gap-0.5">
+            <nav aria-label="文档目录" className="mt-2 flex flex-col gap-0.5">
               {headings.map((heading) => (
                 <a
                   key={heading.id}

@@ -2,7 +2,7 @@
 
 本文档面向产品、研发负责人、项目经理和业务协作同学，帮助你在 FlowX 中从需求录入一路推进到 AI 执行、人工评审、问题沉淀与发布。
 
-## 1. 你会在 FlowX 里做什么
+## FlowX 工作方式
 
 FlowX 把研发流程拆成可中断、可确认的阶段，核心目标是：
 
@@ -14,7 +14,7 @@ FlowX 把研发流程拆成可中断、可确认的阶段，核心目标是：
 
 `工作区 -> 项目 -> 需求 -> 需求定稿 -> 工作流执行 -> AI 审查 -> 人工决策 -> 问题/缺陷沉淀（可选部署）`
 
-## 2. 功能导航说明
+## 功能菜单
 
 左侧导航主要有以下模块：
 
@@ -26,9 +26,11 @@ FlowX 把研发流程拆成可中断、可确认的阶段，核心目标是：
 - `缺陷`：沉淀明确 Bug（Bug）
 - `AI 凭据`：配置你个人的 Cursor / Codex 凭据
 
-## 2.1 本机 Agent（可选）
+## 本地 Agent 与 OpenDesign
 
 若要在本机用 Cursor / Codex「本地启动」，或通过 OpenDesign 做本地设计，需要安装并运行 FlowX 本地 Agent。
+
+本地 OpenDesign 推荐搭配 FlowX MCP 使用：`flowx-local` 负责本机启动、短期会话和 loopback 通道，`flowx-mcp` 负责读取版本化设计上下文并提交设计结果。Web 页面上的 `回传本地设计` 仍可作为备用回传方式。
 
 平台内完整说明见侧栏「设置」→ **[本地 Agent](/local-agent)**（或直接打开 `/local-agent`）。
 
@@ -39,7 +41,7 @@ npm install -g @flowx-ai/local --registry https://registry.npmjs.org
 flowx-local serve
 ```
 
-## 3. 第一次使用（10 分钟上手）
+## 快速上手
 
 ### 步骤 1：登录系统
 
@@ -83,9 +85,9 @@ flowx-local serve
 - 验收标准
 - 影响仓库范围（可留空，留空表示继承工作区默认仓库）
 
-## 4. 从需求到工作流：标准操作流程
+## 从需求到交付
 
-### 4.1 在需求详情先完成“定稿”
+### 需求定稿
 
 打开某条需求详情后，会看到 ideation 三步：
 
@@ -95,27 +97,58 @@ flowx-local serve
 
 只有当需求状态达到“已定稿”后，建议再启动研发工作流。定稿会把确认后的产品简报合并回需求描述，避免执行阶段上下文不一致。
 
-### 4.2（可选）交给本地 OpenDesign 设计
+### 使用本地 OpenDesign 设计
 
 如果需求需要设计师在本地 OpenDesign 完成 UI/交互设计：
 
 1. 先安装并启动本机 Agent：`npm install -g @flowx-ai/local`，然后运行 `flowx-local serve`（详见 [本地 Agent](/local-agent)）。
 2. 在需求列表点击 `OpenDesign 设计`。
-3. OpenDesign 读取 `~/.flowx/design-sessions/<executionSessionId>/context.json` 中的版本化需求上下文。
-4. 完成设计后更新同目录的 `result.json`。
-5. 在工作流详情点击 `回传本地设计`，设计稿会进入 FlowX 待确认状态。
+3. 使用 FlowX MCP 的 `flowx_get_active_design_session` 和 `flowx_get_design_handoff` 获取当前设计会话与版本化需求上下文。
+4. 在 OpenDesign 中完成设计，通过 `flowx_submit_design` 提交结果；也可以更新会话目录中的 `result.json` 后，在工作流详情点击 `回传本地设计`。
+5. 设计稿回传后会进入 FlowX 待确认状态。
 
 网络中断时完成报告会进入本地 Outbox，可通过 `flowx-local sync` 重试。详细配置和结果格式见
 [OpenDesign 本地设计阶段](opendesign-design-stage.md)。
 
-### 4.3 启动研发工作流
+### 在 Cursor Agent 中配置 FlowX MCP
+
+MCP 要配置在实际运行 Agent 的工具里，不是配置在 OpenDesign 应用里。如果你使用 Cursor Agent，请在当前 OpenDesign 项目的 `.cursor/mcp.json` 中注册 `flowx-mcp`：
+
+先在 FlowX monorepo 中构建 MCP：
+
+```bash
+pnpm --filter flowx-mcp build
+```
+
+然后写入配置（把路径和短期 token 换成你的实际值）：
+
+```json
+{
+  "mcpServers": {
+    "flowx": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/FlowX/packages/flowx-mcp/dist/index.js"
+      ],
+      "env": {
+        "FLOWX_API_BASE_URL": "http://127.0.0.1:3000",
+        "FLOWX_API_TOKEN": "<当前设计会话短期 token>"
+      }
+    }
+  }
+}
+```
+
+在 FlowX Web 点击 `OpenDesign 设计` 后，`flowx-local` 会自动在目标仓库写入或合并这段 `.cursor/mcp.json`，通常不需要手工复制。`FLOWX_API_TOKEN` 是当前设计会话的短期 token，不要提交到 Git，也不要改成长期登录 token。配置生效后，在 Cursor Agent 中使用 `flowx_get_active_design_session`、`flowx_get_design_handoff` 和 `flowx_submit_design`。
+
+### 启动研发工作流
 
 可以在需求列表或需求详情里启动工作流。启动时可选本次执行的仓库范围：
 
 - 不选：使用需求默认仓库范围
 - 手动选择：只推进本次要并行处理的仓库
 
-### 4.4 在工作流详情推进每个阶段
+### 在工作流详情推进每个阶段
 
 工作流核心阶段通常是：
 
@@ -138,7 +171,7 @@ AI 审查完成后，人工决策通常有三种：
 - `退回开发执行`：回到执行阶段继续修复
 - `回滚`：终止当前结果并回退
 
-### 4.5（可选）提交并推送、触发部署
+### （可选）提交并推送、触发部署
 
 当人工确认通过后，可在工作流内执行：
 
@@ -147,7 +180,7 @@ AI 审查完成后，人工决策通常有三种：
 
 部署会读取仓库级部署模板。如果按钮不可用，通常是仓库未开启部署配置或当前工作流无可部署仓库。
 
-## 5. 状态怎么看
+## 状态与进度
 
 ### 工作流状态（常见）
 
@@ -167,19 +200,19 @@ AI 审查完成后，人工决策通常有三种：
 - `执行失败`
 - `已驳回`
 
-## 6. 问题沉淀与追踪
+## 问题、缺陷与追踪
 
 - 在 `问题项` 页面追踪改进项（Issue）
 - 在 `缺陷` 页面追踪明确故障（Bug）
 - 每条记录都可追溯到来源需求、工作流和审查上下文，便于复盘和闭环
 
-## 7. 常见问题
+## 常见问题
 
-### Q1：为什么我不能直接“启动研发工作流”？
+### 为什么我不能直接“启动研发工作流”？
 
 通常是需求还未完成“定稿”。请先进入需求详情完成头脑风暴/设计确认并定稿。
 
-### Q2：为什么“触发部署”失败或不可用？
+### 为什么“触发部署”失败或不可用？
 
 优先检查：
 
@@ -187,7 +220,7 @@ AI 审查完成后，人工决策通常有三种：
 - 对应仓库是否在工作区里配置了部署模板并启用
 - 是否已先执行“提交并推送到远程”
 
-### Q3：我配置了 AI 凭据，为什么没生效？
+### 我配置了 AI 凭据，为什么没生效？
 
 请确认：
 
@@ -195,7 +228,7 @@ AI 审查完成后，人工决策通常有三种：
 - 页面状态显示“已配置”
 - 工作流是凭据配置后新启动的（旧流程可能仍使用旧上下文）
 
-## 8. 推荐团队使用顺序
+## 团队落地建议
 
 建议团队按下面顺序落地：
 
