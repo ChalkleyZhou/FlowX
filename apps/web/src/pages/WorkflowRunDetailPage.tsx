@@ -2428,7 +2428,12 @@ export function WorkflowRunDetailPage() {
                   <CardContent className="flex flex-col gap-5 p-5 pt-4">
                     <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
                       <li>点击「本地启动」并选择 Cursor 或 Codex</li>
-                      <li>若未启动 flowx-local，先在终端运行 <code className="text-foreground">pnpm --filter flowx-local exec node dist/index.js serve</code></li>
+                      <li>
+                        若未启动 flowx-local，先安装并启动：
+                        <code className="text-foreground">npm install -g @flowx-ai/local</code>
+                        ，然后运行
+                        <code className="text-foreground">flowx-local serve</code>
+                      </li>
                       <li>拉取远程并切换到工作分支</li>
                       <li>按技术方案完成开发</li>
                       <li>提交并推送到远程</li>
@@ -2438,10 +2443,10 @@ export function WorkflowRunDetailPage() {
                       <div className="rounded-md border border-warning/40 bg-muted/30 p-3 text-sm text-foreground">
                         <div className="font-semibold">未检测到本机 flowx-local</div>
                         <div className="mt-1 text-muted-foreground">
-                          请先在终端运行：
-                          <code className="ml-1 text-foreground">
-                            pnpm --filter flowx-local exec node dist/index.js serve
-                          </code>
+                          请先安装并启动：
+                          <code className="ml-1 text-foreground">npm install -g @flowx-ai/local</code>
+                          ，然后运行
+                          <code className="ml-1 text-foreground">flowx-local serve</code>
                         </div>
                       </div>
                     ) : null}

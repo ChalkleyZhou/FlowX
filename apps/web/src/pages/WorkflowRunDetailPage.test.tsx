@@ -1367,4 +1367,59 @@ describe('WorkflowRunDetailPage', () => {
       3920,
     );
   });
+
+  it('shows npm install instructions for local agent setup', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'EXECUTION_RUNNING',
+        stageExecutions: [
+          {
+            id: 'execution-1',
+            stage: 'EXECUTION',
+            status: 'RUNNING',
+            statusMessage: null,
+            attempt: 1,
+            input: { executor: 'LOCAL' },
+            output: null,
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.getLocalHandoff).mockResolvedValue({
+      repositories: [
+        {
+          workflowRepositoryId: 'repo-1',
+          name: 'flowx-web',
+          workingBranch: 'codex/fix-login',
+          baseBranch: 'main',
+          suggestedCommitMessage: 'fix: login error handling',
+          checkout: {
+            fetch: 'git fetch origin',
+            checkout: 'git checkout codex/fix-login',
+            push: 'git push origin codex/fix-login',
+          },
+        },
+      ],
+    } as never);
+
+    await renderPage();
+
+    const executionStep = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('开发执行'),
+    );
+    await act(async () => {
+      executionStep?.click();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const text = container.textContent ?? '';
+    expect(text).toContain('本地执行指引');
+    expect(text).toContain('npm install -g @flowx-ai/local');
+    expect(text).toContain('flowx-local serve');
+    expect(text).not.toContain('pnpm --filter flowx-local');
+  });
 });
