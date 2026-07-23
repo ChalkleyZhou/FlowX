@@ -1,6 +1,6 @@
 # Edge-Cloud Development Stage Design
 
-> **Status:** Draft for review  
+> **Status:** Approved / Implemented
 > **Date:** 2026-07-23  
 > **Depends on:** [Edge-cloud AI R&D platform](../../architecture/edge-cloud-ai-rd-platform.md), [Edge-cloud foundation plan](../plans/2026-07-22-edge-cloud-foundation.md) Tasks 9–12, [Web local IDE launch](./2026-07-16-web-local-ide-launch-design.md), [Local execution handoff](./2026-06-03-local-execution-handoff-design.md), OpenDesign design-stage implementation  
 > **Constraint:** Approach C — long-lived stability without cloning the OpenDesign `active-design` session protocol for development

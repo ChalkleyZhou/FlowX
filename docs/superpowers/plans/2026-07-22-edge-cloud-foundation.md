@@ -573,12 +573,12 @@ flowchart LR
 
 **步骤：**
 
-- [ ] 定义 capability：`chat-handoff`、`repo-open`、`terminal`、`completion-report`。
-- [ ] Adapter Registry 按工具名解析实现并返回能力。
-- [ ] Cursor Adapter 复用现有 Cursor 打开和 prompt 交接行为。
-- [ ] Codex Adapter 复用现有 Codex 打开逻辑，补齐上下文文件和完成指引。
-- [ ] `launch.ts` 不再直接判断工具细节。
-- [ ] Adapter 不直接更新工作流，只调用 Edge Client/Outbox。
+- [x] 定义 capability：`chat-handoff`、`repo-open`、`terminal`、`completion-report`。
+- [x] Adapter Registry 按工具名解析实现并返回能力。
+- [x] Cursor Adapter 复用现有 Cursor 打开和 prompt 交接行为。
+- [x] Codex Adapter 复用现有 Codex 打开逻辑，补齐上下文文件和完成指引。
+- [x] `launch.ts` 不再直接判断工具细节。
+- [x] Adapter 不直接更新工作流，只调用 Edge Client/Outbox。
 
 **验收：**
 
@@ -618,10 +618,10 @@ flowchart LR
 
 **步骤：**
 
-- [ ] 依赖 `flowx-protocol`，删除重复 Payload 类型。
-- [ ] MCP 新增 `flowx_report_progress`、`flowx_report_evidence`。
-- [ ] `flowx_report_completion` 优先调用 ExecutionSession API。
-- [ ] Cursor Extension 保存并传递 `executionSessionId`。
+- [x] 依赖 `flowx-protocol`，删除重复 Payload 类型。
+- [x] MCP 新增 `flowx_report_progress`、`flowx_report_evidence`。
+- [x] `flowx_report_completion` 优先调用 ExecutionSession API。
+- [x] Cursor Extension 保存并传递 `executionSessionId`。
 - [ ] API 不可用时保留本地完成草稿并支持重试。
 - [ ] 旧服务器不支持新 API 时给出明确版本错误，不静默降级完成。
 
@@ -649,11 +649,11 @@ flowchart LR
 **步骤：**
 
 - [ ] 先写会话状态、离线、阻塞、完成和重复上报 UI 测试。
-- [ ] 工作流详情 Execution 阶段展示当前会话、工具、设备、心跳和 traceId。
-- [ ] 展示 Git、测试、Artifact 和远程验证 Evidence。
-- [ ] 保留现有本地 Handoff 和完成对话框。
-- [ ] 未启用新后端能力时隐藏会话面板，不报错。
-- [ ] 不在前端轮询高频事件；首期使用低频刷新，后续再接 SSE/WebSocket。
+- [x] 工作流详情 Execution 阶段展示当前会话、工具、设备、心跳和 traceId。
+- [x] 展示 Git、测试、Artifact 和远程验证 Evidence。
+- [x] 保留现有本地 Handoff 和完成对话框。
+- [x] 未启用新后端能力时隐藏会话面板，不报错。
+- [x] 不在前端轮询高频事件；首期使用低频刷新，后续再接 SSE/WebSocket。
 
 **验收：**
 
@@ -676,16 +676,16 @@ flowchart LR
 
 **测试场景：**
 
-- [ ] Requirement 从 Cursor 认领并完成。
+- [x] Requirement 从 Cursor 认领并完成。
 - [ ] Bug 从 Codex 认领并完成。
 - [ ] API 离线后进度事件和完成报告进入 Outbox。
 - [ ] 网络恢复后事件按幂等规则重放。
-- [ ] 完成请求在响应丢失后再次发送。
-- [ ] Push 未完成时远程验证失败，会话保持可恢复。
-- [ ] 用户取消后旧完成请求不能推进工作流。
+- [x] 完成请求在响应丢失后再次发送。
+- [x] Push 未完成时远程验证失败，会话保持可恢复。
+- [x] 用户取消后旧完成请求不能推进工作流。
 - [ ] Artifact 文件写入成功但数据库登记失败时可恢复。
 - [ ] 数据库登记成功但客户端未收到响应时重复请求返回原结果。
-- [ ] 旧 Cursor Extension 仍能通过兼容 API 完成任务。
+- [x] 旧 Cursor Extension 仍能通过兼容 API 完成任务。
 
 **灰度顺序：**
 
