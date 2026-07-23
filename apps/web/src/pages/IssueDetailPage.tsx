@@ -183,7 +183,7 @@ export function IssueDetailPage() {
 
         <div className="grid items-start gap-5 min-[1281px]:grid-cols-[minmax(0,1.5fr)_360px] max-[1280px]:grid-cols-1">
           <div className="flex flex-col gap-[18px]">
-            <Card className="rounded-2xl border border-border bg-card shadow-sm">
+            <Card className="rounded-md border border-border bg-card">
               <CardHeader className="pb-4">
                 <SectionHeader eyebrow="Edit Issue" title="编辑问题项" />
               </CardHeader>

@@ -17,7 +17,7 @@ export function SectionHeader({ eyebrow, title, description, extra, className }:
         eyebrow={eyebrow}
         title={title}
         description={description}
-        titleClassName="text-xl"
+        titleClassName="text-lg leading-6"
         descriptionClassName="max-w-none"
       />
       {extra ? <div className="flex shrink-0 flex-wrap items-center gap-3">{extra}</div> : null}

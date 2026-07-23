@@ -48,7 +48,7 @@ export function WorkflowReviewSidebar({
   secondaryActions,
 }: Props) {
   return (
-    <Card className="border-border shadow-sm">
+    <Card className="border-border">
       <CardContent className="flex flex-col gap-4 p-5">
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Workflow Review</p>

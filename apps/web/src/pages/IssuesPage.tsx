@@ -102,7 +102,7 @@ export function IssuesPage() {
         <MetricCard label="开放中" value={issueSummary.openCount} />
         <MetricCard label="处理中" value={issueSummary.inProgressCount} />
       </div>
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="Issue Registry" title="问题项列表" />
         </CardHeader>

@@ -309,7 +309,7 @@ export function BugDetailPage() {
 
         <div className="grid items-start gap-5 min-[1281px]:grid-cols-[minmax(0,1.5fr)_360px] max-[1280px]:grid-cols-1">
           <div className="flex flex-col gap-[18px]">
-            <Card className="rounded-2xl border border-border bg-card shadow-sm">
+            <Card className="rounded-md border border-border bg-card">
               <CardHeader className="pb-4">
                 <SectionHeader eyebrow="Edit Bug" title="编辑缺陷" />
               </CardHeader>
@@ -442,7 +442,7 @@ export function BugDetailPage() {
                       {bug.screenshots.map((screenshot) => (
                         <div
                           key={screenshot.id}
-                          className="overflow-hidden rounded-xl border border-border bg-muted/30"
+                          className="overflow-hidden rounded-md border border-border bg-muted/30"
                         >
                           <AuthenticatedImage
                             src={getBugScreenshotUrl(bug.id, screenshot.id)}

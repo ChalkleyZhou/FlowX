@@ -360,7 +360,7 @@ export function BugsPage() {
         <MetricCard label="开放中" value={bugSummary.openCount} />
         <MetricCard label="严重缺陷" value={bugSummary.criticalCount} />
       </div>
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="Bug Registry" title="缺陷列表" />
         </CardHeader>

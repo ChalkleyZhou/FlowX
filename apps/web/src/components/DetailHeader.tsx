@@ -14,7 +14,7 @@ interface DetailHeaderProps {
 
 export function DetailHeader({ eyebrow, title, description, badges, actions, className }: DetailHeaderProps) {
   return (
-    <Card className={cn('border-border bg-card shadow-sm', className)}>
+    <Card className={cn('border-border bg-card', className)}>
       <CardContent className="flex flex-col gap-5 p-6 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0 space-y-3">
           <CardHeader className="space-y-3 p-0">

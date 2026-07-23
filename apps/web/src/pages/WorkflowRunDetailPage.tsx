@@ -2312,7 +2312,7 @@ export function WorkflowRunDetailPage() {
             </div>
           </ContextPanel>
 
-          <Card className="rounded-md border-border bg-card shadow-sm">
+          <Card className="rounded-md border-border bg-card">
             <CardHeader className="p-5 pb-0">
               <SectionHeader
                 eyebrow="Workflow Steps"
@@ -2375,7 +2375,7 @@ export function WorkflowRunDetailPage() {
                   actions={workflowWorkspaceConfig ? [] : selectedStageContent.actions}
                 />
               ) : (
-                <Card className="rounded-md border border-border bg-card shadow-sm">
+                <Card className="rounded-md border border-border bg-card">
                   <CardContent className="p-5">
                     <EmptyState description="当前阶段还没有可展示的详情产物。" />
                   </CardContent>
@@ -2383,7 +2383,7 @@ export function WorkflowRunDetailPage() {
               )}
 
               {selectedStage === 'DESIGN' && workflowRun ? (
-                <Card className="rounded-md border-border bg-card shadow-sm">
+                <Card className="rounded-md border-border bg-card">
                   <CardHeader className="p-5 pb-0">
                     <SectionHeader
                       eyebrow="Design Preview"
@@ -2401,7 +2401,7 @@ export function WorkflowRunDetailPage() {
               ) : null}
 
               {selectedStage === 'TECHNICAL_PLAN' && planHtml ? (
-                <Card className="rounded-md border-border bg-card shadow-sm">
+                <Card className="rounded-md border-border bg-card">
                   <CardHeader className="p-5 pb-0">
                     <SectionHeader eyebrow="Plan Preview" title="方案预览" />
                   </CardHeader>
@@ -2417,7 +2417,7 @@ export function WorkflowRunDetailPage() {
               ) : null}
 
               {selectedStage === 'EXECUTION' && localExecutionActive && localHandoff ? (
-                <Card className="rounded-md border-border bg-card shadow-sm">
+                <Card className="rounded-md border-border bg-card">
                   <CardHeader className="p-5 pb-0">
                     <SectionHeader
                       eyebrow="Local Handoff"
@@ -2499,7 +2499,7 @@ export function WorkflowRunDetailPage() {
               ) : null}
 
               {selectedStage === 'EXECUTION' && executionHtml ? (
-                <Card className="rounded-md border-border bg-card shadow-sm">
+                <Card className="rounded-md border-border bg-card">
                   <CardHeader className="p-5 pb-0">
                     <SectionHeader eyebrow="Execution Report" title="执行报告" />
                   </CardHeader>
@@ -2515,7 +2515,7 @@ export function WorkflowRunDetailPage() {
               ) : null}
 
               {selectedStage === 'DEMO' && (selectedDemoArtifact || selectedDemoPages.length > 0) ? (
-                <Card className="rounded-md border-border bg-card shadow-sm">
+                <Card className="rounded-md border-border bg-card">
                   <CardHeader className="p-5">
                     <SectionHeader
                       eyebrow="Demo Preview"
@@ -2673,7 +2673,7 @@ export function WorkflowRunDetailPage() {
               ) : null}
 
               {diffReviewData.length > 0 && (selectedStage === 'EXECUTION' || selectedStage === 'AI_REVIEW') ? (
-              <Card className="rounded-md border-border bg-card shadow-sm">
+              <Card className="rounded-md border-border bg-card">
                 <CardHeader className="space-y-4 p-5">
                   <div className="flex items-start justify-between gap-4 max-[1180px]:flex-col">
                     <SectionHeader
@@ -2758,7 +2758,7 @@ export function WorkflowRunDetailPage() {
             ) : null}
 
             {selectedStage === 'AI_REVIEW' ? (
-              <Card className="rounded-md border-border bg-card shadow-sm">
+              <Card className="rounded-md border-border bg-card">
                 <CardHeader className="p-5">
                   <div className="mb-4 flex items-start justify-between gap-4 max-[960px]:flex-col">
                     <SectionHeader
@@ -2862,7 +2862,7 @@ export function WorkflowRunDetailPage() {
             ) : null}
 
             {workflowRun.status === 'DONE' ? (
-              <Card className="rounded-md border-border bg-card shadow-sm">
+              <Card className="rounded-md border-border bg-card">
                 <CardHeader className="p-5">
                   <SectionHeader
                     eyebrow="Git Publish"
@@ -2907,7 +2907,7 @@ export function WorkflowRunDetailPage() {
               className="flex flex-col gap-5 self-start min-[1281px]:sticky min-[1281px]:top-6"
             >
               {isDesignFeedbackVisible ? (
-                <Card className="border-border shadow-sm">
+                <Card className="border-border">
                   <CardContent className="flex flex-col gap-4 p-5">
                     <div className="space-y-1">
                       <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Design Spec</p>
@@ -2948,7 +2948,7 @@ export function WorkflowRunDetailPage() {
                 </Card>
               ) : null}
               {isDemoFeedbackVisible ? (
-                <Card className="border-border shadow-sm">
+                <Card className="border-border">
                   <CardContent className="flex flex-col gap-4 p-5">
                     <div className="space-y-1">
                       <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Demo Feedback</p>
@@ -3004,7 +3004,7 @@ export function WorkflowRunDetailPage() {
           </div>
         </div>
       ) : (
-        <Card className="rounded-md border border-border bg-card shadow-sm">
+        <Card className="rounded-md border border-border bg-card">
           <CardContent className="p-5">
             {loading ? (
               <div className="flex min-h-40 items-center justify-center">

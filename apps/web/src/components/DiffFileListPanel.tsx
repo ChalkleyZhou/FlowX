@@ -225,7 +225,7 @@ export function DiffFileListPanel({
   const treeRoots = buildFileTree(files);
 
   return (
-    <Card className="rounded-2xl border-border bg-card shadow-none">
+    <Card className="rounded-md border-border bg-card shadow-none">
       <CardHeader className="flex flex-row items-start justify-between gap-3 p-4 pb-0">
         <CardTitle className="text-sm">变更文件</CardTitle>
         <span className="text-sm leading-6 text-muted-foreground">{count} 个文件</span>

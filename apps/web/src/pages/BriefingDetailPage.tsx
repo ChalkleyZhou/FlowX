@@ -104,7 +104,7 @@ export function BriefingDetailPage() {
         </Badge>
       </div>
 
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardContent className="grid gap-2 p-5 text-sm sm:grid-cols-2">
           <div>
             <span className="text-muted-foreground">生成时间（北京时间）</span>
@@ -123,7 +123,7 @@ export function BriefingDetailPage() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="Content" title="简报内容" />
         </CardHeader>
@@ -132,13 +132,13 @@ export function BriefingDetailPage() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="Delivery" title="投递记录" />
         </CardHeader>
         <CardContent className="p-5 pt-0">
           {logs.length > 0 ? (
-            <div className="overflow-x-auto rounded-xl border border-border">
+            <div className="overflow-x-auto rounded-md border border-border">
               <table className="min-w-full text-sm">
                 <thead className="bg-muted/40 text-left text-muted-foreground">
                   <tr>

@@ -24,7 +24,7 @@ export function RepositoryBranchCard({
   action,
 }: RepositoryBranchCardProps) {
   return (
-    <Card className="rounded-2xl border-border bg-muted shadow-none">
+    <Card className="rounded-md border-border bg-muted shadow-none">
       <CardHeader className="flex flex-row items-start justify-between gap-4 p-4 pb-0">
         <div className="min-w-0">
           <CardTitle className="text-sm">{name}</CardTitle>

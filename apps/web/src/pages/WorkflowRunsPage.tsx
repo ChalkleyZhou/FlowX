@@ -149,7 +149,7 @@ export function WorkflowRunsPage() {
         <MetricCard label="执行中" value={workflowSummary.running} />
         <MetricCard label="待处理" value={workflowSummary.pending} />
       </div>
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader
             eyebrow="Workflow Runs"

@@ -110,7 +110,7 @@ export function CodeReviewSourcesPage() {
         title="Code Review 数据源"
         description="默认审查工作区全部仓库。仅需在此排除不想纳入每日 Code Review 的仓库；与简报数据源相互独立。"
       />
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="Workspace" title="选择工作区" />
         </CardHeader>
@@ -135,7 +135,7 @@ export function CodeReviewSourcesPage() {
           </Select>
         </CardContent>
       </Card>
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="Repositories" title="仓库列表" />
         </CardHeader>
@@ -150,7 +150,7 @@ export function CodeReviewSourcesPage() {
                 return (
                   <div
                     key={repository.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-4"
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-4"
                   >
                     <div>
                       <div className="font-semibold text-foreground">{repository.name}</div>

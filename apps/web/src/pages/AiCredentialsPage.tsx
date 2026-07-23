@@ -108,7 +108,7 @@ export function AiCredentialsPage() {
         title="AI 凭据设置"
         description="为当前组织配置共享的 Cursor 与 Codex 凭据。工作流执行将使用组织级凭据。"
       />
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="space-y-2">
           <p className="text-sm text-muted-foreground">
             当前状态：
@@ -140,7 +140,7 @@ export function AiCredentialsPage() {
           </form>
         </CardContent>
       </Card>
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="space-y-2">
           <p className="text-sm font-medium text-foreground">Codex / OpenAI 凭据</p>
           <p className="text-sm text-muted-foreground">

@@ -19,11 +19,11 @@ export function SectionHeading({
   className,
 }: SectionHeadingProps) {
   return (
-    <div className={cn('min-w-0 space-y-2', className)}>
+    <div className={cn('min-w-0 space-y-1.5', className)}>
       {eyebrow ? (
-        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">{eyebrow}</div>
+        <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{eyebrow}</div>
       ) : null}
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <div className={cn('text-balance font-semibold tracking-tight text-foreground', titleClassName)}>{title}</div>
         {description ? (
           <div className={cn('max-w-3xl text-sm leading-6 text-muted-foreground', descriptionClassName)}>{description}</div>

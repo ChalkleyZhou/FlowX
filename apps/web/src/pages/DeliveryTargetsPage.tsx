@@ -171,7 +171,7 @@ export function DeliveryTargetsPage() {
         title="投递目标"
         description="按项目配置简报与 Code Review 的钉钉工作通知与群机器人投递目标；每个目标可分别开启用于简报、用于 Code Review，发送时仅投递到对应项目且启用了该用途的目标。"
       />
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="Create" title="新增投递目标" />
         </CardHeader>
@@ -256,7 +256,7 @@ export function DeliveryTargetsPage() {
           </div>
         </CardContent>
       </Card>
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="Targets" title="目标列表" />
         </CardHeader>

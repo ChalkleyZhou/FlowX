@@ -181,7 +181,7 @@ function ProjectTargetSection({
   const activeCount = targets.filter((item) => item.isActive).length;
 
   return (
-    <div className="rounded-xl border border-border">
+    <div className="rounded-md border border-border">
       <button
         type="button"
         className="flex w-full items-center gap-3 px-4 py-3 text-left"

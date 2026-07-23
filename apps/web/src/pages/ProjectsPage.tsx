@@ -181,7 +181,7 @@ export function ProjectsPage() {
         <MetricCard label="涉及工作区" value={summary.workspaceCount} />
         <MetricCard label="需求数量" value={summary.requirementCount} />
       </div>
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader
             eyebrow="Projects"

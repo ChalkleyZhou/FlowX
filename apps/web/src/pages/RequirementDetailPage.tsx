@@ -62,7 +62,7 @@ export function RequirementDetailPage() {
 
   if (!requirement) {
     return (
-      <Card className="border-border bg-card shadow-sm">
+      <Card className="border-border bg-card">
         <CardContent className="p-5">
           <p className="text-sm text-muted-foreground">需求未找到</p>
         </CardContent>

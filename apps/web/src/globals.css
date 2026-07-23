@@ -4,65 +4,47 @@
 
 @layer base {
   :root {
-    /* ========== DTCG 颜色令牌 ========== */
-
-    /* Primary */
-    --color-primary-default: 217.2 91.2% 59.8%;
-    --color-primary-foreground: 210 40% 98%;
-    --color-primary-hover: 217.2 91.2% 48%;
-    --color-primary-soft: 217.2 91.2% 94%;
-
-    /* Secondary */
-    --color-secondary-default: 210 40% 96.1%;
-    --color-secondary-foreground: 222.2 47.4% 11.2%;
-
-    /* Destructive / Danger */
-    --color-danger-default: 0 72.2% 50.6%;
-    --color-danger-foreground: 210 40% 98%;
-
-    /* Success */
-    --color-success-default: 142 71% 45%;
-    --color-success-foreground: 210 40% 98%;
-
-    /* Warning */
-    --color-warning-default: 38 92% 50%;
-    --color-warning-foreground: 222.2 47.4% 11.2%;
-
-    /* Muted */
-    --color-muted-default: 210 40% 96.1%;
-    --color-muted-foreground: 215.4 16.3% 46.9%;
-
-    /* Accent */
-    --color-accent-default: 210 40% 96.1%;
-    --color-accent-foreground: 222.2 47.4% 11.2%;
-
-    /* Background / Foreground */
-    --color-background: 210 40% 98%;
-    --color-foreground: 222.2 47.4% 11.2%;
-
-    /* Surface */
+    /* FlowX Control Room: neutral canvas, ink navigation, black action color. */
+    --color-primary-default: 0 0% 7%;
+    --color-primary-foreground: 0 0% 100%;
+    --color-primary-hover: 0 0% 16%;
+    --color-primary-soft: 0 0% 94%;
+    --color-secondary-default: 220 14% 96%;
+    --color-secondary-foreground: 222 47% 11%;
+    --color-danger-default: 0 72% 51%;
+    --color-danger-foreground: 0 0% 100%;
+    --color-success-default: 158 64% 38%;
+    --color-success-foreground: 0 0% 100%;
+    --color-warning-default: 31 92% 45%;
+    --color-warning-foreground: 24 10% 10%;
+    --color-muted-default: 220 14% 96%;
+    --color-muted-foreground: 215 16% 42%;
+    --color-accent-default: 173 44% 94%;
+    --color-accent-foreground: 173 61% 24%;
+    --color-background: 220 20% 97%;
+    --color-foreground: 222 47% 11%;
     --color-surface-default: 0 0% 100%;
-    --color-surface-foreground: 222.2 47.4% 11.2%;
-    --color-surface-subtle: 210 40% 99%;
-
-    /* Card */
+    --color-surface-foreground: 222 47% 11%;
+    --color-surface-subtle: 220 20% 98%;
     --color-card-default: 0 0% 100%;
-    --color-card-foreground: 222.2 47.4% 11.2%;
-
-    /* Popover */
+    --color-card-foreground: 222 47% 11%;
     --color-popover-default: 0 0% 100%;
-    --color-popover-foreground: 222.2 47.4% 11.2%;
+    --color-popover-foreground: 222 47% 11%;
+    --color-border: 220 13% 88%;
+    --color-border-strong: 220 10% 74%;
+    --color-input: 220 13% 82%;
+    --color-ring: 0 0% 7%;
+    --nav-background: 0 0% 100%;
+    --nav-border: 0 0% 88%;
+    --nav-text: 0 0% 38%;
+    --nav-hover: 0 0% 96%;
+    --nav-active: 0 0% 92%;
+    --nav-accent: 0 0% 7%;
 
-    /* Border / Input / Ring */
-    --color-border: 214.3 31.8% 91.4%;
-    --color-border-strong: 214.3 31.8% 80%;
-    --color-input: 214.3 31.8% 91.4%;
-    --color-ring: 217.2 91.2% 59.8%;
-
-    /* ========== shadcn/ui 扁平别名 ========== */
-
+    /* Compatibility aliases for older pages. New code uses semantic aliases above. */
     --primary: var(--color-primary-default);
     --primary-foreground: var(--color-primary-foreground);
+    --primary-soft: var(--color-primary-soft);
     --secondary: var(--color-secondary-default);
     --secondary-foreground: var(--color-secondary-foreground);
     --destructive: var(--color-danger-default);
@@ -80,8 +62,10 @@
     --border: var(--color-border);
     --input: var(--color-input);
     --ring: var(--color-ring);
-
-    /* ========== 排版令牌 ========== */
+    --surface: var(--color-surface-default);
+    --surface-muted: var(--color-muted-default);
+    --text-secondary: 215 16% 42%;
+    --text-tertiary: 215 12% 54%;
 
     --font-size-xs: 12px;
     --font-size-xs--line-height: 16px;
@@ -92,11 +76,9 @@
     --font-size-lg: 16px;
     --font-size-lg--line-height: 24px;
     --font-size-xl: 18px;
-    --font-size-xl--line-height: 28px;
+    --font-size-xl--line-height: 26px;
     --font-size-2xl: 24px;
-    --font-size-2xl--line-height: 32px;
-
-    /* ========== 间距令牌 ========== */
+    --font-size-2xl--line-height: 30px;
 
     --space-1: 4px;
     --space-2: 8px;
@@ -115,89 +97,62 @@
     --space-15: 60px;
     --space-16: 64px;
 
-    /* ========== 圆角令牌 ========== */
-
-    --radius-sm: 10px;
-    --radius-md: 14px;
-    --radius-lg: 18px;
-
-    /* ========== 阴影令牌（亮色） ========== */
-
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
     --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
-    --shadow-md: 0 12px 32px rgba(15, 23, 42, 0.06);
-    --shadow-lg: 0 24px 48px rgba(15, 23, 42, 0.08);
-
-    /* ========== 过渡令牌 ========== */
-
-    --transition-theme: 150ms ease;
+    --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08);
+    --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.12);
   }
 
-  /* ========== 暗色主题 ========== */
   .dark {
-    /* Primary */
-    --color-primary-default: 217.2 91.2% 68%;
-    --color-primary-foreground: 222.2 47.4% 11.2%;
-    --color-primary-hover: 217.2 91.2% 74%;
-    --color-primary-soft: 217.2 91.2% 18%;
-
-    /* Secondary */
-    --color-secondary-default: 217.2 33% 17%;
-    --color-secondary-foreground: 210 40% 98%;
-
-    /* Destructive / Danger */
-    --color-danger-default: 0 62% 55%;
-    --color-danger-foreground: 210 40% 98%;
-
-    /* Success */
-    --color-success-default: 142 71% 52%;
-    --color-success-foreground: 210 40% 98%;
-
-    /* Warning */
-    --color-warning-default: 38 92% 56%;
-    --color-warning-foreground: 222.2 47.4% 11.2%;
-
-    /* Muted */
-    --color-muted-default: 217.2 33% 17%;
-    --color-muted-foreground: 215.4 16.3% 63%;
-
-    /* Accent */
-    --color-accent-default: 217.2 33% 17%;
-    --color-accent-foreground: 210 40% 98%;
-
-    /* Background / Foreground */
-    --color-background: 222.2 47.4% 7%;
-    --color-foreground: 210 40% 98%;
-
-    /* Surface */
-    --color-surface-default: 222.2 47.4% 10%;
-    --color-surface-foreground: 210 40% 98%;
-    --color-surface-subtle: 222.2 47.4% 12%;
-
-    /* Card */
-    --color-card-default: 222.2 47.4% 10%;
-    --color-card-foreground: 210 40% 98%;
-
-    /* Popover */
-    --color-popover-default: 222.2 47.4% 10%;
-    --color-popover-foreground: 210 40% 98%;
-
-    /* Border / Input / Ring */
-    --color-border: 217.2 33% 17%;
-    --color-border-strong: 217.2 33% 25%;
-    --color-input: 217.2 33% 17%;
-    --color-ring: 217.2 91.2% 68%;
-
-    /* 阴影令牌（暗色） */
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
-    --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.3);
-    --shadow-lg: 0 24px 48px rgba(0, 0, 0, 0.4);
+    /* Dark mode reverses the ink action color so it remains readable on dark surfaces. */
+    --color-primary-default: 0 0% 96%;
+    --color-primary-foreground: 0 0% 7%;
+    --color-primary-hover: 0 0% 88%;
+    --color-primary-soft: 0 0% 22%;
+    --color-secondary-default: 217 19% 20%;
+    --color-secondary-foreground: 210 20% 96%;
+    --color-muted-default: 217 19% 20%;
+    --color-muted-foreground: 215 16% 66%;
+    --color-accent-default: 173 32% 18%;
+    --color-accent-foreground: 173 45% 78%;
+    --color-background: 222 30% 8%;
+    --color-foreground: 210 20% 96%;
+    --color-surface-default: 222 25% 11%;
+    --color-surface-foreground: 210 20% 96%;
+    --color-surface-subtle: 222 25% 14%;
+    --color-card-default: 222 25% 11%;
+    --color-card-foreground: 210 20% 96%;
+    --color-popover-default: 222 25% 11%;
+    --color-popover-foreground: 210 20% 96%;
+    --color-border: 217 19% 23%;
+    --color-border-strong: 217 16% 34%;
+    --color-input: 217 19% 28%;
+    --color-ring: 0 0% 96%;
+    --nav-background: 0 0% 5%;
+    --nav-border: 0 0% 18%;
+    --nav-text: 0 0% 66%;
+    --nav-hover: 0 0% 12%;
+    --nav-active: 0 0% 18%;
+    --nav-accent: 0 0% 100%;
+    --surface-muted: var(--color-muted-default);
+    --text-secondary: 215 16% 66%;
+    --text-tertiary: 215 12% 54%;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.28);
+    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.4);
   }
 
-  * {
-    @apply border-border;
+  * { @apply border-border; }
+
+  html {
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    color-scheme: light;
   }
 
-  body {
-    @apply bg-background text-foreground antialiased;
-  }
+  html.dark { color-scheme: dark; }
+  body { @apply min-w-[320px] bg-background text-foreground antialiased; }
+  ::selection { @apply bg-primary/20 text-foreground; }
+  :focus-visible { @apply outline-none ring-2 ring-ring/40 ring-offset-2 ring-offset-background; }
 }

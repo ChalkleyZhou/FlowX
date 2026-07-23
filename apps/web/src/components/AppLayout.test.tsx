@@ -339,5 +339,9 @@ describe('AppLayout', () => {
     const text = container.textContent ?? '';
     expect(text).toContain('设置');
     expect(text).not.toContain('设置与帮助');
+    expect(container.querySelector('button[aria-label="设置与帮助"]')).toBeTruthy();
+    expect(container.querySelector('button[aria-label="退出登录"]')).toBeTruthy();
+    expect(container.querySelector('[title="Demo User"]')).toBeTruthy();
+    expect(text).not.toContain('FlowX Org');
   });
 });

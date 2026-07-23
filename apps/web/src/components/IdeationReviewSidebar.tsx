@@ -54,7 +54,7 @@ export function IdeationReviewSidebar({
     </Button>
   );
   return (
-    <Card className="border-border shadow-sm lg:sticky lg:top-6">
+    <Card className="border-border lg:sticky lg:top-6">
       <CardContent className="flex flex-col gap-4 p-5">
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Review</p>

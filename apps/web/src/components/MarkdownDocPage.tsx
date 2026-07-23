@@ -65,7 +65,7 @@ export function MarkdownDocPage({
   return (
     <>
       <PageHeader eyebrow={eyebrow} title={title} description={description} />
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardContent className="p-6">
           {loading ? (
             <div className="flex min-h-40 items-center justify-center">

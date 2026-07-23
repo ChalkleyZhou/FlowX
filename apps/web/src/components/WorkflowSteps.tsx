@@ -45,8 +45,8 @@ export function WorkflowSteps({ current, items, onChange, className }: WorkflowS
           >
             <Card
               className={cn(
-                'rounded-2xl border-border bg-muted text-left shadow-none transition-all hover:border-border-strong hover:bg-card',
-                isActive && 'border-primary/30 bg-primary/5 shadow-sm',
+                'rounded-md border-border bg-muted text-left shadow-none transition-all hover:border-border-strong hover:bg-card',
+                isActive && 'border-primary/30 bg-primary/5',
                 item.status === 'finish' && 'border-success/30 bg-success/5',
                 item.status === 'process' && 'border-warning/30 bg-warning/5',
                 item.status === 'error' && 'border-danger/30 bg-danger/5',

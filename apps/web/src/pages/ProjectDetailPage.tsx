@@ -83,13 +83,13 @@ export function ProjectDetailPage() {
         <ProjectCodeReviewConfigPanel projectId={projectId} />
       </div>
 
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="Requirements" title="需求列表" />
         </CardHeader>
         <CardContent className="p-5 pt-0">
           {(project.requirements ?? []).length > 0 ? (
-            <div className="overflow-x-auto rounded-xl border border-border">
+            <div className="overflow-x-auto rounded-md border border-border">
               <table className="min-w-full text-sm">
                 <thead className="bg-muted/40 text-left text-muted-foreground">
                   <tr>

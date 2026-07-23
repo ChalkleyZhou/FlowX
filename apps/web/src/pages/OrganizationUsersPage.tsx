@@ -219,7 +219,7 @@ export function OrganizationUsersPage() {
           title="用户管理"
           description="管理当前组织内的成员账号与权限。"
         />
-        <Card className="rounded-2xl border border-border bg-card shadow-sm">
+        <Card className="rounded-md border border-border bg-card">
           <CardContent className="p-5">
             <EmptyState
               title="未选择组织"
@@ -250,7 +250,7 @@ export function OrganizationUsersPage() {
         <MetricCard label="正常账号" value={summary.activeCount} />
       </div>
 
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader
             eyebrow="Organization"

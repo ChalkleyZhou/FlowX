@@ -12,7 +12,7 @@ interface ContextPanelProps {
 
 export function ContextPanel({ eyebrow, title, description, children, className }: ContextPanelProps) {
   return (
-    <Card className={cn('border-border bg-card shadow-sm', className)}>
+    <Card className={cn('border-border bg-card', className)}>
       <CardHeader className="p-5">
         <div className="space-y-2">
           {eyebrow ? (

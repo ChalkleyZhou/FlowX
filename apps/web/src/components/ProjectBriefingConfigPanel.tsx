@@ -53,7 +53,7 @@ export function ProjectBriefingConfigPanel({ projectId }: { projectId: string })
   }
 
   return (
-    <Card className="rounded-2xl border border-border bg-card shadow-sm">
+    <Card className="rounded-md border border-border bg-card">
       <CardHeader className="pb-4">
         <SectionHeader
           eyebrow="Briefings"

@@ -4,9 +4,8 @@ import { useAuth } from '../auth';
 import { api, toApiUrl } from '../api';
 import { cn } from '../lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
-import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
-import { Card, CardContent, CardHeader } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { FlowXLogo } from '../components/FlowXLogo';
 import { Input as UiInput } from '../components/ui/input';
@@ -237,7 +236,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] px-6 py-8 max-[780px]:px-3 max-[780px]:py-5">
+    <div className="min-h-screen bg-background">
       <Dialog
         open={organizationModalOpen}
         onOpenChange={(open) => {
@@ -255,10 +254,10 @@ export function LoginPage() {
           </DialogHeader>
           <div className="flex flex-col gap-[10px]">
             {organizations.map((organization) => (
-              <div key={organization.id} className="flex items-center justify-between gap-4 rounded-[14px] border border-[var(--border)] bg-[var(--surface-muted)] p-[14px]">
+              <div key={organization.id} className="flex items-center justify-between gap-4 rounded-md border border-border bg-muted p-3.5">
                 <div className="min-w-0">
                   <div className="text-sm font-semibold text-foreground">{organization.name}</div>
-                  <div className="mt-1 overflow-wrap-anywhere text-xs text-[var(--text-tertiary)]">{organization.id}</div>
+                  <div className="mt-1 overflow-wrap-anywhere text-xs text-muted-foreground">{organization.id}</div>
                 </div>
                 <Button disabled={submitting} onClick={() => void confirmOrganization(organization.id)}>
                   {submitting ? '处理中...' : '进入组织'}
@@ -269,52 +268,21 @@ export function LoginPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="mx-auto grid w-full max-w-[1200px] items-start gap-6 [grid-template-columns:minmax(0,1.08fr)_440px] max-[1280px]:grid-cols-1">
-        <section className="rounded-2xl border border-border bg-card p-8 shadow-[var(--shadow-md)] max-[780px]:order-2 max-[780px]:p-5">
-          <FlowXLogo size="lg" className="mb-5" />
-          <Badge className="mb-4" variant="outline">
-            Product Collaboration
-          </Badge>
-          <h1 className="m-0 text-[clamp(34px,4vw,46px)] font-bold leading-[1.08] tracking-[-0.02em] text-foreground">
-            AI 产研效能平台
-          </h1>
-          <h2 className="mt-3 text-[clamp(20px,2.2vw,28px)] font-semibold leading-[1.25] text-foreground">
-            让需求、研发与审查在同一条可控流程中协同
-          </h2>
-          <p className="mb-0 mt-4 max-w-[700px] text-base leading-[1.7] text-muted-foreground">
-            覆盖从需求构思、方案确认、执行落地到审查闭环的全链路，让每次迭代都有记录、有反馈、可继续推进。
-          </p>
-          <div className="mt-7 grid gap-3 [grid-template-columns:repeat(3,minmax(0,1fr))] max-[1280px]:grid-cols-1">
-            <div className="rounded-lg border border-border bg-[var(--surface-subtle)] p-4">
-              <span className="text-xs font-semibold uppercase tracking-[0.08em] text-primary">End-to-End Collaboration</span>
-              <h3 className="mt-2 text-base font-semibold leading-[1.4] text-foreground">全链路产研协同</h3>
-              <p className="mt-2 text-sm leading-[1.6] text-muted-foreground">需求、方案、执行、审查、问题项在同一流程中连续流转。</p>
-            </div>
-            <div className="rounded-lg border border-border bg-[var(--surface-subtle)] p-4">
-              <span className="text-xs font-semibold uppercase tracking-[0.08em] text-primary">Structured Assets</span>
-              <h3 className="mt-2 text-base font-semibold leading-[1.4] text-foreground">结构化过程资产</h3>
-              <p className="mt-2 text-sm leading-[1.6] text-muted-foreground">任务拆解、技术方案、执行结果与评审结论可沉淀、可复用。</p>
-            </div>
-            <div className="rounded-lg border border-border bg-[var(--surface-subtle)] p-4">
-              <span className="text-xs font-semibold uppercase tracking-[0.08em] text-primary">Iteration Loop</span>
-              <h3 className="mt-2 text-base font-semibold leading-[1.4] text-foreground">迭代闭环提效</h3>
-              <p className="mt-2 text-sm leading-[1.6] text-muted-foreground">问题项与缺陷可回流到下一轮研发，持续优化交付质量。</p>
-            </div>
-          </div>
-          <p className="mt-5 text-sm leading-[1.65] text-muted-foreground">
-            面向团队协作场景设计，支持持续迭代与审查闭环。
-          </p>
-        </section>
+      <header className="mx-auto flex w-full max-w-[1120px] items-center justify-between border-b border-border px-6 py-6 max-[780px]:px-4 max-[780px]:py-5">
+        <FlowXLogo size="md" />
+        <span className="hidden text-sm text-muted-foreground sm:block">AI 产研效能平台</span>
+      </header>
 
-        <Card className="w-full rounded-2xl border border-border bg-card shadow-[var(--shadow-lg)] max-[780px]:order-1">
-          <CardHeader className="mb-[18px] p-6 pb-0">
-            <span className="inline-block mb-1.5 text-primary text-xs font-bold tracking-[0.08em] uppercase">认证中心</span>
-            <h2 className="mt-[10px] text-2xl font-bold leading-[1.2] text-foreground">进入 AI 产研效能平台</h2>
-            <p className="mt-[10px] text-[var(--text-secondary)] leading-[1.65]">
-              使用账号或企业身份登录，进入统一的产研协作与迭代闭环工作台。
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-6 p-5 pt-0">
+      <main className="flex min-h-[calc(100vh-89px)] items-start justify-center px-4 pb-16 pt-12 max-[780px]:min-h-0 max-[780px]:px-3 max-[780px]:pb-8 max-[780px]:pt-8">
+        <div className="w-full max-w-[440px]">
+          <div className="mb-5">
+            <p className="m-0 text-xs font-semibold uppercase tracking-[0.12em] text-primary">Workspace access</p>
+            <h1 className="mt-3 text-3xl font-bold leading-tight tracking-tight text-foreground">登录 FlowX</h1>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">进入你的 AI 产研效能工作台。</p>
+          </div>
+
+          <Card className="w-full rounded-lg border border-border bg-card shadow-md">
+            <CardContent className="space-y-6 p-6 max-[420px]:p-5">
 
           {errorText ? (
             <Alert variant="destructive" className="mb-[18px]">
@@ -323,13 +291,13 @@ export function LoginPage() {
             </Alert>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-2 rounded-[14px] border border-[var(--border)] bg-[var(--surface-muted)] p-1">
+          <div className="grid grid-cols-2 gap-2 rounded-md border border-border bg-muted p-1">
             <button
               type="button"
               className={cn(
-                'h-10 rounded-[10px] border-0 bg-transparent text-sm font-semibold text-[var(--text-secondary)] transition-[background-color,color,box-shadow] duration-150',
+                'h-10 rounded-sm border-0 bg-transparent text-sm font-semibold text-muted-foreground transition-[background-color,color,box-shadow] duration-150',
                 'hover:text-foreground',
-                loginMode === 'password' && 'bg-[var(--surface)] text-foreground shadow-[var(--shadow-sm)]',
+                loginMode === 'password' && 'bg-card text-foreground',
               )}
               onClick={() => setLoginMode('password')}
             >
@@ -338,9 +306,9 @@ export function LoginPage() {
             <button
               type="button"
               className={cn(
-                'h-10 rounded-[10px] border-0 bg-transparent text-sm font-semibold text-[var(--text-secondary)] transition-[background-color,color,box-shadow] duration-150',
+                'h-10 rounded-sm border-0 bg-transparent text-sm font-semibold text-muted-foreground transition-[background-color,color,box-shadow] duration-150',
                 'hover:text-foreground',
-                loginMode === 'register' && 'bg-[var(--surface)] text-foreground shadow-[var(--shadow-sm)]',
+                loginMode === 'register' && 'bg-card text-foreground',
               )}
               onClick={() => setLoginMode('register')}
             >
@@ -392,7 +360,7 @@ export function LoginPage() {
                 {loginMode === 'password' ? '账号登录' : '注册并登录'}
               </Button>
 
-              <div className="my-[14px] mb-[10px] text-center text-[var(--text-tertiary)]">或使用企业身份登录</div>
+              <div className="my-[14px] mb-[10px] text-center text-muted-foreground">或使用企业身份登录</div>
 
               <Button
                 type="button"
@@ -406,9 +374,11 @@ export function LoginPage() {
               </Button>
             </div>
           </form>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+          <p className="mt-4 text-center text-xs leading-5 text-muted-foreground">企业用户可使用钉钉身份登录。</p>
+        </div>
+      </main>
     </div>
   );
 }

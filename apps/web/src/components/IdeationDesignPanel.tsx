@@ -497,7 +497,7 @@ export function IdeationDesignPanel({
 
       {/* Demo Preview */}
       {demoPages && demoPages.length > 0 && (
-        <Card className="border-border shadow-sm">
+        <Card className="border-border">
           <CardContent className="flex flex-col gap-3 p-5">
             <SectionLabel>本地预览</SectionLabel>
 
@@ -572,7 +572,7 @@ export function IdeationDesignPanel({
       {/* Design content */}
       {design && (
         <div className={isWaitingConfirmation ? 'grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start' : ''}>
-          <Card className="border-border shadow-sm">
+          <Card className="border-border">
             <CardContent className="flex flex-col gap-5 p-5">
               <ReviewSection
                 title="设计概述"

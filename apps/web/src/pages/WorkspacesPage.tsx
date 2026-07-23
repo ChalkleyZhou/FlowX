@@ -519,10 +519,10 @@ export function WorkspacesPage() {
             </DialogDescription>
           </DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={(event) => void saveDeployConfig(event)}>
-            <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
+            <div className="rounded-md border border-border bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
               当前仓库：{deployConfigRepository?.repository.name ?? '未选择'}。推荐把 `env / ops / k8s_name / project_name / jenkins / id / folder` 这些默认值维护在这里。
             </div>
-            <label className="flex items-center gap-3 rounded-2xl border border-border px-4 py-3 text-sm text-foreground">
+            <label className="flex items-center gap-3 rounded-md border border-border px-4 py-3 text-sm text-foreground">
               <input
                 type="checkbox"
                 checked={deployConfigDraft.enabled}
@@ -579,7 +579,7 @@ export function WorkspacesPage() {
         <MetricCard label="项目数量" value={workspaceSummary.projectCount} />
         <MetricCard label="关联需求数" value={workspaceSummary.requirementCount} />
       </div>
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader
             eyebrow="Project Space"

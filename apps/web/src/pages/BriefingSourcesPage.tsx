@@ -243,7 +243,7 @@ export function BriefingSourcesPage() {
         title="简报数据源"
         description="先在工作区创建数据源，再按列表中的 URL 与 Secret 去 GitLab/GitHub 配置 webhook。"
       />
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="Create" title="新增数据源" />
         </CardHeader>
@@ -302,7 +302,7 @@ export function BriefingSourcesPage() {
           </div>
         </CardContent>
       </Card>
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="Sources" title="数据源列表" />
         </CardHeader>
@@ -315,7 +315,7 @@ export function BriefingSourcesPage() {
                   <div
                     key={source.id}
                     className={cn(
-                      'rounded-xl border border-border p-4',
+                      'rounded-md border border-border p-4',
                       showSetup && 'border-primary/40 ring-1 ring-primary/20',
                     )}
                   >

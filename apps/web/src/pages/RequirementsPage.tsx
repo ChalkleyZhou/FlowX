@@ -291,7 +291,7 @@ export function RequirementsPage() {
           </DialogHeader>
           {launchModalRequirement ? (
             <div className="flex flex-col gap-4">
-              <div className="rounded-xl border border-border bg-muted px-4 py-3">
+              <div className="rounded-md border border-border bg-muted px-4 py-3">
                 <div className="text-sm font-semibold text-foreground">{launchModalRequirement.title}</div>
                 <div className="mt-1 text-sm leading-6 text-muted-foreground">
                   默认范围：{renderRepositoryScope(launchModalRequirement)}
@@ -482,7 +482,7 @@ export function RequirementsPage() {
         <MetricCard label="涉及工作区" value={requirementSummary.workspaceCount} />
         <MetricCard label="涉及项目" value={requirementSummary.projectCount} />
       </div>
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader
             eyebrow="Requirement Pool"

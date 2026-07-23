@@ -17,7 +17,7 @@ export function DiffViewerPanel({
   diffText,
 }: DiffViewerPanelProps) {
   return (
-    <Card className="rounded-2xl border-border bg-muted shadow-none">
+    <Card className="rounded-md border-border bg-muted shadow-none">
       <CardHeader className="p-4 pb-0">
         <div>
           <CardTitle className="text-sm">
@@ -31,8 +31,8 @@ export function DiffViewerPanel({
       </CardHeader>
       <CardContent className="p-4">
         {diffText ? (
-          <ScrollArea className="h-[36rem] rounded-2xl">
-            <pre className="m-0 max-h-[720px] overflow-auto rounded-[14px] border border-[var(--border)] bg-slate-950 px-4 py-[14px] font-mono text-xs leading-[1.6] text-slate-200 overflow-wrap-anywhere whitespace-pre-wrap">
+          <ScrollArea className="h-[36rem] rounded-md">
+            <pre className="m-0 max-h-[720px] overflow-auto rounded-md border border-border bg-foreground px-4 py-[14px] font-mono text-xs leading-[1.6] text-background overflow-wrap-anywhere whitespace-pre-wrap">
               {diffText}
             </pre>
           </ScrollArea>

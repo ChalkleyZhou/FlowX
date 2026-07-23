@@ -170,12 +170,12 @@ export function BriefingsPage() {
         <MetricCard label="当前简报" value={briefings.length} />
       </div>
 
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="Generate" title="生成简报" />
         </CardHeader>
         <CardContent className="p-5 pt-0">
-          <div className="rounded-xl border border-border bg-muted/70 p-3">
+          <div className="rounded-md border border-border bg-muted/70 p-3">
             <div className="flex flex-wrap items-end gap-3">
               <div className="flex min-w-[220px] flex-1 flex-col gap-1.5 sm:max-w-xs">
                 <label className="text-xs font-medium text-muted-foreground">项目</label>
@@ -251,7 +251,7 @@ export function BriefingsPage() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
           <SectionHeader eyebrow="History" title="简报历史" />
         </CardHeader>
@@ -261,7 +261,7 @@ export function BriefingsPage() {
               <Spinner className="h-7 w-7" />
             </div>
           ) : briefings.length > 0 ? (
-            <div className="overflow-x-auto rounded-xl border border-border">
+            <div className="overflow-x-auto rounded-md border border-border">
               <table className="min-w-full text-sm">
                 <thead className="bg-muted/40 text-left text-muted-foreground">
                   <tr>

@@ -1,0 +1,30 @@
+{
+  "$schema": "design-system-audit.tokens",
+  "meta": {
+    "generatedFrom": [
+      "apps/web/src/globals.css",
+      "apps/web/src/design-tokens.ts",
+      "apps/web/tailwind.config.ts"
+    ],
+    "platforms": ["Web desktop", "Responsive Web"],
+    "notes": ["CSS variables are the source of truth; legacy hard-coded classes remain in migration scope."]
+  },
+  "tokens": {
+    "color": {
+      "primary": { "$type": "color", "$value": "hsl(0 0% 7%)", "description": "亮色主题主操作和活动态；暗色主题反相为白色", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" },
+      "background": { "$type": "color", "$value": "hsl(220 20% 97%)", "description": "主画布", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" },
+      "foreground": { "$type": "color", "$value": "hsl(222 47% 11%)", "description": "主要文字", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" },
+      "success": { "$type": "color", "$value": "hsl(158 64% 38%)", "description": "成功状态", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" },
+      "warning": { "$type": "color", "$value": "hsl(31 92% 45%)", "description": "警告状态", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" },
+      "danger": { "$type": "color", "$value": "hsl(0 72% 51%)", "description": "错误和破坏性操作", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" }
+    },
+    "typography": {
+      "body": { "$type": "typography", "$value": { "fontFamily": "Inter, system-ui, PingFang SC, Microsoft YaHei, sans-serif", "fontSize": "14px", "lineHeight": "20px", "fontWeight": 400 }, "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" },
+      "pageTitle": { "$type": "typography", "$value": { "fontSize": "24px", "lineHeight": "30px", "fontWeight": 600 }, "source": "apps/web/src/components/PageHeader.tsx", "platforms": ["Web"], "confidence": "high" }
+    },
+    "spacing": { "unit": { "$type": "dimension", "$value": "4px", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" }, "pageGutter": { "$type": "dimension", "$value": "32px", "source": "apps/web/src/components/AppLayout.tsx", "platforms": ["Web"], "confidence": "high" } },
+    "radius": { "sm": { "$type": "dimension", "$value": "4px", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" }, "md": { "$type": "dimension", "$value": "6px", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" }, "lg": { "$type": "dimension", "$value": "8px", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" } },
+    "shadow": { "sm": { "$type": "shadow", "$value": "0 1px 2px rgba(15, 23, 42, 0.04)", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" }, "overlay": { "$type": "shadow", "$value": "0 8px 24px rgba(15, 23, 42, 0.08)", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" } },
+    "motion": { "fast": { "$type": "duration", "$value": "150ms", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "medium" } }
+  }
+}

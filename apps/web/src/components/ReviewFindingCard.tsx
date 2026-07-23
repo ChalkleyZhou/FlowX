@@ -38,7 +38,7 @@ export function ReviewFindingCard({
   footer,
 }: ReviewFindingCardProps) {
   return (
-    <Card className="rounded-2xl border-border bg-muted shadow-none">
+    <Card className="rounded-md border-border bg-muted shadow-none">
       <CardHeader className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <CardTitle className="text-sm">{title}</CardTitle>

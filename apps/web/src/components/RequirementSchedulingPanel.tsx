@@ -92,7 +92,7 @@ export function RequirementSchedulingPanel({ requirement, onChanged }: Requireme
   }
 
   return (
-    <Card id="scheduling" className="rounded-2xl border border-border bg-card shadow-sm scroll-mt-6">
+    <Card id="scheduling" className="rounded-md border border-border bg-card scroll-mt-6">
       <CardHeader className="pb-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <SectionHeading
@@ -159,7 +159,7 @@ export function RequirementSchedulingPanel({ requirement, onChanged }: Requireme
             <Spinner className="h-6 w-6" />
           </div>
         ) : assignments.length > 0 ? (
-          <div className="overflow-x-auto rounded-xl border border-border">
+          <div className="overflow-x-auto rounded-md border border-border">
             <table className="min-w-full text-sm">
               <thead className="bg-muted/40 text-left text-muted-foreground">
                 <tr>

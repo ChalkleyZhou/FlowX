@@ -22,6 +22,7 @@ const config: Config = {
         primary: {
           DEFAULT: 'hsl(var(--primary))',
           foreground: 'hsl(var(--primary-foreground))',
+          soft: 'hsl(var(--primary-soft))',
         },
         secondary: {
           DEFAULT: 'hsl(var(--secondary))',
@@ -64,11 +65,22 @@ const config: Config = {
           foreground: 'hsl(var(--color-surface-foreground))',
           subtle: 'hsl(var(--color-surface-subtle))',
         },
+        nav: {
+          DEFAULT: 'hsl(var(--nav-background))',
+          border: 'hsl(var(--nav-border))',
+          text: 'hsl(var(--nav-text))',
+          hover: 'hsl(var(--nav-hover))',
+          active: 'hsl(var(--nav-active))',
+          accent: 'hsl(var(--nav-accent))',
+        },
       },
       borderRadius: {
+        DEFAULT: 'var(--radius-md)',
         lg: 'var(--radius-lg)',
         md: 'var(--radius-md)',
         sm: 'var(--radius-sm)',
+        xl: 'var(--radius-lg)',
+        '2xl': 'var(--radius-lg)',
       },
       boxShadow: {
         sm: 'var(--shadow-sm)',

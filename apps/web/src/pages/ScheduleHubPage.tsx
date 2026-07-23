@@ -183,7 +183,7 @@ export function ScheduleHubPage() {
         )}
       />
 
-      <Card className="mb-4 rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="mb-4 rounded-md border border-border bg-card">
         <CardContent className="space-y-4 p-4">
           <div className="flex flex-wrap items-end gap-4">
             <FilterField label="项目">
@@ -307,7 +307,7 @@ export function ScheduleHubPage() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardContent className="p-5">
           <ScheduleGantt query={ganttQuery} refreshToken={ganttRefreshToken} />
         </CardContent>

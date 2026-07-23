@@ -12,12 +12,12 @@ interface PageHeaderProps {
 
 export function PageHeader({ eyebrow, title, description, actions, className }: PageHeaderProps) {
   return (
-    <div className={cn('flex flex-col gap-5 py-1 md:flex-row md:items-start md:justify-between', className)}>
+    <div className={cn('flex flex-col gap-4 border-b border-border pb-5 md:flex-row md:items-start md:justify-between', className)}>
       <SectionHeading
         eyebrow={eyebrow}
         title={title}
         description={description}
-        titleClassName="text-3xl font-bold"
+        titleClassName="text-2xl font-semibold leading-8"
       />
       {actions ? <div className="flex shrink-0 flex-wrap items-center gap-3">{actions}</div> : null}
     </div>

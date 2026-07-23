@@ -107,7 +107,7 @@ export function ImageAttachmentPicker({
           {attachments.map((attachment) => (
             <div
               key={attachment.id}
-              className="relative overflow-hidden rounded-xl border border-border bg-muted/30"
+              className="relative overflow-hidden rounded-md border border-border bg-muted/30"
             >
               <img
                 src={attachment.previewUrl}
@@ -132,7 +132,7 @@ export function ImageAttachmentPicker({
           ))}
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
+        <div className="rounded-md border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
           可点击「添加图片」，或在当前区域直接粘贴截图。
         </div>
       )}

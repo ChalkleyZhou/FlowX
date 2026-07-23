@@ -60,7 +60,7 @@ export function BriefingMarkdownView({
   return (
     <article
       className={cn(
-        'rounded-xl border border-border bg-background p-5 text-sm text-foreground',
+        'rounded-md border border-border bg-background p-5 text-sm text-foreground',
         className,
       )}
     >

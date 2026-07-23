@@ -27,7 +27,7 @@ export function FlowXLogo({
       <svg
         viewBox="0 0 96 96"
         aria-hidden="true"
-        className={cn('shrink-0 drop-shadow-[0_10px_20px_rgba(37,99,235,0.14)]', s.icon, iconClassName)}
+        className={cn('shrink-0', s.icon, iconClassName)}
         role="img"
       >
         <defs>

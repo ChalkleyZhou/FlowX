@@ -156,7 +156,7 @@ export function ScheduleGantt({ query, refreshToken = 0 }: ScheduleGanttProps) {
         纵轴为自然日（{range.from} ~ {range.to}），横轴每行一名成员；条形为排期任务，人天按工作日计。
       </p>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <div className="overflow-x-auto rounded-md border border-border bg-card">
         <div
           className="inline-grid min-w-full"
           style={{
@@ -228,7 +228,7 @@ export function ScheduleGantt({ query, refreshToken = 0 }: ScheduleGanttProps) {
                       <div
                         key={bar.id}
                         className={cn(
-                          'pointer-events-auto z-[1] mx-0.5 flex items-center overflow-hidden rounded-md px-1.5 text-[11px] font-medium shadow-sm',
+                          'pointer-events-auto z-[1] mx-0.5 flex items-center overflow-hidden rounded-md px-1.5 text-[11px] font-medium',
                           ganttBarColorClass(bar.color),
                           reqLink && 'hover:brightness-95',
                         )}

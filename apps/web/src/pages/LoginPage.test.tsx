@@ -152,7 +152,7 @@ describe('LoginPage', () => {
     expect(container.textContent).toContain('requirements-page');
   });
 
-  it('renders tech-brand hero copy for AI product R&D efficiency platform', async () => {
+  it('renders a focused workspace access layout for the AI product R&D platform', async () => {
     const { api } = await import('../api');
     vi.mocked(api.getCurrentSession).mockRejectedValue(new Error('unauthorized'));
 
@@ -176,8 +176,9 @@ describe('LoginPage', () => {
 
     const text = container.textContent ?? '';
     expect(text).toContain('AI 产研效能平台');
-    expect(text).toContain('让需求、研发与审查在同一条可控流程中协同');
-    expect(text).toContain('进入 AI 产研效能平台');
+    expect(text).toContain('登录 FlowX');
+    expect(text).toContain('进入你的 AI 产研效能工作台。');
+    expect(text).not.toContain('全链路产研协同');
   });
 
   it('processes oauth callback only once in strict mode', async () => {

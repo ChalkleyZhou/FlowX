@@ -108,7 +108,7 @@ export function GitCredentialsPage() {
         title="Git 凭据设置"
         description="为当前组织配置 GitHub / GitLab Access Token，供服务器拉取私有代码仓库。"
       />
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="space-y-2">
           <p className="text-sm font-medium text-foreground">GitHub Access Token</p>
           <p className="text-sm text-muted-foreground">
@@ -144,7 +144,7 @@ export function GitCredentialsPage() {
           </form>
         </CardContent>
       </Card>
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
+      <Card className="rounded-md border border-border bg-card">
         <CardHeader className="space-y-2">
           <p className="text-sm font-medium text-foreground">GitLab Access Token</p>
           <p className="text-sm text-muted-foreground">
