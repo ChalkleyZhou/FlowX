@@ -1,14 +1,25 @@
 {
-  "name": "flowx-local",
+  "name": "@flowx-ai/local",
   "version": "0.1.0",
-  "private": true,
+  "description": "FlowX Edge Agent — local loopback daemon and CLI",
   "type": "module",
   "bin": {
     "flowx-local": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "@flowx-ai/protocol": "workspace:^"

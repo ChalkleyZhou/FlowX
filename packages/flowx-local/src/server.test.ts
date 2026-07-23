@@ -95,6 +95,7 @@ describe('flowx-local server', () => {
       opened: true,
       imported: false,
       activeDesignPath: '/tmp/.flowx/active-design.json',
+      stage: 'design' as const,
     });
     const submitOpenDesignResult = async () => ({ queued: false });
     const server = createLocalServer({
