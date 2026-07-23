@@ -45,7 +45,7 @@ describe('MarkdownDocPage', () => {
   it('renders markdown and keeps internal paths in-app', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
-      arrayBuffer: async () => new TextEncoder().encode('# 标题\n\n见 [本地 Agent](/local-agent)。').buffer,
+      arrayBuffer: async () => new TextEncoder().encode('# 标题\n\n## 快速开始\n\n### 登录\n\n见 [本地 Agent](/local-agent)。').buffer,
     });
 
     await act(async () => {
@@ -70,6 +70,10 @@ describe('MarkdownDocPage', () => {
     expect(fetchMock).toHaveBeenCalledWith('/local-agent-guide.md', { cache: 'no-store' });
     expect(container.textContent).toContain('本地 Agent');
     expect(container.textContent).toContain('标题');
+    expect(container.textContent).toContain('章节导航');
+    expect(container.querySelector('a[href="#快速开始"]')).toBeTruthy();
+    expect(container.querySelector('h2#快速开始')).toBeTruthy();
+    expect(container.querySelector('h3#登录')).toBeTruthy();
 
     const internalLink = Array.from(container.querySelectorAll('a')).find(
       (link) => link.getAttribute('href') === '/local-agent',

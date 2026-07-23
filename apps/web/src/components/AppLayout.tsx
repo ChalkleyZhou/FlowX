@@ -48,7 +48,6 @@ const primaryItems = [
 ] satisfies Array<{ key: string; label: string; icon: LucideIcon }>;
 
 const secondaryItems = [
-  { key: '/user-manual', label: '使用手册', icon: BookOpen },
   { key: '/local-agent', label: '本地 Agent', icon: SquareTerminal },
   { key: '/settings/users', label: '用户管理', icon: Users },
   { key: '/settings/ai-credentials', label: 'AI 凭据', icon: KeyRound },
@@ -142,6 +141,18 @@ export function AppLayout({ children }: PropsWithChildren) {
                 </Link>
               );
             })}
+          </nav>
+          <nav aria-label="帮助" className="border-t border-nav-border pt-3 max-xl:w-full max-xl:border-t-0 max-xl:pt-0">
+            <Link
+              to="/user-manual"
+              className={[
+                'flex min-h-10 items-center gap-3 rounded-md border border-transparent px-3 py-2 text-sm text-nav-text no-underline transition-colors hover:bg-nav-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 max-xl:shrink-0',
+                selectedKey === '/user-manual' ? 'border-nav-border bg-nav-active font-medium text-foreground' : '',
+              ].filter(Boolean).join(' ')}
+            >
+              <BookOpen aria-hidden="true" className={selectedKey === '/user-manual' ? 'h-4 w-4 text-nav-accent' : 'h-4 w-4'} />
+              <span className="truncate">使用手册</span>
+            </Link>
           </nav>
           {session ? (
             <div className="mt-auto border-t border-nav-border pt-3 max-xl:mt-0 max-xl:w-full max-xl:pt-2">

@@ -323,6 +323,25 @@ describe('AppLayout', () => {
     expect(localAgentLink?.textContent).toContain('本地 Agent');
   });
 
+  it('shows User Manual as an independent help navigation entry', async () => {
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/workspaces']}>
+          <ThemeProvider>
+            <AppLayout>
+              <div>content</div>
+            </AppLayout>
+          </ThemeProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    const manualLinks = Array.from(container.querySelectorAll('a[href="/user-manual"]'));
+    expect(manualLinks).toHaveLength(1);
+    expect(manualLinks[0]?.textContent).toContain('使用手册');
+    expect(manualLinks[0]?.closest('nav')?.getAttribute('aria-label')).toBe('帮助');
+  });
+
   it('uses compact settings entry in profile area', async () => {
     await act(async () => {
       root?.render(
