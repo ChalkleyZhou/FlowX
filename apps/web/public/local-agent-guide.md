@@ -64,7 +64,7 @@ curl http://127.0.0.1:3920/health
 ### 4.2 OpenDesign 本地设计
 
 1. 本机保持 `flowx-local serve`
-2. 在需求或工作流相关入口点击打开本地 OpenDesign
+2. 在工作流详情的 `设计方案` 阶段点击 `打开本地 OpenDesign`
 3. 在 Open Design 中选择自己的项目目录并完成设计
 4. Cursor Agent 通过 `flowx-local mcp`（推荐）或工作流「回传本地设计」把结果交回平台
 

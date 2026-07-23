@@ -20,9 +20,9 @@ sequenceDiagram
     participant Local as flowx-local
     participant OD as OpenDesign
 
-    Designer->>Web: 点击 OpenDesign 设计
-    Web->>API: POST /edge/design-handoffs
-    API->>API: 创建 LOCAL_DESIGN WorkflowRun 和 ExecutionSession
+    Designer->>Web: 在工作流详情的设计方案阶段点击打开本地 OpenDesign
+    Web->>API: POST /edge/design-handoffs/:workflowRunId/retry
+    API->>API: 在当前 WorkflowRun 创建 ExecutionSession
     API-->>Web: 一次性 ticket + workflowRunId
     Web->>Local: POST /design/launch
     Local->>API: 兑换一次性 ticket
@@ -95,17 +95,17 @@ pnpm flowx-local status
 
 推荐在 Cursor / Codex 中配置 `flowx-local mcp`：
 
-1. 在 FlowX Web 中点击 `OpenDesign 设计`，由 `flowx-local` 写入活跃会话。
+1. 在工作流详情的 `设计方案` 阶段点击 `打开本地 OpenDesign`，由 `flowx-local` 写入活跃会话。
 2. Agent 调用 `flowx_get_active_design_session` 和 `flowx_get_design_handoff`。
 3. 在自有项目中完成设计后调用 `flowx_submit_design`。
 
-## 从需求发起设计
+## 在工作流中发起设计
 
-1. 在 FlowX `需求` 页面找到已定义好的需求。
-2. 点击 `OpenDesign 设计`。
-3. FlowX 创建 `LOCAL_DESIGN` 工作流，完成仓库上下文准备后创建本地执行会话。
+1. 在 FlowX `需求` 页面创建需求并启动一条研发工作流。
+2. 进入工作流详情，等待仓库 Grounding 完成，并进入 `设计方案` 的 `待设计方案` 状态。
+3. 点击该阶段的 `打开本地 OpenDesign`，FlowX 在当前工作流内创建本地执行会话。
 4. `flowx-local` 将任务写入 `~/.flowx/design-sessions/<executionSessionId>/`。
-5. 页面自动进入工作流详情；如首次启动时本地 Agent 未运行，可启动后点击 `打开本地 OpenDesign` 重试。重复打开会刷新上下文和短期凭据，但不会覆盖已经编辑的 `result.json`。
+5. 如首次启动时本地 Agent 未运行，可启动后回到同一条工作流点击 `打开本地 OpenDesign` 重试。重复打开会刷新上下文和短期凭据，但不会覆盖已经编辑的 `result.json`。
 
 本地任务目录包含：
 

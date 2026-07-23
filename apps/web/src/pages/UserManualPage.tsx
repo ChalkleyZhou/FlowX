@@ -19,7 +19,7 @@ export function UserManualPage() {
         {
           anchor: '从需求到交付',
           title: '标准研发流程',
-          description: '了解定稿、执行、审查与人工确认。',
+          description: '从需求启动工作流，推进执行、审查与人工确认。',
           icon: Workflow,
         },
         {

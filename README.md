@@ -23,7 +23,7 @@ flowchart LR
 ### 当前已具备的基础
 
 1. `Workspace`、`Project`、`Requirement`、排期和项目简报。
-2. 需求 ideation、设计、任务拆分、技术方案、执行、AI Review 和人工确认工作流。
+2. 一条工作流内的产品构思、设计、任务拆分、技术方案、执行、AI Review 和人工确认。
 3. Codex、Cursor、Mock executor 抽象，以及 OpenDesign 本地设计会话。
 4. Cursor Extension、`flowx-local`、本地执行交接、可靠 Outbox 和本地完成回传。
 5. Workflow Repository、工作分支、Artifact 和本地预览。
@@ -114,9 +114,9 @@ flowx-local serve
 
 Monorepo 贡献者：`pnpm --filter @flowx-ai/local build && pnpm flowx-local serve`。
 
-然后在 FlowX `需求` 页面点击 `OpenDesign 设计`。本地任务会写入
-`~/.flowx/design-sessions/<executionSessionId>/`。完成设计后，在工作流详情点击
-`回传本地设计`，或执行：
+然后在 FlowX `需求` 页面创建需求并启动工作流，进入工作流详情的 `设计方案` 阶段，点击
+`打开本地 OpenDesign`。本地任务会写入 `~/.flowx/design-sessions/<executionSessionId>/`。
+完成设计后，在工作流详情点击 `回传本地设计`，或执行：
 
 ```bash
 flowx-local design-submit <executionSessionId>
