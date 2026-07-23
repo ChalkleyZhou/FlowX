@@ -86,7 +86,7 @@ FlowX 把研发流程拆成可中断、可确认的阶段，核心目标是：
 
 如果需求需要设计师在本地 OpenDesign 完成 UI/交互设计：
 
-1. 先在本机启动 `flowx-local`。
+1. 先安装并启动本机 Agent：`npm install -g @flowx-ai/local`，然后运行 `flowx-local serve`。
 2. 在需求列表点击 `OpenDesign 设计`。
 3. OpenDesign 读取 `~/.flowx/design-sessions/<executionSessionId>/context.json` 中的版本化需求上下文。
 4. 完成设计后更新同目录的 `result.json`。

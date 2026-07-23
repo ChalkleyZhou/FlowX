@@ -14,22 +14,28 @@ Build the MCP server and local bridge (once, or after code changes):
 
 ```bash
 pnpm --filter flowx-mcp build
-pnpm --filter flowx-local build
+pnpm --filter @flowx-ai/local build
 ```
 
 Keep the FlowX API and Web apps running as usual (`pnpm dev` or equivalent).
 
 ## Start the local daemon
 
-`flowx-local` must be listening on loopback before Web can launch an IDE:
+`flowx-local` must be listening on loopback before Web can launch an IDE.
+
+**End users:**
 
 ```bash
-pnpm --filter flowx-local exec node dist/index.js serve
+npm install -g @flowx-ai/local
+flowx-local serve
 ```
 
-From the repo root you can also use:
+Or without a global install: `npx @flowx-ai/local serve`.
+
+**Contributors** (FlowX monorepo):
 
 ```bash
+pnpm --filter @flowx-ai/local build
 pnpm flowx-local serve
 ```
 
@@ -40,14 +46,16 @@ Web probes the daemon’s `/health` endpoint. If it is not reachable, the UI sho
 If you already know where a clone lives, register it so launch skips the directory picker:
 
 ```bash
-pnpm --filter flowx-local exec node dist/index.js map <repoUrl> <path>
+flowx-local map <repoUrl> <path>
 ```
 
 Example:
 
 ```bash
-pnpm flowx-local map https://github.com/org/repo.git /Users/you/src/repo
+flowx-local map https://github.com/org/repo.git /Users/you/src/repo
 ```
+
+Contributors can also run `pnpm flowx-local map <repoUrl> <path>` from the monorepo root.
 
 Unmapped repos prompt for a local directory on first launch (when a picker is available); the choice is remembered in `~/.flowx/local.json`.
 

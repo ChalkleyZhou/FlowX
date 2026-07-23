@@ -105,12 +105,14 @@ FlowX 需求 → flowx-local 领取 ContextPackage → OpenDesign 本地设计
 → Artifact / Evidence / CompletionReport 回传 → FlowX 设计确认
 ```
 
-先构建并启动本地 Agent：
+先安装并启动本地 Agent：
 
 ```bash
-pnpm --filter flowx-local build
-pnpm --filter flowx-local exec node dist/index.js serve
+npm install -g @flowx-ai/local
+flowx-local serve
 ```
+
+Monorepo 贡献者：`pnpm --filter @flowx-ai/local build && pnpm flowx-local serve`。
 
 然后在 FlowX `需求` 页面点击 `OpenDesign 设计`。本地任务会写入
 `~/.flowx/design-sessions/<executionSessionId>/`。完成设计后，在工作流详情点击

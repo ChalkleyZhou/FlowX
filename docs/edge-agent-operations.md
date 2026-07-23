@@ -5,23 +5,28 @@
 
 ## 常用命令
 
-在仓库内运行：
+### 终端用户
 
 ```bash
-pnpm --filter flowx-local build
-pnpm --filter flowx-local exec node dist/index.js serve
-pnpm --filter flowx-local exec node dist/index.js status
-pnpm --filter flowx-local exec node dist/index.js sync
-pnpm --filter flowx-local exec node dist/index.js design-submit <executionSessionId>
-```
-
-已安装到 `PATH` 时可直接使用：
-
-```bash
+npm install -g @flowx-ai/local
 flowx-local serve
 flowx-local status
 flowx-local sync
 flowx-local design-submit <executionSessionId>
+```
+
+不想全局安装时，可用 `npx @flowx-ai/local serve` 启动本地 Agent。
+
+### 仓库贡献者
+
+在 FlowX monorepo 内开发时：
+
+```bash
+pnpm --filter @flowx-ai/local build
+pnpm flowx-local serve
+pnpm flowx-local status
+pnpm flowx-local sync
+pnpm flowx-local design-submit <executionSessionId>
 ```
 
 ## 本地目录

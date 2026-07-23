@@ -47,21 +47,30 @@ sequenceDiagram
 
 ## 启动 flowx-local
 
-在 FlowX 仓库根目录执行：
+先安装并启动本机 Agent：
 
 ```bash
-pnpm --filter flowx-local build
-pnpm --filter flowx-local exec node dist/index.js serve
+npm install -g @flowx-ai/local
+flowx-local serve
 ```
 
-默认监听 `http://127.0.0.1:3920`。可以用以下命令检查设备身份与待回传数量：
+默认监听 `http://127.0.0.1:3920`。检查设备身份与待回传数量：
 
 ```bash
-pnpm --filter flowx-local exec node dist/index.js status
+flowx-local status
 ```
 
-如果已把 `flowx-local` 安装或链接到 `PATH`，上述命令可以简写为 `flowx-local serve` 和
-`flowx-local status`。
+不想全局安装时，可用 `npx @flowx-ai/local serve`。
+
+### 开发者
+
+在 FlowX monorepo 内开发 `@flowx-ai/local` 时：
+
+```bash
+pnpm --filter @flowx-ai/local build
+pnpm flowx-local serve
+pnpm flowx-local status
+```
 
 ## 配置 OpenDesign 启动命令
 
