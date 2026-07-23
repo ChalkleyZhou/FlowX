@@ -46,6 +46,9 @@ vi.mock('../api', () => ({
     claimLocalExecution: vi.fn(),
     issueLocalLaunchTicket: vi.fn(),
     getLocalHandoff: vi.fn(),
+    getExecutionSession: vi.fn(),
+    listExecutionSessionEvidence: vi.fn(),
+    listExecutionSessionEvents: vi.fn(),
     retryOpenDesignHandoff: vi.fn(),
     retryOpenDesignBrainstormHandoff: vi.fn(),
     getOpenDesignHandoff: vi.fn(),
@@ -1421,5 +1424,79 @@ describe('WorkflowRunDetailPage', () => {
     expect(text).toContain('npm install -g @flowx-ai/local');
     expect(text).toContain('flowx-local serve');
     expect(text).not.toContain('pnpm --filter flowx-local');
+  });
+
+  it('shows the execution session panel when a local handoff provides a session id', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'EXECUTION_RUNNING',
+        stageExecutions: [
+          {
+            id: 'execution-1',
+            stage: 'EXECUTION',
+            status: 'RUNNING',
+            statusMessage: null,
+            attempt: 1,
+            input: { executor: 'LOCAL' },
+            output: null,
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.getLocalHandoff).mockResolvedValue({
+      executionSessionId: 'session-1',
+      repositories: [],
+    } as never);
+    vi.mocked(api.getExecutionSession).mockResolvedValue({
+      id: 'session-1',
+      workflowRunId: 'workflow-1',
+      status: 'RUNNING',
+      executorType: 'LOCAL',
+      sourceTool: 'cursor',
+      protocolVersion: '1.0',
+      traceId: 'trace-123',
+      createdAt: '2026-07-23T07:00:00.000Z',
+      updatedAt: '2026-07-23T08:00:00.000Z',
+    });
+    vi.mocked(api.listExecutionSessionEvidence).mockResolvedValue([]);
+    vi.mocked(api.listExecutionSessionEvents).mockResolvedValue({ items: [], nextCursor: null });
+
+    await renderPage();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('执行会话');
+    expect(api.getExecutionSession).toHaveBeenCalledWith('session-1');
+    expect(api.listExecutionSessionEvidence).toHaveBeenCalledWith('session-1');
+  });
+
+  it('hides the execution session panel when the local handoff has no session id', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'EXECUTION_RUNNING',
+        stageExecutions: [
+          {
+            id: 'execution-1',
+            stage: 'EXECUTION',
+            status: 'RUNNING',
+            statusMessage: null,
+            attempt: 1,
+            input: { executor: 'LOCAL' },
+            output: null,
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.getLocalHandoff).mockResolvedValue({ repositories: [] } as never);
+
+    await renderPage();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).not.toContain('执行会话');
+    expect(api.getExecutionSession).not.toHaveBeenCalled();
   });
 });

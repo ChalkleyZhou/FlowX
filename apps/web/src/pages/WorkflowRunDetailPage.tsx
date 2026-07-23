@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api, getFlowxApiBaseUrl } from '../api';
 import { ContextPanel } from '../components/ContextPanel';
@@ -7,6 +7,7 @@ import { DiffFileListPanel } from '../components/DiffFileListPanel';
 import { DiffViewerPanel } from '../components/DiffViewerPanel';
 import { EmptyState } from '../components/EmptyState';
 import { DetailHeader } from '../components/DetailHeader';
+import { ExecutionSessionPanel } from '../components/ExecutionSessionPanel';
 import { MetricCard } from '../components/MetricCard';
 import { SectionHeader } from '../components/SectionHeader';
 import { StatPill } from '../components/StatPill';
@@ -33,6 +34,9 @@ import {
 import type {
   DemoArtifact,
   DemoPage,
+  ExecutionSessionDetail,
+  ExecutionSessionEvidence,
+  ExecutionSessionSyncEvent,
   LocalDevDetectResponse,
   LocalDevPreviewStatus,
   LocalHandoffPayload,
@@ -417,6 +421,10 @@ export function WorkflowRunDetailPage() {
   const [lastPublishedRepositories, setLastPublishedRepositories] = useState<PublishRepositorySummary[]>([]);
   const [planHtml, setPlanHtml] = useState<string | null>(null);
   const [localHandoff, setLocalHandoff] = useState<LocalHandoffPayload | null>(null);
+  const [executionSession, setExecutionSession] = useState<ExecutionSessionDetail | null>(null);
+  const [executionEvidence, setExecutionEvidence] = useState<ExecutionSessionEvidence[]>([]);
+  const [executionEvents, setExecutionEvents] = useState<ExecutionSessionSyncEvent[]>([]);
+  const [executionSessionLoading, setExecutionSessionLoading] = useState(false);
   const [localLaunchOpen, setLocalLaunchOpen] = useState(false);
   const [localLaunchBusy, setLocalLaunchBusy] = useState(false);
   const [localLaunchSetupRequired, setLocalLaunchSetupRequired] = useState(false);
@@ -763,6 +771,47 @@ export function WorkflowRunDetailPage() {
       cancelled = true;
     };
   }, [workflowRun?.id, localExecutionActive]);
+
+  const executionSessionId =
+    selectedStage === 'EXECUTION' ? localHandoff?.executionSessionId ?? null : null;
+
+  const refreshExecutionSession = useCallback(async () => {
+    if (!executionSessionId) {
+      return;
+    }
+
+    setExecutionSessionLoading(true);
+    try {
+      const [session, evidence, eventsPage] = await Promise.all([
+        api.getExecutionSession(executionSessionId),
+        api.listExecutionSessionEvidence(executionSessionId),
+        api.listExecutionSessionEvents(executionSessionId, { take: 10 }).catch(() => null),
+      ]);
+      setExecutionSession(session);
+      setExecutionEvidence(evidence);
+      setExecutionEvents(eventsPage?.items ?? []);
+    } catch {
+      setExecutionSession(null);
+      setExecutionEvidence([]);
+      setExecutionEvents([]);
+    } finally {
+      setExecutionSessionLoading(false);
+    }
+  }, [executionSessionId]);
+
+  useEffect(() => {
+    if (!executionSessionId) {
+      setExecutionSession(null);
+      setExecutionEvidence([]);
+      setExecutionEvents([]);
+      return;
+    }
+
+    void refreshExecutionSession();
+    const interval = window.setInterval(() => void refreshExecutionSession(), 30_000);
+
+    return () => window.clearInterval(interval);
+  }, [executionSessionId, refreshExecutionSession]);
 
   const hasExecutionArtifact = useMemo(() => {
     if (selectedStage !== 'EXECUTION' || !workflowRun) {
@@ -2496,6 +2545,16 @@ export function WorkflowRunDetailPage() {
                     ))}
                   </CardContent>
                 </Card>
+              ) : null}
+
+              {selectedStage === 'EXECUTION' && executionSessionId ? (
+                <ExecutionSessionPanel
+                  session={executionSession}
+                  evidence={executionEvidence}
+                  events={executionEvents}
+                  loading={executionSessionLoading}
+                  onRefresh={() => void refreshExecutionSession()}
+                />
               ) : null}
 
               {selectedStage === 'EXECUTION' && executionHtml ? (

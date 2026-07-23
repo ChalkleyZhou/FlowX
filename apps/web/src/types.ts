@@ -440,6 +440,7 @@ export interface LocalHandoffRepository {
 
 export interface LocalHandoffPayload {
   workflowRunId: string;
+  executionSessionId?: string | null;
   status: string;
   executor: 'LOCAL';
   requirement: {
