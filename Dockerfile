@@ -17,6 +17,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
+COPY packages/flowx-protocol/package.json packages/flowx-protocol/package.json
 
 RUN --mount=type=cache,id=flowx-pnpm-store,target=/pnpm/store \
   pnpm fetch --frozen-lockfile
@@ -29,6 +30,7 @@ WORKDIR /app
 
 COPY prisma ./prisma
 COPY apps ./apps
+COPY packages/flowx-protocol ./packages/flowx-protocol
 COPY docs ./docs
 COPY README.md ./README.md
 
@@ -68,6 +70,7 @@ COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=build /app/tsconfig.base.json ./tsconfig.base.json
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/apps ./apps
+COPY --from=build /app/packages/flowx-protocol ./packages/flowx-protocol
 COPY scripts/clean-db.ts scripts/clean-db.sh ./scripts/
 COPY scripts/backfill-organization-admins.ts scripts/backfill-organization-admins.sh ./scripts/
 COPY docker/start.sh /start.sh
