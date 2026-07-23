@@ -1,4 +1,6 @@
 export const TOOL_ADAPTER_CAPABILITIES = [
+  'repo-open',
+  'chat-handoff',
   'context-import',
   'artifact-export',
   'completion-report',
