@@ -1,21 +1,52 @@
 # FlowX Agent Guide
 
+## 语言规范
+
+- 默认使用简体中文与用户交流，包括工作进度、问题说明、代码审查意见和最终答复。
+- 默认使用简体中文编写或更新 README、设计文档、需求规格、实施计划、测试计划、运维文档、发布说明和变更日志。
+- 代码标识符、类型名、函数名、文件路径、命令、配置键、环境变量、接口路径、HTTP 字段、错误码和协议名称保持原始英文。
+- 代码注释默认使用简体中文；如果目标文件已有明确的英文注释规范，遵循文件和子项目现有风格。
+- 用户、项目级 `AGENTS.md` 或 `CLAUDE.md` 有更具体的语言要求时，遵循更具体的规则。
+
+## 适用范围与优先级
+
+- 本文件适用于整个仓库。
+- 修改 `apps/api` 下文件时，必须同时遵守 `apps/api/AGENTS.md`。
+- 修改 `apps/web` 下文件时，必须同时遵守 `apps/web/AGENTS.md`。
+- 更深层目录中的规则可以补充本文件；规则冲突时，以距离目标文件更近的规则为准。
+- 用户当前任务和更高优先级系统/开发者指令优先于本文件。
+
 ## 项目概览
 
-FlowX 是一个 AI 研发流程编排 MVP，用于把需求、AI 头脑风暴、技术方案、执行、审查和人工确认串成可追踪的工作流。
+FlowX 是一个 AI 研发流程编排 MVP，正在演进为端云协同 AI 产研平台，用于把需求、AI 头脑风暴、技术方案、执行、审查和人工确认串成可追踪的工作流。
 
-- Monorepo 包管理：`pnpm` workspace。
-- 后端：`apps/api`，NestJS + TypeScript + Prisma + SQLite，负责认证、工作区/仓库、需求、工作流、AI 执行器、审查沉淀、排期、项目简报、每日 Code Review 和部署集成。
-- 前端：`apps/web`，React + Vite + Tailwind + Radix/shadcn 风格组件，负责管理控制台、工作流详情、项目简报、Code Review、投递目标和排期视图。
+- Monorepo：`pnpm` workspace。
+- 后端：`apps/api`，NestJS + TypeScript + Prisma + SQLite。
+- 前端：`apps/web`，React + Vite + Tailwind + Radix/shadcn 风格组件。
 - 数据层：`prisma/schema.prisma` 和 `prisma/migrations`。
-- AI 集成：`apps/api/src/ai` 中的 Codex、Cursor、Mock executor 抽象与提示词/输出 schema。
+- 本地端侧包：`packages/flowx-local`（`@flowx-ai/local`）、`packages/flowx-mcp` 和 `packages/flowx-protocol`。
+- AI 集成：`apps/api/src/ai` 中的 Codex、Cursor、Mock executor，以及本地 MCP/Edge Agent。
 
-## 指令层级
+## 目录与边界
 
-- 根目录 `AGENTS.md` 适用于整个仓库。
-- `apps/api/AGENTS.md` 适用于后端子项目，修改 `apps/api` 下文件时必须同时遵守。
-- `apps/web/AGENTS.md` 适用于前端子项目，修改 `apps/web` 下文件时必须同时遵守。
-- 子项目 `AGENTS.md` 可以补充更具体规则；如与根目录规则冲突，以更具体、距离文件更近的规则为准。
+- `apps/api/src/workflow`：工作流阶段推进、人工确认和审查编排，高风险区域。
+- `apps/api/src/requirements`：需求、ideation、设计生成和会话恢复，高风险区域。
+- `apps/api/src/common`：共享类型、枚举、状态机和路由集成工具。
+- `apps/api/src/briefings`：项目简报、事件聚合、AI 总结、定时生成和投递目标。
+- `apps/api/src/daily-code-review`：独立的每日 Code Review 模块和 sandbox 数据源。
+- `apps/api/src/schedule`：需求/项目排期与甘特图数据。
+- `apps/api/src/auth`、`apps/api/src/ai`、`prisma/schema.prisma`：认证凭据、AI executor 和数据契约，高风险区域。
+- `apps/web/src/api.ts`：前端 API 边界，高风险区域。
+- `apps/web/src/pages`、`apps/web/src/components`：页面和业务组件。
+- `apps/web/src/components/ui`：基础 UI 组件；优先复用，不重复实现。
+- `packages/flowx-local`：本地 loopback daemon、CLI、IDE 启动、Skill/MCP 配置和本地回传。
+- `packages/flowx-mcp`：兼容的独立 MCP server。
+- `packages/flowx-protocol`：端云共享协议类型、常量和 schema。
+- `docs`：系统设计、架构、部署、运维和用户文档。
+- `docs/user-manual.md`：用户手册源文件。
+- `docs/local-agent-guide.md`：本地 Agent 用户指南源文件。
+- `apps/web/public/user-manual.md`、`apps/web/public/local-agent-guide.md`：Web 内嵌手册镜像。
+- `.flowx-data`：本地运行数据，通常不要提交或手动修改。每日 Code Review sandbox 位于 `.flowx-data/code-review/workspaces/{workspaceId}/repositories/{slug}-{id8}`，可用 `CODE_REVIEW_REPOS_ROOT` 覆盖根目录。
 
 ## 常用命令
 
@@ -35,13 +66,19 @@ pnpm db:clean
 pnpm db:backfill-admins
 ```
 
-常用子项目命令：
+按子项目执行：
 
 ```bash
 pnpm --filter flowx-api build
 pnpm --filter flowx-api test
 pnpm --filter flowx-web build
 pnpm --filter flowx-web test
+pnpm --filter @flowx-ai/local build
+pnpm --filter @flowx-ai/local test
+pnpm --filter flowx-mcp build
+pnpm --filter flowx-mcp test
+pnpm --filter @flowx-ai/protocol build
+pnpm --filter @flowx-ai/protocol test
 ```
 
 本地数据库初始化通常需要：
@@ -51,82 +88,57 @@ pnpm prisma:generate
 pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma
 ```
 
-## 目录结构
+## 开发规范
 
-- `apps/api/src/main.ts`：NestJS API 入口。
-- `apps/api/src/app.module.ts`：后端模块聚合。
-- `apps/api/src/auth`：登录、会话、第三方认证、AI 凭据。
-- `apps/api/src/ai`：AIExecutor 抽象、Codex/Cursor/Mock executor、AI 输出 schema。
-- `apps/api/src/prompts`：任务拆解、技术方案、执行、审查、头脑风暴、设计生成等提示词和 schema contract。
-- `apps/api/src/requirements`：需求与 ideation 编排，属于高风险区域。
-- `apps/api/src/workflow`：工作流阶段推进、人工确认和审查编排，属于高风险区域。
-- `apps/api/src/common`：共享类型、枚举、状态机和 demo 路由集成工具。
-- `apps/api/src/workspaces`：工作区、代码仓库登记与同步。
-- `apps/api/src/deploy`：部署集成 provider 抽象与实现。
-- `apps/api/src/dev-preview`：本地预览命令探测和预览服务。
-- `apps/api/src/briefings`：项目简报、代码事件聚合、AI 总结、简报定时生成和投递目标（投递目标按 `forBriefing` / `forCodeReview` 用途区分，供简报和 Code Review 共用）。
-- `apps/api/src/daily-code-review`：独立的每日 Code Review 模块（配置、调度、数据源、skill 发现和渲染），与 `apps/api/src/briefings` 解耦，只复用其共享的投递目标与提交/时间窗口工具。CR 生成使用独立的每工作区 sandbox 克隆（见下方 `.flowx-data` 说明），不复用主工作区开发仓库的 checkout。
-- `apps/api/src/schedule`：需求/项目排期与甘特图数据。
-- `apps/api/src/notifications`：DingTalk 等通知发送集成。
-- `apps/api/src/review-artifacts`：ReviewFinding、Issue、Bug 转换与维护。
-- `apps/web/src/App.tsx`：前端路由入口。
-- `apps/web/src/api.ts`：前端 API 边界，改动需谨慎并补测。
-- `apps/web/src/pages`：页面级视图。
-- `apps/web/src/components`：业务组件与基础 UI 组件。
-- `apps/web/src/types.ts`：前端共享类型。
-- `docs/architecture/ai-maintainability.md`：AI 可维护性指南。
-- `docs/frontend-shadcn-design-spec.md`：前端布局与 shadcn 风格设计规范。
-- `docs/user-manual.md`：用户手册内容来源。
-- `prisma`：Prisma schema 与迁移。
-- `docs`：系统设计、部署和架构文档。
-- `.flowx-data`：本地运行数据，通常不要提交或手动改动。其中 `.flowx-data/code-review/workspaces/{workspaceId}/repositories/{slug}-{id8}` 是每日 Code Review 专用的 sandbox 克隆根目录，可通过环境变量 `CODE_REVIEW_REPOS_ROOT` 覆盖；CR 生成只在这个 sandbox 里 clone/fetch/checkout，不会读写 `Repository.localPath` 对应的主工作区开发仓库。
+- 使用 TypeScript strict 配置，保持类型明确；不要用 `any` 绕过核心边界。
+- 后端遵循 NestJS 模块组织：Controller 负责 HTTP 协调，Service 负责业务逻辑，DTO 放在对应模块的 `dto/` 下。
+- 前端优先复用现有页面布局、业务组件、`components/ui` 和 `cn`；API 请求集中通过 `apps/web/src/api.ts`。
+- API 返回、前端类型、页面调用方和测试必须保持一致；改 API 边界时同步检查全链路。
+- Prisma schema、AI 输出 schema、prompt contract、解析器和测试保持单一事实来源；修改契约时一起更新消费者和 contract/spec。
+- 状态流转通过现有状态机或编排服务表达，不在多个位置复制状态判断。
+- 保持 diff 小而聚焦，不混入无关格式化、重命名或重构。
+- 不手动编辑 `dist/`、生成的 Prisma client 或其他生成物。
 
-## 代码规范
+## 工作流程与安全边界
 
-- 使用 TypeScript strict 配置；保持类型明确，避免用 `any` 绕过核心边界。
-- 后端遵循 NestJS 模块组织：`*.module.ts` 聚合依赖，`*.controller.ts` 暴露 API，`*.service.ts` 放业务逻辑，DTO 放在 `dto/`。
-- 前端优先复用 `apps/web/src/components/ui` 和现有业务组件，样式使用 Tailwind class 与 `cn` 工具。
-- API 边界类型要保持前后端一致；改 Prisma schema、后端返回结构或 `apps/web/src/api.ts` 时，同步检查调用方和测试。
-- AI 输出 schema、prompt contract 和解析/校验逻辑要保持单一事实来源，改 schema 时同步更新 contract/spec。
-- 不手动编辑生成的 Prisma client 产物。
-- 保持 diff 小而聚焦；不要把格式化、重命名、无关重构混入功能改动。
-- 不提交密钥、token、个人登录态、本地数据库或 `.flowx-data` 运行数据。
+- 开始前运行 `git status --short`，识别并保留用户已有修改。
+- 修改子项目文件前，先读取对应子项目的 `AGENTS.md`、相关实现、测试和 README/专题文档。
+- 高风险区域先补充或更新测试，再修改实现；至少覆盖状态转换、API 契约、权限、凭据和失败路径。
+- 不回滚、覆盖、格式化或删除与当前任务无关的用户修改。
+- 不提交密钥、token、个人登录态、本地数据库、`.flowx-data` 或其他运行时数据。
+- 不执行 `git reset --hard`、`git checkout --` 或宽范围删除；除非用户明确要求且目标已确认。
+- 错误信息应便于 UI 和运维定位，但不得泄露 token、密钥、完整凭据或个人登录态。
+- 变更应聚焦一个子系统；若跨越 API、Web、packages、Prisma 或文档边界，必须同步检查所有消费者。
 
-## 测试和构建
+## 文档与使用手册同步
 
-- 全量构建：`pnpm build`。
-- 全量测试：`pnpm test`。
-- 交付前总检查：`pnpm check`，等价于先构建再测试。
-- API 测试：`pnpm --filter flowx-api test`，Vitest node 环境，匹配 `apps/api/src/**/*.spec.ts`。
-- Web 测试：`pnpm --filter flowx-web test`，Vitest 配置匹配 `apps/web/src/**/*.test.ts` 和 `apps/web/src/**/*.test.tsx`。
-- Web 构建：`pnpm --filter flowx-web build`，执行 `tsc -b` 和 `vite build`。
-- API 构建：`pnpm --filter flowx-api build`，执行 TypeScript 编译并复制 AI schema。
-
-## 提交前检查
-
-提交或交付前至少执行：
+- 任何用户可见的功能、页面交互、API、CLI 命令、配置键、环境变量、安装方式、部署行为或工作流状态变更，都要在同一变更中检查并更新对应文档。
+- 面向终端用户的变更至少检查 `README.md`、`docs/user-manual.md` 和相关专题文档；平台内展示的手册还要同步 `apps/web/public` 对应镜像。
+- 修改 API、数据模型、AI 输出、协议或架构时，同步检查 `docs/system-design.md`、`docs/architecture`、接口/专题说明和相关 spec/contract。
+- 修改 Docker、部署或环境变量时，同步更新 `README.md`、`docs/docker-deployment.md` 或对应运维文档。
+- `docs/user-manual.md` 和 `docs/local-agent-guide.md` 是源文件；交付前校验其与 `apps/web/public` 对应文件一致：
 
 ```bash
-pnpm check
+cmp -s docs/user-manual.md apps/web/public/user-manual.md
+cmp -s docs/local-agent-guide.md apps/web/public/local-agent-guide.md
 ```
 
-按改动范围补充执行：
+- 历史性的 `docs/superpowers/plans` 和 `docs/superpowers/specs` 默认不回写；只有当前任务改变设计基线或计划状态时才更新。
 
-- 修改 `apps/api/src/workflow`、`apps/api/src/common/workflow-state-machine.ts` 或 `apps/api/src/requirements/requirements.service.ts`：运行 `pnpm --filter flowx-api test`。
-- 修改 `apps/web/src/api.ts` 或页面数据加载行为：运行 `pnpm --filter flowx-web test`。
-- 修改 `prisma/schema.prisma`：运行 `pnpm prisma:generate`，必要时创建/更新 migration，并确认 API 构建和相关测试通过。
-- 修改 Docker、部署或环境变量行为：同步更新 README 或 `docs` 中对应说明。
+## 测试与交付
 
-## AI 修改代码注意事项
+根据改动范围执行：
 
-- 不要改业务代码，除非用户明确要求；文档类任务只改文档。
-- 开始前检查 `git status --short`，识别用户已有改动；不要回滚、覆盖或格式化无关文件。
-- 修改子项目文件前，先读取对应子项目的 `AGENTS.md`。
-- 优先读现有实现、测试和 README，再做最小改动。
-- 修改工作流编排、ideation 编排、状态机、Prisma schema、认证、凭据、AI executor、项目简报/每日 Code Review/投递、排期或 API 边界时，把它们视为高风险区域：先补或更新测试，再改实现。
-- 变更 `apps/api/src/workflow`、`apps/api/src/common/workflow-state-machine.ts`、`apps/api/src/requirements/requirements.service.ts` 前，优先添加或更新相关测试。
-- 变更 `apps/api/src/briefings`、`apps/api/src/daily-code-review` 或 `apps/api/src/schedule` 前，优先添加或更新相关 API 测试。
-- 变更 `apps/web/src/api.ts`、页面数据加载或关键交互时，优先添加或更新 Web 测试。
-- 不要手动编辑 Prisma 生成物；schema 变更通过 Prisma 命令生成客户端和迁移。
-- 保持一个分支聚焦一个子系统，除非任务明确跨多个子系统。
-- 如果无法运行必要检查，要在交付说明中明确说明原因和剩余风险。
+- 全仓代码改动：`pnpm check`。
+- API 改动：`pnpm --filter flowx-api test`；修改 `prisma/schema.prisma` 时先运行 `pnpm prisma:generate`，必要时更新 migration。
+- Web API 边界、页面数据加载、路由、认证或关键交互改动：`pnpm --filter flowx-web test`，必要时运行 Web build 和浏览器检查。
+- `packages/flowx-local`、`packages/flowx-mcp` 或 `packages/flowx-protocol` 改动：运行对应 package 的 test；修改构建入口、依赖或协议时运行对应 build。
+- 工作流、状态机、需求 ideation、认证凭据、AI executor、简报、每日 Code Review、投递、排期或 API 边界改动：优先更新相关测试，再运行受影响子项目测试。
+- 纯文档或规则改动：至少运行 `git diff --check`；若涉及手册镜像，运行上面的 `cmp` 命令。
+- 无法运行必要检查时，在交付说明中写明原因和剩余风险。
+
+交付前确认：
+
+1. 变更范围和用户已有修改均已核对。
+2. 用户可见行为对应的 README、专题文档和使用手册已同步。
+3. 必要测试、构建和文档一致性检查已完成，或已明确记录未执行项。

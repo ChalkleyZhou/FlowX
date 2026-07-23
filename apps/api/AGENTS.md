@@ -1,100 +1,79 @@
 # FlowX API Agent Guide
 
-## 项目概览
+本文件适用于 `apps/api`。同时遵守仓库根目录 `AGENTS.md`；根规则与本文件冲突时，以本文件对后端的具体规则为准。
 
-`apps/api` 是 FlowX 的后端服务，基于 NestJS + TypeScript + Prisma + SQLite。它负责认证与会话、工作区和仓库管理、需求 ideation、工作流阶段编排、AI executor 调用、审查产物沉淀、项目排期、项目简报、每日 Code Review、本地预览和部署集成。
+## 项目范围
 
-本子项目属于高风险核心区域，尤其是工作流编排、需求 ideation、AI 输出解析、认证凭据、Prisma 数据模型、项目简报/每日 Code Review/投递、排期和 API 边界。
+`apps/api` 是 FlowX 的 NestJS + TypeScript + Prisma + SQLite 后端，负责认证与会话、工作区/仓库、需求 ideation、工作流编排、AI executor、审查沉淀、排期、项目简报、每日 Code Review、本地预览和部署集成。
+
+以下区域属于高风险边界：
+
+- `src/workflow`、`src/common/workflow-state-machine.ts`：状态流转、人工确认和执行/审查编排。
+- `src/requirements`：需求、头脑风暴、设计生成、demo 生成和 ideation 会话恢复。
+- `src/auth`、`src/ai`：认证凭据、加密、executor 和 AI 输出解析。
+- `src/briefings`、`src/daily-code-review`、`src/schedule`：简报、每日 Code Review、投递和排期。
+- `prisma/schema.prisma`：数据库与 API 数据契约。
+
+每日 Code Review 必须使用独立 sandbox：
+`.flowx-data/code-review/workspaces/{workspaceId}/repositories/{slug}-{id8}`，根目录可由 `CODE_REVIEW_REPOS_ROOT` 覆盖。不得调用面向主开发 clone 的同步流程，也不得写入 `Repository.localPath`。
 
 ## 常用命令
 
 在仓库根目录执行：
 
 ```bash
+pnpm --filter flowx-api dev
 pnpm --filter flowx-api build
 pnpm --filter flowx-api test
-pnpm --filter flowx-api dev
 pnpm --filter flowx-api prisma:generate
 pnpm --filter flowx-api prisma:migrate
-```
-
-也可以使用根命令：
-
-```bash
-pnpm build:api
-pnpm dev:api
-pnpm prisma:generate
-pnpm prisma:migrate
-pnpm check
-```
-
-本地数据库同步：
-
-```bash
 pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma
 ```
 
-## 目录结构
+等价根命令：
+
+```bash
+pnpm dev:api
+pnpm build:api
+pnpm prisma:generate
+pnpm prisma:migrate
+```
+
+## 目录边界
 
 - `src/main.ts`：NestJS 启动入口。
-- `src/app.module.ts`：后端根模块。
-- `src/auth`：账号密码登录、DingTalk 登录、会话 guard、AI 凭据管理和加密。
-- `src/ai`：AIExecutor 抽象，Codex/Cursor/Mock executor，AI 输出 JSON schema 和校验。
-- `src/prompts`：AI 各阶段提示词，以及 schema contract 测试对应的 contract 生成逻辑。
-- `src/requirements`：需求、头脑风暴、设计生成、demo 生成和 ideation 会话恢复，属于高风险区域。
-- `src/workflow`：工作流阶段推进、人工确认、执行和审查编排，属于高风险区域。
-- `src/common`：共享枚举、类型、状态机和 demo 路由集成工具。
-- `src/workspaces`：工作区、仓库登记、仓库同步和分支元数据。
-- `src/projects`：项目管理 API。
-- `src/briefings`：项目简报来源、事件归档、AI 总结、简报定时生成、投递目标和投递日志，属于高风险区域。投递目标带 `forBriefing`/`forCodeReview` 用途标记，由简报和每日 Code Review 共用。
-- `src/daily-code-review`：独立的 `DailyCodeReviewModule`——控制器、`ProjectCodeReviewConfig`、CR 调度、`CodeReviewSource` 数据源、review skill 磁盘发现（`review-skill-discovery.ts`）和渲染，属于高风险区域。只从 `src/briefings` 导入共享的投递目标服务与提交/时间窗口工具，不复用简报的调度或配置。CR 生成通过 `RepositorySyncService.ensureCodeReviewSandbox` 在每工作区独立 sandbox（`.flowx-data/code-review/workspaces/{workspaceId}/repositories/{slug}-{id8}`，可用 `CODE_REVIEW_REPOS_ROOT` 覆盖根目录）中 clone/fetch/checkout 后再审查，绝不能调用 `ensureRepositoryReadyForReview` 或写 `Repository.localPath`，以免污染主工作区的开发 clone。
-- `src/schedule`：需求/项目排期和甘特图数据，属于高风险区域。
-- `src/review-artifacts`：ReviewFinding、Issue、Bug 的维护和转换。
-- `src/deploy`：部署 provider 抽象和 provider 实现。
-- `src/dev-preview`：本地开发预览命令探测和预览生命周期。
-- `src/notifications`：DingTalk 通知服务。
-- `src/prisma`：PrismaService 和 PrismaModule。
-- `scripts`：构建期辅助脚本，例如复制 AI schema。
+- `src/app.module.ts`：模块聚合和全局依赖。
+- `src/*/*.controller.ts`：HTTP 入参/出参协调，不承载复杂业务逻辑。
+- `src/*/*.service.ts`：业务编排和数据访问。
+- `src/*/dto`：输入 DTO，优先使用 `class-validator` 和 `class-transformer`。
+- `src/prisma`：`PrismaService` 和 Prisma 模块。
+- `scripts`：构建期辅助脚本；不要把生成结果提交到 `dist/`。
 
-## 代码规范
+## 后端开发规范
 
-- 遵循 NestJS 模块边界：Controller 只做 HTTP 入参/出参协调，业务逻辑放 Service，跨模块依赖通过 Module imports/exports 暴露。
-- DTO 放在对应模块的 `dto/` 下，优先使用 `class-validator`/`class-transformer` 表达输入约束。
-- 数据访问优先集中在 Service 中通过 `PrismaService` 完成；不要在无关模块散落复杂 Prisma 查询。
-- Prisma schema 是数据契约源头；不要手动编辑生成的 Prisma client。
-- AI 输出 schema、prompt contract、解析器和测试要保持一致；改 schema 时同步更新 contract/spec 和 executor 兼容逻辑。
-- 状态流转必须通过 `src/common/workflow-state-machine.ts` 或现有编排服务表达，不要在多个地方复制状态判断。
-- 错误信息应便于 UI 和运维定位，但不要泄露 token、密钥、完整凭据或个人登录态。
-- 保持 TypeScript strict 友好；只在测试 mock 或隔离边界中谨慎使用 `as any`。
+- 遵循 NestJS 模块边界；跨模块依赖通过 Module 的 imports/exports 暴露。
+- 数据访问集中在 Service 中通过 `PrismaService` 完成，不在无关模块散落复杂查询。
+- `prisma/schema.prisma` 是数据契约源头；不要手动编辑生成的 Prisma client。
+- 状态流转必须通过 `src/common/workflow-state-machine.ts` 或现有编排服务表达，不复制状态判断。
+- AI 输出 schema、prompt contract、解析器、executor 兼容逻辑和测试必须保持一致。
+- 保持 TypeScript strict 友好；只在测试 mock 或隔离边界谨慎使用 `as any`。
+- 错误信息便于 UI 和运维定位，但不得泄露 token、密钥、完整凭据或个人登录态。
+- 修改 API 返回结构时，同步检查 `apps/web/src/api.ts`、`apps/web/src/types.ts` 和页面调用方。
 
-## 测试和构建
+## 测试与文档
 
-- 构建：`pnpm --filter flowx-api build`。
-- 测试：`pnpm --filter flowx-api test`。
-- API 测试使用 Vitest node 环境，匹配 `src/**/*.spec.ts`。
-- 修改 schema 后运行 `pnpm --filter flowx-api prisma:generate`，必要时更新 `prisma/migrations`。
-- 交付前如改动影响整个仓库，运行根目录 `pnpm check`。
+- 后端代码改动至少运行 `pnpm --filter flowx-api test`。
+- 修改工作流、状态机、需求 ideation、认证凭据、AI executor、简报、每日 Code Review、投递、排期或 API 边界时，先更新相关测试，再运行受影响 spec；必要时运行完整 API 测试。
+- 修改 `prisma/schema.prisma`：运行 `pnpm --filter flowx-api prisma:generate`，必要时更新 migration，再运行 API build/test。
+- API、数据模型、AI 输出或协议变更时，检查前端契约、`docs/system-design.md`、`docs/architecture` 和相关 spec/contract。
+- 用户可见的 API、配置、工作流或安装行为变更时，同步检查根 `README.md`、`docs/user-manual.md` 和相关专题文档。
+- 无法运行必要检查时，在交付说明中写明原因和剩余风险。
 
-## 提交前检查
+## 修改流程与边界
 
-至少按改动范围执行：
-
-- 后端任意代码改动：`pnpm --filter flowx-api test`。
-- 修改 `src/workflow`：`pnpm --filter flowx-api test`。
-- 修改 `src/common/workflow-state-machine.ts`：`pnpm --filter flowx-api test`。
-- 修改 `src/requirements/requirements.service.ts` 或 ideation 编排：`pnpm --filter flowx-api test`。
-- 修改 `src/briefings`、`src/daily-code-review`、投递或通知发送：`pnpm --filter flowx-api test`。
-- 修改 `src/schedule` 或排期相关 Prisma model/API：`pnpm --filter flowx-api test`。
-- 修改 AI executor、prompt、schema 或 contract：运行相关 spec，并优先运行完整 `pnpm --filter flowx-api test`。
-- 修改 Prisma schema：`pnpm --filter flowx-api prisma:generate`，再运行 API build/test。
-- 最终交付前：`pnpm check`，如无法运行需说明原因。
-
-## AI 修改代码注意事项
-
-- 先读相关 Service、Controller、DTO、测试和 Prisma model，再做小范围修改。
-- 优先添加或更新测试，再改工作流、ideation、状态机、AI 输出解析、认证凭据或数据模型。
-- 不要改 `dist/`、生成的 Prisma client、运行时数据库或本地数据目录。
-- 不要把 Mock executor、Codex executor、Cursor executor 的行为混在一次大改里，除非任务明确要求。
-- 修改 API 返回结构时，同步检查 `apps/web/src/api.ts`、前端类型和页面调用方。
-- 对高风险文件保持窄 diff：`prisma/schema.prisma`、`src/workflow`、`src/requirements`、`src/common/workflow-state-machine.ts`、`src/auth`、`src/ai`、`src/briefings`、`src/daily-code-review`、`src/schedule`。
-- 遇到已有未提交改动时，默认视为用户工作；不要回滚，必要时围绕现有改动继续。
+- 开始前检查 `git status --short`，把已有未提交改动视为用户工作；不要回滚、覆盖或格式化无关文件。
+- 先读相关 Controller、Service、DTO、Prisma model、测试和文档，再做最小修改。
+- 高风险改动保持窄 diff，优先补测试再改实现。
+- 不修改 `dist/`、生成物、运行时数据库或 `.flowx-data`。
+- 不把 Mock、Codex、Cursor executor 的行为混在一次无关的大改中。
+- 交付前根据影响范围运行 API test/build；跨越整个仓库时运行根目录 `pnpm check`。
