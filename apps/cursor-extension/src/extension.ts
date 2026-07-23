@@ -138,6 +138,7 @@ export function activate(context: vscode.ExtensionContext) {
     await reportCompletion(
       {
         collectGitReport: collectGitCompletionReport,
+        completeExecutionSession: (executionSessionId, input) => client.completeExecutionSession(executionSessionId, input),
         completeLocal: (workflowRunId, input) => client.completeLocal(workflowRunId, input),
         getGitRoot: () => getCurrentGitRoot(vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath)),
         loadHandoffSnapshot,

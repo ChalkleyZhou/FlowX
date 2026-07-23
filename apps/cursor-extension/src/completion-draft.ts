@@ -6,6 +6,7 @@ export interface HandoffSnapshot {
   taskId: string;
   taskType: 'requirement' | 'bug';
   workflowRunId: string;
+  executionSessionId: string | null;
   workflowRepositoryId: string | null;
 }
 
@@ -14,6 +15,7 @@ export function buildHandoffSnapshot(handoff: LocalChatHandoff): HandoffSnapshot
     taskId: handoff.taskId,
     taskType: handoff.taskType,
     workflowRunId: handoff.handoff.workflowRunId,
+    executionSessionId: handoff.handoff.executionSessionId ?? null,
     workflowRepositoryId:
       handoff.handoff.workflowRepositoryId ?? handoff.handoff.repositories?.[0]?.workflowRepositoryId ?? null,
   };
@@ -33,6 +35,7 @@ export async function saveRestoredHandoffSnapshot(
     taskId: task.id,
     taskType: task.type,
     workflowRunId: handoff.workflowRunId,
+    executionSessionId: handoff.executionSessionId ?? task.executionSessionId ?? null,
     workflowRepositoryId: handoff.repositories?.[0]?.workflowRepositoryId ?? null,
   };
   await writeHandoffSnapshot(gitRoot, snapshot);
