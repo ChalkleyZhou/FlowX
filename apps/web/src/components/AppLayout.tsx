@@ -29,6 +29,7 @@ const primaryItems = [
 
 const secondaryItems = [
   { key: '/user-manual', label: '使用手册' },
+  { key: '/local-agent', label: '本地 Agent' },
   { key: '/settings/users', label: '用户管理' },
   { key: '/settings/ai-credentials', label: 'AI 凭据' },
   { key: '/settings/git-credentials', label: 'Git 凭据' },

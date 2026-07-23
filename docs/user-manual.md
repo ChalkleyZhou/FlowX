@@ -26,6 +26,19 @@ FlowX 把研发流程拆成可中断、可确认的阶段，核心目标是：
 - `缺陷`：沉淀明确 Bug（Bug）
 - `AI 凭据`：配置你个人的 Cursor / Codex 凭据
 
+## 2.1 本机 Agent（可选）
+
+若要在本机用 Cursor / Codex「本地启动」，或通过 OpenDesign 做本地设计，需要安装并运行 FlowX 本地 Agent。
+
+平台内完整说明见侧栏「设置」→ **[本地 Agent](/local-agent)**（或直接打开 `/local-agent`）。
+
+快速安装启动：
+
+```bash
+npm install -g @flowx-ai/local --registry https://registry.npmjs.org
+flowx-local serve
+```
+
 ## 3. 第一次使用（10 分钟上手）
 
 ### 步骤 1：登录系统
@@ -86,7 +99,7 @@ FlowX 把研发流程拆成可中断、可确认的阶段，核心目标是：
 
 如果需求需要设计师在本地 OpenDesign 完成 UI/交互设计：
 
-1. 先安装并启动本机 Agent：`npm install -g @flowx-ai/local`，然后运行 `flowx-local serve`。
+1. 先安装并启动本机 Agent：`npm install -g @flowx-ai/local`，然后运行 `flowx-local serve`（详见 [本地 Agent](/local-agent)）。
 2. 在需求列表点击 `OpenDesign 设计`。
 3. OpenDesign 读取 `~/.flowx/design-sessions/<executionSessionId>/context.json` 中的版本化需求上下文。
 4. 完成设计后更新同目录的 `result.json`。

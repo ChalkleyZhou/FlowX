@@ -294,6 +294,35 @@ describe('AppLayout', () => {
     expect(codeReviewLink?.textContent).toContain('Code Review');
   });
 
+  it('includes Local Agent in the settings secondary menu', async () => {
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/workspaces']}>
+          <ThemeProvider>
+            <AppLayout>
+              <div>content</div>
+            </AppLayout>
+          </ThemeProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    const settingsButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent === '设置',
+    );
+    expect(settingsButton).toBeTruthy();
+
+    await act(async () => {
+      settingsButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const localAgentLink = Array.from(document.body.querySelectorAll('a')).find(
+      (link) => link.getAttribute('href') === '/local-agent',
+    );
+    expect(localAgentLink).toBeTruthy();
+    expect(localAgentLink?.textContent).toContain('本地 Agent');
+  });
+
   it('uses compact settings entry in profile area', async () => {
     await act(async () => {
       root?.render(

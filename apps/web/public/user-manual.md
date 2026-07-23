@@ -26,6 +26,19 @@ FlowX 把研发流程拆成可中断、可确认的阶段，核心目标是：
 - `缺陷`：沉淀明确 Bug（Bug）
 - `AI 凭据`：配置你个人的 Cursor / Codex 凭据
 
+## 2.1 本机 Agent（可选）
+
+若要在本机用 Cursor / Codex「本地启动」，或通过 OpenDesign 做本地设计，需要安装并运行 FlowX 本地 Agent。
+
+平台内完整说明见侧栏「设置」→ **[本地 Agent](/local-agent)**（或直接打开 `/local-agent`）。
+
+快速安装启动：
+
+```bash
+npm install -g @flowx-ai/local --registry https://registry.npmjs.org
+flowx-local serve
+```
+
 ## 3. 第一次使用（10 分钟上手）
 
 ### 步骤 1：登录系统
@@ -82,14 +95,27 @@ FlowX 把研发流程拆成可中断、可确认的阶段，核心目标是：
 
 只有当需求状态达到“已定稿”后，建议再启动研发工作流。定稿会把确认后的产品简报合并回需求描述，避免执行阶段上下文不一致。
 
-### 4.2 启动工作流
+### 4.2（可选）交给本地 OpenDesign 设计
+
+如果需求需要设计师在本地 OpenDesign 完成 UI/交互设计：
+
+1. 先安装并启动本机 Agent：`npm install -g @flowx-ai/local`，然后运行 `flowx-local serve`（详见 [本地 Agent](/local-agent)）。
+2. 在需求列表点击 `OpenDesign 设计`。
+3. OpenDesign 读取 `~/.flowx/design-sessions/<executionSessionId>/context.json` 中的版本化需求上下文。
+4. 完成设计后更新同目录的 `result.json`。
+5. 在工作流详情点击 `回传本地设计`，设计稿会进入 FlowX 待确认状态。
+
+网络中断时完成报告会进入本地 Outbox，可通过 `flowx-local sync` 重试。详细配置和结果格式见
+[OpenDesign 本地设计阶段](opendesign-design-stage.md)。
+
+### 4.3 启动研发工作流
 
 可以在需求列表或需求详情里启动工作流。启动时可选本次执行的仓库范围：
 
 - 不选：使用需求默认仓库范围
 - 手动选择：只推进本次要并行处理的仓库
 
-### 4.3 在工作流详情推进每个阶段
+### 4.4 在工作流详情推进每个阶段
 
 工作流核心阶段通常是：
 
@@ -112,7 +138,7 @@ AI 审查完成后，人工决策通常有三种：
 - `退回开发执行`：回到执行阶段继续修复
 - `回滚`：终止当前结果并回退
 
-### 4.4（可选）提交并推送、触发部署
+### 4.5（可选）提交并推送、触发部署
 
 当人工确认通过后，可在工作流内执行：
 

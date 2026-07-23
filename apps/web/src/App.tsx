@@ -24,6 +24,7 @@ import { WorkflowRunDetailPage } from './pages/WorkflowRunDetailPage';
 import { WorkflowRunsPage } from './pages/WorkflowRunsPage';
 import { WorkspacesPage } from './pages/WorkspacesPage';
 import { UserManualPage } from './pages/UserManualPage';
+import { LocalAgentGuidePage } from './pages/LocalAgentGuidePage';
 import { ProtectedLayout, ProtectedRoute } from './routes/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
 import { ToastProvider } from './components/ui/toast';
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="/bugs" element={<BugsPage />} />
             <Route path="/bugs/:bugId" element={<BugDetailPage />} />
             <Route path="/user-manual" element={<UserManualPage />} />
+            <Route path="/local-agent" element={<LocalAgentGuidePage />} />
             <Route path="/settings/ai-credentials" element={<AiCredentialsPage />} />
             <Route path="/settings/git-credentials" element={<GitCredentialsPage />} />
             <Route path="/settings/users" element={<OrganizationUsersPage />} />
