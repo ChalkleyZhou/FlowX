@@ -93,6 +93,32 @@ describe('api helpers', () => {
     expect(third).toEqual(payload);
   });
 
+  it('updates a workspace repository including its remote URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'repo-1' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.updateRepository('workspace-1', 'repo-1', {
+      name: 'flowx-web',
+      url: 'https://git.example.com/flowx-web.git',
+      defaultBranch: 'main',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3000/workspaces/workspace-1/repositories/repo-1',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: 'flowx-web',
+          url: 'https://git.example.com/flowx-web.git',
+          defaultBranch: 'main',
+        }),
+      }),
+    );
+  });
+
   it('passes runType when listing workflow runs', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

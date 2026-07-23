@@ -46,7 +46,7 @@ export function WorkspacesPage() {
   } | null>(null);
   const [workspaceDraft, setWorkspaceDraft] = useState({ name: '', description: '' });
   const [repositoryDraft, setRepositoryDraft] = useState({ name: '', url: '', defaultBranch: '' });
-  const [repositoryEditDraft, setRepositoryEditDraft] = useState({ name: '', defaultBranch: '' });
+  const [repositoryEditDraft, setRepositoryEditDraft] = useState({ name: '', url: '', defaultBranch: '' });
   const [branchDraft, setBranchDraft] = useState({ currentBranch: '' });
   const [deployConfigDraft, setDeployConfigDraft] = useState({
     enabled: false,
@@ -57,6 +57,7 @@ export function WorkspacesPage() {
   const [deployConfigLoading, setDeployConfigLoading] = useState(false);
   const [deployConfigSaving, setDeployConfigSaving] = useState(false);
   const [addingRepository, setAddingRepository] = useState(false);
+  const [updatingRepositoryMeta, setUpdatingRepositoryMeta] = useState(false);
   const [resyncingRepositoryId, setResyncingRepositoryId] = useState<string | null>(null);
   const toast = useToast();
 
@@ -172,19 +173,22 @@ export function WorkspacesPage() {
     }
   }
 
-  async function updateRepositoryMeta(values: { name: string; defaultBranch?: string }) {
+  async function updateRepositoryMeta(values: { name: string; url: string; defaultBranch?: string }) {
     if (!editingRepositoryMeta) {
       return;
     }
+    setUpdatingRepositoryMeta(true);
     try {
       await api.updateRepository(editingRepositoryMeta.workspaceId, editingRepositoryMeta.repository.id, values);
-      setRepositoryEditDraft({ name: '', defaultBranch: '' });
+      setRepositoryEditDraft({ name: '', url: '', defaultBranch: '' });
       setEditRepositoryModalOpen(false);
       setEditingRepositoryMeta(null);
       await refresh();
       toast.success('代码库信息已更新');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '更新代码库失败');
+    } finally {
+      setUpdatingRepositoryMeta(false);
     }
   }
 
@@ -312,12 +316,13 @@ export function WorkspacesPage() {
 
   async function handleUpdateRepositoryMeta(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!repositoryEditDraft.name.trim()) {
-      toast.error('请输入代码库名称');
+    if (!repositoryEditDraft.name.trim() || !repositoryEditDraft.url.trim()) {
+      toast.error('请填写代码库名称和仓库地址');
       return;
     }
     await updateRepositoryMeta({
       name: repositoryEditDraft.name.trim(),
+      url: repositoryEditDraft.url.trim(),
       defaultBranch: repositoryEditDraft.defaultBranch.trim() || undefined,
     });
   }
@@ -417,14 +422,14 @@ export function WorkspacesPage() {
           setEditRepositoryModalOpen(open);
           if (!open) {
             setEditingRepositoryMeta(null);
-            setRepositoryEditDraft({ name: '', defaultBranch: '' });
+            setRepositoryEditDraft({ name: '', url: '', defaultBranch: '' });
           }
         }}
       >
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>编辑代码库</DialogTitle>
-            <DialogDescription>维护代码库名称和默认分支，不会自动切换当前分支。</DialogDescription>
+            <DialogDescription>修改仓库地址后会清理旧副本并重新同步，当前分支不会自动切换。</DialogDescription>
           </DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={(event) => void handleUpdateRepositoryMeta(event)}>
             <div className="flex flex-col gap-2">
@@ -434,6 +439,15 @@ export function WorkspacesPage() {
                 value={repositoryEditDraft.name}
                 onChange={(event) => setRepositoryEditDraft((current) => ({ ...current, name: event.target.value }))}
                 placeholder="例如：flowx-web"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-foreground" htmlFor="repository-edit-url">仓库地址</label>
+              <UiInput
+                id="repository-edit-url"
+                value={repositoryEditDraft.url}
+                onChange={(event) => setRepositoryEditDraft((current) => ({ ...current, url: event.target.value }))}
+                placeholder="git clone 可用的仓库地址"
               />
             </div>
             <div className="flex flex-col gap-2">
@@ -449,8 +463,9 @@ export function WorkspacesPage() {
               <UiButton
                 type="submit"
                 className="min-w-[140px]"
+                disabled={updatingRepositoryMeta}
               >
-                保存代码库信息
+                {updatingRepositoryMeta ? '保存中...' : '保存代码库信息'}
               </UiButton>
             </DialogFooter>
           </form>
@@ -641,6 +656,7 @@ export function WorkspacesPage() {
                                 setEditingRepositoryMeta({ workspaceId: workspace.id, repository });
                                 setRepositoryEditDraft({
                                   name: repository.name,
+                                  url: repository.url,
                                   defaultBranch: repository.defaultBranch ?? '',
                                 });
                                 setEditRepositoryModalOpen(true);

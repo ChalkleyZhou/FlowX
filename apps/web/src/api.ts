@@ -522,7 +522,7 @@ export const api = {
   updateRepository: (
     workspaceId: string,
     repositoryId: string,
-    payload: { name: string; defaultBranch?: string },
+    payload: { name: string; url: string; defaultBranch?: string },
   ) =>
     request<Repository>(`/workspaces/${workspaceId}/repositories/${repositoryId}`, {
       method: 'PATCH',

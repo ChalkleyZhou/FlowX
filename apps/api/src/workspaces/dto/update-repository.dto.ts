@@ -5,6 +5,10 @@ export class UpdateRepositoryDto {
   @IsNotEmpty()
   name!: string;
 
+  @IsString()
+  @IsNotEmpty()
+  url!: string;
+
   @IsOptional()
   @IsString()
   defaultBranch?: string;

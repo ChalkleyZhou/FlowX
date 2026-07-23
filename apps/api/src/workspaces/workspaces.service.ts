@@ -119,16 +119,37 @@ export class WorkspacesService {
       throw new NotFoundException('Repository not found.');
     }
 
-    return this.prisma.repository.update({
+    const nextUrl = dto.url.trim();
+    const urlChanged = nextUrl !== existingRepository.url;
+    const repository = await this.prisma.repository.update({
       where: { id: repositoryId },
       data: {
         name: dto.name.trim(),
+        url: nextUrl,
         defaultBranch: dto.defaultBranch?.trim() || null,
+        ...(urlChanged
+          ? {
+              localPath: null,
+              syncStatus: 'PENDING',
+              syncError: null,
+            }
+          : {}),
       },
       include: {
         deployConfig: true,
       },
     });
+
+    if (urlChanged) {
+      await this.repositorySyncService.removeRepositoryStorage(
+        workspaceId,
+        repositoryId,
+        existingRepository.name,
+      );
+      this.repositorySyncService.scheduleRepositorySync(repository);
+    }
+
+    return repository;
   }
 
   async updateRepositoryBranch(
