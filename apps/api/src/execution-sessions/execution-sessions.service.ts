@@ -3,8 +3,11 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
@@ -15,10 +18,23 @@ import {
   type SourceTool,
 } from '@flowx-ai/protocol';
 import { PrismaService } from '../prisma/prisma.service';
+import type { CompleteExecutionSessionDto } from './dto/complete-execution-session.dto';
 import {
   ACTIVE_EXECUTION_SESSION_STATUSES,
   assertExecutionSessionTransition,
 } from './execution-session-state';
+import { WorkflowService } from '../workflow/workflow.service';
+
+export type CompleteExecutionSessionScopeWithSession = ExecutionSessionScope & {
+  notifySession?: {
+    user: { id: string; displayName: string };
+    organization?: {
+      id?: string | null;
+      providerOrganizationId?: string | null;
+      name?: string | null;
+    } | null;
+  };
+};
 
 export type ExecutionSessionScope = {
   userId?: string | null;
@@ -52,7 +68,12 @@ type TransitionInput = {
 
 @Injectable()
 export class ExecutionSessionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    @Inject(forwardRef(() => WorkflowService))
+    private readonly workflowService?: WorkflowService,
+  ) {}
 
   async createOrReuseSession(input: CreateExecutionSessionInput) {
     const idempotencyKey = input.idempotencyKey?.trim() || null;
@@ -151,7 +172,42 @@ export class ExecutionSessionsService {
     });
   }
 
-  async complete(id: string, input: TransitionInput = {}, scope: ExecutionSessionScope = {}) {
+  /**
+   * `POST /execution-sessions/:id/complete` (design spec §6.2). When `repositories` is
+   * reported, this is the canonical local completion path: it delegates to
+   * `WorkflowService.completeLocalExecutionBySession`, which runs the single
+   * `LocalCompletionCommand` implementation (verify → artifacts → session terminal → workflow
+   * advance) shared with the `complete-local` compatibility wrapper. Without `repositories`,
+   * this keeps the original thin session status transition.
+   */
+  async complete(
+    id: string,
+    input: CompleteExecutionSessionDto = {},
+    scope: CompleteExecutionSessionScopeWithSession = {},
+  ) {
+    if (input.repositories && input.repositories.length > 0) {
+      if (typeof input.pushed !== 'boolean') {
+        throw new BadRequestException('pushed is required when reporting repositories.');
+      }
+      if (!this.workflowService) {
+        throw new BadRequestException('Local completion is not available in this environment.');
+      }
+      const result = await this.workflowService.completeLocalExecutionBySession(
+        id,
+        {
+          idempotencyKey: input.idempotencyKey,
+          repositories: input.repositories,
+          pushed: input.pushed,
+          implementationSummary: input.implementationSummary ?? input.summary,
+          testResult: input.testResult,
+          diffSummary: input.diffSummary,
+          untrackedFiles: input.untrackedFiles,
+        },
+        scope.notifySession,
+        { organizationId: scope.organizationId },
+      );
+      return result.executionSession;
+    }
     return this.transition(id, 'COMPLETED', input, scope);
   }
 

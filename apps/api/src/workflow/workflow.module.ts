@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { AiModule } from '../ai/ai.module';
 import { ArtifactsModule } from '../artifacts/artifacts.module';
 import { AuthModule } from '../auth/auth.module';
@@ -14,7 +14,10 @@ import { WorkflowGitRemoteService } from './workflow-git-remote.service';
 import { WorkflowService } from './workflow.service';
 
 @Module({
-  imports: [AiModule, ArtifactsModule, AuthModule, WorkspacesModule, NotificationsModule],
+  // ArtifactsModule imports ExecutionSessionsModule, which in turn imports this module (to call
+  // WorkflowService.completeLocalExecutionBySession) — keep this edge lazy via forwardRef so the
+  // three modules don't deadlock on a synchronous circular require at bootstrap.
+  imports: [AiModule, forwardRef(() => ArtifactsModule), AuthModule, WorkspacesModule, NotificationsModule],
   controllers: [WorkflowController, LocalLaunchController],
   providers: [
     WorkflowService,

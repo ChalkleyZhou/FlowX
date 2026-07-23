@@ -72,6 +72,7 @@ import { RepositorySyncService } from '../workspaces/repository-sync.service';
 import { CompleteLocalExecutionDto } from './dto/complete-local-execution.dto';
 import { ACTIVE_EXECUTION_SESSION_STATUSES } from '../execution-sessions/execution-session-state';
 import { CreateWorkflowRunDto } from './dto/create-workflow-run.dto';
+import { LocalCompletionCommand, type LocalCompletionWorkflowGateway } from './local-completion.command';
 import { buildExecutionOutputFromLocalReport } from './workflow-local-execution-output';
 import { buildLocalHandoff, type LocalHandoffPayload } from './workflow-local-handoff';
 import { WorkflowArtifactService } from './workflow-artifact.service';
@@ -136,7 +137,7 @@ const stageTypeMap: Record<StageType, string> = {
   [StageType.HUMAN_REVIEW]: 'HUMAN_REVIEW',
 };
 
-type WorkflowNotificationRecipient = {
+export type WorkflowNotificationRecipient = {
   flowxUserId: string;
   flowxOrganizationId?: string | null;
   displayName: string;
@@ -147,6 +148,7 @@ type WorkflowNotificationRecipient = {
 @Injectable()
 export class WorkflowService {
   private readonly logger = new Logger(WorkflowService.name);
+  private readonly localCompletionCommand: LocalCompletionCommand;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -158,7 +160,12 @@ export class WorkflowService {
     private readonly workflowArtifactService: WorkflowArtifactService,
     private readonly workflowGitRemoteService: WorkflowGitRemoteService,
     @Optional() private readonly artifactsService?: ArtifactsService,
-  ) {}
+  ) {
+    this.localCompletionCommand = new LocalCompletionCommand(
+      workflowArtifactService,
+      workflowGitRemoteService,
+    );
+  }
 
   async createWorkflowRun(dto: CreateWorkflowRunDto) {
     return this.createRequirementWorkflowRun(dto, WorkflowRunType.FULL);
@@ -747,108 +754,115 @@ export class WorkflowService {
     return this.buildLocalHandoffForWorkflow(workflow, workflow.status, executionSession);
   }
 
+  /**
+   * Compatibility entry point for `POST /workflow-runs/:id/execution/complete-local`.
+   * Resolves the active LOCAL execution session for this workflow run (when session
+   * projection is enabled) and delegates to `completeLocalExecutionBySession`, which is the
+   * canonical `LocalCompletionCommand` path. Falls back to running the command directly when
+   * no execution session is available so legacy/no-session workflows keep working.
+   */
   async completeLocalExecution(
     id: string,
     dto: CompleteLocalExecutionDto,
     notifyRecipient?: WorkflowNotificationSession,
   ) {
-    const workflow = await this.getWorkflowOrThrow(id);
     const executionSession = this.isExecutionSessionProjectionEnabled()
       ? await this.findLatestLocalExecutionSession(id)
       : null;
 
-    const handoff = await this.buildLocalHandoffForWorkflow(
+    if (executionSession) {
+      const result = await this.completeLocalExecutionBySession(
+        executionSession.id,
+        dto,
+        notifyRecipient,
+      );
+      return { workflow: result.workflow, handoff: result.handoff };
+    }
+
+    const workflow = await this.getWorkflowOrThrow(id);
+    const handoff = await this.buildLocalHandoffForWorkflow(workflow, workflow.status, null);
+    const result = await this.localCompletionCommand.run({
       workflow,
-      workflow.status,
-      executionSession,
-    );
-    const completionReport = executionSession
-      ? this.buildCompletionReport(executionSession.id, handoff, dto)
-      : null;
-    if (workflow.status !== 'EXECUTION_RUNNING') {
-      if (
-        executionSession?.status === 'COMPLETED' &&
-        completionReport &&
-        this.readCompletionIdempotencyKey(executionSession.metadata) ===
-          completionReport.idempotencyKey
-      ) {
-        return { workflow, handoff };
-      }
-      this.assertLocalExecutionActive(workflow);
-    }
-    this.assertLocalExecutionActive(workflow);
-    const repoByWrId = new Map(handoff.repositories.map((repository) => [repository.workflowRepositoryId, repository]));
-
-    for (const report of dto.repositories) {
-      if (!repoByWrId.has(report.workflowRepositoryId)) {
-        throw new BadRequestException(`Unknown workflow repository: ${report.workflowRepositoryId}`);
-      }
-    }
-
-    const requiresRemote = handoff.repositories.some((repository) => repository.url.trim());
-    if (requiresRemote && !dto.pushed) {
-      throw new BadRequestException('请先 push 到远程后再完成本地执行。');
-    }
-
-    const verificationRows: Array<{ workflowRepositoryId: string; verified: boolean }> = [];
-    if (dto.pushed) {
-      for (const report of dto.repositories) {
-        const repository = repoByWrId.get(report.workflowRepositoryId)!;
-        if (!repository.url.trim()) {
-          verificationRows.push({ workflowRepositoryId: report.workflowRepositoryId, verified: false });
-          continue;
-        }
-        const verified = await this.workflowGitRemoteService.verifyBranchTip(
-          repository.url,
-          repository.workingBranch,
-          report.headSha,
-        );
-        if (!verified) {
-          throw new BadRequestException(
-            `远程分支 ${repository.workingBranch} 未找到提交 ${report.headSha.slice(0, 12)}，请先 push。`,
-          );
-        }
-        verificationRows.push({ workflowRepositoryId: report.workflowRepositoryId, verified: true });
-      }
-    }
-
-    const rawOutput = buildExecutionOutputFromLocalReport(handoff, dto);
-    const output = this.sanitizeExecutionOutputPaths(rawOutput, workflow.workflowRepositories);
-    const executionStage = this.getLatestStageOrThrow(workflow, StageType.EXECUTION);
-    const stageOutput = await this.attachExecutionArtifactToOutput(
-      id,
-      executionStage.attempt,
-      output,
+      executionSession: null,
       handoff,
       dto,
-      verificationRows,
-    );
-
-    const triggerType =
-      typeof executionStage.input === 'object' &&
-      executionStage.input !== null &&
-      !Array.isArray(executionStage.input)
-        ? String((executionStage.input as Record<string, unknown>).triggerType ?? '') || undefined
-        : undefined;
-
-    await this.finalizeExecutionSuccess(id, stageOutput, {
-      triggerType,
       notifyRecipient: this.toNotificationRecipient(notifyRecipient),
-      executor: 'LOCAL',
-      requirementTitle: workflow.requirement.title,
-      localCompletion:
-        executionSession && completionReport
-          ? {
-              executionSession,
-              completionReport,
-              verificationRows,
-              repositories: handoff.repositories,
-            }
-          : undefined,
+      gateway: this.buildLocalCompletionGateway(),
+    });
+    return { workflow: result.workflow, handoff: result.handoff };
+  }
+
+  /**
+   * Canonical local completion entry point behind `POST /execution-sessions/:id/complete`
+   * (spec §6.2). Loads the LOCAL execution session, guards against completing a session that
+   * is already terminal with a different report, then runs the single `LocalCompletionCommand`
+   * implementation shared with the `complete-local` compatibility wrapper.
+   */
+  async completeLocalExecutionBySession(
+    executionSessionId: string,
+    dto: CompleteLocalExecutionDto,
+    notifyRecipient?: WorkflowNotificationSession,
+    scope: { organizationId?: string | null } = {},
+  ) {
+    const session = await this.prisma.executionSession.findUnique({
+      where: { id: executionSessionId },
+    });
+    if (!session || session.executorType !== 'LOCAL') {
+      throw new NotFoundException('Local execution session not found.');
+    }
+    if (session.organizationId && session.organizationId !== scope.organizationId?.trim()) {
+      throw new ConflictException('Execution session belongs to another organization.');
+    }
+
+    const workflow = await this.getWorkflowOrThrow(session.workflowRunId);
+    const handoff = await this.buildLocalHandoffForWorkflow(workflow, workflow.status, session);
+    const completionReport = this.buildCompletionReport(session.id, handoff, dto);
+    const existingKey = this.readCompletionIdempotencyKey(session.metadata);
+
+    if (session.status === 'COMPLETED') {
+      if (existingKey === completionReport.idempotencyKey) {
+        return { workflow, handoff, executionSession: session };
+      }
+      throw new ConflictException({
+        code: 'EXECUTION_SESSION_TERMINAL',
+        message: `Execution session ${executionSessionId} was already completed with another report.`,
+      });
+    }
+    if (!ACTIVE_EXECUTION_SESSION_STATUSES.includes(session.status as never)) {
+      throw new ConflictException({
+        code: 'EXECUTION_SESSION_TERMINAL',
+        message: `Execution session ${executionSessionId} is already ${session.status}.`,
+      });
+    }
+
+    const result = await this.localCompletionCommand.run({
+      workflow,
+      executionSession: session,
+      handoff,
+      dto,
+      notifyRecipient: this.toNotificationRecipient(notifyRecipient),
+      gateway: this.buildLocalCompletionGateway(),
     });
 
-    const updated = await this.getWorkflowOrThrow(id);
-    return { workflow: updated, handoff };
+    const updatedSession = await this.prisma.executionSession.findUniqueOrThrow({
+      where: { id: executionSessionId },
+    });
+    return { workflow: result.workflow, handoff: result.handoff, executionSession: updatedSession };
+  }
+
+  private buildLocalCompletionGateway(): LocalCompletionWorkflowGateway {
+    return {
+      getWorkflowOrThrow: (workflowRunId) => this.getWorkflowOrThrow(workflowRunId),
+      buildCompletionReport: (executionSessionId, handoff, dto) =>
+        this.buildCompletionReport(executionSessionId, handoff, dto),
+      readCompletionIdempotencyKey: (metadata) => this.readCompletionIdempotencyKey(metadata),
+      assertLocalExecutionActive: (workflow) => this.assertLocalExecutionActive(workflow),
+      sanitizeExecutionOutputPaths: (output, repositories) =>
+        this.sanitizeExecutionOutputPaths(output, repositories),
+      getLatestStageOrThrow: (workflow, stage) => this.getLatestStageOrThrow(workflow, stage),
+      finalizeExecutionSuccess: (workflowRunId, stageOutput, options) =>
+        this.finalizeExecutionSuccess(workflowRunId, stageOutput, options),
+    };
   }
 
   async cancelLocalExecution(id: string) {
@@ -3389,87 +3403,6 @@ export class WorkflowService {
     }
   }
 
-  private async attachExecutionArtifactToOutput(
-    workflowRunId: string,
-    version: number,
-    output: ExecuteTaskOutput,
-    handoff: LocalHandoffPayload,
-    dto: CompleteLocalExecutionDto,
-    verificationRows: Array<{ workflowRepositoryId: string; verified: boolean }>,
-  ): Promise<
-    ExecuteTaskOutput & {
-      _artifact?: {
-        kind: 'execution';
-        version: number;
-        htmlPath: string;
-        metaPath: string;
-        sha256: string;
-      };
-    }
-  > {
-    const verifiedById = new Map(verificationRows.map((row) => [row.workflowRepositoryId, row.verified]));
-    const repoByWrId = new Map(handoff.repositories.map((repository) => [repository.workflowRepositoryId, repository]));
-
-    try {
-      const repositoryRows = dto.repositories.map((report) => {
-        const repository = repoByWrId.get(report.workflowRepositoryId)!;
-        return {
-          name: repository.name,
-          workingBranch: repository.workingBranch,
-          headSha: report.headSha,
-          changedFileCount: report.changedFiles.length,
-          pushed: dto.pushed,
-          verified: verifiedById.get(report.workflowRepositoryId) ?? false,
-        };
-      });
-
-      const completedAt = new Date().toISOString();
-      const { htmlPath, metaPath, sha256 } = await this.workflowArtifactService.writeExecutionArtifact({
-        workflowRunId,
-        version,
-        executor: 'LOCAL',
-        patchSummary: output.patchSummary,
-        changedFiles: output.changedFiles,
-        repositoryRows,
-        pushed: dto.pushed,
-        meta: {
-          executor: 'LOCAL',
-          status: 'COMPLETED',
-          completedAt,
-          patchSummary: output.patchSummary,
-          changedFiles: output.changedFiles,
-          pushed: dto.pushed,
-          repositories: dto.repositories.map((report) => {
-            const repository = repoByWrId.get(report.workflowRepositoryId)!;
-            return {
-              workflowRepositoryId: report.workflowRepositoryId,
-              name: repository.name,
-              workingBranch: repository.workingBranch,
-              headSha: report.headSha,
-              changedFiles: report.changedFiles,
-              verified: verifiedById.get(report.workflowRepositoryId) ?? false,
-            };
-          }),
-        },
-      });
-
-      return {
-        ...output,
-        _artifact: {
-          kind: 'execution',
-          version,
-          htmlPath,
-          metaPath,
-          sha256,
-        },
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to write execution artifact for workflow ${workflowRunId}: ${message}`);
-      return { ...output };
-    }
-  }
-
   private async finalizeExecutionSuccess(
     id: string,
     output: ExecuteTaskOutput,
@@ -5742,7 +5675,7 @@ export class WorkflowService {
   }
 }
 
-type WorkflowPayload = Prisma.WorkflowRunGetPayload<{
+export type WorkflowPayload = Prisma.WorkflowRunGetPayload<{
   include: {
     requirement: {
       include: {
@@ -5768,7 +5701,7 @@ type WorkflowPayload = Prisma.WorkflowRunGetPayload<{
   };
 }>;
 
-type LocalExecutionSessionProjection = {
+export type LocalExecutionSessionProjection = {
   id: string;
   status: string;
   sourceTool: string;
