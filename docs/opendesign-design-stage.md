@@ -43,6 +43,7 @@ sequenceDiagram
 - 浏览器只向本机 `127.0.0.1:3920` 发送一次性启动票据；长期登录态不会交给本地工具。
 - 推荐通过 `flowx-mcp` 拉取 ContextPackage（`flowx_get_design_handoff`）并回传结果（`flowx_submit_design`）。
 - `~/.flowx/active-design.json` 保存当前活跃设计会话的短期凭据，供 MCP 使用。
+- `flowx-mcp` 会优先通过 `flowx-local` 的 loopback 接口读取活跃会话，避免 Codex 沙箱直接访问 `~/.flowx`；未运行本机 Agent 时才回退到文件读取。
 - 结果通过 `idempotencyKey` 幂等回传；网络失败时写入 Outbox，恢复后重放。
 
 ## 启动 flowx-local
@@ -59,6 +60,8 @@ flowx-local serve
 ```bash
 flowx-local status
 ```
+
+MCP 读取活跃设计会话时会自动通过 `http://127.0.0.1:3920` 请求本机 Agent，用户不需要在 Codex 中手动添加 `--add-dir ~/.flowx`。升级 `flowx-local` 后重启一次本机 Agent，使 loopback 会话接口生效。
 
 不想全局安装时，可用 `npx @flowx-ai/local serve`。
 

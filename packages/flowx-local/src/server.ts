@@ -1,6 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import { DEFAULT_PORT, PACKAGE_VERSION, loadConfig, type ConfigOptions } from './config.js';
 import { ensureDeviceIdentity } from './device.js';
+import { readActiveDesignSession } from './active-design-session.js';
 import { runLaunch, type LaunchRequest } from './launch.js';
 import { Outbox } from './outbox.js';
 import {
@@ -79,6 +80,17 @@ export function createLocalServer(options: StartServerOptions = {}): Server {
         'access-control-allow-origin': '*',
       });
       res.end(body);
+      return;
+    }
+
+    if (method === 'GET' && path === '/design/active-session') {
+      const active = await readActiveDesignSession(options.homeDir);
+      if (!active) {
+        sendJson(res, 404, { ok: false, error: 'no_active_design_session' });
+        return;
+      }
+      // 该接口仅监听 loopback，不加 CORS，避免把短期 token 暴露给浏览器。
+      sendJson(res, 200, active);
       return;
     }
 

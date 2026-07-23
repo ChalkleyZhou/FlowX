@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createLocalServer, startServer } from './server.js';
+import { writeActiveDesignSession } from './active-design-session.js';
 
 const servers: Server[] = [];
 const homes: string[] = [];
@@ -41,6 +42,32 @@ describe('flowx-local server', () => {
       version: '0.1.0',
       protocolVersion: '1.0',
       outboxPending: 0,
+    });
+  });
+
+  it('serves the active design session to local MCP clients without CORS exposure', async () => {
+    const homeDir = makeHome();
+    await writeActiveDesignSession(
+      {
+        workflowRunId: 'workflow-1',
+        executionSessionId: 'session-1',
+        apiBaseUrl: 'http://127.0.0.1:3000',
+        accessToken: 'token-1',
+        accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
+        stage: 'design',
+      },
+      homeDir,
+    );
+    const { server, url } = await startServer({ port: 0, homeDir });
+    servers.push(server);
+
+    const response = await fetch(`${url}/design/active-session`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
+    await expect(response.json()).resolves.toMatchObject({
+      workflowRunId: 'workflow-1',
+      executionSessionId: 'session-1',
+      accessToken: 'token-1',
     });
   });
 

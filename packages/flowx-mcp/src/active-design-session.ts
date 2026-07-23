@@ -12,6 +12,13 @@ export type ActiveDesignSession = {
   updatedAt: string;
 };
 
+export type ActiveDesignSessionReadOptions = {
+  localUrl?: string;
+  fetch?: typeof fetch;
+};
+
+const DEFAULT_FLOWX_LOCAL_URL = 'http://127.0.0.1:3920';
+
 export function getActiveDesignSessionPath(homeDir = homedir()) {
   return join(homeDir, '.flowx', 'active-design.json');
 }
@@ -91,7 +98,31 @@ async function readSessionFallback(homeDir: string): Promise<ActiveDesignSession
 
 export async function readActiveDesignSession(
   homeDir = homedir(),
+  options: ActiveDesignSessionReadOptions = {},
 ): Promise<ActiveDesignSession | null> {
+  // Codex 沙箱不能直接读取 ~/.flowx 时，由 flowx-local 在沙箱外代读会话文件。
+  const shouldUseLocalAgent = options.fetch !== undefined || homeDir === homedir();
+  if (shouldUseLocalAgent) {
+    try {
+      const fetcher = options.fetch ?? fetch;
+      const localUrl = (options.localUrl ?? process.env.FLOWX_LOCAL_URL ?? DEFAULT_FLOWX_LOCAL_URL).replace(
+        /\/+$/,
+        '',
+      );
+      const response = await fetcher(
+        `${localUrl}/design/active-session`,
+        { signal: AbortSignal.timeout(300) },
+      );
+      if (response.ok) {
+        const parsed = (await response.json()) as Partial<ActiveDesignSession>;
+        const active = asActiveSession(parsed);
+        if (active) return active;
+      }
+    } catch {
+      // 本机代理是可选的，继续使用下面的文件回退逻辑。
+    }
+  }
+
   try {
     const raw = await readFile(getActiveDesignSessionPath(homeDir), 'utf8');
     const parsed = JSON.parse(raw) as Partial<ActiveDesignSession>;
