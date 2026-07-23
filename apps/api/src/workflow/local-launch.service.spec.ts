@@ -11,6 +11,7 @@ const session = {
 
 const handoff = {
   workflowRunId: 'run-1',
+  executionSessionId: 'session-1',
   status: 'EXECUTION_RUNNING',
   executor: 'LOCAL' as const,
   requirement: {
@@ -49,9 +50,9 @@ const handoff = {
   },
 };
 
-function createService() {
+function createService(handoffPayload = handoff) {
   const workflowService = {
-    getLocalHandoff: vi.fn().mockResolvedValue(handoff),
+    getLocalHandoff: vi.fn().mockResolvedValue(handoffPayload),
   };
   const authService = {
     createShortLivedSession: vi.fn().mockResolvedValue({
@@ -82,11 +83,32 @@ describe('LocalLaunchService', () => {
     expect(redeemed.workflowRunId).toBe('run-1');
     expect(redeemed.mcpToken).toBe('mcp-1');
     expect(redeemed.handoff).toEqual(handoff);
+    expect(redeemed.handoff.executionSessionId).toEqual(expect.any(String));
     expect(redeemed.chatPrompt).toContain('run-1');
+    expect(redeemed.chatPrompt).toContain(redeemed.handoff.executionSessionId);
+    expect(redeemed.chatPrompt).toMatch(/flowx_report_completion/);
     expect(redeemed.apiBaseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
     expect(authService.createShortLivedSession).toHaveBeenCalledWith('user-1', 'org-1');
 
     await expect(service.redeemTicket(issued.ticket)).rejects.toThrow(/invalid|expired/i);
+  });
+
+  it('rejects redemption without an execution session when projection is enabled', async () => {
+    const { executionSessionId: _executionSessionId, ...handoffWithoutSession } = handoff;
+    const original = process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED;
+    process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED = 'true';
+    try {
+      const { service } = createService(handoffWithoutSession);
+      const issued = await service.issueTicket('run-1', session);
+
+      await expect(service.redeemTicket(issued.ticket)).rejects.toThrow(/execution session/i);
+    } finally {
+      if (original === undefined) {
+        delete process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED;
+      } else {
+        process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED = original;
+      }
+    }
   });
 
   it('rejects expired tickets', async () => {

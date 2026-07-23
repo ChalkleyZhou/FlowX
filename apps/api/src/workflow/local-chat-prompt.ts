@@ -11,6 +11,8 @@ export interface BuildLocalChatPromptInput {
   taskType: LocalChatTaskType;
   taskId: string;
   workflowRunId: string;
+  executionSessionId?: string | null;
+  workflowRepositoryId?: string | null;
   title: string;
   description: string;
   acceptanceCriteria?: string | null;
@@ -55,6 +57,10 @@ export function buildLocalChatPrompt(input: BuildLocalChatPromptInput) {
     `- Task type: ${input.taskType}`,
     `- Task id: ${input.taskId}`,
     `- Workflow run id: ${input.workflowRunId}`,
+    input.executionSessionId?.trim() ? `- Execution session id: ${input.executionSessionId.trim()}` : '',
+    input.workflowRepositoryId?.trim()
+      ? `- Workflow repository id: ${input.workflowRepositoryId.trim()}`
+      : '',
     `- Repository: ${input.repository.name}`,
     input.repository.url?.trim() ? `- Remote: ${input.repository.url.trim()}` : '',
     `- Working branch: ${input.repository.workingBranch}`,
@@ -73,7 +79,7 @@ export function buildLocalChatPrompt(input: BuildLocalChatPromptInput) {
     ...formatSuggestedChecks(input.suggestedChecks),
     '',
     '## Completion',
-    'When the implementation is ready, report it back to FlowX with MCP `flowx_submit_completion` or the extension `Report to FlowX` action.',
+    'When the implementation is ready, call MCP `flowx_report_completion` with `workflowRunId`, `executionSessionId`, and `workflowRepositoryId`, plus `implementationSummary`, `testResult`, and `pushed`.',
   ];
 
   return lines.filter((line) => line !== '').join('\n');

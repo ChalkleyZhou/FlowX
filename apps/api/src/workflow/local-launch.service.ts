@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { AuthService } from '../auth/auth.service';
 import { buildLocalChatPrompt } from './local-chat-prompt';
 import { LocalLaunchTicketStore } from './local-launch-ticket.store';
@@ -53,10 +53,17 @@ export class LocalLaunchService {
     const record = this.ticketStore.consume(ticket);
     const handoff = await this.workflowService.getLocalHandoff(record.workflowRunId);
     const repository = handoff.repositories[0];
+    if (this.isExecutionSessionProjectionEnabled() && !handoff.executionSessionId?.trim()) {
+      throw new BadRequestException(
+        'Local execution handoff is missing an execution session id. Create a new local launch ticket.',
+      );
+    }
     const chatPrompt = buildLocalChatPrompt({
       taskType: 'requirement',
       taskId: handoff.requirement.id,
       workflowRunId: handoff.workflowRunId,
+      executionSessionId: handoff.executionSessionId,
+      workflowRepositoryId: repository?.workflowRepositoryId,
       title: handoff.requirement.title,
       description: handoff.requirement.description,
       acceptanceCriteria: handoff.requirement.acceptanceCriteria,
@@ -81,5 +88,9 @@ export class LocalLaunchService {
       mcpToken: shortLived.token,
       mcpTokenExpiresAt: shortLived.expiresAt,
     };
+  }
+
+  private isExecutionSessionProjectionEnabled() {
+    return process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED?.trim().toLowerCase() !== 'false';
   }
 }

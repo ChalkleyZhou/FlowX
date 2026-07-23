@@ -1,5 +1,7 @@
 # FlowX local execution
 
-Read `.flowx/tasks/<workflow-run-id>.md` for the task and branch instructions. Check out the working branch named in that prompt before editing.
+Read `.flowx/tasks/<workflow-run-id>.md` for task, branch, `workflowRunId`, `executionSessionId`, and `workflowRepositoryId`.
 
-Implement the requested change, then use `flowx_collect_git_report` to gather the repository report and `flowx_report_completion` to submit completion.
+Implement the change, then:
+1. `flowx_collect_git_report`
+2. `flowx_report_completion` with those ids plus implementationSummary, testResult, and pushed

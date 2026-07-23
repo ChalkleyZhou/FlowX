@@ -8,6 +8,8 @@ describe('local chat workflow helpers', () => {
       taskType: 'requirement',
       taskId: 'req-1',
       workflowRunId: 'wr-1',
+      executionSessionId: 'session-1',
+      workflowRepositoryId: 'workflow-repository-1',
       title: 'Add export',
       description: 'Users need CSV export',
       acceptanceCriteria: 'CSV downloads with headers',
@@ -22,7 +24,9 @@ describe('local chat workflow helpers', () => {
     expect(prompt).toContain('req-1');
     expect(prompt).toContain('Acceptance criteria');
     expect(prompt).toContain('CSV downloads with headers');
-    expect(prompt).toContain('flowx_submit_completion');
+    expect(prompt).toContain('session-1');
+    expect(prompt).toContain('workflow-repository-1');
+    expect(prompt).toContain('flowx_report_completion');
   });
 
   it('builds a bug prompt with reproduction, expected behavior, and regression guidance', () => {
