@@ -1,0 +1,56 @@
+name: Publish @flowx-ai packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'flowx-ai-v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build protocol
+        run: pnpm --filter @flowx-ai/protocol build
+
+      - name: Build local
+        run: pnpm --filter @flowx-ai/local build
+
+      - name: Test protocol
+        run: pnpm --filter @flowx-ai/protocol test
+
+      - name: Test local
+        run: pnpm --filter @flowx-ai/local test
+
+      - name: Publish protocol
+        working-directory: packages/flowx-protocol
+        run: pnpm publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish local
+        working-directory: packages/flowx-local
+        run: pnpm publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
