@@ -199,4 +199,56 @@ describe('WorkflowService local OpenDesign', () => {
     );
     expect(tx.evidence.create).toHaveBeenCalled();
   });
+
+  it('creates a new OpenDesign session after the previous design was rejected', async () => {
+    const rejectedWorkflow = {
+      ...workflow,
+      status: 'DESIGN_PENDING',
+      stageExecutions: [
+        {
+          id: 'stage-design-1',
+          stage: 'DESIGN',
+          status: 'REJECTED',
+          attempt: 1,
+          input: null,
+        },
+      ],
+    };
+    const createSession = vi.fn().mockImplementation(({ data }) => data);
+    const tx = {
+      executionSession: {
+        create: createSession,
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      workflowRun: { findUniqueOrThrow: vi.fn().mockResolvedValue(rejectedWorkflow) },
+    };
+    const prisma = {
+      // Previous OpenDesign session is COMPLETED after submit, so it must not block reclaim.
+      executionSession: { findMany: vi.fn().mockResolvedValue([]) },
+      $transaction: vi.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
+    };
+    const service = createService(prisma);
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(rejectedWorkflow);
+    vi.spyOn(
+      service as never,
+      'getOrCreateRunnableSkippableStageExecution' as never,
+    ).mockResolvedValue({ id: 'stage-design-2', attempt: 2 });
+    vi.spyOn(service as never, 'updateStageExecution' as never).mockResolvedValue(undefined);
+
+    const result = await service.claimLocalDesign('workflow-design-1', {
+      user: { id: 'user-1', displayName: 'Designer' },
+      organization: { id: 'org-1' },
+    });
+
+    expect(createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          stageExecutionId: 'stage-design-2',
+          idempotencyKey: 'local-design:workflow-design-1:stage-design-2',
+          sourceTool: 'opendesign',
+        }),
+      }),
+    );
+    expect(result.handoff.executionSessionId).toBeTruthy();
+  });
 });

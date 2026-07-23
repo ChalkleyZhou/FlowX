@@ -120,6 +120,22 @@ describe('OpenDesignEdgeService', () => {
     expect(redeemed.handoff).toEqual(brainstormHandoff);
   });
 
+  it('re-claims design on retry instead of requiring an already-active session', async () => {
+    const { service, workflow } = createService();
+    workflow.findOne.mockResolvedValue({ id: 'workflow-1', status: 'DESIGN_PENDING' });
+    workflow.claimLocalDesign.mockResolvedValue({
+      workflow: { id: 'workflow-1', status: 'DESIGN_PENDING' },
+      handoff,
+    });
+
+    const result = await service.retryHandoff('workflow-1', session);
+
+    expect(workflow.claimLocalDesign).toHaveBeenCalledWith('workflow-1', session);
+    expect(workflow.getLocalDesignHandoff).not.toHaveBeenCalled();
+    expect(result.ticket).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.handoff).toEqual(handoff);
+  });
+
   it('delegates design completion to the workflow lifecycle', async () => {
     const { service, workflow } = createService();
     const report = {

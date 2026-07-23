@@ -1792,9 +1792,34 @@ export class WorkflowService {
         finishedAt: new Date(),
       });
 
+      // Close any lingering local OpenDesign sessions so the next “打开本地 OpenDesign”
+      // always claims a fresh stage/session instead of reusing a terminal handoff.
+      await tx.executionSession.updateMany({
+        where: {
+          workflowRunId: id,
+          sourceTool: 'opendesign',
+          status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] },
+        },
+        data: {
+          status: 'CANCELLED',
+          completedAt: new Date(),
+          summary: 'Cancelled because the design stage was rejected.',
+        },
+      });
+
       await this.transitionWorkflow(tx, id, WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION, {
         to: WorkflowRunStatus.DESIGN_PENDING,
         stage: StageType.DESIGN,
+      });
+
+      await this.createStageExecution(tx, id, StageType.DESIGN, {
+        input: {
+          workflowRunId: id,
+          previousStage: stageTypeMap[StageType.DESIGN],
+          source: 'design-rejected',
+        },
+        status: StageExecutionStatus.PENDING,
+        statusMessage: '设计已驳回，可重新用 OpenDesign 或 AI 生成',
       });
 
       return tx.workflowRun.findUniqueOrThrow({
