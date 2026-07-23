@@ -9,6 +9,7 @@ describe('runLaunch', () => {
         apiBaseUrl: 'https://flowx.example',
         workflowRunId: 'workflow-1',
         handoff: {
+          executionSessionId: 'session-1',
           repositories: [
             { url: '', workingBranch: 'ignored' },
             { url: 'https://github.com/org/repo.git', workingBranch: 'feat/flowx' },
@@ -21,6 +22,18 @@ describe('runLaunch', () => {
     const ensureProject = vi.fn();
     const writePromptFile = vi.fn(() => '/work/repo/.flowx/tasks/workflow-1.md');
     const openIde = vi.fn(async () => ({ opened: true, prefilled: false }));
+    const adapterLaunch = vi.fn(async () => ({
+      ok: true as const,
+      gitRoot: '/work/repo',
+      ide: 'cursor' as const,
+      prefilled: false,
+      promptPath: '/work/repo/.flowx/tasks/workflow-1.md',
+      executionSessionId: 'session-1',
+      workflowRunId: 'workflow-1',
+    }));
+    const registry = {
+      resolve: vi.fn(() => ({ launch: adapterLaunch })),
+    };
 
     await expect(
       runLaunch(
@@ -31,6 +44,7 @@ describe('runLaunch', () => {
           ensureProject,
           writePromptFile,
           openIde,
+          registry,
         },
       ),
     ).resolves.toEqual({
@@ -39,6 +53,8 @@ describe('runLaunch', () => {
       ide: 'cursor',
       prefilled: false,
       promptPath: '/work/repo/.flowx/tasks/workflow-1.md',
+      executionSessionId: 'session-1',
+      workflowRunId: 'workflow-1',
     });
 
     expect(fetch).toHaveBeenCalledWith('https://flowx.example/local-launch/redeem', {
@@ -46,11 +62,16 @@ describe('runLaunch', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ ticket: 'ticket-1' }),
     });
-    expect(ensureProject).toHaveBeenCalledWith('/work/repo', {
+    expect(adapterLaunch).toHaveBeenCalledWith({
+      gitRoot: '/work/repo',
+      workflowRunId: 'workflow-1',
+      executionSessionId: 'session-1',
+      chatPrompt: 'Implement this task.',
       apiBaseUrl: 'https://flowx.example',
       mcpToken: 'token-1',
+      mcpEntryPath: undefined,
     });
-    expect(openIde).toHaveBeenCalledWith('cursor', '/work/repo', 'Implement this task.');
+    expect(adapterLaunch.mock.calls[0]?.[0]).not.toHaveProperty('ide');
   });
 
   it('rejects unsuccessful ticket redemption as a redeem failure', async () => {
@@ -66,5 +87,36 @@ describe('runLaunch', () => {
         },
       ),
     ).rejects.toMatchObject({ code: 'REDEEM_FAILED' });
+  });
+
+  it('rejects an incomplete redemption before launching an adapter', async () => {
+    const adapterLaunch = vi.fn();
+    const registry = {
+      resolve: vi.fn(() => ({ launch: adapterLaunch })),
+    };
+
+    await expect(
+      runLaunch(
+        { ticket: 'ticket-1', ide: 'cursor', apiBaseUrl: 'https://flowx.example' },
+        {
+          fetch: async () => ({
+            ok: true,
+            json: async () => ({
+              apiBaseUrl: 'https://flowx.example',
+              workflowRunId: 'workflow-1',
+              handoff: {
+                repositories: [{ url: 'https://github.com/org/repo.git' }],
+              },
+              chatPrompt: 'Implement this task.',
+              mcpToken: 'token-1',
+            }),
+          }),
+          resolveRepoPath: vi.fn(async () => '/work/repo'),
+          registry,
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'REDEEM_FAILED' });
+
+    expect(adapterLaunch).not.toHaveBeenCalled();
   });
 });

@@ -23,6 +23,45 @@ export interface CompleteLocalInput {
   }>;
 }
 
+export interface CompleteExecutionSessionInput extends CompleteLocalInput {
+  idempotencyKey: string;
+  summary?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AppendExecutionEventInput {
+  eventId: string;
+  schemaVersion: string;
+  sourceTool: 'cursor' | 'codex' | 'opendesign' | 'shell' | 'test-runner' | 'flowx-worker';
+  traceId: string;
+  entityType: string;
+  entityId: string;
+  eventType: 'execution.progressed';
+  payload: unknown;
+  occurredAt: string;
+  idempotencyKey: string;
+  deviceId?: string;
+  sequence?: number;
+}
+
+export interface RegisterEvidenceInput {
+  evidenceType:
+    | 'GIT_COMMIT'
+    | 'REMOTE_BRANCH_VERIFICATION'
+    | 'CHANGED_FILES'
+    | 'TEST_RESULT'
+    | 'BUILD_RESULT'
+    | 'USER_CONFIRMATION'
+    | 'AGENT_SUMMARY';
+  sourceTool: 'cursor' | 'codex' | 'opendesign' | 'shell' | 'test-runner' | 'flowx-worker';
+  title: string;
+  summary?: string;
+  status?: 'REPORTED' | 'VERIFIED' | 'REJECTED';
+  occurredAt?: string;
+  artifactId?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface DesignCompletionReportInput {
   idempotencyKey: string;
   summary?: string;
@@ -93,6 +132,27 @@ export class FlowXApiClient {
 
   completeLocal(workflowRunId: string, body: CompleteLocalInput) {
     return this.request(`/workflow-runs/${encodeURIComponent(workflowRunId)}/execution/complete-local`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  completeExecutionSession(executionSessionId: string, body: CompleteExecutionSessionInput) {
+    return this.request(`/execution-sessions/${encodeURIComponent(executionSessionId)}/complete`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  appendExecutionEvent(executionSessionId: string, body: AppendExecutionEventInput) {
+    return this.request(`/execution-sessions/${encodeURIComponent(executionSessionId)}/events`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  registerEvidence(executionSessionId: string, body: RegisterEvidenceInput) {
+    return this.request(`/execution-sessions/${encodeURIComponent(executionSessionId)}/evidence`, {
       method: 'POST',
       body: JSON.stringify(body),
     });

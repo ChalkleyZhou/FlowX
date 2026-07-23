@@ -5,6 +5,7 @@ import {
   FlowXApiClient,
   type BrainstormCompletionReportInput,
   type DesignCompletionReportInput,
+  type RegisterEvidenceInput,
 } from './flowx-api-client.js';
 import { collectGitReport as defaultCollectGitReport } from './git-report.js';
 
@@ -32,6 +33,20 @@ function textResult(value: unknown, isError = false): ToolResult {
       },
     ],
   };
+}
+
+const evidenceTypeSchema = z.enum([
+  'GIT_COMMIT',
+  'REMOTE_BRANCH_VERIFICATION',
+  'CHANGED_FILES',
+  'TEST_RESULT',
+  'BUILD_RESULT',
+  'USER_CONFIRMATION',
+  'AGENT_SUMMARY',
+]);
+
+function buildIdempotencyKey(prefix: string, executionSessionId: string) {
+  return `${prefix}:${executionSessionId}:${crypto.randomUUID()}`;
 }
 
 const designReportSchema = z.object({
@@ -77,6 +92,8 @@ export function createFlowXToolHandlers(deps: FlowXToolDependencies) {
     async flowx_report_completion(input: {
       workflowRunId: string;
       workflowRepositoryId: string;
+      executionSessionId?: string;
+      idempotencyKey?: string;
       implementationSummary: string;
       testResult: string;
       pushed: boolean;
@@ -90,7 +107,7 @@ export function createFlowXToolHandlers(deps: FlowXToolDependencies) {
         );
       }
 
-      const result = await deps.apiClient.completeLocal(input.workflowRunId, {
+      const completion = {
         pushed: input.pushed,
         implementationSummary: input.implementationSummary,
         testResult: input.testResult,
@@ -104,8 +121,66 @@ export function createFlowXToolHandlers(deps: FlowXToolDependencies) {
             patchSummary: input.implementationSummary,
           },
         ],
+      };
+      const executionSessionId = input.executionSessionId?.trim();
+      if (executionSessionId) {
+        const result = await deps.apiClient.completeExecutionSession(executionSessionId, {
+          idempotencyKey:
+            input.idempotencyKey?.trim() ||
+            `local:${executionSessionId}:${report.headSha}`,
+          ...completion,
+        });
+        return textResult(result);
+      }
+
+      const result = await deps.apiClient.completeLocal(input.workflowRunId, completion);
+      return textResult({
+        warning:
+          'executionSessionId was not provided; used the legacy completion API. Obtain the session id from the FlowX task prompt for future reports.',
+        result,
       });
-      return textResult(result);
+    },
+
+    async flowx_report_progress(input: {
+      executionSessionId: string;
+      message: string;
+      idempotencyKey?: string;
+    }) {
+      const executionSessionId = input.executionSessionId.trim();
+      const idempotencyKey =
+        input.idempotencyKey?.trim() || buildIdempotencyKey('progress', executionSessionId);
+      return textResult(
+        await deps.apiClient.appendExecutionEvent(executionSessionId, {
+          eventId: idempotencyKey,
+          schemaVersion: '1.0',
+          sourceTool: 'cursor',
+          traceId: executionSessionId,
+          entityType: 'execution_session',
+          entityId: executionSessionId,
+          eventType: 'execution.progressed',
+          payload: { message: input.message },
+          occurredAt: new Date().toISOString(),
+          idempotencyKey,
+        }),
+      );
+    },
+
+    async flowx_report_evidence(input: {
+      executionSessionId: string;
+      evidenceType: RegisterEvidenceInput['evidenceType'];
+      summary: string;
+      idempotencyKey?: string;
+    }) {
+      const idempotencyKey = input.idempotencyKey?.trim();
+      return textResult(
+        await deps.apiClient.registerEvidence(input.executionSessionId.trim(), {
+          evidenceType: input.evidenceType,
+          sourceTool: 'cursor',
+          title: input.summary,
+          summary: input.summary,
+          ...(idempotencyKey ? { metadata: { idempotencyKey } } : {}),
+        }),
+      );
     },
 
     async flowx_get_active_design_session(_input: { refresh?: boolean } = {}) {
@@ -288,10 +363,16 @@ export function registerFlowXTools(
     'flowx_report_completion',
     {
       title: 'Report FlowX Completion',
-      description: 'Collect local Git state and report local execution completion to FlowX.',
+      description:
+        'Collect local Git state and report completion through an ExecutionSession when its id is available.',
       inputSchema: z.object({
         workflowRunId: z.string(),
         workflowRepositoryId: z.string(),
+        executionSessionId: z
+          .string()
+          .optional()
+          .describe('Prefer the execution session id supplied in the FlowX task prompt.'),
+        idempotencyKey: z.string().optional(),
         implementationSummary: z.string(),
         testResult: z.string(),
         pushed: z.boolean(),
@@ -299,6 +380,33 @@ export function registerFlowXTools(
       }),
     },
     handlers.flowx_report_completion,
+  );
+  server.registerTool(
+    'flowx_report_progress',
+    {
+      title: 'Report FlowX Progress',
+      description: 'Append an execution.progressed event to an ExecutionSession.',
+      inputSchema: z.object({
+        executionSessionId: z.string(),
+        message: z.string().min(1),
+        idempotencyKey: z.string().optional(),
+      }),
+    },
+    handlers.flowx_report_progress,
+  );
+  server.registerTool(
+    'flowx_report_evidence',
+    {
+      title: 'Report FlowX Evidence',
+      description: 'Register development evidence for an ExecutionSession.',
+      inputSchema: z.object({
+        executionSessionId: z.string(),
+        evidenceType: evidenceTypeSchema,
+        summary: z.string().min(1),
+        idempotencyKey: z.string().optional(),
+      }),
+    },
+    handlers.flowx_report_evidence,
   );
   server.registerTool(
     'flowx_get_active_design_session',

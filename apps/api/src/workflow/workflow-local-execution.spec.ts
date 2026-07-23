@@ -193,17 +193,109 @@ describe('WorkflowService local execution', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('returns the completed workflow for an idempotent completion retry', async () => {
+  it('completeLocalExecutionBySession runs the LocalCompletionCommand and returns the updated session', async () => {
+    const runningSession = {
+      id: 'session-1',
+      workflowRunId: 'workflow-run-local-001',
+      status: 'RUNNING',
+      executorType: 'LOCAL',
+      organizationId: null,
+      sourceTool: 'cursor',
+      traceId: 'trace-1',
+      protocolVersion: '1.0',
+      metadata: null,
+    };
+    const completedSession = { ...runningSession, status: 'COMPLETED' };
     const { service, workflowArtifactService } = createLocalExecutionService({
       executionSession: {
-        findFirst: vi.fn().mockResolvedValue({
-          id: 'session-1',
-          status: 'COMPLETED',
-          sourceTool: 'cursor',
-          traceId: 'trace-1',
-          protocolVersion: '1.0',
-          metadata: { completionIdempotencyKey: 'complete-1' },
-        }),
+        findUnique: vi.fn().mockResolvedValue(runningSession),
+        findUniqueOrThrow: vi.fn().mockResolvedValue(completedSession),
+      },
+    });
+    const runningWorkflow = {
+      ...baseWorkflow,
+      status: 'EXECUTION_RUNNING',
+      stageExecutions: [
+        {
+          stage: 'EXECUTION',
+          attempt: 1,
+          status: 'RUNNING',
+          input: { executor: 'LOCAL' },
+        },
+      ],
+    };
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(runningWorkflow);
+    vi.spyOn(service as never, 'resolveConfirmedPlan' as never).mockResolvedValue(confirmedPlan);
+    vi.spyOn(service as never, 'finalizeExecutionSuccess' as never).mockResolvedValue(undefined);
+
+    const result = await service.completeLocalExecutionBySession('session-1', {
+      idempotencyKey: 'complete-session-1',
+      pushed: true,
+      repositories: [
+        {
+          workflowRepositoryId: 'wr-1',
+          headSha: 'deadbeef',
+          changedFiles: ['src/App.tsx'],
+        },
+      ],
+    });
+
+    expect(workflowArtifactService.writeExecutionArtifact).toHaveBeenCalled();
+    expect(result.executionSession.status).toBe('COMPLETED');
+    expect(result.workflow).toBe(runningWorkflow);
+  });
+
+  it('completeLocalExecution (complete-local) delegates to completeLocalExecutionBySession when a session exists', async () => {
+    const activeSession = {
+      id: 'session-1',
+      workflowRunId: 'workflow-run-local-001',
+      status: 'RUNNING',
+      executorType: 'LOCAL',
+    };
+    const { service } = createLocalExecutionService({
+      executionSession: {
+        findFirst: vi.fn().mockResolvedValue(activeSession),
+      },
+    });
+    const delegated = {
+      workflow: { ...baseWorkflow, status: 'REVIEW_PENDING' },
+      handoff: { executor: 'LOCAL' },
+      executionSession: { ...activeSession, status: 'COMPLETED' },
+    };
+    const bySessionSpy = vi
+      .spyOn(service, 'completeLocalExecutionBySession')
+      .mockResolvedValue(delegated as never);
+
+    const dto = {
+      idempotencyKey: 'complete-1',
+      pushed: true,
+      repositories: [
+        { workflowRepositoryId: 'wr-1', headSha: 'deadbeef', changedFiles: ['src/App.tsx'] },
+      ],
+    };
+    const result = await service.completeLocalExecution('workflow-run-local-001', dto);
+
+    expect(bySessionSpy).toHaveBeenCalledWith('session-1', dto, undefined);
+    expect(result).toEqual({ workflow: delegated.workflow, handoff: delegated.handoff });
+  });
+
+  it('returns the completed workflow for an idempotent completion retry', async () => {
+    const completedSession = {
+      id: 'session-1',
+      workflowRunId: 'workflow-run-local-001',
+      status: 'COMPLETED',
+      executorType: 'LOCAL',
+      organizationId: null,
+      sourceTool: 'cursor',
+      traceId: 'trace-1',
+      protocolVersion: '1.0',
+      metadata: { completionIdempotencyKey: 'complete-1' },
+    };
+    const { service, workflowArtifactService } = createLocalExecutionService({
+      executionSession: {
+        findFirst: vi.fn().mockResolvedValue(completedSession),
+        findUnique: vi.fn().mockResolvedValue(completedSession),
+        findUniqueOrThrow: vi.fn().mockResolvedValue(completedSession),
       },
     });
     const completedWorkflow = {

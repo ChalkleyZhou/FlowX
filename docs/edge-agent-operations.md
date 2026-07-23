@@ -48,6 +48,25 @@ curl http://127.0.0.1:3920/health
 
 响应包含 `deviceId`、`installationId`、`protocolVersion` 和 `outboxPending`，不包含密钥。
 
+## 本地开发执行
+
+本地开发执行不创建或读取 `~/.flowx/active-execution.json`。`claim-local`、Web 本地启动和
+Edge Handoff 都会在可用时返回 `executionSessionId`；开发 Agent 必须使用该 ID 回传进度、证据和完成结果。
+
+完成的首选入口是 `POST /execution-sessions/:id/complete`，其请求体为包含仓库、提交、测试结果和
+`idempotencyKey` 的本地完成报告。服务端会执行远程分支校验、登记 Artifact/Evidence，并将工作流推进到
+Review。`POST /workflow-runs/:id/execution/complete-local` 仍保留给旧 Web、MCP 或 Extension 使用；
+它只会解析当前 LOCAL 会话后委托给同一完成命令，不应作为新客户端的默认入口。
+
+开发 Agent 通过 MCP 使用以下工具：
+
+1. `flowx_report_progress` 追加 `execution.progressed` 进度事件；
+2. `flowx_report_evidence` 登记 Git、测试或其他执行证据；
+3. `flowx_report_completion` 携带 `executionSessionId` 完成本地执行。
+
+`flowx_report_completion` 缺少 `executionSessionId` 时会明确提示并走兼容 `complete-local` 路径；应从任务
+提示、handoff 或本地启动返回值补齐该 ID，而不是依赖本地活跃执行文件。
+
 ## 故障排查
 
 ### FlowX 提示未检测到 flowx-local
@@ -78,6 +97,12 @@ flowx-local sync
 
 Outbox 使用指数退避，重复发送由服务端 `idempotencyKey` 去重。如果短期 token 已过期，回到
 FlowX 工作流详情重新打开本地设计，刷新会话凭据后再同步。
+
+### 开发 MCP 或 Cursor Extension 离线
+
+当前可靠 Outbox 已用于 OpenDesign 和 brainstorm 回传；开发阶段的 MCP 进度、证据和完成报告仍要求 API
+可达。Cursor Extension 的完成草稿接入 `flowx-local` Outbox 是待办项：离线时不要假定报告已被服务器接收，
+恢复连接后重新以相同 `idempotencyKey` 提交。
 
 ### result.json 校验失败
 

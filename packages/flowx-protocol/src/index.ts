@@ -4,5 +4,6 @@ export * from './context-package.js';
 export * from './design.js';
 export * from './errors.js';
 export * from './execution-session.js';
+export * from './local-completion.js';
 export * from './sync-event.js';
 export * from './version.js';

@@ -75,6 +75,13 @@ export interface CompletionRepositoryReport {
   patchSummary?: string;
 }
 
+/**
+ * @deprecated Legacy internal shape used by `WorkflowService`'s local-completion bookkeeping
+ * (persisted execution session metadata / artifacts). New code should prefer
+ * `LocalCompletionReport` (see `local-completion.ts`) as the single source of truth for the
+ * wire-level local completion contract; this type is kept only to avoid churn in existing
+ * persisted metadata and call sites.
+ */
 export interface CompletionReport {
   idempotencyKey: string;
   pushed: boolean;

@@ -47,6 +47,20 @@ describe('FlowXClient', () => {
     );
   });
 
+  it('posts session completion to the ExecutionSession API', async () => {
+    const fetchMock = stubOkFetch();
+    const client = makeClient() as FlowXClient & {
+      completeExecutionSession(executionSessionId: string, input: { pushed: boolean; repositories: [] }): Promise<unknown>;
+    };
+
+    await client.completeExecutionSession('session-1', { pushed: true, repositories: [] });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/execution-sessions/session-1/complete',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
   it('reads a run detail via GET /workflow-runs/:id', async () => {
     const fetchMock = stubOkFetch();
     await makeClient().getRun('run-1');

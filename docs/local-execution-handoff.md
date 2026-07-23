@@ -15,9 +15,11 @@ Cursor local Chat uses this same local execution contract with a shorter task pi
    - `checkout` — suggested `git fetch` / `checkout -B` / `push` commands
    - `suggestedCommitMessage` — commit message hint
 4. On your machine: clone/fetch, checkout the working branch from `baseBranch`, develop, commit, push.
-5. Call **`POST /workflow-runs/:id/execution/complete-local`** with per-repo `headSha`, `changedFiles`, and `pushed: true`.
+5. Prefer **`POST /execution-sessions/:executionSessionId/complete`** with per-repo `headSha`, `changedFiles`, `pushed: true`, and an `idempotencyKey`. The `executionSessionId` is returned by claim/handoff.
 6. If the repository has a registered **remote URL**, the API verifies the branch tip with `git ls-remote` before completing.
 7. Workflow moves to review (same path as cloud execution). An **execution HTML artifact** may be written under `.flowx-data` (see [workflow-artifacts.md](./workflow-artifacts.md)).
+
+**`POST /workflow-runs/:id/execution/complete-local`** remains a compatibility wrapper for old Web, MCP, and Extension clients. It resolves the active LOCAL session and delegates to the same server-side completion command; new clients should use the session endpoint.
 
 Cancel with **`POST /workflow-runs/:id/execution/cancel-local`** to return to `EXECUTION_PENDING`.
 
@@ -33,7 +35,9 @@ flowx/work/{requirementSlug≤24}/{workflowRunIdLast8}
 
 Example: `flowx/work/local-handoff/ocal-001` for run id ending in `ocal-001`.
 
-## API: `complete-local` body
+## API: session complete body
+
+Use the same body for **`POST /execution-sessions/:executionSessionId/complete`**. `complete-local` accepts it unchanged for compatibility.
 
 ```json
 {

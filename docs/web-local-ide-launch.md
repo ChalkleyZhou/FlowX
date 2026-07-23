@@ -6,7 +6,7 @@ Preferred Web entry for local execution: start from FlowX Web, open Cursor or Co
 FlowX Web「本地启动」 → flowx-local (loopback) → Cursor / Codex (+ Skill + MCP)
 ```
 
-This path reuses the same `claim-local` / handoff / `complete-local` contract as [local-execution-handoff.md](./local-execution-handoff.md). The Cursor extension remains an optional fallback; see [cursor-plugin-local-chat.md](./cursor-plugin-local-chat.md).
+This path reuses the same `claim-local` / handoff contract as [local-execution-handoff.md](./local-execution-handoff.md). Prefer completing through the session API returned as `executionSessionId`; `complete-local` remains a compatibility wrapper. The Cursor extension remains an optional fallback; see [cursor-plugin-local-chat.md](./cursor-plugin-local-chat.md).
 
 ## Prerequisites
 
@@ -88,8 +88,8 @@ When launching from FlowX Web, `flowx-local` writes or merges this project-level
 
 After implementing on the working branch:
 
-1. Prefer MCP: Agent calls `flowx_report_completion` (often after `flowx_collect_git_report`).
-2. Or use Web: **完成本地执行** on the workflow detail page (same `complete-local` API).
+1. Prefer MCP: Agent calls `flowx_report_completion` with the launch/handoff `executionSessionId` (often after `flowx_collect_git_report`). This uses the session completion API.
+2. Or use Web: **完成本地执行** on the workflow detail page. This remains compatible through `complete-local`.
 
 Cancel with **取消本地执行** if you need to return to `EXECUTION_PENDING`.
 

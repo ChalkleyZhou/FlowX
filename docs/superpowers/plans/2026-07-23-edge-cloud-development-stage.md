@@ -658,14 +658,14 @@ EOF
 - Modify: `apps/cursor-extension/src/completion-panel.test.ts`
 - Modify: handoff/task types that store working task state
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
 
 - `completeExecutionSession` posts to session complete route
 - `reportCompletion` uses session id from task when present
 - When server returns 404 for session complete **and** env/flag says protocol required → error mentions protocol unsupported (no silent `completeLocal`)
 - When session id absent → may use `completeLocal` for legacy tasks (document in test name)
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 - Parse `executionSessionId` from handoff/claim responses into task model
 - `reportCompletion` builds same body as today; prefers `client.completeExecutionSession`
@@ -673,7 +673,7 @@ EOF
 
 Check `packages/flowx-local/src/outbox.ts` — if design-submit pattern can be reused for `execution.completion_requested`, add a thin enqueue helper; otherwise document deferral in ops doc (Task 12) without blocking Extension online path.
 
-- [ ] **Step 3: Run**
+- [x] **Step 3: Run**
 
 ```bash
 pnpm --filter flowx-cursor-extension test
@@ -681,7 +681,7 @@ pnpm --filter flowx-cursor-extension test
 
 (Use the actual package name from `apps/cursor-extension/package.json` if different.)
 
-- [ ] **Step 4: Commit (end of PR B slice)**
+- [x] **Step 4: Commit (end of PR B slice)**
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -824,6 +824,7 @@ Cover at least:
 
 Outbox/offline cases that need `flowx-local` can live in `packages/flowx-local/src/outbox.test.ts` extensions:
 - enqueue completion-shaped item → sync posts once → second sync no-ops
+- [ ] Add an Outbox completion enqueue endpoint for Cursor Extension retries; Task 7 currently shows `API unavailable; retry when online` because the existing Outbox only accepts design/brainstorm completions.
 
 - [ ] **Step 2: Docs**
 

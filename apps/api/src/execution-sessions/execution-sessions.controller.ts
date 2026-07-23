@@ -69,7 +69,19 @@ export class ExecutionSessionsController {
     @Body() dto: CompleteExecutionSessionDto,
     @Req() req: ExecutionSessionRequest,
   ) {
-    return this.executionSessionsService.complete(id, dto, toScope(req));
+    const userId = req.authSession?.user?.id;
+    return this.executionSessionsService.complete(id, dto, {
+      ...toScope(req),
+      notifySession: userId
+        ? {
+            user: {
+              id: userId,
+              displayName: req.authSession?.user?.displayName ?? userId,
+            },
+            organization: req.authSession?.organization,
+          }
+        : undefined,
+    });
   }
 
   @Post(':id/fail')
@@ -93,8 +105,12 @@ export class ExecutionSessionsController {
 
 type ExecutionSessionRequest = {
   authSession?: {
-    user?: { id?: string | null } | null;
-    organization?: { id?: string | null } | null;
+    user?: { id?: string | null; displayName?: string | null } | null;
+    organization?: {
+      id?: string | null;
+      providerOrganizationId?: string | null;
+      name?: string | null;
+    } | null;
   };
 };
 

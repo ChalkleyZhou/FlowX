@@ -9,6 +9,7 @@ export interface FlowXTaskItem {
   scheduleSignal?: string | null;
   repository: { id: string; name: string; url: string | null } | null;
   workflowRunId: string | null;
+  executionSessionId?: string | null;
   eligible: boolean;
   ineligibleReason?: string;
 }
@@ -23,6 +24,7 @@ export interface LocalChatHandoff {
   workflow: { id: string; status?: string };
   handoff: {
     workflowRunId: string;
+    executionSessionId?: string | null;
     workflowRepositoryId?: string;
     repositories?: Array<{
       id?: string;
@@ -39,6 +41,7 @@ export interface LocalChatHandoff {
 
 export interface LocalHandoffPayload {
   workflowRunId: string;
+  executionSessionId?: string | null;
   status?: string;
   executor?: 'LOCAL';
   requirement: {
@@ -122,6 +125,13 @@ export class FlowXClient {
 
   async completeLocal(workflowRunId: string, input: CompleteLocalInput): Promise<unknown> {
     return this.request(`/workflow-runs/${encodeURIComponent(workflowRunId)}/execution/complete-local`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async completeExecutionSession(executionSessionId: string, input: CompleteLocalInput): Promise<unknown> {
+    return this.request(`/execution-sessions/${encodeURIComponent(executionSessionId)}/complete`, {
       method: 'POST',
       body: JSON.stringify(input),
     });
@@ -222,7 +232,7 @@ export class FlowXClient {
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(text || `FlowX request failed with status ${response.status}`);
+      throw new Error(text ? `FlowX request failed with status ${response.status}: ${text}` : `FlowX request failed with status ${response.status}`);
     }
 
     return response.json() as Promise<T>;

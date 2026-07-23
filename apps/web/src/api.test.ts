@@ -279,6 +279,57 @@ describe('api helpers', () => {
     ]);
   });
 
+  it('gets execution session by id', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'session-1',
+        status: 'RUNNING',
+        sourceTool: 'cursor',
+        traceId: 'trace-1',
+        lastHeartbeatAt: '2026-07-23T08:00:00.000Z',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.getExecutionSession('session-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3000/execution-sessions/session-1',
+      expect.any(Object),
+    );
+  });
+
+  it('lists session evidence', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.listExecutionSessionEvidence('session-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3000/execution-sessions/session-1/evidence',
+      expect.any(Object),
+    );
+  });
+
+  it('lists session events', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [], nextCursor: null }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.listExecutionSessionEvents('session-1', { cursor: 'event-cursor', take: 25 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3000/execution-sessions/session-1/events?cursor=event-cursor&take=25',
+      expect.any(Object),
+    );
+  });
+
   it('calls code review source endpoints with expected methods and payloads', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

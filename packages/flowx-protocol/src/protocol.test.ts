@@ -10,6 +10,10 @@ import {
   type OpenDesignContextPackage,
   type FlowXSyncEvent,
 } from './index.js';
+import {
+  assertLocalCompletionReport,
+  buildLocalCompletionIdempotencyKey,
+} from './local-completion.js';
 
 function createEvent(overrides: Partial<FlowXSyncEvent> = {}): FlowXSyncEvent {
   return {
@@ -109,5 +113,41 @@ describe('flowx protocol', () => {
 
     expect(context.sourceTool).toBe('opendesign');
     expect(report.output.designArtifact.html).toContain('<!doctype html>');
+  });
+
+  it('accepts a valid LocalCompletionReport', () => {
+    const report = {
+      idempotencyKey: 'local:session-1:v1',
+      pushed: true,
+      implementationSummary: 'Done',
+      testResult: 'pass',
+      repositories: [
+        {
+          workflowRepositoryId: 'wr-1',
+          headSha: 'a'.repeat(40),
+          changedFiles: ['src/a.ts'],
+        },
+      ],
+    };
+    expect(assertLocalCompletionReport(report)).toEqual(report);
+  });
+
+  it('rejects empty changedFiles', () => {
+    expect(() =>
+      assertLocalCompletionReport({
+        idempotencyKey: 'k',
+        pushed: false,
+        repositories: [{ workflowRepositoryId: 'wr-1', headSha: 'abc', changedFiles: [] }],
+      }),
+    ).toThrow(/changedFiles/);
+  });
+
+  it('builds a stable idempotency key', () => {
+    expect(
+      buildLocalCompletionIdempotencyKey({
+        executionSessionId: 'session-1',
+        headShas: ['abc'],
+      }),
+    ).toBe('local:session-1:abc');
   });
 });

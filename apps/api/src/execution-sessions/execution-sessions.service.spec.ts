@@ -31,7 +31,7 @@ function session(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createService() {
+function createService(workflowService?: Record<string, unknown>) {
   const prisma = {
     executionSession: {
       findUnique: vi.fn(),
@@ -42,7 +42,10 @@ function createService() {
       updateMany: vi.fn(),
     },
   };
-  return { service: new ExecutionSessionsService(prisma as never), prisma };
+  return {
+    service: new ExecutionSessionsService(prisma as never, workflowService as never),
+    prisma,
+  };
 }
 
 describe('ExecutionSessionsService', () => {
@@ -167,5 +170,52 @@ describe('ExecutionSessionsService', () => {
     await expect(service.findOne('session-1', { organizationId: 'org-2' })).rejects.toBeInstanceOf(
       ForbiddenException,
     );
+  });
+
+  it('delegates to WorkflowService.completeLocalExecutionBySession when repositories are reported', async () => {
+    const completeLocalExecutionBySession = vi.fn().mockResolvedValue({
+      workflow: { id: 'workflow-1' },
+      handoff: { executor: 'LOCAL' },
+      executionSession: session({ status: 'COMPLETED' }),
+    });
+    const { service } = createService({ completeLocalExecutionBySession });
+
+    const dto = {
+      idempotencyKey: 'complete-1',
+      pushed: true,
+      repositories: [{ workflowRepositoryId: 'wr-1', headSha: 'deadbeef', changedFiles: ['a.ts'] }],
+    };
+    const result = await service.complete('session-1', dto, { organizationId: 'org-1' });
+
+    expect(completeLocalExecutionBySession).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({ idempotencyKey: 'complete-1', pushed: true, repositories: dto.repositories }),
+      undefined,
+      { organizationId: 'org-1' },
+    );
+    expect(result.status).toBe('COMPLETED');
+  });
+
+  it('rejects a repositories report without pushed', async () => {
+    const { service } = createService({ completeLocalExecutionBySession: vi.fn() });
+
+    await expect(
+      service.complete('session-1', {
+        repositories: [{ workflowRepositoryId: 'wr-1', headSha: 'deadbeef', changedFiles: ['a.ts'] }],
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('keeps the thin status transition when no repositories are reported', async () => {
+    const completeLocalExecutionBySession = vi.fn();
+    const { service, prisma } = createService({ completeLocalExecutionBySession });
+    prisma.executionSession.findUnique.mockResolvedValue(session());
+    prisma.executionSession.updateMany.mockResolvedValue({ count: 1 });
+    prisma.executionSession.findUniqueOrThrow.mockResolvedValue(session({ status: 'COMPLETED' }));
+
+    const result = await service.complete('session-1', { summary: 'Done' }, { organizationId: 'org-1' });
+
+    expect(result.status).toBe('COMPLETED');
+    expect(completeLocalExecutionBySession).not.toHaveBeenCalled();
   });
 });
