@@ -4,7 +4,7 @@ import {
   EXECUTION_SESSION_TERMINAL_STATUSES,
   canTransitionExecutionSession,
   type ExecutionSessionStatus,
-} from 'flowx-protocol';
+} from '@flowx-ai/protocol';
 
 export const ACTIVE_EXECUTION_SESSION_STATUSES = EXECUTION_SESSION_STATUSES.filter(
   (status) =>

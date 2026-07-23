@@ -6,7 +6,7 @@ import {
   type EvidenceStatus,
   type EvidenceType,
   type SourceTool,
-} from 'flowx-protocol';
+} from '@flowx-ai/protocol';
 
 export class RegisterEvidenceDto {
   @IsIn(EVIDENCE_TYPES)

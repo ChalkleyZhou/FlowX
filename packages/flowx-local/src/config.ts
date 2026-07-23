@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { FLOWX_PROTOCOL_VERSION } from 'flowx-protocol';
+import { FLOWX_PROTOCOL_VERSION } from '@flowx-ai/protocol';
 
 export const DEFAULT_PORT = 3920;
 export const PACKAGE_VERSION = '0.1.0';

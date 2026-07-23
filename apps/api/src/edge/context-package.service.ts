@@ -3,7 +3,7 @@ import {
   FLOWX_PROTOCOL_VERSION,
   type ContextPackage,
   type SourceTool,
-} from 'flowx-protocol';
+} from '@flowx-ai/protocol';
 import { PrismaService } from '../prisma/prisma.service';
 import type { LocalHandoffPayload } from '../workflow/workflow-local-handoff';
 import type { EdgeTaskType } from './edge-tasks.service';

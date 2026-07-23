@@ -13,7 +13,7 @@ import {
   type ExecutionSessionStatus,
   type ExecutorType,
   type SourceTool,
-} from 'flowx-protocol';
+} from '@flowx-ai/protocol';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   ACTIVE_EXECUTION_SESSION_STATUSES,

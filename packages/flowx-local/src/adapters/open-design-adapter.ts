@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { BrainstormCompletionReport, DesignCompletionReport } from 'flowx-protocol';
+import type { BrainstormCompletionReport, DesignCompletionReport } from '@flowx-ai/protocol';
 import { writeActiveDesignSession } from '../active-design-session.js';
 import type { LocalConfig } from '../config.js';
 import { EdgeClient, type RedeemedOpenDesignLaunch } from '../edge-client.js';

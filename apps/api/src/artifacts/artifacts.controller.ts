@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Post, Query, Req } from '@nestjs/common';
-import type { ArtifactType } from 'flowx-protocol';
+import type { ArtifactType } from '@flowx-ai/protocol';
 import { ArtifactsService } from './artifacts.service';
 import { RegisterArtifactDto } from './dto/register-artifact.dto';
 import { RegisterEvidenceDto } from './dto/register-evidence.dto';

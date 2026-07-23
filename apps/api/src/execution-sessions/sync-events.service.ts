@@ -5,7 +5,7 @@ import {
   type ExecutionSessionStatus,
   type FlowXSyncEvent,
   type SyncEventType,
-} from 'flowx-protocol';
+} from '@flowx-ai/protocol';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppendSyncEventDto } from './dto/append-sync-event.dto';
 import {

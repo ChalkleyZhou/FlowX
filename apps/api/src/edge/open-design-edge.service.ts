@@ -5,7 +5,7 @@ import type {
   DesignCompletionReport,
   OpenDesignBrainstormHandoff,
   OpenDesignHandoff,
-} from 'flowx-protocol';
+} from '@flowx-ai/protocol';
 import { AuthService } from '../auth/auth.service';
 import { WorkflowRunStatus, WorkflowRunType } from '../common/enums';
 import { PrismaService } from '../prisma/prisma.service';

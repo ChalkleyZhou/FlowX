@@ -3,7 +3,7 @@ import type {
   DesignCompletionReport,
   OpenDesignBrainstormHandoff,
   OpenDesignHandoff,
-} from 'flowx-protocol';
+} from '@flowx-ai/protocol';
 import { Outbox, type OutboxItem } from './outbox.js';
 
 export type RedeemedOpenDesignLaunch = {

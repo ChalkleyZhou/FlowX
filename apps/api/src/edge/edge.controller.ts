@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
-import type { SourceTool } from 'flowx-protocol';
+import type { SourceTool } from '@flowx-ai/protocol';
 import { ContextPackageService } from './context-package.service';
 import { StartEdgeHandoffDto } from './dto/start-edge-handoff.dto';
 import { EdgeHandoffService } from './edge-handoff.service';

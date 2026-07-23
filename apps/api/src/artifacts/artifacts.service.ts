@@ -11,7 +11,7 @@ import type {
   ArtifactStatus,
   ArtifactStorageProvider as ArtifactStorageProviderName,
   ArtifactType,
-} from 'flowx-protocol';
+} from '@flowx-ai/protocol';
 import {
   ExecutionSessionsService,
   type ExecutionSessionScope,

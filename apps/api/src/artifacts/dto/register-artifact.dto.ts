@@ -15,7 +15,7 @@ import {
   type ArtifactStatus,
   type ArtifactStorageProvider,
   type ArtifactType,
-} from 'flowx-protocol';
+} from '@flowx-ai/protocol';
 
 export class RegisterArtifactDto {
   @IsIn(ARTIFACT_TYPES)

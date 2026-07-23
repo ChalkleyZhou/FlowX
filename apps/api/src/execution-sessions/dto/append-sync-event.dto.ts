@@ -8,7 +8,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { SOURCE_TOOLS, SYNC_EVENT_TYPES } from 'flowx-protocol';
+import { SOURCE_TOOLS, SYNC_EVENT_TYPES } from '@flowx-ai/protocol';
 
 export class AppendSyncEventDto {
   @IsString()

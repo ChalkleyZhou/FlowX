@@ -22,7 +22,7 @@ import {
   type OpenDesignContextPackage,
   type OpenDesignHandoff,
   type SourceTool,
-} from 'flowx-protocol';
+} from '@flowx-ai/protocol';
 import {
   AI_EXECUTOR_REGISTRY,
   type AIExecutor,
