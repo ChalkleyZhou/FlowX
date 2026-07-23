@@ -98,7 +98,7 @@ export class DailyCodeReviewService {
       },
     });
     if (!review) {
-      throw new NotFoundException('Daily code review not found.');
+      throw new NotFoundException('每日代码审查记录不存在。');
     }
     return review;
   }
@@ -332,8 +332,8 @@ export class DailyCodeReviewService {
     });
     const errorMessage =
       options.reason === 'NO_REPOSITORIES'
-        ? '工作区尚未登记任何代码仓库，无法进行 Code Review。'
-        : '工作区仓库均已从 Code Review 范围中排除，本次为空跑。可在「Code Review 数据源」中恢复纳入。';
+        ? '工作区尚未登记任何代码仓库，无法进行代码审查。'
+        : '工作区仓库均已从代码审查范围中排除，本次为空跑。可在「代码审查数据源」中恢复纳入。';
 
     return {
       status: overallStatus,
@@ -443,7 +443,7 @@ export class DailyCodeReviewService {
           ref: branch,
           commits: unitCommits,
           status: 'FAILED',
-          errorMessage: sandbox?.syncError?.trim() || 'Code Review 沙箱同步失败，无法运行审查。',
+          errorMessage: sandbox?.syncError?.trim() || '代码审查沙箱同步失败，无法运行审查。',
         });
         continue;
       }
@@ -602,7 +602,7 @@ export class DailyCodeReviewService {
       include: { project: { select: { name: true } } },
     });
     if (!review) {
-      throw new NotFoundException('Daily code review not found.');
+      throw new NotFoundException('每日代码审查记录不存在。');
     }
 
     const delivery = await this.deliveryTargetsService.sendDailyCodeReview({

@@ -48,8 +48,8 @@ describe('DailyCodeReviewDetailPage', () => {
           },
         },
       ],
-      markdownContent: '# Daily Code Review\n\nReview summary',
-      htmlContent: '<h1>Daily Code Review</h1>',
+      markdownContent: '# 每日代码审查\n\nReview summary',
+      htmlContent: '<h1>每日代码审查</h1>',
       generatedAt: '2026-07-07T10:00:00.000Z',
       sentAt: null,
       createdAt: '2026-07-07T10:00:00.000Z',
@@ -88,7 +88,7 @@ describe('DailyCodeReviewDetailPage', () => {
   it('renders review content and resends the report', async () => {
     await renderPage();
 
-    expect(document.body.textContent).toContain('每日 Code Review 详情');
+    expect(document.body.textContent).toContain('每日代码审查详情');
     expect(document.body.textContent).toContain('flowx-api / main');
     expect(document.body.textContent).toContain('Review summary');
 
@@ -116,8 +116,8 @@ describe('DailyCodeReviewDetailPage', () => {
         scope: {},
         status: 'GENERATING',
         unitsJson: [],
-        markdownContent: '# Daily Code Review\n\nAI 正在后台审查代码变更。',
-        htmlContent: '<h1>Daily Code Review</h1>',
+      markdownContent: '# 每日代码审查\n\nAI 正在后台审查代码变更。',
+      htmlContent: '<h1>每日代码审查</h1>',
         generatedAt: null,
         sentAt: null,
         createdAt: '2026-07-07T10:00:00.000Z',
@@ -148,8 +148,8 @@ describe('DailyCodeReviewDetailPage', () => {
             },
           },
         ],
-        markdownContent: '# Daily Code Review\n\n最终审查报告',
-        htmlContent: '<h1>Daily Code Review</h1>',
+      markdownContent: '# 每日代码审查\n\n最终审查报告',
+      htmlContent: '<h1>每日代码审查</h1>',
         generatedAt: '2026-07-07T10:05:00.000Z',
         sentAt: null,
         createdAt: '2026-07-07T10:00:00.000Z',

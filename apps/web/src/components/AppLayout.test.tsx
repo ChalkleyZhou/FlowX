@@ -291,7 +291,7 @@ describe('AppLayout', () => {
       (link) => link.getAttribute('href') === '/code-reviews',
     );
     expect(codeReviewLink).toBeTruthy();
-    expect(codeReviewLink?.textContent).toContain('Code Review');
+    expect(codeReviewLink?.textContent).toContain('代码审查');
   });
 
   it('includes Local Agent in the settings secondary menu', async () => {

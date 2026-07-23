@@ -111,7 +111,7 @@ export function DeliveryTargetsPage() {
       return;
     }
     if (!forBriefing && !forCodeReview) {
-      toast.error('请至少启用一个投递用途（简报或 Code Review）');
+      toast.error('请至少启用一个投递用途（简报或代码审查）');
       return;
     }
 
@@ -145,7 +145,7 @@ export function DeliveryTargetsPage() {
   async function toggleTargetPurpose(target: DeliveryTarget, purpose: 'forBriefing' | 'forCodeReview') {
     const nextValue = !target[purpose];
     if (!nextValue && !target[purpose === 'forBriefing' ? 'forCodeReview' : 'forBriefing']) {
-      toast.error('请至少保留一个投递用途（简报或 Code Review）');
+      toast.error('请至少保留一个投递用途（简报或代码审查）');
       return;
     }
     try {
@@ -169,7 +169,7 @@ export function DeliveryTargetsPage() {
       <PageHeader
         eyebrow="Delivery"
         title="投递目标"
-        description="按项目配置简报与 Code Review 的钉钉工作通知与群机器人投递目标；每个目标可分别开启用于简报、用于 Code Review，发送时仅投递到对应项目且启用了该用途的目标。"
+        description="按项目配置简报与代码审查的钉钉工作通知与群机器人投递目标；每个目标可分别开启用于简报、用于代码审查，发送时仅投递到对应项目且启用了该用途的目标。"
       />
       <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
@@ -243,9 +243,9 @@ export function DeliveryTargetsPage() {
                 className="h-4 w-4 rounded border-border accent-primary"
                 checked={forCodeReview}
                 onChange={(event) => setForCodeReview(event.target.checked)}
-                aria-label="用于 Code Review"
+                aria-label="用于代码审查"
               />
-              用于 Code Review
+              用于代码审查
             </label>
           </div>
           <div className="flex gap-2 md:col-span-2 xl:col-span-3">

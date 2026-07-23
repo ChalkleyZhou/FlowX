@@ -56,7 +56,7 @@ describe('daily-code-review.types', () => {
     ).toBe('无法读取仓库 diff；检查 git fetch 权限');
 
     expect(resolveFailedReviewErrorMessage({ errorMessage: '  auth failed  ' })).toBe('auth failed');
-    expect(resolveFailedReviewErrorMessage({})).toBe('每日 Code Review 失败，AI 未返回具体原因。');
+    expect(resolveFailedReviewErrorMessage({})).toBe('每日代码审查失败，AI 未返回具体原因。');
   });
 
   it('summarizes per-unit failures for top-level errorMessage', () => {

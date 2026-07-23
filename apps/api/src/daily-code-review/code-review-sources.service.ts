@@ -78,7 +78,7 @@ export class CodeReviewSourcesService {
   private async ensureSourceExists(id: string) {
     const source = await this.prisma.codeReviewSource.findUnique({ where: { id } });
     if (!source) {
-      throw new NotFoundException('Code review source not found.');
+      throw new NotFoundException('代码审查数据源不存在。');
     }
   }
 }

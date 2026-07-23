@@ -26,7 +26,7 @@ const unit = (overrides: Partial<DailyCodeReviewUnitResult>): DailyCodeReviewUni
 describe('daily-code-review-renderer', () => {
   it('formats review title', () => {
     expect(formatDailyCodeReviewTitle('FlowX', '2026-07-07')).toBe(
-      'FlowX · 每日 Code Review · 2026-07-07',
+      'FlowX · 每日代码审查 · 2026-07-07',
     );
   });
 
@@ -48,7 +48,7 @@ describe('daily-code-review-renderer', () => {
       ],
     });
 
-    expect(markdown).toContain('# FlowX · 每日 Code Review · 2026-07-07');
+    expect(markdown).toContain('# FlowX · 每日代码审查 · 2026-07-07');
     expect(markdown).toContain('## flowx-api / main');
     expect(markdown).toContain('## flowx-api / feature/login');
     expect(markdown).toContain('未配置 review skill');

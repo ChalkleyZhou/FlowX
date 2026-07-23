@@ -85,17 +85,17 @@ export class CodeReviewSchedulerService implements OnModuleInit, OnModuleDestroy
         );
         generatedCount += 1;
 
-        let message = 'Code Review 已生成';
+        let message = '代码审查已生成';
         let delivered = Boolean(codeReview.sentAt);
         if (codeReview.sentAt) {
-          message = 'Code Review 已发送（跳过重复投递）';
+          message = '代码审查已发送（跳过重复投递）';
         } else {
           const delivery = await this.dailyCodeReviewService.sendDailyCodeReview(codeReview.id);
           delivered = delivery.successCount > 0;
           message =
             delivery.targetCount === 0
-              ? 'Code Review 未配置启用的投递目标'
-              : `Code Review 投递 ${delivery.successCount}/${delivery.targetCount}`;
+              ? '代码审查未配置启用的投递目标'
+              : `代码审查投递 ${delivery.successCount}/${delivery.targetCount}`;
         }
 
         if (delivered) {

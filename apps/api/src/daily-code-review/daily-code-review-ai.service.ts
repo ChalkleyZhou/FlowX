@@ -38,7 +38,7 @@ export class DailyCodeReviewAiService {
   }): Promise<DailyCodeReviewUnitOutput> {
     if (!this.isAiEnabled()) {
       return this.buildSkippedNoSkillOutput(
-        '每日 Code Review 已禁用。请检查 FLOWX_CODE_REVIEW_AI_DISABLED / FLOWX_CODE_REVIEW_AI_ENABLED 配置。',
+        '每日代码审查已禁用。请检查 FLOWX_CODE_REVIEW_AI_DISABLED / FLOWX_CODE_REVIEW_AI_ENABLED 配置。',
       );
     }
 

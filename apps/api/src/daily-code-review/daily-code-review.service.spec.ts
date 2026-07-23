@@ -480,7 +480,7 @@ describe('DailyCodeReviewService', () => {
       createReview.mockResolvedValue({
         id: 'review-1',
         status: 'GENERATING',
-        markdownContent: '# FlowX · 每日 Code Review · 2026-07-07',
+        markdownContent: '# FlowX · 每日代码审查 · 2026-07-07',
       });
 
       await expect(

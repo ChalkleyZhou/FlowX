@@ -21,7 +21,7 @@ export function ProjectCodeReviewConfigPanel({ projectId }: { projectId: string 
         setConfig(loaded);
         setDailyHourInput(String(loaded.dailyHour ?? 22));
       })
-      .catch((error) => toast.error(error instanceof Error ? error.message : '加载 Code Review 配置失败'));
+      .catch((error) => toast.error(error instanceof Error ? error.message : '加载代码审查配置失败'));
   }, [projectId]);
 
   async function save(next: Partial<ProjectCodeReviewConfig>) {
@@ -32,9 +32,9 @@ export function ProjectCodeReviewConfigPanel({ projectId }: { projectId: string 
       const updated = await api.updateProjectCodeReviewConfig(projectId, next);
       setConfig(updated);
       setDailyHourInput(String(updated.dailyHour ?? 22));
-      toast.success('Code Review 配置已保存');
+      toast.success('代码审查配置已保存');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '保存 Code Review 配置失败');
+      toast.error(error instanceof Error ? error.message : '保存代码审查配置失败');
     } finally {
       setSaving(false);
     }
@@ -51,8 +51,8 @@ export function ProjectCodeReviewConfigPanel({ projectId }: { projectId: string 
     });
     toast.success(
       review.status === 'GENERATING'
-        ? '每日 Code Review 已开始生成，可在 Code Review 历史中查看'
-        : '每日 Code Review 已生成，可在 Code Review 历史中查看',
+        ? '每日代码审查已开始生成，可在代码审查历史中查看'
+        : '每日代码审查已生成，可在代码审查历史中查看',
     );
   }
 
@@ -60,12 +60,12 @@ export function ProjectCodeReviewConfigPanel({ projectId }: { projectId: string 
     <Card className="rounded-md border border-border bg-card">
       <CardHeader className="pb-4">
         <SectionHeader
-          eyebrow="Code Review"
-          title="Code Review 配置"
+          eyebrow="代码审查"
+          title="代码审查配置"
           description={
             config?.enabled
-              ? '到点会按仓库内的 review skill 自动执行每日 Code Review，并投递到本项目的投递目标。'
-              : '开启后按下方时刻自动执行每日 Code Review 并投递；也可随时手动触发一次。'
+              ? '到点会按仓库内的 review skill 自动执行每日代码审查，并投递到本项目的投递目标。'
+              : '开启后按下方时刻自动执行每日代码审查并投递；也可随时手动触发一次。'
           }
         />
       </CardHeader>
@@ -76,7 +76,7 @@ export function ProjectCodeReviewConfigPanel({ projectId }: { projectId: string 
             onClick={() => void toggleScheduledReview()}
             disabled={saving}
           >
-            {config?.enabled ? '定时 Code Review 已开启' : '开启定时 Code Review'}
+            {config?.enabled ? '定时代码审查已开启' : '开启定时代码审查'}
           </Button>
           <label className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <span>北京时间每日</span>
@@ -105,14 +105,14 @@ export function ProjectCodeReviewConfigPanel({ projectId }: { projectId: string 
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void generateCodeReviewToday()} disabled={saving}>
-            生成今日 Code Review
+            生成今日代码审查
           </Button>
           <Button variant="outline" asChild>
             <Link to="/code-reviews">查看历史</Link>
           </Button>
         </div>
         <p className="text-sm text-muted-foreground">
-          Code Review 由各仓库内的 review skill（如 `.cursor/skills/code-review/SKILL.md`）主导审查重点；若仓库未配置 review
+          代码审查由各仓库内的 review skill（如 `.cursor/skills/code-review/SKILL.md`）主导审查重点；若仓库未配置 review
           skill，本次审查会跳过并在报告中提示需要添加。
         </p>
         {config?.enabled ? (

@@ -251,7 +251,7 @@ export class RepositorySyncService {
       });
       if (synced.syncStatus !== 'READY' || !synced.localPath) {
         throw new InternalServerErrorException(
-          synced.syncError?.trim() || '代码库同步失败，无法运行 Code Review。',
+          synced.syncError?.trim() || '代码库同步失败，无法运行代码审查。',
         );
       }
 

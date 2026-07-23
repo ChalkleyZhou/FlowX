@@ -283,7 +283,7 @@ export class DeliveryTargetsService {
   private assertHasDeliveryPurpose(forBriefing: boolean, forCodeReview: boolean) {
     if (!forBriefing && !forCodeReview) {
       throw new BadRequestException(
-        'At least one delivery purpose (briefing or code review) must stay enabled.',
+        '至少保留一个投递用途（简报或代码审查）。',
       );
     }
   }
@@ -392,4 +392,3 @@ export class DeliveryTargetsService {
     );
   }
 }
-

@@ -98,7 +98,7 @@ describe('CodeReviewsPage', () => {
 
     expect(api.getProjects).toHaveBeenCalled();
     expect(api.listProjectDailyCodeReviews).toHaveBeenCalledWith('project-1');
-    expect(document.body.textContent).toContain('Code Review');
+    expect(document.body.textContent).toContain('代码审查');
     expect(document.body.textContent).toContain('FlowX');
     expect(document.body.textContent).toContain('2026-06-03');
   });
@@ -107,7 +107,7 @@ describe('CodeReviewsPage', () => {
     await renderPage();
 
     const button = Array.from(document.querySelectorAll('button')).find((item) =>
-      item.textContent?.includes('生成 Code Review'),
+      item.textContent?.includes('生成代码审查'),
     );
     expect(button).toBeTruthy();
 
@@ -126,6 +126,6 @@ describe('CodeReviewsPage', () => {
 
     await renderPage();
 
-    expect(document.body.textContent).toContain('暂无 Code Review');
+    expect(document.body.textContent).toContain('暂无代码审查');
   });
 });

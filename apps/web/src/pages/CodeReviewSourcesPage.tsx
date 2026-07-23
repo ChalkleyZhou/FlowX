@@ -77,7 +77,7 @@ export function CodeReviewSourcesPage() {
         });
       }
       await refresh(workspaceId);
-      toast.success(`已将「${repository.name}」排除出 Code Review`);
+      toast.success(`已将「${repository.name}」排除出代码审查`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '排除仓库失败');
     } finally {
@@ -106,9 +106,9 @@ export function CodeReviewSourcesPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Code Review Sources"
-        title="Code Review 数据源"
-        description="默认审查工作区全部仓库。仅需在此排除不想纳入每日 Code Review 的仓库；与简报数据源相互独立。"
+        eyebrow="代码审查数据源"
+        title="代码审查数据源"
+        description="默认审查工作区全部仓库。仅需在此排除不想纳入每日代码审查的仓库；与简报数据源相互独立。"
       />
       <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">

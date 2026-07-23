@@ -43,7 +43,7 @@ export function DailyCodeReviewDetailPage() {
     try {
       setReview(await api.getDailyCodeReview(reviewId));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载 Code Review 失败');
+      toast.error(error instanceof Error ? error.message : '加载代码审查失败');
     } finally {
       setLoading(false);
     }
@@ -71,7 +71,7 @@ export function DailyCodeReviewDetailPage() {
     try {
       await api.sendDailyCodeReview(reviewId);
       await refresh();
-      toast.success('Code Review 已重新发送');
+      toast.success('代码审查已重新发送');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '重新发送失败');
     } finally {
@@ -88,7 +88,7 @@ export function DailyCodeReviewDetailPage() {
   }
 
   if (!review) {
-    return <p className="text-sm text-muted-foreground">Code Review 记录不存在或无法加载。</p>;
+    return <p className="text-sm text-muted-foreground">代码审查记录不存在或无法加载。</p>;
   }
 
   const logs = review.deliveryLogs ?? [];
@@ -98,8 +98,8 @@ export function DailyCodeReviewDetailPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Code Review"
-        title="每日 Code Review 详情"
+        eyebrow="代码审查"
+        title="每日代码审查详情"
         description={`${review.date.slice(0, 10)} · ${unitCountLabel(units)}`}
         actions={
           <div className="flex flex-wrap gap-2">

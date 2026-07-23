@@ -80,7 +80,7 @@ export function CodeReviewsPage() {
     try {
       setReviews(await api.listProjectDailyCodeReviews(projectId));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载 Code Review 失败');
+      toast.error(error instanceof Error ? error.message : '加载代码审查失败');
     } finally {
       if (!options?.silent) {
         setLoading(false);
@@ -123,12 +123,12 @@ export function CodeReviewsPage() {
       await refresh(selectedProjectId);
       toast.success(
         review.status === 'GENERATING'
-          ? '每日 Code Review 已开始生成'
-          : '每日 Code Review 已生成',
+          ? '每日代码审查已开始生成'
+          : '每日代码审查已生成',
       );
       navigate(`/daily-code-reviews/${review.id}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '生成 Code Review 失败');
+      toast.error(error instanceof Error ? error.message : '生成代码审查失败');
     } finally {
       setGenerating(false);
     }
@@ -137,13 +137,13 @@ export function CodeReviewsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Code Review"
-        title="Code Review"
-        description="按项目 review skill 驱动每日 Code Review，查看历史记录并跟踪发送状态。"
+        eyebrow="代码审查"
+        title="代码审查"
+        description="按项目 review skill 驱动每日代码审查，查看历史记录并跟踪发送状态。"
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild>
-              <Link to="/settings/code-review-sources">Code Review 数据源</Link>
+              <Link to="/settings/code-review-sources">代码审查数据源</Link>
             </Button>
             <Button variant="outline" asChild>
               <Link to="/settings/delivery-targets">投递目标</Link>
@@ -154,12 +154,12 @@ export function CodeReviewsPage() {
 
       <div className="grid gap-5 md:grid-cols-2">
         <MetricCard label="项目数" value={projects.length} />
-        <MetricCard label="Code Review" value={reviews.length} />
+        <MetricCard label="代码审查" value={reviews.length} />
       </div>
 
       <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
-          <SectionHeader eyebrow="Generate" title="生成 Code Review" />
+          <SectionHeader eyebrow="Generate" title="生成代码审查" />
         </CardHeader>
         <CardContent className="p-5 pt-0">
           <div className="rounded-md border border-border bg-muted/70 p-3">
@@ -204,7 +204,7 @@ export function CodeReviewsPage() {
                   onClick={handleGenerate}
                   disabled={!selectedProjectId || generating}
                 >
-                  {generating ? '生成中...' : '生成 Code Review'}
+                  {generating ? '生成中...' : '生成代码审查'}
                 </Button>
               </div>
             </div>
@@ -219,7 +219,7 @@ export function CodeReviewsPage() {
 
       <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
-          <SectionHeader eyebrow="History" title="Code Review 历史" />
+          <SectionHeader eyebrow="History" title="代码审查历史" />
         </CardHeader>
         <CardContent className="p-5 pt-0">
           {loading ? (
@@ -261,8 +261,8 @@ export function CodeReviewsPage() {
             </div>
           ) : (
             <EmptyState
-              title="暂无 Code Review"
-              description="选择项目和日期后生成第一份每日 Code Review。默认会审查该项目所属工作区的全部仓库；可在「Code Review 数据源」中排除个别仓库。"
+              title="暂无代码审查"
+              description="选择项目和日期后生成第一份每日代码审查。默认会审查该项目所属工作区的全部仓库；可在「代码审查数据源」中排除个别仓库。"
               action={
                 <Button variant="outline" size="sm" asChild>
                   <Link to="/settings/code-review-sources">管理排除项</Link>

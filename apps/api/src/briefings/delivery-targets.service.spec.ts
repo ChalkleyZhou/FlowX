@@ -115,7 +115,7 @@ describe('DeliveryTargetsService', () => {
         forBriefing: false,
         forCodeReview: false,
       }),
-    ).rejects.toThrow('At least one delivery purpose');
+    ).rejects.toThrow('至少保留一个投递用途');
 
     expect(targetCreate).not.toHaveBeenCalled();
   });
@@ -129,7 +129,7 @@ describe('DeliveryTargetsService', () => {
 
     await expect(
       createService().updateTarget('target-1', { forBriefing: false }),
-    ).rejects.toThrow('At least one delivery purpose');
+    ).rejects.toThrow('至少保留一个投递用途');
 
     expect(targetUpdate).not.toHaveBeenCalled();
   });
@@ -395,8 +395,8 @@ describe('DeliveryTargetsService', () => {
       projectId: 'project-1',
       projectName: '信息化系统',
       date: new Date('2026-06-03T00:00:00.000Z'),
-      markdownContent: '# Code Review',
-      htmlContent: '<h1>Code Review</h1>',
+      markdownContent: '# 代码审查',
+      htmlContent: '<h1>代码审查</h1>',
     });
 
     expect(result.targetCount).toBe(1);

@@ -40,7 +40,7 @@ const primaryItems = [
   { key: '/workflow-runs', label: '工作流', icon: Workflow },
   { key: '/projects', label: '项目', icon: FolderKanban },
   { key: '/briefings', label: '简报', icon: Newspaper },
-  { key: '/code-reviews', label: 'Code Review', icon: GitPullRequest },
+  { key: '/code-reviews', label: '代码审查', icon: GitPullRequest },
   { key: '/schedule', label: '排期', icon: CalendarRange },
   { key: '/bugs', label: '缺陷', icon: Bug },
   { key: '/issues', label: '问题项', icon: CircleAlert },
@@ -54,7 +54,7 @@ const secondaryItems = [
   { key: '/settings/ai-credentials', label: 'AI 凭据', icon: KeyRound },
   { key: '/settings/git-credentials', label: 'Git 凭据', icon: GitBranch },
   { key: '/settings/briefing-sources', label: '简报数据源', icon: RadioTower },
-  { key: '/settings/code-review-sources', label: 'Code Review 数据源', icon: GitPullRequest },
+  { key: '/settings/code-review-sources', label: '代码审查数据源', icon: GitPullRequest },
   { key: '/settings/delivery-targets', label: '投递目标', icon: Send },
 ] satisfies Array<{ key: string; label: string; icon: LucideIcon }>;
 

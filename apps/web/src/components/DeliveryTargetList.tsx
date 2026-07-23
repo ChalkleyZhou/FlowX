@@ -60,10 +60,10 @@ function TargetRow({
           {target.forBriefing ? '停用简报' : '启用简报'}
         </Button>
         <Badge variant={target.forCodeReview ? 'default' : 'outline'}>
-          Code Review{target.forCodeReview ? '开' : '关'}
+          代码审查{target.forCodeReview ? '开' : '关'}
         </Badge>
         <Button variant="outline" size="sm" onClick={() => onToggleForCodeReview(target)}>
-          {target.forCodeReview ? '停用 Code Review' : '启用 Code Review'}
+          {target.forCodeReview ? '停用代码审查' : '启用代码审查'}
         </Button>
         <Button variant="destructive" size="sm" onClick={() => onDelete(target)}>
           删除

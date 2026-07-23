@@ -116,7 +116,7 @@ export function resolveFailedReviewErrorMessage(
     missingTests?: unknown;
     suggestions?: unknown;
   }> | null | undefined,
-  fallback = '每日 Code Review 失败，AI 未返回具体原因。',
+  fallback = '每日代码审查失败，AI 未返回具体原因。',
 ): string {
   const explicit = output?.errorMessage?.trim() || output?.skillHint?.trim();
   if (explicit) {
