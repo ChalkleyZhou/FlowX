@@ -8,8 +8,8 @@ describe('runLaunch', () => {
       json: async () => ({
         apiBaseUrl: 'https://flowx.example',
         workflowRunId: 'workflow-1',
-        executionSessionId: 'session-1',
         handoff: {
+          executionSessionId: 'session-1',
           repositories: [
             { url: '', workingBranch: 'ignored' },
             { url: 'https://github.com/org/repo.git', workingBranch: 'feat/flowx' },

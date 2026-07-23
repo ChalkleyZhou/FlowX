@@ -10,8 +10,8 @@ import { resolveRepoPath } from './repo-map.js';
 type RedeemResponse = {
   apiBaseUrl: string;
   workflowRunId: string;
-  executionSessionId?: string;
   handoff: {
+    executionSessionId?: string;
     repositories: Array<{ url: string; workingBranch?: string }>;
   };
   chatPrompt: string;
@@ -85,13 +85,14 @@ export async function runLaunch(
 
   const redeemed = (await response.json()) as RedeemResponse;
   const repository = redeemed.handoff?.repositories.find((item) => item.url?.trim());
+  const executionSessionId = redeemed.handoff?.executionSessionId?.trim();
   if (!repository) {
     throw new Error('No repository URL was provided by the local handoff.');
   }
   if (!redeemed.workflowRunId || !redeemed.chatPrompt || !redeemed.mcpToken || !redeemed.apiBaseUrl) {
     throw redeemError('Redeem response is incomplete.');
   }
-  if (!redeemed.executionSessionId?.trim()) {
+  if (!executionSessionId) {
     throw redeemError('Redeem response is missing an execution session id.');
   }
 
@@ -108,7 +109,7 @@ export async function runLaunch(
   return registry.resolve(request.ide).launch({
     gitRoot,
     workflowRunId: redeemed.workflowRunId,
-    executionSessionId: redeemed.executionSessionId,
+    executionSessionId,
     chatPrompt: redeemed.chatPrompt,
     apiBaseUrl: redeemed.apiBaseUrl,
     mcpToken: redeemed.mcpToken,
