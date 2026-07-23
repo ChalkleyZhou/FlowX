@@ -11,6 +11,9 @@ import type {
   DailyCodeReview,
   DeliveryTarget,
   DeployJobRecord,
+  ExecutionSessionDetail,
+  ExecutionSessionEvidence,
+  ExecutionSessionEventsPage,
   Issue,
   IdeationSessionEvent,
   GanttPayload,
@@ -772,6 +775,20 @@ export const api = {
       ).toString()}`,
     ),
   getWorkflowRun: (id: string) => request<WorkflowRun>(`/workflow-runs/${id}`),
+  getExecutionSession: (id: string) =>
+    request<ExecutionSessionDetail>(`/execution-sessions/${id}`),
+  listExecutionSessionEvidence: (id: string) =>
+    request<ExecutionSessionEvidence[]>(`/execution-sessions/${id}/evidence`),
+  listExecutionSessionEvents: (
+    id: string,
+    params?: { cursor?: string; take?: number },
+  ) =>
+    request<ExecutionSessionEventsPage>(
+      `/execution-sessions/${id}/events${queryString({
+        cursor: params?.cursor,
+        take: params?.take !== undefined ? String(params.take) : undefined,
+      })}`,
+    ),
   getWorkflowDesignArtifact: (id: string) =>
     request<WorkflowDesignArtifact>(`/workflow-runs/${id}/design-artifact`),
   startOpenDesignHandoff: (requirementId: string, repositoryIds?: string[]) =>

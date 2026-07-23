@@ -636,6 +636,124 @@ export interface GitCredentialStatus {
   updatedAt?: string;
 }
 
+export type ExecutionSessionStatus =
+  | 'CREATED'
+  | 'CLAIMED'
+  | 'RUNNING'
+  | 'COMPLETING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELLED';
+
+export type ExecutorType = 'LOCAL' | 'CLOUD' | 'CI';
+
+export type SourceTool =
+  | 'cursor'
+  | 'codex'
+  | 'opendesign'
+  | 'shell'
+  | 'test-runner'
+  | 'flowx-worker';
+
+export interface ExecutionSessionDetail {
+  id: string;
+  workflowRunId: string;
+  stageExecutionId?: string | null;
+  organizationId?: string | null;
+  workspaceId?: string | null;
+  projectId?: string | null;
+  deviceId?: string | null;
+  status: ExecutionSessionStatus;
+  executorType: ExecutorType;
+  sourceTool: SourceTool;
+  protocolVersion: string;
+  traceId: string;
+  idempotencyKey?: string | null;
+  claimedByUserId?: string | null;
+  startedAt?: string | null;
+  lastHeartbeatAt?: string | null;
+  completedAt?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  summary?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  syncEvents?: ExecutionSessionSyncEvent[];
+  artifacts?: ExecutionSessionArtifact[];
+  evidence?: ExecutionSessionEvidence[];
+}
+
+export type EvidenceType =
+  | 'GIT_COMMIT'
+  | 'REMOTE_BRANCH_VERIFICATION'
+  | 'CHANGED_FILES'
+  | 'TEST_RESULT'
+  | 'BUILD_RESULT'
+  | 'USER_CONFIRMATION'
+  | 'AGENT_SUMMARY';
+
+export type EvidenceStatus = 'REPORTED' | 'VERIFIED' | 'REJECTED';
+
+export interface ExecutionSessionArtifact {
+  id: string;
+  workspaceId: string;
+  projectId?: string | null;
+  workflowRunId?: string | null;
+  executionSessionId?: string | null;
+  artifactType: string;
+  name: string;
+  version: string;
+  storageProvider: string;
+  storageKey?: string | null;
+  externalUrl?: string | null;
+  mimeType?: string | null;
+  byteSize?: number | null;
+  sha256?: string | null;
+  status: string;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExecutionSessionEvidence {
+  id: string;
+  executionSessionId: string;
+  artifactId?: string | null;
+  evidenceType: EvidenceType;
+  sourceTool: SourceTool;
+  title: string;
+  summary?: string | null;
+  status: EvidenceStatus;
+  occurredAt: string;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  artifact?: ExecutionSessionArtifact | null;
+}
+
+export interface ExecutionSessionSyncEvent {
+  id: string;
+  eventId: string;
+  executionSessionId: string;
+  schemaVersion: string;
+  sequence?: number | null;
+  eventType: string;
+  sourceTool: SourceTool;
+  actorId?: string | null;
+  deviceId?: string | null;
+  traceId: string;
+  occurredAt: string;
+  receivedAt: string;
+  idempotencyKey: string;
+  payload: Record<string, unknown>;
+}
+
+export interface ExecutionSessionEventsPage {
+  items: ExecutionSessionSyncEvent[];
+  nextCursor: string | null;
+}
+
 export interface IdeationSession {
   id: string;
   stage: 'BRAINSTORM' | 'DESIGN' | 'DEMO';
