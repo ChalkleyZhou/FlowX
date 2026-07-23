@@ -5,6 +5,7 @@ import { loadConfig, normalizeRepoUrl, saveConfig } from './config.js';
 import { ensureDeviceIdentity } from './device.js';
 import { Outbox } from './outbox.js';
 import { submitOpenDesignResult, syncOpenDesignOutbox } from './open-design.js';
+import { runLocalMcp } from './mcp.js';
 
 async function main(argv: string[]): Promise<void> {
   const command = argv[0] ?? 'serve';
@@ -57,9 +58,13 @@ async function main(argv: string[]): Promise<void> {
     console.log(JSON.stringify(await submitOpenDesignResult(executionSessionId), null, 2));
     return;
   }
+  if (command === 'mcp') {
+    await runLocalMcp();
+    return;
+  }
   if (command !== 'serve') {
     console.error(`Unknown command: ${command}`);
-    console.error('Usage: flowx-local [serve] | map <repoUrl> <path> | status | sync | design-submit <executionSessionId>');
+    console.error('Usage: flowx-local [serve] | mcp | map <repoUrl> <path> | status | sync | design-submit <executionSessionId>');
     process.exitCode = 1;
     return;
   }

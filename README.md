@@ -132,7 +132,7 @@ flowx-local sync
 ```
 
 macOS 未配置时，会自动尝试打开 `/Applications/Open Design.app`。请在 Open Design 内选择
-自己的项目目录，并用 FlowX MCP（`flowx_get_design_handoff` / `flowx_submit_design`）
+自己的项目目录，并在 Cursor Agent 的 MCP 配置中使用 `flowx-local mcp`（`flowx_get_design_handoff` / `flowx_submit_design`）
 拉取上下文与回传结果。完整说明见
 [OpenDesign 本地设计阶段](docs/opendesign-design-stage.md)和
 [Edge Agent 运维说明](docs/edge-agent-operations.md)。

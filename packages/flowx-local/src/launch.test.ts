@@ -31,7 +31,6 @@ describe('runLaunch', () => {
           ensureProject,
           writePromptFile,
           openIde,
-          resolveMcpEntryPath: () => '/tools/flowx-mcp/dist/index.js',
         },
       ),
     ).resolves.toEqual({
@@ -50,7 +49,6 @@ describe('runLaunch', () => {
     expect(ensureProject).toHaveBeenCalledWith('/work/repo', {
       apiBaseUrl: 'https://flowx.example',
       mcpToken: 'token-1',
-      mcpEntryPath: '/tools/flowx-mcp/dist/index.js',
     });
     expect(openIde).toHaveBeenCalledWith('cursor', '/work/repo', 'Implement this task.');
   });
@@ -65,7 +63,6 @@ describe('runLaunch', () => {
           ensureProject: vi.fn(),
           writePromptFile: vi.fn(),
           openIde: vi.fn(),
-          resolveMcpEntryPath: () => '/tools/flowx-mcp/dist/index.js',
         },
       ),
     ).rejects.toMatchObject({ code: 'REDEEM_FAILED' });

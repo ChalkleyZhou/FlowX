@@ -30,7 +30,7 @@ FlowX 把研发流程拆成可中断、可确认的阶段，核心目标是：
 
 若要在本机用 Cursor / Codex「本地启动」，或通过 OpenDesign 做本地设计，需要安装并运行 FlowX 本地 Agent。
 
-本地 OpenDesign 推荐搭配 FlowX MCP 使用：`flowx-local` 负责本机启动、短期会话和 loopback 通道，`flowx-mcp` 负责读取版本化设计上下文并提交设计结果。Web 页面上的 `回传本地设计` 仍可作为备用回传方式。
+本地 OpenDesign 推荐搭配 `flowx-local mcp` 使用：`flowx-local` 同时负责本机启动、短期会话和 MCP 工具服务。Web 页面上的 `回传本地设计` 仍可作为备用回传方式。
 
 平台内完整说明见侧栏「设置」→ **[本地 Agent](/local-agent)**（或直接打开 `/local-agent`）。
 
@@ -103,43 +103,36 @@ flowx-local serve
 
 1. 先安装并启动本机 Agent：`npm install -g @flowx-ai/local`，然后运行 `flowx-local serve`（详见 [本地 Agent](/local-agent)）。
 2. 在需求列表点击 `OpenDesign 设计`。
-3. 使用 FlowX MCP 的 `flowx_get_active_design_session` 和 `flowx_get_design_handoff` 获取当前设计会话与版本化需求上下文。
+3. 在 Cursor Agent 中启用 `flowx-local mcp`，使用 `flowx_get_active_design_session` 和 `flowx_get_design_handoff` 获取当前设计会话与版本化需求上下文。
 4. 在 OpenDesign 中完成设计，通过 `flowx_submit_design` 提交结果；也可以更新会话目录中的 `result.json` 后，在工作流详情点击 `回传本地设计`。
 5. 设计稿回传后会进入 FlowX 待确认状态。
 
 网络中断时完成报告会进入本地 Outbox，可通过 `flowx-local sync` 重试。详细配置和结果格式见
 [OpenDesign 本地设计阶段](opendesign-design-stage.md)。
 
-### 在 Cursor Agent 中配置 FlowX MCP
+### 在 Cursor Agent 中启用 FlowX MCP
 
-MCP 要配置在实际运行 Agent 的工具里，不是配置在 OpenDesign 应用里。如果你使用 Cursor Agent，请在当前 OpenDesign 项目的 `.cursor/mcp.json` 中注册 `flowx-mcp`：
-
-先在 FlowX monorepo 中构建 MCP：
-
-```bash
-pnpm --filter flowx-mcp build
-```
-
-然后写入配置（把路径和短期 token 换成你的实际值）：
+MCP 要配置在实际运行 Agent 的工具里，不是配置在 OpenDesign 应用里。如果你使用 Cursor Agent，请在 Cursor 的 MCP 配置中登记 `flowx-local`：
 
 ```json
 {
   "mcpServers": {
     "flowx": {
-      "command": "node",
-      "args": [
-        "/absolute/path/to/FlowX/packages/flowx-mcp/dist/index.js"
-      ],
-      "env": {
-        "FLOWX_API_BASE_URL": "http://127.0.0.1:3000",
-        "FLOWX_API_TOKEN": "<当前设计会话短期 token>"
-      }
+      "command": "flowx-local",
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-在 FlowX Web 点击 `OpenDesign 设计` 后，`flowx-local` 会自动在目标仓库写入或合并这段 `.cursor/mcp.json`，通常不需要手工复制。`FLOWX_API_TOKEN` 是当前设计会话的短期 token，不要提交到 Git，也不要改成长期登录 token。配置生效后，在 Cursor Agent 中使用 `flowx_get_active_design_session`、`flowx_get_design_handoff` 和 `flowx_submit_design`。
+先安装并启动本机 Agent：
+
+```bash
+npm install -g @flowx-ai/local --registry https://registry.npmjs.org
+flowx-local serve
+```
+
+Cursor 会按需启动 `flowx-local mcp`。它会读取 `flowx-local` 写入的本机活跃设计会话，不需要手工复制短期 token。通过 FlowX Web 的「本地启动」打开 Cursor 时，`flowx-local` 还会自动在目标仓库写入或合并项目级 `.cursor/mcp.json`，并自动填入当前部署的 API 地址和短期 token。手工配置时不要把 `FLOWX_API_BASE_URL` 写死为 `127.0.0.1`，也不要把 `~/.flowx` 下的会话文件或 token 提交到 Git。
 
 ### 启动研发工作流
 

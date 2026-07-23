@@ -68,17 +68,20 @@ export function ensureProject(gitRoot: string, options: EnsureProjectOptions): v
       mcpServers?: Record<string, unknown>;
     };
   }
-  const mcpEntryPath = options.mcpEntryPath ?? resolveMcpEntryPath();
-  if (!isAbsolute(mcpEntryPath)) {
-    throw new Error('FlowX MCP entry path must be absolute.');
-  }
+  const mcpServer = options.mcpEntryPath
+    ? (() => {
+        if (!isAbsolute(options.mcpEntryPath)) {
+          throw new Error('FlowX MCP entry path must be absolute.');
+        }
+        return { command: 'node', args: [options.mcpEntryPath] };
+      })()
+    : { command: 'flowx-local', args: ['mcp'] };
   const updated = {
     ...existing,
     mcpServers: {
       ...existing.mcpServers,
       flowx: {
-        command: 'node',
-        args: [mcpEntryPath],
+        ...mcpServer,
         env: {
           FLOWX_API_BASE_URL: options.apiBaseUrl,
           FLOWX_API_TOKEN: options.mcpToken,

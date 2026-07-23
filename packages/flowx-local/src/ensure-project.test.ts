@@ -23,14 +23,12 @@ describe('ensureProject', () => {
     const gitRoot = makeProject();
     const cursorDir = join(gitRoot, '.cursor');
     const mcpPath = join(cursorDir, 'mcp.json');
-    const mcpEntryPath = '/tools/flowx-mcp/dist/index.js';
     mkdirSync(cursorDir, { recursive: true });
     writeFileSync(mcpPath, JSON.stringify({ mcpServers: { existing: { command: 'test' } } }));
 
     ensureProject(gitRoot, {
       apiBaseUrl: 'https://flowx.example',
       mcpToken: 'token-1',
-      mcpEntryPath,
     });
 
     expect(existsSync(join(cursorDir, 'skills', 'flowx-local-execution', 'SKILL.md'))).toBe(true);
@@ -39,8 +37,8 @@ describe('ensureProject', () => {
       mcpServers: {
         existing: { command: 'test' },
         flowx: {
-          command: 'node',
-          args: [mcpEntryPath],
+          command: 'flowx-local',
+          args: ['mcp'],
           env: {
             FLOWX_API_BASE_URL: 'https://flowx.example',
             FLOWX_API_TOKEN: 'token-1',
@@ -59,7 +57,6 @@ describe('ensureProject', () => {
     ensureProject(gitRoot, {
       apiBaseUrl: 'https://flowx.example',
       mcpToken: 'token-1',
-      mcpEntryPath: '/tools/flowx-mcp/dist/index.js',
     });
 
     expect(readFileSync(skillPath, 'utf8')).toBe('custom instructions');

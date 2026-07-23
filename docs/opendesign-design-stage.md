@@ -41,9 +41,9 @@ sequenceDiagram
 - FlowX 是需求、工作流状态、版本化上下文、Artifact 和 Evidence 的事实来源。
 - OpenDesign 是设计师本地的专业执行环境；**项目目录由设计师在 Open Design 内自行选择**。
 - 浏览器只向本机 `127.0.0.1:3920` 发送一次性启动票据；长期登录态不会交给本地工具。
-- 推荐通过 `flowx-mcp` 拉取 ContextPackage（`flowx_get_design_handoff`）并回传结果（`flowx_submit_design`）。
-- `~/.flowx/active-design.json` 保存当前活跃设计会话的短期凭据，供 MCP 使用。
-- `flowx-mcp` 会优先通过 `flowx-local` 的 loopback 接口读取活跃会话，避免 Codex 沙箱直接访问 `~/.flowx`；未运行本机 Agent 时才回退到文件读取。
+- 推荐在 Cursor / Codex 的 MCP 配置中使用 `flowx-local mcp`，通过 `flowx_get_design_handoff` 拉取 ContextPackage，并通过 `flowx_submit_design` 回传结果。
+- `~/.flowx/active-design.json` 保存当前活跃设计会话的短期凭据，供 `flowx-local mcp` 使用。
+- `flowx-local mcp` 通过本机 Agent 读取活跃会话，普通用户不需要访问 `~/.flowx`、构建 `flowx-mcp` 或手工复制 token。
 - 结果通过 `idempotencyKey` 幂等回传；网络失败时写入 Outbox，恢复后重放。
 
 ## 启动 flowx-local
@@ -93,11 +93,11 @@ pnpm flowx-local status
 - 找不到桌面应用且未配置命令时：不强制打开文件夹作为工程根（会话凭据仍写入 `~/.flowx`）。
 - 其他系统：生成会话凭据后按返回信息手工打开 OpenDesign。
 
-推荐用 FlowX MCP：
+推荐在 Cursor / Codex 中配置 `flowx-local mcp`：
 
-1. `flowx_get_active_design_session`
-2. `flowx_get_design_handoff`
-3. 在自有项目中完成设计后 `flowx_submit_design`
+1. 在 FlowX Web 中点击 `OpenDesign 设计`，由 `flowx-local` 写入活跃会话。
+2. Agent 调用 `flowx_get_active_design_session` 和 `flowx_get_design_handoff`。
+3. 在自有项目中完成设计后调用 `flowx_submit_design`。
 
 ## 从需求发起设计
 

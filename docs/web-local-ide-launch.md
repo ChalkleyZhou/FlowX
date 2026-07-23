@@ -10,11 +10,11 @@ This path reuses the same `claim-local` / handoff / `complete-local` contract as
 
 ## Prerequisites
 
-Build the MCP server and local bridge (once, or after code changes):
+终端用户只需要安装并启动 `@flowx-ai/local`；`flowx-local` 自带 MCP command，不需要单独安装或构建 `flowx-mcp`：
 
 ```bash
-pnpm --filter flowx-mcp build
-pnpm --filter @flowx-ai/local build
+npm install -g @flowx-ai/local --registry https://registry.npmjs.org
+flowx-local serve
 ```
 
 Keep the FlowX API and Web apps running as usual (`pnpm dev` or equivalent).
@@ -67,15 +67,22 @@ Unmapped repos prompt for a local directory on first launch (when a picker is av
 
 Web claims local execution when needed, issues a short-lived launch ticket, and calls `flowx-local` `/launch`. The daemon resolves repo paths, ensures FlowX Skill + MCP config in the project, opens the IDE, and delivers the task prompt (Chat/Agent prefill when possible; otherwise a file under `.flowx/tasks/` plus clipboard).
 
-## Environment: `FLOWX_MCP_ENTRY`
+## MCP configuration
 
-On launch, `flowx-local` tries to resolve `packages/flowx-mcp/dist/index.js` relative to the monorepo. If that auto-resolve fails (unusual layout or install), set an absolute path:
+Cursor / Codex should register the local agent as the MCP command:
 
-```bash
-export FLOWX_MCP_ENTRY=/absolute/path/to/FlowX/packages/flowx-mcp/dist/index.js
+```json
+{
+  "mcpServers": {
+    "flowx": {
+      "command": "flowx-local",
+      "args": ["mcp"]
+    }
+  }
+}
 ```
 
-Then restart the daemon.
+When launching from FlowX Web, `flowx-local` writes or merges this project-level `.cursor/mcp.json` automatically and adds the deployment API URL plus short-lived token for that launch. Cursor starts `flowx-local mcp` on demand; the MCP process reads the active short-lived session from the local agent. For manual configuration, keep the minimal config above and do not hard-code `127.0.0.1`.
 
 ## Completing local work
 

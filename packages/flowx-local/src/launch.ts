@@ -1,4 +1,4 @@
-import { ensureProject, resolveMcpEntryPath, writePromptFile } from './ensure-project.js';
+import { ensureProject, writePromptFile } from './ensure-project.js';
 import { openIde, type Ide } from './open-ide.js';
 import { resolveRepoPath } from './repo-map.js';
 
@@ -31,7 +31,6 @@ export type LaunchDependencies = {
   ensureProject?: typeof ensureProject;
   writePromptFile?: typeof writePromptFile;
   openIde?: typeof openIde;
-  resolveMcpEntryPath?: () => string;
 };
 
 export type RedeemFailedError = Error & { code: 'REDEEM_FAILED' };
@@ -86,11 +85,9 @@ export async function runLaunch(
   }
 
   const gitRoot = await (dependencies.resolveRepoPath ?? resolveRepoPath)(repository.url);
-  const mcpEntryPath = (dependencies.resolveMcpEntryPath ?? resolveMcpEntryPath)();
   (dependencies.ensureProject ?? ensureProject)(gitRoot, {
     apiBaseUrl: redeemed.apiBaseUrl,
     mcpToken: redeemed.mcpToken,
-    mcpEntryPath,
   });
   const promptPath = (dependencies.writePromptFile ?? writePromptFile)(
     gitRoot,

@@ -134,28 +134,20 @@ The extension stores the FlowX API URL and session token locally. Users do not n
 
 ### Cursor MCP setup
 
-Build the MCP package:
-
-```bash
-pnpm --filter flowx-mcp build
-```
-
-Then add a Cursor MCP config equivalent to [cursor-mcp-setup.example.json](./cursor-mcp-setup.example.json). Use an absolute path to `packages/flowx-mcp/dist/index.js` and a FlowX session token:
+For normal local execution and OpenDesign use, configure the public local agent instead of pointing Cursor at a monorepo build:
 
 ```json
 {
   "mcpServers": {
     "flowx": {
-      "command": "node",
-      "args": ["/absolute/path/to/FlowX/packages/flowx-mcp/dist/index.js"],
-      "env": {
-        "FLOWX_API_BASE_URL": "http://127.0.0.1:3000",
-        "FLOWX_API_TOKEN": "<session-token>"
-      }
+      "command": "flowx-local",
+      "args": ["mcp"]
     }
   }
 }
 ```
+
+The FlowX Web local-launch flow writes this configuration automatically. The legacy `flowx-mcp` package remains for monorepo contributors and server-side compatibility only; it is not part of the end-user installation path. New Cursor configurations should always use the `flowx-local` command above.
 
 ## First-version boundaries
 

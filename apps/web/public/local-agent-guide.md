@@ -9,6 +9,7 @@
 - 只监听本机 loopback（默认 `http://127.0.0.1:3920`）
 - 接收 Web 下发的一次性启动票据，兑换短期凭据
 - 打开本地 IDE 或 OpenDesign，并写入执行/设计上下文
+- 作为 Cursor / Codex 的 MCP command，提供 FlowX 任务、完成回报和 OpenDesign 工具
 - 在网络不稳时把完成报告放入本地 Outbox，稍后重试回传
 
 不需要把 FlowX 仓库克隆到本机才能使用。
@@ -56,7 +57,7 @@ curl http://127.0.0.1:3920/health
 1. 打开一条进入开发执行阶段的工作流
 2. 确认本机已运行 `flowx-local serve`
 3. 点击「本地启动」，选择 Cursor 或 Codex
-4. Agent 会匹配本地仓库路径（必要时提示映射）、写入 Skill/MCP，并打开 IDE
+4. Agent 会匹配本地仓库路径（必要时提示映射）、写入 Skill/MCP，并打开 IDE。写入的 MCP command 是 `flowx-local mcp`。
 
 开发完成后，可用 IDE 内 MCP 回写完成报告，或在 Web 上使用「完成本地执行」。
 
@@ -65,7 +66,22 @@ curl http://127.0.0.1:3920/health
 1. 本机保持 `flowx-local serve`
 2. 在需求或工作流相关入口点击打开本地 OpenDesign
 3. 在 Open Design 中选择自己的项目目录并完成设计
-4. 通过 FlowX MCP（推荐）或工作流「回传本地设计」把结果交回平台
+4. Cursor Agent 通过 `flowx-local mcp`（推荐）或工作流「回传本地设计」把结果交回平台
+
+Cursor 的 MCP 配置可以写成：
+
+```json
+{
+  "mcpServers": {
+    "flowx": {
+      "command": "flowx-local",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+普通用户不需要构建 `flowx-mcp` 或手工填写短期 token。通过 FlowX Web 发起本地启动时，`flowx-local` 会自动写入项目级 `.cursor/mcp.json`，并带上当前部署的 API 地址与短期 token；OpenDesign 场景则由 MCP 从本机活跃设计会话读取短期凭据。手工配置时不要把 API 地址写死为 `127.0.0.1`。
 
 更细的设计阶段说明见仓库文档 `docs/opendesign-design-stage.md`（运维向内容不在本页展开）。
 

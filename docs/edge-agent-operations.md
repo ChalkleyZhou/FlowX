@@ -12,6 +12,7 @@ npm install -g @flowx-ai/local
 flowx-local serve
 flowx-local status
 flowx-local sync
+flowx-local mcp
 flowx-local design-submit <executionSessionId>
 ```
 
@@ -57,7 +58,7 @@ curl http://127.0.0.1:3920/health
 ### 点击 OpenDesign 后只打开 App、没有挂载目录
 
 这是预期行为：项目目录由设计师在 Open Design 内自行选择。FlowX 通过
-`~/.flowx/active-design.json` 记录活跃会话，由 `flowx-mcp` 拉取上下文并回传结果：
+`~/.flowx/active-design.json` 记录活跃会话，由 Cursor / Codex 中的 `flowx-local mcp` 拉取上下文并回传结果：
 
 1. `flowx_get_active_design_session`
 2. `flowx_get_design_handoff`
