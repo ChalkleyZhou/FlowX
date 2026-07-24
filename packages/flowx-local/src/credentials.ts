@@ -92,21 +92,29 @@ export async function resolveApiAuth(homeDir = homedir()): Promise<ResolvedApiAu
     : '';
   const credentials = await readCredentials(homeDir);
   const active = await readActiveDesignSession(homeDir);
+  const activeExpired =
+    !!active?.accessTokenExpiresAt && Date.parse(active.accessTokenExpiresAt) <= Date.now();
 
-  if (envToken) {
-    const apiBaseUrl =
-      envBaseUrl ||
-      credentials?.apiBaseUrl ||
-      active?.apiBaseUrl ||
-      DEFAULT_LOCAL_CONFIG.apiBaseUrl;
-    if (!apiBaseUrl) {
-      throw new Error(
-        'No FlowX API URL is available. Set FLOWX_API_BASE_URL or run `flowx-local login`.',
-      );
+  const resolveBaseUrl = (...candidates: Array<string | undefined>) => {
+    for (const candidate of candidates) {
+      if (candidate?.trim()) {
+        return normalizeBaseUrl(candidate);
+      }
     }
-    return { apiBaseUrl, apiToken: envToken, source: 'env' };
+    return normalizeBaseUrl(DEFAULT_LOCAL_CONFIG.apiBaseUrl);
+  };
+
+  // 长期 Personal Token（env）优先，便于手动覆盖。
+  if (envToken.startsWith('fxpat_')) {
+    return {
+      apiBaseUrl: resolveBaseUrl(envBaseUrl, credentials?.apiBaseUrl, active?.apiBaseUrl),
+      apiToken: envToken,
+      source: 'env',
+    };
   }
 
+  // 本机 login 写入的 credentials 优先于 Web「本地启动」注入到 mcp.json 的短期 FLOWX_API_TOKEN，
+  // 避免过期短期 token 盖住可用的长期凭据。
   if (credentials) {
     return {
       apiBaseUrl: credentials.apiBaseUrl,
@@ -115,12 +123,26 @@ export async function resolveApiAuth(homeDir = homedir()): Promise<ResolvedApiAu
     };
   }
 
-  if (active?.accessToken?.trim() && active.apiBaseUrl) {
+  if (envToken) {
+    return {
+      apiBaseUrl: resolveBaseUrl(envBaseUrl, active?.apiBaseUrl),
+      apiToken: envToken,
+      source: 'env',
+    };
+  }
+
+  if (active?.accessToken?.trim() && active.apiBaseUrl && !activeExpired) {
     return {
       apiBaseUrl: active.apiBaseUrl,
       apiToken: active.accessToken.trim(),
       source: 'active-design',
     };
+  }
+
+  if (activeExpired) {
+    throw new Error(
+      'Active OpenDesign session token is expired. Run `flowx-local login --api-base-url <FlowX API URL> --token fxpat_…`, or reopen local OpenDesign from FlowX.',
+    );
   }
 
   throw new Error(

@@ -62,40 +62,44 @@ describe('credentials', () => {
 });
 
 describe('resolveApiAuth', () => {
-  it('prefers FLOWX_API_TOKEN over credentials and active-design', async () => {
+  it('prefers env Personal Token (fxpat_) over credentials', async () => {
     const home = makeHome();
     await writeCredentials({ apiBaseUrl: 'http://creds.example', apiToken: 'fxpat_creds' }, home);
-    await writeActiveDesignSession(
-      {
-        workflowRunId: 'wr-1',
-        executionSessionId: 'es-1',
-        apiBaseUrl: 'http://active.example',
-        accessToken: 'session-token',
-        accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
-      },
-      home,
-    );
-    process.env.FLOWX_API_TOKEN = 'env-token';
+    process.env.FLOWX_API_TOKEN = 'fxpat_env';
     delete process.env.FLOWX_API_BASE_URL;
 
     const auth = await resolveApiAuth(home);
     expect(auth).toEqual({
       apiBaseUrl: 'http://creds.example',
-      apiToken: 'env-token',
+      apiToken: 'fxpat_env',
       source: 'env',
     });
   });
 
-  it('uses FLOWX_API_BASE_URL when env token is set', async () => {
+  it('prefers credentials over short-lived env token from Web launch', async () => {
     const home = makeHome();
     await writeCredentials({ apiBaseUrl: 'http://creds.example', apiToken: 'fxpat_creds' }, home);
-    process.env.FLOWX_API_TOKEN = 'env-token';
+    process.env.FLOWX_API_TOKEN = 'session-token-from-mcp-json';
+    process.env.FLOWX_API_BASE_URL = 'http://env.example/';
+
+    const auth = await resolveApiAuth(home);
+    expect(auth).toEqual({
+      apiBaseUrl: 'http://creds.example',
+      apiToken: 'fxpat_creds',
+      source: 'credentials',
+    });
+  });
+
+  it('uses FLOWX_API_BASE_URL when env Personal Token is set', async () => {
+    const home = makeHome();
+    await writeCredentials({ apiBaseUrl: 'http://creds.example', apiToken: 'fxpat_creds' }, home);
+    process.env.FLOWX_API_TOKEN = 'fxpat_env';
     process.env.FLOWX_API_BASE_URL = 'http://env.example/';
 
     const auth = await resolveApiAuth(home);
     expect(auth).toEqual({
       apiBaseUrl: 'http://env.example',
-      apiToken: 'env-token',
+      apiToken: 'fxpat_env',
       source: 'env',
     });
   });
@@ -146,6 +150,25 @@ describe('resolveApiAuth', () => {
       apiToken: 'session-token',
       source: 'active-design',
     });
+  });
+
+  it('skips expired active-design and asks for login', async () => {
+    const home = makeHome();
+    await mkdir(join(home, '.flowx'), { recursive: true });
+    await writeActiveDesignSession(
+      {
+        workflowRunId: 'wr-1',
+        executionSessionId: 'es-1',
+        apiBaseUrl: 'http://active.example',
+        accessToken: 'session-token',
+        accessTokenExpiresAt: '2020-01-01T00:00:00.000Z',
+      },
+      home,
+    );
+    delete process.env.FLOWX_API_TOKEN;
+    delete process.env.FLOWX_API_BASE_URL;
+
+    await expect(resolveApiAuth(home)).rejects.toThrow(/expired|flowx-local login/);
   });
 
   it('throws a clear error when no credentials are available', async () => {

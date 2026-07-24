@@ -91,7 +91,14 @@ flowx-local login --api-base-url https://你的-flowx-域名 --token fxpat_…
 
 凭据保存在 `~/.flowx/credentials.json`（`0600`）。也可设置环境变量 `FLOWX_API_TOKEN` + `FLOWX_API_BASE_URL`。登出本机：`flowx-local logout`（如需作废服务端 token，请到设置页撤销）。
 
-MCP 鉴权顺序：`FLOWX_API_TOKEN` → `credentials.json` → 活跃 `active-design` 短期 token（兼容）。
+MCP 鉴权顺序：
+
+1. 环境变量 `FLOWX_API_TOKEN`（仅当值为 `fxpat_…` 长期 token）
+2. `~/.flowx/credentials.json`（`flowx-local login`）
+3. 环境变量里的短期 token（兼容 Web「本地启动」写入的项目 `.cursor/mcp.json`）
+4. 未过期的 `active-design.json` 短期 token
+
+有长期 credentials 时，不会被 Web 注入的过期短期 `FLOWX_API_TOKEN` 盖住。
 
 ## 4. 在 FlowX 里怎么用
 
@@ -192,9 +199,29 @@ npm install -g @flowx-ai/local@latest --registry https://registry.npmjs.org
 默认会连本机 `3000` 端口做一次 token 校验。出现该警告时：
 
 - **要用部署环境**：重新执行并带上真实地址，例如  
-  `flowx-local login --api-base-url https://你的-flowx-域名 --token fxpat_…`
+  `flowx-local login --api-base-url https://你的-flowx-域名/api --token fxpat_…`
 - **要用本机 API**：先启动 FlowX API（`pnpm dev:api`），再 `login`
 - 警告后仍会保存 token，但若 `apiBaseUrl` 不对，后续 MCP 会请求失败；请用正确地址重新 `login` 覆盖 `credentials.json`
+
+可用 `cat ~/.flowx/credentials.json` 核对其中的 `apiBaseUrl` 是否为你真正访问的 FlowX。
+
+### Q6：MCP 提示会话 token 已过期
+
+常见原因：
+
+1. `~/.flowx/credentials.json` 里 `apiBaseUrl` 仍是 `127.0.0.1:3000`（login 时未带 `--api-base-url`）
+2. 本机还有过期的 `~/.flowx/active-design.json`，Agent 读到 `accessTokenExpired: true`
+3. 某项目 `.cursor/mcp.json` 里残留 Web 启动写入的短期 `FLOWX_API_TOKEN`
+
+处理：
+
+```bash
+flowx-local login --api-base-url https://你的-flowx-域名/api --token fxpat_…
+# 可选：清掉过期短期会话指针
+rm -f ~/.flowx/active-design.json
+```
+
+然后**重启** Cursor / OpenDesign 里的 FlowX MCP 后再试 `flowx_list_tasks`。
 
 ## 7. 更多帮助
 

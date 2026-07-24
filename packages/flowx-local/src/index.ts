@@ -59,6 +59,7 @@ async function validateApiToken(apiBaseUrl: string, apiToken: string): Promise<v
 async function runLogin(argv: string[]): Promise<void> {
   const apiBaseUrl = (
     readFlagValue(argv, '--api-base-url') ??
+    process.env.FLOWX_API_BASE_URL ??
     loadConfig().apiBaseUrl ??
     DEFAULT_LOCAL_CONFIG.apiBaseUrl
   )
@@ -79,6 +80,11 @@ async function runLogin(argv: string[]): Promise<void> {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes('fetch failed') || message.includes('ECONNREFUSED')) {
       console.warn(`Warning: could not reach ${apiBaseUrl}/auth/session/me (${message}). Saving token anyway.`);
+      if (/127\.0\.0\.1|localhost/.test(apiBaseUrl)) {
+        console.warn(
+          'Hint: login defaults to http://127.0.0.1:3000. For a deployed FlowX, re-run with --api-base-url https://your-flowx-host/api',
+        );
+      }
     } else {
       throw error;
     }
@@ -86,6 +92,7 @@ async function runLogin(argv: string[]): Promise<void> {
 
   const path = await writeCredentials({ apiBaseUrl, apiToken });
   console.log(`Saved credentials to ${path}`);
+  console.log(`apiBaseUrl=${apiBaseUrl}`);
 }
 
 async function runLogout(): Promise<void> {
