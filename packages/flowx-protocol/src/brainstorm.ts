@@ -16,7 +16,7 @@ export interface OpenDesignBrainstormContextPackage {
   };
   repositories: ContextRepository[];
   outputContract: {
-    resultFileName: 'brainstorm.md';
+    resultFileName: 'spec.md';
     format: 'flowx-brainstorm-markdown-v1';
   };
   metadata?: Record<string, unknown>;

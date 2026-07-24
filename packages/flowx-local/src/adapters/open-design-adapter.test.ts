@@ -78,4 +78,73 @@ describe('OpenDesignAdapter', () => {
       expect.objectContaining({ executionSessionId: 'session-1', accessToken: 'token-2' }),
     );
   });
+
+  it('prefers spec.md for brainstorm and falls back to legacy brainstorm.md', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'flowx-opendesign-brainstorm-'));
+    homes.push(homeDir);
+    const edgeClient = { submitBrainstorm: vi.fn().mockResolvedValue({ queued: false }) };
+    const adapter = new OpenDesignAdapter(
+      { ...DEFAULT_LOCAL_CONFIG, openDesignCommand: '' },
+      edgeClient as never,
+      homeDir,
+      async () => ({ opened: true, imported: false }),
+    );
+    const launched = await adapter.launch({
+      kind: 'opendesign-brainstorm',
+      stage: 'brainstorm',
+      apiBaseUrl: 'http://127.0.0.1:3000',
+      accessToken: 'token-1',
+      accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
+      handoff: {
+        protocolVersion: '1.0',
+        workflowRunId: 'workflow-1',
+        executionSessionId: 'session-b1',
+        traceId: 'trace-1',
+        completionEndpoint: '/execution-sessions/session-b1/brainstorm/complete',
+        contextPackage: {
+          protocolVersion: '1.0',
+          generatedAt: '2026-07-22T00:00:00.000Z',
+          sourceTool: 'opendesign',
+          stage: 'BRAINSTORM',
+          workflowRunId: 'workflow-1',
+          executionSessionId: 'session-b1',
+          traceId: 'trace-1',
+          requirement: {
+            id: 'req-1',
+            title: 'Export',
+            description: 'Design export',
+            acceptanceCriteria: 'Complete states',
+          },
+          repositories: [],
+          outputContract: {
+            resultFileName: 'brainstorm.md',
+            format: 'flowx-brainstorm-markdown-v1',
+          },
+        },
+      },
+    });
+
+    expect(launched.resultPath.endsWith('spec.md')).toBe(true);
+    expect(readFileSync(launched.resultPath, 'utf8')).toContain('flowx-brainstorm-spec');
+    expect(readFileSync(join(launched.workspacePath, 'README.md'), 'utf8')).toContain(
+      '仅在用户确认后',
+    );
+
+    writeFileSync(launched.resultPath, '# Confirmed spec\n\nShip it.\n');
+    await adapter.submit('session-b1');
+    expect(edgeClient.submitBrainstorm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        report: expect.objectContaining({ markdown: '# Confirmed spec\n\nShip it.\n' }),
+      }),
+    );
+
+    writeFileSync(launched.resultPath, '   \n');
+    writeFileSync(join(launched.workspacePath, 'brainstorm.md'), '# Legacy brainstorm\n');
+    await adapter.submit('session-b1');
+    expect(edgeClient.submitBrainstorm).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        report: expect.objectContaining({ markdown: '# Legacy brainstorm\n' }),
+      }),
+    );
+  });
 });

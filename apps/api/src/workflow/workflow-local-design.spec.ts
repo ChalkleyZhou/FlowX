@@ -130,7 +130,7 @@ describe('WorkflowService local OpenDesign', () => {
         }),
       }),
     );
-    expect(result.handoff.contextPackage.outputContract.resultFileName).toBe('brainstorm.md');
+    expect(result.handoff.contextPackage.outputContract.resultFileName).toBe('spec.md');
   });
 
   it('completes the design session and moves the workflow to confirmation', async () => {

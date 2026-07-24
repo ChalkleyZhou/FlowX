@@ -3282,7 +3282,7 @@ export class WorkflowService {
         workingBranch: repository.workingBranch,
       })),
       outputContract: {
-        resultFileName: 'brainstorm.md',
+        resultFileName: 'spec.md',
         format: 'flowx-brainstorm-markdown-v1',
       },
       metadata: {
