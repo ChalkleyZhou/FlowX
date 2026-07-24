@@ -64,6 +64,35 @@ describe('workflow-binding', () => {
     });
   });
 
+  it('optionally stores and clears executionSessionId', async () => {
+    const home = makeHome();
+    const withSession = await writeWorkflowBinding(
+      {
+        workflowRunId: 'wr_1',
+        stage: 'brainstorm',
+        executionSessionId: 'session-b1',
+      },
+      home,
+    );
+    expect(withSession.executionSessionId).toBe('session-b1');
+    expect(await readWorkflowBinding(home)).toMatchObject({
+      workflowRunId: 'wr_1',
+      executionSessionId: 'session-b1',
+    });
+
+    const advanced = await writeWorkflowBinding(
+      { workflowRunId: 'wr_1', stage: 'design', requirementTitle: 'Demo' },
+      home,
+    );
+    expect(advanced.executionSessionId).toBeUndefined();
+    expect(await readWorkflowBinding(home)).toEqual({
+      workflowRunId: 'wr_1',
+      stage: 'design',
+      boundAt: advanced.boundAt,
+      requirementTitle: 'Demo',
+    });
+  });
+
   it('clearWorkflowBinding removes the binding file', async () => {
     const home = makeHome();
     await writeWorkflowBinding({ workflowRunId: 'wr_1', stage: 'design' }, home);

@@ -223,6 +223,120 @@ describe('flowx-local MCP server', () => {
     await server.close();
   });
 
+  it('runs PAT brainstorm-to-design path without active-design via binding session id', async () => {
+    const homeDir = makeHome();
+    delete process.env.FLOWX_API_TOKEN;
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
+    await writeWorkflowBinding(
+      { workflowRunId: 'workflow-pat', stage: 'brainstorm', requirementTitle: 'Seamless' },
+      homeDir,
+    );
+
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const auth = (init?.headers as Record<string, string> | undefined)?.Authorization;
+      expect(auth).toBe('Bearer fxpat_x');
+
+      if (url.endsWith('/workflow-runs/workflow-pat/brainstorm/local-handoff')) {
+        return new Response(
+          JSON.stringify({
+            workflowRunId: 'workflow-pat',
+            executionSessionId: 'session-brainstorm',
+            stage: 'brainstorm',
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith('/execution-sessions/session-brainstorm/brainstorm/complete')) {
+        expect(init?.method).toBe('POST');
+        return new Response(
+          JSON.stringify({
+            workflowRunId: 'workflow-pat',
+            workflowStatus: 'DESIGN_PENDING',
+            next: { stage: 'design', hint: 'call flowx_get_design_handoff' },
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith('/workflow-runs/workflow-pat/design/local-handoff')) {
+        return new Response(
+          JSON.stringify({
+            workflowRunId: 'workflow-pat',
+            executionSessionId: 'session-design',
+            stage: 'design',
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith('/execution-sessions/session-design/design/complete')) {
+        expect(init?.method).toBe('POST');
+        return new Response(JSON.stringify({ ok: true, workflowStatus: 'DESIGN_WAITING_CONFIRMATION' }), {
+          status: 200,
+        });
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { client, server } = await connectClient(homeDir);
+
+    const brainstormHandoff = await client.callTool({
+      name: 'flowx_get_brainstorm_handoff',
+      arguments: {},
+    });
+    expect(brainstormHandoff.isError).toBeUndefined();
+    expect(await readWorkflowBinding(homeDir)).toMatchObject({
+      workflowRunId: 'workflow-pat',
+      stage: 'brainstorm',
+      executionSessionId: 'session-brainstorm',
+    });
+
+    const brainstormSubmit = await client.callTool({
+      name: 'flowx_submit_brainstorm',
+      arguments: {
+        report: { idempotencyKey: 'brainstorm-pat', markdown: '# Spec' },
+      },
+    });
+    expect(brainstormSubmit.isError).toBeUndefined();
+    const submitBody = JSON.parse(String((brainstormSubmit.content as Array<{ text: string }>)[0].text));
+    expect(submitBody.next).toEqual({ stage: 'design', hint: 'call flowx_get_design_handoff' });
+    expect(await readWorkflowBinding(homeDir)).toMatchObject({
+      workflowRunId: 'workflow-pat',
+      stage: 'design',
+      requirementTitle: 'Seamless',
+    });
+    expect((await readWorkflowBinding(homeDir))?.executionSessionId).toBeUndefined();
+
+    const designHandoff = await client.callTool({
+      name: 'flowx_get_design_handoff',
+      arguments: {},
+    });
+    expect(designHandoff.isError).toBeUndefined();
+    expect(await readWorkflowBinding(homeDir)).toMatchObject({
+      workflowRunId: 'workflow-pat',
+      stage: 'design',
+      executionSessionId: 'session-design',
+    });
+
+    const designSubmit = await client.callTool({
+      name: 'flowx_submit_design',
+      arguments: {
+        report: {
+          idempotencyKey: 'design-pat',
+          output: {
+            design: {},
+            demo: {},
+            designArtifact: { html: '<main />' },
+          },
+        },
+      },
+    });
+    expect(designSubmit.isError).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+
+    await client.close();
+    await server.close();
+  });
+
   it('advances binding stage to design after successful brainstorm submit', async () => {
     const homeDir = makeHome();
     delete process.env.FLOWX_API_TOKEN;

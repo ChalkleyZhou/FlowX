@@ -9,8 +9,10 @@ import {
   missingExecutionSessionError,
   missingWorkflowBindingError,
   readWorkflowBinding,
+  resolveExecutionSessionId,
   writeWorkflowBinding,
   type WorkflowBinding,
+  type WorkflowBindingStage,
 } from './workflow-binding.js';
 
 type ToolResult = {
@@ -85,6 +87,32 @@ function resolveWorkflowRunId(
   return param?.trim() || binding?.workflowRunId || activeWorkflowRunId?.trim() || '';
 }
 
+function readStringField(value: unknown, key: string): string {
+  if (!value || typeof value !== 'object') return '';
+  const field = (value as Record<string, unknown>)[key];
+  return typeof field === 'string' ? field.trim() : '';
+}
+
+function inferBindingStage(response: unknown, fallback?: WorkflowBindingStage): WorkflowBindingStage | undefined {
+  const explicit = readStringField(response, 'stage');
+  if (explicit === 'brainstorm' || explicit === 'design') return explicit;
+  const nextStage = readStringField(
+    valueHasNext(response) ? (response as { next: { stage?: unknown } }).next : null,
+    'stage',
+  );
+  if (nextStage === 'brainstorm' || nextStage === 'design') return nextStage;
+  const workflowStatus = readStringField(response, 'workflowStatus');
+  if (workflowStatus === 'DESIGN_PENDING' || workflowStatus === 'DESIGN_WAITING_CONFIRMATION') {
+    return 'design';
+  }
+  if (workflowStatus === 'BRAINSTORM_PENDING') return 'brainstorm';
+  return fallback;
+}
+
+function valueHasNext(value: unknown): value is { next: unknown } {
+  return Boolean(value && typeof value === 'object' && 'next' in value);
+}
+
 function shouldAdvanceBindingToDesign(response: unknown): boolean {
   if (!response || typeof response !== 'object') return false;
   const body = response as {
@@ -92,6 +120,32 @@ function shouldAdvanceBindingToDesign(response: unknown): boolean {
     next?: { stage?: unknown };
   };
   return body.next?.stage === 'design' || body.workflowStatus === 'DESIGN_PENDING';
+}
+
+async function refreshBindingFromHandoff(
+  homeDir: string | undefined,
+  response: unknown,
+  binding: WorkflowBinding | null,
+  workflowRunIdHint?: string,
+  stageFallback?: WorkflowBindingStage,
+) {
+  const workflowRunId =
+    readStringField(response, 'workflowRunId') ||
+    binding?.workflowRunId ||
+    workflowRunIdHint?.trim() ||
+    '';
+  const executionSessionId = readStringField(response, 'executionSessionId');
+  const stage = inferBindingStage(response, stageFallback ?? binding?.stage);
+  if (!workflowRunId || !stage) return;
+  await writeWorkflowBinding(
+    {
+      workflowRunId,
+      stage,
+      ...(binding?.requirementTitle ? { requirementTitle: binding.requirementTitle } : {}),
+      ...(executionSessionId ? { executionSessionId } : {}),
+    },
+    homeDir,
+  );
 }
 
 async function maybeAdvanceBindingAfterBrainstorm(
@@ -102,21 +156,19 @@ async function maybeAdvanceBindingAfterBrainstorm(
 ) {
   if (!shouldAdvanceBindingToDesign(response)) return;
   const workflowRunId =
-    (typeof response === 'object' &&
-    response &&
-    'workflowRunId' in response &&
-    typeof (response as { workflowRunId?: unknown }).workflowRunId === 'string'
-      ? (response as { workflowRunId: string }).workflowRunId.trim()
-      : '') ||
+    readStringField(response, 'workflowRunId') ||
     binding?.workflowRunId ||
     workflowRunIdHint?.trim() ||
     '';
   if (!workflowRunId) return;
+  const designSessionId = readStringField(response, 'executionSessionId');
   await writeWorkflowBinding(
     {
       workflowRunId,
       stage: 'design',
       ...(binding?.requirementTitle ? { requirementTitle: binding.requirementTitle } : {}),
+      // 构思 session 不可用于 design submit；仅当响应已给出 design session 时写入。
+      ...(designSessionId ? { executionSessionId: designSessionId } : {}),
     },
     homeDir,
   );
@@ -174,6 +226,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
               workflowRunId: binding.workflowRunId,
               stage: binding.stage,
               ...(binding.requirementTitle ? { requirementTitle: binding.requirementTitle } : {}),
+              ...(binding.executionSessionId ? { executionSessionId: binding.executionSessionId } : {}),
             }
           : null,
         message: hasCredentials
@@ -223,7 +276,13 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       const { active, client, binding } = await resolveSession(options.homeDir);
       const id = resolveWorkflowRunId(workflowRunId, binding, active?.workflowRunId);
       if (!id) return textResult(missingWorkflowBindingError(), true);
-      return runRequest(() => client.request(`/workflow-runs/${encodeURIComponent(id)}/design/local-handoff`));
+      return runRequest(async () => {
+        const response = await client.request(
+          `/workflow-runs/${encodeURIComponent(id)}/design/local-handoff`,
+        );
+        await refreshBindingFromHandoff(options.homeDir, response, binding, id, 'design');
+        return response;
+      });
     },
   );
 
@@ -239,7 +298,13 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       const { active, client, binding } = await resolveSession(options.homeDir);
       const id = resolveWorkflowRunId(workflowRunId, binding, active?.workflowRunId);
       if (!id) return textResult(missingWorkflowBindingError(), true);
-      return runRequest(() => client.request(`/workflow-runs/${encodeURIComponent(id)}/brainstorm/local-handoff`));
+      return runRequest(async () => {
+        const response = await client.request(
+          `/workflow-runs/${encodeURIComponent(id)}/brainstorm/local-handoff`,
+        );
+        await refreshBindingFromHandoff(options.homeDir, response, binding, id, 'brainstorm');
+        return response;
+      });
     },
   );
 
@@ -254,8 +319,8 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       }),
     },
     async ({ executionSessionId, report }) => {
-      const { active, client } = await resolveSession(options.homeDir);
-      const id = executionSessionId?.trim() || active?.executionSessionId;
+      const { active, client, binding } = await resolveSession(options.homeDir);
+      const id = resolveExecutionSessionId(executionSessionId, binding, active?.executionSessionId);
       if (!id) return textResult(missingExecutionSessionError(), true);
       const parsed = designReportSchema.safeParse(report);
       if (!parsed.success) return textResult(`Invalid design report: ${parsed.error.message}`, true);
@@ -281,7 +346,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     },
     async ({ executionSessionId, report }) => {
       const { active, client, binding } = await resolveSession(options.homeDir);
-      const id = executionSessionId?.trim() || active?.executionSessionId;
+      const id = resolveExecutionSessionId(executionSessionId, binding, active?.executionSessionId);
       if (!id) return textResult(missingExecutionSessionError(), true);
       const parsed = brainstormReportSchema.safeParse(report);
       if (!parsed.success) return textResult(`Invalid brainstorm report: ${parsed.error.message}`, true);

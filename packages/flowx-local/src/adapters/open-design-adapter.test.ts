@@ -61,6 +61,12 @@ describe('OpenDesignAdapter', () => {
     expect(readFileSync(join(homeDir, '.flowx', 'active-design.json'), 'utf8')).toContain(
       'workflow-1',
     );
+    expect(JSON.parse(readFileSync(join(homeDir, '.flowx', 'current-workflow.json'), 'utf8'))).toMatchObject({
+      workflowRunId: 'workflow-1',
+      stage: 'design',
+      executionSessionId: 'session-1',
+      requirementTitle: 'Export',
+    });
     expect(launched.imported).toBe(false);
     const result = JSON.parse(readFileSync(launched.resultPath, 'utf8'));
     result.output.designArtifact.html = '<!doctype html><html><body>Done</body></html>';

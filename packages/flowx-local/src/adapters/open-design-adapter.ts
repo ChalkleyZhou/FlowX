@@ -6,6 +6,7 @@ import { writeActiveDesignSession } from '../active-design-session.js';
 import type { LocalConfig } from '../config.js';
 import { EdgeClient, type RedeemedOpenDesignLaunch } from '../edge-client.js';
 import { openOpenDesignWorkspace } from '../open-design-app.js';
+import { writeWorkflowBinding } from '../workflow-binding.js';
 import type { ToolAdapter } from './tool-adapter.js';
 
 type StoredDesignSession = {
@@ -95,6 +96,17 @@ export class OpenDesignAdapter
         accessToken: input.accessToken,
         accessTokenExpiresAt: input.accessTokenExpiresAt,
         stage,
+      },
+      this.homeDir,
+    );
+    await writeWorkflowBinding(
+      {
+        workflowRunId,
+        stage,
+        executionSessionId: sessionId,
+        ...(input.handoff.contextPackage.requirement?.title
+          ? { requirementTitle: input.handoff.contextPackage.requirement.title }
+          : {}),
       },
       this.homeDir,
     );

@@ -9,6 +9,8 @@ export type WorkflowBinding = {
   stage: WorkflowBindingStage;
   boundAt: string;
   requirementTitle?: string;
+  /** 最近一次成功 handoff 返回的 ExecutionSession；submit_* 可回退使用。 */
+  executionSessionId?: string;
 };
 
 export function getWorkflowBindingPath(homeDir = homedir()): string {
@@ -28,6 +30,9 @@ function asWorkflowBinding(parsed: Partial<WorkflowBinding>): WorkflowBinding | 
   };
   if (typeof parsed.requirementTitle === 'string' && parsed.requirementTitle.trim()) {
     binding.requirementTitle = parsed.requirementTitle.trim();
+  }
+  if (typeof parsed.executionSessionId === 'string' && parsed.executionSessionId.trim()) {
+    binding.executionSessionId = parsed.executionSessionId.trim();
   }
   return binding;
 }
@@ -55,6 +60,7 @@ export async function writeWorkflowBinding(
     stage: WorkflowBindingStage;
     boundAt?: string;
     requirementTitle?: string;
+    executionSessionId?: string;
   },
   homeDir = homedir(),
 ): Promise<WorkflowBinding> {
@@ -76,6 +82,10 @@ export async function writeWorkflowBinding(
   if (title) {
     body.requirementTitle = title;
   }
+  const executionSessionId = input.executionSessionId?.trim();
+  if (executionSessionId) {
+    body.executionSessionId = executionSessionId;
+  }
   await writeFile(path, `${JSON.stringify(body, null, 2)}\n`, { mode: 0o600 });
   await chmod(path, 0o600);
   return body;
@@ -95,7 +105,15 @@ export function missingWorkflowBindingError(): string {
   return 'workflowRunId is required. Call flowx_list_tasks, confirm a run with the user, then flowx_bind_workflow.';
 }
 
-/** 解析 executionSessionId 失败时的提示（binding 不含 session id）。 */
+/** 解析 executionSessionId：工具参数 → binding → active-design → 明确错误。 */
 export function missingExecutionSessionError(): string {
   return 'executionSessionId is required. Call flowx_list_tasks, flowx_bind_workflow, then get_*_handoff (or pass executionSessionId explicitly).';
+}
+
+export function resolveExecutionSessionId(
+  param: string | undefined,
+  binding: WorkflowBinding | null,
+  activeExecutionSessionId?: string,
+): string {
+  return param?.trim() || binding?.executionSessionId?.trim() || activeExecutionSessionId?.trim() || '';
 }
