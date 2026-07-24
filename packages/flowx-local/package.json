@@ -1,6 +1,6 @@
 {
   "name": "@flowx-ai/local",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "FlowX Edge Agent — local loopback daemon and CLI",
   "type": "module",
   "bin": {
