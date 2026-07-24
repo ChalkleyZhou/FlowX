@@ -6,9 +6,31 @@ import { ensureDeviceIdentity } from './device.js';
 import { Outbox } from './outbox.js';
 import { submitOpenDesignResult, syncOpenDesignOutbox } from './open-design.js';
 import { runLocalMcp } from './mcp.js';
+import { runSetup } from './setup.js';
 
 async function main(argv: string[]): Promise<void> {
   const command = argv[0] ?? 'serve';
+  if (command === 'setup') {
+    const args = argv.slice(1);
+    const force = args.includes('--force');
+    const targets = args.find((arg) => arg !== '--force');
+    try {
+      const result = runSetup({ targets, force });
+      for (const path of result.written) {
+        console.log(`Wrote ${path}`);
+      }
+      for (const path of result.skipped) {
+        console.log(`Skipped existing ${path} (use --force to overwrite)`);
+      }
+      if (result.written.length === 0 && result.skipped.length === 0) {
+        console.log('Nothing to install.');
+      }
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    }
+    return;
+  }
   if (command === 'map') {
     const [repoUrl, path] = argv.slice(1);
     if (!repoUrl || !path) {
@@ -64,7 +86,9 @@ async function main(argv: string[]): Promise<void> {
   }
   if (command !== 'serve') {
     console.error(`Unknown command: ${command}`);
-    console.error('Usage: flowx-local [serve] | mcp | map <repoUrl> <path> | status | sync | design-submit <executionSessionId>');
+    console.error(
+      'Usage: flowx-local [serve] | setup [cursor|codex|od,...] [--force] | mcp | map <repoUrl> <path> | status | sync | design-submit <executionSessionId>',
+    );
     process.exitCode = 1;
     return;
   }
