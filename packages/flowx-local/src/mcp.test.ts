@@ -88,13 +88,51 @@ describe('flowx-local MCP server', () => {
     expect(JSON.parse(String((result.content as Array<{ text: string }>)[0].text))).toEqual({
       authKind: 'personal_api_token',
       hasCredentials: true,
+      apiBaseUrl: 'https://flowx.example/api',
       binding: {
         workflowRunId: 'wr_bound',
         stage: 'design',
         requirementTitle: 'Bound req',
       },
+      expiredActiveDesignIgnored: false,
       message: 'No short-lived active-design session; using credentials + binding.',
     });
+    await client.close();
+    await server.close();
+  });
+
+  it('ignores expired active-design and reports credentials status instead', async () => {
+    const homeDir = makeHome();
+    delete process.env.FLOWX_API_TOKEN;
+    delete process.env.FLOWX_API_BASE_URL;
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
+    await writeActiveDesignSession(
+      {
+        workflowRunId: 'wr_old',
+        executionSessionId: 'es_old',
+        apiBaseUrl: 'https://flowx.example/api',
+        accessToken: 'expired-token',
+        accessTokenExpiresAt: '2020-01-01T00:00:00.000Z',
+        stage: 'brainstorm',
+      },
+      homeDir,
+    );
+    const { client, server } = await connectClient(homeDir);
+
+    const result = await client.callTool({
+      name: 'flowx_get_active_design_session',
+      arguments: {},
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(String((result.content as Array<{ text: string }>)[0].text))).toMatchObject({
+      authKind: 'personal_api_token',
+      hasCredentials: true,
+      apiBaseUrl: 'https://flowx.example/api',
+      expiredActiveDesignIgnored: true,
+      message: expect.stringContaining('expired'),
+    });
+
     await client.close();
     await server.close();
   });

@@ -195,13 +195,17 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     },
     async () => {
       const active = await readActiveDesignSession(options.homeDir);
-      if (active) {
+      const activeExpired =
+        !!active && Date.parse(active.accessTokenExpiresAt) <= Date.now();
+
+      // 未过期的短期会话仍直接返回；已过期则改走 credentials / binding，避免 Agent 卡在「token 已过期」。
+      if (active && !activeExpired) {
         return textResult({
           workflowRunId: active.workflowRunId,
           executionSessionId: active.executionSessionId,
           apiBaseUrl: active.apiBaseUrl,
           accessTokenExpiresAt: active.accessTokenExpiresAt,
-          accessTokenExpired: Date.parse(active.accessTokenExpiresAt) <= Date.now(),
+          accessTokenExpired: false,
           stage: active.stage ?? 'design',
           updatedAt: active.updatedAt,
         });
@@ -210,9 +214,11 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       const binding = await readWorkflowBinding(options.homeDir);
       let hasCredentials = false;
       let authKind: 'personal_api_token' | null = null;
+      let apiBaseUrl: string | null = null;
       try {
         const auth = await resolveApiAuth(options.homeDir);
         hasCredentials = true;
+        apiBaseUrl = auth.apiBaseUrl;
         authKind = auth.source === 'active-design' ? null : 'personal_api_token';
       } catch {
         hasCredentials = false;
@@ -221,6 +227,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       return textResult({
         authKind,
         hasCredentials,
+        apiBaseUrl,
         binding: binding
           ? {
               workflowRunId: binding.workflowRunId,
@@ -229,9 +236,14 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
               ...(binding.executionSessionId ? { executionSessionId: binding.executionSessionId } : {}),
             }
           : null,
+        expiredActiveDesignIgnored: activeExpired,
         message: hasCredentials
-          ? 'No short-lived active-design session; using credentials + binding.'
-          : 'No short-lived active-design session and no credentials. Run flowx-local login, set FLOWX_API_TOKEN, or open local OpenDesign from FlowX.',
+          ? activeExpired
+            ? 'Short-lived active-design token is expired; using credentials + binding instead.'
+            : 'No short-lived active-design session; using credentials + binding.'
+          : activeExpired
+            ? 'Short-lived active-design token is expired and no credentials were found. Run flowx-local login --api-base-url <FlowX API URL> --token fxpat_…'
+            : 'No short-lived active-design session and no credentials. Run flowx-local login, set FLOWX_API_TOKEN, or open local OpenDesign from FlowX.',
       });
     },
   );
