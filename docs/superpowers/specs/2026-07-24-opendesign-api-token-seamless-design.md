@@ -1,8 +1,8 @@
 # OpenDesign 长期 API Token 与构思→设计无缝衔接
 
-**Date:** 2026-07-24  
-**Status:** Draft for review  
-**Depends on:** [OpenDesign design stage](../../opendesign-design-stage.md), [Workflow OpenDesign brainstorm](./2026-07-22-workflow-opendesign-brainstorm-design.md), [OpenDesign MCP context pull](./2026-07-22-opendesign-mcp-context-pull-design.md), [Web local IDE launch](./2026-07-16-web-local-ide-launch-design.md)  
+**Date:** 2026-07-24
+**Status:** Draft for review
+**Depends on:** [OpenDesign design stage](../../opendesign-design-stage.md), [Workflow OpenDesign brainstorm](./2026-07-22-workflow-opendesign-brainstorm-design.md), [OpenDesign MCP context pull](./2026-07-22-opendesign-mcp-context-pull-design.md), [Web local IDE launch](./2026-07-16-web-local-ide-launch-design.md)
 **Approach:** 双轨兼容 — Personal API Token 为主路径；Web 一键启动 + 短期 `active-design` 为可选兜底
 
 ## Goal
@@ -234,10 +234,10 @@ Binding 不是权限源；API 始终按 token 对应用户做授权。
 
 ### Acceptance golden path
 
-1. `login` 或配置长期 token  
-2. list → 确认绑定构思中的 run  
-3. brainstorm handoff → `spec.md` → submit  
-4. **同一 OpenDesign 会话**立刻 design handoff → 设计 → submit  
+1. `login` 或配置长期 token
+2. list → 确认绑定构思中的 run
+3. brainstorm handoff → `spec.md` → submit
+4. **同一 OpenDesign 会话**立刻 design handoff → 设计 → submit
 5. Web 进入设计待确认；**未**第二次点击「打开本地 OpenDesign」
 
 ## Out of scope follow-ups
