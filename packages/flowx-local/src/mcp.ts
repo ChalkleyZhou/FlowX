@@ -126,7 +126,8 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     'flowx_get_brainstorm_handoff',
     {
       title: 'Get OpenDesign Brainstorm Handoff',
-      description: 'Fetch the versioned OpenDesign brainstorm context for the active FlowX session.',
+      description:
+        'Fetch brainstorm context for the active FlowX session. Clarify with the user, write confirmed spec.md, then submit.',
       inputSchema: z.object({ workflowRunId: z.string().optional() }),
     },
     async ({ workflowRunId }) => {
@@ -166,7 +167,8 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     'flowx_submit_brainstorm',
     {
       title: 'Submit OpenDesign Brainstorm',
-      description: 'Submit brainstorm Markdown back to FlowX.',
+      description:
+        'Submit confirmed product spec Markdown (spec.md) to FlowX after the user explicitly approved it. Do not submit drafts or chat transcripts.',
       inputSchema: z.object({
         executionSessionId: z.string().optional(),
         report: brainstormReportSchema,
