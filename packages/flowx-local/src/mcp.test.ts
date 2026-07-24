@@ -49,7 +49,7 @@ describe('flowx-local MCP server', () => {
   it('identifies as flowx-local and registers the user-facing tools', async () => {
     const { client, server } = await connectClient(makeHome());
 
-    expect(client.getServerVersion()).toMatchObject({ name: 'flowx-local', version: '0.4.0' });
+    expect(client.getServerVersion()).toMatchObject({ name: 'flowx-local', version: '0.4.1' });
     const result = await client.listTools();
     expect(result.tools.map((tool) => tool.name)).toEqual([
       'flowx_get_active_design_session',
