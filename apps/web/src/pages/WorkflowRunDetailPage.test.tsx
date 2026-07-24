@@ -53,6 +53,7 @@ vi.mock('../api', () => ({
     retryOpenDesignBrainstormHandoff: vi.fn(),
     getOpenDesignHandoff: vi.fn(),
     getOpenDesignBrainstormHandoff: vi.fn(),
+    rollbackWorkflowToPreviousStage: vi.fn(),
   },
   getFlowxApiBaseUrl: () => 'http://127.0.0.1:3000',
 }));
@@ -327,6 +328,135 @@ describe('WorkflowRunDetailPage', () => {
     });
 
     expect(api.runBrainstorm).toHaveBeenCalledWith('workflow-1');
+  });
+
+  async function selectBrainstormStep() {
+    const stepButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('产品构思'),
+    );
+    expect(stepButton).toBeTruthy();
+    await act(async () => {
+      stepButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+  }
+
+  it('shows restart brainstorm on the brainstorm stage when workflow is in design', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'DESIGN_PENDING',
+        stageExecutions: [
+          {
+            id: 'stage-brainstorm',
+            stage: 'BRAINSTORM',
+            status: 'COMPLETED',
+            statusMessage: null,
+            attempt: 1,
+            output: { markdown: '# Spec' },
+          },
+          {
+            id: 'stage-design',
+            stage: 'DESIGN',
+            status: 'PENDING',
+            statusMessage: '可生成设计方案，也可以跳过设计继续',
+            attempt: 1,
+            output: null,
+          },
+        ],
+      }),
+    );
+
+    await renderPage();
+    await selectBrainstormStep();
+
+    const restartButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('重新构思'),
+    );
+    expect(restartButton).toBeTruthy();
+    expect(restartButton?.disabled).toBe(false);
+  });
+
+  it('hides restart brainstorm when workflow is in brainstorm pending', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'BRAINSTORM_PENDING',
+        stageExecutions: [
+          {
+            id: 'stage-brainstorm',
+            stage: 'BRAINSTORM',
+            status: 'PENDING',
+            statusMessage: '可生成产品简报，也可以跳过构思继续',
+            attempt: 1,
+            output: null,
+          },
+        ],
+      }),
+    );
+
+    await renderPage();
+
+    const restartButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('重新构思'),
+    );
+    expect(restartButton).toBeFalsy();
+  });
+
+  it('calls rollback when restart brainstorm is confirmed', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'DESIGN_WAITING_CONFIRMATION',
+        stageExecutions: [
+          {
+            id: 'stage-brainstorm',
+            stage: 'BRAINSTORM',
+            status: 'COMPLETED',
+            statusMessage: null,
+            attempt: 1,
+            output: { markdown: '# Spec' },
+          },
+          {
+            id: 'stage-design',
+            stage: 'DESIGN',
+            status: 'WAITING_CONFIRMATION',
+            statusMessage: null,
+            attempt: 1,
+            output: { html: '<div/>' },
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.rollbackWorkflowToPreviousStage).mockResolvedValue(
+      createWorkflowRun({
+        status: 'BRAINSTORM_PENDING',
+        stageExecutions: [
+          {
+            id: 'stage-brainstorm-2',
+            stage: 'BRAINSTORM',
+            status: 'PENDING',
+            statusMessage: '已回退到此阶段，请重新执行',
+            attempt: 2,
+            output: null,
+          },
+        ],
+      }),
+    );
+
+    await renderPage();
+    await selectBrainstormStep();
+
+    const restartButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('重新构思'),
+    );
+    await act(async () => {
+      restartButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      '将回到产品构思并重新编写规格；已有设计产物会保留供对照。',
+    );
+    expect(api.rollbackWorkflowToPreviousStage).toHaveBeenCalledWith('workflow-1');
   });
 
   it('starts workflow design from the design stage card', async () => {

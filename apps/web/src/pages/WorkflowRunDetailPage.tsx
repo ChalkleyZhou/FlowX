@@ -1554,6 +1554,32 @@ export function WorkflowRunDetailPage() {
             disabled: workflowRun.status !== 'BRAINSTORM_PENDING' || stageActionsLocked,
             loading: busyStage === 'BRAINSTORM',
           },
+          ...(workflowRun.status === 'DESIGN_PENDING' ||
+          workflowRun.status === 'DESIGN_WAITING_CONFIRMATION'
+            ? [
+                {
+                  key: 'restart-brainstorm',
+                  label: '重新构思',
+                  danger: true as const,
+                  disabled: stageActionsLocked,
+                  loading: busyStage === 'BRAINSTORM',
+                  onClick: () => {
+                    const confirmed = window.confirm(
+                      '将回到产品构思并重新编写规格；已有设计产物会保留供对照。',
+                    );
+                    if (!confirmed) {
+                      return;
+                    }
+                    void runAction(
+                      'BRAINSTORM',
+                      () => api.rollbackWorkflowToPreviousStage(workflowRun.id),
+                      '已回到产品构思，可重新打开本地构思',
+                      { focusNextStage: true },
+                    );
+                  },
+                },
+              ]
+            : []),
         ],
       },
       DESIGN: {
