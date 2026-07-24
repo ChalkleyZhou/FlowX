@@ -5,6 +5,13 @@ import { z } from 'zod';
 import { readActiveDesignSession } from './active-design-session.js';
 import { resolveApiAuth } from './credentials.js';
 import { collectGitReport } from './git-report.js';
+import {
+  missingExecutionSessionError,
+  missingWorkflowBindingError,
+  readWorkflowBinding,
+  writeWorkflowBinding,
+  type WorkflowBinding,
+} from './workflow-binding.js';
 
 type ToolResult = {
   isError?: boolean;
@@ -66,7 +73,53 @@ export type LocalMcpOptions = {
 async function resolveSession(homeDir?: string) {
   const active = await readActiveDesignSession(homeDir);
   const auth = await resolveApiAuth(homeDir);
-  return { active, client: new LocalFlowXApiClient(auth.apiBaseUrl, auth.apiToken), auth };
+  const binding = await readWorkflowBinding(homeDir);
+  return { active, client: new LocalFlowXApiClient(auth.apiBaseUrl, auth.apiToken), auth, binding };
+}
+
+function resolveWorkflowRunId(
+  param: string | undefined,
+  binding: WorkflowBinding | null,
+  activeWorkflowRunId?: string,
+): string {
+  return param?.trim() || binding?.workflowRunId || activeWorkflowRunId?.trim() || '';
+}
+
+function shouldAdvanceBindingToDesign(response: unknown): boolean {
+  if (!response || typeof response !== 'object') return false;
+  const body = response as {
+    workflowStatus?: unknown;
+    next?: { stage?: unknown };
+  };
+  return body.next?.stage === 'design' || body.workflowStatus === 'DESIGN_PENDING';
+}
+
+async function maybeAdvanceBindingAfterBrainstorm(
+  homeDir: string | undefined,
+  response: unknown,
+  binding: WorkflowBinding | null,
+  workflowRunIdHint?: string,
+) {
+  if (!shouldAdvanceBindingToDesign(response)) return;
+  const workflowRunId =
+    (typeof response === 'object' &&
+    response &&
+    'workflowRunId' in response &&
+    typeof (response as { workflowRunId?: unknown }).workflowRunId === 'string'
+      ? (response as { workflowRunId: string }).workflowRunId.trim()
+      : '') ||
+    binding?.workflowRunId ||
+    workflowRunIdHint?.trim() ||
+    '';
+  if (!workflowRunId) return;
+  await writeWorkflowBinding(
+    {
+      workflowRunId,
+      stage: 'design',
+      ...(binding?.requirementTitle ? { requirementTitle: binding.requirementTitle } : {}),
+    },
+    homeDir,
+  );
 }
 
 async function runRequest(request: () => Promise<unknown>) {
@@ -84,23 +137,78 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     'flowx_get_active_design_session',
     {
       title: 'Get Active OpenDesign Session',
-      description: 'Read the active FlowX OpenDesign session managed by flowx-local.',
+      description:
+        'Read the active FlowX OpenDesign short-lived session, or credentials + workflow binding status when none exists.',
       inputSchema: z.object({ refresh: z.boolean().optional() }),
     },
     async () => {
       const active = await readActiveDesignSession(options.homeDir);
-      if (!active) {
-        return textResult('No active OpenDesign session. Open local OpenDesign from FlowX first.', true);
+      if (active) {
+        return textResult({
+          workflowRunId: active.workflowRunId,
+          executionSessionId: active.executionSessionId,
+          apiBaseUrl: active.apiBaseUrl,
+          accessTokenExpiresAt: active.accessTokenExpiresAt,
+          accessTokenExpired: Date.parse(active.accessTokenExpiresAt) <= Date.now(),
+          stage: active.stage ?? 'design',
+          updatedAt: active.updatedAt,
+        });
       }
+
+      const binding = await readWorkflowBinding(options.homeDir);
+      let hasCredentials = false;
+      let authKind: 'personal_api_token' | null = null;
+      try {
+        const auth = await resolveApiAuth(options.homeDir);
+        hasCredentials = true;
+        authKind = auth.source === 'active-design' ? null : 'personal_api_token';
+      } catch {
+        hasCredentials = false;
+      }
+
       return textResult({
-        workflowRunId: active.workflowRunId,
-        executionSessionId: active.executionSessionId,
-        apiBaseUrl: active.apiBaseUrl,
-        accessTokenExpiresAt: active.accessTokenExpiresAt,
-        accessTokenExpired: Date.parse(active.accessTokenExpiresAt) <= Date.now(),
-        stage: active.stage ?? 'design',
-        updatedAt: active.updatedAt,
+        authKind,
+        hasCredentials,
+        binding: binding
+          ? {
+              workflowRunId: binding.workflowRunId,
+              stage: binding.stage,
+              ...(binding.requirementTitle ? { requirementTitle: binding.requirementTitle } : {}),
+            }
+          : null,
+        message: hasCredentials
+          ? 'No short-lived active-design session; using credentials + binding.'
+          : 'No short-lived active-design session and no credentials. Run flowx-local login, set FLOWX_API_TOKEN, or open local OpenDesign from FlowX.',
       });
+    },
+  );
+
+  server.registerTool(
+    'flowx_bind_workflow',
+    {
+      title: 'Bind Current Workflow',
+      description:
+        'Persist the current workflowRunId and stage to ~/.flowx/current-workflow.json after the user confirms a task from flowx_list_tasks.',
+      inputSchema: z.object({
+        workflowRunId: z.string().min(1),
+        stage: z.enum(['brainstorm', 'design']),
+        requirementTitle: z.string().optional(),
+      }),
+    },
+    async ({ workflowRunId, stage, requirementTitle }) => {
+      try {
+        const binding = await writeWorkflowBinding(
+          {
+            workflowRunId,
+            stage,
+            ...(requirementTitle?.trim() ? { requirementTitle: requirementTitle.trim() } : {}),
+          },
+          options.homeDir,
+        );
+        return textResult({ ok: true, binding });
+      } catch (error) {
+        return textResult(error instanceof Error ? error.message : String(error), true);
+      }
     },
   );
 
@@ -112,9 +220,9 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       inputSchema: z.object({ workflowRunId: z.string().optional() }),
     },
     async ({ workflowRunId }) => {
-      const { active, client } = await resolveSession(options.homeDir);
-      const id = workflowRunId?.trim() || active?.workflowRunId;
-      if (!id) return textResult('workflowRunId is required when there is no active design session.', true);
+      const { active, client, binding } = await resolveSession(options.homeDir);
+      const id = resolveWorkflowRunId(workflowRunId, binding, active?.workflowRunId);
+      if (!id) return textResult(missingWorkflowBindingError(), true);
       return runRequest(() => client.request(`/workflow-runs/${encodeURIComponent(id)}/design/local-handoff`));
     },
   );
@@ -128,9 +236,9 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       inputSchema: z.object({ workflowRunId: z.string().optional() }),
     },
     async ({ workflowRunId }) => {
-      const { active, client } = await resolveSession(options.homeDir);
-      const id = workflowRunId?.trim() || active?.workflowRunId;
-      if (!id) return textResult('workflowRunId is required when there is no active brainstorm session.', true);
+      const { active, client, binding } = await resolveSession(options.homeDir);
+      const id = resolveWorkflowRunId(workflowRunId, binding, active?.workflowRunId);
+      if (!id) return textResult(missingWorkflowBindingError(), true);
       return runRequest(() => client.request(`/workflow-runs/${encodeURIComponent(id)}/brainstorm/local-handoff`));
     },
   );
@@ -148,7 +256,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     async ({ executionSessionId, report }) => {
       const { active, client } = await resolveSession(options.homeDir);
       const id = executionSessionId?.trim() || active?.executionSessionId;
-      if (!id) return textResult('executionSessionId is required when there is no active design session.', true);
+      if (!id) return textResult(missingExecutionSessionError(), true);
       const parsed = designReportSchema.safeParse(report);
       if (!parsed.success) return textResult(`Invalid design report: ${parsed.error.message}`, true);
       return runRequest(() =>
@@ -172,17 +280,29 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       }),
     },
     async ({ executionSessionId, report }) => {
-      const { active, client } = await resolveSession(options.homeDir);
+      const { active, client, binding } = await resolveSession(options.homeDir);
       const id = executionSessionId?.trim() || active?.executionSessionId;
-      if (!id) return textResult('executionSessionId is required when there is no active brainstorm session.', true);
+      if (!id) return textResult(missingExecutionSessionError(), true);
       const parsed = brainstormReportSchema.safeParse(report);
       if (!parsed.success) return textResult(`Invalid brainstorm report: ${parsed.error.message}`, true);
-      return runRequest(() =>
-        client.request(`/execution-sessions/${encodeURIComponent(id)}/brainstorm/complete`, {
-          method: 'POST',
-          body: JSON.stringify(parsed.data satisfies BrainstormCompletionReport),
-        }),
-      );
+      try {
+        const response = await client.request(
+          `/execution-sessions/${encodeURIComponent(id)}/brainstorm/complete`,
+          {
+            method: 'POST',
+            body: JSON.stringify(parsed.data satisfies BrainstormCompletionReport),
+          },
+        );
+        await maybeAdvanceBindingAfterBrainstorm(
+          options.homeDir,
+          response,
+          binding,
+          active?.workflowRunId,
+        );
+        return textResult(response);
+      } catch (error) {
+        return textResult(error instanceof Error ? error.message : String(error), true);
+      }
     },
   );
 
