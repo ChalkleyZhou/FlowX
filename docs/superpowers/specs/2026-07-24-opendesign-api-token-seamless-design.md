@@ -1,7 +1,7 @@
 # OpenDesign 长期 API Token 与构思→设计无缝衔接
 
 **Date:** 2026-07-24
-**Status:** Draft for review
+**Status:** Approved for planning
 **Depends on:** [OpenDesign design stage](../../opendesign-design-stage.md), [Workflow OpenDesign brainstorm](./2026-07-22-workflow-opendesign-brainstorm-design.md), [OpenDesign MCP context pull](./2026-07-22-opendesign-mcp-context-pull-design.md), [Web local IDE launch](./2026-07-16-web-local-ide-launch-design.md)
 **Approach:** 双轨兼容 — Personal API Token 为主路径；Web 一键启动 + 短期 `active-design` 为可选兜底
 
@@ -246,8 +246,9 @@ Binding 不是权限源；API 始终按 token 对应用户做授权。
 - Token scopes / 可选 TTL
 - 去掉短期 active-design 协议（待 Personal Token 成为默认且稳定后评估）
 
-## Open points for implementation plan
+## Open points (resolved in plan)
 
-- Prisma 模型字段与 org 绑定精确形状（与现有 Session/membership 对齐）
-- login 采用浏览器回调还是设备码（实现计划二选一，产品等价）
-- `flowx_bind_workflow` 是否独立工具，或仅 handoff / list 确认后自动 bind
+- Prisma：`PersonalApiToken` 绑定 `userId` + `organizationId`（见实现计划）
+- Login v1：`flowx-local login [--token]` 粘贴/传入 Web 生成的 PAT（设备码后续）
+- 独立 MCP 工具 `flowx_bind_workflow`；handoff/submit 成功亦可刷新 binding
+- Design/brainstorm session 惰性创建挂在 local-handoff
