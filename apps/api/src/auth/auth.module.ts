@@ -8,13 +8,19 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { CredentialCryptoService } from './credential-crypto.service';
 import { PasswordService } from './password.service';
+import { PersonalApiTokenController } from './personal-api-token.controller';
 import { PersonalApiTokenService } from './personal-api-token.service';
 import { DingTalkAuthProvider } from './providers/dingtalk.provider';
 import { ProviderRegistryService } from './providers/provider-registry.service';
 
 @Module({
   imports: [NotificationsModule],
-  controllers: [AuthController, AiCredentialsController, GitCredentialsController],
+  controllers: [
+    AuthController,
+    AiCredentialsController,
+    GitCredentialsController,
+    PersonalApiTokenController,
+  ],
   providers: [
     AuthService,
     AiCredentialsService,

@@ -620,7 +620,7 @@ export interface AuthUser {
 
 export interface AuthSession {
   token: string;
-  expiresAt: string;
+  expiresAt: string | null;
   user: AuthUser;
   organization: AuthOrganization | null;
 }
@@ -629,6 +629,22 @@ export interface AiCredentialStatus {
   provider: 'cursor' | 'codex';
   configured: boolean;
   updatedAt?: string;
+}
+
+export interface PersonalApiTokenMeta {
+  id: string;
+  name: string;
+  tokenPrefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+export interface PersonalApiTokenCreated {
+  id: string;
+  name: string;
+  tokenPrefix: string;
+  token: string;
+  createdAt: string;
 }
 
 export interface GitCredentialStatus {

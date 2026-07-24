@@ -18,6 +18,7 @@ import { ProjectScheduleRedirect, ScheduleMembersRedirect } from './pages/Schedu
 import { RequirementDetailPage } from './pages/RequirementDetailPage';
 import { AiCredentialsPage } from './pages/AiCredentialsPage';
 import { GitCredentialsPage } from './pages/GitCredentialsPage';
+import { PersonalApiTokensPage } from './pages/PersonalApiTokensPage';
 import { OrganizationUsersPage } from './pages/OrganizationUsersPage';
 import { RequirementsPage } from './pages/RequirementsPage';
 import { WorkflowRunDetailPage } from './pages/WorkflowRunDetailPage';
@@ -66,6 +67,7 @@ export default function App() {
             <Route path="/local-agent" element={<LocalAgentGuidePage />} />
             <Route path="/settings/ai-credentials" element={<AiCredentialsPage />} />
             <Route path="/settings/git-credentials" element={<GitCredentialsPage />} />
+            <Route path="/settings/api-tokens" element={<PersonalApiTokensPage />} />
             <Route path="/settings/users" element={<OrganizationUsersPage />} />
             <Route path="/settings/briefing-sources" element={<BriefingSourcesPage />} />
             <Route path="/settings/code-review-sources" element={<CodeReviewSourcesPage />} />

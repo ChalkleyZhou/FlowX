@@ -25,6 +25,8 @@ import type {
   OpenDesignHandoff,
   OpenDesignHandoffResponse,
   OrganizationMember,
+  PersonalApiTokenCreated,
+  PersonalApiTokenMeta,
   Project,
   ProjectBriefingConfig,
   ProjectCodeReviewConfig,
@@ -577,6 +579,16 @@ export const api = {
     }),
   deleteCodexCredential: () =>
     request<AiCredentialStatus>('/auth/ai-credentials/codex', {
+      method: 'DELETE',
+    }),
+  listPersonalApiTokens: () => request<PersonalApiTokenMeta[]>('/auth/personal-api-tokens'),
+  createPersonalApiToken: (payload: { name: string }) =>
+    request<PersonalApiTokenCreated>('/auth/personal-api-tokens', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  revokePersonalApiToken: (id: string) =>
+    request<{ ok: boolean }>(`/auth/personal-api-tokens/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     }),
   getGithubCredentialStatus: () =>
