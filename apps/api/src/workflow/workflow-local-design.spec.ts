@@ -251,4 +251,245 @@ describe('WorkflowService local OpenDesign', () => {
     );
     expect(result.handoff.executionSessionId).toBeTruthy();
   });
+
+  it('getLocalDesignHandoff claims a design session when none is active', async () => {
+    const prisma = {
+      executionSession: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+    const service = createService(prisma);
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(workflow);
+    const claimedHandoff = {
+      protocolVersion: '1.0',
+      workflowRunId: 'workflow-design-1',
+      executionSessionId: 'session-lazy-design',
+      traceId: 'trace-lazy',
+      contextPackage: {
+        protocolVersion: '1.0',
+        generatedAt: '2026-07-24T00:00:00.000Z',
+        sourceTool: 'opendesign' as const,
+        workflowRunId: 'workflow-design-1',
+        executionSessionId: 'session-lazy-design',
+        traceId: 'trace-lazy',
+        requirement: {
+          id: 'req-1',
+          title: 'Export page',
+          description: 'Design an export experience',
+          acceptanceCriteria: 'Covers loading, empty and error states',
+        },
+        repositories: [],
+        outputContract: {
+          resultFileName: 'result.json' as const,
+          format: 'flowx-design-result-v1' as const,
+          requiredFields: ['design', 'demo', 'designArtifact'] as const,
+        },
+      },
+      completionEndpoint: '/execution-sessions/session-lazy-design/design/complete',
+    };
+    const claimSpy = vi.spyOn(service, 'claimLocalDesign').mockResolvedValue({
+      workflow: workflow as never,
+      handoff: claimedHandoff,
+    });
+    const notifyRecipient = {
+      user: { id: 'user-1', displayName: 'Designer' },
+      organization: { id: 'org-1' },
+    };
+
+    const result = await service.getLocalDesignHandoff('workflow-design-1', notifyRecipient);
+
+    expect(claimSpy).toHaveBeenCalledWith('workflow-design-1', notifyRecipient);
+    expect(result.executionSessionId).toBe('session-lazy-design');
+  });
+
+  it('getLocalDesignHandoff reuses an active design session without claiming again', async () => {
+    const activeSession = {
+      id: 'session-active',
+      workflowRunId: 'workflow-design-1',
+      stageExecutionId: 'stage-design-1',
+      status: 'RUNNING',
+      sourceTool: 'opendesign',
+      protocolVersion: '1.0',
+      traceId: 'trace-active',
+      metadata: { stage: 'DESIGN' },
+    };
+    const prisma = {
+      executionSession: { findMany: vi.fn().mockResolvedValue([activeSession]) },
+    };
+    const service = createService(prisma);
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(workflow);
+    const claimSpy = vi.spyOn(service, 'claimLocalDesign');
+
+    const result = await service.getLocalDesignHandoff('workflow-design-1');
+
+    expect(claimSpy).not.toHaveBeenCalled();
+    expect(result.executionSessionId).toBe('session-active');
+  });
+
+  it('getLocalDesignHandoff rejects when workflow cannot accept design handoff', async () => {
+    const prisma = {
+      executionSession: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+    const service = createService(prisma);
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue({
+      ...workflow,
+      status: 'DESIGN_WAITING_CONFIRMATION',
+    });
+
+    await expect(service.getLocalDesignHandoff('workflow-design-1')).rejects.toThrow(
+      /does not allow design handoff/i,
+    );
+  });
+
+  it('getLocalBrainstormHandoff claims a brainstorm session when none is active', async () => {
+    const brainstormWorkflow = {
+      ...workflow,
+      status: 'BRAINSTORM_PENDING',
+      stageExecutions: [
+        { id: 'stage-brainstorm-1', stage: 'BRAINSTORM', status: 'PENDING', attempt: 1, input: null },
+      ],
+    };
+    const prisma = {
+      executionSession: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+    const service = createService(prisma);
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(brainstormWorkflow);
+    const claimedHandoff = {
+      protocolVersion: '1.0',
+      workflowRunId: 'workflow-design-1',
+      executionSessionId: 'session-lazy-brainstorm',
+      traceId: 'trace-brainstorm',
+      contextPackage: {
+        protocolVersion: '1.0',
+        generatedAt: '2026-07-24T00:00:00.000Z',
+        sourceTool: 'opendesign' as const,
+        stage: 'BRAINSTORM' as const,
+        workflowRunId: 'workflow-design-1',
+        executionSessionId: 'session-lazy-brainstorm',
+        traceId: 'trace-brainstorm',
+        requirement: {
+          id: 'req-1',
+          title: 'Export page',
+          description: 'Design an export experience',
+          acceptanceCriteria: 'Covers loading, empty and error states',
+        },
+        repositories: [],
+        outputContract: {
+          resultFileName: 'spec.md' as const,
+          format: 'flowx-brainstorm-markdown-v1' as const,
+        },
+      },
+      completionEndpoint: '/execution-sessions/session-lazy-brainstorm/brainstorm/complete',
+    };
+    const claimSpy = vi.spyOn(service, 'claimLocalBrainstorm').mockResolvedValue({
+      workflow: brainstormWorkflow as never,
+      handoff: claimedHandoff,
+    });
+    const notifyRecipient = {
+      user: { id: 'user-1', displayName: 'Designer' },
+      organization: { id: 'org-1' },
+    };
+
+    const result = await service.getLocalBrainstormHandoff('workflow-design-1', notifyRecipient);
+
+    expect(claimSpy).toHaveBeenCalledWith('workflow-design-1', notifyRecipient);
+    expect(result.executionSessionId).toBe('session-lazy-brainstorm');
+  });
+
+  it('completeLocalBrainstormSession includes next design pointer', async () => {
+    const brainstormWorkflow = {
+      ...workflow,
+      status: 'BRAINSTORM_PENDING',
+      stageExecutions: [
+        { id: 'stage-brainstorm-1', stage: 'BRAINSTORM', status: 'RUNNING', attempt: 1, input: null },
+      ],
+    };
+    const activeSession = {
+      id: 'session-b',
+      workflowRunId: 'workflow-design-1',
+      stageExecutionId: 'stage-brainstorm-1',
+      organizationId: 'org-1',
+      status: 'RUNNING',
+      sourceTool: 'opendesign',
+      protocolVersion: '1.0',
+      traceId: 'trace-b',
+      metadata: { stage: 'BRAINSTORM' },
+    };
+    const designPendingWorkflow = { ...brainstormWorkflow, status: 'DESIGN_PENDING' };
+    const tx = {
+      executionSession: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      evidence: { create: vi.fn().mockResolvedValue({ id: 'evidence-1' }) },
+      workflowRun: { findUniqueOrThrow: vi.fn().mockResolvedValue(designPendingWorkflow) },
+    };
+    const prisma = {
+      executionSession: { findUnique: vi.fn().mockResolvedValue(activeSession) },
+      $transaction: vi.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
+    };
+    const service = createService(prisma);
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(brainstormWorkflow);
+    vi.spyOn(service as never, 'updateStageExecution' as never).mockResolvedValue(undefined);
+    vi.spyOn(service as never, 'transitionWorkflow' as never).mockResolvedValue(undefined);
+    vi.spyOn(service as never, 'createStageExecution' as never).mockResolvedValue(undefined);
+
+    const result = await service.completeLocalBrainstormSession(
+      'session-b',
+      {
+        idempotencyKey: 'brainstorm:session-b:v1',
+        summary: 'Spec ready',
+        markdown: '# Spec\n\nDone.',
+      },
+      { organizationId: 'org-1' },
+    );
+
+    expect(result.workflow.status).toBe('DESIGN_PENDING');
+    expect(result.workflowRunId).toBe('workflow-design-1');
+    expect(result.workflowStatus).toBe('DESIGN_PENDING');
+    expect(result.next).toEqual({
+      stage: 'design',
+      hint: 'call flowx_get_design_handoff',
+    });
+  });
+
+  it('completeLocalBrainstormSession idempotent replay includes next when DESIGN_PENDING', async () => {
+    const designPendingWorkflow = {
+      ...workflow,
+      status: 'DESIGN_PENDING',
+    };
+    const completedSession = {
+      id: 'session-b',
+      workflowRunId: 'workflow-design-1',
+      stageExecutionId: 'stage-brainstorm-1',
+      organizationId: 'org-1',
+      status: 'COMPLETED',
+      sourceTool: 'opendesign',
+      protocolVersion: '1.0',
+      traceId: 'trace-b',
+      metadata: {
+        stage: 'BRAINSTORM',
+        completionIdempotencyKey: 'brainstorm:session-b:v1',
+      },
+    };
+    const prisma = {
+      executionSession: { findUnique: vi.fn().mockResolvedValue(completedSession) },
+    };
+    const service = createService(prisma);
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(
+      designPendingWorkflow,
+    );
+
+    const result = await service.completeLocalBrainstormSession(
+      'session-b',
+      {
+        idempotencyKey: 'brainstorm:session-b:v1',
+        summary: 'Spec ready',
+        markdown: '# Spec\n\nDone.',
+      },
+      { organizationId: 'org-1' },
+    );
+
+    expect(result.workflowStatus).toBe('DESIGN_PENDING');
+    expect(result.workflowRunId).toBe('workflow-design-1');
+    expect(result.next).toEqual({
+      stage: 'design',
+      hint: 'call flowx_get_design_handoff',
+    });
+  });
 });

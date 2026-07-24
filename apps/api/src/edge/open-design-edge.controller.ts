@@ -54,13 +54,13 @@ export class OpenDesignEdgeController {
   }
 
   @Get('workflow-runs/:id/design/local-handoff')
-  getHandoff(@Param('id') id: string) {
-    return this.openDesignEdgeService.getHandoff(id);
+  getHandoff(@Param('id') id: string, @Req() req: OpenDesignRequest) {
+    return this.openDesignEdgeService.getHandoff(id, req.authSession);
   }
 
   @Get('workflow-runs/:id/brainstorm/local-handoff')
-  getBrainstormHandoff(@Param('id') id: string) {
-    return this.openDesignEdgeService.getBrainstormHandoff(id);
+  getBrainstormHandoff(@Param('id') id: string, @Req() req: OpenDesignRequest) {
+    return this.openDesignEdgeService.getBrainstormHandoff(id, req.authSession);
   }
 }
 

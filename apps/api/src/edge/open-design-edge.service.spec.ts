@@ -155,4 +155,14 @@ describe('OpenDesignEdgeService', () => {
       { organizationId: 'org-1' },
     );
   });
+
+  it('passes auth session into local handoff getters for lazy claim', async () => {
+    const { service, workflow } = createService();
+
+    await service.getHandoff('workflow-1', session);
+    await service.getBrainstormHandoff('workflow-1', session);
+
+    expect(workflow.getLocalDesignHandoff).toHaveBeenCalledWith('workflow-1', session);
+    expect(workflow.getLocalBrainstormHandoff).toHaveBeenCalledWith('workflow-1', session);
+  });
 });

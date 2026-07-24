@@ -93,12 +93,12 @@ export class OpenDesignEdgeService {
     };
   }
 
-  getHandoff(workflowRunId: string) {
-    return this.workflowService.getLocalDesignHandoff(workflowRunId);
+  getHandoff(workflowRunId: string, session?: EdgeWorkflowSession) {
+    return this.workflowService.getLocalDesignHandoff(workflowRunId, session);
   }
 
-  getBrainstormHandoff(workflowRunId: string) {
-    return this.workflowService.getLocalBrainstormHandoff(workflowRunId);
+  getBrainstormHandoff(workflowRunId: string, session?: EdgeWorkflowSession) {
+    return this.workflowService.getLocalBrainstormHandoff(workflowRunId, session);
   }
 
   async redeem(ticket: string) {
@@ -108,10 +108,20 @@ export class OpenDesignEdgeService {
     }
     record.consumed = true;
     this.tickets.delete(ticket);
+    const notifyRecipient = {
+      user: { id: record.userId, displayName: record.userId },
+      organization: record.organizationId ? { id: record.organizationId } : null,
+    };
     const handoff =
       record.stage === 'brainstorm'
-        ? await this.workflowService.getLocalBrainstormHandoff(record.workflowRunId)
-        : await this.workflowService.getLocalDesignHandoff(record.workflowRunId);
+        ? await this.workflowService.getLocalBrainstormHandoff(
+            record.workflowRunId,
+            notifyRecipient,
+          )
+        : await this.workflowService.getLocalDesignHandoff(
+            record.workflowRunId,
+            notifyRecipient,
+          );
     const shortLived = await this.authService.createShortLivedSession(
       record.userId,
       record.organizationId,

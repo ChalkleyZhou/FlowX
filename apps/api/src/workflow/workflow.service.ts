@@ -1410,20 +1410,38 @@ export class WorkflowService {
     };
   }
 
-  async getLocalDesignHandoff(id: string): Promise<OpenDesignHandoff> {
+  async getLocalDesignHandoff(
+    id: string,
+    notifyRecipient?: WorkflowNotificationSession,
+  ): Promise<OpenDesignHandoff> {
     const workflow = await this.getWorkflowOrThrow(id);
     const session = await this.findActiveOpenDesignSession(id, 'DESIGN');
     if (!session) {
-      throw new NotFoundException('No active OpenDesign execution session was found.');
+      if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.DESIGN_PENDING) {
+        throw new BadRequestException(
+          `Workflow status ${workflow.status} does not allow design handoff.`,
+        );
+      }
+      const claimed = await this.claimLocalDesign(id, notifyRecipient);
+      return claimed.handoff;
     }
     return this.buildOpenDesignHandoff(workflow, session);
   }
 
-  async getLocalBrainstormHandoff(id: string): Promise<OpenDesignBrainstormHandoff> {
+  async getLocalBrainstormHandoff(
+    id: string,
+    notifyRecipient?: WorkflowNotificationSession,
+  ): Promise<OpenDesignBrainstormHandoff> {
     const workflow = await this.getWorkflowOrThrow(id);
     const session = await this.findActiveOpenDesignSession(id, 'BRAINSTORM');
     if (!session) {
-      throw new NotFoundException('No active OpenDesign brainstorm session was found.');
+      if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.BRAINSTORM_PENDING) {
+        throw new BadRequestException(
+          `Workflow status ${workflow.status} does not allow brainstorm handoff.`,
+        );
+      }
+      const claimed = await this.claimLocalBrainstorm(id, notifyRecipient);
+      return claimed.handoff;
     }
     return this.buildOpenDesignBrainstormHandoff(workflow, session);
   }
@@ -1580,10 +1598,7 @@ export class WorkflowService {
     const existingKey = this.readCompletionIdempotencyKey(session.metadata);
     if (session.status === 'COMPLETED') {
       if (existingKey === report.idempotencyKey) {
-        return {
-          workflow,
-          handoff: this.buildOpenDesignBrainstormHandoff(workflow, session),
-        };
+        return this.toBrainstormCompletionResult(workflow, session);
       }
       throw new ConflictException({
         code: 'EXECUTION_SESSION_TERMINAL',
@@ -1680,14 +1695,12 @@ export class WorkflowService {
       });
     });
 
-    return {
-      workflow: updated,
-      handoff: this.buildOpenDesignBrainstormHandoff(updated, {
-        id: session.id,
-        traceId: session.traceId,
-        protocolVersion: session.protocolVersion,
-      }),
-    };
+    return this.toBrainstormCompletionResult(updated, {
+      id: session.id,
+      traceId: session.traceId,
+      protocolVersion: session.protocolVersion,
+      metadata: session.metadata,
+    });
   }
 
   async submitLocalDesign(id: string, rawOutput: unknown) {
@@ -3297,6 +3310,33 @@ export class WorkflowService {
       traceId: session.traceId,
       contextPackage,
       completionEndpoint: `/execution-sessions/${session.id}/brainstorm/complete`,
+    };
+  }
+
+  private toBrainstormCompletionResult(
+    workflow: WorkflowPayload,
+    session: {
+      id: string;
+      traceId: string;
+      protocolVersion: string;
+      metadata?: unknown;
+    },
+  ) {
+    const result = {
+      workflow,
+      handoff: this.buildOpenDesignBrainstormHandoff(workflow, session),
+      workflowRunId: workflow.id,
+    };
+    if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.DESIGN_PENDING) {
+      return result;
+    }
+    return {
+      ...result,
+      workflowStatus: 'DESIGN_PENDING' as const,
+      next: {
+        stage: 'design' as const,
+        hint: 'call flowx_get_design_handoff',
+      },
     };
   }
 
