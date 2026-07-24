@@ -26,6 +26,19 @@ export interface EdgeTaskItem {
   ineligibleReason?: string;
 }
 
+export type OpenDesignSuggestedAction = 'brainstorm' | 'design';
+
+export interface OpenDesignWorkflowItem {
+  kind: 'opendesign-workflow';
+  workflowRunId: string;
+  requirementId: string;
+  title: string;
+  status: string;
+  suggestedAction: OpenDesignSuggestedAction;
+}
+
+const OPEN_DESIGN_CANDIDATE_STATUSES = ['BRAINSTORM_PENDING', 'DESIGN_PENDING'] as const;
+
 @Injectable()
 export class EdgeTasksService {
   constructor(private readonly prisma: PrismaService) {}
@@ -111,6 +124,49 @@ export class EdgeTasksService {
         });
       }),
     ];
+  }
+
+  async listOpenDesignTasks(filters: {
+    workspaceId?: string;
+    session?: EdgeWorkflowSession;
+  }): Promise<OpenDesignWorkflowItem[]> {
+    const workspaceId = filters.workspaceId?.trim() || undefined;
+    const organizationId = filters.session?.organization?.id?.trim() || undefined;
+
+    const workflows = await this.prisma.workflowRun.findMany({
+      where: {
+        runType: WorkflowRunType.LOCAL_DESIGN,
+        status: { in: [...OPEN_DESIGN_CANDIDATE_STATUSES] },
+        ...(workspaceId ? { requirement: { workspaceId } } : {}),
+        ...(organizationId
+          ? {
+              OR: [
+                { executionSessions: { none: {} } },
+                { executionSessions: { some: { organizationId } } },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        requirement: {
+          select: { id: true, title: true },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    return workflows.map((workflow) => ({
+      kind: 'opendesign-workflow' as const,
+      workflowRunId: workflow.id,
+      requirementId: workflow.requirementId,
+      title: workflow.requirement.title,
+      status: workflow.status,
+      suggestedAction: this.suggestedOpenDesignAction(workflow.status),
+    }));
+  }
+
+  private suggestedOpenDesignAction(status: string): OpenDesignSuggestedAction {
+    return status.toLowerCase() === WorkflowRunStatus.BRAINSTORM_PENDING ? 'brainstorm' : 'design';
   }
 
   private isActiveWorkflow(workflow: { status: string }) {

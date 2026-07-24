@@ -23,6 +23,10 @@ export class CursorLocalService {
     return this.edgeTasksService.listTasks(filters);
   }
 
+  listOpenDesignTasks(filters: { workspaceId?: string; session?: EdgeWorkflowSession }) {
+    return this.edgeTasksService.listOpenDesignTasks(filters);
+  }
+
   startHandoff(dto: StartLocalChatDto, session?: EdgeWorkflowSession) {
     return this.edgeHandoffService.startHandoff(
       { ...dto, sourceTool: 'cursor' },

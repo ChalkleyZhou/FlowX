@@ -170,6 +170,59 @@ describe('flowx-local MCP server', () => {
     await server.close();
   });
 
+  it('merges cursor-local tasks and opendesign-tasks in flowx_list_tasks', async () => {
+    const homeDir = makeHome();
+    delete process.env.FLOWX_API_TOKEN;
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/cursor-local/tasks?workspaceId=ws-1')) {
+        return new Response(JSON.stringify([{ id: 'req-1', type: 'requirement' }]), { status: 200 });
+      }
+      if (url.endsWith('/cursor-local/opendesign-tasks?workspaceId=ws-1')) {
+        return new Response(
+          JSON.stringify([
+            {
+              kind: 'opendesign-workflow',
+              workflowRunId: 'wf-1',
+              requirementId: 'req-1',
+              title: 'Idea',
+              status: 'BRAINSTORM_PENDING',
+              suggestedAction: 'brainstorm',
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { client, server } = await connectClient(homeDir);
+
+    const result = await client.callTool({
+      name: 'flowx_list_tasks',
+      arguments: { workspaceId: 'ws-1' },
+    });
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(String((result.content as Array<{ text: string }>)[0].text))).toEqual({
+      tasks: [{ id: 'req-1', type: 'requirement' }],
+      openDesignWorkflows: [
+        {
+          kind: 'opendesign-workflow',
+          workflowRunId: 'wf-1',
+          requirementId: 'req-1',
+          title: 'Idea',
+          status: 'BRAINSTORM_PENDING',
+          suggestedAction: 'brainstorm',
+        },
+      ],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await client.close();
+    await server.close();
+  });
+
   it('advances binding stage to design after successful brainstorm submit', async () => {
     const homeDir = makeHome();
     delete process.env.FLOWX_API_TOKEN;

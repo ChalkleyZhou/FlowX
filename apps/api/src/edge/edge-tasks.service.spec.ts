@@ -5,6 +5,7 @@ function createService() {
   const prisma = {
     requirement: { findMany: vi.fn() },
     bug: { findMany: vi.fn() },
+    workflowRun: { findMany: vi.fn() },
   };
   return { service: new EdgeTasksService(prisma as never), prisma };
 }
@@ -70,6 +71,82 @@ describe('EdgeTasksService', () => {
 
     expect(tasks[0]).toEqual(
       expect.objectContaining({ eligible: false, workflowRunId: 'workflow-1' }),
+    );
+  });
+
+  it('lists OpenDesign candidates with suggestedAction from status', async () => {
+    const { service, prisma } = createService();
+    prisma.workflowRun.findMany.mockResolvedValue([
+      {
+        id: 'wf-brain',
+        status: 'BRAINSTORM_PENDING',
+        requirementId: 'req-brain',
+        requirement: { id: 'req-brain', title: 'Brainstorm idea' },
+      },
+      {
+        id: 'wf-design',
+        status: 'DESIGN_PENDING',
+        requirementId: 'req-design',
+        requirement: { id: 'req-design', title: 'Design ready' },
+      },
+    ]);
+
+    const items = await service.listOpenDesignTasks({
+      workspaceId: 'workspace-1',
+      session: {
+        user: { id: 'user-1', displayName: 'Ada' },
+        organization: { id: 'org-1', name: 'Acme' },
+      },
+    });
+
+    expect(items).toEqual([
+      {
+        kind: 'opendesign-workflow',
+        workflowRunId: 'wf-brain',
+        requirementId: 'req-brain',
+        title: 'Brainstorm idea',
+        status: 'BRAINSTORM_PENDING',
+        suggestedAction: 'brainstorm',
+      },
+      {
+        kind: 'opendesign-workflow',
+        workflowRunId: 'wf-design',
+        requirementId: 'req-design',
+        title: 'Design ready',
+        status: 'DESIGN_PENDING',
+        suggestedAction: 'design',
+      },
+    ]);
+    expect(prisma.workflowRun.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          runType: 'LOCAL_DESIGN',
+          status: { in: ['BRAINSTORM_PENDING', 'DESIGN_PENDING'] },
+          requirement: { workspaceId: 'workspace-1' },
+          OR: [
+            { executionSessions: { none: {} } },
+            { executionSessions: { some: { organizationId: 'org-1' } } },
+          ],
+        }),
+      }),
+    );
+  });
+
+  it('omits organization filter when authSession has no organization', async () => {
+    const { service, prisma } = createService();
+    prisma.workflowRun.findMany.mockResolvedValue([]);
+
+    await service.listOpenDesignTasks({
+      session: { user: { id: 'user-1', displayName: 'Ada' }, organization: null },
+    });
+
+    expect(prisma.workflowRun.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          runType: 'LOCAL_DESIGN',
+          status: { in: ['BRAINSTORM_PENDING', 'DESIGN_PENDING'] },
+        },
+      }),
     );
   });
 });

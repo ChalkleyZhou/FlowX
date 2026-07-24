@@ -310,13 +310,20 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     'flowx_list_tasks',
     {
       title: 'List FlowX Tasks',
-      description: 'List FlowX requirements and bugs available for local work.',
+      description:
+        'List FlowX requirements/bugs and OpenDesign brainstorm/design candidate workflows. Confirm a workflow with the user, then call flowx_bind_workflow.',
       inputSchema: z.object({ workspaceId: z.string().optional() }),
     },
     async ({ workspaceId }) => {
       const { client } = await resolveSession(options.homeDir);
       const query = workspaceId?.trim() ? `?workspaceId=${encodeURIComponent(workspaceId.trim())}` : '';
-      return runRequest(() => client.request(`/cursor-local/tasks${query}`));
+      return runRequest(async () => {
+        const [tasks, openDesignWorkflows] = await Promise.all([
+          client.request(`/cursor-local/tasks${query}`),
+          client.request(`/cursor-local/opendesign-tasks${query}`),
+        ]);
+        return { tasks, openDesignWorkflows };
+      });
     },
   );
 

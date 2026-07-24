@@ -18,6 +18,14 @@ export class EdgeController {
     return this.edgeTasksService.listTasks({ workspaceId, session: req.authSession });
   }
 
+  @Get('opendesign-tasks')
+  listOpenDesignTasks(
+    @Query('workspaceId') workspaceId: string | undefined,
+    @Req() req: EdgeRequest,
+  ) {
+    return this.edgeTasksService.listOpenDesignTasks({ workspaceId, session: req.authSession });
+  }
+
   @Get('tasks/:type/:id/context')
   getContext(
     @Param('type') type: EdgeTaskType,

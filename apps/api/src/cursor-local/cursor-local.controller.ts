@@ -11,6 +11,17 @@ export class CursorLocalController {
     return this.cursorLocalService.listTasks({ workspaceId, session: req.authSession });
   }
 
+  @Get('opendesign-tasks')
+  listOpenDesignTasks(
+    @Query('workspaceId') workspaceId: string | undefined,
+    @Req() req: CursorLocalRequest,
+  ) {
+    return this.cursorLocalService.listOpenDesignTasks({
+      workspaceId,
+      session: req.authSession,
+    });
+  }
+
   @Post('handoff')
   startHandoff(@Body() dto: StartLocalChatDto, @Req() req: CursorLocalRequest) {
     return this.cursorLocalService.startHandoff(dto, req.authSession);
