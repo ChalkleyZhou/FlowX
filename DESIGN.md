@@ -6,6 +6,9 @@ colors:
   background: "hsl(220 20% 97%)"
   foreground: "hsl(222 47% 11%)"
   navigation: "hsl(222 47% 11%)"
+  success: "hsl(158 64% 38%)"
+  warning: "hsl(31 92% 45%)"
+  danger: "hsl(0 72% 51%)"
 typography:
   body:
     fontFamily: "Inter, system-ui, PingFang SC, Microsoft YaHei, sans-serif"
@@ -22,52 +25,43 @@ components:
   card:
     borderRadius: "{rounded.md}"
     shadow: "none"
+  list-page:
+    structure: "PageHeader + ListToolbar + RecordList + Pagination"
+  workflow-page:
+    structure: "DetailHeader + ActionBar + StageRail + current-stage workspace"
 ---
 
 ## Overview
 
-FlowX 使用 `Control Room` 设计语言。它服务于反复扫描、比较、确认和追踪的研发管理操作，不使用营销式构图、渐变背景或装饰性浮卡。
+FlowX 使用 `Control Room` 设计语言。它服务于反复扫描、比较、确认和追踪的研发管理操作，不使用营销式构图、渐变背景或装饰性浮卡。它同时是研发流程控制平面，界面应帮助用户定位待处理事项、理解当前状态、完成下一步决策，并追溯上下文和证据。
 
 ## Visual Language
 
-- 主画布保持中性；深色侧栏表达导航边界，黑色承担主操作、链接和活动指示。
-- 暗色主题将主操作反相为白色，以维持 WCAG 对比度；这仍然属于同一 `primary` 语义。
-- 颜色必须通过语义 token 使用：`primary`、`success`、`warning`、`danger`、`muted`。
-- 圆角只使用 4/6/8px。状态徽标可以使用 `rounded-full`，卡片和页面区块不得使用大圆角。
-- 卡片默认只有 1px 边框和无阴影。阴影仅用于弹层、悬浮菜单和需要脱离文档流的元素。
-- 页面按 8px 网格组织；常规页面容器最大宽度为 1440px，桌面内边距 32px，移动端 16px。
+采用中性画布、轻边框、有限状态色和较高信息密度。深色侧栏表达导航边界，黑色承担亮色主题主操作；暗色主题将主操作反相为白色。主色、状态色和间距优先使用 `apps/web/src/globals.css` 与 `apps/web/src/design-tokens.ts` 中的语义 token。页面容器最大宽度为 1440px，桌面内边距 32px，移动端 16px。
 
-## Colors
+## Layout
 
-CSS source of truth 是 `apps/web/src/globals.css`，编程式 token 是 `apps/web/src/design-tokens.ts`。亮色主题的状态颜色必须满足文字可读性；暗色主题只调整变量，不在业务组件中复制 `dark:` 分支。
-
-## Typography
-
-正文 14px/20px，辅助信息 13px/18px，页面标题 24px/30px，区块标题 18px/26px。中文使用系统字体栈，标题保持中等字重，避免全大写和过度字距。
-
-## Spacing and Layout
-
-使用 Tailwind 语义类和现有页面模板。页面结构固定为 `PageHeader`、指标带（可选）、`ListToolbar`、内容区；新增操作放在页面标题区，不塞进筛选条。列表和详情优先使用单层边界，避免卡片套卡片。
+列表页统一使用 `PageHeader + ListToolbar + RecordList + Pagination`。详情页突出当前任务和主操作，长流程使用阶段导航与渐进式展开，避免把所有阶段堆在同一长页面。
 
 ## Components
 
-- `Button`：主操作使用 `default`，次操作使用 `outline` 或 `secondary`，破坏性操作使用 `destructive`。
-- `Badge`：只表示状态、范围或轻量分类，不承载按钮行为。
-- `Card`：用于有边界的内容组或重复记录，不用于包裹整页装饰。
-- `Input` / `Select` / `Textarea`：保持 40px 控件高度，标签、错误和帮助文本必须成组出现。
-- `PageHeader` / `SectionHeader` / `MetricCard` / `RecordListItem`：页面级布局优先复用，不在 page 中复制视觉结构。
-- 交互按钮使用 `lucide-react` 图标；图标按钮必须有 `aria-label` 或可见 tooltip。
+优先复用 `components/ui/*` 和现有业务组合组件。`Button`、`Input`、`Select`、`Textarea` 保持约 40px 控件高度；图标按钮需要 `aria-label` 或 tooltip。新增列表或工作流能力应优先沉淀为 `Pagination`、`ListQueryState`、`WorkflowActionBar`、`WorkflowStageRail` 等组合能力，不在页面内复制状态判断和布局。
+
+## Interaction
+
+搜索、筛选、排序和分页进入 URL；个人默认偏好进入按用户和组织隔离的 `localStorage`。每个工作流状态只有一个明确的主动作，运行、失败、待确认和人工审查必须提供不同的反馈和恢复路径。
 
 ## Accessibility
 
-可聚焦元素必须有清晰的 `:focus-visible` 状态；点击目标至少 40px 高；状态不能只靠颜色表达；表格、表单和导航需要保留语义标签。默认目标为 WCAG 2.2 AA。
+按钮和状态必须有语义名称，键盘可以访问阶段导航和分页，焦点状态清晰，颜色不能作为状态的唯一表达。点击目标至少 40px；加载、错误、空数据和权限状态都必须有可读文本，默认目标为 WCAG 2.2 AA。
 
 ## Platform Notes
 
-当前证据只覆盖 Web desktop 和 responsive Web。移动端使用同一语义 token，导航保持单行横向滚动，表格必须横向滚动，操作按钮不得因为内容压缩而变形。
+当前证据覆盖 Web desktop 和 responsive Web。窄屏导航可保持单行横向滚动，但复杂表格和 Diff 必须采用适合窄屏的分层视图，不能只压缩桌面布局。
 
 ## References
 
-- 前端 SSOT：[apps/web/docs/design-system.md](apps/web/docs/design-system.md)
-- 详细审计：[design-system-audit/00-executive-summary.md](design-system-audit/00-executive-summary.md)
-- 布局约定：[docs/frontend-shadcn-design-spec.md](docs/frontend-shadcn-design-spec.md)
+- 产品与交互方案：[docs/product-ux-review.md](docs/product-ux-review.md)
+- Web 设计系统：[apps/web/docs/design-system.md](apps/web/docs/design-system.md)
+- 详细设计系统审计：[design-system-audit/00-executive-summary.md](design-system-audit/00-executive-summary.md)
+- 现有前端规范：[docs/frontend-shadcn-design-spec.md](docs/frontend-shadcn-design-spec.md)

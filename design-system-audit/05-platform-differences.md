@@ -2,16 +2,16 @@
 
 ## Web desktop
 
-- `AppLayout` 使用 232px 固定侧栏，主画布最大 1440px。
-- 桌面可以使用 hover、tooltip 和表格密度；焦点环必须保留。
-- 弹层和下拉由 Radix 管理，不能依赖页面位置计算。
+Evidence：React + Vite、Tailwind、Radix/shadcn 风格组件、约 232px 固定侧栏和最大 1440px 主内容宽度。
 
-## Responsive Web / H5
+建议：桌面端承担高密度列表、Diff 查看和工作流审查；应支持键盘导航、URL 可恢复状态、sticky 操作栏和 1280px 以上的双栏工作区。
 
-- 1200px 以下侧栏转为顶部区域，导航入口保持单行横向滚动，页面内边距降至 16px。
-- 表格容器必须 `overflow-x-auto`，按钮和输入保持至少 40px 高度。
-- 尚未发现 safe-area、独立移动端路由或原生桥接证据；无法判断是否存在更深的 H5 适配需求。
+## 窄屏 Web
 
-## Android / iOS
+Evidence：`AppLayout.tsx` 在较窄宽度把侧栏变为顶部横向布局，页面通过 Tailwind breakpoint 换行；当前没有 safe-area、独立移动路由或原生桥接证据。
 
-未发现 `build.gradle`、`AndroidManifest.xml`、iOS target 或原生资源目录。本项目当前没有可审计的 Android/iOS 平台差异。
+建议：窄屏只保证“查看状态、完成主操作、处理筛选、返回列表”四条主路径；Diff 采用文件列表与查看器分层切换，筛选收进 Sheet/Popover，避免把桌面布局缩小后继续堆叠。
+
+## Android / iOS / 小程序
+
+未发现实现或平台资源，无法判断平台原生适配。若后续增加移动端，应复用业务状态和 API 契约，但不要直接复用桌面密度；工作流主操作应采用底部固定操作区，列表筛选采用移动端筛选面板。

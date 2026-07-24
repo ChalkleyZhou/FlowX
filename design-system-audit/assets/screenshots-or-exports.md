@@ -1,9 +1,18 @@
 # 视觉证据登记
 
-当前仓库未发现 Storybook 页面、Figma/MasterGo 节点、设计导出物或稳定的 UI 截图。此次审计的视觉判断来自源码和 token 文件，不能替代真实用户场景验证。
+## 已发现
 
-建议补充：
+- `apps/web/src/assets/flowx-logo-lockup.png`
+- `apps/web/src/assets/flowx-logo-icon.png`
+- `apps/web/src/assets/flowx-logo-lockup.svg`
+- `apps/web/src/assets/flowx-logo-icon.svg`
 
-1. 登录、列表、详情、工作流四类页面各一张亮色和暗色截图。
-2. 1440px、1024px、390px 三种 viewport 的截图。
-3. 空状态、加载、错误、成功和弹层状态截图。
+这些资源是品牌资产，不是页面截图或设计稿。
+
+## 未发现
+
+未发现 Storybook、Figma/MasterGo 导出物、页面截图或端到端视觉基线。本次视觉和布局判断来自 `apps/web/src`、`globals.css`、`design-tokens.ts` 和前端规范文档。
+
+## 建议补充
+
+后续为以下视口补充真实运行截图并建立回归基线：1280x800、1440x900、1920x1080，以及窄屏 1024x768。优先覆盖工作队列、工作流当前阶段、Diff Review、需求列表和缺陷列表的 loading/empty/error/success 状态。

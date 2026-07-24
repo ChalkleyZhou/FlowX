@@ -3,28 +3,45 @@
   "meta": {
     "generatedFrom": [
       "apps/web/src/globals.css",
-      "apps/web/src/design-tokens.ts",
-      "apps/web/tailwind.config.ts"
+      "apps/web/src/design-tokens.ts"
     ],
-    "platforms": ["Web desktop", "Responsive Web"],
-    "notes": ["CSS variables are the source of truth; legacy hard-coded classes remain in migration scope."]
+    "platforms": ["Web desktop"],
+    "notes": [
+      "代码是当前高置信度 source of truth；docs/frontend-shadcn-design-spec.md 存在蓝色主色和 Avenir 字体冲突。"
+    ]
   },
   "tokens": {
     "color": {
-      "primary": { "$type": "color", "$value": "hsl(0 0% 7%)", "description": "亮色主题主操作和活动态；暗色主题反相为白色", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" },
-      "background": { "$type": "color", "$value": "hsl(220 20% 97%)", "description": "主画布", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" },
-      "foreground": { "$type": "color", "$value": "hsl(222 47% 11%)", "description": "主要文字", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" },
-      "success": { "$type": "color", "$value": "hsl(158 64% 38%)", "description": "成功状态", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" },
-      "warning": { "$type": "color", "$value": "hsl(31 92% 45%)", "description": "警告状态", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" },
-      "danger": { "$type": "color", "$value": "hsl(0 72% 51%)", "description": "错误和破坏性操作", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" }
+      "primary.default": {"$type": "color", "$value": "hsl(0 0% 7%)", "source": "globals.css", "confidence": "High"},
+      "background.default": {"$type": "color", "$value": "hsl(220 20% 97%)", "source": "globals.css", "confidence": "High"},
+      "surface.default": {"$type": "color", "$value": "hsl(0 0% 100%)", "source": "globals.css", "confidence": "High"},
+      "success.default": {"$type": "color", "$value": "hsl(158 64% 38%)", "source": "globals.css", "confidence": "High"},
+      "warning.default": {"$type": "color", "$value": "hsl(31 92% 45%)", "source": "globals.css", "confidence": "High"},
+      "danger.default": {"$type": "color", "$value": "hsl(0 72% 51%)", "source": "globals.css", "confidence": "High"}
     },
     "typography": {
-      "body": { "$type": "typography", "$value": { "fontFamily": "Inter, system-ui, PingFang SC, Microsoft YaHei, sans-serif", "fontSize": "14px", "lineHeight": "20px", "fontWeight": 400 }, "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" },
-      "pageTitle": { "$type": "typography", "$value": { "fontSize": "24px", "lineHeight": "30px", "fontWeight": 600 }, "source": "apps/web/src/components/PageHeader.tsx", "platforms": ["Web"], "confidence": "high" }
+      "fontFamily.body": {"$type": "fontFamily", "$value": "Inter, ui-sans-serif, system-ui, sans-serif", "source": "globals.css", "confidence": "High"},
+      "fontSize.xs": {"$type": "dimension", "$value": "12px / 16px", "source": "design-tokens.ts", "confidence": "High"},
+      "fontSize.sm": {"$type": "dimension", "$value": "13px / 18px", "source": "design-tokens.ts", "confidence": "High"},
+      "fontSize.base": {"$type": "dimension", "$value": "14px / 20px", "source": "design-tokens.ts", "confidence": "High"},
+      "fontSize.lg": {"$type": "dimension", "$value": "16px / 24px", "source": "design-tokens.ts", "confidence": "High"},
+      "fontSize.2xl": {"$type": "dimension", "$value": "24px / 30px", "source": "design-tokens.ts", "confidence": "High"}
     },
-    "spacing": { "unit": { "$type": "dimension", "$value": "4px", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" }, "pageGutter": { "$type": "dimension", "$value": "32px", "source": "apps/web/src/components/AppLayout.tsx", "platforms": ["Web"], "confidence": "high" } },
-    "radius": { "sm": { "$type": "dimension", "$value": "4px", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" }, "md": { "$type": "dimension", "$value": "6px", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" }, "lg": { "$type": "dimension", "$value": "8px", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" } },
-    "shadow": { "sm": { "$type": "shadow", "$value": "0 1px 2px rgba(15, 23, 42, 0.04)", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" }, "overlay": { "$type": "shadow", "$value": "0 8px 24px rgba(15, 23, 42, 0.08)", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "high" } },
-    "motion": { "fast": { "$type": "duration", "$value": "150ms", "source": "apps/web/src/globals.css", "platforms": ["Web"], "confidence": "medium" } }
+    "spacing": {
+      "unit": {"$type": "dimension", "$value": "4px", "source": "design-tokens.ts", "confidence": "High"},
+      "scale": {"$type": "dimension", "$value": ["4px", "8px", "12px", "16px", "20px", "24px", "32px"], "source": "design-tokens.ts", "confidence": "High"}
+    },
+    "radius": {
+      "sm": {"$type": "dimension", "$value": "4px", "source": "design-tokens.ts", "confidence": "High"},
+      "md": {"$type": "dimension", "$value": "6px", "source": "design-tokens.ts", "confidence": "High"},
+      "lg": {"$type": "dimension", "$value": "8px", "source": "design-tokens.ts", "confidence": "High"}
+    },
+    "shadow": {
+      "sm": {"$type": "shadow", "$value": "0 1px 2px rgba(15, 23, 42, 0.04)", "source": "design-tokens.ts", "confidence": "High"},
+      "md": {"$type": "shadow", "$value": "0 8px 24px rgba(15, 23, 42, 0.08)", "source": "design-tokens.ts", "confidence": "High"}
+    },
+    "motion": {
+      "theme": {"$type": "duration", "$value": "150ms ease", "source": "design-tokens.ts", "confidence": "Medium"}
+    }
   }
 }
