@@ -1,15 +1,119 @@
 #!/usr/bin/env node
 
+import { createInterface } from 'node:readline/promises';
+import { stdin as input, stdout as output } from 'node:process';
 import { startServer } from './server.js';
-import { loadConfig, normalizeRepoUrl, saveConfig } from './config.js';
+import { DEFAULT_LOCAL_CONFIG, loadConfig, normalizeRepoUrl, saveConfig } from './config.js';
+import {
+  clearCredentials,
+  getCredentialsPath,
+  writeCredentials,
+} from './credentials.js';
 import { ensureDeviceIdentity } from './device.js';
 import { Outbox } from './outbox.js';
 import { submitOpenDesignResult, syncOpenDesignOutbox } from './open-design.js';
 import { runLocalMcp } from './mcp.js';
 import { runSetup } from './setup.js';
 
+function readFlagValue(args: string[], name: string): string | undefined {
+  const index = args.indexOf(name);
+  if (index < 0) {
+    return undefined;
+  }
+  const value = args[index + 1];
+  if (!value || value.startsWith('--')) {
+    throw new Error(`Missing value for ${name}`);
+  }
+  return value;
+}
+
+async function promptToken(): Promise<string> {
+  const rl = createInterface({ input, output });
+  try {
+    const token = (await rl.question('Paste FlowX Personal API Token: ')).trim();
+    if (!token) {
+      throw new Error('Token is required.');
+    }
+    return token;
+  } finally {
+    rl.close();
+  }
+}
+
+async function validateApiToken(apiBaseUrl: string, apiToken: string): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/auth/session/me`, {
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      Accept: 'application/json',
+    },
+  });
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(
+      `Token validation failed (${response.status}): ${message || response.statusText}`,
+    );
+  }
+}
+
+async function runLogin(argv: string[]): Promise<void> {
+  const apiBaseUrl = (
+    readFlagValue(argv, '--api-base-url') ??
+    loadConfig().apiBaseUrl ??
+    DEFAULT_LOCAL_CONFIG.apiBaseUrl
+  )
+    .trim()
+    .replace(/\/+$/, '');
+  const tokenFromFlag = readFlagValue(argv, '--token');
+  const apiToken = (tokenFromFlag ?? (await promptToken())).trim();
+  if (!apiBaseUrl) {
+    throw new Error('apiBaseUrl is required. Pass --api-base-url or configure local.json.');
+  }
+  if (!apiToken) {
+    throw new Error('Token is required. Pass --token or paste when prompted.');
+  }
+
+  try {
+    await validateApiToken(apiBaseUrl, apiToken);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('fetch failed') || message.includes('ECONNREFUSED')) {
+      console.warn(`Warning: could not reach ${apiBaseUrl}/auth/session/me (${message}). Saving token anyway.`);
+    } else {
+      throw error;
+    }
+  }
+
+  const path = await writeCredentials({ apiBaseUrl, apiToken });
+  console.log(`Saved credentials to ${path}`);
+}
+
+async function runLogout(): Promise<void> {
+  const path = getCredentialsPath();
+  await clearCredentials();
+  console.log(`Removed local credentials at ${path}`);
+  console.log('Tip: revoke the token in FlowX Web settings if it should no longer be valid.');
+}
+
 async function main(argv: string[]): Promise<void> {
   const command = argv[0] ?? 'serve';
+  if (command === 'login') {
+    try {
+      await runLogin(argv.slice(1));
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (command === 'logout') {
+    try {
+      await runLogout();
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    }
+    return;
+  }
   if (command === 'setup') {
     const args = argv.slice(1);
     const force = args.includes('--force');
@@ -87,7 +191,7 @@ async function main(argv: string[]): Promise<void> {
   if (command !== 'serve') {
     console.error(`Unknown command: ${command}`);
     console.error(
-      'Usage: flowx-local [serve] | setup [cursor|codex|od,...] [--force] | mcp | map <repoUrl> <path> | status | sync | design-submit <executionSessionId>',
+      'Usage: flowx-local [serve] | login [--api-base-url URL] [--token TOKEN] | logout | setup [cursor|codex|od,...] [--force] | mcp | map <repoUrl> <path> | status | sync | design-submit <executionSessionId>',
     );
     process.exitCode = 1;
     return;

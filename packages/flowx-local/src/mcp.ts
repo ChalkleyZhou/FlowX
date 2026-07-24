@@ -3,6 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { BrainstormCompletionReport, DesignCompletionReport } from '@flowx-ai/protocol';
 import { z } from 'zod';
 import { readActiveDesignSession } from './active-design-session.js';
+import { resolveApiAuth } from './credentials.js';
 import { collectGitReport } from './git-report.js';
 
 type ToolResult = {
@@ -64,12 +65,8 @@ export type LocalMcpOptions = {
 
 async function resolveSession(homeDir?: string) {
   const active = await readActiveDesignSession(homeDir);
-  const baseUrl = (process.env.FLOWX_API_BASE_URL ?? active?.apiBaseUrl ?? '').replace(/\/+$/, '');
-  const token = process.env.FLOWX_API_TOKEN ?? active?.accessToken ?? '';
-  if (!baseUrl) {
-    throw new Error('No FlowX API URL is available. Start flowx-local and open a FlowX local session first.');
-  }
-  return { active, client: new LocalFlowXApiClient(baseUrl, token) };
+  const auth = await resolveApiAuth(homeDir);
+  return { active, client: new LocalFlowXApiClient(auth.apiBaseUrl, auth.apiToken), auth };
 }
 
 async function runRequest(request: () => Promise<unknown>) {
