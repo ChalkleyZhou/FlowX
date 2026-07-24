@@ -70,14 +70,26 @@ flowx-local setup cursor,codex,od --force
 OpenDesign 推荐用长期 Personal API Token，而不是每次依赖 Web 短期会话：
 
 1. 在 FlowX Web「设置」→ [API Token](/settings/api-tokens)（`/settings/api-tokens`）生成 token（明文前缀 `fxpat_`，仅显示一次）
-2. 写入本机：
+2. 写入本机。**`login` 默认校验并保存的 API 地址是 `http://127.0.0.1:3000`**（来自 `~/.flowx/local.json` 的 `apiBaseUrl`，未配置时用该默认值）。
+
+**连本机开发 API**（需先启动 `pnpm dev` / `pnpm dev:api`）：
 
 ```bash
 flowx-local login --token fxpat_…
 # 或交互粘贴：flowx-local login
 ```
 
-凭据保存在 `~/.flowx/credentials.json`（`0600`）。也可设置 `FLOWX_API_TOKEN`。登出本机：`flowx-local logout`（如需作废服务端 token，请到设置页撤销）。
+**连远程 / 部署环境的 FlowX**（日常使用更常见）时，必须带上可访问的 API 根地址：
+
+```bash
+flowx-local login --api-base-url https://你的-flowx-域名 --token fxpat_…
+```
+
+也可先把 `~/.flowx/local.json` 里的 `apiBaseUrl` 改成部署地址，再执行不带 `--api-base-url` 的 `login`。
+
+若出现 `Warning: could not reach …/auth/session/me … Saving token anyway.`，表示当时校验地址不可达（常见原因：本机 3000 未启动，或未指定远程 `--api-base-url`）。token **仍会写入** `credentials.json`，但 MCP 之后会按这份错误的 `apiBaseUrl` 去请求，需要重新 `login` 并指定正确地址。
+
+凭据保存在 `~/.flowx/credentials.json`（`0600`）。也可设置环境变量 `FLOWX_API_TOKEN` + `FLOWX_API_BASE_URL`。登出本机：`flowx-local logout`（如需作废服务端 token，请到设置页撤销）。
 
 MCP 鉴权顺序：`FLOWX_API_TOKEN` → `credentials.json` → 活跃 `active-design` 短期 token（兼容）。
 
@@ -128,7 +140,7 @@ Cursor 的 MCP 配置可以写成：
 | --- | --- |
 | `flowx-local serve` | 启动本机 Agent |
 | `flowx-local setup [targets] [--force]` | 安装用户级 Skill（默认 cursor,codex,od） |
-| `flowx-local login [--token TOKEN] [--api-base-url URL]` | 写入 Personal API Token 到 `credentials.json` |
+| `flowx-local login [--token TOKEN] [--api-base-url URL]` | 写入 Personal API Token；默认 API 为 `http://127.0.0.1:3000`，远程环境请传 `--api-base-url` |
 | `flowx-local logout` | 清除本机凭据 |
 | `flowx-local version`（或 `-v` / `--version`） | 显示本机版本，并与 npm latest 对比是否可升级 |
 | `flowx-local status` | 查看设备身份与待同步数量 |
@@ -174,6 +186,15 @@ npm list -g @flowx-ai/local
 ```bash
 npm install -g @flowx-ai/local@latest --registry https://registry.npmjs.org
 ```
+
+### Q5：`login` 提示 could not reach http://127.0.0.1:3000/auth/session/me
+
+默认会连本机 `3000` 端口做一次 token 校验。出现该警告时：
+
+- **要用部署环境**：重新执行并带上真实地址，例如  
+  `flowx-local login --api-base-url https://你的-flowx-域名 --token fxpat_…`
+- **要用本机 API**：先启动 FlowX API（`pnpm dev:api`），再 `login`
+- 警告后仍会保存 token，但若 `apiBaseUrl` 不对，后续 MCP 会请求失败；请用正确地址重新 `login` 覆盖 `credentials.json`
 
 ## 7. 更多帮助
 

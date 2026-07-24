@@ -105,7 +105,7 @@ Personal API Token（设置页或 flowx-local login）→ flowx_list_tasks / bin
 → 构思 submit → 同一会话设计 handoff / submit → FlowX 设计确认
 ```
 
-推荐路径：在 Web「设置」→ API Token（`/settings/api-tokens`）生成 `fxpat_…`，执行 `flowx-local login --token …`，再用 MCP 领取任务；Web「打开本地 OpenDesign」为可选兜底。完整说明见
+推荐路径：在 Web「设置」→ API Token（`/settings/api-tokens`）生成 `fxpat_…`，执行 `flowx-local login`（默认 API 为 `http://127.0.0.1:3000`；远程请加 `--api-base-url https://你的-flowx-域名`），再用 MCP 领取任务；Web「打开本地 OpenDesign」为可选兜底。完整说明见
 [OpenDesign 本地设计阶段](docs/opendesign-design-stage.md)和
 [本地 Agent 使用指南](docs/local-agent-guide.md)。
 
@@ -114,7 +114,8 @@ Personal API Token（设置页或 flowx-local login）→ flowx_list_tasks / bin
 ```bash
 npm install -g @flowx-ai/local
 flowx-local setup
-flowx-local login --token fxpat_…
+# 本机 API：flowx-local login --token fxpat_…
+# 远程：flowx-local login --api-base-url https://你的-flowx-域名 --token fxpat_…
 flowx-local serve
 ```
 

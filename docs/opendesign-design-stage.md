@@ -17,8 +17,10 @@ Web 设置生成 Personal API Token（fxpat_…）或 flowx-local login --token
 
 1. **本机鉴权**
    - 在 FlowX Web「设置」→ [API Token](/settings/api-tokens)（路由 `/settings/api-tokens`）生成长期 Personal API Token（明文前缀 `fxpat_`，仅创建时显示一次），或
-   - 执行 `flowx-local login --token <fxpat_…>`（也可交互粘贴），写入 `~/.flowx/credentials.json`（权限 `0600`）。
-   - 亦可设置环境变量 `FLOWX_API_TOKEN`。Token 与浏览器登录用户同权，默认不过期；可在设置页撤销。
+   - 执行 `flowx-local login`。默认校验地址为 `http://127.0.0.1:3000`；连远程部署时使用  
+     `flowx-local login --api-base-url https://你的-flowx-域名 --token <fxpat_…>`，写入 `~/.flowx/credentials.json`（权限 `0600`）。
+   - 亦可设置环境变量 `FLOWX_API_TOKEN` 与 `FLOWX_API_BASE_URL`。Token 与浏览器登录用户同权，默认不过期；可在设置页撤销。
+   - 若出现 `could not reach …/auth/session/me` 警告，说明当时 API 不可达：本机需先启动 API，或重新 login 并指定正确的 `--api-base-url`（警告后仍会保存 token，错误地址会导致后续 MCP 失败）。
 2. **安装并配置 MCP**：`flowx-local setup`，在 Cursor / Codex 中配置 `flowx-local mcp`。
 3. **领取任务**：Agent 调用 `flowx_list_tasks` 列出可构思 / 可设计的工作流 → 与用户确认一条 → `flowx_bind_workflow` 写入 `~/.flowx/current-workflow.json`（含 `workflowRunId`、stage 等；**不含** token）。
 4. **产品构思**：`flowx_get_brainstorm_handoff` → 澄清并写 `spec.md` → 用户确认后 `flowx_submit_brainstorm`。
