@@ -39,7 +39,7 @@ describe('flowx-local server', () => {
     expect(response.headers.get('access-control-allow-origin')).toBe('*');
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
-      version: '0.3.0',
+      version: '0.4.0',
       protocolVersion: '1.0',
       outboxPending: 0,
     });

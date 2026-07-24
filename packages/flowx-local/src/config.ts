@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { FLOWX_PROTOCOL_VERSION } from '@flowx-ai/protocol';
 
 export const DEFAULT_PORT = 3920;
-export const PACKAGE_VERSION = '0.3.0';
+export const PACKAGE_VERSION = '0.4.0';
 
 export type DefaultIde = 'cursor' | 'codex';
 
