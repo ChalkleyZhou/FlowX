@@ -1130,8 +1130,8 @@ export function WorkflowRunDetailPage() {
       );
       toast.success(
         local.opened
-          ? '已打开 Open Design。请在应用内选择项目目录，并用 FlowX MCP 拉取构思上下文 / 回传 Markdown。'
-          : '构思会话已就绪。请打开 Open Design，用 FlowX MCP 拉取上下文并回传 Markdown。',
+          ? '已打开 Open Design。请按 flowx-brainstorm-spec：澄清 → 写 spec.md → 用户确认后再用 MCP 回传规格。'
+          : '构思会话已就绪。请先 flowx-local setup，再打开 Open Design，澄清并确认 spec.md 后回传。',
       );
       await refresh({ silent: true });
     } catch (error) {
@@ -1175,13 +1175,13 @@ export function WorkflowRunDetailPage() {
       const handoff = await api.getOpenDesignBrainstormHandoff(workflowRun.id);
       const result = await submitOpenDesignLocal(handoff.executionSessionId);
       if (result.queued) {
-        toast.error('FlowX API 暂不可用，构思结果已进入本地 Outbox，稍后可运行 flowx-local sync');
+        toast.error('FlowX API 暂不可用，规格已进入本地 Outbox，稍后可运行 flowx-local sync');
       } else {
-        toast.success('本地 OpenDesign 产品构思已回传');
+        toast.success('本地产品规格已回传');
       }
       await refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '回传 OpenDesign 构思失败');
+      toast.error(error instanceof Error ? error.message : '回传产品规格失败');
     } finally {
       setOpenDesignBusy(false);
     }
@@ -1523,7 +1523,7 @@ export function WorkflowRunDetailPage() {
         actions: [
           {
             key: 'open-local-opendesign-brainstorm',
-            label: '打开本地 OpenDesign',
+            label: '打开本地构思',
             onClick: () => void launchLocalOpenDesignBrainstorm(),
             disabled: workflowRun.status !== 'BRAINSTORM_PENDING' || openDesignBusy,
             loading: openDesignBusy,
@@ -1531,7 +1531,7 @@ export function WorkflowRunDetailPage() {
           },
           {
             key: 'submit-local-opendesign-brainstorm',
-            label: '回传本地构思',
+            label: '回传规格',
             onClick: () => void submitLocalOpenDesignBrainstorm(),
             disabled: workflowRun.status !== 'BRAINSTORM_PENDING' || openDesignBusy,
             loading: openDesignBusy,

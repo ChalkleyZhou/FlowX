@@ -288,7 +288,8 @@ describe('WorkflowRunDetailPage', () => {
 
     const text = container.textContent ?? '';
     expect(text).toContain('产品构思');
-    expect(text).toContain('打开本地 OpenDesign');
+    expect(text).toContain('打开本地构思');
+    expect(text).toContain('回传规格');
     expect(text).toContain('AI 生成产品简报');
     expect(text).toContain('跳过构思');
     expect(text).toContain('设计方案');

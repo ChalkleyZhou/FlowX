@@ -48,12 +48,15 @@ sequenceDiagram
 
 ## 启动 flowx-local
 
-先安装并启动本机 Agent：
+先安装、安装构思 Skill，再启动本机 Agent：
 
 ```bash
 npm install -g @flowx-ai/local
+flowx-local setup
 flowx-local serve
 ```
+
+产品构思阶段：澄清 → `spec.md` → 用户确认 → `flowx_submit_brainstorm`。会话调试目录优先使用 `spec.md`（兼容旧版 `brainstorm.md`）。
 
 默认监听 `http://127.0.0.1:3920`。检查设备身份与待回传数量：
 

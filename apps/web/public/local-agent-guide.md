@@ -50,6 +50,20 @@ curl http://127.0.0.1:3920/health
 
 首次运行会在 `~/.flowx/local.json` 写入设备身份与端口等配置。
 
+## 3.1 安装构思 Skill（首次建议）
+
+在第一次做「产品构思」前，把用户级 Skill 装到本机 Cursor / Codex / OpenDesign 可发现的目录：
+
+```bash
+flowx-local setup                 # 默认 cursor,codex,od
+flowx-local setup cursor
+flowx-local setup cursor,codex,od --force
+```
+
+这会写入 `flowx-brainstorm-spec` Skill（不覆盖已有文件，除非加 `--force`）。`serve` **不会**静默安装 Skill。
+
+产品构思期望流程：多轮澄清 → 写出 `spec.md` → 在 IDE 里确认 → 再通过 MCP `flowx_submit_brainstorm` 回传；平台只展示最终规格 Markdown，并进入设计阶段。
+
 ## 4. 在 FlowX 里怎么用
 
 ### 4.1 工作流「本地启动」
@@ -61,7 +75,16 @@ curl http://127.0.0.1:3920/health
 
 开发完成后，可用 IDE 内 MCP 回写完成报告，或在 Web 上使用「完成本地执行」。
 
-### 4.2 OpenDesign 本地设计
+### 4.2 OpenDesign 本地构思与设计
+
+**产品构思**
+
+1. 本机保持 `flowx-local serve`，并已执行过 `flowx-local setup`
+2. 在工作流详情的 `产品构思` 阶段点击 `打开本地构思`
+3. Agent 按 Skill：澄清需求 → 写 `spec.md` → 你确认后 MCP 回传规格
+4. 平台展示产品规格 Markdown，并进入 `设计方案`
+
+**设计方案**
 
 1. 本机保持 `flowx-local serve`
 2. 在工作流详情的 `设计方案` 阶段点击 `打开本地 OpenDesign`
@@ -90,6 +113,7 @@ Cursor 的 MCP 配置可以写成：
 | 命令 | 作用 |
 | --- | --- |
 | `flowx-local serve` | 启动本机 Agent |
+| `flowx-local setup [targets] [--force]` | 安装用户级 Skill（默认 cursor,codex,od） |
 | `flowx-local status` | 查看设备身份与待同步数量 |
 | `flowx-local sync` | 重试 Outbox 中未回传的事件 |
 | `flowx-local map <repoUrl> <path>` | 手动把远程仓库 URL 映射到本地目录 |
