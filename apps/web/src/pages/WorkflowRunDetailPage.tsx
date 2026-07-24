@@ -1570,12 +1570,14 @@ export function WorkflowRunDetailPage() {
                     if (!confirmed) {
                       return;
                     }
-                    void runAction(
-                      'BRAINSTORM',
-                      () => api.rollbackWorkflowToPreviousStage(workflowRun.id),
-                      '已回到产品构思，可重新打开本地构思',
-                      { focusNextStage: true },
-                    );
+                    void (async () => {
+                      await runAction(
+                        'BRAINSTORM',
+                        () => api.rollbackWorkflowToPreviousStage(workflowRun.id),
+                        '已回到产品构思，可重新打开本地构思',
+                      );
+                      setSelectedStage('BRAINSTORM');
+                    })();
                   },
                 },
               ]

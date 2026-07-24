@@ -403,44 +403,52 @@ describe('WorkflowRunDetailPage', () => {
 
   it('calls rollback when restart brainstorm is confirmed', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
-    vi.mocked(api.getWorkflowRun).mockResolvedValue(
-      createWorkflowRun({
-        status: 'DESIGN_WAITING_CONFIRMATION',
-        stageExecutions: [
-          {
-            id: 'stage-brainstorm',
-            stage: 'BRAINSTORM',
-            status: 'COMPLETED',
-            statusMessage: null,
-            attempt: 1,
-            output: { markdown: '# Spec' },
-          },
-          {
-            id: 'stage-design',
-            stage: 'DESIGN',
-            status: 'WAITING_CONFIRMATION',
-            statusMessage: null,
-            attempt: 1,
-            output: { html: '<div/>' },
-          },
-        ],
-      }),
-    );
-    vi.mocked(api.rollbackWorkflowToPreviousStage).mockResolvedValue(
-      createWorkflowRun({
-        status: 'BRAINSTORM_PENDING',
-        stageExecutions: [
-          {
-            id: 'stage-brainstorm-2',
-            stage: 'BRAINSTORM',
-            status: 'PENDING',
-            statusMessage: '已回退到此阶段，请重新执行',
-            attempt: 2,
-            output: null,
-          },
-        ],
-      }),
-    );
+    const initialRun = createWorkflowRun({
+      status: 'DESIGN_WAITING_CONFIRMATION',
+      stageExecutions: [
+        {
+          id: 'stage-brainstorm',
+          stage: 'BRAINSTORM',
+          status: 'COMPLETED',
+          statusMessage: null,
+          attempt: 1,
+          output: { markdown: '# Spec' },
+        },
+        {
+          id: 'stage-design',
+          stage: 'DESIGN',
+          status: 'WAITING_CONFIRMATION',
+          statusMessage: null,
+          attempt: 1,
+          output: { html: '<div/>' },
+        },
+      ],
+    });
+    const postRollbackRun = createWorkflowRun({
+      status: 'BRAINSTORM_PENDING',
+      stageExecutions: [
+        {
+          id: 'stage-brainstorm-2',
+          stage: 'BRAINSTORM',
+          status: 'PENDING',
+          statusMessage: '已回退到此阶段，请重新执行',
+          attempt: 2,
+          output: null,
+        },
+        {
+          id: 'stage-design',
+          stage: 'DESIGN',
+          status: 'WAITING_CONFIRMATION',
+          statusMessage: null,
+          attempt: 1,
+          output: { html: '<div/>' },
+        },
+      ],
+    });
+    vi.mocked(api.getWorkflowRun)
+      .mockResolvedValueOnce(initialRun)
+      .mockResolvedValue(postRollbackRun);
+    vi.mocked(api.rollbackWorkflowToPreviousStage).mockResolvedValue(postRollbackRun);
 
     await renderPage();
     await selectBrainstormStep();
@@ -451,12 +459,25 @@ describe('WorkflowRunDetailPage', () => {
     await act(async () => {
       restartButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
+      await Promise.resolve();
     });
 
     expect(window.confirm).toHaveBeenCalledWith(
       '将回到产品构思并重新编写规格；已有设计产物会保留供对照。',
     );
     expect(api.rollbackWorkflowToPreviousStage).toHaveBeenCalledWith('workflow-1');
+    expect(api.getWorkflowRun).toHaveBeenCalledTimes(2);
+
+    const openLocalBrainstormButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('打开本地构思'),
+    );
+    expect(openLocalBrainstormButton).toBeTruthy();
+    expect(openLocalBrainstormButton?.hasAttribute('disabled')).toBe(false);
+
+    const brainstormStep = Array.from(container.querySelectorAll('.workflow-steps button')).find((button) =>
+      button.textContent?.includes('产品构思'),
+    );
+    expect(brainstormStep?.firstElementChild?.className).toContain('border-primary/30');
   });
 
   it('starts workflow design from the design stage card', async () => {
