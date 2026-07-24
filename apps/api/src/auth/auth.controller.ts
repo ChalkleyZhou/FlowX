@@ -183,7 +183,7 @@ export class AuthController {
     if (!authorization?.startsWith('Bearer ')) {
       throw new UnauthorizedException('Missing bearer token.');
     }
-    return this.authService.getSession(authorization.slice('Bearer '.length));
+    return this.authService.resolveBearerAuth(authorization.slice('Bearer '.length));
   }
 }
 

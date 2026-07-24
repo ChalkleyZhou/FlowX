@@ -35,7 +35,7 @@ export class SessionAuthGuard implements CanActivate {
     }
 
     const token = authorization.slice('Bearer '.length);
-    const session = await this.authService.getSession(token);
+    const session = await this.authService.resolveBearerAuth(token);
     request.user = session.user;
     request.authSession = session;
     return true;

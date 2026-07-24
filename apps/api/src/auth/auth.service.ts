@@ -13,6 +13,7 @@ import { Prisma } from '@prisma/client';
 import { DingTalkNotificationService } from '../notifications/dingtalk-notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PasswordService } from './password.service';
+import { PersonalApiTokenService } from './personal-api-token.service';
 import { ProviderRegistryService } from './providers/provider-registry.service';
 
 @Injectable()
@@ -24,6 +25,8 @@ export class AuthService {
     @Optional()
     @Inject(DingTalkNotificationService)
     private readonly dingTalkNotification?: DingTalkNotificationService,
+    @Optional()
+    private readonly personalApiTokenService?: PersonalApiTokenService,
   ) {}
 
   listProviders() {
@@ -345,6 +348,26 @@ export class AuthService {
           }
         : null,
     };
+  }
+
+  async resolveBearerAuth(bearerToken: string) {
+    const token = bearerToken.trim();
+    if (token.startsWith('fxpat_')) {
+      if (!this.personalApiTokenService) {
+        throw new UnauthorizedException('Personal API token authentication is unavailable.');
+      }
+      const pat = await this.personalApiTokenService.resolveToken(token);
+      const role = await this.getOrganizationRole(pat.organization.id, pat.user.id);
+      return {
+        token,
+        expiresAt: null as Date | null,
+        authKind: 'personal_api_token' as const,
+        user: pat.user,
+        organization: { ...pat.organization, role },
+      };
+    }
+    const session = await this.getSession(token);
+    return { ...session, authKind: 'user_session' as const };
   }
 
   async listOrganizationMembers(organizationId: string) {

@@ -158,3 +158,79 @@ describe('AuthService organization resolution', () => {
     });
   });
 });
+
+describe('AuthService.resolveBearerAuth', () => {
+  function createServiceWithPat(
+    personalApiTokenService: { resolveToken: ReturnType<typeof vi.fn> },
+    prismaOverrides?: Record<string, unknown>,
+  ) {
+    const prisma = {
+      userOrganization: {
+        findFirst: vi.fn(),
+        upsert: vi.fn(),
+        count: vi.fn().mockResolvedValue(1),
+        findUnique: vi.fn().mockResolvedValue({ role: 'admin' }),
+      },
+      organization: {
+        findMany: vi.fn(),
+        findUnique: vi.fn(),
+      },
+      oAuthState: {
+        create: vi.fn(),
+      },
+      ...prismaOverrides,
+    };
+
+    return {
+      service: new AuthService(
+        prisma as never,
+        { listProviders: () => [], getProvider: vi.fn() } as never,
+        { hashPassword: vi.fn(), verifyPassword: vi.fn() } as never,
+        undefined,
+        personalApiTokenService as never,
+      ),
+      prisma,
+      personalApiTokenService,
+    };
+  }
+
+  it('resolveBearerAuth accepts personal API tokens', async () => {
+    const personalApiTokenService = {
+      resolveToken: vi.fn().mockResolvedValue({
+        kind: 'personal_api_token',
+        tokenId: 'pat-1',
+        user: { id: 'u1', email: null, displayName: 'A', avatarUrl: null },
+        organization: { id: 'o1', name: 'Org', providerOrganizationId: 'p1' },
+      }),
+    };
+    const { service } = createServiceWithPat(personalApiTokenService);
+
+    const session = await service.resolveBearerAuth('fxpat_abc');
+
+    expect(session.user.id).toBe('u1');
+    expect(session.organization?.id).toBe('o1');
+    expect(session.organization?.role).toBe('admin');
+    expect(session.authKind).toBe('personal_api_token');
+    expect(session.expiresAt).toBeNull();
+    expect(personalApiTokenService.resolveToken).toHaveBeenCalledWith('fxpat_abc');
+  });
+
+  it('resolveBearerAuth uses getSession for non-fxpat tokens', async () => {
+    const personalApiTokenService = { resolveToken: vi.fn() };
+    const { service } = createServiceWithPat(personalApiTokenService);
+    const getSessionSpy = vi.spyOn(service, 'getSession').mockResolvedValue({
+      token: 'sess-token',
+      expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+      user: { id: 'u2', email: null, displayName: 'B', avatarUrl: null },
+      organization: null,
+    });
+
+    const session = await service.resolveBearerAuth('regular-session-token');
+
+    expect(session.authKind).toBe('user_session');
+    expect(session.user.id).toBe('u2');
+    expect(personalApiTokenService.resolveToken).not.toHaveBeenCalled();
+    expect(getSessionSpy).toHaveBeenCalledWith('regular-session-token');
+    getSessionSpy.mockRestore();
+  });
+});
