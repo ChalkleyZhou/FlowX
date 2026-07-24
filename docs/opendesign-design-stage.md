@@ -3,12 +3,39 @@
 FlowX 的推荐 OpenDesign 链路是端云协同，而不是由服务端 Codex/Cursor 间接调用 OpenDesign MCP：
 
 ```text
-FlowX 定义需求
-→ 本地 OpenDesign 领取版本化 ContextPackage
-→ 本地完成设计
+Web 设置生成 Personal API Token（fxpat_…）或 flowx-local login --token
+→ MCP flowx_list_tasks → 用户确认 → flowx_bind_workflow
+→ 本地 OpenDesign 构思（handoff → spec.md → submit）
+→ 同一会话立刻设计 handoff（惰性创建 ExecutionSession）→ 设计 → submit
 → Artifact / Evidence / CompletionReport 回传 FlowX
 → 工作流进入 DESIGN_WAITING_CONFIRMATION
 ```
+
+全程**不需要**第二次点击 Web「打开本地 OpenDesign」。Web 一键启动仍保留，作为未配置长期 token 时的可选兜底。
+
+## 推荐金路径（Personal API Token）
+
+1. **本机鉴权**
+   - 在 FlowX Web「设置」→ [API Token](/settings/api-tokens)（路由 `/settings/api-tokens`）生成长期 Personal API Token（明文前缀 `fxpat_`，仅创建时显示一次），或
+   - 执行 `flowx-local login --token <fxpat_…>`（也可交互粘贴），写入 `~/.flowx/credentials.json`（权限 `0600`）。
+   - 亦可设置环境变量 `FLOWX_API_TOKEN`。Token 与浏览器登录用户同权，默认不过期；可在设置页撤销。
+2. **安装并配置 MCP**：`flowx-local setup`，在 Cursor / Codex 中配置 `flowx-local mcp`。
+3. **领取任务**：Agent 调用 `flowx_list_tasks` 列出可构思 / 可设计的工作流 → 与用户确认一条 → `flowx_bind_workflow` 写入 `~/.flowx/current-workflow.json`（含 `workflowRunId`、stage 等；**不含** token）。
+4. **产品构思**：`flowx_get_brainstorm_handoff` → 澄清并写 `spec.md` → 用户确认后 `flowx_submit_brainstorm`。
+5. **同一会话进入设计**：submit 成功响应带 `next.stage=design`（及 hint）；本地 binding 切到 `design`。立刻调用 `flowx_get_design_handoff`（服务端按需惰性创建 design `ExecutionSession`）→ 完成设计 → `flowx_submit_design`。
+6. Web 进入 `DESIGN_WAITING_CONFIRMATION`，人工确认设计方案。
+
+### MCP 鉴权顺序
+
+1. `process.env.FLOWX_API_TOKEN`
+2. `~/.flowx/credentials.json`
+3. 活跃 `~/.flowx/active-design.json` 中的短期 `accessToken`（兼容旧路径）
+
+无凭据时会提示 login / 配置 token /（可选）从 Web 打开本地 OpenDesign。
+
+### Binding 解析
+
+工具参数中的 `workflowRunId` / `executionSessionId` 优先 → 否则读 `current-workflow.json` → 再否则提示先 `flowx_list_tasks` 并 `flowx_bind_workflow`。Binding 不是权限源；API 始终按 token 对应用户授权。
 
 ## 架构与数据流
 
@@ -17,22 +44,23 @@ sequenceDiagram
     actor Designer as 设计师
     participant Web as FlowX Web
     participant API as FlowX API
-    participant Local as flowx-local
+    participant Local as flowx-local MCP
     participant OD as OpenDesign
 
-    Designer->>Web: 在工作流详情的设计方案阶段点击打开本地 OpenDesign
-    Web->>API: POST /edge/design-handoffs/:workflowRunId/retry
-    API->>API: 在当前 WorkflowRun 创建 ExecutionSession
-    API-->>Web: 一次性 ticket + workflowRunId
-    Web->>Local: POST /design/launch
-    Local->>API: 兑换一次性 ticket
-    API-->>Local: 短期 token + OpenDesignHandoff + ContextPackage
-    Local->>Local: 写入本地设计任务目录
-    Local->>OD: 打开任务目录
-    Designer->>OD: 完成设计并更新 result.json
-    Designer->>Local: 回传本地设计
-    Local->>API: DesignCompletionReport
-    API->>API: 登记 Artifact / Evidence，完成 ExecutionSession
+    Designer->>Web: 设置页生成 Personal API Token（fxpat_）
+    Designer->>Local: flowx-local login --token
+    Local->>Local: 写入 ~/.flowx/credentials.json
+    Designer->>Local: flowx_list_tasks → 确认 → flowx_bind_workflow
+    Local->>API: Bearer PAT 拉取 brainstorm handoff（惰性创建 session）
+    API-->>Local: ContextPackage + executionSessionId
+    Designer->>OD: 澄清并写 spec.md
+    Designer->>Local: flowx_submit_brainstorm
+    API-->>Local: DESIGN_PENDING + next.stage=design
+    Local->>Local: binding 切到 design
+    Designer->>Local: 同一会话 flowx_get_design_handoff
+    API->>API: 惰性创建 design ExecutionSession
+    Designer->>OD: 完成设计
+    Designer->>Local: flowx_submit_design
     API-->>Web: DESIGN_WAITING_CONFIRMATION
 ```
 
@@ -40,19 +68,31 @@ sequenceDiagram
 
 - FlowX 是需求、工作流状态、版本化上下文、Artifact 和 Evidence 的事实来源。
 - OpenDesign 是设计师本地的专业执行环境；**项目目录由设计师在 Open Design 内自行选择**。
-- 浏览器只向本机 `127.0.0.1:3920` 发送一次性启动票据；长期登录态不会交给本地工具。
-- 推荐在 Cursor / Codex 的 MCP 配置中使用 `flowx-local mcp`，通过 `flowx_get_design_handoff` 拉取 ContextPackage，并通过 `flowx_submit_design` 回传结果。
-- `~/.flowx/active-design.json` 保存当前活跃设计会话的短期凭据，供 `flowx-local mcp` 使用。
-- `flowx-local mcp` 通过本机 Agent 读取活跃会话，普通用户不需要访问 `~/.flowx`、构建 `flowx-mcp` 或手工复制 token。
+- Personal API Token 存本机 `credentials.json` 或环境变量，不进 Outbox payload、结构化日志、git 或项目目录。
+- 服务端仍用 `ExecutionSession` 记账与回传；设计阶段在 design handoff 时惰性创建（submit 亦可兜底补建）。
+- 推荐在 Cursor / Codex 的 MCP 配置中使用 `flowx-local mcp`：`flowx_get_*_handoff` 拉取 ContextPackage，`flowx_submit_*` 回传结果。
 - 结果通过 `idempotencyKey` 幂等回传；网络失败时写入 Outbox，恢复后重放。
+
+## 可选兜底：Web「打开本地…」
+
+未配置长期 token 时，仍可走短期会话路径：
+
+1. 本机保持 `flowx-local serve`。
+2. 在工作流详情的 `产品构思` / `设计方案` 阶段点击 `打开本地构思` 或 `打开本地 OpenDesign`。
+3. 浏览器向本机 `127.0.0.1:3920` 发送一次性启动票据；兑换后写入 `~/.flowx/active-design.json` 与 `design-sessions/<executionSessionId>/`。
+4. MCP 从活跃短期会话读取凭据，继续 handoff / submit。
+
+该路径与 Personal Token 主路径兼容，但构思提交后通常仍需再次点击「打开本地 OpenDesign」才能进入设计短期会话；金路径下应避免依赖第二次点击。
 
 ## 启动 flowx-local
 
-先安装、安装构思 Skill，再启动本机 Agent：
+先安装、安装构思 Skill，再按需启动本机 Agent（Web 一键启动 / Outbox 同步需要 `serve`；纯 MCP + PAT 金路径以 `mcp` 与 credentials 为主）：
 
 ```bash
 npm install -g @flowx-ai/local
 flowx-local setup
+flowx-local login --token fxpat_…
+# 可选：Web 启动 / sync 时
 flowx-local serve
 ```
 
@@ -64,7 +104,11 @@ flowx-local serve
 flowx-local status
 ```
 
-MCP 读取活跃设计会话时会自动通过 `http://127.0.0.1:3920` 请求本机 Agent，用户不需要在 Codex 中手动添加 `--add-dir ~/.flowx`。升级 `flowx-local` 后重启一次本机 Agent，使 loopback 会话接口生效。
+登出本机凭据（不强制撤销服务端 token）：
+
+```bash
+flowx-local logout
+```
 
 不想全局安装时，可用 `npx @flowx-ai/local serve`。
 
@@ -98,19 +142,27 @@ pnpm flowx-local status
 
 推荐在 Cursor / Codex 中配置 `flowx-local mcp`：
 
-1. 在工作流详情的 `设计方案` 阶段点击 `打开本地 OpenDesign`，由 `flowx-local` 写入活跃会话。
-2. Agent 调用 `flowx_get_active_design_session` 和 `flowx_get_design_handoff`。
-3. 在自有项目中完成设计后调用 `flowx_submit_design`。
+```json
+{
+  "mcpServers": {
+    "flowx": {
+      "command": "flowx-local",
+      "args": ["mcp"]
+    }
+  }
+}
+```
 
-## 在工作流中发起设计
+Agent 典型调用顺序：`flowx_list_tasks` → `flowx_bind_workflow` → `flowx_get_brainstorm_handoff` / `flowx_get_design_handoff` → `flowx_submit_*`。也可用 `flowx_get_active_design_session` 查看短期会话或「credentials + binding」状态（无短期 session 时不一定报错）。
+
+## 在工作流中发起设计（Web 兜底细节）
 
 1. 在 FlowX `需求` 页面创建需求并启动一条研发工作流。
-2. 进入工作流详情，等待仓库 Grounding 完成，并进入 `设计方案` 的 `待设计方案` 状态。
-3. 点击该阶段的 `打开本地 OpenDesign`，FlowX 在当前工作流内创建本地执行会话。
-4. `flowx-local` 将任务写入 `~/.flowx/design-sessions/<executionSessionId>/`。
-5. 如首次启动时本地 Agent 未运行，可启动后回到同一条工作流点击 `打开本地 OpenDesign` 重试。重复打开会刷新上下文和短期凭据，但不会覆盖已经编辑的 `result.json`。
+2. 进入工作流详情，等待仓库 Grounding 完成。
+3. （可选）点击 `打开本地构思` / `打开本地 OpenDesign`；`flowx-local` 将任务写入 `~/.flowx/design-sessions/<executionSessionId>/`。
+4. 如首次启动时本地 Agent 未运行，可启动后回到同一条工作流重试。重复打开会刷新上下文和短期凭据，但不会覆盖已经编辑的 `result.json`。
 
-本地任务目录包含：
+本地任务目录（Web 启动或 handoff 写入时）通常包含：
 
 | 文件 | 用途 |
 | --- | --- |
@@ -139,11 +191,11 @@ pnpm flowx-local status
 
 `designArtifact.html` 必须是完整、自包含的 HTML 文档。然后任选一种方式回传：
 
-```bash
-flowx-local design-submit <executionSessionId>
-```
+- 推荐：MCP `flowx_submit_design`
+- 或：`flowx-local design-submit <executionSessionId>`
+- 或：在工作流详情点击 `回传本地设计`
 
-或在工作流详情点击 `回传本地设计`。回传成功后：
+回传成功后：
 
 - DESIGN Stage 进入待人工确认。
 - HTML 设计稿登记为 Artifact，并可在 FlowX 中预览。
@@ -159,9 +211,7 @@ flowx-local status
 flowx-local sync
 ```
 
-Outbox 不保存 token，只保存 `credentialRef=executionSessionId`，凭据从对应设计会话的
-`session.json` 读取。当前 MVP 的短期 token 过期后不能自动刷新；遇到持续 `401` 时，需要在
-FlowX 工作流详情重新打开本地 OpenDesign，以获得新的启动票据和凭据，再执行同步。
+Outbox 不保存 token，只保存 `credentialRef`（如 `executionSessionId`），凭据从对应设计会话的 `session.json` 或本机长期凭据读取。短期 token 过期后不能自动刷新；遇到持续 `401` 时，可改用 Personal API Token 金路径，或在 FlowX 工作流详情重新打开本地 OpenDesign 获取新票据后再同步。已撤销的 PAT 会返回 401/403，不会静默顶替其他用户的短期 session。
 
 ## 兼容的旧服务端链路
 
@@ -172,7 +222,8 @@ FlowX 工作流详情重新打开本地 OpenDesign，以获得新的启动票据
 ## 相关代码
 
 - 协议：`packages/flowx-protocol/src/design.ts`
-- API：`apps/api/src/edge/open-design-edge.controller.ts`、`apps/api/src/workflow/workflow.service.ts`
+- API：`apps/api/src/edge/open-design-edge.controller.ts`、`apps/api/src/workflow/workflow.service.ts`、`apps/api/src/auth/personal-api-token.service.ts`
 - 本地 Adapter：`packages/flowx-local/src/adapters/open-design-adapter.ts`
+- 本地凭据 / binding / MCP：`packages/flowx-local/src/credentials.ts`、`workflow-binding.ts`、`mcp.ts`
 - 本地 HTTP：`packages/flowx-local/src/server.ts`
-- Web 入口：`apps/web/src/pages/RequirementsPage.tsx`、`apps/web/src/pages/WorkflowRunDetailPage.tsx`
+- Web 入口：`apps/web/src/pages/PersonalApiTokensPage.tsx`、`apps/web/src/pages/WorkflowRunDetailPage.tsx`

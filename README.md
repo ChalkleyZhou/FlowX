@@ -101,22 +101,26 @@ pnpm dev
 新架构下，OpenDesign 在设计师本机运行，不需要安装到 FlowX API 主机：
 
 ```text
-FlowX 需求 → flowx-local 领取 ContextPackage → OpenDesign 本地设计
-→ Artifact / Evidence / CompletionReport 回传 → FlowX 设计确认
+Personal API Token（设置页或 flowx-local login）→ flowx_list_tasks / bind
+→ 构思 submit → 同一会话设计 handoff / submit → FlowX 设计确认
 ```
+
+推荐路径：在 Web「设置」→ API Token（`/settings/api-tokens`）生成 `fxpat_…`，执行 `flowx-local login --token …`，再用 MCP 领取任务；Web「打开本地 OpenDesign」为可选兜底。完整说明见
+[OpenDesign 本地设计阶段](docs/opendesign-design-stage.md)和
+[本地 Agent 使用指南](docs/local-agent-guide.md)。
 
 先安装并启动本地 Agent：
 
 ```bash
 npm install -g @flowx-ai/local
+flowx-local setup
+flowx-local login --token fxpat_…
 flowx-local serve
 ```
 
 Monorepo 贡献者：`pnpm --filter @flowx-ai/local build && pnpm flowx-local serve`。
 
-然后在 FlowX `需求` 页面创建需求并启动工作流，进入工作流详情的 `设计方案` 阶段，点击
-`打开本地 OpenDesign`。本地任务会写入 `~/.flowx/design-sessions/<executionSessionId>/`。
-完成设计后，在工作流详情点击 `回传本地设计`，或执行：
+本地任务目录可能写入 `~/.flowx/design-sessions/<executionSessionId>/`。也可用 MCP `flowx_submit_design`，或执行：
 
 ```bash
 flowx-local design-submit <executionSessionId>
@@ -132,9 +136,8 @@ flowx-local sync
 ```
 
 macOS 未配置时，会自动尝试打开 `/Applications/Open Design.app`。请在 Open Design 内选择
-自己的项目目录，并在 Cursor Agent 的 MCP 配置中使用 `flowx-local mcp`（`flowx_get_design_handoff` / `flowx_submit_design`）
-拉取上下文与回传结果。完整说明见
-[OpenDesign 本地设计阶段](docs/opendesign-design-stage.md)和
+自己的项目目录，并在 Cursor Agent 的 MCP 配置中使用 `flowx-local mcp`
+（`flowx_list_tasks` / `flowx_bind_workflow` / `flowx_get_*_handoff` / `flowx_submit_*`）。运维说明见
 [Edge Agent 运维说明](docs/edge-agent-operations.md)。
 
 ## Deploy integration
