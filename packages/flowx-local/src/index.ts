@@ -14,6 +14,7 @@ import { Outbox } from './outbox.js';
 import { submitOpenDesignResult, syncOpenDesignOutbox } from './open-design.js';
 import { runLocalMcp } from './mcp.js';
 import { runSetup } from './setup.js';
+import { checkPackageVersion, formatVersionCheck } from './version.js';
 
 function readFlagValue(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
@@ -96,6 +97,16 @@ async function runLogout(): Promise<void> {
 
 async function main(argv: string[]): Promise<void> {
   const command = argv[0] ?? 'serve';
+  if (command === 'version' || command === '-v' || command === '--version') {
+    try {
+      const result = await checkPackageVersion();
+      console.log(formatVersionCheck(result));
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    }
+    return;
+  }
   if (command === 'login') {
     try {
       await runLogin(argv.slice(1));
@@ -191,7 +202,7 @@ async function main(argv: string[]): Promise<void> {
   if (command !== 'serve') {
     console.error(`Unknown command: ${command}`);
     console.error(
-      'Usage: flowx-local [serve] | login [--api-base-url URL] [--token TOKEN] | logout | setup [cursor|codex|od,...] [--force] | mcp | map <repoUrl> <path> | status | sync | design-submit <executionSessionId>',
+      'Usage: flowx-local [serve] | version | login [--api-base-url URL] [--token TOKEN] | logout | setup [cursor|codex|od,...] [--force] | mcp | map <repoUrl> <path> | status | sync | design-submit <executionSessionId>',
     );
     process.exitCode = 1;
     return;

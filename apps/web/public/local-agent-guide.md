@@ -130,6 +130,7 @@ Cursor 的 MCP 配置可以写成：
 | `flowx-local setup [targets] [--force]` | 安装用户级 Skill（默认 cursor,codex,od） |
 | `flowx-local login [--token TOKEN] [--api-base-url URL]` | 写入 Personal API Token 到 `credentials.json` |
 | `flowx-local logout` | 清除本机凭据 |
+| `flowx-local version`（或 `-v` / `--version`） | 显示本机版本，并与 npm latest 对比是否可升级 |
 | `flowx-local status` | 查看设备身份与待同步数量 |
 | `flowx-local sync` | 重试 Outbox 中未回传的事件 |
 | `flowx-local map <repoUrl> <path>` | 手动把远程仓库 URL 映射到本地目录 |
@@ -158,6 +159,21 @@ flowx-local sync
 - 确认全局 npm bin 目录在 `PATH` 中
 - 或改用 `npx @flowx-ai/local serve`
 - 公司内网源若没有该包，请加上 `--registry https://registry.npmjs.org`
+
+### Q4：命令行为与文档不一致（例如没有 `login`）
+
+先检查本机版本是否过旧：
+
+```bash
+flowx-local version
+npm list -g @flowx-ai/local
+```
+
+若落后于 npm latest，升级后再试：
+
+```bash
+npm install -g @flowx-ai/local@latest --registry https://registry.npmjs.org
+```
 
 ## 7. 更多帮助
 
