@@ -380,6 +380,7 @@ model User {
   aiCredentials   UserAiCredential[]
   identities      AuthIdentity[]
   sessions        UserSession[]
+  personalApiTokens PersonalApiToken[]
   memberships     UserOrganization[]
   reportedIssues  Issue[]            @relation("IssueReportedBy")
   assignedIssues  Issue[]            @relation("IssueAssignedTo")
@@ -466,6 +467,7 @@ model Organization {
   gitCredentials         OrganizationGitCredential[]
   memberships            UserOrganization[]
   sessions               UserSession[]
+  personalApiTokens      PersonalApiToken[]
   executionSessions      ExecutionSession[]
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
@@ -496,6 +498,23 @@ model UserSession {
   expiresAt      DateTime
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+}
+
+model PersonalApiToken {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  tokenHash      String       @unique
+  tokenPrefix    String
+  lastUsedAt     DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([userId, organizationId])
 }
 
 model OAuthState {
