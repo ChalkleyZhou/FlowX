@@ -290,7 +290,7 @@ describe('WorkflowRunDetailPage', () => {
     const text = container.textContent ?? '';
     expect(text).toContain('产品构思');
     expect(text).toContain('打开本地构思');
-    expect(text).toContain('回传规格');
+    expect(text).toContain('回传 PRD');
     expect(text).toContain('AI 生成产品简报');
     expect(text).toContain('跳过构思');
     expect(text).toContain('设计方案');
@@ -463,7 +463,7 @@ describe('WorkflowRunDetailPage', () => {
     });
 
     expect(window.confirm).toHaveBeenCalledWith(
-      '将回到产品构思并重新编写规格；已有设计产物会保留供对照。',
+      '将回到产品构思并重新编写产品需求；已有设计产物会保留供对照。',
     );
     expect(api.rollbackWorkflowToPreviousStage).toHaveBeenCalledWith('workflow-1');
     expect(api.getWorkflowRun).toHaveBeenCalledTimes(2);

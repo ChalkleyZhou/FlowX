@@ -1130,8 +1130,8 @@ export function WorkflowRunDetailPage() {
       );
       toast.success(
         local.opened
-          ? '已打开 Open Design。请按 flowx-brainstorm-spec：澄清 → 写 spec.md → 用户确认后再用 MCP 回传规格。'
-          : '构思会话已就绪。请先 flowx-local setup，再打开 Open Design，澄清并确认 spec.md 后回传。',
+          ? '已打开 Open Design。请按 flowx-product-prd：头脑风暴澄清 → 写 prd.md → 确认后再 MCP 回传产品需求。'
+          : '构思会话已就绪。请先 flowx-local setup，再打开 Open Design，头脑风暴并确认 prd.md 后回传。',
       );
       await refresh({ silent: true });
     } catch (error) {
@@ -1175,13 +1175,13 @@ export function WorkflowRunDetailPage() {
       const handoff = await api.getOpenDesignBrainstormHandoff(workflowRun.id);
       const result = await submitOpenDesignLocal(handoff.executionSessionId);
       if (result.queued) {
-        toast.error('FlowX API 暂不可用，规格已进入本地 Outbox，稍后可运行 flowx-local sync');
+        toast.error('FlowX API 暂不可用，产品需求（PRD）已进入本地 Outbox，稍后可运行 flowx-local sync');
       } else {
-        toast.success('本地产品规格已回传');
+        toast.success('本地产品需求（PRD）已回传');
       }
       await refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '回传产品规格失败');
+      toast.error(error instanceof Error ? error.message : '回传产品需求失败');
     } finally {
       setOpenDesignBusy(false);
     }
@@ -1531,7 +1531,7 @@ export function WorkflowRunDetailPage() {
           },
           {
             key: 'submit-local-opendesign-brainstorm',
-            label: '回传规格',
+            label: '回传 PRD',
             onClick: () => void submitLocalOpenDesignBrainstorm(),
             disabled: workflowRun.status !== 'BRAINSTORM_PENDING' || openDesignBusy,
             loading: openDesignBusy,
@@ -1565,7 +1565,7 @@ export function WorkflowRunDetailPage() {
                   loading: busyStage === 'BRAINSTORM',
                   onClick: () => {
                     const confirmed = window.confirm(
-                      '将回到产品构思并重新编写规格；已有设计产物会保留供对照。',
+                      '将回到产品构思并重新编写产品需求；已有设计产物会保留供对照。',
                     );
                     if (!confirmed) {
                       return;
