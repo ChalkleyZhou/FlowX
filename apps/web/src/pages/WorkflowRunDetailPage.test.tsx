@@ -480,6 +480,129 @@ describe('WorkflowRunDetailPage', () => {
     expect(brainstormStep?.firstElementChild?.className).toContain('border-primary/30');
   });
 
+  it('shows OpenDesign guide before launching brainstorm and only launches on confirm', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'BRAINSTORM_PENDING',
+        stageExecutions: [
+          {
+            id: 'stage-brainstorm',
+            stage: 'BRAINSTORM',
+            status: 'PENDING',
+            statusMessage: '可生成产品简报，也可以跳过构思继续',
+            attempt: 1,
+            output: null,
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.retryOpenDesignBrainstormHandoff).mockResolvedValue({
+      ticket: 'ticket-1',
+      loopbackPort: 3847,
+      workflow: createWorkflowRun({ status: 'BRAINSTORM_PENDING' }),
+      handoff: { executionSessionId: 'session-1' } as never,
+    });
+    vi.mocked(probeFlowxLocal).mockResolvedValue(true);
+    vi.mocked(launchOpenDesignLocal).mockResolvedValue({ opened: true });
+
+    await renderPage();
+
+    const openButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('打开本地构思'),
+    );
+    expect(openButton).toBeTruthy();
+
+    await act(async () => {
+      openButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(document.body.textContent).toContain('如何在 OpenDesign 中获取 FlowX 任务');
+    expect(launchOpenDesignLocal).not.toHaveBeenCalled();
+    expect(api.retryOpenDesignBrainstormHandoff).not.toHaveBeenCalled();
+
+    const confirmButton = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('继续打开 OpenDesign'),
+    );
+    expect(confirmButton).toBeTruthy();
+
+    await act(async () => {
+      confirmButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.retryOpenDesignBrainstormHandoff).toHaveBeenCalledWith('workflow-1');
+    expect(probeFlowxLocal).toHaveBeenCalledWith(3847);
+    expect(launchOpenDesignLocal).toHaveBeenCalledWith(
+      { ticket: 'ticket-1', apiBaseUrl: 'http://127.0.0.1:3000' },
+      3847,
+    );
+  });
+
+  it('does not launch OpenDesign when guide is cancelled', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'DESIGN_PENDING',
+        stageExecutions: [
+          {
+            id: 'stage-brainstorm',
+            stage: 'BRAINSTORM',
+            status: 'COMPLETED',
+            statusMessage: null,
+            attempt: 1,
+            output: {
+              brief: {
+                expandedDescription: 'Expanded',
+                userStories: [],
+                edgeCases: [],
+                successMetrics: [],
+                openQuestions: [],
+                assumptions: [],
+                outOfScope: [],
+              },
+            },
+          },
+          {
+            id: 'stage-design',
+            stage: 'DESIGN',
+            status: 'PENDING',
+            statusMessage: '可生成设计方案，也可以跳过设计继续',
+            attempt: 1,
+            output: null,
+          },
+        ],
+      }),
+    );
+
+    await renderPage();
+
+    const openButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('打开本地 OpenDesign'),
+    );
+    expect(openButton).toBeTruthy();
+
+    await act(async () => {
+      openButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(document.body.textContent).toContain('如何在 OpenDesign 中获取 FlowX 任务');
+
+    const cancelButton = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('取消'),
+    );
+    expect(cancelButton).toBeTruthy();
+
+    await act(async () => {
+      cancelButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(launchOpenDesignLocal).not.toHaveBeenCalled();
+    expect(api.retryOpenDesignHandoff).not.toHaveBeenCalled();
+  });
+
   it('starts workflow design from the design stage card', async () => {
     vi.mocked(api.getWorkflowRun).mockResolvedValue(
       createWorkflowRun({

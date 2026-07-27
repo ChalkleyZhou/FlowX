@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api, getFlowxApiBaseUrl } from '../api';
 import { ContextPanel } from '../components/ContextPanel';
+import { OpenDesignLaunchGuideDialog } from '../components/OpenDesignLaunchGuideDialog';
 import { DesignArtifactPreview } from '../components/DesignArtifactPreview';
 import { DiffFileListPanel } from '../components/DiffFileListPanel';
 import { DiffViewerPanel } from '../components/DiffViewerPanel';
@@ -429,6 +430,7 @@ export function WorkflowRunDetailPage() {
   const [localLaunchBusy, setLocalLaunchBusy] = useState(false);
   const [localLaunchSetupRequired, setLocalLaunchSetupRequired] = useState(false);
   const [openDesignBusy, setOpenDesignBusy] = useState(false);
+  const [openDesignGuideKind, setOpenDesignGuideKind] = useState<'brainstorm' | 'design' | null>(null);
   const [executionHtml, setExecutionHtml] = useState<string | null>(null);
   const [completeLocalOpen, setCompleteLocalOpen] = useState(false);
   const [completeLocalPushed, setCompleteLocalPushed] = useState(true);
@@ -1524,7 +1526,7 @@ export function WorkflowRunDetailPage() {
           {
             key: 'open-local-opendesign-brainstorm',
             label: '打开本地构思',
-            onClick: () => void launchLocalOpenDesignBrainstorm(),
+            onClick: () => setOpenDesignGuideKind('brainstorm'),
             disabled: workflowRun.status !== 'BRAINSTORM_PENDING' || openDesignBusy,
             loading: openDesignBusy,
             variant: 'primary' as const,
@@ -1595,7 +1597,7 @@ export function WorkflowRunDetailPage() {
           {
             key: 'open-local-opendesign',
             label: '打开本地 OpenDesign',
-            onClick: () => void launchLocalOpenDesign(),
+            onClick: () => setOpenDesignGuideKind('design'),
             disabled: workflowRun.status !== 'DESIGN_PENDING' || openDesignBusy,
             loading: openDesignBusy,
             variant: 'primary' as const,
@@ -2031,6 +2033,23 @@ export function WorkflowRunDetailPage() {
 
   return (
     <>
+      <OpenDesignLaunchGuideDialog
+        open={openDesignGuideKind !== null}
+        onOpenChange={(open) => {
+          if (!open) setOpenDesignGuideKind(null);
+        }}
+        confirmDisabled={openDesignBusy}
+        onConfirm={() => {
+          const kind = openDesignGuideKind;
+          setOpenDesignGuideKind(null);
+          if (kind === 'brainstorm') {
+            void launchLocalOpenDesignBrainstorm();
+          } else if (kind === 'design') {
+            void launchLocalOpenDesign();
+          }
+        }}
+      />
+
       <Dialog open={localLaunchOpen} onOpenChange={setLocalLaunchOpen}>
         <DialogContent>
           <DialogHeader>
