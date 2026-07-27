@@ -85,7 +85,7 @@ describe('OpenDesignAdapter', () => {
     );
   });
 
-  it('prefers spec.md for brainstorm and falls back to legacy brainstorm.md', async () => {
+  it('prefers prd.md for brainstorm and falls back to legacy spec.md or brainstorm.md', async () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'flowx-opendesign-brainstorm-'));
     homes.push(homeDir);
     const edgeClient = { submitBrainstorm: vi.fn().mockResolvedValue({ queued: false }) };
@@ -123,28 +123,42 @@ describe('OpenDesignAdapter', () => {
           },
           repositories: [],
           outputContract: {
-            resultFileName: 'brainstorm.md',
+            resultFileName: 'prd.md',
             format: 'flowx-brainstorm-markdown-v1',
           },
         },
       },
     });
 
-    expect(launched.resultPath.endsWith('spec.md')).toBe(true);
-    expect(readFileSync(launched.resultPath, 'utf8')).toContain('flowx-brainstorm-spec');
+    expect(launched.resultPath.endsWith('prd.md')).toBe(true);
+    expect(readFileSync(launched.resultPath, 'utf8')).toContain('flowx-product-prd');
+    expect(readFileSync(launched.resultPath, 'utf8')).toContain('背景与问题');
+    expect(readFileSync(join(launched.workspacePath, 'README.md'), 'utf8')).toContain('prd.md');
+    expect(readFileSync(join(launched.workspacePath, 'README.md'), 'utf8')).toContain(
+      'flowx-product-prd',
+    );
     expect(readFileSync(join(launched.workspacePath, 'README.md'), 'utf8')).toContain(
       '仅在用户确认后',
     );
 
-    writeFileSync(launched.resultPath, '# Confirmed spec\n\nShip it.\n');
+    writeFileSync(launched.resultPath, '# Confirmed PRD\n\nShip it.\n');
     await adapter.submit('session-b1');
     expect(edgeClient.submitBrainstorm).toHaveBeenCalledWith(
       expect.objectContaining({
-        report: expect.objectContaining({ markdown: '# Confirmed spec\n\nShip it.\n' }),
+        report: expect.objectContaining({ markdown: '# Confirmed PRD\n\nShip it.\n' }),
       }),
     );
 
     writeFileSync(launched.resultPath, '   \n');
+    writeFileSync(join(launched.workspacePath, 'spec.md'), '# Legacy spec\n');
+    await adapter.submit('session-b1');
+    expect(edgeClient.submitBrainstorm).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        report: expect.objectContaining({ markdown: '# Legacy spec\n' }),
+      }),
+    );
+
+    writeFileSync(join(launched.workspacePath, 'spec.md'), '   \n');
     writeFileSync(join(launched.workspacePath, 'brainstorm.md'), '# Legacy brainstorm\n');
     await adapter.submit('session-b1');
     expect(edgeClient.submitBrainstorm).toHaveBeenLastCalledWith(

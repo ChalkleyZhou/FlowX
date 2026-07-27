@@ -55,7 +55,7 @@ export class OpenDesignAdapter
     const contextPath = join(workspacePath, 'context.json');
     const resultFileName =
       stage === 'brainstorm'
-        ? 'spec.md'
+        ? input.handoff.contextPackage.outputContract?.resultFileName ?? 'prd.md'
         : input.handoff.contextPackage.outputContract.resultFileName;
     const resultPath = join(workspacePath, resultFileName);
     await mkdir(workspacePath, { recursive: true });
@@ -141,7 +141,7 @@ export class OpenDesignAdapter
         markdown,
       };
       if (!report.markdown.trim()) {
-        throw new Error('OpenDesign spec.md (or legacy brainstorm.md) is empty.');
+        throw new Error('OpenDesign prd.md (or legacy spec.md / brainstorm.md) is empty.');
       }
       return this.edgeClient.submitBrainstorm({
         apiBaseUrl: session.apiBaseUrl,
@@ -239,20 +239,26 @@ async function writeInitialMarkdown(resultPath: string) {
     await writeFile(
       resultPath,
       [
-        '# Product spec',
+        '# 产品需求（PRD）',
         '',
-        'Follow the `flowx-brainstorm-spec` Skill: clarify with the user, write this `spec.md`,',
-        'show it for confirmation, then call `flowx_submit_brainstorm` only after they confirm.',
+        '请按用户级 Skill `flowx-product-prd`：先与用户头脑风暴澄清产品需求，再写本 `prd.md`，',
+        '展示全文供确认，仅在用户确认后调用 `flowx_submit_brainstorm`。',
         '',
-        '## Background',
+        '读者：产品经理、设计师。勿写技术实现细节。',
         '',
-        '## Goals',
+        '## 背景与问题',
         '',
-        '## Non-goals',
+        '## 目标用户',
         '',
-        '## Requirements',
+        '## 目标 / 非目标',
         '',
-        '## Acceptance criteria',
+        '## 用户故事与核心场景',
+        '',
+        '## 产品规则与边界情况',
+        '',
+        '## 验收标准',
+        '',
+        '## 仍开放的产品问题',
         '',
       ].join('\n'),
       { encoding: 'utf8', flag: 'wx' },
@@ -264,7 +270,12 @@ async function writeInitialMarkdown(resultPath: string) {
 
 async function readBrainstormMarkdown(resultPath: string): Promise<string> {
   const root = dirname(resultPath);
-  const candidates = [resultPath, join(root, 'spec.md'), join(root, 'brainstorm.md')];
+  const candidates = [
+    resultPath,
+    join(root, 'prd.md'),
+    join(root, 'spec.md'),
+    join(root, 'brainstorm.md'),
+  ];
   const seen = new Set<string>();
   for (const candidate of candidates) {
     if (seen.has(candidate)) continue;
@@ -295,21 +306,22 @@ function buildInstructions(
 
 本目录只保存 FlowX 会话凭据与调试副本，**不是**你的 Open Design 工程目录。
 
-推荐流程（与用户级 Skill \`flowx-brainstorm-spec\` 一致；请先运行 \`flowx-local setup\`）：
+推荐流程（与用户级 Skill \`flowx-product-prd\` 一致；请先运行 \`flowx-local setup\`）：
 1. 在 Open Design 中打开或创建你自己的项目目录。
 2. 通过 FlowX MCP 拉取上下文：
    - \`flowx_get_active_design_session\`
    - \`flowx_get_brainstorm_handoff\`（可省略参数，默认用当前活跃会话）
-3. 多轮澄清目标、范围、非目标与验收标准；写好 \`spec.md\`（勿把对话原文当规格）。
-4. 把完整 \`spec.md\` 展示给用户确认。
-5. **仅在用户确认后** 调用 \`flowx_submit_brainstorm\`，\`markdown\` 为完整规格正文。
+3. **先头脑风暴**澄清目标用户、问题、场景、边界与验收标准；写好 \`prd.md\`（勿把对话原文当 PRD）。
+4. 读者为产品经理/设计师；**禁止**在 PRD 正文中写 API、框架、数据库或实现细节。
+5. 把完整 \`prd.md\` 展示给用户确认。
+6. **仅在用户确认后** 调用 \`flowx_submit_brainstorm\`，\`markdown\` 为完整 PRD 正文。
 
 会话标识：
 - workflowRunId: \`${workflowRunId}\`
 - executionSessionId: \`${executionSessionId}\`
 - stage: brainstorm
 
-兼容回传（可选）：若仍写入本目录 \`spec.md\` 或旧版 \`brainstorm.md\`，可执行 \`flowx-local design-submit ${executionSessionId}\`。
+兼容回传（可选）：若仍写入本目录 \`prd.md\`（兼容 \`spec.md\` / \`brainstorm.md\`），可执行 \`flowx-local design-submit ${executionSessionId}\`。
 `;
   }
   return `# FlowX OpenDesign 本地设计任务
