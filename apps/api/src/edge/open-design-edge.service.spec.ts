@@ -99,7 +99,7 @@ describe('OpenDesignEdgeService', () => {
         ...handoff.contextPackage,
         stage: 'BRAINSTORM' as const,
         outputContract: {
-          resultFileName: 'spec.md' as const,
+          resultFileName: 'prd.md' as const,
           format: 'flowx-brainstorm-markdown-v1' as const,
         },
       },

@@ -3295,7 +3295,7 @@ export class WorkflowService {
         workingBranch: repository.workingBranch,
       })),
       outputContract: {
-        resultFileName: 'spec.md',
+        resultFileName: 'prd.md',
         format: 'flowx-brainstorm-markdown-v1',
       },
       metadata: {

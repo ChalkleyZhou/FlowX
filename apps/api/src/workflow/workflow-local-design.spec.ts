@@ -130,7 +130,7 @@ describe('WorkflowService local OpenDesign', () => {
         }),
       }),
     );
-    expect(result.handoff.contextPackage.outputContract.resultFileName).toBe('spec.md');
+    expect(result.handoff.contextPackage.outputContract.resultFileName).toBe('prd.md');
   });
 
   it('completes the design session and moves the workflow to confirmation', async () => {
@@ -373,7 +373,7 @@ describe('WorkflowService local OpenDesign', () => {
         },
         repositories: [],
         outputContract: {
-          resultFileName: 'spec.md' as const,
+          resultFileName: 'prd.md' as const,
           format: 'flowx-brainstorm-markdown-v1' as const,
         },
       },
