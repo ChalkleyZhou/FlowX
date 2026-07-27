@@ -210,7 +210,7 @@ export function createFlowXToolHandlers(deps: FlowXToolDependencies) {
           : stage === 'brainstorm'
             ? [
                 'Call flowx_get_brainstorm_handoff (omit workflowRunId to use this active session).',
-                'Clarify with the user, write spec.md, and show it for confirmation.',
+                'Brainstorm with the user to clarify product requirements, write prd.md, and show it for confirmation.',
                 'Only after the user confirms, call flowx_submit_brainstorm with { idempotencyKey, markdown }.',
               ]
             : [
@@ -443,7 +443,7 @@ export function registerFlowXTools(
     {
       title: 'Get OpenDesign Brainstorm Handoff',
       description:
-        'Fetch the OpenDesign brainstorm ContextPackage. Clarify first, then produce a confirmed spec.md (not chat notes).',
+        'Fetch the OpenDesign brainstorm ContextPackage. Brainstorm first to clarify product requirements, then produce a confirmed prd.md for PM/designer review (not chat notes).',
       inputSchema: z.object({
         workflowRunId: z
           .string()
@@ -474,7 +474,7 @@ export function registerFlowXTools(
     {
       title: 'Submit OpenDesign Brainstorm',
       description:
-        'Submit confirmed product spec Markdown (spec.md) after explicit user approval; advances workflow to DESIGN. Do not submit drafts or transcripts.',
+        'Submit confirmed product PRD Markdown (prd.md) after explicit user approval; advances workflow to DESIGN. Legacy spec.md remains compatible. Do not submit drafts or transcripts.',
       inputSchema: z.object({
         executionSessionId: z
           .string()
