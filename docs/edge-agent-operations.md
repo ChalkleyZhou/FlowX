@@ -95,7 +95,7 @@ Review。`POST /workflow-runs/:id/execution/complete-local` 仍保留给旧 Web�
 也可把可执行文件绝对路径写入 `~/.flowx/local.json` 的 `openDesignCommand`。
 不要把 macOS 系统的 `/usr/bin/od` 误认为 OpenDesign CLI。
 
-首次做产品构思前运行 `flowx-local setup`，安装用户级 `flowx-brainstorm-spec` Skill。期望产物是确认后的 `spec.md`，不是对话原文。
+首次做产品构思前运行 `flowx-local setup`，安装用户级 `flowx-product-prd` Skill（已装旧 `flowx-brainstorm-spec` 时用 `flowx-local setup --force` 迁移）。期望流程：头脑风暴 → 确认后的 `prd.md` → `flowx_submit_brainstorm`；不是对话原文。旧 `spec.md` 文件名仍兼容。
 
 ### 回传进入 Outbox
 

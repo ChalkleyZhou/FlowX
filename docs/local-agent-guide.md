@@ -61,9 +61,18 @@ flowx-local setup cursor
 flowx-local setup cursor,codex,od --force
 ```
 
-这会写入 `flowx-brainstorm-spec` Skill（不覆盖已有文件，除非加 `--force`）。`serve` **不会**静默安装 Skill。
+这会写入 `flowx-product-prd` Skill（不覆盖已有文件，除非加 `--force`）。`serve` **不会**静默安装 Skill。
 
-产品构思期望流程：多轮澄清 → 写出 `spec.md` → 在 IDE 里确认 → 再通过 MCP `flowx_submit_brainstorm` 回传；平台只展示最终规格 Markdown，并进入设计阶段。提交成功后可在**同一 OpenDesign 会话**继续拉设计 handoff，无需回 Web 再点一次「打开本地 OpenDesign」。
+若本机仍保留旧版 `flowx-brainstorm-spec`，请执行 `flowx-local setup --force` 切换到新 Skill。
+
+产品构思期望流程（读者：产品经理 / 设计师；**不写** API、框架、数据库等实现细节）：
+
+1. 多轮**头脑风暴**澄清产品需求
+2. 写出精简 **`prd.md`**
+3. 在 IDE 里向用户展示全文并确认
+4. 再通过 MCP `flowx_submit_brainstorm` 回传
+
+平台只展示最终产品需求（PRD）Markdown，并进入设计阶段。旧版 `spec.md` 文件名仍兼容，但新流程以 `prd.md` 为准。提交成功后可在**同一 OpenDesign 会话**继续拉设计 handoff，无需回 Web 再点一次「打开本地 OpenDesign」。
 
 ## 3.2 配置 Personal API Token（推荐）
 
@@ -116,11 +125,11 @@ MCP 鉴权顺序：
 1. 已执行 `flowx-local setup`，并完成上一节的 Personal API Token / `login`
 2. 在 Cursor / Codex 配置 `flowx-local mcp`
 3. Agent 调用 `flowx_list_tasks` → 与你确认一条工作流 → `flowx_bind_workflow`（写入 `~/.flowx/current-workflow.json`）
-4. **产品构思**：`flowx_get_brainstorm_handoff` → 澄清 → `spec.md` → 确认后 `flowx_submit_brainstorm`（响应含 `next.stage=design`，binding 切到 design）
+4. **产品构思**：`flowx_get_brainstorm_handoff` → 头脑风暴澄清 → 写 `prd.md` → 确认后 `flowx_submit_brainstorm`（响应含 `next.stage=design`，binding 切到 design）
 5. **同一会话设计**：立刻 `flowx_get_design_handoff`（服务端惰性创建 design 会话）→ 在 Open Design 中完成设计 → `flowx_submit_design`
 6. 平台进入 `待确认设计方案`
 
-若已进入设计阶段仍要改规格：在工作流详情切到「产品构思」，点「重新构思」，确认后再用 list/bind 或 handoff 重做构思。
+若已进入设计阶段仍要改产品需求：在工作流详情切到「产品构思」，点「重新构思」，确认后再用 list/bind 或 handoff 重做构思。
 
 **可选兜底**：未配置长期 token 时，可在工作流详情点击 `打开本地构思` / `打开本地 OpenDesign`，由 Web 写入短期 `active-design` 会话。该路径仍可用，但构思完成后通常还需再点一次「打开本地 OpenDesign」；金路径下应避免依赖第二次点击。
 

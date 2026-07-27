@@ -5,7 +5,7 @@ FlowX 的推荐 OpenDesign 链路是端云协同，而不是由服务端 Codex/C
 ```text
 Web 设置生成 Personal API Token（fxpat_…）或 flowx-local login --token
 → MCP flowx_list_tasks → 用户确认 → flowx_bind_workflow
-→ 本地 OpenDesign 构思（handoff → spec.md → submit）
+→ 本地 OpenDesign 构思（handoff → 头脑风暴 → prd.md → 确认 → submit）
 → 同一会话立刻设计 handoff（惰性创建 ExecutionSession）→ 设计 → submit
 → Artifact / Evidence / CompletionReport 回传 FlowX
 → 工作流进入 DESIGN_WAITING_CONFIRMATION
@@ -23,7 +23,7 @@ Web 设置生成 Personal API Token（fxpat_…）或 flowx-local login --token
    - 若出现 `could not reach …/auth/session/me` 警告，说明当时 API 不可达：本机需先启动 API，或重新 login 并指定正确的 `--api-base-url`（警告后仍会保存 token，错误地址会导致后续 MCP 失败）。
 2. **安装并配置 MCP**：`flowx-local setup`，在 Cursor / Codex 中配置 `flowx-local mcp`。
 3. **领取任务**：Agent 调用 `flowx_list_tasks` 列出可构思 / 可设计的工作流 → 与用户确认一条 → `flowx_bind_workflow` 写入 `~/.flowx/current-workflow.json`（含 `workflowRunId`、stage 等；**不含** token）。
-4. **产品构思**：`flowx_get_brainstorm_handoff` → 澄清并写 `spec.md` → 用户确认后 `flowx_submit_brainstorm`。
+4. **产品构思**（面向产品经理 / 设计师，不写实现细节）：`flowx_get_brainstorm_handoff` → 多轮头脑风暴澄清 → 写 `prd.md` → 用户确认后 `flowx_submit_brainstorm`。请先 `flowx-local setup` 安装 `flowx-product-prd` Skill；本机若仍为旧 Skill，用 `flowx-local setup --force` 迁移。
 5. **同一会话进入设计**：submit 成功响应带 `next.stage=design`（及 hint）；本地 binding 切到 `design`。立刻调用 `flowx_get_design_handoff`（服务端按需惰性创建 design `ExecutionSession`）→ 完成设计 → `flowx_submit_design`。
 6. Web 进入 `DESIGN_WAITING_CONFIRMATION`，人工确认设计方案。
 
@@ -55,7 +55,7 @@ sequenceDiagram
     Designer->>Local: flowx_list_tasks → 确认 → flowx_bind_workflow
     Local->>API: Bearer PAT 拉取 brainstorm handoff（惰性创建 session）
     API-->>Local: ContextPackage + executionSessionId
-    Designer->>OD: 澄清并写 spec.md
+    Designer->>OD: 头脑风暴并写 prd.md
     Designer->>Local: flowx_submit_brainstorm
     API-->>Local: DESIGN_PENDING + next.stage=design
     Local->>Local: binding 切到 design
@@ -98,7 +98,7 @@ flowx-local login --token fxpat_…
 flowx-local serve
 ```
 
-产品构思阶段：澄清 → `spec.md` → 用户确认 → `flowx_submit_brainstorm`。会话调试目录优先使用 `spec.md`（兼容旧版 `brainstorm.md`）。
+产品构思阶段：头脑风暴 → `prd.md` → 用户确认 → `flowx_submit_brainstorm`。会话目录主文件为 `prd.md`；旧版 `spec.md` / `brainstorm.md` 仍兼容读取。Skill 为 `flowx-product-prd`（`flowx-local setup`；已装旧 `flowx-brainstorm-spec` 时用 `--force` 迁移）。
 
 默认监听 `http://127.0.0.1:3920`。检查设备身份与待回传数量：
 
