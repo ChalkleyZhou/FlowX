@@ -120,7 +120,7 @@ flowx-local serve
 5. **同一会话**立刻 `flowx_get_design_handoff` → 完成设计 → `flowx_submit_design`（也可在工作流详情点击 `回传本地设计`）。
 6. 平台进入 `待确认设计方案`，由人工确认、驳回或跳过后继续下一阶段。
 
-**可选兜底**：未配置长期 token 时，可在工作流详情点击 `打开本地构思` / `打开本地 OpenDesign` 写入短期会话；金路径下不需要第二次点击「打开本地 OpenDesign」。
+**可选兜底**：未配置长期 token 时，可在工作流详情点击 `打开本地构思` / `打开本地 OpenDesign` 写入短期会话；金路径下不需要第二次点击「打开本地 OpenDesign」。点击「打开本地构思」或「打开本地 OpenDesign」时，平台会先弹出两步操作引导（选择项目目录、输入「获取FlowX任务」），确认后再打开应用。
 
 网络中断时完成报告会进入本地 Outbox，可通过 `flowx-local sync` 重试。详细配置和结果格式见
 [OpenDesign 本地设计阶段](opendesign-design-stage.md)。
