@@ -120,7 +120,7 @@ describe('EdgeTasksService', () => {
     expect(prisma.workflowRun.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          runType: 'LOCAL_DESIGN',
+          runType: { in: ['LOCAL_DESIGN', 'FULL'] },
           status: { in: ['BRAINSTORM_PENDING', 'DESIGN_PENDING'] },
           requirement: { workspaceId: 'workspace-1' },
           OR: [
@@ -143,7 +143,7 @@ describe('EdgeTasksService', () => {
     expect(prisma.workflowRun.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          runType: 'LOCAL_DESIGN',
+          runType: { in: ['LOCAL_DESIGN', 'FULL'] },
           status: { in: ['BRAINSTORM_PENDING', 'DESIGN_PENDING'] },
         },
       }),

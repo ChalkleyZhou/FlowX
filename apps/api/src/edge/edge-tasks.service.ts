@@ -135,7 +135,9 @@ export class EdgeTasksService {
 
     const workflows = await this.prisma.workflowRun.findMany({
       where: {
-        runType: WorkflowRunType.LOCAL_DESIGN,
+        runType: {
+          in: [WorkflowRunType.LOCAL_DESIGN, WorkflowRunType.FULL],
+        },
         status: { in: [...OPEN_DESIGN_CANDIDATE_STATUSES] },
         ...(workspaceId ? { requirement: { workspaceId } } : {}),
         ...(organizationId
