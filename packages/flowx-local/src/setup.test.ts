@@ -28,13 +28,13 @@ describe('flowx-local setup', () => {
 
   it('resolves user-level skill paths (od reuses cursor)', () => {
     expect(resolveSkillInstallPaths('cursor', '/tmp/home')).toEqual([
-      '/tmp/home/.cursor/skills/flowx-brainstorm-spec/SKILL.md',
+      '/tmp/home/.cursor/skills/flowx-product-prd/SKILL.md',
     ]);
     expect(resolveSkillInstallPaths('od', '/tmp/home')).toEqual([
-      '/tmp/home/.cursor/skills/flowx-brainstorm-spec/SKILL.md',
+      '/tmp/home/.cursor/skills/flowx-product-prd/SKILL.md',
     ]);
     expect(resolveSkillInstallPaths('codex', '/tmp/home')).toEqual([
-      '/tmp/home/.agents/skills/flowx-brainstorm-spec/SKILL.md',
+      '/tmp/home/.agents/skills/flowx-product-prd/SKILL.md',
     ]);
   });
 
@@ -45,11 +45,15 @@ describe('flowx-local setup', () => {
     const first = runSetup({ homeDir: home, targets: 'cursor,codex,od' });
     expect(first.written).toHaveLength(2);
     expect(first.skipped).toEqual([]);
-    const cursorSkill = join(home, '.cursor', 'skills', 'flowx-brainstorm-spec', 'SKILL.md');
-    const agentsSkill = join(home, '.agents', 'skills', 'flowx-brainstorm-spec', 'SKILL.md');
+    const cursorSkill = join(home, '.cursor', 'skills', 'flowx-product-prd', 'SKILL.md');
+    const agentsSkill = join(home, '.agents', 'skills', 'flowx-product-prd', 'SKILL.md');
     expect(existsSync(cursorSkill)).toBe(true);
     expect(existsSync(agentsSkill)).toBe(true);
-    expect(readFileSync(cursorSkill, 'utf8')).toContain('spec.md');
+    expect(cursorSkill).toContain('flowx-product-prd');
+    expect(readFileSync(cursorSkill, 'utf8')).toContain('prd.md');
+    expect(readFileSync(cursorSkill, 'utf8')).toContain('头脑风暴');
+    expect(readFileSync(cursorSkill, 'utf8')).not.toContain('Superpowers');
+    expect(readFileSync(cursorSkill, 'utf8')).not.toContain('OpenSpec');
 
     writeFileSync(cursorSkill, '# custom\n', 'utf8');
     const second = runSetup({ homeDir: home, targets: 'cursor' });

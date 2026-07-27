@@ -17,7 +17,7 @@ export type SetupResult = {
 };
 
 const DEFAULT_TARGETS: SetupTarget[] = ['cursor', 'codex', 'od'];
-const SKILL_NAME = 'flowx-brainstorm-spec';
+const SKILL_NAME = 'flowx-product-prd';
 
 export function parseSetupTargets(raw?: string): SetupTarget[] {
   const text = raw?.trim();
