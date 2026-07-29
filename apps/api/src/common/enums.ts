@@ -11,14 +11,9 @@ export enum WorkflowRunStatus {
   BRAINSTORM_PENDING = 'brainstorm_pending',
   DESIGN_PENDING = 'design_pending',
   DESIGN_WAITING_CONFIRMATION = 'design_waiting_confirmation',
-  DEMO_PENDING = 'demo_pending',
-  DEMO_WAITING_CONFIRMATION = 'demo_waiting_confirmation',
-  TASK_SPLIT_PENDING = 'task_split_pending',
-  TASK_SPLIT_WAITING_CONFIRMATION = 'task_split_waiting_confirmation',
-  TASK_SPLIT_CONFIRMED = 'task_split_confirmed',
-  PLAN_PENDING = 'plan_pending',
-  PLAN_WAITING_CONFIRMATION = 'plan_waiting_confirmation',
-  PLAN_CONFIRMED = 'plan_confirmed',
+  SPEC_PLAN_PENDING = 'spec_plan_pending',
+  SPEC_PLAN_WAITING_CONFIRMATION = 'spec_plan_waiting_confirmation',
+  SPEC_PLAN_CONFIRMED = 'spec_plan_confirmed',
   EXECUTION_PENDING = 'execution_pending',
   EXECUTION_RUNNING = 'execution_running',
   REVIEW_PENDING = 'review_pending',
@@ -32,9 +27,7 @@ export enum StageType {
   REPOSITORY_GROUNDING = 'repository_grounding',
   BRAINSTORM = 'brainstorm',
   DESIGN = 'design',
-  DEMO = 'demo',
-  TASK_SPLIT = 'task_split',
-  TECHNICAL_PLAN = 'technical_plan',
+  SPEC_PLAN = 'spec_plan',
   EXECUTION = 'execution',
   AI_REVIEW = 'ai_review',
   HUMAN_REVIEW = 'human_review',
@@ -48,19 +41,6 @@ export enum StageExecutionStatus {
   WAITING_CONFIRMATION = 'waiting_confirmation',
   REJECTED = 'rejected',
   SKIPPED = 'skipped',
-}
-
-export enum TaskStatus {
-  DRAFT = 'draft',
-  CONFIRMED = 'confirmed',
-  REJECTED = 'rejected',
-}
-
-export enum PlanStatus {
-  DRAFT = 'draft',
-  WAITING_HUMAN_CONFIRMATION = 'waiting_human_confirmation',
-  CONFIRMED = 'confirmed',
-  REJECTED = 'rejected',
 }
 
 export enum CodeExecutionStatus {
@@ -95,9 +75,6 @@ export enum IdeationStatus {
   DESIGN_PENDING = 'DESIGN_PENDING',
   DESIGN_WAITING_CONFIRMATION = 'DESIGN_WAITING_CONFIRMATION',
   DESIGN_CONFIRMED = 'DESIGN_CONFIRMED',
-  DEMO_PENDING = 'DEMO_PENDING',
-  DEMO_WAITING_CONFIRMATION = 'DEMO_WAITING_CONFIRMATION',
-  DEMO_CONFIRMED = 'DEMO_CONFIRMED',
   FINALIZED = 'FINALIZED',
 }
 
