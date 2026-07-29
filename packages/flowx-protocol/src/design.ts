@@ -16,19 +16,29 @@ export interface OpenDesignContextPackage {
   repositories: ContextRepository[];
   outputContract: {
     resultFileName: string;
-    format: 'flowx-design-result-v1';
-    requiredFields: readonly ['design', 'demo', 'designArtifact'];
+    format: 'flowx-design-result-v2';
+    requiredFields: readonly ['design', 'demo', 'surfaces'];
   };
   metadata?: Record<string, unknown>;
+}
+
+export interface DesignPagePayload {
+  id: string;
+  title?: string;
+  html: string;
+  [key: string]: unknown;
+}
+
+export interface DesignSurfacePayload {
+  id: string;
+  pages: DesignPagePayload[];
+  [key: string]: unknown;
 }
 
 export interface FlowXDesignOutput {
   design: Record<string, unknown>;
   demo: Record<string, unknown>;
-  designArtifact: {
-    html: string;
-    [key: string]: unknown;
-  };
+  surfaces: DesignSurfacePayload[];
 }
 
 export interface DesignCompletionReport {
