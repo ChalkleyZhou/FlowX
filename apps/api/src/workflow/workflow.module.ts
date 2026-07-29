@@ -12,6 +12,7 @@ import { WorkflowArtifactService } from './workflow-artifact.service';
 import { WorkflowController } from './workflow.controller';
 import { WorkflowGitRemoteService } from './workflow-git-remote.service';
 import { WorkflowService } from './workflow.service';
+import { WorkflowStatusMigrationService } from './workflow-status-migration.service';
 
 @Module({
   // ArtifactsModule imports ExecutionSessionsModule, which in turn imports this module (to call
@@ -26,6 +27,7 @@ import { WorkflowService } from './workflow.service';
     WorkflowGitRemoteService,
     LocalLaunchTicketStore,
     LocalLaunchService,
+    WorkflowStatusMigrationService,
   ],
   exports: [WorkflowService, LocalLaunchService],
 })
