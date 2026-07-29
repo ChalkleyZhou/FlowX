@@ -1,4 +1,5 @@
 import { StageType } from '../common/enums';
+import type { SpecPlanOutput } from '../common/types';
 
 export type BugFixPayload = {
   title: string;
@@ -11,9 +12,7 @@ export type BugFixPayload = {
 export const BUG_FIX_SKIPPED_STAGES: StageType[] = [
   StageType.BRAINSTORM,
   StageType.DESIGN,
-  StageType.DEMO,
-  StageType.TASK_SPLIT,
-  StageType.TECHNICAL_PLAN,
+  StageType.SPEC_PLAN,
 ];
 
 export function buildBugFixRequirementPayload(bug: BugFixPayload) {
@@ -36,42 +35,25 @@ export function buildBugFixRequirementPayload(bug: BugFixPayload) {
   };
 }
 
-export function buildBugFixTask(bug: BugFixPayload, repositoryNames: string[] = []) {
-  const reproduction = (bug.reproductionSteps ?? [])
-    .map((step, index) => `${index + 1}. ${step}`)
-    .join('\n');
-  const description = [
-    bug.description.trim(),
-    reproduction ? `\n复现步骤:\n${reproduction}` : '',
-    bug.actualBehavior?.trim() ? `\n实际行为: ${bug.actualBehavior.trim()}` : '',
-    bug.expectedBehavior?.trim() ? `\n预期行为: ${bug.expectedBehavior.trim()}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
-
+export function buildBugFixSpecPlan(bug: BugFixPayload): SpecPlanOutput {
   return {
-    title: bug.title.trim(),
-    description,
-    surface: 'bug_fix',
-    repositoryNames,
-  };
-}
-
-export function buildBugFixPlanContent(bug: BugFixPayload) {
-  const summary = `修复缺陷：${bug.title.trim()}`;
-  const implementationPlan = [
-    '根据缺陷描述定位根因并在工作分支中最小化修复。',
-    bug.expectedBehavior?.trim()
-      ? `修复后应满足：${bug.expectedBehavior.trim()}`
-      : '修复后应消除缺陷描述中的异常行为。',
-  ];
-
-  return {
-    summary,
-    implementationPlan,
-    filesToModify: [] as string[],
-    newFiles: [] as string[],
-    riskPoints: ['请确保修复范围最小，避免引入无关变更。'],
+    spec: {
+      goal: `修复缺陷：${bug.title.trim()}`,
+      scope: [bug.description.trim() || bug.title.trim()],
+      nonGoals: ['无关重构'],
+      acceptanceCriteria: [
+        bug.expectedBehavior?.trim() || '缺陷复现路径关闭',
+        '回归相关用例',
+      ],
+      constraints: [],
+    },
+    plan: {
+      approach: '最小改动修复根因并补充验证',
+      touchpoints: [],
+      sequence: ['定位', '修复', '验证'],
+      risks: ['请确保修复范围最小，避免引入无关变更。'],
+      verification: ['按复现步骤确认已修复'],
+    },
   };
 }
 
