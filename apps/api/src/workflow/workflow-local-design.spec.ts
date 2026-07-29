@@ -161,11 +161,20 @@ describe('WorkflowService local OpenDesign', () => {
     };
     const service = createService(prisma, artifacts);
     vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(workflow);
-    vi.spyOn(service as never, 'persistWorkflowDesignArtifact' as never).mockResolvedValue({
-      relPath: 'workflow-design-1/design.html',
-      bytes: 100,
-      generatedAt: '2026-07-22T00:00:00.000Z',
-    });
+    vi.spyOn(service as never, 'persistAndMergeDesignSurfaces' as never).mockResolvedValue([
+      {
+        id: 'Web端',
+        pages: [
+          {
+            id: 'index',
+            title: 'index',
+            relPath: 'workflow-design-1/Web%E7%AB%AF/index.html',
+            bytes: 100,
+            generatedAt: '2026-07-22T00:00:00.000Z',
+          },
+        ],
+      },
+    ]);
     vi.spyOn(service as never, 'updateStageExecution' as never).mockResolvedValue(undefined);
     vi.spyOn(service as never, 'transitionWorkflow' as never).mockResolvedValue(undefined);
 
@@ -187,7 +196,12 @@ describe('WorkflowService local OpenDesign', () => {
             scope: { included: [], excluded: [] },
             knownGaps: [],
           },
-          designArtifact: { html: '<!doctype html><html><body>Design</body></html>' },
+          surfaces: [
+            {
+              id: 'Web端',
+              pages: [{ id: 'index', html: '<!doctype html><html><body>Design</body></html>' }],
+            },
+          ],
         },
       },
       { organizationId: 'org-1' },
@@ -279,8 +293,8 @@ describe('WorkflowService local OpenDesign', () => {
         repositories: [],
         outputContract: {
           resultFileName: 'result.json' as const,
-          format: 'flowx-design-result-v1' as const,
-          requiredFields: ['design', 'demo', 'designArtifact'] as const,
+          format: 'flowx-design-result-v2' as const,
+          requiredFields: ['design', 'demo', 'surfaces'] as const,
         },
       },
       completionEndpoint: '/execution-sessions/session-lazy-design/design/complete',

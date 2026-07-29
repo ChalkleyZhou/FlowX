@@ -111,17 +111,6 @@
           }
         }
       }
-    },
-    "designArtifact": {
-      "type": "object",
-      "description": "可选：OpenDesign 高保真单页 HTML 设计稿引用（设计阶段产出，Demo 阶段一般不需要）。",
-      "additionalProperties": false,
-      "properties": {
-        "html": { "type": "string", "minLength": 1 },
-        "relPath": { "type": "string" },
-        "generatedAt": { "type": "string" },
-        "bytes": { "type": "number" }
-      }
     }
   }
 }

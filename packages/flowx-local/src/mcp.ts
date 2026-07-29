@@ -49,7 +49,22 @@ const designReportSchema = z.object({
   output: z.object({
     design: z.record(z.string(), z.unknown()),
     demo: z.record(z.string(), z.unknown()),
-    designArtifact: z.object({ html: z.string().min(1) }).passthrough(),
+    surfaces: z
+      .array(
+        z.object({
+          id: z.string().min(1),
+          pages: z
+            .array(
+              z.object({
+                id: z.string().min(1),
+                title: z.string().optional(),
+                html: z.string().min(1),
+              }).passthrough(),
+            )
+            .min(1),
+        }).passthrough(),
+      )
+      .min(1),
   }),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });

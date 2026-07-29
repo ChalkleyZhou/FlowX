@@ -1,9 +1,9 @@
 import type {
   DemoArtifact,
   DemoPage,
-  DesignArtifactRef,
   DesignPhaseOutput,
   DesignSpec,
+  DesignSurfaceInput,
   GenerateDesignOutput,
 } from '../common/types';
 
@@ -53,35 +53,72 @@ function validateDesignAndDemo(candidate: Record<string, unknown>): { design: De
   return { design, demo };
 }
 
+function assertSurfaces(raw: unknown): DesignSurfaceInput[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new Error('DESIGN_OUTPUT_INVALID: Missing required non-empty array "surfaces".');
+  }
+
+  return raw.map((item, surfaceIndex) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error(`DESIGN_OUTPUT_INVALID: surfaces[${surfaceIndex}] must be an object.`);
+    }
+    const surface = item as Record<string, unknown>;
+    const id = typeof surface.id === 'string' ? surface.id.trim() : '';
+    if (!id) {
+      throw new Error(`DESIGN_OUTPUT_INVALID: surfaces[${surfaceIndex}].id must be a non-empty string.`);
+    }
+    if (!Array.isArray(surface.pages) || surface.pages.length === 0) {
+      throw new Error(
+        `DESIGN_OUTPUT_INVALID: surfaces[${surfaceIndex}].pages must be a non-empty array.`,
+      );
+    }
+    const pages = surface.pages.map((pageItem, pageIndex) => {
+      if (!pageItem || typeof pageItem !== 'object' || Array.isArray(pageItem)) {
+        throw new Error(
+          `DESIGN_OUTPUT_INVALID: surfaces[${surfaceIndex}].pages[${pageIndex}] must be an object.`,
+        );
+      }
+      const page = pageItem as Record<string, unknown>;
+      const pageId = typeof page.id === 'string' ? page.id.trim() : '';
+      if (!pageId) {
+        throw new Error(
+          `DESIGN_OUTPUT_INVALID: surfaces[${surfaceIndex}].pages[${pageIndex}].id must be a non-empty string.`,
+        );
+      }
+      if (typeof page.html !== 'string' || page.html.trim().length === 0) {
+        throw new Error(
+          `DESIGN_OUTPUT_INVALID: surfaces[${surfaceIndex}].pages[${pageIndex}].html must be a non-empty HTML document string.`,
+        );
+      }
+      const title = typeof page.title === 'string' && page.title.trim() ? page.title.trim() : undefined;
+      return { id: pageId, title, html: page.html };
+    });
+    return { id, pages };
+  });
+}
+
 /**
- * Validates the design phase (OpenDesign HTML artifact) executor JSON.
- * Requires design + demo + a non-empty designArtifact.html; demoPages are optional in this phase.
+ * Validates the design phase executor JSON.
+ * Requires design + demo + non-empty surfaces[]; demoPages are optional in this phase.
  */
 export function assertDesignSpecOutput(raw: unknown): DesignPhaseOutput {
-  const candidate = asObject(raw, '"design", "demo", and "designArtifact"');
-  const { design, demo } = validateDesignAndDemo(candidate);
+  const candidate = asObject(raw, '"design", "demo", and "surfaces"');
 
-  if (
-    !candidate.designArtifact ||
-    typeof candidate.designArtifact !== 'object' ||
-    Array.isArray(candidate.designArtifact)
-  ) {
-    throw new Error('DESIGN_OUTPUT_INVALID: Missing required top-level object "designArtifact".');
-  }
-
-  const artifact = candidate.designArtifact as DesignArtifactRef;
-  if (typeof artifact.html !== 'string' || artifact.html.trim().length === 0) {
+  if (candidate.designArtifact && !candidate.surfaces) {
     throw new Error(
-      'DESIGN_OUTPUT_INVALID: designArtifact.html must be a non-empty single-page HTML document string.',
+      'DESIGN_OUTPUT_INVALID: designArtifact is removed; submit surfaces[{ id, pages[{ id, html }] }] instead.',
     );
   }
+
+  const { design, demo } = validateDesignAndDemo(candidate);
+  const surfaces = assertSurfaces(candidate.surfaces);
 
   const demoPages =
     Array.isArray(candidate.demoPages) && candidate.demoPages.length > 0
       ? (candidate.demoPages as DemoPage[])
       : undefined;
 
-  return { design, demo, designArtifact: artifact, demoPages };
+  return { design, demo, surfaces, demoPages };
 }
 
 /** Validates executor JSON for generateDesign (workflow + ideation). Legacy DB rows may omit demo — use extract helpers separately. */
@@ -95,15 +132,9 @@ export function assertStrictGenerateDesignOutput(raw: unknown): GenerateDesignOu
     );
   }
 
-  const designArtifact =
-    candidate.designArtifact && typeof candidate.designArtifact === 'object' && !Array.isArray(candidate.designArtifact)
-      ? (candidate.designArtifact as DesignArtifactRef)
-      : undefined;
-
   return {
     design,
     demo,
     demoPages: candidate.demoPages as DemoPage[],
-    ...(designArtifact ? { designArtifact } : {}),
   };
 }

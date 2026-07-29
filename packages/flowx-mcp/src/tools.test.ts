@@ -256,7 +256,7 @@ describe('createFlowXToolHandlers', () => {
         output: {
           design: { overview: 'A' },
           demo: { summary: 'B' },
-          designArtifact: { html: '<!doctype html><html><body>Hi</body></html>' },
+          surfaces: [{ id: 'Web端', pages: [{ id: 'index', html: '<!doctype html><html><body>Hi</body></html>' }] }],
         },
       },
     });

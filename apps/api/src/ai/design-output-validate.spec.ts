@@ -57,29 +57,30 @@ describe('assertStrictGenerateDesignOutput', () => {
       }),
     ).toThrow(/minimum 2/);
   });
-
-  it('passes through an optional designArtifact ref when present', () => {
-    const out = assertStrictGenerateDesignOutput({
-      ...minimalValid,
-      designArtifact: { relPath: 'run-1/design.html', bytes: 10 },
-    });
-    expect(out.designArtifact?.relPath).toBe('run-1/design.html');
-  });
 });
 
 const designPhaseValid = {
   design: minimalValid.design,
   demo: minimalValid.demo,
-  designArtifact: {
-    html: '<!doctype html><html><body><h1>Design</h1></body></html>',
-    generatedAt: '2026-01-01T00:00:00.000Z',
-  },
+  surfaces: [
+    {
+      id: 'Web端',
+      pages: [
+        {
+          id: 'index',
+          title: '首页',
+          html: '<!doctype html><html><body><h1>Design</h1></body></html>',
+        },
+      ],
+    },
+  ],
 };
 
 describe('assertDesignSpecOutput', () => {
-  it('accepts design + demo + designArtifact.html without demoPages', () => {
+  it('accepts design + demo + surfaces without demoPages', () => {
     const out = assertDesignSpecOutput(designPhaseValid);
-    expect(out.designArtifact.html).toContain('<!doctype html>');
+    expect(out.surfaces[0]?.id).toBe('Web端');
+    expect(out.surfaces[0]?.pages[0]?.html).toContain('<!doctype html>');
     expect(out.demoPages).toBeUndefined();
   });
 
@@ -88,17 +89,34 @@ describe('assertDesignSpecOutput', () => {
     expect(out.demoPages).toHaveLength(2);
   });
 
-  it('rejects a missing or empty designArtifact.html', () => {
-    const { designArtifact: _a, ...rest } = designPhaseValid;
-    expect(() => assertDesignSpecOutput(rest)).toThrow(/designArtifact/);
-    expect(() => assertDesignSpecOutput({ ...designPhaseValid, designArtifact: { html: '' } })).toThrow(
-      /designArtifact\.html/,
-    );
+  it('rejects missing or empty surfaces', () => {
+    const { surfaces: _s, ...rest } = designPhaseValid;
+    expect(() => assertDesignSpecOutput(rest)).toThrow(/surfaces/);
+    expect(() => assertDesignSpecOutput({ ...designPhaseValid, surfaces: [] })).toThrow(/surfaces/);
+  });
+
+  it('rejects legacy designArtifact without surfaces', () => {
+    const { surfaces: _s, ...rest } = designPhaseValid;
+    expect(() =>
+      assertDesignSpecOutput({
+        ...rest,
+        designArtifact: { html: '<!doctype html><html></html>' },
+      }),
+    ).toThrow(/designArtifact is removed/);
+  });
+
+  it('rejects empty page html', () => {
+    expect(() =>
+      assertDesignSpecOutput({
+        ...designPhaseValid,
+        surfaces: [{ id: 'Web端', pages: [{ id: 'index', html: '' }] }],
+      }),
+    ).toThrow(/html/);
   });
 
   it('still requires a valid design and demo', () => {
-    expect(() => assertDesignSpecOutput({ ...designPhaseValid, design: { ...minimalValid.design, overview: '' } })).toThrow(
-      /design\.overview/,
-    );
+    expect(() =>
+      assertDesignSpecOutput({ ...designPhaseValid, design: { ...minimalValid.design, overview: '' } }),
+    ).toThrow(/design\.overview/);
   });
 });

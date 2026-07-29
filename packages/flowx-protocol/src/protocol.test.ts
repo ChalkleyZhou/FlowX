@@ -98,8 +98,8 @@ describe('flowx protocol', () => {
       repositories: [],
       outputContract: {
         resultFileName: 'result.json',
-        format: 'flowx-design-result-v1',
-        requiredFields: ['design', 'demo', 'designArtifact'],
+        format: 'flowx-design-result-v2',
+        requiredFields: ['design', 'demo', 'surfaces'],
       },
     };
     const report: DesignCompletionReport = {
@@ -107,12 +107,17 @@ describe('flowx protocol', () => {
       output: {
         design: { overview: 'Export page' },
         demo: { summary: 'Primary flow' },
-        designArtifact: { html: '<!doctype html><html></html>' },
+        surfaces: [
+          {
+            id: 'Web端',
+            pages: [{ id: 'index', html: '<!doctype html><html></html>' }],
+          },
+        ],
       },
     };
 
     expect(context.sourceTool).toBe('opendesign');
-    expect(report.output.designArtifact.html).toContain('<!doctype html>');
+    expect(report.output.surfaces[0].pages[0].html).toContain('<!doctype html>');
   });
 
   it('accepts a valid LocalCompletionReport', () => {

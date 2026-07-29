@@ -64,7 +64,7 @@ describe('FlowXApiClient', () => {
       output: {
         design: {},
         demo: {},
-        designArtifact: { html: '<html></html>' },
+        surfaces: [{ id: 'Web端', pages: [{ id: 'index', html: '<html></html>' }] }],
       },
     });
 

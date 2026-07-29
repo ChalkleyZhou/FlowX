@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import type { BrainstormCompletionReport, DesignCompletionReport } from '@flowx-ai/protocol';
 import { writeActiveDesignSession } from '../active-design-session.js';
 import type { LocalConfig } from '../config.js';
+import { assertDesignSurfacesPresent, loadDesignSurfacesFromDir } from '../design-surfaces.js';
 import { EdgeClient, type RedeemedOpenDesignLaunch } from '../edge-client.js';
 import { openOpenDesignWorkspace } from '../open-design-app.js';
 import { writeWorkflowBinding } from '../workflow-binding.js';
@@ -63,6 +64,7 @@ export class OpenDesignAdapter
     if (stage === 'brainstorm') {
       await writeInitialMarkdown(resultPath);
     } else {
+      await mkdir(join(workspacePath, 'design', 'Web端'), { recursive: true });
       await writeInitialResult(resultPath, input.handoff.executionSessionId);
     }
     await writeFile(
@@ -151,7 +153,7 @@ export class OpenDesignAdapter
       });
     }
     const report = JSON.parse(await readFile(session.resultPath, 'utf8')) as DesignCompletionReport;
-    validateReport(report);
+    await validateReport(report, dirname(session.resultPath));
     return this.edgeClient.submitDesign({
       apiBaseUrl: session.apiBaseUrl,
       accessToken: session.accessToken,
@@ -217,7 +219,12 @@ function buildResultTemplate(executionSessionId: string): DesignCompletionReport
         scope: { included: [], excluded: [] },
         knownGaps: [],
       },
-      designArtifact: { html: '<!doctype html><html><body></body></html>' },
+      surfaces: [
+        {
+          id: 'Web端',
+          pages: [{ id: 'index', title: '设计稿', html: '<!doctype html><html><body></body></html>' }],
+        },
+      ],
     },
   };
 }
@@ -333,25 +340,28 @@ function buildInstructions(
 2. 通过 FlowX MCP 拉取上下文：
    - \`flowx_get_active_design_session\`
    - \`flowx_get_design_handoff\`（可省略参数，默认用当前活跃会话）
-3. 在你的项目里完成设计。
-4. 通过 MCP 回传：\`flowx_submit_design\`，提交含完整 \`designArtifact.html\` 的 DesignCompletionReport。
+3. 在项目里按端组织 HTML 设计稿（可复制到本会话 \`design/\` 或直接在回传 JSON 中填写）：
+   - 推荐目录名：\`Web端\` / \`移动端\` / \`管理后台\`（按需，有啥交啥）
+   - 每端可有多个 \`.html\` 文件
+4. 通过 MCP 回传：\`flowx_submit_design\`，\`output.surfaces\` 为按端多页 HTML（可一次只交一端）。
 
 会话标识：
 - workflowRunId: \`${workflowRunId}\`
 - executionSessionId: \`${executionSessionId}\`
 - stage: design
 
-兼容回传（可选）：若仍写入本目录 \`result.json\`，可执行 \`flowx-local design-submit ${executionSessionId}\`。
+兼容回传（可选）：若仍写入本目录 \`result.json\` 或 \`design/<端>/*.html\`，可执行 \`flowx-local design-submit ${executionSessionId}\`。
 `;
 }
 
-function validateReport(report: DesignCompletionReport) {
-  if (
-    !report?.idempotencyKey?.trim() ||
-    !report.output?.design ||
-    !report.output?.demo ||
-    !report.output?.designArtifact?.html?.trim()
-  ) {
+async function validateReport(report: DesignCompletionReport, sessionDir?: string) {
+  if (!report?.idempotencyKey?.trim() || !report.output?.design || !report.output?.demo) {
     throw new Error('OpenDesign result.json is incomplete.');
   }
+  let surfaces = report.output.surfaces;
+  if ((!surfaces || surfaces.length === 0) && sessionDir) {
+    surfaces = await loadDesignSurfacesFromDir(sessionDir);
+    report.output.surfaces = surfaces;
+  }
+  assertDesignSurfacesPresent(surfaces);
 }

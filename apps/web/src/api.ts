@@ -36,7 +36,8 @@ import type {
   Requirement,
   ReviewFinding,
   SpecPlanOutput,
-  WorkflowDesignArtifact,
+  WorkflowDesignArtifactPage,
+  WorkflowDesignArtifactsList,
   WorkflowRun,
   Workspace,
 } from './types';
@@ -789,8 +790,12 @@ export const api = {
         take: params?.take !== undefined ? String(params.take) : undefined,
       })}`,
     ),
-  getWorkflowDesignArtifact: (id: string) =>
-    request<WorkflowDesignArtifact>(`/workflow-runs/${id}/design-artifact`),
+  listWorkflowDesignArtifacts: (id: string) =>
+    request<WorkflowDesignArtifactsList>(`/workflow-runs/${id}/design-artifacts`),
+  getWorkflowDesignArtifactPage: (id: string, surfaceId: string, pageId: string) =>
+    request<WorkflowDesignArtifactPage>(
+      `/workflow-runs/${id}/design-artifacts/${encodeURIComponent(surfaceId)}/${encodeURIComponent(pageId)}`,
+    ),
   startOpenDesignHandoff: (requirementId: string, repositoryIds?: string[]) =>
     request<OpenDesignHandoffResponse>('/edge/design-handoffs', {
       method: 'POST',

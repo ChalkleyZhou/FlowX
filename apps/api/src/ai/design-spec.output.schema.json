@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "DesignPhaseOutput",
-  "description": "设计阶段（OpenDesign 高保真）输出：顶层含 design、demo 与 designArtifact（内联单页 HTML）。本阶段不要求 demoPages。",
+  "description": "设计阶段（OpenDesign 高保真）输出：顶层含 design、demo 与 surfaces（按端多页内联 HTML）。本阶段不要求 demoPages。",
   "type": "object",
   "additionalProperties": false,
-  "required": ["design", "demo", "designArtifact"],
+  "required": ["design", "demo", "surfaces"],
   "properties": {
     "design": {
       "type": "object",
@@ -87,20 +87,35 @@
         }
       }
     },
-    "designArtifact": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["html"],
-      "description": "OpenDesign 高保真单页 HTML 设计稿：html 为完整自包含 HTML 文档字符串（内联样式，可在 sandbox iframe 直接渲染）。",
-      "properties": {
-        "html": {
-          "type": "string",
-          "minLength": 1,
-          "description": "完整单页 HTML 文档（<!doctype html> 起始，内联 CSS，无需外部资源）。"
-        },
-        "relPath": { "type": "string" },
-        "generatedAt": { "type": "string" },
-        "bytes": { "type": "number" }
+    "surfaces": {
+      "type": "array",
+      "minItems": 1,
+      "description": "按端拆分的设计稿；每端含一页或多页完整 HTML。推荐 id：Web端 / 移动端 / 管理后台。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "pages"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "pages": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "html"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "title": { "type": "string" },
+                "html": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "完整单页 HTML 文档（<!doctype html> 起始，内联 CSS，无需外部资源）。"
+                }
+              }
+            }
+          }
+        }
       }
     }
   }

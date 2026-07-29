@@ -68,10 +68,11 @@ export interface DesignCompletionReportInput {
   output: {
     design: Record<string, unknown>;
     demo: Record<string, unknown>;
-    designArtifact: {
-      html: string;
+    surfaces: Array<{
+      id: string;
+      pages: Array<{ id: string; title?: string; html: string; [key: string]: unknown }>;
       [key: string]: unknown;
-    };
+    }>;
   };
   metadata?: Record<string, unknown>;
 }
