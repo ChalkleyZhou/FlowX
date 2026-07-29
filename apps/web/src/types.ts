@@ -523,7 +523,7 @@ export interface OpenDesignHandoff {
     }>;
     outputContract: {
       resultFileName: string;
-      format: 'flowx-design-result-v1';
+      format: 'flowx-design-result-v2';
       requiredFields: readonly string[];
     };
   };

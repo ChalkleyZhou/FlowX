@@ -23,7 +23,7 @@ const task: FlowXTaskItem = {
 const validJson = JSON.stringify({
   design: { overview: 'o', pages: [], demoScenario: 'd', designRationale: 'r' },
   demo: { summary: 's', flows: [], scope: { included: [], excluded: [] }, knownGaps: [] },
-  designArtifact: { html: '<!doctype html><html></html>' },
+  surfaces: [{ id: 'Web端', pages: [{ id: 'index', html: '<!doctype html><html></html>' }] }],
 });
 
 describe('parseLocalDesignSubmission', () => {
@@ -35,7 +35,9 @@ describe('parseLocalDesignSubmission', () => {
     expect(parseLocalDesignSubmission('{not json')).toBeNull();
     expect(parseLocalDesignSubmission(JSON.stringify({ design: {}, demo: {} }))).toBeNull();
     expect(
-      parseLocalDesignSubmission(JSON.stringify({ design: {}, demo: {}, designArtifact: { html: '' } })),
+      parseLocalDesignSubmission(
+        JSON.stringify({ design: {}, demo: {}, surfaces: [{ id: 'Web端', pages: [{ id: 'index', html: '' }] }] }),
+      ),
     ).toBeNull();
   });
 });
@@ -45,7 +47,7 @@ describe('buildLocalDesignPrompt', () => {
     const prompt = buildLocalDesignPrompt(task, 'run-1', localDesignRelPath('run-1'));
     expect(prompt).toContain('OpenDesign MCP');
     expect(prompt).toContain('.flowx/design/run-1.json');
-    expect(prompt).toContain('designArtifact');
+    expect(prompt).toContain('surfaces');
   });
 });
 
@@ -92,7 +94,7 @@ describe('submitLocalDesignFromFile', () => {
   it('submits a valid agent-written design', async () => {
     const d = deps();
     await submitLocalDesignFromFile(d, 'run-1');
-    expect(d.submit).toHaveBeenCalledWith('run-1', expect.objectContaining({ designArtifact: expect.any(Object) }));
+    expect(d.submit).toHaveBeenCalledWith('run-1', expect.objectContaining({ surfaces: expect.any(Array) }));
     expect(d.showInfo).toHaveBeenCalled();
   });
 

@@ -77,7 +77,11 @@ export interface CompleteLocalInput {
 export interface LocalDesignSubmission {
   design: Record<string, unknown>;
   demo: Record<string, unknown>;
-  designArtifact: { html: string } & Record<string, unknown>;
+  surfaces: Array<{
+    id: string;
+    pages: Array<{ id: string; title?: string; html: string; [key: string]: unknown }>;
+    [key: string]: unknown;
+  }>;
 }
 
 export interface WorkflowStageExecution {
