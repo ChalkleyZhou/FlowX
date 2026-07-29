@@ -14,15 +14,10 @@ import { IdeationSessionStatus, IdeationStatus } from '../common/enums';
 import {
   BrainstormBrief,
   BrainstormOutput,
-  DemoArtifact,
-  DemoPage,
   DesignSpec,
   GenerateDesignOutput,
   RepositoryComponentContext,
 } from '../common/types';
-import { integrateFlowxDemoRoutes } from '../common/demo-router-integration';
-import { createNavPlacementAgent } from '../ai/demo-nav-agent-factory';
-import type { AIInvocationContext } from '../ai/ai-executor';
 import { LocalDevPreviewService } from '../dev-preview/local-dev-preview.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RepositorySyncService } from '../workspaces/repository-sync.service';
@@ -31,8 +26,6 @@ import { UpdateRequirementDto } from './dto/update-requirement.dto';
 import { toRequirementAssignmentResponse } from './requirement-assignment.mapper';
 import {
   IdeationSessionEventsRepository,
-  type IdeationSessionEventType,
-  type IdeationSessionStage,
 } from './ideation-session-events.repository';
 
 const ideationStatusMap: Record<IdeationStatus, string> = {
@@ -43,9 +36,6 @@ const ideationStatusMap: Record<IdeationStatus, string> = {
   [IdeationStatus.DESIGN_PENDING]: 'DESIGN_PENDING',
   [IdeationStatus.DESIGN_WAITING_CONFIRMATION]: 'DESIGN_WAITING_CONFIRMATION',
   [IdeationStatus.DESIGN_CONFIRMED]: 'DESIGN_CONFIRMED',
-  [IdeationStatus.DEMO_PENDING]: 'DEMO_PENDING',
-  [IdeationStatus.DEMO_WAITING_CONFIRMATION]: 'DEMO_WAITING_CONFIRMATION',
-  [IdeationStatus.DEMO_CONFIRMED]: 'DEMO_CONFIRMED',
   [IdeationStatus.FINALIZED]: 'FINALIZED',
 };
 
@@ -807,94 +797,6 @@ export class RequirementsService {
     return this.findOne(requirementId);
   }
 
-  async startDemoGeneration(requirementId: string, hint?: string, authSession?: IdeationAuthSession) {
-    let requirement = await this.findOne(requirementId);
-    const currentStatus = requirement.ideationStatus as IdeationStatus;
-
-    if (
-      currentStatus !== IdeationStatus.DESIGN_CONFIRMED &&
-      currentStatus !== IdeationStatus.DEMO_WAITING_CONFIRMATION
-    ) {
-      throw new BadRequestException(
-        `Cannot start demo generation from status ${currentStatus}. Expected DESIGN_CONFIRMED or DEMO_WAITING_CONFIRMATION.`,
-      );
-    }
-
-    const confirmedBrief = await this.getConfirmedBrief(requirementId);
-    const confirmedDesign = await this.getConfirmedDesign(requirementId);
-    if (!confirmedBrief || !confirmedDesign) {
-      throw new BadRequestException('Design must be confirmed before generating demo pages.');
-    }
-    requirement = await this.ensureIdeationRepositoriesReady(requirement);
-
-    const executor = this.resolveIdeationExecutor();
-    const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
-      undefined,
-      this.toAiInvocationRecipient(authSession),
-    );
-    const previousDemoPages = await this.getPreviousDemoPages(requirementId);
-    const session = await this.prisma.ideationSession.create({
-      data: {
-        requirementId,
-        stage: 'DEMO',
-        attempt: previousDemoPages.length + 1,
-        status: ideationSessionStatusMap[IdeationSessionStatus.RUNNING],
-        input: { humanHint: hint },
-        statusMessage: '正在生成 Demo 页面（0s）…',
-        startedAt: new Date(),
-      },
-    });
-
-    await this.prisma.requirement.update({
-      where: { id: requirementId },
-      data: { ideationStatus: ideationStatusMap[IdeationStatus.DEMO_PENDING] },
-    });
-
-    const startedAtMs = Date.now();
-    await this.emitDemoGenerationEvent({
-      sessionId: session.id,
-      eventType: 'STARTED',
-      stage: 'QUEUE',
-      message: 'Demo generation started.',
-      startedAtMs,
-      details: { requirementId, attempt: session.attempt },
-    });
-    await this.emitDemoGenerationEvent({
-      sessionId: session.id,
-      eventType: 'STAGE',
-      stage: 'QUEUE',
-      message: 'Queued and preparing repository context.',
-      startedAtMs,
-    });
-
-    void this.executeDemoGenerationJob({
-      requirementId,
-      requirement,
-      confirmedBrief,
-      confirmedDesign,
-      hint,
-      sessionId: session.id,
-      startedAtMs,
-      executor,
-      invocationContext,
-    });
-
-    return this.findOne(requirementId);
-  }
-
-  async reviseDemoGeneration(requirementId: string, feedback: string, authSession?: IdeationAuthSession) {
-    const requirement = await this.findOne(requirementId);
-    const currentStatus = requirement.ideationStatus as IdeationStatus;
-
-    if (currentStatus !== IdeationStatus.DEMO_WAITING_CONFIRMATION) {
-      throw new BadRequestException(
-        `Cannot revise demo generation from status ${currentStatus}. Expected DEMO_WAITING_CONFIRMATION.`,
-      );
-    }
-
-    return this.startDemoGeneration(requirementId, feedback, authSession);
-  }
-
   async getIdeationSessionEvents(requirementId: string, sessionId: string) {
     const session = await this.prisma.ideationSession.findFirst({
       where: { id: sessionId, requirementId },
@@ -906,220 +808,13 @@ export class RequirementsService {
     return this.ideationSessionEventsRepository.list(sessionId);
   }
 
-  private async executeDemoGenerationJob(input: {
-    requirementId: string;
-    requirement: any;
-    confirmedBrief: BrainstormBrief;
-    confirmedDesign: DesignSpec;
-    hint?: string;
-    sessionId: string;
-    startedAtMs: number;
-    executor: AIExecutor;
-    invocationContext: any;
-  }) {
-    let heartbeat: NodeJS.Timeout | undefined;
-    try {
-      const timeoutMs = this.getDemoGenerationTimeoutMs();
-      heartbeat = setInterval(() => {
-        void this.emitDemoGenerationEvent({
-          sessionId: input.sessionId,
-          eventType: 'HEARTBEAT',
-          stage: 'MODEL_RUNNING',
-          message: 'Demo generation still running.',
-          startedAtMs: input.startedAtMs,
-        });
-      }, 10_000);
-
-      const readyRepos = this.resolveReadyRepositories(input.requirement);
-      const includeComponentContext = this.shouldIncludeComponentContextForDemo();
-      await this.emitDemoGenerationEvent({
-        sessionId: input.sessionId,
-        eventType: 'STAGE',
-        stage: 'CONTEXT_SCAN',
-        message: 'Scanning repository component context.',
-        startedAtMs: input.startedAtMs,
-        details: { readyRepoCount: readyRepos.length, includeComponentContext },
-      });
-      const repositorySummary = await this.buildDemoRepositorySummary(input.requirement);
-      const repositoryComponentContext = includeComponentContext
-        ? await this.buildRepositoryComponentContext(input.executor, input.requirement)
-        : null;
-      const narrowedComponentContext = includeComponentContext
-        ? this.narrowRepositoryComponentContextForDemo(repositoryComponentContext)
-        : null;
-      await this.emitDemoGenerationEvent({
-        sessionId: input.sessionId,
-        eventType: 'STAGE',
-        stage: 'CONTEXT_SCAN',
-        message: includeComponentContext
-          ? narrowedComponentContext
-            ? 'Repository context scanned.'
-            : 'Repository context unavailable, continuing.'
-          : 'Using lightweight repository summary only.',
-        startedAtMs: input.startedAtMs,
-      });
-      await this.emitDemoGenerationEvent({
-        sessionId: input.sessionId,
-        eventType: 'STAGE',
-        stage: 'MODEL_RUNNING',
-        message: 'Invoking AI for demo page generation.',
-        startedAtMs: input.startedAtMs,
-      });
-
-      const baseFeedback = `${input.hint?.trim() || ''}\n\n仅生成 demoPages，用于本地预览。保持已确认 design 不变。`.trim();
-      const scopedFeedback = `${baseFeedback}\n\n仓库结构摘要:\n${repositorySummary}`.trim();
-      const rawResult = await this.generateDemoWithSingleRetry({
-        input,
-        timeoutMs,
-        humanFeedback: scopedFeedback,
-        repositoryComponentContext: narrowedComponentContext ?? undefined,
-      });
-      await this.emitDemoGenerationEvent({
-        sessionId: input.sessionId,
-        eventType: 'STAGE',
-        stage: 'JSON_PARSE',
-        message: 'AI response received, validating structured output.',
-        startedAtMs: input.startedAtMs,
-      });
-      const result = this.normalizeDesignOutput(rawResult);
-      if (!result.demoPages || result.demoPages.length < 2) {
-        throw new Error(
-          'DEMO_PAGES_EMPTY: Demo generation must return an entry hub page and at least one scenario page.',
-        );
-      }
-
-      await this.emitDemoGenerationEvent({
-        sessionId: input.sessionId,
-        eventType: 'STAGE',
-        stage: 'WRITE_FILES',
-        message: `Writing ${result.demoPages.length} demo page(s) to repository.`,
-        startedAtMs: input.startedAtMs,
-        details: { demoPageCount: result.demoPages.length },
-      });
-      await this.writeDemoPagesToRepo(
-        result.demoPages,
-        input.requirement,
-        input.invocationContext,
-        input.executor,
-      );
-      const primaryRepoId = this.getFirstReadyRepositoryId(input.requirement);
-      if (primaryRepoId) {
-        await this.emitDemoGenerationEvent({
-          sessionId: input.sessionId,
-          eventType: 'STAGE',
-          stage: 'PREVIEW_START',
-          message: 'Restarting local preview service.',
-          startedAtMs: input.startedAtMs,
-          details: { repositoryId: primaryRepoId },
-        });
-        await this.localDevPreviewService.restartAfterDesignWrite(primaryRepoId);
-      }
-
-      await this.emitDemoGenerationEvent({
-        sessionId: input.sessionId,
-        eventType: 'COMPLETED',
-        stage: 'FINALIZE',
-        message: `Demo pages generated (${result.demoPages.length}), waiting for confirmation.`,
-        startedAtMs: input.startedAtMs,
-        includeElapsed: false,
-      });
-      await this.prisma.ideationSession.update({
-        where: { id: input.sessionId },
-        data: {
-          status: ideationSessionStatusMap[IdeationSessionStatus.WAITING_CONFIRMATION],
-          output: { demoPages: result.demoPages } as any,
-          finishedAt: new Date(),
-          statusMessage: `Demo pages generated (${result.demoPages.length}), waiting for confirmation.`,
-        },
-      });
-      await this.markSupersededWaitingSessions(input.requirementId, 'DEMO', input.sessionId);
-
-      await this.prisma.requirement.update({
-        where: { id: input.requirementId },
-        data: { ideationStatus: ideationStatusMap[IdeationStatus.DEMO_WAITING_CONFIRMATION] },
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown demo generation error';
-      this.logger.error(`Demo generation failed for requirement ${input.requirementId}: ${message}`);
-      await this.emitDemoGenerationEvent({
-        sessionId: input.sessionId,
-        eventType: 'FAILED',
-        stage: 'FINALIZE',
-        message: `Demo generation failed: ${message}`,
-        startedAtMs: input.startedAtMs,
-        includeElapsed: false,
-      });
-
-      await this.prisma.ideationSession.update({
-        where: { id: input.sessionId },
-        data: {
-          status: ideationSessionStatusMap[IdeationSessionStatus.FAILED],
-          errorMessage: message,
-          finishedAt: new Date(),
-        },
-      });
-      await this.prisma.requirement.update({
-        where: { id: input.requirementId },
-        data: { ideationStatus: ideationStatusMap[IdeationStatus.DESIGN_CONFIRMED] },
-      });
-    } finally {
-      if (heartbeat) {
-        clearInterval(heartbeat);
-      }
-    }
-  }
-
-  async confirmDemoGeneration(requirementId: string) {
-    const requirement = await this.findOne(requirementId);
-    const currentStatus = requirement.ideationStatus as IdeationStatus;
-    if (currentStatus !== IdeationStatus.DEMO_WAITING_CONFIRMATION) {
-      throw new BadRequestException(
-        `Cannot confirm demo generation from status ${currentStatus}. Expected DEMO_WAITING_CONFIRMATION.`,
-      );
-    }
-
-    const lastSession = requirement.ideationSessions
-      ?.filter((s: { stage: string }) => s.stage === 'DEMO')
-      .sort((a: { attempt: number }, b: { attempt: number }) => b.attempt - a.attempt)[0];
-    if (lastSession?.output) {
-      const output = lastSession.output as { demoPages?: DemoPage[] };
-      if (output.demoPages && output.demoPages.length > 0) {
-        await this.prisma.ideationArtifact.create({
-          data: {
-            requirementId,
-            type: 'DEMO_PAGE',
-            content: output.demoPages as any,
-          },
-        });
-      } else {
-        throw new BadRequestException('当前轮次没有可确认的 demoPages，请重新生成后再确认。');
-      }
-
-      await this.prisma.ideationSession.update({
-        where: { id: lastSession.id },
-        data: {
-          status: ideationSessionStatusMap[IdeationSessionStatus.COMPLETED],
-          statusMessage: 'Confirmed by user.',
-        },
-      });
-      await this.markSupersededWaitingSessions(requirementId, 'DEMO', lastSession.id);
-    }
-
-    await this.prisma.requirement.update({
-      where: { id: requirementId },
-      data: { ideationStatus: ideationStatusMap[IdeationStatus.DEMO_CONFIRMED] },
-    });
-
-    return this.findOne(requirementId);
-  }
-
   async finalizeIdeation(requirementId: string) {
     const requirement = await this.findOne(requirementId);
     const currentStatus = requirement.ideationStatus as IdeationStatus;
 
-    if (currentStatus !== IdeationStatus.DEMO_CONFIRMED && currentStatus !== IdeationStatus.DESIGN_CONFIRMED) {
+    if (currentStatus !== IdeationStatus.DESIGN_CONFIRMED) {
       throw new BadRequestException(
-        `Cannot finalize ideation from status ${currentStatus}. Expected DEMO_CONFIRMED.`,
+        `Cannot finalize ideation from status ${currentStatus}. Expected DESIGN_CONFIRMED.`,
       );
     }
 
@@ -1317,201 +1012,10 @@ export class RequirementsService {
     }
   }
 
-  private appendDesignDemoHintForUser(
-    demoCount: number,
-    readyRepoCount: number,
-    isMockExecutor: boolean,
-    hadComponentContext: boolean,
-  ): string {
-    if (demoCount > 0) {
-      return '';
-    }
-    if (readyRepoCount === 0) {
-      return '（无已同步的 READY 仓库，未生成 demoPages；请在工作区同步仓库或在需求中关联仓库后再重新生成。）';
-    }
-    if (isMockExecutor) {
-      return '（当前为 Mock AI，未注入仓库组件扫描，未生成 demoPages；请改用真实执行器。）';
-    }
-    if (!hadComponentContext) {
-      return '';
-    }
-    return '（未返回 demoPages；请查看 API 日志中的 DESIGN_DEMO_PAGES_EMPTY 或模型输出。）';
-  }
-
-  private async emitDemoGenerationEvent(input: {
-    sessionId: string;
-    eventType: IdeationSessionEventType;
-    stage: IdeationSessionStage;
-    message: string;
-    startedAtMs: number;
-    details?: Record<string, unknown>;
-    includeElapsed?: boolean;
-  }) {
-    await this.ideationSessionEventsRepository.append({
-      sessionId: input.sessionId,
-      eventType: input.eventType,
-      stage: input.stage,
-      message: input.message,
-      details: input.details,
-    });
-
-    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - input.startedAtMs) / 1000));
-    const includeElapsed = input.includeElapsed ?? true;
-    const statusMessage = includeElapsed ? `${input.message} (${elapsedSeconds}s)` : input.message;
-
-    await this.prisma.ideationSession.update({
-      where: { id: input.sessionId },
-      data: { statusMessage },
-    });
-  }
-
-  private narrowRepositoryComponentContextForDemo(
-    context: RepositoryComponentContext | null,
-  ): RepositoryComponentContext | null {
-    if (!context) {
-      return null;
-    }
-    return {
-      componentFiles: context.componentFiles.slice(0, 40),
-      propTypes: context.propTypes.slice(0, 40),
-      pageExamples: context.pageExamples.slice(0, 6),
-      designTokens: context.designTokens,
-    };
-  }
-
-  private shouldIncludeComponentContextForDemo(): boolean {
-    const raw = process.env.FLOWX_DEMO_INCLUDE_COMPONENT_CONTEXT?.trim().toLowerCase();
-    if (!raw) {
-      return false;
-    }
-    return ['1', 'true', 'yes', 'on'].includes(raw);
-  }
-
-  private async buildDemoRepositorySummary(
-    requirement: Awaited<ReturnType<typeof this.findOne>>,
-  ): Promise<string> {
-    const repositories = this.resolveReadyRepositories(requirement);
-    if (!repositories.length) {
-      return '- 无 READY 仓库可用。';
-    }
-    const { readdir } = require('fs/promises');
-    const { join } = require('path');
-    const lines: string[] = [];
-    for (const repo of repositories.slice(0, 2)) {
-      lines.push(`- ${repo.name}: ${repo.localPath}`);
-      const candidates = ['apps', 'packages', 'src', 'app', 'pages', 'components'];
-      for (const dir of candidates) {
-        try {
-          const entries = await readdir(join(repo.localPath, dir), { withFileTypes: true });
-          const names = entries
-            .slice(0, 8)
-            .map((entry: { name: string; isDirectory: () => boolean }) =>
-              entry.isDirectory() ? `${entry.name}/` : entry.name,
-            );
-          if (names.length > 0) {
-            lines.push(`  ${dir}/: ${names.join(', ')}`);
-          }
-        } catch {
-          // ignore missing directories
-        }
-      }
-    }
-    return lines.join('\n') || '- 仓库结构读取为空。';
-  }
-
-  private isRetryableDemoGenerationError(message: string): boolean {
-    const normalized = message.toLowerCase();
-    return (
-      normalized.includes('demo_generation_timeout') ||
-      normalized.includes('timed out') ||
-      normalized.includes('did not contain json') ||
-      normalized.includes('empty')
-    );
-  }
-
-  private async generateDemoWithSingleRetry(input: {
-    input: {
-      requirementId: string;
-      requirement: any;
-      confirmedBrief: BrainstormBrief;
-      confirmedDesign: DesignSpec;
-      hint?: string;
-      sessionId: string;
-      startedAtMs: number;
-      executor: AIExecutor;
-      invocationContext: any;
-    };
-    timeoutMs: number;
-    humanFeedback: string;
-    repositoryComponentContext?: RepositoryComponentContext;
-  }) {
-    const runGenerate = (humanFeedback: string) =>
-      this.runWithTimeout(
-        input.input.executor.generateDesign(
-          {
-            requirementTitle: input.input.requirement.title,
-            requirementDescription: input.input.requirement.description,
-            confirmedBrief: input.input.confirmedBrief,
-            previousDesigns: [input.input.confirmedDesign],
-            humanFeedback,
-            repositoryComponentContext: input.repositoryComponentContext,
-          },
-          input.input.invocationContext,
-        ),
-        input.timeoutMs,
-        `DEMO_GENERATION_TIMEOUT: Demo generation exceeded ${input.timeoutMs}ms without completion.`,
-      );
-
-    try {
-      return await runGenerate(input.humanFeedback);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!this.isRetryableDemoGenerationError(message)) {
-        throw error;
-      }
-      await this.emitDemoGenerationEvent({
-        sessionId: input.input.sessionId,
-        eventType: 'RETRY',
-        stage: 'MODEL_RUNNING',
-        message: 'First attempt stalled, retrying once with stricter instructions.',
-        startedAtMs: input.input.startedAtMs,
-        details: { reason: message.slice(0, 240) },
-      });
-      const retryFeedback = `${input.humanFeedback}\n\n重试要求：\n1) 只输出最终 JSON，不要输出解释文本。\n2) 只生成 1-2 个最小可运行 demoPages。\n3) 优先复用已有组件，禁止额外遍历仓库。`;
-      return runGenerate(retryFeedback);
-    }
-  }
-
-  private getDemoGenerationTimeoutMs(): number {
-    const raw = process.env.FLOWX_DEMO_GENERATION_TIMEOUT_MS;
-    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return parsed;
-    }
-    return 1_200_000;
-  }
-
-  private async runWithTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
-    let timeoutRef: NodeJS.Timeout | undefined;
-    try {
-      return await Promise.race([
-        promise,
-        new Promise<T>((_, reject) => {
-          timeoutRef = setTimeout(() => {
-            reject(new Error(timeoutMessage));
-          }, timeoutMs);
-        }),
-      ]);
-    } finally {
-      if (timeoutRef) {
-        clearTimeout(timeoutRef);
-      }
-    }
-  }
 
   private async markSupersededWaitingSessions(
     requirementId: string,
-    stage: 'BRAINSTORM' | 'DESIGN' | 'DEMO',
+    stage: 'BRAINSTORM' | 'DESIGN',
     keepSessionId: string,
   ) {
     await this.prisma.ideationSession.updateMany({
@@ -1576,15 +1080,6 @@ export class RequirementsService {
     return artifacts.map((a) => a.content as unknown as DesignSpec);
   }
 
-  private async getPreviousDemoPages(requirementId: string): Promise<DemoPage[][]> {
-    const artifacts = await this.prisma.ideationArtifact.findMany({
-      where: { requirementId, type: 'DEMO_PAGE' },
-      orderBy: { version: 'asc' },
-    });
-    return artifacts.map((a) => a.content as unknown as DemoPage[]);
-  }
-
-  // ── Demo helpers ──
 
   private resolveReadyRepositories(
     requirement: Awaited<ReturnType<typeof this.findOne>>,
@@ -1794,63 +1289,5 @@ export class RequirementsService {
     return null;
   }
 
-  private async writeDemoPagesToRepo(
-    demoPages: DemoPage[],
-    requirement: Awaited<ReturnType<typeof this.findOne>>,
-    invocationContext: AIInvocationContext | undefined,
-    executor: AIExecutor,
-  ): Promise<void> {
-    const { execFile: execFileCb } = require('child_process');
-    const { promisify } = require('util');
-    const { writeFile: writeFileCb, mkdir: mkdirCb } = require('fs/promises');
-    const { join } = require('path');
-    const execFile = promisify(execFileCb);
-
-    const repositories = this.resolveReadyRepositories(requirement);
-
-    if (!repositories || repositories.length === 0) {
-      this.logger.warn(`No ready repositories found for requirement ${requirement.id}, skipping demo page write.`);
-      return;
-    }
-
-    const repo = repositories[0];
-
-    for (const page of demoPages) {
-      try {
-        const fullPath = join(repo.localPath, page.filePath);
-        const dir = require('path').dirname(fullPath);
-        await mkdirCb(dir, { recursive: true });
-        await writeFileCb(fullPath, page.componentCode, 'utf8');
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'unknown write error';
-        this.logger.warn(`Failed to write demo page ${page.filePath}: ${message}`);
-      }
-    }
-
-    const routeIntegration = await integrateFlowxDemoRoutes(repo.localPath, demoPages, {
-      navPlacementAgent: createNavPlacementAgent(executor, invocationContext),
-    });
-    for (const w of routeIntegration.warnings) {
-      this.logger.warn(w);
-    }
-    if (routeIntegration.routerRelativePath && routeIntegration.normalizedRoutes.length > 0) {
-      this.logger.log(
-        `FlowX demo preview routes: ${routeIntegration.normalizedRoutes.join(', ')} (see ${routeIntegration.generatedRelativePath ?? 'flowx-demo-routes.generated'})`,
-      );
-    }
-    if (routeIntegration.navMenuPatch?.patchedRelativePath) {
-      this.logger.log(`FlowX demo nav patched: ${routeIntegration.navMenuPatch.patchedRelativePath}`);
-    }
-
-    // Git commit
-    try {
-      await execFile('git', ['add', '.'], { cwd: repo.localPath });
-      await execFile('git', ['commit', '-m', `flowx: demo page for requirement ${requirement.id}`], { cwd: repo.localPath });
-      this.logger.log(`Demo pages committed for requirement ${requirement.id}`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'unknown git error';
-      this.logger.warn(`Failed to commit demo pages for requirement ${requirement.id}: ${message}`);
-    }
-  }
 
 }

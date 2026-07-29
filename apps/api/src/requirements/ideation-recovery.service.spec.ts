@@ -13,7 +13,7 @@ describe('IdeationRecoveryService stale heartbeat recovery', () => {
           {
             id: 'session-1',
             requirementId: 'req-1',
-            stage: 'DEMO',
+            stage: 'DESIGN',
             startedAt: new Date('2026-04-23T10:00:00.000Z'),
             createdAt: new Date('2026-04-23T10:00:00.000Z'),
           },
@@ -51,7 +51,7 @@ describe('IdeationRecoveryService stale heartbeat recovery', () => {
           {
             id: 'session-2',
             requirementId: 'req-2',
-            stage: 'DEMO',
+            stage: 'DESIGN',
             startedAt: new Date('2026-04-23T10:00:00.000Z'),
             createdAt: new Date('2026-04-23T10:00:00.000Z'),
           },
