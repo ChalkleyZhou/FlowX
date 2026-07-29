@@ -319,8 +319,8 @@ export interface GenerateDesignOutput {
   design: DesignSpec;
   demo: DemoArtifact;
   demoPages: DemoPage[];
-  /** @deprecated 使用 surfaces；Demo 阶段不再依赖此字段。 */
-  designArtifact?: DesignArtifactRef;
+  /** 设计阶段（phase=design）必填；Demo 阶段可省略。 */
+  surfaces?: DesignSurfaceInput[];
 }
 
 /** 设计阶段 executor 输出：必含 surfaces（按端多页 HTML），demoPages 可选。 */

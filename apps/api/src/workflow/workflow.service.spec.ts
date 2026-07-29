@@ -484,7 +484,12 @@ const validLocalDesign = {
     scope: { included: [], excluded: [] },
     knownGaps: [],
   },
-  designArtifact: { html: '<!doctype html><html><body><h1>X</h1></body></html>' },
+  surfaces: [
+    {
+      id: 'Web端',
+      pages: [{ id: 'index', html: '<!doctype html><html><body><h1>X</h1></body></html>' }],
+    },
+  ],
 };
 
 describe('WorkflowService submitLocalDesign', () => {
@@ -520,7 +525,7 @@ describe('WorkflowService submitLocalDesign', () => {
       },
     };
     await expect(
-      makeServiceWithPrisma(prisma).submitLocalDesign('run-ld', { design: {}, demo: {}, designArtifact: {} }),
+      makeServiceWithPrisma(prisma).submitLocalDesign('run-ld', { design: {}, demo: {}, surfaces: [] }),
     ).rejects.toThrow(/DESIGN_OUTPUT_INVALID/);
   });
 
@@ -570,30 +575,56 @@ describe('WorkflowService submitLocalDesign', () => {
     };
 
     expect(result.status).toBe('DESIGN_WAITING_CONFIRMATION');
-    expect(capturedOutput?.designArtifact).toMatchObject({ relPath: expect.stringContaining('run-ld/') });
+    expect(capturedOutput?.surfaces).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'Web端',
+          pages: expect.arrayContaining([
+            expect.objectContaining({ id: 'index', relPath: expect.stringContaining('run-ld/') }),
+          ]),
+        }),
+      ]),
+    );
     expect(capturedOutput?.design).toBeDefined();
     expect(stageStatus).toBe('WAITING_CONFIRMATION');
   });
 });
 
 describe('WorkflowService design artifact persistence', () => {
-  it('persists design HTML to disk and reads it back via the stored ref (rejecting traversal)', async () => {
+  it('persists surface pages to disk and reads them back (rejecting traversal)', async () => {
     const { service } = createService();
     const helpers = service as unknown as {
-      persistWorkflowDesignArtifact: (runId: string, html: string) => Promise<{ relPath: string; bytes: number }>;
+      persistDesignSurfacePages: (
+        runId: string,
+        surfaceId: string,
+        pages: Array<{ id: string; html: string }>,
+      ) => Promise<{ id: string; pages: Array<{ relPath: string; bytes: number }> }>;
       readWorkflowDesignArtifactHtml: (relPath: string) => Promise<string | null>;
+      mergeDesignSurfaceInventory: (
+        previous: Array<{ id: string; pages: unknown[] }> | undefined,
+        incoming: Array<{ id: string; pages: unknown[] }>,
+      ) => Array<{ id: string; pages: unknown[] }>;
     };
 
     const runId = `test-${Date.now()}`;
     const html = '<!doctype html><html><body><h1>FlowX</h1></body></html>';
-    const ref = await helpers.persistWorkflowDesignArtifact(runId, html);
+    const surface = await helpers.persistDesignSurfacePages(runId, 'Web端', [
+      { id: '首页', html },
+    ]);
 
-    expect(ref.relPath.startsWith(`${runId}/`)).toBe(true);
-    expect(ref.bytes).toBe(Buffer.byteLength(html, 'utf8'));
-    expect(await helpers.readWorkflowDesignArtifactHtml(ref.relPath)).toBe(html);
+    expect(surface.id).toBe('Web端');
+    expect(surface.pages[0]?.relPath).toContain(`${runId}/`);
+    expect(surface.pages[0]?.bytes).toBe(Buffer.byteLength(html, 'utf8'));
+    expect(await helpers.readWorkflowDesignArtifactHtml(surface.pages[0]!.relPath)).toBe(html);
 
     expect(await helpers.readWorkflowDesignArtifactHtml('../../etc/passwd')).toBeNull();
     expect(await helpers.readWorkflowDesignArtifactHtml('/etc/passwd')).toBeNull();
+
+    const merged = helpers.mergeDesignSurfaceInventory(
+      [{ id: '移动端', pages: [{ id: 'home' }] }],
+      [surface],
+    );
+    expect(merged.map((item) => item.id).sort()).toEqual(['Web端', '移动端']);
 
     const { rm } = await import('fs/promises');
     const { join } = await import('path');

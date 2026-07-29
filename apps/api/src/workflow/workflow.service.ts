@@ -54,8 +54,10 @@ import {
   BrainstormBrief,
   DemoArtifact,
   DemoPage,
-  DesignArtifactRef,
+  DesignPageRef,
   DesignSpec,
+  DesignSurfaceInput,
+  DesignSurfaceInventory,
   GenerateDesignOutput,
   GeneratePlanOutput,
   RepositoryComponentContext,
@@ -1223,11 +1225,16 @@ export class WorkflowService {
           { phase: 'design' },
         );
 
-        const artifactRef = designResult.designArtifact?.html
-          ? await this.persistWorkflowDesignArtifact(id, designResult.designArtifact.html)
-          : undefined;
-
-        const persistedOutput = this.toPersistedDesignStageOutput(designResult, artifactRef);
+        const previousSurfaces = this.getDesignSurfaceInventory(wf);
+        if (!designResult.surfaces?.length) {
+          throw new Error('DESIGN_OUTPUT_INVALID: Missing required non-empty array "surfaces".');
+        }
+        const persistedSurfaces = await this.persistAndMergeDesignSurfaces(
+          id,
+          previousSurfaces,
+          designResult.surfaces,
+        );
+        const persistedOutput = this.toPersistedDesignStageOutput(designResult, persistedSurfaces);
 
         await this.prisma.$transaction(async (tx) => {
           const designStage = await tx.stageExecution.findFirstOrThrow({
@@ -1319,7 +1326,7 @@ export class WorkflowService {
           claimedByUserId: recipient?.flowxUserId ?? null,
           startedAt: new Date(),
           lastHeartbeatAt: new Date(),
-          metadata: { stage: 'DESIGN', outputFormat: 'flowx-design-result-v1' },
+          metadata: { stage: 'DESIGN', outputFormat: 'flowx-design-result-v2' },
         },
       });
       return tx.workflowRun.findUniqueOrThrow({
@@ -1488,13 +1495,15 @@ export class WorkflowService {
     }
 
     const parsed = assertDesignSpecOutput(report.output);
-    const artifactRef = await this.persistWorkflowDesignArtifact(
+    const previousSurfaces = this.getDesignSurfaceInventory(workflow);
+    const persistedSurfaces = await this.persistAndMergeDesignSurfaces(
       workflow.id,
-      parsed.designArtifact.html ?? '',
+      previousSurfaces,
+      parsed.surfaces,
     );
     const persistedOutput = this.toPersistedDesignStageOutput(
       { design: parsed.design, demo: parsed.demo, demoPages: [] },
-      artifactRef,
+      persistedSurfaces,
     );
 
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -1717,10 +1726,15 @@ export class WorkflowService {
     }
 
     const parsed = assertDesignSpecOutput(rawOutput);
-    const artifactRef = await this.persistWorkflowDesignArtifact(id, parsed.designArtifact.html ?? '');
+    const previousSurfaces = this.getDesignSurfaceInventory(workflow);
+    const persistedSurfaces = await this.persistAndMergeDesignSurfaces(
+      id,
+      previousSurfaces,
+      parsed.surfaces,
+    );
     const persistedOutput = this.toPersistedDesignStageOutput(
       { design: parsed.design, demo: parsed.demo, demoPages: [] },
-      artifactRef,
+      persistedSurfaces,
     );
 
     return this.prisma.$transaction(async (tx) => {
@@ -3245,8 +3259,8 @@ export class WorkflowService {
       })),
       outputContract: {
         resultFileName: 'result.json',
-        format: 'flowx-design-result-v1',
-        requiredFields: ['design', 'demo', 'designArtifact'],
+        format: 'flowx-design-result-v2',
+        requiredFields: ['design', 'demo', 'surfaces'],
       },
       metadata: {
         workflowStatus: workflow.status,
@@ -4385,61 +4399,157 @@ export class WorkflowService {
   }
 
   /**
-   * Persist only the design spec, demo intent, and the persisted design-artifact reference
-   * (without the inline HTML — that is stored on disk) for the design-confirmation gate.
+   * Persist design + demo intent + surfaces inventory (no inline HTML) for the confirmation gate.
    * Runnable demo pages are generated in the Demo stage after the spec is confirmed.
    */
   private toPersistedDesignStageOutput(
-    output: GenerateDesignOutput,
-    artifactRef?: DesignArtifactRef,
-  ): Pick<GenerateDesignOutput, 'design' | 'demo'> & { designArtifact?: DesignArtifactRef } {
+    output: Pick<GenerateDesignOutput, 'design' | 'demo'> | { design: DesignSpec; demo: DemoArtifact },
+    surfaces: DesignSurfaceInventory[],
+  ): { design: DesignSpec; demo: DemoArtifact; surfaces: DesignSurfaceInventory[] } {
     return {
       design: output.design,
       demo: output.demo,
-      ...(artifactRef ? { designArtifact: artifactRef } : {}),
+      surfaces,
     };
   }
 
-  /** 把设计阶段生成的单页 HTML 落盘到 `.flowx-data/design-artifacts/<runId>/`，返回不含 html 的引用。 */
-  private async persistWorkflowDesignArtifact(
-    workflowRunId: string,
-    html: string,
-  ): Promise<DesignArtifactRef> {
-    const bytes = Buffer.byteLength(html, 'utf8');
-    if (bytes > DESIGN_ARTIFACT_MAX_BYTES) {
-      throw new Error(
-        `DESIGN_ARTIFACT_TOO_LARGE: design artifact HTML is ${bytes} bytes, exceeds limit ${DESIGN_ARTIFACT_MAX_BYTES}.`,
-      );
+  private encodeDesignPathSegment(id: string): string {
+    return encodeURIComponent(id);
+  }
+
+  private mergeDesignSurfaceInventory(
+    previous: DesignSurfaceInventory[] | undefined,
+    incoming: DesignSurfaceInventory[],
+  ): DesignSurfaceInventory[] {
+    const map = new Map((previous ?? []).map((surface) => [surface.id, surface]));
+    for (const surface of incoming) {
+      map.set(surface.id, surface);
     }
-    const generatedAt = new Date().toISOString();
-    const fileName = `design-${generatedAt.replace(/[:.]/g, '-')}.html`;
-    const relPath = `${workflowRunId}/${fileName}`;
-    const absDir = join(DESIGN_ARTIFACT_ROOT, workflowRunId);
-    await mkdir(absDir, { recursive: true });
-    await writeFile(join(absDir, fileName), html, 'utf8');
-    if (this.artifactsService) {
-      try {
-        await this.artifactsService.registerWorkflowArtifact({
-          workflowRunId,
-          artifactType: 'DESIGN_HTML',
-          name: `设计稿 ${generatedAt}`,
-          version: generatedAt,
-          storageProvider: 'local',
-          storageKey: `design/${relPath}`,
-          mimeType: 'text/html; charset=utf-8',
-          byteSize: bytes,
-          sha256: createHash('sha256').update(html).digest('hex'),
-          status: 'AVAILABLE',
-          metadata: { generatedAt },
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.warn(
-          `Design artifact file was written but metadata registration failed for workflow ${workflowRunId}: ${message}`,
-        );
+    return [...map.values()];
+  }
+
+  private getDesignSurfaceInventory(workflow: WorkflowPayload): DesignSurfaceInventory[] {
+    const designStages = workflow.stageExecutions
+      .filter((item) => item.stage === stageTypeMap[StageType.DESIGN])
+      .sort((a, b) => b.attempt - a.attempt);
+    for (const stage of designStages) {
+      const output =
+        stage.output && typeof stage.output === 'object' && !Array.isArray(stage.output)
+          ? (stage.output as Record<string, unknown>)
+          : null;
+      const surfaces = output?.surfaces;
+      if (!Array.isArray(surfaces)) {
+        continue;
+      }
+      const inventory: DesignSurfaceInventory[] = [];
+      for (const item of surfaces) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+          continue;
+        }
+        const surface = item as Record<string, unknown>;
+        const id = typeof surface.id === 'string' ? surface.id : '';
+        if (!id || !Array.isArray(surface.pages)) {
+          continue;
+        }
+        const pages: DesignPageRef[] = [];
+        for (const pageItem of surface.pages) {
+          if (!pageItem || typeof pageItem !== 'object' || Array.isArray(pageItem)) {
+            continue;
+          }
+          const page = pageItem as Record<string, unknown>;
+          if (
+            typeof page.id !== 'string' ||
+            typeof page.relPath !== 'string' ||
+            typeof page.bytes !== 'number' ||
+            typeof page.generatedAt !== 'string'
+          ) {
+            continue;
+          }
+          pages.push({
+            id: page.id,
+            title: typeof page.title === 'string' ? page.title : undefined,
+            relPath: page.relPath,
+            bytes: page.bytes,
+            generatedAt: page.generatedAt,
+          });
+        }
+        if (pages.length > 0) {
+          inventory.push({ id, pages });
+        }
+      }
+      if (inventory.length > 0) {
+        return inventory;
       }
     }
-    return { relPath, bytes, generatedAt };
+    return [];
+  }
+
+  private async persistDesignSurfacePages(
+    workflowRunId: string,
+    surfaceId: string,
+    pages: DesignSurfaceInput['pages'],
+  ): Promise<DesignSurfaceInventory> {
+    const generatedAt = new Date().toISOString();
+    const safeSurface = this.encodeDesignPathSegment(surfaceId);
+    const absDir = join(DESIGN_ARTIFACT_ROOT, workflowRunId, safeSurface);
+    await mkdir(absDir, { recursive: true });
+    const outPages: DesignPageRef[] = [];
+
+    for (const page of pages) {
+      const bytes = Buffer.byteLength(page.html, 'utf8');
+      if (bytes > DESIGN_ARTIFACT_MAX_BYTES) {
+        throw new BadRequestException(
+          `DESIGN_ARTIFACT_TOO_LARGE: surface=${surfaceId} page=${page.id} is ${bytes} bytes, exceeds limit ${DESIGN_ARTIFACT_MAX_BYTES}.`,
+        );
+      }
+      const safePage = this.encodeDesignPathSegment(page.id);
+      const fileName = `${safePage}-${generatedAt.replace(/[:.]/g, '-')}.html`;
+      const relPath = `${workflowRunId}/${safeSurface}/${fileName}`;
+      await writeFile(join(absDir, fileName), page.html, 'utf8');
+      if (this.artifactsService) {
+        try {
+          await this.artifactsService.registerWorkflowArtifact({
+            workflowRunId,
+            artifactType: 'DESIGN_HTML',
+            name: `${surfaceId}/${page.title ?? page.id}`,
+            version: generatedAt,
+            storageProvider: 'local',
+            storageKey: `design/${relPath}`,
+            mimeType: 'text/html; charset=utf-8',
+            byteSize: bytes,
+            sha256: createHash('sha256').update(page.html).digest('hex'),
+            status: 'AVAILABLE',
+            metadata: { generatedAt, surfaceId, pageId: page.id },
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.warn(
+            `Design artifact file was written but metadata registration failed for workflow ${workflowRunId}: ${message}`,
+          );
+        }
+      }
+      outPages.push({
+        id: page.id,
+        title: page.title ?? page.id,
+        relPath,
+        bytes,
+        generatedAt,
+      });
+    }
+
+    return { id: surfaceId, pages: outPages };
+  }
+
+  private async persistAndMergeDesignSurfaces(
+    workflowRunId: string,
+    previous: DesignSurfaceInventory[] | undefined,
+    surfaces: DesignSurfaceInput[],
+  ): Promise<DesignSurfaceInventory[]> {
+    const incoming: DesignSurfaceInventory[] = [];
+    for (const surface of surfaces) {
+      incoming.push(await this.persistDesignSurfacePages(workflowRunId, surface.id, surface.pages));
+    }
+    return this.mergeDesignSurfaceInventory(previous, incoming);
   }
 
   /** Resolve and read a persisted design-artifact HTML by its stored relative path (guards against traversal). */
@@ -4459,52 +4569,74 @@ export class WorkflowService {
     }
   }
 
-  /** Latest design-stage designArtifact ref (WAITING_CONFIRMATION 优先，其次最近 COMPLETED)。 */
-  private getLatestDesignArtifactRef(workflow: WorkflowPayload): DesignArtifactRef | null {
-    const designStages = workflow.stageExecutions
-      .filter((item) => item.stage === stageTypeMap[StageType.DESIGN])
-      .sort((a, b) => b.attempt - a.attempt);
-    for (const stage of designStages) {
-      const output =
-        stage.output && typeof stage.output === 'object' && !Array.isArray(stage.output)
-          ? (stage.output as Record<string, unknown>)
-          : null;
-      const ref = output?.designArtifact;
-      if (ref && typeof ref === 'object' && !Array.isArray(ref) && typeof (ref as DesignArtifactRef).relPath === 'string') {
-        return ref as DesignArtifactRef;
+  /** Demo 阶段把已确认的多端设计稿 HTML 作为额外上下文喂给 agent（截断以控制提示长度）。 */
+  private async buildDemoDesignArtifactContext(workflow: WorkflowPayload): Promise<string | null> {
+    const inventory = this.getDesignSurfaceInventory(workflow);
+    if (inventory.length === 0) {
+      return null;
+    }
+    const chunks: string[] = [];
+    let total = 0;
+    for (const surface of inventory) {
+      for (const page of surface.pages) {
+        const html = await this.readWorkflowDesignArtifactHtml(page.relPath);
+        if (!html) {
+          continue;
+        }
+        const header = `\n<!-- surface=${surface.id} page=${page.id} -->\n`;
+        const remaining = DESIGN_ARTIFACT_DEMO_CONTEXT_MAX_CHARS - total;
+        if (remaining <= 0) {
+          break;
+        }
+        const body =
+          html.length > remaining
+            ? `${html.slice(0, remaining)}\n<!-- ...(已截断) -->`
+            : html;
+        chunks.push(header + body);
+        total += header.length + body.length;
+      }
+      if (total >= DESIGN_ARTIFACT_DEMO_CONTEXT_MAX_CHARS) {
+        break;
       }
     }
-    return null;
-  }
-
-  /** Demo 阶段把已确认的设计稿 HTML 作为额外上下文喂给 agent（截断以控制提示长度）。 */
-  private async buildDemoDesignArtifactContext(workflow: WorkflowPayload): Promise<string | null> {
-    const ref = this.getLatestDesignArtifactRef(workflow);
-    if (!ref?.relPath) {
+    if (chunks.length === 0) {
       return null;
     }
-    const html = await this.readWorkflowDesignArtifactHtml(ref.relPath);
-    if (!html) {
-      return null;
-    }
-    const truncated =
-      html.length > DESIGN_ARTIFACT_DEMO_CONTEXT_MAX_CHARS
-        ? `${html.slice(0, DESIGN_ARTIFACT_DEMO_CONTEXT_MAX_CHARS)}\n<!-- ...(已截断) -->`
-        : html;
-    return `已确认的高保真设计稿（OpenDesign 单页 HTML，作为视觉与布局参照；请让 demoPages 的结构、信息层级与视觉风格对齐它，但仍用目标仓库的真实组件实现）:\n${truncated}`;
+    return `已确认的高保真设计稿（多端多页 HTML，作为视觉与布局参照；请让 demoPages 的结构、信息层级与视觉风格对齐它，但仍用目标仓库的真实组件实现）:\n${chunks.join('\n')}`;
   }
 
-  /** 读取工作流最新设计稿 HTML，供只读预览端点使用。 */
-  async getWorkflowDesignArtifact(
+  async listWorkflowDesignArtifacts(
     id: string,
-  ): Promise<{ exists: boolean; html: string | null; generatedAt?: string }> {
+  ): Promise<{ surfaces: DesignSurfaceInventory[] }> {
     const workflow = await this.getWorkflowOrThrow(id);
-    const ref = this.getLatestDesignArtifactRef(workflow);
-    if (!ref?.relPath) {
+    return { surfaces: this.getDesignSurfaceInventory(workflow) };
+  }
+
+  async getWorkflowDesignArtifactPage(
+    id: string,
+    surfaceId: string,
+    pageId: string,
+  ): Promise<{
+    exists: boolean;
+    html: string | null;
+    surfaceId?: string;
+    pageId?: string;
+    generatedAt?: string;
+  }> {
+    const workflow = await this.getWorkflowOrThrow(id);
+    const surface = this.getDesignSurfaceInventory(workflow).find((item) => item.id === surfaceId);
+    const page = surface?.pages.find((item) => item.id === pageId);
+    if (!page?.relPath) {
       return { exists: false, html: null };
     }
-    const html = await this.readWorkflowDesignArtifactHtml(ref.relPath);
-    return { exists: Boolean(html), html, generatedAt: ref.generatedAt };
+    const html = await this.readWorkflowDesignArtifactHtml(page.relPath);
+    return {
+      exists: Boolean(html),
+      html,
+      surfaceId,
+      pageId,
+      generatedAt: page.generatedAt,
+    };
   }
 
   private getWorkflowDemoContext(workflow: WorkflowPayload): DemoArtifact | null {
