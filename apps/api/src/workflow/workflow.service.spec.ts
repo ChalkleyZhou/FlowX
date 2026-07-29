@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AiInvocationContextService } from '../ai/ai-invocation-context.service';
 import type { AiCredentialsService } from '../auth/ai-credentials.service';
@@ -150,6 +150,202 @@ describe('WorkflowService resolveConfirmedSpecPlan', () => {
         }
       ).resolveConfirmedSpecPlan({ id: 'run-missing', stageExecutions: [] }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+function buildWaitingSpecPlanWorkflow(output: unknown = sampleSpecPlan) {
+  return {
+    id: 'run-sp',
+    status: 'SPEC_PLAN_WAITING_CONFIRMATION',
+    aiProvider: 'mock',
+    requirement: { id: 'req-1', title: 'Test requirement' },
+    stageExecutions: [
+      {
+        id: 'se-1',
+        stage: 'SPEC_PLAN',
+        status: 'WAITING_CONFIRMATION',
+        attempt: 1,
+        output,
+      },
+    ],
+  };
+}
+
+describe('WorkflowService SpecPlan lifecycle', () => {
+  it('runSpecPlan stores normalized output and moves workflow to waiting confirmation', async () => {
+    const service = makeServiceWithPrisma({});
+    const workflow = {
+      id: 'run-sp',
+      status: 'SPEC_PLAN_PENDING',
+      aiProvider: 'mock',
+      requirement: {
+        id: 'req-1',
+        title: 'Test requirement',
+        description: 'desc',
+        acceptanceCriteria: 'criteria',
+        workspace: { name: 'ws' },
+      },
+      workflowRepositories: [],
+      stageExecutions: [],
+    };
+    let capturedOutput: unknown;
+    let workflowStatus = 'SPEC_PLAN_PENDING';
+    const tx = {
+      stageExecution: {
+        findFirst: vi.fn().mockResolvedValue({ attempt: 0 }),
+        findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'se-run', status: 'RUNNING', attempt: 1 }),
+        findUniqueOrThrow: vi.fn().mockImplementation(async () => ({ id: 'se-run', status: 'RUNNING' })),
+        create: vi.fn().mockResolvedValue({ id: 'se-run', attempt: 1, status: 'RUNNING' }),
+        update: vi.fn().mockImplementation(async ({ data }: { data: { status?: string; output?: unknown } }) => {
+          if (data.output) {
+            capturedOutput = data.output;
+          }
+          return { id: 'se-run', status: data.status ?? 'RUNNING' };
+        }),
+      },
+      workflowRun: {
+        update: vi.fn().mockImplementation(async ({ data }: { data: { status: string } }) => {
+          workflowStatus = data.status;
+          return { id: 'run-sp', status: data.status };
+        }),
+        findUniqueOrThrow: vi.fn().mockImplementation(async () => ({
+          ...workflow,
+          status: workflowStatus,
+        })),
+      },
+    };
+    const prisma = {
+      $transaction: vi.fn().mockImplementation((cb: (transaction: typeof tx) => unknown) => cb(tx)),
+    };
+    Object.assign(service, { prisma });
+
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(workflow as never);
+    vi.spyOn(service as never, 'runInBackground' as never).mockImplementation(
+      ((_taskName: string, job: () => Promise<void>) => {
+        void job();
+      }) as never,
+    );
+    vi.spyOn(service as never, 'resolveAiExecutor' as never).mockReturnValue({
+      generateSpecPlan: vi.fn().mockResolvedValue(sampleSpecPlan),
+    } as never);
+    vi.spyOn(service as never, 'buildWorkspaceContext' as never).mockReturnValue({} as never);
+    vi.spyOn(service as never, 'getWorkflowBriefContext' as never).mockReturnValue(null as never);
+    vi.spyOn(service as never, 'getWorkflowDesignContext' as never).mockReturnValue(null as never);
+    vi.spyOn(service as never, 'getAiProviderLabel' as never).mockReturnValue('Mock' as never);
+    Object.assign(service as object, {
+      aiInvocationContextService: {
+        resolveInvocationContext: vi.fn().mockResolvedValue({}),
+      },
+    });
+
+    await service.runSpecPlan('run-sp');
+
+    await vi.waitFor(() => {
+      expect(capturedOutput).toEqual(sampleSpecPlan);
+      expect(workflowStatus).toBe('SPEC_PLAN_WAITING_CONFIRMATION');
+    });
+  });
+
+  it('confirmSpecPlan advances to execution pending when output is valid', async () => {
+    let finalStatus = 'SPEC_PLAN_WAITING_CONFIRMATION';
+    const tx = {
+      stageExecution: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ id: 'se-1', status: 'WAITING_CONFIRMATION' }),
+        update: vi.fn().mockResolvedValue({ id: 'se-1', status: 'COMPLETED' }),
+      },
+      workflowRun: {
+        update: vi.fn().mockImplementation(async ({ data }: { data: { status: string } }) => {
+          finalStatus = data.status;
+          return { id: 'run-sp', status: data.status };
+        }),
+        findUniqueOrThrow: vi.fn().mockImplementation(async () => ({
+          ...buildWaitingSpecPlanWorkflow(),
+          status: finalStatus,
+          stageExecutions: [],
+        })),
+      },
+    };
+    const prisma = {
+      workflowRun: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue(buildWaitingSpecPlanWorkflow()),
+      },
+      $transaction: vi.fn().mockImplementation((cb: (transaction: typeof tx) => unknown) => cb(tx)),
+    };
+    const service = makeServiceWithPrisma(prisma);
+    vi.spyOn(service as never, 'notifyStageCompleted' as never).mockImplementation((() => undefined) as never);
+
+    const result = (await service.confirmSpecPlan('run-sp')) as { status: string };
+
+    expect(result.status).toBe('EXECUTION_PENDING');
+  });
+
+  it('confirmSpecPlan rejects empty output before advancing', async () => {
+    const prisma = {
+      workflowRun: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue(
+          buildWaitingSpecPlanWorkflow({
+            spec: { goal: '', scope: [], nonGoals: [], acceptanceCriteria: [], constraints: [] },
+            plan: { approach: '', touchpoints: [], sequence: [], risks: [], verification: [] },
+          }),
+        ),
+      },
+      $transaction: vi.fn(),
+    };
+    const service = makeServiceWithPrisma(prisma);
+
+    await expect(service.confirmSpecPlan('run-sp')).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejectSpecPlan returns to pending and records feedback on the rejected stage', async () => {
+    let rejectedStatusMessage: string | undefined;
+    let rejectedOutput: Record<string, unknown> | undefined;
+    let finalStatus = 'SPEC_PLAN_WAITING_CONFIRMATION';
+    const tx = {
+      stageExecution: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ id: 'se-1', status: 'WAITING_CONFIRMATION' }),
+        findFirst: vi.fn().mockResolvedValue({ attempt: 1 }),
+        create: vi.fn().mockResolvedValue({ id: 'se-2', status: 'PENDING', attempt: 2 }),
+        update: vi.fn().mockImplementation(async ({ data }: { data: { statusMessage?: string; output?: Record<string, unknown> } }) => {
+          rejectedStatusMessage = data.statusMessage;
+          rejectedOutput = data.output;
+          return { id: 'se-1', status: 'REJECTED' };
+        }),
+      },
+      workflowRun: {
+        update: vi.fn().mockImplementation(async ({ data }: { data: { status: string } }) => {
+          finalStatus = data.status;
+          return { id: 'run-sp', status: data.status };
+        }),
+        findUniqueOrThrow: vi.fn().mockImplementation(async () => ({
+          ...buildWaitingSpecPlanWorkflow(),
+          status: finalStatus,
+          stageExecutions: [],
+        })),
+      },
+    };
+    const prisma = {
+      workflowRun: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue(buildWaitingSpecPlanWorkflow()),
+      },
+      $transaction: vi.fn().mockImplementation((cb: (transaction: typeof tx) => unknown) => cb(tx)),
+    };
+    const service = makeServiceWithPrisma(prisma);
+
+    const result = (await service.rejectSpecPlan('run-sp', 'needs more detail')) as { status: string };
+
+    expect(result.status).toBe('SPEC_PLAN_PENDING');
+    expect(rejectedStatusMessage).toContain('needs more detail');
+    expect(rejectedOutput?.rejectionFeedback).toBe('needs more detail');
+    expect(tx.stageExecution.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'PENDING',
+          statusMessage: expect.stringContaining('needs more detail'),
+          input: expect.objectContaining({ humanFeedback: 'needs more detail' }),
+        }),
+      }),
+    );
   });
 });
 

@@ -1210,7 +1210,7 @@ export class WorkflowService {
 
           await this.updateStageExecution(tx, designStage.id, StageExecutionStatus.WAITING_CONFIRMATION, {
             output: persistedOutput,
-            statusMessage: '请确认设计方案（DesignSpec）后再生成 Demo',
+            statusMessage: '请确认设计方案（DesignSpec）后再继续 Spec & Plan',
             finishedAt: new Date(),
           });
 
@@ -1708,7 +1708,7 @@ export class WorkflowService {
       });
       await this.updateStageExecution(tx, stageExecution.id, StageExecutionStatus.WAITING_CONFIRMATION, {
         output: persistedOutput,
-        statusMessage: '请确认本地生成的设计方案（DesignSpec）后再生成 Demo',
+        statusMessage: '请确认本地生成的设计方案（DesignSpec）后再继续 Spec & Plan',
         finishedAt: new Date(),
       });
       await this.transitionWorkflow(tx, id, WorkflowRunStatus.DESIGN_PENDING, {
@@ -1900,6 +1900,10 @@ export class WorkflowService {
           },
           invocationContext,
         );
+        const normalizedOutput = this.requireSpecPlanOutput(
+          output,
+          () => new Error('SPEC_PLAN_OUTPUT_INVALID: Generated Spec & Plan output is missing goal or approach.'),
+        );
 
         await this.prisma.$transaction(async (tx) => {
           const stageExecution = await tx.stageExecution.findFirstOrThrow({
@@ -1908,7 +1912,7 @@ export class WorkflowService {
           });
 
           await this.updateStageExecution(tx, stageExecution.id, StageExecutionStatus.WAITING_CONFIRMATION, {
-            output,
+            output: normalizedOutput,
             statusMessage: null,
             finishedAt: new Date(),
           });
@@ -1934,6 +1938,11 @@ export class WorkflowService {
     }
 
     const specPlanStage = this.getLatestStageOrThrow(workflow, StageType.SPEC_PLAN);
+    if (specPlanStage.status !== stageStatusMap[StageExecutionStatus.WAITING_CONFIRMATION]) {
+      throw new BadRequestException('Spec & Plan is not waiting for confirmation.');
+    }
+    this.requireSpecPlanOutput(specPlanStage.output, () => new BadRequestException('Invalid Spec & Plan output.'));
+
     const updatedWorkflow = await this.prisma.$transaction(async (tx) => {
       await this.updateStageExecution(tx, specPlanStage.id, StageExecutionStatus.COMPLETED, {
         finishedAt: new Date(),
@@ -1965,21 +1974,50 @@ export class WorkflowService {
     return updatedWorkflow;
   }
 
-  async rejectSpecPlan(id: string, _feedback?: string) {
+  async rejectSpecPlan(id: string, feedback?: string) {
     const workflow = await this.getWorkflowOrThrow(id);
     if (workflow.status !== 'SPEC_PLAN_WAITING_CONFIRMATION') {
       throw new BadRequestException('Spec & Plan is not waiting for confirmation.');
     }
 
     const specPlanStage = this.getLatestStageOrThrow(workflow, StageType.SPEC_PLAN);
+    if (specPlanStage.status !== stageStatusMap[StageExecutionStatus.WAITING_CONFIRMATION]) {
+      throw new BadRequestException('Spec & Plan is not waiting for confirmation.');
+    }
+
+    const trimmedFeedback = feedback?.trim() ?? '';
+    const existingOutput = this.asSpecPlanOutput(specPlanStage.output);
+    const rejectedOutput =
+      trimmedFeedback.length > 0
+        ? existingOutput
+          ? { ...existingOutput, rejectionFeedback: trimmedFeedback }
+          : { rejectionFeedback: trimmedFeedback }
+        : undefined;
+    const rejectionStatusMessage = trimmedFeedback
+      ? `Spec & Plan 已驳回：${trimmedFeedback}`
+      : 'Spec & Plan 已驳回，可重新生成';
+
     return this.prisma.$transaction(async (tx) => {
       await this.updateStageExecution(tx, specPlanStage.id, StageExecutionStatus.REJECTED, {
         finishedAt: new Date(),
+        statusMessage: rejectionStatusMessage,
+        ...(rejectedOutput ? { output: rejectedOutput } : {}),
       });
 
       await this.transitionWorkflow(tx, id, WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION, {
         to: WorkflowRunStatus.SPEC_PLAN_PENDING,
         stage: StageType.SPEC_PLAN,
+      });
+
+      await this.createStageExecution(tx, id, StageType.SPEC_PLAN, {
+        input: {
+          workflowRunId: id,
+          previousStage: stageTypeMap[StageType.SPEC_PLAN],
+          source: 'spec-plan-rejected',
+          ...(trimmedFeedback ? { humanFeedback: trimmedFeedback } : {}),
+        },
+        status: StageExecutionStatus.PENDING,
+        statusMessage: rejectionStatusMessage,
       });
 
       return tx.workflowRun.findUniqueOrThrow({
@@ -2031,6 +2069,17 @@ export class WorkflowService {
       throw new NotFoundException('Confirmed Spec & Plan not found.');
     }
     return output;
+  }
+
+  private requireSpecPlanOutput(
+    value: unknown,
+    onInvalid: () => Error,
+  ): SpecPlanOutput {
+    const normalized = this.asSpecPlanOutput(value);
+    if (!normalized || !normalized.spec.goal.trim() || !normalized.plan.approach.trim()) {
+      throw onInvalid();
+    }
+    return normalized;
   }
 
   private asSpecPlanOutput(value: unknown): SpecPlanOutput | null {
@@ -3591,7 +3640,6 @@ export class WorkflowService {
   /**
    * Persist only the design spec, demo intent, and the persisted design-artifact reference
    * (without the inline HTML — that is stored on disk) for the design-confirmation gate.
-   * Runnable demo pages are generated in the Demo stage after the spec is confirmed.
    */
   private toPersistedDesignStageOutput(
     output: GenerateDesignOutput,
