@@ -1048,6 +1048,27 @@ export function WorkflowRunDetailPage() {
     }
   }
 
+  async function submitRejectSpecPlan() {
+    if (!workflowRun) {
+      return;
+    }
+
+    const nextFeedback = feedbackText.trim();
+    if (!nextFeedback) {
+      toast.error('请输入驳回原因');
+      return;
+    }
+
+    await runAction(
+      'SPEC_PLAN',
+      async () => {
+        await api.rejectSpecPlan(workflowRun.id, nextFeedback);
+        setFeedbackText('');
+      },
+      'Spec & Plan 已驳回',
+    );
+  }
+
   async function submitManualEdit() {
     if (!workflowRun) {
       return;
@@ -1481,8 +1502,11 @@ export function WorkflowRunDetailPage() {
           {
             key: 'reject',
             label: '驳回',
-            onClick: () => void runAction('SPEC_PLAN', () => api.rejectSpecPlan(workflowRun.id), 'Spec & Plan 已驳回'),
-            disabled: workflowRun.status !== 'SPEC_PLAN_WAITING_CONFIRMATION' || stageActionsLocked,
+            onClick: () => void submitRejectSpecPlan(),
+            disabled:
+              workflowRun.status !== 'SPEC_PLAN_WAITING_CONFIRMATION' ||
+              stageActionsLocked ||
+              !feedbackText.trim(),
             loading: busyStage === 'SPEC_PLAN',
             danger: true,
           },
@@ -1651,7 +1675,7 @@ export function WorkflowRunDetailPage() {
         actions: [],
       },
     };
-  }, [workflowRun, busyStage, stageActionsLocked, localHandoff, localExecutionActive, localLaunchBusy, openDesignBusy]);
+  }, [workflowRun, busyStage, stageActionsLocked, localHandoff, localExecutionActive, localLaunchBusy, openDesignBusy, feedbackText]);
 
   if (!workflowRunId) {
     return <Navigate to="/workflow-runs" replace />;

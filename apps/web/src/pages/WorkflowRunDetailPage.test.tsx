@@ -959,6 +959,75 @@ describe('WorkflowRunDetailPage', () => {
     expect((container.querySelector('textarea') as HTMLTextAreaElement | null)?.value).toBe('');
   });
 
+  it('disables Spec & Plan reject when feedback is empty', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'SPEC_PLAN_WAITING_CONFIRMATION',
+        stageExecutions: [
+          {
+            id: 'stage-1',
+            stage: 'SPEC_PLAN',
+            status: 'WAITING_CONFIRMATION',
+            statusMessage: null,
+            attempt: 1,
+            output: sampleSpecPlanOutput,
+          },
+        ],
+      }),
+    );
+
+    await renderPage();
+
+    const rejectButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('驳回'),
+    );
+    expect(rejectButton).toBeTruthy();
+    expect(rejectButton?.disabled).toBe(true);
+  });
+
+  it('submits Spec & Plan rejection with feedback body', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'SPEC_PLAN_WAITING_CONFIRMATION',
+        stageExecutions: [
+          {
+            id: 'stage-1',
+            stage: 'SPEC_PLAN',
+            status: 'WAITING_CONFIRMATION',
+            statusMessage: null,
+            attempt: 1,
+            output: sampleSpecPlanOutput,
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.rejectSpecPlan).mockResolvedValue(createWorkflowRun());
+
+    await renderPage();
+
+    const textarea = container.querySelector('textarea');
+    expect(textarea).toBeTruthy();
+
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(textarea, '方案范围过大，需缩小');
+      textarea?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    const rejectButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('驳回'),
+    );
+    expect(rejectButton).toBeTruthy();
+    expect(rejectButton?.disabled).toBe(false);
+
+    await act(async () => {
+      rejectButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(api.rejectSpecPlan).toHaveBeenCalledWith('workflow-1', '方案范围过大，需缩小');
+  });
+
   it('keeps stale review findings actionable while allowing manual rerun from human review pending', async () => {
     vi.mocked(api.getWorkflowRun).mockResolvedValue(
       createWorkflowRun({

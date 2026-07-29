@@ -873,8 +873,11 @@ export const api = {
     }),
   confirmSpecPlan: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/confirm`, { method: 'POST' }),
-  rejectSpecPlan: (id: string) =>
-    request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/reject`, { method: 'POST' }),
+  rejectSpecPlan: (id: string, feedback: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ feedback }),
+    }),
   manualEditSpecPlan: (id: string, output: SpecPlanOutput) =>
     request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/manual-edit`, {
       method: 'PATCH',
