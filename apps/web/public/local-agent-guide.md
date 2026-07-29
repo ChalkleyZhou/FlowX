@@ -127,6 +127,7 @@ MCP 鉴权顺序：
 3. Agent 调用 `flowx_list_tasks` → 与你确认一条工作流 → `flowx_bind_workflow`（写入 `~/.flowx/current-workflow.json`）
 4. **产品构思**：`flowx_get_brainstorm_handoff` → 头脑风暴澄清 → 写 `prd.md` → 确认后 `flowx_submit_brainstorm`（响应含 `next.stage=design`，binding 切到 design）
 5. **同一会话设计**：立刻 `flowx_get_design_handoff`（服务端惰性创建 design 会话）→ 在 Open Design 中完成设计 → `flowx_submit_design`
+   - 多端时在 `design/` 下按端建目录（推荐 `Web端` / `移动端` / `管理后台`，每端可多页 HTML），回传 `output.surfaces`；平台 Web 按实际上传的端展示 Tab。
 6. 平台进入 `待确认设计方案`
 
 若已进入设计阶段仍要改产品需求：在工作流详情切到「产品构思」，点「重新构思」，确认后再用 list/bind 或 handoff 重做构思。

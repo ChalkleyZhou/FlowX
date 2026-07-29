@@ -175,7 +175,17 @@ Agent 典型调用顺序：`flowx_list_tasks` → `flowx_bind_workflow` → `flo
 
 ## 完成与回传
 
-在 OpenDesign 完成设计后，将结果写入 `result.json`。必须保留：
+在 OpenDesign 完成设计后，将结果写入 `result.json`，或把 HTML 放在会话目录：
+
+```text
+design/
+  Web端/
+    首页.html
+  移动端/
+    首页.html
+```
+
+`result.json` 必须包含：
 
 ```json
 {
@@ -184,23 +194,28 @@ Agent 典型调用顺序：`flowx_list_tasks` → `flowx_bind_workflow` → `flo
   "output": {
     "design": {},
     "demo": {},
-    "designArtifact": {
-      "html": "<!doctype html><html>...</html>"
-    }
+    "surfaces": [
+      {
+        "id": "Web端",
+        "pages": [
+          { "id": "首页", "title": "首页", "html": "<!doctype html><html>...</html>" }
+        ]
+      }
+    ]
   }
 }
 ```
 
-`designArtifact.html` 必须是完整、自包含的 HTML 文档。然后任选一种方式回传：
+推荐 surface id：`Web端` / `移动端` / `管理后台`（按需）；平台不强制枚举，Web 按实际上传的端展示 Tab。每页 `html` 必须是完整、自包含的 HTML 文档。一次 submit 可只带一端（该端 pages 整端替换）。然后任选一种方式回传：
 
 - 推荐：MCP `flowx_submit_design`
-- 或：`flowx-local design-submit <executionSessionId>`
+- 或：`flowx-local design-submit <executionSessionId>`（可从 `design/` 目录扫描补全 surfaces）
 - 或：在工作流详情点击 `回传本地设计`
 
 回传成功后：
 
 - DESIGN Stage 进入待人工确认。
-- HTML 设计稿登记为 Artifact，并可在 FlowX 中预览。
+- 各端各页 HTML 落盘并登记为 Artifact，可在 FlowX 中按端 Tab 预览。
 - 本次 ExecutionSession 标记为 `COMPLETED`。
 - 设计摘要登记为 `AGENT_SUMMARY` Evidence。
 
