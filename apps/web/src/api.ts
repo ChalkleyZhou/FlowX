@@ -35,6 +35,7 @@ import type {
   Repository,
   Requirement,
   ReviewFinding,
+  SpecPlanOutput,
   WorkflowDesignArtifactPage,
   WorkflowDesignArtifactsList,
   WorkflowRun,

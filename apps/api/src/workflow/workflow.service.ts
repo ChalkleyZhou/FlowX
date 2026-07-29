@@ -53,7 +53,6 @@ import { StartBugFixWorkflowDto } from '../review-artifacts/dto/start-bug-fix-wo
 import {
   BrainstormBrief,
   DemoArtifact,
-  DemoPage,
   DesignPageRef,
   DesignSpec,
   DesignSurfaceInput,
