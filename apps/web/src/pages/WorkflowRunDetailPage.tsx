@@ -12,9 +12,14 @@ import { ExecutionSessionPanel } from '../components/ExecutionSessionPanel';
 import { MetricCard } from '../components/MetricCard';
 import { SectionHeader } from '../components/SectionHeader';
 import { StatPill } from '../components/StatPill';
+import { SpecPlanDocumentPanel } from '../components/SpecPlanDocumentPanel';
 import { StageCard } from '../components/StageCard';
 import { ReviewFindingCard } from '../components/ReviewFindingCard';
-import { WorkflowReviewSidebar, type WorkflowWorkspaceAction } from '../components/WorkflowReviewSidebar';
+import {
+  WorkflowReviewSidebar,
+  type WorkflowSidebarMode,
+  type WorkflowWorkspaceAction,
+} from '../components/WorkflowReviewSidebar';
 import { WorkflowSteps } from '../components/WorkflowSteps';
 import { Badge } from '../components/ui/badge';
 import { Button as UiButton } from '../components/ui/button';
@@ -38,7 +43,6 @@ import type {
   ExecutionSessionSyncEvent,
   LocalHandoffPayload,
   RepositoryDeployConfig,
-  SpecPlanOutput,
   WorkflowRun,
 } from '../types';
 import {
@@ -47,6 +51,7 @@ import {
   formatWorkflowStatus,
   getStage,
 } from '../utils/workflow-ui';
+import { parseSpecPlanOutput, serializeSpecPlanOutput } from '../utils/spec-plan';
 
 const STAGE_SEQUENCE = [
   'REPOSITORY_GROUNDING',
@@ -359,18 +364,6 @@ function sanitizeDisplayValue(value: unknown, repositories: RepositoryPathContex
   return value;
 }
 
-function parseSpecPlanOutput(output: unknown): SpecPlanOutput | null {
-  if (!output || typeof output !== 'object' || Array.isArray(output)) {
-    return null;
-  }
-  const candidate = output as Record<string, unknown>;
-  return {
-    spec: typeof candidate.spec === 'string' ? candidate.spec : undefined,
-    plan: typeof candidate.plan === 'string' ? candidate.plan : undefined,
-    notes: typeof candidate.notes === 'string' ? candidate.notes : undefined,
-  };
-}
-
 export function WorkflowRunDetailPage() {
   const { workflowRunId = '' } = useParams();
   const navigate = useNavigate();
@@ -384,6 +377,9 @@ export function WorkflowRunDetailPage() {
   const [selectedArtifactKey, setSelectedArtifactKey] = useState<string | null>(null);
   const [selectedDiffFileKey, setSelectedDiffFileKey] = useState<string | null>(null);
   const [feedbackText, setFeedbackText] = useState('');
+  const [sidebarMode, setSidebarMode] = useState<WorkflowSidebarMode>('feedback');
+  const [manualEditDraft, setManualEditDraft] = useState('');
+  const [submittingManualEdit, setSubmittingManualEdit] = useState(false);
   const [designFeedback, setDesignFeedback] = useState('');
   const [designSubmitting, setDesignSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -442,11 +438,17 @@ export function WorkflowRunDetailPage() {
   }
 
   function setWorkspaceMode(_mode: 'feedback') {
+    setSidebarMode('feedback');
     focusWorkflowSidebarTextarea();
   }
 
   function openWorkspaceEditMode(stage: EditableStage) {
     setSelectedStage(getStageKeyForEditableStage(stage));
+    if (stage === 'spec-plan' && workflowRun) {
+      const currentOutput = parseSpecPlanOutput(getStage(workflowRun, 'SPEC_PLAN')?.output);
+      setManualEditDraft(currentOutput ? serializeSpecPlanOutput(currentOutput) : '{\n  "spec": {},\n  "plan": {}\n}');
+    }
+    setSidebarMode('manual-edit');
     focusWorkflowSidebarTextarea();
   }
 
@@ -512,6 +514,9 @@ export function WorkflowRunDetailPage() {
   useEffect(() => {
     setFeedbackText('');
     setSubmittingAction(null);
+    setSidebarMode('feedback');
+    setManualEditDraft('');
+    setSubmittingManualEdit(false);
   }, [selectedStage, workflowRun?.id]);
 
   const hasRunningStage = workflowRun?.stageExecutions.some((item) => item.status === 'RUNNING') ?? false;
@@ -1040,6 +1045,44 @@ export function WorkflowRunDetailPage() {
       toast.error(error instanceof Error ? error.message : '提交意见失败');
     } finally {
       setSubmittingAction(null);
+    }
+  }
+
+  async function submitManualEdit() {
+    if (!workflowRun) {
+      return;
+    }
+
+    const editableStage = getEditableStageForSelectedStage(selectedStage);
+    if (editableStage !== 'spec-plan') {
+      return;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(manualEditDraft);
+    } catch {
+      toast.error('JSON 格式无效，请检查后再保存');
+      return;
+    }
+
+    const normalized = parseSpecPlanOutput(parsed);
+    if (!normalized) {
+      toast.error('Spec & Plan 结构无效，需包含 spec.goal 与 plan.approach');
+      return;
+    }
+
+    setSubmittingManualEdit(true);
+    try {
+      await api.manualEditSpecPlan(workflowRun.id, normalized);
+      setSidebarMode('feedback');
+      setManualEditDraft('');
+      await refresh();
+      toast.success('Spec & Plan 人工修改已保存');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '保存人工修改失败');
+    } finally {
+      setSubmittingManualEdit(false);
     }
   }
 
@@ -1635,10 +1678,21 @@ export function WorkflowRunDetailPage() {
     const confirmAction = actionsByKey.get('confirm');
     const rejectAction = actionsByKey.get('reject');
     const acceptAction = actionsByKey.get('accept');
+    const editAction = actionsByKey.get('edit');
 
     const canSendFeedback = Boolean(actionsByKey.get('feedback')) && selectedStageContent.actions.some((action) => action.key === 'feedback' && !action.disabled);
+    const isManualEditMode = sidebarMode === 'manual-edit' && editableStage === 'spec-plan';
 
-    const primaryAction: WorkflowWorkspaceAction = canSendFeedback
+    const primaryAction: WorkflowWorkspaceAction = isManualEditMode
+      ? {
+          key: 'save-manual-edit',
+          label: '保存人工修改',
+          onClick: () => void submitManualEdit(),
+          disabled: !manualEditDraft.trim() || submittingManualEdit || stageActionsLocked,
+          loading: submittingManualEdit,
+          variant: 'primary',
+        }
+      : canSendFeedback
       ? {
           key: 'send-feedback',
           label: '发送修改意见',
@@ -1667,13 +1721,28 @@ export function WorkflowRunDetailPage() {
 
     const secondaryActions: WorkflowWorkspaceAction[] = [];
 
+    if (isManualEditMode) {
+      secondaryActions.push({
+        key: 'cancel-manual-edit',
+        label: '返回修改意见',
+        onClick: () => setSidebarMode('feedback'),
+        disabled: submittingManualEdit,
+      });
+    }
+
     [
+      !isManualEditMode && editAction
+        ? {
+            ...editAction,
+            onClick: () => openWorkspaceEditMode(editableStage),
+          }
+        : undefined,
       selectedStage === 'EXECUTION' ? runActionView : undefined,
       selectedStage === 'EXECUTION' ? completeLocalAction : undefined,
       selectedStage === 'EXECUTION' ? cancelLocalAction : undefined,
-      confirmAction,
-      rejectAction,
-      acceptAction,
+      !isManualEditMode ? confirmAction : undefined,
+      !isManualEditMode ? rejectAction : undefined,
+      !isManualEditMode ? acceptAction : undefined,
     ]
       .filter((action): action is StageActionView => Boolean(action))
       .forEach((action) => {
@@ -1703,6 +1772,10 @@ export function WorkflowRunDetailPage() {
     feedbackText,
     submittingAction,
     stageActionsLocked,
+    sidebarMode,
+    manualEditDraft,
+    submittingManualEdit,
+    workflowRun,
   ]);
 
   return (
@@ -2175,25 +2248,8 @@ export function WorkflowRunDetailPage() {
                   <CardHeader className="p-5 pb-0">
                     <SectionHeader eyebrow="Spec & Plan" title="Spec & Plan 文档" />
                   </CardHeader>
-                  <CardContent className="space-y-4 p-5 pt-4">
-                    {selectedSpecPlanOutput.spec ? (
-                      <div>
-                        <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Spec</div>
-                        <pre className="whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-3 text-sm text-foreground">{selectedSpecPlanOutput.spec}</pre>
-                      </div>
-                    ) : null}
-                    {selectedSpecPlanOutput.plan ? (
-                      <div>
-                        <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Plan</div>
-                        <pre className="whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-3 text-sm text-foreground">{selectedSpecPlanOutput.plan}</pre>
-                      </div>
-                    ) : null}
-                    {selectedSpecPlanOutput.notes ? (
-                      <div>
-                        <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Notes</div>
-                        <pre className="whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-3 text-sm text-foreground">{selectedSpecPlanOutput.notes}</pre>
-                      </div>
-                    ) : null}
+                  <CardContent className="p-5 pt-4">
+                    <SpecPlanDocumentPanel output={selectedSpecPlanOutput} />
                   </CardContent>
                 </Card>
               ) : null}
@@ -2587,9 +2643,13 @@ export function WorkflowRunDetailPage() {
                   stageTitle={workflowWorkspaceConfig.title}
                   stageStatusLabel={workflowWorkspaceConfig.statusLabel}
                   helperText={workflowWorkspaceConfig.helperText}
+                  mode={sidebarMode}
                   feedbackText={feedbackText}
                   feedbackPlaceholder={workflowWorkspaceConfig.feedbackPlaceholder}
                   onFeedbackChange={setFeedbackText}
+                  manualEditText={manualEditDraft}
+                  manualEditPlaceholder='{"spec":{"goal":"..."},"plan":{"approach":"..."}}'
+                  onManualEditChange={setManualEditDraft}
                   primaryAction={workflowWorkspaceConfig.primaryAction}
                   secondaryActions={workflowWorkspaceConfig.secondaryActions}
                 />

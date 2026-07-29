@@ -35,6 +35,7 @@ import type {
   Repository,
   Requirement,
   ReviewFinding,
+  SpecPlanOutput,
   WorkflowDesignArtifact,
   WorkflowRun,
   Workspace,
@@ -874,7 +875,7 @@ export const api = {
     request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/confirm`, { method: 'POST' }),
   rejectSpecPlan: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/reject`, { method: 'POST' }),
-  manualEditSpecPlan: (id: string, output: unknown) =>
+  manualEditSpecPlan: (id: string, output: SpecPlanOutput) =>
     request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/manual-edit`, {
       method: 'PATCH',
       body: JSON.stringify({ output }),

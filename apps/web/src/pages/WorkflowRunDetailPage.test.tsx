@@ -6,7 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkflowRunDetailPage } from './WorkflowRunDetailPage';
 import { api } from '../api';
-import type { WorkflowRun } from '../types';
+import type { SpecPlanOutput, WorkflowRun } from '../types';
 
 vi.mock('../api', () => ({
   api: {
@@ -77,6 +77,27 @@ describe('WorkflowRunDetailPage', () => {
   let container: HTMLDivElement;
   let root: Root | null;
 
+  const sampleSpecPlanOutput: SpecPlanOutput = {
+    spec: {
+      goal: '修复登录流程',
+      scope: ['登录错误提示', '重试能力'],
+      nonGoals: ['重构鉴权模块'],
+      acceptanceCriteria: ['登录失败时展示明确原因'],
+      constraints: [],
+    },
+    plan: {
+      approach: '补齐前端错误提示与后端审计日志',
+      touchpoints: ['apps/web/src/pages/LoginPage.tsx'],
+      sequence: ['定位失败路径', '补 UI 提示', '补日志'],
+      risks: [],
+      verification: ['手动复现登录失败'],
+    },
+    notes: {
+      checklist: ['确认文案'],
+      openQuestions: [],
+    },
+  };
+
   function createWorkflowRun(overrides: Partial<WorkflowRun> = {}): WorkflowRun {
     return {
       id: 'workflow-1',
@@ -124,7 +145,7 @@ describe('WorkflowRunDetailPage', () => {
           status: 'PENDING',
           statusMessage: null,
           attempt: 1,
-          output: { spec: 'spec', plan: 'plan' },
+          output: sampleSpecPlanOutput,
         },
       ],
       ...overrides,
@@ -621,6 +642,256 @@ describe('WorkflowRunDetailPage', () => {
   });
 
 
+  it('renders structured Spec & Plan document sections', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'SPEC_PLAN_WAITING_CONFIRMATION',
+        stageExecutions: [
+          {
+            id: 'stage-1',
+            stage: 'SPEC_PLAN',
+            status: 'WAITING_CONFIRMATION',
+            statusMessage: null,
+            attempt: 1,
+            output: sampleSpecPlanOutput,
+          },
+        ],
+      }),
+    );
+
+    await renderPage();
+
+    const text = container.textContent ?? '';
+    expect(text).toContain('Spec · 目标');
+    expect(text).toContain('修复登录流程');
+    expect(text).toContain('Plan · 方案');
+    expect(text).toContain('补齐前端错误提示与后端审计日志');
+    expect(text).toContain('Notes · 检查项');
+  });
+
+  it('submits manual Spec & Plan edits through manualEditSpecPlan API', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'SPEC_PLAN_WAITING_CONFIRMATION',
+        stageExecutions: [
+          {
+            id: 'stage-1',
+            stage: 'SPEC_PLAN',
+            status: 'WAITING_CONFIRMATION',
+            statusMessage: null,
+            attempt: 1,
+            output: sampleSpecPlanOutput,
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.manualEditSpecPlan).mockResolvedValue(createWorkflowRun());
+
+    await renderPage();
+
+    const editButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('人工修改'),
+    );
+    expect(editButton).toBeTruthy();
+
+    await act(async () => {
+      editButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const textarea = container.querySelector('textarea');
+    expect(textarea).toBeTruthy();
+
+    const editedOutput: SpecPlanOutput = {
+      ...sampleSpecPlanOutput,
+      spec: {
+        ...sampleSpecPlanOutput.spec,
+        goal: '修复登录流程（人工修订）',
+      },
+    };
+
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(textarea, JSON.stringify(editedOutput, null, 2));
+      textarea?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    const saveButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('保存人工修改'),
+    );
+    expect(saveButton).toBeTruthy();
+
+    await act(async () => {
+      saveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(api.manualEditSpecPlan).toHaveBeenCalledWith('workflow-1', editedOutput);
+  });
+
+  it('confirms Spec & Plan and unlocks execution actions', async () => {
+    const waitingRun = createWorkflowRun({
+      status: 'SPEC_PLAN_WAITING_CONFIRMATION',
+      stageExecutions: [
+        {
+          id: 'stage-1',
+          stage: 'SPEC_PLAN',
+          status: 'WAITING_CONFIRMATION',
+          statusMessage: null,
+          attempt: 1,
+          output: sampleSpecPlanOutput,
+        },
+      ],
+    });
+    const executionReadyRun = createWorkflowRun({
+      status: 'EXECUTION_PENDING',
+      stageExecutions: [
+        {
+          id: 'stage-1',
+          stage: 'SPEC_PLAN',
+          status: 'COMPLETED',
+          statusMessage: null,
+          attempt: 1,
+          output: sampleSpecPlanOutput,
+        },
+        {
+          id: 'stage-2',
+          stage: 'EXECUTION',
+          status: 'PENDING',
+          statusMessage: null,
+          attempt: 1,
+          output: null,
+        },
+      ],
+    });
+
+    vi.mocked(api.getWorkflowRun)
+      .mockResolvedValueOnce(waitingRun)
+      .mockResolvedValue(executionReadyRun);
+    vi.mocked(api.confirmSpecPlan).mockResolvedValue(executionReadyRun);
+
+    await renderPage();
+
+    const confirmButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.trim() === '确认',
+    );
+    expect(confirmButton).toBeTruthy();
+
+    await act(async () => {
+      confirmButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.confirmSpecPlan).toHaveBeenCalledWith('workflow-1');
+
+    const executionStep = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('开发执行'),
+    );
+    await act(async () => {
+      executionStep?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const runExecutionButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('云端执行'),
+    );
+    expect(runExecutionButton).toBeTruthy();
+    expect(runExecutionButton?.hasAttribute('disabled')).toBe(false);
+  });
+
+  it('routes design confirmation into Spec & Plan pending stage', async () => {
+    const designWaitingRun = createWorkflowRun({
+      status: 'DESIGN_WAITING_CONFIRMATION',
+      stageExecutions: [
+        {
+          id: 'stage-brainstorm',
+          stage: 'BRAINSTORM',
+          status: 'COMPLETED',
+          statusMessage: null,
+          attempt: 1,
+          output: { markdown: '# Spec' },
+        },
+        {
+          id: 'stage-design',
+          stage: 'DESIGN',
+          status: 'WAITING_CONFIRMATION',
+          statusMessage: null,
+          attempt: 1,
+          output: { html: '<div/>' },
+        },
+      ],
+    });
+    const specPlanPendingRun = createWorkflowRun({
+      status: 'SPEC_PLAN_PENDING',
+      stageExecutions: [
+        {
+          id: 'stage-brainstorm',
+          stage: 'BRAINSTORM',
+          status: 'COMPLETED',
+          statusMessage: null,
+          attempt: 1,
+          output: { markdown: '# Spec' },
+        },
+        {
+          id: 'stage-design',
+          stage: 'DESIGN',
+          status: 'COMPLETED',
+          statusMessage: null,
+          attempt: 1,
+          output: { html: '<div/>' },
+        },
+        {
+          id: 'stage-spec-plan',
+          stage: 'SPEC_PLAN',
+          status: 'PENDING',
+          statusMessage: null,
+          attempt: 1,
+          output: null,
+        },
+      ],
+    });
+
+    vi.mocked(api.getWorkflowRun)
+      .mockResolvedValueOnce(designWaitingRun)
+      .mockResolvedValue(specPlanPendingRun);
+    vi.mocked(api.confirmWorkflowDesign).mockResolvedValue(specPlanPendingRun);
+
+    await renderPage();
+
+    const designStep = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('设计方案'),
+    );
+    await act(async () => {
+      designStep?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const confirmDesignButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('确认设计方案'),
+    );
+    expect(confirmDesignButton).toBeTruthy();
+
+    await act(async () => {
+      confirmDesignButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.confirmWorkflowDesign).toHaveBeenCalledWith('workflow-1');
+
+    const specPlanStep = Array.from(container.querySelectorAll('.workflow-steps button')).find((button) =>
+      button.textContent?.includes('Spec & Plan'),
+    );
+    expect(specPlanStep?.firstElementChild?.className).toContain('border-primary/30');
+
+    const generateButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('生成 Spec & Plan'),
+    );
+    expect(generateButton).toBeTruthy();
+    expect(generateButton?.hasAttribute('disabled')).toBe(false);
+  });
+
   it('renders a persistent workflow review sidebar for waiting-confirmation stages', async () => {
     vi.mocked(api.getWorkflowRun).mockResolvedValue(
       createWorkflowRun({
@@ -632,7 +903,7 @@ describe('WorkflowRunDetailPage', () => {
             status: 'WAITING_CONFIRMATION',
             statusMessage: null,
             attempt: 1,
-            output: { spec: 'spec', plan: 'plan' },
+            output: sampleSpecPlanOutput,
           },
         ],
       }),
@@ -643,7 +914,7 @@ describe('WorkflowRunDetailPage', () => {
     const text = container.textContent ?? '';
     expect(text).toContain('工作流反馈区');
     expect(text).toContain('发送修改意见');
-    expect(text).not.toContain('人工修改');
+    expect(text).toContain('人工修改');
   });
 
   it('clears workflow feedback after a successful revise submit', async () => {
@@ -657,7 +928,7 @@ describe('WorkflowRunDetailPage', () => {
             status: 'WAITING_CONFIRMATION',
             statusMessage: null,
             attempt: 1,
-            output: { spec: 'spec', plan: 'plan' },
+            output: sampleSpecPlanOutput,
           },
         ],
       }),

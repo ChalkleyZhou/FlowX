@@ -787,8 +787,29 @@ export interface IdeationArtifact {
   createdAt: string;
 }
 
+export interface SpecPlanSpec {
+  goal: string;
+  scope: string[];
+  nonGoals: string[];
+  acceptanceCriteria: string[];
+  constraints: string[];
+}
+
+export interface SpecPlanPlan {
+  approach: string;
+  touchpoints: string[];
+  sequence: string[];
+  risks: string[];
+  verification: string[];
+}
+
+export interface SpecPlanNotes {
+  checklist?: string[];
+  openQuestions?: string[];
+}
+
 export interface SpecPlanOutput {
-  spec?: string;
-  plan?: string;
-  notes?: string;
+  spec: SpecPlanSpec;
+  plan: SpecPlanPlan;
+  notes?: SpecPlanNotes;
 }

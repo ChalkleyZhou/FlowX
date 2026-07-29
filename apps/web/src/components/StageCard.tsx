@@ -41,14 +41,22 @@ function formatStageStatus(status?: string) {
 
 function formatOutputLabel(key: string) {
   const map: Record<string, string> = {
-    tasks: '任务列表',
+    spec: 'Spec',
+    plan: 'Plan',
+    notes: 'Notes',
+    goal: '目标',
+    scope: '范围',
+    nonGoals: '非目标',
+    acceptanceCriteria: '验收标准',
+    constraints: '约束',
+    approach: '方案',
+    touchpoints: '改动触点',
+    sequence: '实施顺序',
+    risks: '风险',
+    verification: '验证',
+    checklist: '检查项',
+    openQuestions: '待澄清',
     ambiguities: '待澄清项',
-    risks: '风险点',
-    summary: '方案摘要',
-    implementationPlan: '实施步骤',
-    filesToModify: '涉及文件',
-    newFiles: '新增文件',
-    riskPoints: '风险点',
     patchSummary: '改动摘要',
     changedFiles: '变更文件',
     codeChanges: '代码变更',
@@ -61,8 +69,6 @@ function formatOutputLabel(key: string) {
     status: '状态',
     message: '说明',
     design: '设计方案',
-    demo: '演示说明',
-    demoPages: 'Demo 页面代码',
   };
 
   return map[key] ?? key;
