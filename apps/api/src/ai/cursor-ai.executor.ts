@@ -63,7 +63,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
       return {
         design: parsed.design,
         demo: parsed.demo,
-        designArtifact: parsed.designArtifact,
+        surfaces: parsed.surfaces,
         demoPages: parsed.demoPages ?? [],
       };
     }

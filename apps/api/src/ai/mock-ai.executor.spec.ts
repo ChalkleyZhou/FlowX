@@ -17,13 +17,13 @@ const input: GenerateDesignInput = {
 };
 
 describe('MockAiExecutor.generateDesign', () => {
-  it('returns a self-contained HTML designArtifact (no demoPages) in the design phase', async () => {
+  it('returns surfaces with self-contained HTML (no demoPages) in the design phase', async () => {
     const executor = new MockAiExecutor();
     const out = await executor.generateDesign(input, undefined, { phase: 'design' });
 
-    expect(out.designArtifact?.html).toContain('<!doctype html>');
-    expect(out.designArtifact?.html).toContain('通知中心');
-    expect(out.designArtifact?.generatedAt).toBeTruthy();
+    expect(out.surfaces?.[0]?.id).toBe('Web端');
+    expect(out.surfaces?.[0]?.pages?.[0]?.html).toContain('<!doctype html>');
+    expect(out.surfaces?.[0]?.pages?.[0]?.html).toContain('通知中心');
     expect(out.demoPages).toHaveLength(0);
     expect(out.design.overview).toBeTruthy();
   });
@@ -33,6 +33,6 @@ describe('MockAiExecutor.generateDesign', () => {
     const out = await executor.generateDesign(input);
 
     expect(out.demoPages.length).toBeGreaterThanOrEqual(2);
-    expect(out.designArtifact).toBeUndefined();
+    expect(out.surfaces).toBeUndefined();
   });
 });

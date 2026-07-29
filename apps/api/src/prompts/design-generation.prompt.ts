@@ -10,21 +10,20 @@ export const designGenerationPrompt: PromptTemplate = {
 };
 
 /**
- * 设计阶段（OpenDesign 高保真单页 HTML）提示词。
- * 与 'demo' 阶段不同：本阶段只产出 DesignSpec + 一份完整自包含单页 HTML 设计稿（designArtifact.html），不产 React demoPages。
+ * 设计阶段（OpenDesign 高保真多端多页 HTML）提示词。
+ * 与 'demo' 阶段不同：本阶段产出 DesignSpec + surfaces（按端多页完整 HTML），不产 React demoPages。
  */
 export const designArtifactPrompt: PromptTemplate = {
   name: 'design-artifact-generation',
-  version: '1.0.0',
+  version: '2.0.0',
   system:
-    '你是一位资深产品设计师和品牌级 UI 设计师。基于已确认的产品简报，产出一份高保真、可直接在浏览器 sandbox iframe 中渲染的单页 HTML 设计稿（designArtifact.html），并同时给出结构化 DesignSpec 与 demo 摘要。本阶段不产出 React 代码，也不要求 demoPages。',
+    '你是一位资深产品设计师和品牌级 UI 设计师。基于已确认的产品简报，产出可在浏览器 sandbox iframe 中渲染的高保真 HTML 设计稿（按端放入 surfaces），并同时给出结构化 DesignSpec 与 demo 摘要。本阶段不产出 React 代码，也不要求 demoPages。',
   user:
-    'designArtifact.html 必须是一份完整、自包含的 HTML 文档：以 <!doctype html> 开头，所有样式内联在 <style> 中或使用行内样式，不得依赖任何外部 CSS/JS/字体/图片 URL（如需图标用内联 SVG，如需配图用 CSS 渐变或占位）。设计须信息密度高、排版克制、可扫描，体现真实产品质感而非占位线框。同时输出 design（overview、pages 含 layout 文字线框、demoScenario、designRationale）与 demo（summary、flows、scope、knownGaps）。严禁输出 API 设计、接口草案、数据模型等技术产物。',
+    'surfaces 必填：每端一个对象（推荐 id：Web端 / 移动端 / 管理后台，按需只出涉及的端），pages 为该端全部 HTML 页。每个 pages[].html 必须是完整、自包含的 HTML 文档：以 <!doctype html> 开头，样式内联，不得依赖外部 CSS/JS/字体/图片 URL。同时输出 design（overview、pages 含 layout 文字线框、demoScenario、designRationale）与 demo（summary、flows、scope、knownGaps）。严禁输出 API 设计、接口草案、数据模型等技术产物。不要输出 designArtifact 字段。',
 };
 
 /**
  * 当启用 OpenDesign MCP（OPENDESIGN_MCP_ENABLED=1，且 host 已 `od mcp install <agent>`）时附加的指令。
- * agent 通过 OpenDesign MCP 只读获取设计系统/技能后，再合成最终单页 HTML 内联返回。
  */
 export const openDesignMcpAddon =
-  '若可用，请使用 OpenDesign MCP 工具为本设计取材：用 `od get-file design-systems/<system>/DESIGN.md` 读取目标品牌的设计系统（色板/字体/间距/组件/动效/反模式），用 `od skill list` / `od search-files` 查找匹配场景的设计技能与参考。最终请把所选设计系统的视觉规范落到 designArtifact.html（真实色彩、字体层级、间距、组件样式），避免 AI 套路化的「灰底卡片」。无论 MCP 是否可用，最终都必须把完整 HTML 内联在 designArtifact.html 字段返回，不要只给路径或外链。';
+  '若可用，请使用 OpenDesign MCP 工具为本设计取材：用 `od get-file design-systems/<system>/DESIGN.md` 读取目标品牌的设计系统，用 `od skill list` / `od search-files` 查找匹配场景。最终把视觉规范落到 surfaces[].pages[].html，避免套路化灰底卡片。无论 MCP 是否可用，都必须把完整 HTML 内联在 surfaces 中返回，不要只给路径或外链。';
