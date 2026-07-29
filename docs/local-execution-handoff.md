@@ -8,7 +8,7 @@ Cursor local Chat uses this same local execution contract with a shorter task pi
 
 ## Flow
 
-1. Confirm the technical plan (`PLAN_CONFIRMED` → `EXECUTION_PENDING`).
+1. Confirm the Spec & Plan (`SPEC_PLAN_CONFIRMED` → `EXECUTION_PENDING`).
 2. Call **`POST /workflow-runs/:id/execution/claim-local`** (or use **本地执行** in the web UI).
 3. Use the returned **handoff** (or **`GET /workflow-runs/:id/execution/local-handoff`**) for each repository:
    - `workingBranch` — FlowX workflow branch (same naming as cloud execution)

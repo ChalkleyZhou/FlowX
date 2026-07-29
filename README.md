@@ -23,7 +23,7 @@ flowchart LR
 ### 当前已具备的基础
 
 1. `Workspace`、`Project`、`Requirement`、排期和项目简报。
-2. 一条工作流内的产品构思、设计、任务拆分、技术方案、执行、AI Review 和人工确认。
+2. 一条工作流内的产品构思、设计、Spec & Plan、执行、AI Review 和人工确认。
 3. Codex、Cursor、Mock executor 抽象，以及 OpenDesign 本地设计会话。
 4. Cursor Extension、`flowx-local`、本地执行交接、可靠 Outbox 和本地完成回传。
 5. Workflow Repository、工作分支、Artifact 和本地预览。
@@ -292,10 +292,10 @@ codex login
 
 1. Create requirement
 2. Start workflow
-3. Run task split
-4. Human confirm or reject task split
-5. Run technical plan
-6. Human confirm or reject plan
+3. Run repository grounding
+4. Optionally run brainstorm and design (or skip)
+5. Run Spec & Plan generation
+6. Human confirm or reject Spec & Plan
 7. Run execution
 8. Run AI review
-9. Inspect full stage history
+9. Human review and inspect full stage history
