@@ -4,7 +4,7 @@ import type { FlowXClient } from './flowx-client';
 
 function makeClient() {
   return {
-    confirmPlan: vi.fn().mockResolvedValue({}),
+    confirmSpecPlan: vi.fn().mockResolvedValue({}),
     reviseDesign: vi.fn().mockResolvedValue({}),
     runExecution: vi.fn().mockResolvedValue({}),
     decideHumanReview: vi.fn().mockResolvedValue({}),
@@ -35,8 +35,8 @@ describe('dispatchStageAction local design', () => {
 describe('dispatchStageAction', () => {
   it('routes plan confirm to the client', async () => {
     const client = makeClient();
-    await dispatchStageAction(client, makeDeps(), { runId: 'run-1', stageKey: 'TECHNICAL_PLAN', kind: 'confirm' });
-    expect(client.confirmPlan).toHaveBeenCalledWith('run-1');
+    await dispatchStageAction(client, makeDeps(), { runId: 'run-1', stageKey: 'SPEC_PLAN', kind: 'confirm' });
+    expect(client.confirmSpecPlan).toHaveBeenCalledWith('run-1');
   });
 
   it('passes feedback to revise and rejects empty feedback', async () => {

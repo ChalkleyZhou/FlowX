@@ -141,6 +141,20 @@ describe('task prompt files', () => {
         description: 'Implement local chat handoff',
         acceptanceCriteria: 'Prompt can be copied again',
       },
+      specPlan: {
+        spec: {
+          goal: 'Goal',
+          scope: ['Users need CSV export'],
+          acceptanceCriteria: ['AC 1'],
+        },
+        plan: {
+          approach: 'Approach',
+          sequence: ['Step 1', 'Step 2'],
+          touchpoints: ['Touch 1'],
+          risks: ['Risk 1'],
+          verification: ['Verify 1'],
+        },
+      },
       repositories: [
         {
           workflowRepositoryId: 'workflow-repo-1',
@@ -155,5 +169,8 @@ describe('task prompt files', () => {
     expect(prompt).toContain('- Workflow run id: workflow-1');
     expect(prompt).toContain('- Working branch: flowx/work/local-handoff/workflow-1');
     expect(prompt).toContain('Prompt can be copied again');
+    expect(prompt).toContain('- Spec goal: Goal');
+    expect(prompt).toContain('### Plan approach');
+    expect(prompt).toContain('Approach');
   });
 });

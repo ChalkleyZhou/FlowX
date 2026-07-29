@@ -40,22 +40,11 @@ export async function dispatchStageAction(
       if (kind === 'localGenerate') return deps.generateLocalDesign(runId);
       if (kind === 'localSubmit') return deps.submitLocalDesign(runId);
       break;
-    case 'DEMO':
-      if (kind === 'run') return void (await client.runDemo(runId));
-      if (kind === 'confirm') return void (await client.confirmDemo(runId));
-      if (kind === 'revise') return void (await client.reviseDemo(runId, requireFeedback(feedback)));
-      break;
-    case 'TASK_SPLIT':
-      if (kind === 'run') return void (await client.runTaskSplit(runId));
-      if (kind === 'confirm') return void (await client.confirmTaskSplit(runId));
-      if (kind === 'reject') return void (await client.rejectTaskSplit(runId));
-      if (kind === 'revise') return void (await client.reviseTaskSplit(runId, requireFeedback(feedback)));
-      break;
-    case 'TECHNICAL_PLAN':
-      if (kind === 'run') return void (await client.runPlan(runId));
-      if (kind === 'confirm') return void (await client.confirmPlan(runId));
-      if (kind === 'reject') return void (await client.rejectPlan(runId));
-      if (kind === 'revise') return void (await client.revisePlan(runId, requireFeedback(feedback)));
+    case 'SPEC_PLAN':
+      if (kind === 'run') return void (await client.runSpecPlan(runId));
+      if (kind === 'confirm') return void (await client.confirmSpecPlan(runId));
+      if (kind === 'reject') return void (await client.rejectSpecPlan(runId));
+      if (kind === 'revise') return void (await client.reviseSpecPlan(runId, requireFeedback(feedback)));
       break;
     case 'EXECUTION':
       if (kind === 'run') return void (await client.runExecution(runId));

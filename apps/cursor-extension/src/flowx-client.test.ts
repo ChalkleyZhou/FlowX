@@ -75,9 +75,9 @@ describe('FlowXClient', () => {
     const fetchMock = stubOkFetch();
     const client = makeClient();
 
-    await client.confirmPlan('run-1');
+    await client.confirmSpecPlan('run-1');
     expect(fetchMock).toHaveBeenLastCalledWith(
-      'http://127.0.0.1:3000/workflow-runs/run-1/plan/confirm',
+      'http://127.0.0.1:3000/workflow-runs/run-1/spec-plan/confirm',
       expect.objectContaining({ method: 'POST' }),
     );
 
