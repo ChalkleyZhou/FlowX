@@ -15,6 +15,8 @@ import { submitOpenDesignResult, syncOpenDesignOutbox } from './open-design.js';
 import { runLocalMcp } from './mcp.js';
 import { runSetup } from './setup.js';
 import { checkPackageVersion, formatVersionCheck } from './version.js';
+import { detectGlobalInstaller, pickUpdateTargets } from './update.js';
+import { execSync, spawnSync } from 'node:child_process';
 
 function readFlagValue(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
@@ -153,6 +155,44 @@ async function main(argv: string[]): Promise<void> {
     }
     return;
   }
+  if (command === 'update') {
+    const args = argv.slice(1);
+    const noForce = args.includes('--no-force');
+    const force = !noForce;
+    const targetsRaw = args.find((arg) => !arg.startsWith('--'));
+
+    const pickedTargets = pickUpdateTargets(undefined, targetsRaw);
+    const installer = detectGlobalInstaller();
+
+    console.log(
+      `Detected global installer: ${installer}. Updating @flowx-ai/local package...`,
+    );
+
+    // Ensure the newly installed package's templates are used by re-running `setup` in a fresh process.
+    try {
+      if (installer === 'pnpm') {
+        execSync('pnpm add -g @flowx-ai/local@latest', { stdio: 'inherit' });
+      } else {
+        if (installer === 'unknown') {
+          console.warn('Could not determine npm vs pnpm global install. Falling back to npm.');
+        }
+        execSync('npm install -g @flowx-ai/local@latest', { stdio: 'inherit' });
+      }
+    } catch (error) {
+      // Still attempt skill update (best-effort) even if package update fails.
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`Package update failed: ${message}`);
+    }
+
+    const setupArgs: string[] = ['setup', pickedTargets.join(',')];
+    if (force) setupArgs.push('--force');
+
+    const result = spawnSync('flowx-local', setupArgs, { stdio: 'inherit' });
+    if (result.status !== 0) {
+      throw new Error('flowx-local setup failed after package update.');
+    }
+    return;
+  }
   if (command === 'map') {
     const [repoUrl, path] = argv.slice(1);
     if (!repoUrl || !path) {
@@ -209,7 +249,7 @@ async function main(argv: string[]): Promise<void> {
   if (command !== 'serve') {
     console.error(`Unknown command: ${command}`);
     console.error(
-      'Usage: flowx-local [serve] | version | login [--api-base-url URL] [--token TOKEN] | logout | setup [cursor|codex|od,...] [--force] | mcp | map <repoUrl> <path> | status | sync | design-submit <executionSessionId>',
+      'Usage: flowx-local [serve] | version | login [--api-base-url URL] [--token TOKEN] | logout | setup [cursor|codex|od,...] [--force] | update [cursor|codex|od,...] [--no-force] | mcp | map <repoUrl> <path> | status | sync | design-submit <executionSessionId>',
     );
     process.exitCode = 1;
     return;

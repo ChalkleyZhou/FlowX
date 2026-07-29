@@ -58,7 +58,7 @@ export function resolveSkillInstallPaths(
   target: SetupTarget,
   homeDir = homedir(),
 ): string[] {
-  if (target === 'cursor' || target === 'od') {
+  if (target === 'cursor') {
     return [join(homeDir, '.cursor', 'skills', SKILL_NAME, 'SKILL.md')];
   }
   return [join(homeDir, '.agents', 'skills', SKILL_NAME, 'SKILL.md')];

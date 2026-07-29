@@ -156,6 +156,7 @@ Cursor 的 MCP 配置可以写成：
 | --- | --- |
 | `flowx-local serve` | 启动本机 Agent |
 | `flowx-local setup [targets] [--force]` | 安装用户级 Skill（默认 cursor,codex,od） |
+| `flowx-local update [targets] [--no-force]` | 升级本机包并刷新对应 Skill（默认覆盖；通过 --no-force 保留自定义） |
 | `flowx-local login [--token TOKEN] [--api-base-url URL]` | 写入 Personal API Token；默认 API 为 `http://127.0.0.1:3000`，远程环境请传 `--api-base-url` |
 | `flowx-local logout` | 清除本机凭据 |
 | `flowx-local version`（或 `-v` / `--version`） | 显示本机版本，并与 npm latest 对比是否可升级 |

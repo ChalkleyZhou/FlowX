@@ -26,12 +26,12 @@ describe('flowx-local setup', () => {
     expect(() => parseSetupTargets('vscode')).toThrow(/Unknown setup target/);
   });
 
-  it('resolves user-level skill paths (od reuses cursor)', () => {
+  it('resolves user-level skill paths (od is independent from cursor)', () => {
     expect(resolveSkillInstallPaths('cursor', '/tmp/home')).toEqual([
       '/tmp/home/.cursor/skills/flowx-product-prd/SKILL.md',
     ]);
     expect(resolveSkillInstallPaths('od', '/tmp/home')).toEqual([
-      '/tmp/home/.cursor/skills/flowx-product-prd/SKILL.md',
+      '/tmp/home/.agents/skills/flowx-product-prd/SKILL.md',
     ]);
     expect(resolveSkillInstallPaths('codex', '/tmp/home')).toEqual([
       '/tmp/home/.agents/skills/flowx-product-prd/SKILL.md',
@@ -43,12 +43,15 @@ describe('flowx-local setup', () => {
     homes.push(home);
 
     const first = runSetup({ homeDir: home, targets: 'cursor,codex,od' });
+    // codex 和 od 写入相同文件路径，因此只有 cursor + agents 两个不同目标文件。
     expect(first.written).toHaveLength(2);
     expect(first.skipped).toEqual([]);
     const cursorSkill = join(home, '.cursor', 'skills', 'flowx-product-prd', 'SKILL.md');
     const agentsSkill = join(home, '.agents', 'skills', 'flowx-product-prd', 'SKILL.md');
+    const odSkill = agentsSkill;
     expect(existsSync(cursorSkill)).toBe(true);
     expect(existsSync(agentsSkill)).toBe(true);
+    expect(existsSync(odSkill)).toBe(true);
     expect(cursorSkill).toContain('flowx-product-prd');
     expect(readFileSync(cursorSkill, 'utf8')).toContain('prd.md');
     expect(readFileSync(cursorSkill, 'utf8')).toContain('头脑风暴');
