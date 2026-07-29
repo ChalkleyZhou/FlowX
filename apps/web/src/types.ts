@@ -353,9 +353,28 @@ export interface StageExecution {
   output: unknown;
 }
 
-export interface WorkflowDesignArtifact {
+export interface DesignPageRef {
+  id: string;
+  title?: string;
+  relPath: string;
+  bytes: number;
+  generatedAt: string;
+}
+
+export interface DesignSurfaceInventory {
+  id: string;
+  pages: DesignPageRef[];
+}
+
+export interface WorkflowDesignArtifactsList {
+  surfaces: DesignSurfaceInventory[];
+}
+
+export interface WorkflowDesignArtifactPage {
   exists: boolean;
   html: string | null;
+  surfaceId?: string;
+  pageId?: string;
   generatedAt?: string;
 }
 
