@@ -57,7 +57,7 @@ describe('EdgeClient', () => {
           output: {
             design: {},
             demo: {},
-            designArtifact: { html: '<!doctype html><html></html>' },
+            surfaces: [{ id: 'Web端', pages: [{ id: 'index', html: '<!doctype html><html></html>' }] }],
           },
         },
       }),
