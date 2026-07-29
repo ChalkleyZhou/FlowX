@@ -33,15 +33,12 @@ import {
   type FlowxLocalLaunchBody,
 } from '../lib/flowx-local-bridge';
 import type {
-  DemoArtifact,
-  DemoPage,
   ExecutionSessionDetail,
   ExecutionSessionEvidence,
   ExecutionSessionSyncEvent,
-  LocalDevDetectResponse,
-  LocalDevPreviewStatus,
   LocalHandoffPayload,
   RepositoryDeployConfig,
+  SpecPlanOutput,
   WorkflowRun,
 } from '../types';
 import {
@@ -55,15 +52,14 @@ const STAGE_SEQUENCE = [
   'REPOSITORY_GROUNDING',
   'BRAINSTORM',
   'DESIGN',
-  'DEMO',
-  'TASK_SPLIT',
-  'TECHNICAL_PLAN',
+  'SPEC_PLAN',
   'EXECUTION',
   'AI_REVIEW',
+  'HUMAN_REVIEW',
 ] as const;
 
 type WorkflowStageKey = (typeof STAGE_SEQUENCE)[number];
-type EditableStage = 'task-split' | 'plan' | 'execution' | 'review';
+type EditableStage = 'spec-plan' | 'execution' | 'review';
 
 interface StageActionView {
   key: string;
@@ -167,33 +163,28 @@ const stageMeta: Record<
     stepLabel: '设计方案',
     stageNo: '阶段 3',
   },
-  DEMO: {
-    title: 'Demo 页面',
-    stepLabel: 'Demo 页面',
+  SPEC_PLAN: {
+    title: 'Spec & Plan',
+    stepLabel: 'Spec & Plan',
     stageNo: '阶段 4',
-  },
-  TASK_SPLIT: {
-    title: '任务拆解',
-    stepLabel: '任务拆解',
-    stageNo: '阶段 5',
-    editableStage: 'task-split',
-  },
-  TECHNICAL_PLAN: {
-    title: '技术方案',
-    stepLabel: '技术方案',
-    stageNo: '阶段 6',
-    editableStage: 'plan',
+    editableStage: 'spec-plan',
   },
   EXECUTION: {
     title: '开发执行',
     stepLabel: '开发执行',
-    stageNo: '阶段 7',
+    stageNo: '阶段 5',
     editableStage: 'execution',
   },
   AI_REVIEW: {
     title: 'AI 审查',
     stepLabel: 'AI 审查',
-    stageNo: '阶段 8',
+    stageNo: '阶段 6',
+    editableStage: 'review',
+  },
+  HUMAN_REVIEW: {
+    title: '人工评审',
+    stepLabel: '人工评审',
+    stageNo: '阶段 7',
     editableStage: 'review',
   },
 };
@@ -254,41 +245,39 @@ function inferFocusedStage(run: WorkflowRun): WorkflowStageKey {
     return 'DESIGN';
   }
 
-  if (run.status === 'DEMO_PENDING') {
-    return 'DEMO';
-  }
-
-  if (run.status === 'DEMO_WAITING_CONFIRMATION') {
-    return 'DEMO';
-  }
-
-  if (run.status === 'PLAN_PENDING' || run.status === 'PLAN_WAITING_CONFIRMATION' || run.status === 'PLAN_CONFIRMED') {
-    return 'TECHNICAL_PLAN';
+  if (
+    run.status === 'SPEC_PLAN_PENDING' ||
+    run.status === 'SPEC_PLAN_WAITING_CONFIRMATION' ||
+    run.status === 'SPEC_PLAN_CONFIRMED'
+  ) {
+    return 'SPEC_PLAN';
   }
 
   if (run.status === 'EXECUTION_PENDING' || run.status === 'EXECUTION_RUNNING' || run.status === 'REVIEW_PENDING') {
     return 'EXECUTION';
   }
 
-  if (run.status === 'HUMAN_REVIEW_PENDING' || run.status === 'DONE') {
+  if (run.status === 'HUMAN_REVIEW_PENDING') {
+    return 'HUMAN_REVIEW';
+  }
+
+  if (run.status === 'DONE') {
     return 'AI_REVIEW';
   }
 
-  return 'TASK_SPLIT';
+  return 'SPEC_PLAN';
 }
 
 function getStageKeyForEditableStage(stage: EditableStage): WorkflowStageKey {
   switch (stage) {
-    case 'task-split':
-      return 'TASK_SPLIT';
-    case 'plan':
-      return 'TECHNICAL_PLAN';
+    case 'spec-plan':
+      return 'SPEC_PLAN';
     case 'execution':
       return 'EXECUTION';
     case 'review':
       return 'AI_REVIEW';
     default:
-      return 'TASK_SPLIT';
+      return 'SPEC_PLAN';
   }
 }
 
@@ -370,25 +359,16 @@ function sanitizeDisplayValue(value: unknown, repositories: RepositoryPathContex
   return value;
 }
 
-function parseDemoPages(output: unknown): DemoPage[] {
-  if (!output || typeof output !== 'object' || Array.isArray(output)) {
-    return [];
-  }
-  const candidate = output as Record<string, unknown>;
-  return Array.isArray(candidate.demoPages) ? (candidate.demoPages as DemoPage[]) : [];
-}
-
-function parseDemoArtifact(output: unknown): DemoArtifact | null {
+function parseSpecPlanOutput(output: unknown): SpecPlanOutput | null {
   if (!output || typeof output !== 'object' || Array.isArray(output)) {
     return null;
   }
-
   const candidate = output as Record<string, unknown>;
-  if (!candidate.demo || typeof candidate.demo !== 'object' || Array.isArray(candidate.demo)) {
-    return null;
-  }
-
-  return candidate.demo as DemoArtifact;
+  return {
+    spec: typeof candidate.spec === 'string' ? candidate.spec : undefined,
+    plan: typeof candidate.plan === 'string' ? candidate.plan : undefined,
+    notes: typeof candidate.notes === 'string' ? candidate.notes : undefined,
+  };
 }
 
 export function WorkflowRunDetailPage() {
@@ -396,7 +376,7 @@ export function WorkflowRunDetailPage() {
   const navigate = useNavigate();
   const [workflowRun, setWorkflowRun] = useState<WorkflowRun | null>(null);
   const [loading, setLoading] = useState(false);
-  const [selectedStage, setSelectedStage] = useState<WorkflowStageKey>('TASK_SPLIT');
+  const [selectedStage, setSelectedStage] = useState<WorkflowStageKey>('SPEC_PLAN');
   const [branchSummaryExpanded, setBranchSummaryExpanded] = useState(false);
   const [busyStage, setBusyStage] = useState<string | null>(null);
   const [submittingAction, setSubmittingAction] = useState<'feedback' | null>(null);
@@ -404,13 +384,8 @@ export function WorkflowRunDetailPage() {
   const [selectedArtifactKey, setSelectedArtifactKey] = useState<string | null>(null);
   const [selectedDiffFileKey, setSelectedDiffFileKey] = useState<string | null>(null);
   const [feedbackText, setFeedbackText] = useState('');
-  const [demoFeedback, setDemoFeedback] = useState('');
-  const [demoSubmitting, setDemoSubmitting] = useState(false);
   const [designFeedback, setDesignFeedback] = useState('');
   const [designSubmitting, setDesignSubmitting] = useState(false);
-  const [demoLocalDetect, setDemoLocalDetect] = useState<LocalDevDetectResponse | null>(null);
-  const [demoLocalStatus, setDemoLocalStatus] = useState<LocalDevPreviewStatus | null>(null);
-  const [demoPreviewOpen, setDemoPreviewOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [rollingBack, setRollingBack] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -420,7 +395,6 @@ export function WorkflowRunDetailPage() {
   const [deployConfig, setDeployConfig] = useState<RepositoryDeployConfig | null>(null);
   const [deployTargetRepositoryId, setDeployTargetRepositoryId] = useState<string | null>(null);
   const [lastPublishedRepositories, setLastPublishedRepositories] = useState<PublishRepositorySummary[]>([]);
-  const [planHtml, setPlanHtml] = useState<string | null>(null);
   const [localHandoff, setLocalHandoff] = useState<LocalHandoffPayload | null>(null);
   const [executionSession, setExecutionSession] = useState<ExecutionSessionDetail | null>(null);
   const [executionEvidence, setExecutionEvidence] = useState<ExecutionSessionEvidence[]>([]);
@@ -453,9 +427,6 @@ export function WorkflowRunDetailPage() {
   const hasInitializedStageSelectionRef = useRef(false);
   const syncedReviewReportIdRef = useRef<string | null>(null);
   const busyStageRef = useRef<string | null>(null);
-  const demoLocalPollCancelRef = useRef(false);
-  const demoLocalPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const demoLocalStartSentRef = useRef(false);
 
   function focusWorkflowSidebarTextarea() {
     if (typeof document === 'undefined') {
@@ -541,13 +512,6 @@ export function WorkflowRunDetailPage() {
   useEffect(() => {
     setFeedbackText('');
     setSubmittingAction(null);
-  }, [selectedStage, workflowRun?.id]);
-
-  useEffect(() => {
-    if (selectedStage !== 'DEMO') {
-      setDemoFeedback('');
-      setDemoPreviewOpen(false);
-    }
   }, [selectedStage, workflowRun?.id]);
 
   const hasRunningStage = workflowRun?.stageExecutions.some((item) => item.status === 'RUNNING') ?? false;
@@ -662,36 +626,10 @@ export function WorkflowRunDetailPage() {
 
     return `工作分支：${first.name} / ${first.workingBranch} 等 ${workflowRun.workflowRepositories.length} 个`;
   }, [workflowRun]);
-  const selectedDemoPages = useMemo(
-    () => (selectedStage === 'DEMO' && workflowRun ? parseDemoPages(getStage(workflowRun, 'DEMO')?.output) : []),
+  const selectedSpecPlanOutput = useMemo(
+    () => (selectedStage === 'SPEC_PLAN' && workflowRun ? parseSpecPlanOutput(getStage(workflowRun, 'SPEC_PLAN')?.output) : null),
     [selectedStage, workflowRun],
   );
-  const selectedDemoArtifact = useMemo(
-    () => (selectedStage === 'DEMO' && workflowRun ? parseDemoArtifact(getStage(workflowRun, 'DEMO')?.output) : null),
-    [selectedStage, workflowRun],
-  );
-  const selectedDemoRepository = useMemo(
-    () =>
-      workflowRun?.workflowRepositories.find((repository) => repository.repositoryId && repository.localPath && repository.status === 'READY') ??
-      workflowRun?.workflowRepositories.find((repository) => repository.localPath && repository.status === 'READY') ??
-      null,
-    [workflowRun],
-  );
-  /** API `/repositories/:id/local-dev` — prefer workspace Repository.id; else WorkflowRepository row id (link may be null). */
-  const demoPreviewRepositoryParam = useMemo(
-    () => selectedDemoRepository?.repositoryId ?? selectedDemoRepository?.id ?? '',
-    [selectedDemoRepository?.repositoryId, selectedDemoRepository?.id],
-  );
-  const canReviseCompletedDemo =
-    !!workflowRun &&
-    selectedStage === 'DEMO' &&
-    (!!selectedDemoArtifact || selectedDemoPages.length > 0) &&
-    workflowRun.status === 'DEMO_WAITING_CONFIRMATION' &&
-    !stageActionsLocked;
-  const isDemoFeedbackVisible =
-    selectedStage === 'DEMO' &&
-    (!!selectedDemoArtifact || selectedDemoPages.length > 0) &&
-    workflowRun?.status === 'DEMO_WAITING_CONFIRMATION';
 
   const designStageSnapshot = workflowRun ? getStage(workflowRun, 'DESIGN') : undefined;
   const canReviseDesignSpec =
@@ -705,46 +643,6 @@ export function WorkflowRunDetailPage() {
     workflowRun?.status === 'DESIGN_WAITING_CONFIRMATION' &&
     designStageSnapshot?.status === 'WAITING_CONFIRMATION';
 
-  const hasPlanArtifact = useMemo(() => {
-    if (selectedStage !== 'TECHNICAL_PLAN' || !workflowRun) {
-      return false;
-    }
-
-    const output = getStage(workflowRun, 'TECHNICAL_PLAN')?.output;
-    return Boolean(
-      output &&
-        typeof output === 'object' &&
-        !Array.isArray(output) &&
-        '_artifact' in output &&
-        output._artifact,
-    );
-  }, [selectedStage, workflowRun]);
-
-  useEffect(() => {
-    if (!hasPlanArtifact || !workflowRun?.id) {
-      setPlanHtml(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    void api
-      .fetchPlanArtifact(workflowRun.id)
-      .then((html) => {
-        if (!cancelled) {
-          setPlanHtml(html);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setPlanHtml(null);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [hasPlanArtifact, workflowRun?.id]);
 
   const localExecutionActive = workflowRun ? isLocalExecutionActive(workflowRun) : false;
 
@@ -868,99 +766,6 @@ export function WorkflowRunDetailPage() {
     return () => window.clearInterval(timer);
   }, [hasRunningStage, workflowRunId]);
 
-  useEffect(() => {
-    demoLocalPollCancelRef.current = false;
-    if (demoLocalPollIntervalRef.current) {
-      clearInterval(demoLocalPollIntervalRef.current);
-      demoLocalPollIntervalRef.current = null;
-    }
-
-    if (
-      selectedStage !== 'DEMO' ||
-      (!selectedDemoArtifact && selectedDemoPages.length === 0) ||
-      !selectedDemoRepository ||
-      !demoPreviewRepositoryParam
-    ) {
-      setDemoLocalDetect(null);
-      setDemoLocalStatus(null);
-      demoLocalStartSentRef.current = false;
-      return;
-    }
-
-    demoLocalStartSentRef.current = false;
-    setDemoLocalDetect(null);
-    setDemoLocalStatus(null);
-
-    void (async () => {
-      try {
-        const detection = await api.detectLocalDev(demoPreviewRepositoryParam, workflowRunId);
-        if (!demoLocalPollCancelRef.current) {
-          setDemoLocalDetect(detection);
-        }
-      } catch {
-        if (!demoLocalPollCancelRef.current) {
-          setDemoLocalDetect(null);
-        }
-      }
-    })();
-
-    const poll = async () => {
-      if (demoLocalPollCancelRef.current || !demoPreviewRepositoryParam) {
-        return;
-      }
-      try {
-        const status = await api.getLocalDevStatus(demoPreviewRepositoryParam, workflowRunId);
-        if (demoLocalPollCancelRef.current) {
-          return;
-        }
-        setDemoLocalStatus(status);
-        if (status.running && status.previewUrl) {
-          if (demoLocalPollIntervalRef.current) {
-            clearInterval(demoLocalPollIntervalRef.current);
-            demoLocalPollIntervalRef.current = null;
-          }
-          return;
-        }
-        if (status.status === 'failed') {
-          if (demoLocalPollIntervalRef.current) {
-            clearInterval(demoLocalPollIntervalRef.current);
-            demoLocalPollIntervalRef.current = null;
-          }
-          return;
-        }
-        if ((status.status === 'idle' || status.status === 'stopped') && !demoLocalStartSentRef.current) {
-          demoLocalStartSentRef.current = true;
-          await api.startLocalDevPreview(demoPreviewRepositoryParam, workflowRunId);
-          if (!demoLocalPollCancelRef.current) {
-            setDemoLocalStatus(await api.getLocalDevStatus(demoPreviewRepositoryParam, workflowRunId));
-          }
-        }
-      } catch {
-        // ignore transient polling errors
-      }
-    };
-
-    void poll();
-    demoLocalPollIntervalRef.current = setInterval(() => {
-      void poll();
-    }, 2000);
-
-    return () => {
-      demoLocalPollCancelRef.current = true;
-      if (demoLocalPollIntervalRef.current) {
-        clearInterval(demoLocalPollIntervalRef.current);
-        demoLocalPollIntervalRef.current = null;
-      }
-    };
-  }, [
-    selectedStage,
-    selectedDemoArtifact,
-    selectedDemoPages.length,
-    selectedDemoRepository,
-    demoPreviewRepositoryParam,
-    workflowRun?.id,
-    workflowRunId,
-  ]);
 
   useEffect(() => {
     if (!activeArtifact) {
@@ -1190,11 +995,8 @@ export function WorkflowRunDetailPage() {
   }
 
   function getEditableStageForSelectedStage(stageKey: WorkflowStageKey): EditableStage | null {
-    if (stageKey === 'TASK_SPLIT') {
-      return 'task-split';
-    }
-    if (stageKey === 'TECHNICAL_PLAN') {
-      return 'plan';
+    if (stageKey === 'SPEC_PLAN') {
+      return 'spec-plan';
     }
     if (stageKey === 'EXECUTION') {
       return 'execution';
@@ -1223,10 +1025,8 @@ export function WorkflowRunDetailPage() {
 
     setSubmittingAction('feedback');
     try {
-      if (editableStage === 'task-split') {
-        await api.reviseTaskSplit(workflowRun.id, nextFeedback);
-      } else if (editableStage === 'plan') {
-        await api.revisePlan(workflowRun.id, nextFeedback);
+      if (editableStage === 'spec-plan') {
+        await api.reviseSpecPlan(workflowRun.id, nextFeedback);
       } else if (editableStage === 'execution') {
         await api.reviseExecution(workflowRun.id, nextFeedback);
       } else {
@@ -1386,52 +1186,6 @@ export function WorkflowRunDetailPage() {
     }
   }
 
-  async function handleStopDemoLocalDev() {
-    const key = selectedDemoRepository?.repositoryId ?? selectedDemoRepository?.id;
-    if (!key) {
-      return;
-    }
-    try {
-      await api.stopLocalDevPreview(key, workflowRunId);
-      setDemoLocalStatus(await api.getLocalDevStatus(key, workflowRunId));
-      demoLocalStartSentRef.current = false;
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '停止本地预览失败');
-    }
-  }
-
-  async function handleRetryDemoLocalDev() {
-    const key = selectedDemoRepository?.repositoryId ?? selectedDemoRepository?.id;
-    if (!key) {
-      return;
-    }
-    demoLocalStartSentRef.current = false;
-    try {
-      await api.startLocalDevPreview(key, workflowRunId);
-      setDemoLocalStatus(await api.getLocalDevStatus(key, workflowRunId));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '启动本地预览失败');
-    }
-  }
-
-  async function handleReviseDemo() {
-    if (!workflowRun || !demoFeedback.trim()) {
-      return;
-    }
-
-    setDemoSubmitting(true);
-    try {
-      await api.reviseDemo(workflowRun.id, demoFeedback.trim());
-      setDemoFeedback('');
-      await refresh();
-      toast.success('Demo 修改意见已发送');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '发送 Demo 修改意见失败');
-    } finally {
-      setDemoSubmitting(false);
-    }
-  }
-
   async function handleReviseDesign() {
     if (!workflowRun || !designFeedback.trim()) {
       return;
@@ -1495,9 +1249,7 @@ export function WorkflowRunDetailPage() {
     const groundingStage = getStage(workflowRun, 'REPOSITORY_GROUNDING');
     const brainstormStage = getStage(workflowRun, 'BRAINSTORM');
     const designStage = getStage(workflowRun, 'DESIGN');
-    const demoStage = getStage(workflowRun, 'DEMO');
-    const taskSplitStage = getStage(workflowRun, 'TASK_SPLIT');
-    const planStage = getStage(workflowRun, 'TECHNICAL_PLAN');
+    const specPlanStage = getStage(workflowRun, 'SPEC_PLAN');
     const executionStage = getStage(workflowRun, 'EXECUTION');
     const reviewStage = getStage(workflowRun, 'AI_REVIEW');
     const repositoryPaths = workflowRun.workflowRepositories.map((repository) => ({
@@ -1657,138 +1409,51 @@ export function WorkflowRunDetailPage() {
           },
         ],
       },
-      DEMO: {
-        title: stageMeta.DEMO.stageNo,
-        subtitle: stageMeta.DEMO.title,
-        status: demoStage?.status,
-        statusMessage: demoStage?.statusMessage,
-        attempt: demoStage?.attempt,
-        output: sanitizeDisplayValue(parseDemoArtifact(demoStage?.output), repositoryPaths),
+      SPEC_PLAN: {
+        title: stageMeta.SPEC_PLAN.stageNo,
+        subtitle: stageMeta.SPEC_PLAN.title,
+        status: specPlanStage?.status,
+        statusMessage: specPlanStage?.statusMessage,
+        attempt: specPlanStage?.attempt,
+        output: sanitizeDisplayValue(specPlanStage?.output, repositoryPaths),
         actions: [
           {
             key: 'run',
-            label: '生成 Demo 页面',
-            onClick: () =>
-              void runAction('DEMO', () => api.runDemo(workflowRun.id), 'Demo 页面生成已启动'),
-            disabled: workflowRun.status !== 'DEMO_PENDING' || stageActionsLocked,
-            loading: busyStage === 'DEMO',
-            variant: 'primary' as const,
-          },
-          {
-            key: 'confirm',
-            label: '确认 Demo',
-            onClick: () =>
-              void runAction('DEMO', () => api.confirmDemo(workflowRun.id), 'Demo 已确认', {
-                focusNextStage: true,
-              }),
-            disabled: workflowRun.status !== 'DEMO_WAITING_CONFIRMATION' || stageActionsLocked,
-            loading: busyStage === 'DEMO',
-          },
-          {
-            key: 'skip',
-            label: '跳过 Demo',
-            onClick: () =>
-              void runAction('DEMO', () => api.skipDemo(workflowRun.id), '已跳过 Demo', {
-                focusNextStage: true,
-              }),
-            disabled: workflowRun.status !== 'DEMO_PENDING' || stageActionsLocked,
-            loading: busyStage === 'DEMO',
-          },
-        ],
-      },
-      TASK_SPLIT: {
-        title: stageMeta.TASK_SPLIT.stageNo,
-        subtitle: stageMeta.TASK_SPLIT.title,
-        status: taskSplitStage?.status,
-        statusMessage: taskSplitStage?.statusMessage,
-        attempt: taskSplitStage?.attempt,
-        output: sanitizeDisplayValue(taskSplitStage?.output ?? { tasks: workflowRun.tasks }, repositoryPaths),
-        actions: [
-          {
-            key: 'run',
-            label: '执行任务拆解',
-            onClick: () => void runAction('TASK_SPLIT', () => api.runTaskSplit(workflowRun.id), '任务拆解已启动'),
-            disabled: workflowRun.status !== 'TASK_SPLIT_PENDING' || stageActionsLocked,
-            loading: busyStage === 'TASK_SPLIT',
+            label: '生成 Spec & Plan',
+            onClick: () => void runAction('SPEC_PLAN', () => api.runSpecPlan(workflowRun.id), 'Spec & Plan 已启动'),
+            disabled: workflowRun.status !== 'SPEC_PLAN_PENDING' || stageActionsLocked,
+            loading: busyStage === 'SPEC_PLAN',
             variant: 'primary' as const,
           },
           {
             key: 'confirm',
             label: '确认',
             onClick: () =>
-              void runAction('TASK_SPLIT', () => api.confirmTaskSplit(workflowRun.id), '任务拆解已确认', {
+              void runAction('SPEC_PLAN', () => api.confirmSpecPlan(workflowRun.id), 'Spec & Plan 已确认', {
                 focusNextStage: true,
               }),
-            disabled: workflowRun.status !== 'TASK_SPLIT_WAITING_CONFIRMATION' || stageActionsLocked,
-            loading: busyStage === 'TASK_SPLIT',
+            disabled: workflowRun.status !== 'SPEC_PLAN_WAITING_CONFIRMATION' || stageActionsLocked,
+            loading: busyStage === 'SPEC_PLAN',
           },
           {
             key: 'reject',
             label: '驳回',
-            onClick: () => void runAction('TASK_SPLIT', () => api.rejectTaskSplit(workflowRun.id), '任务拆解已驳回'),
-            disabled: workflowRun.status !== 'TASK_SPLIT_WAITING_CONFIRMATION' || stageActionsLocked,
-            loading: busyStage === 'TASK_SPLIT',
+            onClick: () => void runAction('SPEC_PLAN', () => api.rejectSpecPlan(workflowRun.id), 'Spec & Plan 已驳回'),
+            disabled: workflowRun.status !== 'SPEC_PLAN_WAITING_CONFIRMATION' || stageActionsLocked,
+            loading: busyStage === 'SPEC_PLAN',
             danger: true,
           },
           {
             key: 'feedback',
             label: '提意见给 AI',
             onClick: (): void => setWorkspaceMode('feedback'),
-            disabled: workflowRun.status !== 'TASK_SPLIT_WAITING_CONFIRMATION' || stageActionsLocked,
+            disabled: workflowRun.status !== 'SPEC_PLAN_WAITING_CONFIRMATION' || stageActionsLocked,
           },
           {
             key: 'edit',
             label: '人工修改',
-            onClick: (): void => openWorkspaceEditMode('task-split'),
-            disabled: workflowRun.status !== 'TASK_SPLIT_WAITING_CONFIRMATION' || stageActionsLocked,
-          },
-        ],
-      },
-      TECHNICAL_PLAN: {
-        title: stageMeta.TECHNICAL_PLAN.stageNo,
-        subtitle: stageMeta.TECHNICAL_PLAN.title,
-        status: planStage?.status,
-        statusMessage: planStage?.statusMessage,
-        attempt: planStage?.attempt,
-        output: sanitizeDisplayValue(planStage?.output ?? workflowRun.plan, repositoryPaths),
-        actions: [
-          {
-            key: 'run',
-            label: '生成技术方案',
-            onClick: () => void runAction('TECHNICAL_PLAN', () => api.runPlan(workflowRun.id), '技术方案生成已启动'),
-            disabled: workflowRun.status !== 'PLAN_PENDING' || stageActionsLocked,
-            loading: busyStage === 'TECHNICAL_PLAN',
-            variant: 'primary' as const,
-          },
-          {
-            key: 'confirm',
-            label: '确认',
-            onClick: () =>
-              void runAction('TECHNICAL_PLAN', () => api.confirmPlan(workflowRun.id), '技术方案已确认', {
-                focusNextStage: true,
-              }),
-            disabled: workflowRun.status !== 'PLAN_WAITING_CONFIRMATION' || stageActionsLocked,
-            loading: busyStage === 'TECHNICAL_PLAN',
-          },
-          {
-            key: 'reject',
-            label: '驳回',
-            onClick: () => void runAction('TECHNICAL_PLAN', () => api.rejectPlan(workflowRun.id), '技术方案已驳回'),
-            disabled: workflowRun.status !== 'PLAN_WAITING_CONFIRMATION' || stageActionsLocked,
-            loading: busyStage === 'TECHNICAL_PLAN',
-            danger: true,
-          },
-          {
-            key: 'feedback',
-            label: '提意见给 AI',
-            onClick: (): void => setWorkspaceMode('feedback'),
-            disabled: workflowRun.status !== 'PLAN_WAITING_CONFIRMATION' || stageActionsLocked,
-          },
-          {
-            key: 'edit',
-            label: '人工修改',
-            onClick: (): void => openWorkspaceEditMode('plan'),
-            disabled: workflowRun.status !== 'PLAN_WAITING_CONFIRMATION' || stageActionsLocked,
+            onClick: (): void => openWorkspaceEditMode('spec-plan'),
+            disabled: workflowRun.status !== 'SPEC_PLAN_WAITING_CONFIRMATION' || stageActionsLocked,
           },
         ],
       },
@@ -1932,6 +1597,15 @@ export function WorkflowRunDetailPage() {
               stageActionsLocked,
           },
         ],
+      },
+      HUMAN_REVIEW: {
+        title: stageMeta.HUMAN_REVIEW.stageNo,
+        subtitle: stageMeta.HUMAN_REVIEW.title,
+        status: workflowRun.status === 'HUMAN_REVIEW_PENDING' || workflowRun.status === 'DONE' ? 'WAITING_CONFIRMATION' : undefined,
+        statusMessage: null,
+        attempt: undefined,
+        output: null,
+        actions: [],
       },
     };
   }, [workflowRun, busyStage, stageActionsLocked, localHandoff, localExecutionActive, localLaunchBusy, openDesignBusy]);
@@ -2421,7 +2095,7 @@ export function WorkflowRunDetailPage() {
               <WorkflowSteps
                 current={selectedStageIndex}
                 className="workflow-steps"
-                onChange={(next) => setSelectedStage(STAGE_SEQUENCE[next] ?? 'TASK_SPLIT')}
+                onChange={(next) => setSelectedStage(STAGE_SEQUENCE[next] ?? 'SPEC_PLAN')}
                 items={STAGE_SEQUENCE.map((stageKey) => {
                   const stage = getStage(workflowRun, stageKey);
                   return {
@@ -2496,18 +2170,30 @@ export function WorkflowRunDetailPage() {
                 </Card>
               ) : null}
 
-              {selectedStage === 'TECHNICAL_PLAN' && planHtml ? (
+              {selectedStage === 'SPEC_PLAN' && selectedSpecPlanOutput ? (
                 <Card className="rounded-md border-border bg-card">
                   <CardHeader className="p-5 pb-0">
-                    <SectionHeader eyebrow="Plan Preview" title="方案预览" />
+                    <SectionHeader eyebrow="Spec & Plan" title="Spec & Plan 文档" />
                   </CardHeader>
-                  <CardContent className="p-5 pt-4">
-                    <iframe
-                      title="技术方案预览"
-                      sandbox=""
-                      srcDoc={planHtml}
-                      className="h-[480px] w-full rounded-md border border-border"
-                    />
+                  <CardContent className="space-y-4 p-5 pt-4">
+                    {selectedSpecPlanOutput.spec ? (
+                      <div>
+                        <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Spec</div>
+                        <pre className="whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-3 text-sm text-foreground">{selectedSpecPlanOutput.spec}</pre>
+                      </div>
+                    ) : null}
+                    {selectedSpecPlanOutput.plan ? (
+                      <div>
+                        <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Plan</div>
+                        <pre className="whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-3 text-sm text-foreground">{selectedSpecPlanOutput.plan}</pre>
+                      </div>
+                    ) : null}
+                    {selectedSpecPlanOutput.notes ? (
+                      <div>
+                        <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Notes</div>
+                        <pre className="whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-3 text-sm text-foreground">{selectedSpecPlanOutput.notes}</pre>
+                      </div>
+                    ) : null}
                   </CardContent>
                 </Card>
               ) : null}
@@ -2620,163 +2306,6 @@ export function WorkflowRunDetailPage() {
                 </Card>
               ) : null}
 
-              {selectedStage === 'DEMO' && (selectedDemoArtifact || selectedDemoPages.length > 0) ? (
-                <Card className="rounded-md border-border bg-card">
-                  <CardHeader className="p-5">
-                    <SectionHeader
-                      eyebrow="Demo Preview"
-                      title="本地预览"
-                      description="查看当前 Demo 的本地运行效果。"
-                    />
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-4 p-5 pt-0">
-                    <div className="rounded-md border border-border bg-muted/35 px-4 py-4 text-sm text-foreground">
-                      {selectedDemoArtifact ? (
-                        <div className="mb-4 space-y-4">
-                          <div>
-                            <p className="text-sm font-semibold text-foreground">Demo 摘要</p>
-                            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                              {selectedDemoArtifact.summary}
-                            </p>
-                          </div>
-
-                          {selectedDemoArtifact.flows.length > 0 ? (
-                            <div>
-                              <p className="text-sm font-semibold text-foreground">覆盖流程</p>
-                              <div className="mt-2 space-y-3">
-                                {selectedDemoArtifact.flows.map((flow) => (
-                                  <div key={`${flow.name}-${flow.entry}`} className="rounded-md border border-border bg-background px-3 py-3">
-                                    <div className="text-sm font-medium text-foreground">{flow.name}</div>
-                                    <div className="mt-1 text-xs leading-5 text-muted-foreground">{flow.goal}</div>
-                                    <div className="mt-2 text-xs text-muted-foreground">入口：{flow.entry}</div>
-                                    {flow.states.length > 0 ? (
-                                      <div className="mt-2 flex flex-wrap gap-2">
-                                        {flow.states.map((state) => (
-                                          <Badge key={`${flow.name}-${state}`} variant="secondary">
-                                            {state}
-                                          </Badge>
-                                        ))}
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
-
-                          <div className="grid gap-4 md:grid-cols-2">
-                            <div>
-                              <p className="text-sm font-semibold text-foreground">已覆盖</p>
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {selectedDemoArtifact.scope.included.map((item) => (
-                                  <Badge key={`included-${item}`} variant="secondary">
-                                    {item}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-foreground">本次未覆盖</p>
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {selectedDemoArtifact.scope.excluded.map((item) => (
-                                  <Badge key={`excluded-${item}`} variant="outline">
-                                    {item}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-
-                          {selectedDemoArtifact.knownGaps.length > 0 ? (
-                            <div>
-                              <p className="text-sm font-semibold text-foreground">已知取舍</p>
-                              <ul className="mt-2 space-y-1 text-sm leading-6 text-muted-foreground">
-                                {selectedDemoArtifact.knownGaps.map((item) => (
-                                  <li key={`gap-${item}`}>{item}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <p className="mb-4 text-sm leading-6 text-muted-foreground">当前 Demo 还没有结构化摘要。</p>
-                      )}
-
-                      {selectedDemoPages.length > 0 ? (
-                        <p className="mb-2 text-xs text-muted-foreground">
-                          已生成 {selectedDemoPages.length} 个预览页面。
-                          {selectedDemoRepository?.localPath ? ` 工作目录：${selectedDemoRepository.localPath}` : ''}
-                        </p>
-                      ) : null}
-
-                      {!demoPreviewRepositoryParam ? (
-                        <p className="text-xs text-muted-foreground">当前工作流仓库没有可用的仓库标识，暂时无法启动本地预览。</p>
-                      ) : null}
-                      {demoPreviewRepositoryParam && !demoLocalDetect ? (
-                        <p className="text-xs text-muted-foreground">正在准备本地预览…</p>
-                      ) : null}
-                      {demoPreviewRepositoryParam &&
-                      demoLocalDetect &&
-                      (demoLocalStatus?.status === 'idle' ||
-                        demoLocalStatus?.status === 'stopped' ||
-                        demoLocalStatus === null) ? (
-                        <div className="mt-3 flex flex-wrap items-center gap-3">
-                          <UiButton variant="outline" size="sm" onClick={() => void handleRetryDemoLocalDev()}>
-                            启动本地预览
-                          </UiButton>
-                        </div>
-                      ) : null}
-                      {demoLocalStatus?.status === 'starting' ? (
-                        <div className="mt-2 space-y-2">
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-primary" />
-                            正在启动本地开发服务…
-                          </div>
-                          <UiButton variant="ghost" size="sm" onClick={() => void handleStopDemoLocalDev()}>
-                            停止进程
-                          </UiButton>
-                        </div>
-                      ) : null}
-                      {demoLocalStatus?.status === 'failed' ? (
-                        <div className="mt-2 space-y-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                          <p>{demoLocalStatus.lastError ?? '本地预览启动失败'}</p>
-                          {demoLocalStatus.logTail ? (
-                            <pre className="max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[11px]">
-                              {demoLocalStatus.logTail.slice(-2000)}
-                            </pre>
-                          ) : null}
-                          <div className="flex flex-wrap gap-2">
-                            <UiButton variant="outline" size="sm" onClick={() => void handleRetryDemoLocalDev()}>
-                              重试启动
-                            </UiButton>
-                            <UiButton variant="ghost" size="sm" onClick={() => void handleStopDemoLocalDev()}>
-                              停止进程
-                            </UiButton>
-                          </div>
-                        </div>
-                      ) : null}
-                      {demoLocalStatus?.running && demoLocalStatus.previewUrl ? (
-                        <div className="mt-3 flex flex-wrap items-center gap-3">
-                          <UiButton onClick={() => setDemoPreviewOpen(true)} data-testid="demo-preview-open">
-                            打开本地预览
-                          </UiButton>
-                          <UiButton variant="outline" size="sm" onClick={() => void handleStopDemoLocalDev()}>
-                            停止本地预览
-                          </UiButton>
-                          <a
-                            href={demoLocalStatus.previewUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-primary hover:underline"
-                          >
-                            新窗口打开 ↗
-                          </a>
-                        </div>
-                      ) : null}
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : null}
 
               {diffReviewData.length > 0 && (selectedStage === 'EXECUTION' || selectedStage === 'AI_REVIEW') ? (
               <Card className="rounded-md border-border bg-card">
@@ -3053,47 +2582,6 @@ export function WorkflowRunDetailPage() {
                   </CardContent>
                 </Card>
               ) : null}
-              {isDemoFeedbackVisible ? (
-                <Card className="border-border">
-                  <CardContent className="flex flex-col gap-4 p-5">
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Demo Feedback</p>
-                      <div>
-                        <h4 className="text-base font-semibold text-foreground">Demo 反馈区</h4>
-                        <p className="text-sm text-muted-foreground">
-                          这里专门留给布局、组件、信息层级和交互细节的修改意见。
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">当前阶段</p>
-                      <p className="mt-1 text-sm font-medium text-foreground">Demo 页面</p>
-                      <p className="mt-1 text-xs text-muted-foreground">确认前可以继续调整或重新生成当前 Demo。</p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-foreground">修改意见</p>
-                      <UiTextarea
-                        value={demoFeedback}
-                        onChange={(event) => setDemoFeedback(event.target.value)}
-                        placeholder="例如：把通知类型标签放到标题右侧；列表首屏只展示 5 条；弹层里补充发布时间和类型分组。"
-                        rows={8}
-                        className="min-h-[220px] resize-y"
-                      />
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <UiButton
-                        onClick={() => void handleReviseDemo()}
-                        disabled={!canReviseCompletedDemo || !demoFeedback.trim() || demoSubmitting}
-                      >
-                        {demoSubmitting ? '发送中...' : '发送 Demo 修改意见'}
-                      </UiButton>
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : null}
               {workflowWorkspaceConfig ? (
                 <WorkflowReviewSidebar
                   stageTitle={workflowWorkspaceConfig.title}
@@ -3123,41 +2611,6 @@ export function WorkflowRunDetailPage() {
         </Card>
       )}
 
-      <Dialog open={demoPreviewOpen} onOpenChange={setDemoPreviewOpen}>
-        <DialogContent className="max-w-6xl p-0">
-          <DialogHeader className="border-b border-border px-6 py-5">
-            <DialogTitle>Demo 本地预览</DialogTitle>
-            <DialogDescription>
-              在更大的预览窗口里查看当前 Demo 效果，右侧反馈区可以继续补充修改意见。
-            </DialogDescription>
-          </DialogHeader>
-          {demoLocalStatus?.running && demoLocalStatus.previewUrl ? (
-            <div className="flex h-[80vh] flex-col">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-6 py-3">
-                <div className="text-sm text-muted-foreground">{demoLocalStatus.previewUrl}</div>
-                <a
-                  href={demoLocalStatus.previewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-primary hover:underline"
-                >
-                  新窗口打开 ↗
-                </a>
-              </div>
-              <iframe
-                src={demoLocalStatus.previewUrl}
-                className="h-full w-full"
-                title="本地 Demo 预览"
-                sandbox="allow-scripts allow-same-origin allow-forms"
-              />
-            </div>
-          ) : (
-            <div className="px-6 py-10">
-              <EmptyState description="本地预览暂时不可用，请先等待服务启动完成。" />
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
