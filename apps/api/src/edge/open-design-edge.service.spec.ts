@@ -27,8 +27,8 @@ const handoff = {
     repositories: [],
     outputContract: {
       resultFileName: 'result.json',
-      format: 'flowx-design-result-v1' as const,
-      requiredFields: ['design', 'demo', 'designArtifact'] as const,
+          format: 'flowx-design-result-v2' as const,
+          requiredFields: ['design', 'demo', 'surfaces'] as const,
     },
   },
   completionEndpoint: '/execution-sessions/session-1/design/complete',
@@ -143,7 +143,12 @@ describe('OpenDesignEdgeService', () => {
       output: {
         design: { overview: 'Design' },
         demo: { summary: 'Flow' },
-        designArtifact: { html: '<!doctype html><html></html>' },
+        surfaces: [
+          {
+            id: 'Web端',
+            pages: [{ id: 'index', html: '<!doctype html><html></html>' }],
+          },
+        ],
       },
     };
 

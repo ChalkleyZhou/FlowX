@@ -81,10 +81,18 @@ export class MockAiExecutor implements AIExecutor {
         design: base.design,
         demo: base.demo,
         demoPages: [],
-        designArtifact: {
-          html: this.buildMockDesignArtifactHtml(input, base),
-          generatedAt: new Date().toISOString(),
-        },
+        surfaces: [
+          {
+            id: 'Web端',
+            pages: [
+              {
+                id: 'index',
+                title: '设计稿',
+                html: this.buildMockDesignArtifactHtml(input, base),
+              },
+            ],
+          },
+        ],
       };
     }
     return base;

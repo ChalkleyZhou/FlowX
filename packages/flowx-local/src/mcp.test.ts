@@ -363,7 +363,7 @@ describe('flowx-local MCP server', () => {
           output: {
             design: {},
             demo: {},
-            designArtifact: { html: '<main />' },
+            surfaces: [{ id: 'Web端', pages: [{ id: 'index', html: '<main />' }] }],
           },
         },
       },
@@ -469,7 +469,7 @@ describe('flowx-local MCP server', () => {
           output: {
             design: {},
             demo: {},
-            designArtifact: { html: '<main />' },
+            surfaces: [{ id: 'Web端', pages: [{ id: 'index', html: '<main />' }] }],
           },
         },
       },

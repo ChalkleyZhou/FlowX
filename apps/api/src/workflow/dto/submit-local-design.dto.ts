@@ -1,4 +1,4 @@
-import { IsObject } from 'class-validator';
+import { IsArray, IsObject } from 'class-validator';
 
 /**
  * Body for locally (OpenDesign MCP) generated design submitted from the IDE extension.
@@ -11,6 +11,6 @@ export class SubmitLocalDesignDto {
   @IsObject()
   demo!: Record<string, unknown>;
 
-  @IsObject()
-  designArtifact!: Record<string, unknown>;
+  @IsArray()
+  surfaces!: unknown[];
 }

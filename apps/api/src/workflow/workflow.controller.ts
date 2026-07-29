@@ -53,9 +53,22 @@ export class WorkflowController {
     return this.workflowService.getLocalHandoff(id);
   }
 
-  @Get(':id/design-artifact')
-  getDesignArtifact(@Param('id') id: string) {
-    return this.workflowService.getWorkflowDesignArtifact(id);
+  @Get(':id/design-artifacts')
+  listDesignArtifacts(@Param('id') id: string) {
+    return this.workflowService.listWorkflowDesignArtifacts(id);
+  }
+
+  @Get(':id/design-artifacts/:surfaceId/:pageId')
+  getDesignArtifactPage(
+    @Param('id') id: string,
+    @Param('surfaceId') surfaceId: string,
+    @Param('pageId') pageId: string,
+  ) {
+    return this.workflowService.getWorkflowDesignArtifactPage(
+      id,
+      decodeURIComponent(surfaceId),
+      decodeURIComponent(pageId),
+    );
   }
 
   @Get(':id')

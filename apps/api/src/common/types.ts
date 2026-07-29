@@ -282,30 +282,48 @@ export interface RepositoryComponentContext {
 }
 
 /**
- * OpenDesign 产出的高保真单页 HTML 设计稿引用。
- * 设计阶段 agent 通过 OpenDesign MCP 读取设计系统/技能后，内联返回 `html`；
- * FlowX 落盘到 `.flowx-data/design-artifacts/<runId>/...` 并以 `relPath` 记录位置。
+ * 落盘后的单页设计稿引用（不含 html 正文）。
+ * 路径相对 `.flowx-data/design-artifacts/`。
  */
+export interface DesignPageRef {
+  id: string;
+  title?: string;
+  relPath: string;
+  bytes: number;
+  generatedAt: string;
+}
+
+/** Stage output 中某一端的页面清单。 */
+export interface DesignSurfaceInventory {
+  id: string;
+  pages: DesignPageRef[];
+}
+
+/** @deprecated 旧单稿引用；新契约使用 DesignPageRef / DesignSurfaceInventory。保留给过渡编译。 */
 export interface DesignArtifactRef {
-  /** 内联单页 HTML（agent / mock 返回；落盘后持久化输出中可不再保留以减小体积）。 */
   html?: string;
-  /** 相对 design-artifacts 根目录的持久化路径（落盘后写入）。 */
   relPath?: string;
   generatedAt?: string;
   bytes?: number;
+}
+
+export interface DesignSurfaceInput {
+  id: string;
+  pages: Array<{ id: string; title?: string; html: string }>;
 }
 
 export interface GenerateDesignOutput {
   design: DesignSpec;
   demo: DemoArtifact;
   demoPages: DemoPage[];
-  designArtifact?: DesignArtifactRef;
+  /** 设计阶段（phase=design）必填；Demo 阶段可省略。 */
+  surfaces?: DesignSurfaceInput[];
 }
 
-/** 设计阶段（OpenDesign HTML artifact）的 executor 输出形态：必含 designArtifact，demoPages 可选。 */
+/** 设计阶段 executor 输出：必含 surfaces（按端多页 HTML），demoPages 可选。 */
 export interface DesignPhaseOutput {
   design: DesignSpec;
   demo: DemoArtifact;
-  designArtifact: DesignArtifactRef;
+  surfaces: DesignSurfaceInput[];
   demoPages?: DemoPage[];
 }

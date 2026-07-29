@@ -55,11 +55,26 @@ const designReportSchema = z.object({
   output: z.object({
     design: z.record(z.string(), z.unknown()),
     demo: z.record(z.string(), z.unknown()),
-    designArtifact: z
-      .object({
-        html: z.string().min(1),
-      })
-      .passthrough(),
+    surfaces: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            pages: z
+              .array(
+                z
+                  .object({
+                    id: z.string().min(1),
+                    title: z.string().optional(),
+                    html: z.string().min(1),
+                  })
+                  .passthrough(),
+              )
+              .min(1),
+          })
+          .passthrough(),
+      )
+      .min(1),
   }),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
@@ -216,7 +231,7 @@ export function createFlowXToolHandlers(deps: FlowXToolDependencies) {
             : [
                 'Call flowx_get_design_handoff (omit workflowRunId to use this active session).',
                 'Design in the Open Design project directory you chose.',
-                'Call flowx_submit_design with a DesignCompletionReport including designArtifact.html.',
+                'Call flowx_submit_design with a DesignCompletionReport including surfaces[{ id, pages[{ id, html }] }].',
               ],
       });
     },
@@ -280,8 +295,12 @@ export function createFlowXToolHandlers(deps: FlowXToolDependencies) {
       if (!parsed.success) {
         return textResult(`Invalid design report: ${parsed.error.message}`, true);
       }
-      if (!parsed.data.output.designArtifact.html.includes('<')) {
-        return textResult('designArtifact.html must be a complete HTML document.', true);
+      if (
+        !parsed.data.output.surfaces.some((surface) =>
+          surface.pages.some((page) => page.html.includes('<')),
+        )
+      ) {
+        return textResult('surfaces[].pages[].html must include complete HTML documents.', true);
       }
       try {
         const client = await resolveDesignClient();
@@ -458,7 +477,7 @@ export function registerFlowXTools(
     {
       title: 'Submit OpenDesign Result',
       description:
-        'Submit a DesignCompletionReport (including self-contained designArtifact.html) back to FlowX.',
+        'Submit a DesignCompletionReport (including surfaces with self-contained HTML pages) back to FlowX.',
       inputSchema: z.object({
         executionSessionId: z
           .string()

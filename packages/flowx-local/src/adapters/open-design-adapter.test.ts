@@ -49,8 +49,8 @@ describe('OpenDesignAdapter', () => {
           repositories: [],
           outputContract: {
             resultFileName: 'result.json',
-            format: 'flowx-design-result-v1',
-            requiredFields: ['design', 'demo', 'designArtifact'],
+            format: 'flowx-design-result-v2',
+            requiredFields: ['design', 'demo', 'surfaces'],
           },
         },
       },
@@ -69,7 +69,12 @@ describe('OpenDesignAdapter', () => {
     });
     expect(launched.imported).toBe(false);
     const result = JSON.parse(readFileSync(launched.resultPath, 'utf8'));
-    result.output.designArtifact.html = '<!doctype html><html><body>Done</body></html>';
+    result.output.surfaces = [
+      {
+        id: 'Web端',
+        pages: [{ id: 'index', html: '<!doctype html><html><body>Done</body></html>' }],
+      },
+    ];
     writeFileSync(launched.resultPath, JSON.stringify(result));
 
     await adapter.launch({

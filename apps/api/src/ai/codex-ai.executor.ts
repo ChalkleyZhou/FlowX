@@ -130,7 +130,7 @@ export class CodexAiExecutor implements AIExecutor {
       return {
         design: parsed.design,
         demo: parsed.demo,
-        designArtifact: parsed.designArtifact,
+        surfaces: parsed.surfaces,
         demoPages: parsed.demoPages ?? [],
       };
     }
@@ -856,7 +856,7 @@ ${input.repositoryComponentContext?.routingAndAccessHints ? '\n- 与上文「路
 `;
   }
 
-  /** 设计阶段（OpenDesign 高保真单页 HTML）提示词；产出 design + demo + designArtifact.html，不产 demoPages。 */
+  /** 设计阶段（OpenDesign 高保真多端多页 HTML）提示词；产出 design + demo + surfaces，不产 demoPages。 */
   protected buildDesignArtifactPrompt(input: GenerateDesignInput) {
     const revisionSection = input.humanFeedback
       ? `
@@ -889,8 +889,9 @@ ${revisionSection}
 ${this.providerName === 'cursor' ? getDesignSpecSchemaSummaryContractBlock() : getDesignSpecSchemaContractBlock()}
 
 硬约束:
-- 只输出 design、demo、designArtifact 三个顶层字段；本阶段不要求 demoPages。
-- designArtifact.html 必须是完整、自包含的单页 HTML 文档（<!doctype html> 起始，样式内联，无任何外部资源依赖），可直接在 sandbox iframe 中渲染。
+- 只输出 design、demo、surfaces 三个顶层字段；本阶段不要求 demoPages，也不要输出 designArtifact。
+- surfaces 至少一端；每端 pages 至少一页；html 必须是完整、自包含文档（<!doctype html> 起始，样式内联）。
+- 推荐 surface id：Web端 / 移动端 / 管理后台（按需）。
 - 设计阶段禁止输出 API 设计、接口草案、数据模型方案等技术产物。
 `;
   }

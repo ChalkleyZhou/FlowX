@@ -31,9 +31,10 @@ export function buildLocalDesignPrompt(task: FlowXTaskItem, runId: string, relFi
     `- Workflow run id: ${runId}`,
     '',
     '## 任务',
-    '请使用 OpenDesign MCP 工具为该需求生成一份高保真、自包含的单页 HTML 设计稿：',
+    '请使用 OpenDesign MCP 工具为该需求生成高保真、自包含的 HTML 设计稿（按端放入 surfaces）：',
     '- 用 `od get-file design-systems/<system>/DESIGN.md` 读取目标设计系统，用 `od skill list` / `od search-files` 找匹配场景；',
-    '- designArtifact.html 必须是完整 HTML 文档（<!doctype html> 起始，样式内联，无外部资源依赖），可在 sandbox iframe 直接渲染。',
+    '- 推荐 surface id：Web端 / 移动端 / 管理后台（按需）；每端可有多页；',
+    '- 每个 pages[].html 必须是完整 HTML 文档（<!doctype html> 起始，样式内联，无外部资源依赖）。',
     '',
     '## 输出（关键）',
     `把结果写入工作区文件 \`${relFilePath}\`，内容为单个 JSON 对象，结构如下（不要写 Markdown 或代码围栏，只写 JSON）：`,
@@ -41,7 +42,7 @@ export function buildLocalDesignPrompt(task: FlowXTaskItem, runId: string, relFi
     '{',
     '  "design": { "overview": "...", "pages": [{ "name": "...", "route": "...", "layout": "...", "keyComponents": [], "interactions": [] }], "demoScenario": "...", "designRationale": "..." },',
     '  "demo": { "summary": "...", "flows": [{ "name": "...", "goal": "...", "entry": "...", "states": [] }], "scope": { "included": [], "excluded": [] }, "knownGaps": [] },',
-    '  "designArtifact": { "html": "<!doctype html>..." }',
+    '  "surfaces": [{ "id": "Web端", "pages": [{ "id": "首页", "html": "<!doctype html>..." }] }]',
     '}',
     '```',
     '写完文件后，回到 FlowX 扩展，对该任务执行「提交本地设计」。',
@@ -101,7 +102,7 @@ export async function submitLocalDesignFromFile(deps: SubmitLocalDesignDeps, run
 
   const body = parseLocalDesignSubmission(raw);
   if (!body) {
-    deps.showError('本地设计产物无效：需要包含 design、demo 以及非空的 designArtifact.html。');
+    deps.showError('本地设计产物无效：需要包含 design、demo 以及非空的 surfaces[{ id, pages[{ id, html }] }]。');
     return;
   }
 
@@ -123,23 +124,42 @@ export function parseLocalDesignSubmission(raw: string): LocalDesignSubmission |
   const record = parsed as Record<string, unknown>;
   const design = record.design;
   const demo = record.demo;
-  const designArtifact = record.designArtifact as Record<string, unknown> | undefined;
-  const html = designArtifact?.html;
+  const surfacesRaw = record.surfaces;
   if (
     !design ||
     typeof design !== 'object' ||
     !demo ||
     typeof demo !== 'object' ||
-    !designArtifact ||
-    typeof designArtifact !== 'object' ||
-    typeof html !== 'string' ||
-    html.trim().length === 0
+    !Array.isArray(surfacesRaw) ||
+    surfacesRaw.length === 0
   ) {
     return null;
+  }
+  const surfaces: LocalDesignSubmission['surfaces'] = [];
+  for (const item of surfacesRaw) {
+    if (!item || typeof item !== 'object') return null;
+    const surface = item as Record<string, unknown>;
+    if (typeof surface.id !== 'string' || !surface.id.trim() || !Array.isArray(surface.pages) || surface.pages.length === 0) {
+      return null;
+    }
+    const pages = [];
+    for (const pageItem of surface.pages) {
+      if (!pageItem || typeof pageItem !== 'object') return null;
+      const page = pageItem as Record<string, unknown>;
+      if (typeof page.id !== 'string' || !page.id.trim() || typeof page.html !== 'string' || !page.html.trim()) {
+        return null;
+      }
+      pages.push({
+        id: page.id,
+        title: typeof page.title === 'string' ? page.title : undefined,
+        html: page.html,
+      });
+    }
+    surfaces.push({ id: surface.id, pages });
   }
   return {
     design: design as Record<string, unknown>,
     demo: demo as Record<string, unknown>,
-    designArtifact: designArtifact as { html: string } & Record<string, unknown>,
+    surfaces,
   };
 }

@@ -52,3 +52,15 @@ description: FlowX 产品构思：多轮头脑风暴澄清产品需求后，写�
 
 - workflow / session id 来自 MCP，不要写死在本 Skill
 - 成功回传后平台进入设计阶段，并展示本次 PRD Markdown
+
+## 多端设计稿（设计阶段）
+
+产品构思回传成功后进入设计阶段。若需求涉及多端，在项目或会话 `design/` 下按端建目录，**推荐**：
+
+- `Web端/`
+- `移动端/`
+- `管理后台/`
+
+每端可有多个 `.html`。其它目录名也可；FlowX Web 按实际上传的端展示 Tab（有啥展示啥）。
+
+按端回传：`flowx_submit_design` 的 `output.surfaces`（一次可只交一端；该端 pages 为完整页集）。不要使用已移除的 `designArtifact` 字段。

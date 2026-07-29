@@ -35,8 +35,8 @@ import type {
   Repository,
   Requirement,
   ReviewFinding,
-  SpecPlanOutput,
-  WorkflowDesignArtifact,
+  WorkflowDesignArtifactPage,
+  WorkflowDesignArtifactsList,
   WorkflowRun,
   Workspace,
 } from './types';
@@ -714,6 +714,17 @@ export const api = {
     request<WorkflowRun>(`/workflow-runs/${id}/design/run`, { method: 'POST' }),
   skipDesign: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/design/skip`, { method: 'POST' }),
+  runDemo: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/demo/run`, { method: 'POST' }),
+  reviseDemo: (id: string, feedback: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/demo/revise`, {
+      method: 'POST',
+      body: JSON.stringify({ feedback }),
+    }),
+  confirmDemo: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/demo/confirm`, { method: 'POST' }),
+  skipDemo: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/demo/skip`, { method: 'POST' }),
   reviseWorkflowDesign: (workflowRunId: string, feedback: string) =>
     request<WorkflowRun>(`/workflow-runs/${workflowRunId}/design/revise`, {
       method: 'POST',
@@ -735,6 +746,20 @@ export const api = {
     }),
   confirmDesign: (requirementId: string) =>
     request<Requirement>(`/requirements/${requirementId}/design/confirm`, {
+      method: 'POST',
+    }),
+  startDemoGeneration: (requirementId: string, hint?: string) =>
+    request<Requirement>(`/requirements/${requirementId}/demo/run`, {
+      method: 'POST',
+      body: JSON.stringify({ humanHint: hint }),
+    }),
+  reviseDemoGeneration: (requirementId: string, feedback: string) =>
+    request<Requirement>(`/requirements/${requirementId}/demo/revise`, {
+      method: 'POST',
+      body: JSON.stringify({ feedback }),
+    }),
+  confirmDemoGeneration: (requirementId: string) =>
+    request<Requirement>(`/requirements/${requirementId}/demo/confirm`, {
       method: 'POST',
     }),
   getIdeationSessionEvents: (requirementId: string, sessionId: string) =>
@@ -789,8 +814,12 @@ export const api = {
         take: params?.take !== undefined ? String(params.take) : undefined,
       })}`,
     ),
-  getWorkflowDesignArtifact: (id: string) =>
-    request<WorkflowDesignArtifact>(`/workflow-runs/${id}/design-artifact`),
+  listWorkflowDesignArtifacts: (id: string) =>
+    request<WorkflowDesignArtifactsList>(`/workflow-runs/${id}/design-artifacts`),
+  getWorkflowDesignArtifactPage: (id: string, surfaceId: string, pageId: string) =>
+    request<WorkflowDesignArtifactPage>(
+      `/workflow-runs/${id}/design-artifacts/${encodeURIComponent(surfaceId)}/${encodeURIComponent(pageId)}`,
+    ),
   startOpenDesignHandoff: (requirementId: string, repositoryIds?: string[]) =>
     request<OpenDesignHandoffResponse>('/edge/design-handoffs', {
       method: 'POST',
@@ -808,6 +837,16 @@ export const api = {
     request<OpenDesignHandoff>(`/workflow-runs/${workflowRunId}/design/local-handoff`),
   getOpenDesignBrainstormHandoff: (workflowRunId: string) =>
     request<OpenDesignHandoff>(`/workflow-runs/${workflowRunId}/brainstorm/local-handoff`),
+  fetchPlanArtifact: async (id: string) => {
+    const token = getAuthToken();
+    const response = await fetch(buildApiUrl(`/workflow-runs/${id}/artifacts/plan`), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      throw new Error('Artifact not found');
+    }
+    return response.text();
+  },
   fetchExecutionArtifact: async (id: string) => {
     const token = getAuthToken();
     const response = await fetch(buildApiUrl(`/workflow-runs/${id}/artifacts/execution`), {
@@ -864,22 +903,35 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ requirementId, repositoryIds, aiProvider }),
     }),
-  runSpecPlan: (id: string) =>
-    request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/run`, { method: 'POST' }),
-  reviseSpecPlan: (id: string, feedback: string) =>
-    request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/revise`, {
+  runTaskSplit: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/task-split/run`, { method: 'POST' }),
+  confirmTaskSplit: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/task-split/confirm`, { method: 'POST' }),
+  rejectTaskSplit: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/task-split/reject`, { method: 'POST' }),
+  reviseTaskSplit: (id: string, feedback: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/task-split/revise`, {
       method: 'POST',
       body: JSON.stringify({ feedback }),
     }),
-  confirmSpecPlan: (id: string) =>
-    request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/confirm`, { method: 'POST' }),
-  rejectSpecPlan: (id: string, feedback: string) =>
-    request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/reject`, {
+  manualEditTaskSplit: (id: string, output: unknown) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/task-split/manual-edit`, {
+      method: 'PATCH',
+      body: JSON.stringify({ output }),
+    }),
+  runPlan: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/plan/run`, { method: 'POST' }),
+  confirmPlan: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/plan/confirm`, { method: 'POST' }),
+  rejectPlan: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/plan/reject`, { method: 'POST' }),
+  revisePlan: (id: string, feedback: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/plan/revise`, {
       method: 'POST',
       body: JSON.stringify({ feedback }),
     }),
-  manualEditSpecPlan: (id: string, output: SpecPlanOutput) =>
-    request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/manual-edit`, {
+  manualEditPlan: (id: string, output: unknown) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/plan/manual-edit`, {
       method: 'PATCH',
       body: JSON.stringify({ output }),
     }),
