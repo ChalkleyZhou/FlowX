@@ -1,16 +1,25 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import type { GeneratePlanOutput } from '../common/types';
+import type { SpecPlanOutput } from '../common/types';
 import { WorkflowArtifactService } from '../workflow/workflow-artifact.service';
 import { WorkflowGitRemoteService } from '../workflow/workflow-git-remote.service';
 import { WorkflowService } from '../workflow/workflow.service';
 
-const confirmedPlan: GeneratePlanOutput = {
-  summary: 'Golden path plan',
-  implementationPlan: ['implement'],
-  filesToModify: ['src/App.tsx'],
-  newFiles: [],
-  riskPoints: [],
+const confirmedSpecPlan: SpecPlanOutput = {
+  spec: {
+    goal: 'Golden path plan',
+    scope: ['Golden-path requirement'],
+    nonGoals: [],
+    acceptanceCriteria: ['criteria'],
+    constraints: [],
+  },
+  plan: {
+    approach: 'Golden path plan',
+    touchpoints: ['src/App.tsx'],
+    sequence: ['implement'],
+    risks: [],
+    verification: ['criteria'],
+  },
 };
 
 const baseWorkflow = {
@@ -26,7 +35,7 @@ const baseWorkflow = {
     acceptanceCriteria: 'criteria',
   },
   tasks: [],
-  plan: { ...confirmedPlan, status: 'CONFIRMED' },
+  plan: null,
   workflowRepositories: [
     {
       id: 'wr-1',
@@ -113,7 +122,7 @@ const completionDto = {
 
 function stubRunningWorkflow(service: WorkflowService, workflow = baseWorkflow) {
   vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(workflow);
-  vi.spyOn(service as never, 'resolveConfirmedPlan' as never).mockResolvedValue(confirmedPlan);
+  vi.spyOn(service as never, 'resolveConfirmedSpecPlan' as never).mockResolvedValue(confirmedSpecPlan);
 }
 
 describe('Edge development golden path', () => {
@@ -125,7 +134,7 @@ describe('Edge development golden path', () => {
     const getWorkflowOrThrow = vi
       .spyOn(service as never, 'getWorkflowOrThrow' as never)
       .mockResolvedValue(claimableWorkflow);
-    vi.spyOn(service as never, 'resolveConfirmedPlan' as never).mockResolvedValue(confirmedPlan);
+    vi.spyOn(service as never, 'resolveConfirmedSpecPlan' as never).mockResolvedValue(confirmedSpecPlan);
     vi.spyOn(service as never, 'assertStageNotRunning' as never).mockImplementation(() => undefined);
     vi.spyOn(service as never, 'transitionWorkflow' as never).mockResolvedValue(undefined);
     vi.spyOn(service as never, 'createStageExecution' as never).mockResolvedValue({
@@ -153,8 +162,7 @@ describe('Edge development golden path', () => {
       traceId: session.traceId,
       protocolVersion: '1.0',
       requirement: workflow.requirement,
-      plan: confirmedPlan,
-      tasks: [],
+      specPlan: confirmedSpecPlan,
       repositories: workflow.workflowRepositories.map((repository) => ({
         ...repository,
         workflowRepositoryId: repository.id,
@@ -198,8 +206,7 @@ describe('Edge development golden path', () => {
       traceId: session.traceId,
       protocolVersion: '1.0',
       requirement: completedWorkflow.requirement,
-      plan: confirmedPlan,
-      tasks: [],
+      specPlan: confirmedSpecPlan,
       repositories: [],
       artifacts: { planMetaPath: null, planHtmlPath: null },
     });
@@ -223,8 +230,7 @@ describe('Edge development golden path', () => {
       traceId: session.traceId,
       protocolVersion: '1.0',
       requirement: baseWorkflow.requirement,
-      plan: confirmedPlan,
-      tasks: [],
+      specPlan: confirmedSpecPlan,
       repositories: baseWorkflow.workflowRepositories.map((repository) => ({
         ...repository,
         workflowRepositoryId: repository.id,

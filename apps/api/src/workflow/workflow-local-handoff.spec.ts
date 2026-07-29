@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { buildLocalHandoff } from './workflow-local-handoff';
 
+const sampleSpecPlan = {
+  spec: {
+    goal: 'Login welcome modal',
+    scope: ['Welcome modal'],
+    nonGoals: [],
+    acceptanceCriteria: ['ac'],
+    constraints: [],
+  },
+  plan: {
+    approach: 'Plan',
+    touchpoints: [],
+    sequence: [],
+    risks: [],
+    verification: ['ac'],
+  },
+};
+
 describe('buildLocalHandoff', () => {
   it('includes workingBranch and checkout commands', () => {
     const handoff = buildLocalHandoff({
@@ -12,14 +29,7 @@ describe('buildLocalHandoff', () => {
         description: 'desc',
         acceptanceCriteria: 'ac',
       },
-      plan: {
-        summary: 'Plan',
-        implementationPlan: [],
-        filesToModify: [],
-        newFiles: [],
-        riskPoints: [],
-      },
-      tasks: [],
+      specPlan: sampleSpecPlan,
       workflowRepositories: [
         {
           id: 'wr_1',
@@ -36,6 +46,7 @@ describe('buildLocalHandoff', () => {
     expect(handoff.repositories[0].checkout.checkout).toContain('flowx/work/login-modal/12345678');
     expect(handoff.repositories[0].checkout.checkout).toContain('origin/main');
     expect(handoff.repositories[0].checkout.push).toContain('flowx/work/login-modal/12345678');
+    expect(handoff.specPlan).toEqual(sampleSpecPlan);
   });
 
   it('includes suggested commit message with workflow id snippet', () => {
@@ -48,14 +59,7 @@ describe('buildLocalHandoff', () => {
         description: 'desc',
         acceptanceCriteria: 'ac',
       },
-      plan: {
-        summary: 'Plan',
-        implementationPlan: [],
-        filesToModify: [],
-        newFiles: [],
-        riskPoints: [],
-      },
-      tasks: [],
+      specPlan: sampleSpecPlan,
       workflowRepositories: [
         {
           id: 'wr_1',
@@ -87,14 +91,7 @@ describe('buildLocalHandoff', () => {
         description: 'desc',
         acceptanceCriteria: 'ac',
       },
-      plan: {
-        summary: 'Plan',
-        implementationPlan: [],
-        filesToModify: [],
-        newFiles: [],
-        riskPoints: [],
-      },
-      tasks: [],
+      specPlan: sampleSpecPlan,
       workflowRepositories: [],
     });
 
@@ -104,7 +101,9 @@ describe('buildLocalHandoff', () => {
         executionSessionId: 'session-1',
         traceId: 'trace-1',
         protocolVersion: '1.0',
+        specPlan: sampleSpecPlan,
       }),
     );
+    expect(handoff.artifacts).toEqual({ planMetaPath: null, planHtmlPath: null });
   });
 });

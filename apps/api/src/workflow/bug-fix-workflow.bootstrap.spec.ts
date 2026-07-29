@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildBugFixExecutionFeedback,
-  buildBugFixPlanContent,
   buildBugFixRequirementPayload,
-  buildBugFixTask,
+  buildBugFixSpecPlan,
 } from './bug-fix-workflow.bootstrap';
 
 const bug = {
@@ -22,17 +21,12 @@ describe('bug-fix-workflow.bootstrap', () => {
     expect(requirement.description).toContain('打开登录页');
   });
 
-  it('builds single confirmed task from bug', () => {
-    const task = buildBugFixTask(bug, ['flowx-web']);
-    expect(task.title).toBe('登录 500');
-    expect(task.description).toContain('打开登录页');
-    expect(task.repositoryNames).toEqual(['flowx-web']);
-  });
-
-  it('builds plan content from bug', () => {
-    const plan = buildBugFixPlanContent(bug);
-    expect(plan.summary).toContain('登录 500');
-    expect(plan.implementationPlan.length).toBeGreaterThan(0);
+  it('builds spec plan from bug', () => {
+    const specPlan = buildBugFixSpecPlan(bug);
+    expect(specPlan.spec.goal).toContain('登录 500');
+    expect(specPlan.spec.acceptanceCriteria).toContain('应进入首页');
+    expect(specPlan.plan.sequence.length).toBeGreaterThan(0);
+    expect(specPlan.plan.risks[0]).toContain('最小');
   });
 
   it('builds execution feedback from bug', () => {
