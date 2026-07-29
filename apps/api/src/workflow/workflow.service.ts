@@ -30,7 +30,6 @@ import {
   type AIExecutorRegistry,
   type AIInvocationContext,
 } from '../ai/ai-executor';
-import { createNavPlacementAgent } from '../ai/demo-nav-agent-factory';
 import { AiInvocationContextService } from '../ai/ai-invocation-context.service';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import { assertDesignSpecOutput, assertStrictGenerateDesignOutput } from '../ai/design-output-validate';
@@ -43,9 +42,8 @@ import {
 } from '../common/enums';
 import {
   buildBugFixExecutionFeedback,
-  buildBugFixPlanContent,
   buildBugFixRequirementPayload,
-  buildBugFixTask,
+  buildBugFixSpecPlan,
   type BugFixPayload,
 } from './bug-fix-workflow.bootstrap';
 import { buildLocalChatRequirementBootstrap } from './local-chat-workflow.bootstrap';
@@ -58,14 +56,12 @@ import {
   DesignSurfaceInput,
   DesignSurfaceInventory,
   GenerateDesignOutput,
-  GeneratePlanOutput,
   RepositoryComponentContext,
   ReviewCodeOutput,
-  SplitTasksOutput,
+  SpecPlanOutput,
   type ExecuteTaskOutput,
 } from '../common/types';
 import { dirname, join, sep } from 'path';
-import { integrateFlowxDemoRoutes } from '../common/demo-router-integration';
 import { WorkflowStateMachine } from '../common/workflow-state-machine';
 import { DingTalkNotificationService } from '../notifications/dingtalk-notification.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -86,7 +82,6 @@ const DESIGN_ARTIFACT_ROOT = join(process.cwd(), '.flowx-data', 'design-artifact
 /** 单页设计稿落盘上限（防止异常大对象写入磁盘 / 占满预览）。 */
 const DESIGN_ARTIFACT_MAX_BYTES = 5 * 1024 * 1024;
 /** 注入 Demo 阶段提示的设计稿 HTML 上限（避免提示过长）。 */
-const DESIGN_ARTIFACT_DEMO_CONTEXT_MAX_CHARS = 12000;
 
 const workflowStatusMap: Record<WorkflowRunStatus, string> = {
   [WorkflowRunStatus.CREATED]: 'CREATED',
@@ -94,17 +89,9 @@ const workflowStatusMap: Record<WorkflowRunStatus, string> = {
   [WorkflowRunStatus.BRAINSTORM_PENDING]: 'BRAINSTORM_PENDING',
   [WorkflowRunStatus.DESIGN_PENDING]: 'DESIGN_PENDING',
   [WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION]: 'DESIGN_WAITING_CONFIRMATION',
-  [WorkflowRunStatus.DEMO_PENDING]: 'DEMO_PENDING',
-  [WorkflowRunStatus.DEMO_WAITING_CONFIRMATION]: 'DEMO_WAITING_CONFIRMATION',
-  [WorkflowRunStatus.TASK_SPLIT_PENDING]: 'TASK_SPLIT_PENDING',
-  [WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION]:
-    'TASK_SPLIT_WAITING_CONFIRMATION',
-  [WorkflowRunStatus.TASK_SPLIT_CONFIRMED]:
-    'TASK_SPLIT_CONFIRMED',
-  [WorkflowRunStatus.PLAN_PENDING]: 'PLAN_PENDING',
-  [WorkflowRunStatus.PLAN_WAITING_CONFIRMATION]:
-    'PLAN_WAITING_CONFIRMATION',
-  [WorkflowRunStatus.PLAN_CONFIRMED]: 'PLAN_CONFIRMED',
+  [WorkflowRunStatus.SPEC_PLAN_PENDING]: 'SPEC_PLAN_PENDING',
+  [WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION]: 'SPEC_PLAN_WAITING_CONFIRMATION',
+  [WorkflowRunStatus.SPEC_PLAN_CONFIRMED]: 'SPEC_PLAN_CONFIRMED',
   [WorkflowRunStatus.EXECUTION_PENDING]: 'EXECUTION_PENDING',
   [WorkflowRunStatus.EXECUTION_RUNNING]: 'EXECUTION_RUNNING',
   [WorkflowRunStatus.REVIEW_PENDING]: 'REVIEW_PENDING',
@@ -130,9 +117,7 @@ const stageTypeMap: Record<StageType, string> = {
   [StageType.REPOSITORY_GROUNDING]: 'REPOSITORY_GROUNDING',
   [StageType.BRAINSTORM]: 'BRAINSTORM',
   [StageType.DESIGN]: 'DESIGN',
-  [StageType.DEMO]: 'DEMO',
-  [StageType.TASK_SPLIT]: 'TASK_SPLIT',
-  [StageType.TECHNICAL_PLAN]: 'TECHNICAL_PLAN',
+  [StageType.SPEC_PLAN]: 'SPEC_PLAN',
   [StageType.EXECUTION]: 'EXECUTION',
   [StageType.AI_REVIEW]: 'AI_REVIEW',
   [StageType.HUMAN_REVIEW]: 'HUMAN_REVIEW',
@@ -645,12 +630,6 @@ export class WorkflowService {
     return this.getWorkflowOrThrow(id);
   }
 
-  async readPlanArtifactHtml(id: string): Promise<string> {
-    const html = await this.workflowArtifactService.readPlanHtml(id);
-    if (!html) throw new NotFoundException('Plan artifact not found.');
-    return html;
-  }
-
   async readExecutionArtifactHtml(id: string): Promise<string> {
     const html = await this.workflowArtifactService.readExecutionHtml(id);
     if (!html) {
@@ -667,9 +646,9 @@ export class WorkflowService {
     const workflow = await this.getWorkflowOrThrow(id);
     this.assertStageNotRunning(workflow, StageType.EXECUTION);
     if (workflow.status !== 'EXECUTION_PENDING') {
-      throw new BadRequestException('Local execution can only be claimed after plan confirmation.');
+      throw new BadRequestException('Local execution can only be claimed after Spec & Plan confirmation.');
     }
-    await this.resolveConfirmedPlan(workflow);
+    await this.resolveConfirmedSpecPlan(workflow);
 
     const recipient = this.toNotificationRecipient(notifyRecipient);
     const claimedAt = new Date().toISOString();
@@ -999,14 +978,6 @@ export class WorkflowService {
         where: { workflowRunId: id },
       });
 
-      await tx.plan.deleteMany({
-        where: { workflowRunId: id },
-      });
-
-      await tx.task.deleteMany({
-        where: { workflowRunId: id },
-      });
-
       await tx.stageExecution.deleteMany({
         where: { workflowRunId: id },
       });
@@ -1247,7 +1218,7 @@ export class WorkflowService {
 
           await this.updateStageExecution(tx, designStage.id, StageExecutionStatus.WAITING_CONFIRMATION, {
             output: persistedOutput,
-            statusMessage: '请确认设计方案（DesignSpec）后再生成 Demo',
+            statusMessage: '请确认设计方案（DesignSpec）后再继续 Spec & Plan',
             finishedAt: new Date(),
           });
 
@@ -1752,7 +1723,7 @@ export class WorkflowService {
       });
       await this.updateStageExecution(tx, stageExecution.id, StageExecutionStatus.WAITING_CONFIRMATION, {
         output: persistedOutput,
-        statusMessage: '请确认本地生成的设计方案（DesignSpec）后再生成 Demo',
+        statusMessage: '请确认本地生成的设计方案（DesignSpec）后再继续 Spec & Plan',
         finishedAt: new Date(),
       });
       await this.transitionWorkflow(tx, id, WorkflowRunStatus.DESIGN_PENDING, {
@@ -1785,17 +1756,17 @@ export class WorkflowService {
       });
 
       await this.transitionWorkflow(tx, id, WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION, {
-        to: WorkflowRunStatus.DEMO_PENDING,
-        stage: StageType.DEMO,
+        to: WorkflowRunStatus.SPEC_PLAN_PENDING,
+        stage: StageType.SPEC_PLAN,
       });
 
-      await this.createStageExecution(tx, id, StageType.DEMO, {
+      await this.createStageExecution(tx, id, StageType.SPEC_PLAN, {
         input: {
           workflowRunId: id,
           previousStage: stageTypeMap[StageType.DESIGN],
         },
         status: StageExecutionStatus.PENDING,
-        statusMessage: '可生成 Demo 页面，也可以跳过 Demo 进入任务拆解',
+        statusMessage: '可生成 Spec & Plan',
       });
 
       return tx.workflowRun.findUniqueOrThrow({
@@ -1810,7 +1781,7 @@ export class WorkflowService {
       requirementTitle: updatedWorkflow.requirement.title,
       stageName: '设计方案',
       result: '已确认',
-      nextStep: '可以生成或跳过 Demo 页面',
+      nextStep: '可以生成 Spec & Plan',
     });
 
     return updatedWorkflow;
@@ -1873,7 +1844,7 @@ export class WorkflowService {
     return this.skipOptionalStage(id, StageType.DESIGN);
   }
 
-  async runDemo(
+  async runSpecPlan(
     id: string,
     humanFeedback?: string,
     notifyRecipient?: WorkflowNotificationSession,
@@ -1881,193 +1852,37 @@ export class WorkflowService {
     const workflow = await this.getWorkflowOrThrow(id);
     const aiExecutor = this.resolveAiExecutor(workflow.aiProvider);
     const aiProviderLabel = this.getAiProviderLabel(workflow.aiProvider);
-    this.assertStageNotRunning(workflow, StageType.DEMO);
-    const workflowStatus = this.fromPrismaWorkflowStatus(workflow.status);
-    if (!this.canRunDemoFromWorkflow(workflow, workflowStatus)) {
-      throw new BadRequestException('Demo can only run after design.');
-    }
-
-    const recipient = this.toNotificationRecipient(notifyRecipient);
-    const startedWorkflow = await this.prisma.$transaction(async (tx) => {
-      const stageExecution = await this.getOrCreateRunnableSkippableStageExecution(
-        tx,
-        id,
-        StageType.DEMO,
-      );
-      if (workflowStatus === WorkflowRunStatus.DEMO_WAITING_CONFIRMATION) {
-        await this.transitionWorkflow(tx, id, WorkflowRunStatus.DEMO_WAITING_CONFIRMATION, {
-          to: WorkflowRunStatus.DEMO_PENDING,
-          stage: StageType.DEMO,
-        });
-      }
-      await this.updateStageExecution(tx, stageExecution.id, StageExecutionStatus.RUNNING, {
-        input: {
-          requirement: workflow.requirement,
-          notifier: recipient,
-        },
-        statusMessage: `正在调用 ${aiProviderLabel} 生成 Demo 页面`,
-        startedAt: new Date(),
-      });
-
-      return tx.workflowRun.findUniqueOrThrow({
-        where: { id },
-        include: this.workflowInclude(),
-      });
-    });
-
-    this.runInBackground(`demo:${id}`, async () => {
-      try {
-        const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
-          workflow.aiProvider,
-          recipient,
-        );
-        const repositoryComponentContext = this.ensureWorkflowDemoRepositoryComponentContext(
-          id,
-          await this.buildWorkflowRepositoryComponentContext(aiExecutor, workflow),
-        );
-
-        const designArtifactContext = await this.buildDemoDesignArtifactContext(workflow);
-
-        const result = this.normalizeDesignOutput(
-          await aiExecutor.generateDesign(
-            {
-              requirementTitle: workflow.requirement.title,
-              requirementDescription: workflow.requirement.description,
-              confirmedBrief: this.getWorkflowBriefContext(workflow),
-              previousDesigns: [this.getWorkflowDesignContext(workflow)],
-              humanFeedback: [
-                humanFeedback?.trim(),
-                '请基于当前设计方案生成 demoPages：须含统一前缀根路径上的入口/导航页（单段 route，用 Link 列出子场景）+ 至少一个子路径场景页；不要只生孤立子路由导致必须手输 URL。',
-                designArtifactContext,
-              ]
-                .filter(Boolean)
-                .join('\n\n'),
-              repositoryComponentContext,
-            },
-            invocationContext,
-          ),
-        );
-
-        if (!result.demoPages || result.demoPages.length < 2) {
-          throw new Error(
-            'DEMO_OUTPUT_INVALID: demoPages must include an entry hub page plus at least one scenario page.',
-          );
-        }
-
-        await this.writeWorkflowDemoPagesToRepo(result.demoPages, workflow, invocationContext, aiExecutor);
-
-        await this.prisma.$transaction(async (tx) => {
-          const demoStage = await tx.stageExecution.findFirstOrThrow({
-            where: {
-              workflowRunId: id,
-              stage: stageTypeMap[StageType.DEMO],
-              status: 'RUNNING',
-            },
-            orderBy: { attempt: 'desc' },
-          });
-
-          await this.updateStageExecution(tx, demoStage.id, StageExecutionStatus.WAITING_CONFIRMATION, {
-            output: { demo: result.demo, demoPages: result.demoPages },
-            statusMessage: '请确认当前 Demo，再进入任务拆解',
-          });
-
-          if (workflowStatus === WorkflowRunStatus.DEMO_PENDING) {
-            await this.transitionWorkflow(tx, id, WorkflowRunStatus.DEMO_PENDING, {
-              to: WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
-              stage: StageType.DEMO,
-            });
-          } else if (workflowStatus === WorkflowRunStatus.DEMO_WAITING_CONFIRMATION) {
-            await this.transitionWorkflow(tx, id, WorkflowRunStatus.DEMO_PENDING, {
-              to: WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
-              stage: StageType.DEMO,
-            });
-          }
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Demo failed';
-        await this.markRunningStageFailed(id, StageType.DEMO, message);
-      }
-    });
-
-    return startedWorkflow;
-  }
-
-  skipDemo(id: string) {
-    return this.skipOptionalStage(id, StageType.DEMO);
-  }
-
-  async confirmDemo(id: string) {
-    const workflow = await this.getWorkflowOrThrow(id);
-    if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.DEMO_WAITING_CONFIRMATION) {
-      throw new BadRequestException('Demo can only be confirmed while waiting for confirmation.');
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      const demoStage = await tx.stageExecution.findFirstOrThrow({
-        where: {
-          workflowRunId: id,
-          stage: stageTypeMap[StageType.DEMO],
-          status: stageStatusMap[StageExecutionStatus.WAITING_CONFIRMATION],
-        },
-        orderBy: { attempt: 'desc' },
-      });
-
-      await this.updateStageExecution(tx, demoStage.id, StageExecutionStatus.COMPLETED, {
-        statusMessage: null,
-        finishedAt: new Date(),
-      });
-
-      await this.transitionWorkflow(tx, id, WorkflowRunStatus.DEMO_WAITING_CONFIRMATION, {
-        to: WorkflowRunStatus.TASK_SPLIT_PENDING,
-        stage: StageType.TASK_SPLIT,
-      });
-
-      return tx.workflowRun.findUniqueOrThrow({
-        where: { id },
-        include: this.workflowInclude(),
-      });
-    });
-  }
-
-  async runTaskSplit(
-    id: string,
-    humanFeedback?: string,
-    notifyRecipient?: WorkflowNotificationSession,
-  ) {
-    const workflow = await this.getWorkflowOrThrow(id);
-    const aiExecutor = this.resolveAiExecutor(workflow.aiProvider);
-    const aiProviderLabel = this.getAiProviderLabel(workflow.aiProvider);
-    this.assertStageNotRunning(workflow, StageType.TASK_SPLIT);
+    this.assertStageNotRunning(workflow, StageType.SPEC_PLAN);
     const workflowStatus = this.fromPrismaWorkflowStatus(workflow.status);
     if (
-      workflowStatus !== WorkflowRunStatus.TASK_SPLIT_PENDING &&
-      !(workflowStatus === WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION && humanFeedback)
+      workflowStatus !== WorkflowRunStatus.SPEC_PLAN_PENDING &&
+      !(workflowStatus === WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION && humanFeedback)
     ) {
-      this.stateMachine.assertStageMatchesWorkflow(StageType.TASK_SPLIT, workflowStatus);
+      this.stateMachine.assertStageMatchesWorkflow(StageType.SPEC_PLAN, workflowStatus);
     }
 
     const requirement = workflow.requirement;
     const recipient = this.toNotificationRecipient(notifyRecipient);
     const previousStage =
-      workflow.status === 'TASK_SPLIT_WAITING_CONFIRMATION'
-        ? this.getLatestStageOrThrow(workflow, StageType.TASK_SPLIT)
+      workflowStatus === WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION
+        ? this.getLatestStageOrThrow(workflow, StageType.SPEC_PLAN)
         : null;
     const startedWorkflow = await this.prisma.$transaction(async (tx) => {
-      if (workflow.status === 'TASK_SPLIT_WAITING_CONFIRMATION') {
-        await this.transitionWorkflow(tx, id, WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION, {
-          to: WorkflowRunStatus.TASK_SPLIT_PENDING,
-          stage: StageType.TASK_SPLIT,
+      if (workflowStatus === WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION) {
+        await this.transitionWorkflow(tx, id, WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION, {
+          to: WorkflowRunStatus.SPEC_PLAN_PENDING,
+          stage: StageType.SPEC_PLAN,
         });
       }
 
-      const stageExecution = await this.createStageExecution(tx, id, StageType.TASK_SPLIT, {
+      await this.createStageExecution(tx, id, StageType.SPEC_PLAN, {
         input: {
           requirement,
           humanFeedback: humanFeedback ?? null,
           notifier: recipient,
         },
         status: StageExecutionStatus.RUNNING,
-        statusMessage: `正在调用 ${aiProviderLabel} 进行任务拆解`,
+        statusMessage: `正在调用 ${aiProviderLabel} 生成 Spec & Plan`,
         startedAt: new Date(),
       });
 
@@ -2077,16 +1892,14 @@ export class WorkflowService {
       });
     });
 
-    this.runInBackground(`task-split:${id}`, async () => {
+    this.runInBackground(`spec-plan:${id}`, async () => {
       try {
         const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
           workflow.aiProvider,
           recipient,
         );
-        // Fetch demo page artifacts for context
-        const demoContext = this.getWorkflowDemoContext(workflow);
-
-        const splitOutput = await aiExecutor.splitTasks(
+        const previousOutput = this.asSpecPlanOutput(previousStage?.output) ?? null;
+        const output = await aiExecutor.generateSpecPlan(
           {
             requirement: {
               id: requirement.id,
@@ -2096,287 +1909,64 @@ export class WorkflowService {
             },
             workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
             humanFeedback: humanFeedback ?? null,
-            previousOutput: (previousStage?.output as SplitTasksOutput | null) ?? null,
-            demoPageContext: demoContext,
+            previousOutput,
+            brainstormContext: this.getWorkflowBriefContext(workflow),
+            designContext: this.getWorkflowDesignContext(workflow),
           },
           invocationContext,
+        );
+        const normalizedOutput = this.requireSpecPlanOutput(
+          output,
+          () => new Error('SPEC_PLAN_OUTPUT_INVALID: Generated Spec & Plan output is missing goal or approach.'),
         );
 
         await this.prisma.$transaction(async (tx) => {
           const stageExecution = await tx.stageExecution.findFirstOrThrow({
-            where: { workflowRunId: id, stage: stageTypeMap[StageType.TASK_SPLIT], status: 'RUNNING' },
+            where: { workflowRunId: id, stage: stageTypeMap[StageType.SPEC_PLAN], status: 'RUNNING' },
             orderBy: { attempt: 'desc' },
-          });
-
-          await tx.task.deleteMany({ where: { workflowRunId: id } });
-          await tx.task.createMany({
-            data: splitOutput.tasks.map((task, index) => ({
-              workflowRunId: id,
-              title: task.title,
-              description: task.description,
-              surface: task.surface,
-              repositoryNames: task.repositoryNames,
-              order: index,
-              status: 'DRAFT',
-            })),
           });
 
           await this.updateStageExecution(tx, stageExecution.id, StageExecutionStatus.WAITING_CONFIRMATION, {
-            output: splitOutput,
+            output: normalizedOutput,
             statusMessage: null,
             finishedAt: new Date(),
           });
 
-          await this.transitionWorkflow(tx, id, WorkflowRunStatus.TASK_SPLIT_PENDING, {
-            to: WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION,
-            stage: StageType.TASK_SPLIT,
+          await this.transitionWorkflow(tx, id, WorkflowRunStatus.SPEC_PLAN_PENDING, {
+            to: WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION,
+            stage: StageType.SPEC_PLAN,
           });
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Task split failed';
-        await this.markRunningStageFailed(id, StageType.TASK_SPLIT, message);
+        const message = error instanceof Error ? error.message : 'Spec & Plan failed';
+        await this.markRunningStageFailed(id, StageType.SPEC_PLAN, message);
       }
     });
 
     return startedWorkflow;
   }
 
-  async confirmTaskSplit(id: string, notifyRecipient?: WorkflowNotificationSession) {
+  async confirmSpecPlan(id: string, notifyRecipient?: WorkflowNotificationSession) {
     const workflow = await this.getWorkflowOrThrow(id);
-    if (workflow.status !== 'TASK_SPLIT_WAITING_CONFIRMATION') {
-      throw new BadRequestException('Task split is not waiting for confirmation.');
+    if (workflow.status !== 'SPEC_PLAN_WAITING_CONFIRMATION') {
+      throw new BadRequestException('Spec & Plan is not waiting for confirmation.');
     }
 
-    const taskSplitStage = this.getLatestStageOrThrow(workflow, StageType.TASK_SPLIT);
+    const specPlanStage = this.getLatestStageOrThrow(workflow, StageType.SPEC_PLAN);
+    if (specPlanStage.status !== stageStatusMap[StageExecutionStatus.WAITING_CONFIRMATION]) {
+      throw new BadRequestException('Spec & Plan is not waiting for confirmation.');
+    }
+    this.requireSpecPlanOutput(specPlanStage.output, () => new BadRequestException('Invalid Spec & Plan output.'));
+
     const updatedWorkflow = await this.prisma.$transaction(async (tx) => {
-      await this.updateStageExecution(tx, taskSplitStage.id, StageExecutionStatus.COMPLETED, {
+      await this.updateStageExecution(tx, specPlanStage.id, StageExecutionStatus.COMPLETED, {
         finishedAt: new Date(),
       });
 
-      await tx.task.updateMany({
-        where: { workflowRunId: id },
-        data: { status: 'CONFIRMED' },
+      await this.transitionWorkflow(tx, id, WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION, {
+        to: WorkflowRunStatus.SPEC_PLAN_CONFIRMED,
       });
-
-      await this.transitionWorkflow(tx, id, WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION, {
-        to: WorkflowRunStatus.TASK_SPLIT_CONFIRMED,
-      });
-      await this.transitionWorkflow(tx, id, WorkflowRunStatus.TASK_SPLIT_CONFIRMED, {
-        to: WorkflowRunStatus.PLAN_PENDING,
-        stage: StageType.TECHNICAL_PLAN,
-      });
-
-      return tx.workflowRun.findUniqueOrThrow({
-        where: { id },
-        include: this.workflowInclude(),
-      });
-    });
-
-    this.notifyStageCompleted({
-      recipient: this.toNotificationRecipient(notifyRecipient),
-      workflowRunId: updatedWorkflow.id,
-      requirementTitle: updatedWorkflow.requirement.title,
-      stageName: '任务拆解',
-      result: '已确认完成',
-      nextStep: '可以开始技术方案阶段',
-    });
-
-    return updatedWorkflow;
-  }
-
-  async rejectTaskSplit(id: string) {
-    const workflow = await this.getWorkflowOrThrow(id);
-    if (workflow.status !== 'TASK_SPLIT_WAITING_CONFIRMATION') {
-      throw new BadRequestException('Task split is not waiting for confirmation.');
-    }
-
-    const taskSplitStage = this.getLatestStageOrThrow(workflow, StageType.TASK_SPLIT);
-    return this.prisma.$transaction(async (tx) => {
-      await this.updateStageExecution(tx, taskSplitStage.id, StageExecutionStatus.REJECTED, {
-        finishedAt: new Date(),
-      });
-
-      await tx.task.updateMany({
-        where: { workflowRunId: id },
-        data: { status: 'REJECTED' },
-      });
-
-      await this.transitionWorkflow(tx, id, WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION, {
-        to: WorkflowRunStatus.TASK_SPLIT_PENDING,
-        stage: StageType.TASK_SPLIT,
-      });
-
-      return tx.workflowRun.findUniqueOrThrow({
-        where: { id },
-        include: this.workflowInclude(),
-      });
-    });
-  }
-
-  async runPlan(
-    id: string,
-    humanFeedback?: string,
-    notifyRecipient?: WorkflowNotificationSession,
-  ) {
-    const workflow = await this.getWorkflowOrThrow(id);
-    const aiExecutor = this.resolveAiExecutor(workflow.aiProvider);
-    const aiProviderLabel = this.getAiProviderLabel(workflow.aiProvider);
-    this.assertStageNotRunning(workflow, StageType.TECHNICAL_PLAN);
-    if (
-      workflow.status !== 'PLAN_PENDING' &&
-      !(workflow.status === 'PLAN_WAITING_CONFIRMATION' && humanFeedback)
-    ) {
-      throw new BadRequestException('Plan can only run after task split is confirmed.');
-    }
-
-    const recipient = this.toNotificationRecipient(notifyRecipient);
-    const tasks = workflow.tasks.map((task) => ({
-      title: task.title,
-      description: task.description,
-      surface: task.surface ?? 'unknown',
-      repositoryNames: Array.isArray(task.repositoryNames)
-        ? task.repositoryNames.map(String)
-        : [],
-    }));
-
-    const previousStage =
-      workflow.status === 'PLAN_WAITING_CONFIRMATION'
-        ? this.getLatestStageOrThrow(workflow, StageType.TECHNICAL_PLAN)
-        : null;
-    const startedWorkflow = await this.prisma.$transaction(async (tx) => {
-      if (workflow.status === 'PLAN_WAITING_CONFIRMATION') {
-        await this.transitionWorkflow(tx, id, WorkflowRunStatus.PLAN_WAITING_CONFIRMATION, {
-          to: WorkflowRunStatus.PLAN_PENDING,
-          stage: StageType.TECHNICAL_PLAN,
-        });
-      }
-
-      const planStage = await this.createStageExecution(tx, id, StageType.TECHNICAL_PLAN, {
-        input: {
-          requirement: workflow.requirement,
-          tasks,
-          humanFeedback: humanFeedback ?? null,
-          notifier: recipient,
-        },
-        status: StageExecutionStatus.RUNNING,
-        statusMessage: `正在调用 ${aiProviderLabel} 生成技术方案`,
-        startedAt: new Date(),
-      });
-
-      return tx.workflowRun.findUniqueOrThrow({
-        where: { id },
-        include: this.workflowInclude(),
-      });
-    });
-
-    this.runInBackground(`plan:${id}`, async () => {
-      try {
-        const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
-          workflow.aiProvider,
-          recipient,
-        );
-        // Fetch demo page artifacts for context
-        const demoArtifacts = await this.prisma.ideationArtifact.findMany({
-          where: { requirementId: workflow.requirement.id, type: 'DEMO_PAGE' },
-          orderBy: { version: 'desc' },
-          take: 1,
-        });
-        const demoContext = demoArtifacts[0]?.content ?? null;
-
-        const rawOutput = this.normalizePlanOutput((await aiExecutor.generatePlan(
-          {
-            requirement: {
-              id: workflow.requirement.id,
-              title: workflow.requirement.title,
-              description: workflow.requirement.description,
-              acceptanceCriteria: workflow.requirement.acceptanceCriteria,
-            },
-            tasks,
-            workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
-            humanFeedback: humanFeedback ?? null,
-            previousOutput: (previousStage?.output as GeneratePlanOutput | null) ?? null,
-            demoPageContext: demoContext,
-          },
-          invocationContext,
-        )) as unknown as Record<string, unknown>);
-        const output = this.sanitizePlanOutputPaths(rawOutput, workflow.workflowRepositories);
-        this.assertPlanHasConcreteFiles(rawOutput, output);
-        await this.assertPlanMatchesRepositories(output, workflow.workflowRepositories);
-
-        await this.prisma.$transaction(async (tx) => {
-          const planStage = await tx.stageExecution.findFirstOrThrow({
-            where: { workflowRunId: id, stage: stageTypeMap[StageType.TECHNICAL_PLAN], status: 'RUNNING' },
-            orderBy: { attempt: 'desc' },
-          });
-
-          await tx.plan.upsert({
-            where: { workflowRunId: id },
-            create: {
-              workflowRunId: id,
-              status: 'WAITING_HUMAN_CONFIRMATION',
-              summary: output.summary,
-              implementationPlan: output.implementationPlan,
-              filesToModify: output.filesToModify,
-              newFiles: output.newFiles,
-              riskPoints: output.riskPoints,
-            },
-            update: {
-              status: 'WAITING_HUMAN_CONFIRMATION',
-              summary: output.summary,
-              implementationPlan: output.implementationPlan,
-              filesToModify: output.filesToModify,
-              newFiles: output.newFiles,
-              riskPoints: output.riskPoints,
-            },
-          });
-
-          const stageOutput = await this.attachPlanArtifactToOutput(
-            id,
-            planStage.attempt,
-            output,
-          );
-
-          await this.updateStageExecution(tx, planStage.id, StageExecutionStatus.WAITING_CONFIRMATION, {
-            output: stageOutput,
-            statusMessage: null,
-            finishedAt: new Date(),
-          });
-
-          await this.transitionWorkflow(tx, id, WorkflowRunStatus.PLAN_PENDING, {
-            to: WorkflowRunStatus.PLAN_WAITING_CONFIRMATION,
-            stage: StageType.TECHNICAL_PLAN,
-          });
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Plan failed';
-        await this.markRunningStageFailed(id, StageType.TECHNICAL_PLAN, message);
-      }
-    });
-
-    return startedWorkflow;
-  }
-
-  async confirmPlan(id: string, notifyRecipient?: WorkflowNotificationSession) {
-    const workflow = await this.getWorkflowOrThrow(id);
-    if (workflow.status !== 'PLAN_WAITING_CONFIRMATION') {
-      throw new BadRequestException('Plan is not waiting for confirmation.');
-    }
-
-    const planStage = this.getLatestStageOrThrow(workflow, StageType.TECHNICAL_PLAN);
-    const updatedWorkflow = await this.prisma.$transaction(async (tx) => {
-      await this.updateStageExecution(tx, planStage.id, StageExecutionStatus.COMPLETED, {
-        finishedAt: new Date(),
-      });
-
-      await tx.plan.update({
-        where: { workflowRunId: id },
-        data: { status: 'CONFIRMED' },
-      });
-
-      await this.transitionWorkflow(tx, id, WorkflowRunStatus.PLAN_WAITING_CONFIRMATION, {
-        to: WorkflowRunStatus.PLAN_CONFIRMED,
-      });
-      await this.transitionWorkflow(tx, id, WorkflowRunStatus.PLAN_CONFIRMED, {
+      await this.transitionWorkflow(tx, id, WorkflowRunStatus.SPEC_PLAN_CONFIRMED, {
         to: WorkflowRunStatus.EXECUTION_PENDING,
         stage: StageType.EXECUTION,
       });
@@ -2387,13 +1977,11 @@ export class WorkflowService {
       });
     });
 
-    await this.workflowArtifactService.confirmPlanArtifact(id);
-
     this.notifyStageCompleted({
       recipient: this.toNotificationRecipient(notifyRecipient),
       workflowRunId: updatedWorkflow.id,
       requirementTitle: updatedWorkflow.requirement.title,
-      stageName: '技术方案',
+      stageName: 'Spec & Plan',
       result: '已确认完成',
       nextStep: '可以开始执行开发阶段',
     });
@@ -2401,26 +1989,50 @@ export class WorkflowService {
     return updatedWorkflow;
   }
 
-  async rejectPlan(id: string) {
+  async rejectSpecPlan(id: string, feedback?: string) {
     const workflow = await this.getWorkflowOrThrow(id);
-    if (workflow.status !== 'PLAN_WAITING_CONFIRMATION') {
-      throw new BadRequestException('Plan is not waiting for confirmation.');
+    if (workflow.status !== 'SPEC_PLAN_WAITING_CONFIRMATION') {
+      throw new BadRequestException('Spec & Plan is not waiting for confirmation.');
     }
 
-    const planStage = this.getLatestStageOrThrow(workflow, StageType.TECHNICAL_PLAN);
+    const specPlanStage = this.getLatestStageOrThrow(workflow, StageType.SPEC_PLAN);
+    if (specPlanStage.status !== stageStatusMap[StageExecutionStatus.WAITING_CONFIRMATION]) {
+      throw new BadRequestException('Spec & Plan is not waiting for confirmation.');
+    }
+
+    const trimmedFeedback = feedback?.trim() ?? '';
+    const existingOutput = this.asSpecPlanOutput(specPlanStage.output);
+    const rejectedOutput =
+      trimmedFeedback.length > 0
+        ? existingOutput
+          ? { ...existingOutput, rejectionFeedback: trimmedFeedback }
+          : { rejectionFeedback: trimmedFeedback }
+        : undefined;
+    const rejectionStatusMessage = trimmedFeedback
+      ? `Spec & Plan 已驳回：${trimmedFeedback}`
+      : 'Spec & Plan 已驳回，可重新生成';
+
     return this.prisma.$transaction(async (tx) => {
-      await this.updateStageExecution(tx, planStage.id, StageExecutionStatus.REJECTED, {
+      await this.updateStageExecution(tx, specPlanStage.id, StageExecutionStatus.REJECTED, {
         finishedAt: new Date(),
+        statusMessage: rejectionStatusMessage,
+        ...(rejectedOutput ? { output: rejectedOutput } : {}),
       });
 
-      await tx.plan.update({
-        where: { workflowRunId: id },
-        data: { status: 'REJECTED' },
+      await this.transitionWorkflow(tx, id, WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION, {
+        to: WorkflowRunStatus.SPEC_PLAN_PENDING,
+        stage: StageType.SPEC_PLAN,
       });
 
-      await this.transitionWorkflow(tx, id, WorkflowRunStatus.PLAN_WAITING_CONFIRMATION, {
-        to: WorkflowRunStatus.PLAN_PENDING,
-        stage: StageType.TECHNICAL_PLAN,
+      await this.createStageExecution(tx, id, StageType.SPEC_PLAN, {
+        input: {
+          workflowRunId: id,
+          previousStage: stageTypeMap[StageType.SPEC_PLAN],
+          source: 'spec-plan-rejected',
+          ...(trimmedFeedback ? { humanFeedback: trimmedFeedback } : {}),
+        },
+        status: StageExecutionStatus.PENDING,
+        statusMessage: rejectionStatusMessage,
       });
 
       return tx.workflowRun.findUniqueOrThrow({
@@ -2430,26 +2042,107 @@ export class WorkflowService {
     });
   }
 
-  private async resolveConfirmedPlan(workflow: WorkflowPayload): Promise<GeneratePlanOutput> {
-    const meta = await this.workflowArtifactService.loadPlanMeta(workflow.id);
-    if (meta?.status === 'CONFIRMED') {
-      return {
-        summary: meta.summary,
-        implementationPlan: meta.implementationPlan,
-        filesToModify: meta.filesToModify,
-        newFiles: meta.newFiles,
-        riskPoints: meta.riskPoints,
-      };
+  async manualEditSpecPlan(id: string, output: SpecPlanOutput | Record<string, unknown>) {
+    const workflow = await this.getWorkflowOrThrow(id);
+    if (workflow.status !== 'SPEC_PLAN_WAITING_CONFIRMATION') {
+      throw new BadRequestException('Spec & Plan is not waiting for confirmation.');
     }
-    if (!workflow.plan) {
-      throw new NotFoundException('Confirmed plan not found.');
+
+    const normalized = this.asSpecPlanOutput(output);
+    if (!normalized) {
+      throw new BadRequestException('Invalid Spec & Plan output.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const stage = this.getLatestStageOrThrow(workflow, StageType.SPEC_PLAN);
+      await this.updateStageExecution(tx, stage.id, StageExecutionStatus.WAITING_CONFIRMATION, {
+        input: {
+          ...(stage.input as Record<string, unknown> | null),
+          manualInterventionAt: new Date().toISOString(),
+        },
+        output: normalized,
+      });
+      return tx.workflowRun.findUniqueOrThrow({
+        where: { id },
+        include: this.workflowInclude(),
+      });
+    });
+  }
+
+  private async resolveConfirmedSpecPlan(workflow: WorkflowPayload): Promise<SpecPlanOutput> {
+    const stage = workflow.stageExecutions
+      .filter(
+        (item) =>
+          item.stage === stageTypeMap[StageType.SPEC_PLAN] &&
+          (item.status === 'COMPLETED' || item.status === 'WAITING_CONFIRMATION'),
+      )
+      .sort((a, b) => b.attempt - a.attempt)
+      .find((item) => item.status === 'COMPLETED');
+
+    const output = this.asSpecPlanOutput(stage?.output);
+    if (!output) {
+      throw new NotFoundException('Confirmed Spec & Plan not found.');
+    }
+    return output;
+  }
+
+  private requireSpecPlanOutput(
+    value: unknown,
+    onInvalid: () => Error,
+  ): SpecPlanOutput {
+    const normalized = this.asSpecPlanOutput(value);
+    if (!normalized || !normalized.spec.goal.trim() || !normalized.plan.approach.trim()) {
+      throw onInvalid();
+    }
+    return normalized;
+  }
+
+  private asSpecPlanOutput(value: unknown): SpecPlanOutput | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+    const record = value as Record<string, unknown>;
+    const spec = record.spec;
+    const plan = record.plan;
+    if (!spec || typeof spec !== 'object' || Array.isArray(spec)) {
+      return null;
+    }
+    if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
+      return null;
+    }
+    const specRecord = spec as Record<string, unknown>;
+    const planRecord = plan as Record<string, unknown>;
+    if (typeof specRecord.goal !== 'string' || typeof planRecord.approach !== 'string') {
+      return null;
     }
     return {
-      summary: workflow.plan.summary,
-      implementationPlan: workflow.plan.implementationPlan as string[],
-      filesToModify: workflow.plan.filesToModify as string[],
-      newFiles: workflow.plan.newFiles as string[],
-      riskPoints: workflow.plan.riskPoints as string[],
+      spec: {
+        goal: String(specRecord.goal ?? ''),
+        scope: Array.isArray(specRecord.scope) ? specRecord.scope.map(String) : [],
+        nonGoals: Array.isArray(specRecord.nonGoals) ? specRecord.nonGoals.map(String) : [],
+        acceptanceCriteria: Array.isArray(specRecord.acceptanceCriteria)
+          ? specRecord.acceptanceCriteria.map(String)
+          : [],
+        constraints: Array.isArray(specRecord.constraints) ? specRecord.constraints.map(String) : [],
+      },
+      plan: {
+        approach: String(planRecord.approach ?? ''),
+        touchpoints: Array.isArray(planRecord.touchpoints) ? planRecord.touchpoints.map(String) : [],
+        sequence: Array.isArray(planRecord.sequence) ? planRecord.sequence.map(String) : [],
+        risks: Array.isArray(planRecord.risks) ? planRecord.risks.map(String) : [],
+        verification: Array.isArray(planRecord.verification) ? planRecord.verification.map(String) : [],
+      },
+      notes:
+        record.notes && typeof record.notes === 'object' && !Array.isArray(record.notes)
+          ? {
+              checklist: Array.isArray((record.notes as Record<string, unknown>).checklist)
+                ? ((record.notes as Record<string, unknown>).checklist as unknown[]).map(String)
+                : undefined,
+              openQuestions: Array.isArray((record.notes as Record<string, unknown>).openQuestions)
+                ? ((record.notes as Record<string, unknown>).openQuestions as unknown[]).map(String)
+                : undefined,
+            }
+          : undefined,
     };
   }
 
@@ -2477,9 +2170,9 @@ export class WorkflowService {
         humanFeedback
       )
     ) {
-      throw new BadRequestException('Execution can only run after plan confirmation.');
+      throw new BadRequestException('Execution can only run after Spec & Plan confirmation.');
     }
-    const confirmedPlan = await this.resolveConfirmedPlan(workflow);
+    const confirmedSpecPlan = await this.resolveConfirmedSpecPlan(workflow);
 
     const startedWorkflow = await this.prisma.$transaction(async (tx) => {
       if (
@@ -2500,7 +2193,7 @@ export class WorkflowService {
       const executionStage = await this.createStageExecution(tx, id, StageType.EXECUTION, {
         input: {
           requirement: workflow.requirement,
-          plan: confirmedPlan,
+          specPlan: confirmedSpecPlan,
           humanFeedback: humanFeedback ?? null,
           triggerType: trigger?.triggerType ?? null,
           findingId: trigger?.findingId ?? null,
@@ -2537,15 +2230,7 @@ export class WorkflowService {
               description: workflow.requirement.description,
               acceptanceCriteria: workflow.requirement.acceptanceCriteria,
             },
-            tasks: workflow.tasks.map((task) => ({
-              title: task.title,
-              description: task.description,
-              surface: task.surface ?? 'unknown',
-              repositoryNames: Array.isArray(task.repositoryNames)
-                ? task.repositoryNames.map(String)
-                : [],
-            })),
-            plan: confirmedPlan,
+            specPlan: confirmedSpecPlan,
             workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
             humanFeedback: humanFeedback ?? null,
           },
@@ -2582,10 +2267,10 @@ export class WorkflowService {
     if (!this.canRunReviewFromStatus(workflow.status)) {
       throw new BadRequestException('Review can only run after execution completes.');
     }
-    if (!workflow.plan || !workflow.codeExecution) {
+    if (!workflow.codeExecution) {
       throw new NotFoundException('Execution context for review is incomplete.');
     }
-    const confirmedPlan = workflow.plan;
+    const confirmedSpecPlan = await this.resolveConfirmedSpecPlan(workflow);
     const executionResult = workflow.codeExecution;
 
     const previousStage =
@@ -2607,7 +2292,7 @@ export class WorkflowService {
 
       const reviewStage = await this.createStageExecution(tx, id, StageType.AI_REVIEW, {
         input: {
-          plan: workflow.plan,
+          specPlan: confirmedSpecPlan,
           execution: workflow.codeExecution,
           humanFeedback: humanFeedback ?? null,
           notifier: recipient,
@@ -2637,13 +2322,7 @@ export class WorkflowService {
               description: workflow.requirement.description,
               acceptanceCriteria: workflow.requirement.acceptanceCriteria,
             },
-            plan: {
-              summary: confirmedPlan.summary,
-              implementationPlan: confirmedPlan.implementationPlan as string[],
-              filesToModify: confirmedPlan.filesToModify as string[],
-              newFiles: confirmedPlan.newFiles as string[],
-              riskPoints: confirmedPlan.riskPoints as string[],
-            },
+            specPlan: confirmedSpecPlan,
             execution: {
               patchSummary: executionResult.patchSummary,
               changedFiles: executionResult.changedFiles as string[],
@@ -2945,80 +2624,6 @@ export class WorkflowService {
     return updatedWorkflow;
   }
 
-  async manualEditTaskSplit(id: string, output: Record<string, unknown>) {
-    const workflow = await this.getWorkflowOrThrow(id);
-    if (workflow.status !== 'TASK_SPLIT_WAITING_CONFIRMATION') {
-      throw new BadRequestException('Task split is not waiting for confirmation.');
-    }
-
-    const tasks = Array.isArray(output.tasks) ? output.tasks : [];
-    const ambiguities = Array.isArray(output.ambiguities) ? output.ambiguities : [];
-    const risks = Array.isArray(output.risks) ? output.risks : [];
-
-    return this.prisma.$transaction(async (tx) => {
-      const stage = this.getLatestStageOrThrow(workflow, StageType.TASK_SPLIT);
-      await tx.task.deleteMany({ where: { workflowRunId: id } });
-      await tx.task.createMany({
-        data: tasks.map((task, index) => ({
-          workflowRunId: id,
-          title: String((task as { title?: unknown }).title ?? `Task ${index + 1}`),
-          description: String((task as { description?: unknown }).description ?? ''),
-          surface: String((task as { surface?: unknown }).surface ?? 'unknown'),
-          repositoryNames: Array.isArray((task as { repositoryNames?: unknown }).repositoryNames)
-            ? ((task as { repositoryNames: unknown[] }).repositoryNames ?? []).map(String)
-            : [],
-          order: index,
-          status: 'DRAFT',
-        })),
-      });
-      await this.updateStageExecution(tx, stage.id, StageExecutionStatus.WAITING_CONFIRMATION, {
-        input: {
-          ...(stage.input as Record<string, unknown> | null),
-          manualInterventionAt: new Date().toISOString(),
-        },
-        output: { tasks, ambiguities, risks },
-      });
-      return tx.workflowRun.findUniqueOrThrow({
-        where: { id },
-        include: this.workflowInclude(),
-      });
-    });
-  }
-
-  async manualEditPlan(id: string, output: Record<string, unknown>) {
-    const workflow = await this.getWorkflowOrThrow(id);
-    if (workflow.status !== 'PLAN_WAITING_CONFIRMATION') {
-      throw new BadRequestException('Plan is not waiting for confirmation.');
-    }
-
-    const normalized = this.sanitizePlanOutputPaths({
-      summary: String(output.summary ?? ''),
-      implementationPlan: Array.isArray(output.implementationPlan) ? output.implementationPlan.map(String) : [],
-      filesToModify: Array.isArray(output.filesToModify) ? output.filesToModify.map(String) : [],
-      newFiles: Array.isArray(output.newFiles) ? output.newFiles.map(String) : [],
-      riskPoints: Array.isArray(output.riskPoints) ? output.riskPoints.map(String) : [],
-    }, workflow.workflowRepositories);
-
-    return this.prisma.$transaction(async (tx) => {
-      const stage = this.getLatestStageOrThrow(workflow, StageType.TECHNICAL_PLAN);
-      await tx.plan.update({
-        where: { workflowRunId: id },
-        data: normalized,
-      });
-      await this.updateStageExecution(tx, stage.id, StageExecutionStatus.WAITING_CONFIRMATION, {
-        input: {
-          ...(stage.input as Record<string, unknown> | null),
-          manualInterventionAt: new Date().toISOString(),
-        },
-        output: normalized,
-      });
-      return tx.workflowRun.findUniqueOrThrow({
-        where: { id },
-        include: this.workflowInclude(),
-      });
-    });
-  }
-
   async manualEditExecution(id: string, output: Record<string, unknown>) {
     const workflow = await this.getWorkflowOrThrow(id);
     if (workflow.status !== 'REVIEW_PENDING' && workflow.status !== 'HUMAN_REVIEW_PENDING') {
@@ -3114,12 +2719,6 @@ export class WorkflowService {
           createdAt: 'asc' as const,
         },
       },
-      tasks: {
-        orderBy: {
-          order: 'asc' as const,
-        },
-      },
-      plan: true,
       codeExecution: true,
       reviewReport: true,
       reviewFindings: {
@@ -3205,9 +2804,7 @@ export class WorkflowService {
       protocolVersion: string;
     } | null,
   ): Promise<LocalHandoffPayload> {
-    const plan = await this.resolveConfirmedPlan(workflow);
-    const manifest = await this.workflowArtifactService.readManifest(workflow.id);
-    const { planMetaPath, planHtmlPath } = this.workflowArtifactService.getPlanArtifactPaths(manifest);
+    const specPlan = await this.resolveConfirmedSpecPlan(workflow);
 
     return buildLocalHandoff({
       workflowRunId: workflow.id,
@@ -3219,11 +2816,8 @@ export class WorkflowService {
         description: workflow.requirement.description,
         acceptanceCriteria: workflow.requirement.acceptanceCriteria,
       },
-      plan,
-      tasks: workflow.tasks,
+      specPlan,
       workflowRepositories: workflow.workflowRepositories,
-      planMetaPath,
-      planHtmlPath,
     });
   }
 
@@ -3694,336 +3288,6 @@ export class WorkflowService {
     }
   }
 
-  private async attachPlanArtifactToOutput(
-    workflowRunId: string,
-    version: number,
-    output: GeneratePlanOutput,
-  ): Promise<GeneratePlanOutput & {
-    _artifact?: {
-      kind: 'plan';
-      version: number;
-      htmlPath: string;
-      metaPath: string;
-      sha256: string;
-    };
-  }> {
-    try {
-      const { htmlPath, metaPath, sha256 } = await this.workflowArtifactService.writePlanArtifact({
-        workflowRunId,
-        version,
-        output,
-        status: 'WAITING_HUMAN_CONFIRMATION',
-      });
-      return {
-        ...output,
-        _artifact: {
-          kind: 'plan',
-          version,
-          htmlPath,
-          metaPath,
-          sha256,
-        },
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `Failed to write plan artifact for workflow ${workflowRunId}: ${message}`,
-      );
-      return { ...output };
-    }
-  }
-
-  private sanitizePlanOutputPaths(
-    output: GeneratePlanOutput,
-    repositories?: WorkflowPayload['workflowRepositories'],
-  ): GeneratePlanOutput {
-    return {
-      ...output,
-      filesToModify: this.sanitizeFileReferenceList(output.filesToModify, repositories),
-      newFiles: this.sanitizeFileReferenceList(output.newFiles, repositories),
-    };
-  }
-
-  private normalizePlanOutput(output: Record<string, unknown>): GeneratePlanOutput {
-    const summaryCandidates = [
-      output.summary,
-      output.overview,
-      output.objective,
-      output.planTitle,
-      output.requirementTitle,
-    ];
-    const summary =
-      summaryCandidates.find((value) => typeof value === 'string' && value.trim().length > 0)?.toString().trim() ??
-      '已生成技术方案，请查看 implementationPlan。';
-
-    const implementationPlan = this.collectPlanImplementationSteps(output);
-    const filesToModify = this.collectStringArray(
-      output.filesToModify,
-      output.aggregateFilesToModify,
-      ...this.collectStageFieldValues(output, 'filesToModify'),
-    );
-    const newFiles = this.collectStringArray(
-      output.newFiles,
-      output.aggregateNewFiles,
-      ...this.collectStageFieldValues(output, 'newFiles'),
-    );
-    const riskPoints = this.collectPlanRiskPoints(output);
-
-    return {
-      summary,
-      implementationPlan,
-      filesToModify,
-      newFiles,
-      riskPoints,
-    };
-  }
-
-  private collectPlanImplementationSteps(output: Record<string, unknown>): string[] {
-    const direct = this.collectStringArray(output.implementationPlan);
-    if (direct.length > 0) {
-      return direct;
-    }
-
-    const stages = Array.isArray(output.stages) ? output.stages : [];
-    const stageSteps = stages.flatMap((stage) => {
-      if (!stage || typeof stage !== 'object') {
-        return [];
-      }
-
-      const stageRecord = stage as Record<string, unknown>;
-      const stageName =
-        typeof stageRecord.name === 'string' && stageRecord.name.trim().length > 0
-          ? stageRecord.name.trim()
-          : typeof stageRecord.stage === 'string' && stageRecord.stage.trim().length > 0
-            ? stageRecord.stage.trim()
-            : '阶段';
-      const items = this.collectStringArray(
-        stageRecord.goals,
-        stageRecord.steps,
-        stageRecord.implementationSteps,
-        stageRecord.verification,
-        stageRecord.notes,
-      );
-
-      return items.map((item) => `${stageName}: ${item}`);
-    });
-
-    if (stageSteps.length > 0) {
-      return stageSteps;
-    }
-
-    return this.collectStringArray(output.confirmedTaskMapping, output.assumptionsAndUncertainties);
-  }
-
-  private collectPlanRiskPoints(output: Record<string, unknown>): string[] {
-    const direct = this.collectStringArray(output.riskPoints, output.risks);
-    if (direct.length > 0) {
-      return direct;
-    }
-
-    const riskEntries = Array.isArray(output.riskPointsDetailed)
-      ? output.riskPointsDetailed
-      : Array.isArray(output.riskPoints)
-        ? output.riskPoints
-        : [];
-
-    const objectRisks = riskEntries.flatMap((item: unknown) => {
-      if (!item || typeof item !== 'object') {
-        return [];
-      }
-
-      const record = item as Record<string, unknown>;
-      const parts = [record.description, record.mitigation]
-        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-        .map((value) => value.trim());
-      return parts.length > 0 ? [parts.join(' ')] : [];
-    });
-
-    return objectRisks;
-  }
-
-  private collectStageFieldValues(output: Record<string, unknown>, fieldName: string): unknown[] {
-    const stages = Array.isArray(output.stages) ? output.stages : [];
-    return stages.map((stage) =>
-      stage && typeof stage === 'object' ? (stage as Record<string, unknown>)[fieldName] : undefined,
-    );
-  }
-
-  private collectStringArray(...values: unknown[]): string[] {
-    const flattened: string[] = values.flatMap((value): string[] => {
-      if (typeof value === 'string') {
-        const trimmed = value.trim();
-        return trimmed.length > 0 ? [trimmed] : [];
-      }
-
-      if (Array.isArray(value)) {
-        return value.flatMap((item: unknown) => this.collectStringArray(item));
-      }
-
-      if (value && typeof value === 'object') {
-        const record = value as Record<string, unknown>;
-        return [
-          typeof record.summary === 'string' ? record.summary.trim() : null,
-          typeof record.technicalMapping === 'string' ? record.technicalMapping.trim() : null,
-          typeof record.technicalApproach === 'string' ? record.technicalApproach.trim() : null,
-        ].filter((item): item is string => Boolean(item && item.length > 0));
-      }
-
-      return [];
-    });
-
-    return Array.from(new Set(flattened));
-  }
-
-  private assertPlanHasConcreteFiles(
-    rawOutput: GeneratePlanOutput,
-    output: GeneratePlanOutput,
-  ) {
-    const rawFilesToModify = rawOutput.filesToModify.filter((item) => item.trim().length > 0);
-    const rawNewFiles = rawOutput.newFiles.filter((item) => item.trim().length > 0);
-    const filesToModify = output.filesToModify.filter((item) => item.trim().length > 0);
-    const newFiles = output.newFiles.filter((item) => item.trim().length > 0);
-
-    if (filesToModify.length > 0 || newFiles.length > 0) {
-      return;
-    }
-
-    if (rawFilesToModify.length > 0 || rawNewFiles.length > 0) {
-      throw new Error(
-        [
-          '技术方案原始输出包含文件落点，但经过路径清洗后为空。',
-          `raw filesToModify: ${rawFilesToModify.join('，') || '无'}`,
-          `raw newFiles: ${rawNewFiles.join('，') || '无'}`,
-          `sanitized filesToModify: ${filesToModify.join('，') || '无'}`,
-          `sanitized newFiles: ${newFiles.join('，') || '无'}`,
-          '请检查模型是否输出了绝对路径、FlowX 工作目录路径，或非仓库相对路径。',
-        ].join(' '),
-      );
-    }
-
-    throw new Error(
-      [
-        '技术方案未给出任何明确文件落点。',
-        `raw filesToModify: ${rawFilesToModify.join('，') || '无'}`,
-        `raw newFiles: ${rawNewFiles.join('，') || '无'}`,
-        '请基于当前 workflow 仓库副本的实时结构，输出至少一个 filesToModify 或 newFiles 项后再继续。',
-      ].join(' '),
-    );
-  }
-
-  private async assertPlanMatchesRepositories(
-    output: GeneratePlanOutput,
-    repositories?: WorkflowPayload['workflowRepositories'],
-  ) {
-    const invalidFilesToModify: string[] = [];
-    const invalidNewFiles: string[] = [];
-
-    for (const file of output.filesToModify) {
-      if (!(await this.planPathExistsInRepositories(file, repositories, false))) {
-        invalidFilesToModify.push(file);
-      }
-    }
-
-    for (const file of output.newFiles) {
-      if (!(await this.planPathExistsInRepositories(file, repositories, true))) {
-        invalidNewFiles.push(file);
-      }
-    }
-
-    if (invalidFilesToModify.length === 0 && invalidNewFiles.length === 0) {
-      return;
-    }
-
-    const repositorySummaries = (repositories ?? [])
-      .map((repository) => {
-        const label = repository.name;
-        const branch = repository.workingBranch ?? repository.baseBranch ?? '未设置';
-        const localPath = repository.localPath ?? '未提供';
-        return `${label}(${branch}) => ${localPath}`;
-      })
-      .join(' | ');
-
-    const parts = ['技术方案与真实仓库结构不匹配。'];
-    if (invalidFilesToModify.length > 0) {
-      parts.push(`filesToModify 中这些路径不存在：${invalidFilesToModify.join('，')}`);
-    }
-    if (invalidNewFiles.length > 0) {
-      parts.push(`newFiles 中这些路径的父目录不存在：${invalidNewFiles.join('，')}`);
-    }
-    parts.push(`当前 workflow 仓库：${repositorySummaries || '无可用仓库'}`);
-    parts.push('请重新生成技术方案，并严格基于仓库真实目录结构。');
-
-    throw new Error(parts.join(' '));
-  }
-
-  private async planPathExistsInRepositories(
-    value: string,
-    repositories: WorkflowPayload['workflowRepositories'] | undefined,
-    allowParentDirectory: boolean,
-  ) {
-    const candidates = this.resolveRepositoryPathCandidates(value, repositories, allowParentDirectory);
-
-    for (const candidate of candidates) {
-      try {
-        await access(candidate);
-        return true;
-      } catch {
-        continue;
-      }
-    }
-
-    return false;
-  }
-
-  private resolveRepositoryPathCandidates(
-    value: string,
-    repositories: WorkflowPayload['workflowRepositories'] | undefined,
-    allowParentDirectory: boolean,
-  ) {
-    const normalized = String(value ?? '').trim().replace(/\\/g, '/');
-    if (!normalized) {
-      return [];
-    }
-
-    const availableRepositories = (repositories ?? []).filter((repository) => repository.localPath);
-    const hasExplicitRepository = normalized.includes(':');
-
-    if (hasExplicitRepository) {
-      const [repositoryName, ...rest] = normalized.split(':');
-      const relativePath = rest.join(':').replace(/^\/+/, '');
-      const matchedRepository = availableRepositories.find((repository) => repository.name === repositoryName);
-      if (!matchedRepository?.localPath || !relativePath) {
-        return [];
-      }
-
-      const targetPath = join(matchedRepository.localPath, relativePath);
-      return allowParentDirectory
-        ? this.expandAncestorCandidates(dirname(targetPath), matchedRepository.localPath)
-        : [targetPath];
-    }
-
-    return availableRepositories
-      .map((repository) => {
-        const targetPath = join(repository.localPath!, normalized);
-        return allowParentDirectory
-          ? this.expandAncestorCandidates(dirname(targetPath), repository.localPath!)
-          : [targetPath];
-      })
-      .flat();
-  }
-
-  private expandAncestorCandidates(targetDirectory: string, repositoryRoot: string) {
-    const candidates = [targetDirectory];
-    let cursor = targetDirectory;
-
-    while (cursor.startsWith(repositoryRoot) && cursor !== repositoryRoot) {
-      cursor = dirname(cursor);
-      candidates.push(cursor);
-    }
-
-    return Array.from(new Set(candidates));
-  }
-
   private sanitizeExecutionOutputPaths(
     output: {
       patchSummary: string;
@@ -4107,17 +3371,21 @@ export class WorkflowService {
     const changedFiles = Array.isArray(workflow.codeExecution?.changedFiles)
       ? workflow.codeExecution.changedFiles
       : [];
-    const filesToModify = Array.isArray(workflow.plan?.filesToModify)
-      ? workflow.plan.filesToModify
-      : [];
-    const newFiles = Array.isArray(workflow.plan?.newFiles)
-      ? workflow.plan.newFiles
-      : [];
+    const specPlanTouchpoints = (() => {
+      try {
+        const stage = workflow.stageExecutions
+          ?.filter((item) => item.stage === stageTypeMap[StageType.SPEC_PLAN] && item.status === 'COMPLETED')
+          .sort((a, b) => b.attempt - a.attempt)[0];
+        const output = this.asSpecPlanOutput(stage?.output);
+        return output?.plan.touchpoints ?? [];
+      } catch {
+        return [] as string[];
+      }
+    })();
 
     const candidates = [
       ...changedFiles,
-      ...filesToModify,
-      ...newFiles,
+      ...specPlanTouchpoints,
     ].map((item) => String(item));
 
     for (const value of candidates) {
@@ -4361,24 +3629,11 @@ export class WorkflowService {
             WorkflowRunStatus.DESIGN_PENDING,
             WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION,
           ],
-          to: WorkflowRunStatus.DEMO_PENDING,
-          nextStage: StageType.DEMO,
-          pendingStage: StageType.DEMO,
-          pendingStatusMessage: '可生成 Demo 页面，也可以跳过 Demo 进入任务拆解',
+          to: WorkflowRunStatus.SPEC_PLAN_PENDING,
+          nextStage: StageType.SPEC_PLAN,
+          pendingStage: StageType.SPEC_PLAN,
+          pendingStatusMessage: '可生成 Spec & Plan',
           reason: 'User chose to skip design and continue without design context.',
-        };
-      case StageType.DEMO:
-        return {
-          from: WorkflowRunStatus.DEMO_PENDING,
-          fromStatuses: [
-            WorkflowRunStatus.DEMO_PENDING,
-            WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
-          ],
-          to: WorkflowRunStatus.TASK_SPLIT_PENDING,
-          nextStage: StageType.TASK_SPLIT,
-          pendingStage: null,
-          pendingStatusMessage: null,
-          reason: 'User chose to skip demo generation and continue without demo pages.',
         };
       default:
         throw new BadRequestException(`${stageTypeMap[stage]} cannot be skipped.`);
@@ -4638,28 +3893,54 @@ export class WorkflowService {
     };
   }
 
-  private getWorkflowDemoContext(workflow: WorkflowPayload): DemoArtifact | null {
-    const stage = this.getLatestCompletedStageOutput(workflow, StageType.DEMO);
-    if (stage?.demo && typeof stage.demo === 'object' && !Array.isArray(stage.demo)) {
-      return stage.demo as DemoArtifact;
+  private async buildWorkflowRepositoryComponentContext(
+    executor: AIExecutor,
+    workflow: WorkflowPayload,
+  ) {
+    const repositories = workflow.workflowRepositories.filter(
+      (repository) => repository.localPath && repository.status === 'READY',
+    );
+
+    if (repositories.length === 0) {
+      this.logger.warn(
+        `Workflow component context skipped workflow=${workflow.id}: no READY workflow repositories.`,
+      );
+      return null;
     }
 
-    const waitingStage = workflow.stageExecutions
-      .filter((item) => item.stage === stageTypeMap[StageType.DEMO] && item.status === 'WAITING_CONFIRMATION')
-      .sort((a, b) => b.attempt - a.attempt)[0];
+    const repo = repositories[0];
+    const repoContext = {
+      id: repo.repositoryId ?? repo.id,
+      name: repo.name,
+      url: repo.url,
+      defaultBranch: repo.baseBranch,
+      localPath: repo.localPath!,
+      syncStatus: repo.status,
+    };
 
     if (
-      waitingStage?.output &&
-      typeof waitingStage.output === 'object' &&
-      !Array.isArray(waitingStage.output) &&
-      'demo' in (waitingStage.output as Record<string, unknown>)
+      'buildRepositoryComponentContext' in executor &&
+      typeof (executor as { buildRepositoryComponentContext?: unknown }).buildRepositoryComponentContext ===
+        'function'
     ) {
-      const candidate = (waitingStage.output as Record<string, unknown>).demo;
-      if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
-        return candidate as DemoArtifact;
+      const built = await (executor as any).buildRepositoryComponentContext(repoContext);
+      if (built) {
+        const files = Array.isArray(built.componentFiles) ? built.componentFiles.length : 0;
+        const pages = Array.isArray(built.pageExamples) ? built.pageExamples.length : 0;
+        this.logger.log(
+          `Workflow component context built workflow=${workflow.id} repo=${repoContext.id} componentFiles=${files} pageExamples=${pages}`,
+        );
+      } else {
+        this.logger.warn(
+          `Workflow component context empty workflow=${workflow.id} repo=${repoContext.id} localPath=${repoContext.localPath}`,
+        );
       }
+      return built;
     }
 
+    this.logger.warn(
+      `Workflow component context unavailable workflow=${workflow.id}: executor ${executor.constructor?.name ?? 'unknown'} has no buildRepositoryComponentContext.`,
+    );
     return null;
   }
 
@@ -4719,123 +4000,6 @@ export class WorkflowService {
     }
 
     return latestStage.output as Record<string, unknown>;
-  }
-
-  private canRunDemoFromWorkflow(workflow: WorkflowPayload, workflowStatus: WorkflowRunStatus) {
-    if (workflowStatus === WorkflowRunStatus.DEMO_PENDING) {
-      return true;
-    }
-
-    return workflowStatus === WorkflowRunStatus.DEMO_WAITING_CONFIRMATION;
-  }
-
-  /**
-   * Demo 必须基于工作流仓库克隆中的真实组件/页面证据生成，禁止在无扫描上下文时调用模型。
-   */
-  private ensureWorkflowDemoRepositoryComponentContext(
-    workflowId: string,
-    context: RepositoryComponentContext | null,
-  ): RepositoryComponentContext {
-    if (!context) {
-      throw new Error(
-        `DEMO_REPOSITORY_CONTEXT_MISSING: workflow=${workflowId} 需要先有可用的工作流仓库副本（READY），且执行器能从克隆路径扫描到组件或页面样例（.tsx）。请确认仓库接地已完成；Mock 执行器也会走磁盘扫描，若克隆目录为空请检查接地结果。`,
-      );
-    }
-    const hasEvidence =
-      (context.componentFiles?.length ?? 0) > 0 || (context.pageExamples?.length ?? 0) > 0;
-    if (!hasEvidence) {
-      throw new Error(
-        `DEMO_REPOSITORY_CONTEXT_EMPTY: workflow=${workflowId} 已连接仓库路径，但在常见目录下未发现可用的 .tsx。请确认仓库为前端工程且包含 src/components、src/pages（或 apps/*/src/...）等路径后再试。`,
-      );
-    }
-    return context;
-  }
-
-  private async buildWorkflowRepositoryComponentContext(
-    executor: AIExecutor,
-    workflow: WorkflowPayload,
-  ) {
-    const repositories = workflow.workflowRepositories.filter(
-      (repository) => repository.localPath && repository.status === 'READY',
-    );
-
-    if (repositories.length === 0) {
-      this.logger.warn(
-        `Workflow component context skipped workflow=${workflow.id}: no READY workflow repositories.`,
-      );
-      return null;
-    }
-
-    const repo = repositories[0];
-    const repoContext = {
-      id: repo.repositoryId ?? repo.id,
-      name: repo.name,
-      url: repo.url,
-      defaultBranch: repo.baseBranch,
-      localPath: repo.localPath!,
-      syncStatus: repo.status,
-    };
-
-    if (
-      'buildRepositoryComponentContext' in executor &&
-      typeof (executor as { buildRepositoryComponentContext?: unknown }).buildRepositoryComponentContext ===
-        'function'
-    ) {
-      const built = await (executor as any).buildRepositoryComponentContext(repoContext);
-      if (built) {
-        const files = Array.isArray(built.componentFiles) ? built.componentFiles.length : 0;
-        const pages = Array.isArray(built.pageExamples) ? built.pageExamples.length : 0;
-        this.logger.log(
-          `Workflow component context built workflow=${workflow.id} repo=${repoContext.id} componentFiles=${files} pageExamples=${pages}`,
-        );
-      } else {
-        this.logger.warn(
-          `Workflow component context empty workflow=${workflow.id} repo=${repoContext.id} localPath=${repoContext.localPath}`,
-        );
-      }
-      return built;
-    }
-
-    this.logger.warn(
-      `Workflow component context unavailable workflow=${workflow.id}: executor ${executor.constructor?.name ?? 'unknown'} has no buildRepositoryComponentContext.`,
-    );
-    return null;
-  }
-
-  private async writeWorkflowDemoPagesToRepo(
-    demoPages: DemoPage[],
-    workflow: WorkflowPayload,
-    invocationContext: AIInvocationContext | undefined,
-    aiExecutor: AIExecutor,
-  ): Promise<void> {
-    const repositories = workflow.workflowRepositories.filter(
-      (repository) => repository.localPath && repository.status === 'READY',
-    );
-
-    if (repositories.length === 0) {
-      throw new Error('DEMO_REPOSITORY_NOT_READY: No READY workflow repositories are available for demo generation.');
-    }
-
-    for (const page of demoPages) {
-      const fullPath = join(repositories[0].localPath!, page.filePath);
-      await mkdir(dirname(fullPath), { recursive: true });
-      await writeFile(fullPath, page.componentCode, 'utf8');
-    }
-
-    const routeIntegration = await integrateFlowxDemoRoutes(repositories[0].localPath!, demoPages, {
-      navPlacementAgent: createNavPlacementAgent(aiExecutor, invocationContext),
-    });
-    for (const w of routeIntegration.warnings) {
-      this.logger.warn(w);
-    }
-    if (routeIntegration.routerRelativePath && routeIntegration.normalizedRoutes.length > 0) {
-      this.logger.log(
-        `FlowX demo preview routes (relative to SPA basename): ${routeIntegration.normalizedRoutes.join(', ')} — router patch: ${routeIntegration.generatedRelativePath ?? 'n/a'}`,
-      );
-    }
-    if (routeIntegration.navMenuPatch?.patchedRelativePath) {
-      this.logger.log(`FlowX demo nav patched: ${routeIntegration.navMenuPatch.patchedRelativePath}`);
-    }
   }
 
   private startRepositoryGroundingJob(workflowId: string) {
@@ -5015,16 +4179,11 @@ export class WorkflowService {
       [WorkflowRunStatus.BRAINSTORM_PENDING, { to: WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING, stage: StageType.REPOSITORY_GROUNDING }],
       [WorkflowRunStatus.DESIGN_PENDING, { to: WorkflowRunStatus.BRAINSTORM_PENDING, stage: StageType.BRAINSTORM }],
       [WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION, { to: WorkflowRunStatus.BRAINSTORM_PENDING, stage: StageType.BRAINSTORM }],
-      [WorkflowRunStatus.DEMO_PENDING, { to: WorkflowRunStatus.DESIGN_PENDING, stage: StageType.DESIGN }],
-      [WorkflowRunStatus.DEMO_WAITING_CONFIRMATION, { to: WorkflowRunStatus.DESIGN_PENDING, stage: StageType.DESIGN }],
-      [WorkflowRunStatus.TASK_SPLIT_PENDING, { to: WorkflowRunStatus.DEMO_PENDING, stage: StageType.DEMO }],
-      [WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION, { to: WorkflowRunStatus.DEMO_PENDING, stage: StageType.DEMO }],
-      [WorkflowRunStatus.TASK_SPLIT_CONFIRMED, { to: WorkflowRunStatus.DEMO_PENDING, stage: StageType.DEMO }],
-      [WorkflowRunStatus.PLAN_PENDING, { to: WorkflowRunStatus.TASK_SPLIT_PENDING, stage: StageType.TASK_SPLIT }],
-      [WorkflowRunStatus.PLAN_WAITING_CONFIRMATION, { to: WorkflowRunStatus.TASK_SPLIT_PENDING, stage: StageType.TASK_SPLIT }],
-      [WorkflowRunStatus.PLAN_CONFIRMED, { to: WorkflowRunStatus.TASK_SPLIT_PENDING, stage: StageType.TASK_SPLIT }],
-      [WorkflowRunStatus.EXECUTION_PENDING, { to: WorkflowRunStatus.PLAN_PENDING, stage: StageType.TECHNICAL_PLAN }],
-      [WorkflowRunStatus.EXECUTION_RUNNING, { to: WorkflowRunStatus.PLAN_PENDING, stage: StageType.TECHNICAL_PLAN }],
+      [WorkflowRunStatus.SPEC_PLAN_PENDING, { to: WorkflowRunStatus.DESIGN_PENDING, stage: StageType.DESIGN }],
+      [WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION, { to: WorkflowRunStatus.DESIGN_PENDING, stage: StageType.DESIGN }],
+      [WorkflowRunStatus.SPEC_PLAN_CONFIRMED, { to: WorkflowRunStatus.DESIGN_PENDING, stage: StageType.DESIGN }],
+      [WorkflowRunStatus.EXECUTION_PENDING, { to: WorkflowRunStatus.SPEC_PLAN_PENDING, stage: StageType.SPEC_PLAN }],
+      [WorkflowRunStatus.EXECUTION_RUNNING, { to: WorkflowRunStatus.SPEC_PLAN_PENDING, stage: StageType.SPEC_PLAN }],
       [WorkflowRunStatus.REVIEW_PENDING, { to: WorkflowRunStatus.EXECUTION_PENDING, stage: StageType.EXECUTION }],
       [WorkflowRunStatus.HUMAN_REVIEW_PENDING, { to: WorkflowRunStatus.REVIEW_PENDING, stage: StageType.AI_REVIEW }],
     ];
@@ -5067,14 +4226,10 @@ export class WorkflowService {
         return { to: WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING, stage: StageType.REPOSITORY_GROUNDING };
       case StageType.DESIGN:
         return { to: WorkflowRunStatus.BRAINSTORM_PENDING, stage: StageType.BRAINSTORM };
-      case StageType.DEMO:
+      case StageType.SPEC_PLAN:
         return { to: WorkflowRunStatus.DESIGN_PENDING, stage: StageType.DESIGN };
-      case StageType.TASK_SPLIT:
-        return { to: WorkflowRunStatus.DEMO_PENDING, stage: StageType.DEMO };
-      case StageType.TECHNICAL_PLAN:
-        return { to: WorkflowRunStatus.TASK_SPLIT_PENDING, stage: StageType.TASK_SPLIT };
       case StageType.EXECUTION:
-        return { to: WorkflowRunStatus.PLAN_PENDING, stage: StageType.TECHNICAL_PLAN };
+        return { to: WorkflowRunStatus.SPEC_PLAN_PENDING, stage: StageType.SPEC_PLAN };
       case StageType.AI_REVIEW:
         return { to: WorkflowRunStatus.EXECUTION_PENDING, stage: StageType.EXECUTION };
       case StageType.HUMAN_REVIEW:
@@ -5108,14 +4263,6 @@ export class WorkflowService {
     }
 
     await tx.codeExecution.deleteMany({ where: { workflowRunId: workflowId } });
-
-    if (target === WorkflowRunStatus.PLAN_PENDING) {
-      await tx.plan.deleteMany({ where: { workflowRunId: workflowId } });
-      return;
-    }
-
-    await tx.plan.deleteMany({ where: { workflowRunId: workflowId } });
-    await tx.task.deleteMany({ where: { workflowRunId: workflowId } });
   }
 
   private async transitionWorkflow(
@@ -5349,73 +4496,50 @@ export class WorkflowService {
     let workflowStatus = WorkflowRunStatus.BRAINSTORM_PENDING;
     workflowStatus = await this.applyBootstrapStageSkip(tx, workflowId, StageType.BRAINSTORM, workflowStatus);
     workflowStatus = await this.applyBootstrapStageSkip(tx, workflowId, StageType.DESIGN, workflowStatus);
-    workflowStatus = await this.applyBootstrapStageSkip(tx, workflowId, StageType.DEMO, workflowStatus);
 
-    const taskPayload = buildBugFixTask(bugPayload, repositoryNames);
-    const taskSplitStage = await this.createStageExecution(tx, workflowId, StageType.TASK_SPLIT, {
-      input: { bugId: workflowId, source: 'bug_fix_bootstrap' },
-      status: StageExecutionStatus.WAITING_CONFIRMATION,
-      statusMessage: '缺陷修复工作流已预置任务',
-      finishedAt: new Date(),
-    });
-
-    await tx.task.create({
-      data: {
+    const specPlan = buildBugFixSpecPlan(bugPayload);
+    // DESIGN skip already created a pending SPEC_PLAN stage; complete the latest one.
+    const pendingSpecPlan = await tx.stageExecution.findFirst({
+      where: {
         workflowRunId: workflowId,
-        title: taskPayload.title,
-        description: taskPayload.description,
-        surface: taskPayload.surface,
-        repositoryNames: taskPayload.repositoryNames,
-        order: 0,
-        status: 'CONFIRMED',
+        stage: stageTypeMap[StageType.SPEC_PLAN],
+        status: stageStatusMap[StageExecutionStatus.PENDING],
       },
+      orderBy: { attempt: 'desc' },
     });
+    if (pendingSpecPlan) {
+      await this.updateStageExecution(tx, pendingSpecPlan.id, StageExecutionStatus.COMPLETED, {
+        input: {
+          bugId: workflowId,
+          source: 'bug_fix_bootstrap',
+          repositoryNames,
+        },
+        output: specPlan,
+        statusMessage: '缺陷修复工作流已预置 Spec & Plan',
+        finishedAt: new Date(),
+      });
+    } else {
+      await this.createStageExecution(tx, workflowId, StageType.SPEC_PLAN, {
+        input: {
+          bugId: workflowId,
+          source: 'bug_fix_bootstrap',
+          repositoryNames,
+        },
+        output: specPlan,
+        status: StageExecutionStatus.COMPLETED,
+        statusMessage: '缺陷修复工作流已预置 Spec & Plan',
+        finishedAt: new Date(),
+      });
+    }
 
-    await this.updateStageExecution(tx, taskSplitStage.id, StageExecutionStatus.COMPLETED, {
-      finishedAt: new Date(),
+    await this.transitionWorkflow(tx, workflowId, WorkflowRunStatus.SPEC_PLAN_PENDING, {
+      to: WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION,
+      stage: StageType.SPEC_PLAN,
     });
-
-    await this.transitionWorkflow(tx, workflowId, WorkflowRunStatus.TASK_SPLIT_PENDING, {
-      to: WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION,
-      stage: StageType.TASK_SPLIT,
+    await this.transitionWorkflow(tx, workflowId, WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION, {
+      to: WorkflowRunStatus.SPEC_PLAN_CONFIRMED,
     });
-    await this.transitionWorkflow(tx, workflowId, WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION, {
-      to: WorkflowRunStatus.TASK_SPLIT_CONFIRMED,
-    });
-    await this.transitionWorkflow(tx, workflowId, WorkflowRunStatus.TASK_SPLIT_CONFIRMED, {
-      to: WorkflowRunStatus.PLAN_PENDING,
-      stage: StageType.TECHNICAL_PLAN,
-    });
-
-    const planContent = buildBugFixPlanContent(bugPayload);
-    await tx.plan.create({
-      data: {
-        workflowRunId: workflowId,
-        status: 'CONFIRMED',
-        summary: planContent.summary,
-        implementationPlan: planContent.implementationPlan,
-        filesToModify: planContent.filesToModify,
-        newFiles: planContent.newFiles,
-        riskPoints: planContent.riskPoints,
-      },
-    });
-
-    await this.createStageExecution(tx, workflowId, StageType.TECHNICAL_PLAN, {
-      input: { source: 'bug_fix_bootstrap' },
-      output: planContent,
-      status: StageExecutionStatus.COMPLETED,
-      statusMessage: '缺陷修复工作流已预置技术方案',
-      finishedAt: new Date(),
-    });
-
-    await this.transitionWorkflow(tx, workflowId, WorkflowRunStatus.PLAN_PENDING, {
-      to: WorkflowRunStatus.PLAN_WAITING_CONFIRMATION,
-      stage: StageType.TECHNICAL_PLAN,
-    });
-    await this.transitionWorkflow(tx, workflowId, WorkflowRunStatus.PLAN_WAITING_CONFIRMATION, {
-      to: WorkflowRunStatus.PLAN_CONFIRMED,
-    });
-    await this.transitionWorkflow(tx, workflowId, WorkflowRunStatus.PLAN_CONFIRMED, {
+    await this.transitionWorkflow(tx, workflowId, WorkflowRunStatus.SPEC_PLAN_CONFIRMED, {
       to: WorkflowRunStatus.EXECUTION_PENDING,
       stage: StageType.EXECUTION,
     });
@@ -5457,78 +4581,49 @@ export class WorkflowService {
       workflowStatus,
       skipOptions,
     );
-    workflowStatus = await this.applyBootstrapStageSkip(
-      tx,
-      workflow.id,
-      StageType.DEMO,
-      workflowStatus,
-      skipOptions,
-    );
 
     const bootstrap = buildLocalChatRequirementBootstrap(workflow.requirement);
-    const taskSplitStage = await this.createStageExecution(tx, workflow.id, StageType.TASK_SPLIT, {
-      input: { requirementId: workflow.requirement.id, source: 'local_chat_bootstrap' },
-      status: StageExecutionStatus.WAITING_CONFIRMATION,
-      statusMessage: '本地 Chat 工作流已预置任务',
-      finishedAt: new Date(),
-    });
-
-    await tx.task.create({
-      data: {
+    const pendingSpecPlan = await tx.stageExecution.findFirst({
+      where: {
         workflowRunId: workflow.id,
-        title: bootstrap.task.title,
-        description: bootstrap.task.description,
-        surface: bootstrap.task.surface,
-        repositoryNames,
-        order: 0,
-        status: 'CONFIRMED',
+        stage: stageTypeMap[StageType.SPEC_PLAN],
+        status: stageStatusMap[StageExecutionStatus.PENDING],
       },
+      orderBy: { attempt: 'desc' },
     });
+    if (pendingSpecPlan) {
+      await this.updateStageExecution(tx, pendingSpecPlan.id, StageExecutionStatus.COMPLETED, {
+        input: {
+          requirementId: workflow.requirement.id,
+          source: 'local_chat_bootstrap',
+          repositoryNames,
+        },
+        output: bootstrap.specPlan,
+        statusMessage: '本地 Chat 工作流已预置 Spec & Plan',
+        finishedAt: new Date(),
+      });
+    } else {
+      await this.createStageExecution(tx, workflow.id, StageType.SPEC_PLAN, {
+        input: {
+          requirementId: workflow.requirement.id,
+          source: 'local_chat_bootstrap',
+          repositoryNames,
+        },
+        output: bootstrap.specPlan,
+        status: StageExecutionStatus.COMPLETED,
+        statusMessage: '本地 Chat 工作流已预置 Spec & Plan',
+        finishedAt: new Date(),
+      });
+    }
 
-    await this.updateStageExecution(tx, taskSplitStage.id, StageExecutionStatus.COMPLETED, {
-      finishedAt: new Date(),
+    await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.SPEC_PLAN_PENDING, {
+      to: WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION,
+      stage: StageType.SPEC_PLAN,
     });
-
-    await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.TASK_SPLIT_PENDING, {
-      to: WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION,
-      stage: StageType.TASK_SPLIT,
+    await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION, {
+      to: WorkflowRunStatus.SPEC_PLAN_CONFIRMED,
     });
-    await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION, {
-      to: WorkflowRunStatus.TASK_SPLIT_CONFIRMED,
-    });
-    await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.TASK_SPLIT_CONFIRMED, {
-      to: WorkflowRunStatus.PLAN_PENDING,
-      stage: StageType.TECHNICAL_PLAN,
-    });
-
-    await tx.plan.create({
-      data: {
-        workflowRunId: workflow.id,
-        status: 'CONFIRMED',
-        summary: bootstrap.plan.summary,
-        implementationPlan: bootstrap.plan.implementationPlan,
-        filesToModify: bootstrap.plan.filesToModify,
-        newFiles: bootstrap.plan.newFiles,
-        riskPoints: bootstrap.plan.riskPoints,
-      },
-    });
-
-    await this.createStageExecution(tx, workflow.id, StageType.TECHNICAL_PLAN, {
-      input: { source: 'local_chat_bootstrap' },
-      output: bootstrap.plan,
-      status: StageExecutionStatus.COMPLETED,
-      statusMessage: '本地 Chat 工作流已预置技术方案',
-      finishedAt: new Date(),
-    });
-
-    await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.PLAN_PENDING, {
-      to: WorkflowRunStatus.PLAN_WAITING_CONFIRMATION,
-      stage: StageType.TECHNICAL_PLAN,
-    });
-    await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.PLAN_WAITING_CONFIRMATION, {
-      to: WorkflowRunStatus.PLAN_CONFIRMED,
-    });
-    await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.PLAN_CONFIRMED, {
+    await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.SPEC_PLAN_CONFIRMED, {
       to: WorkflowRunStatus.EXECUTION_PENDING,
       stage: StageType.EXECUTION,
     });
@@ -5863,8 +4958,6 @@ export type WorkflowPayload = Prisma.WorkflowRunGetPayload<{
       };
     };
     stageExecutions: true;
-    tasks: true;
-    plan: true;
     codeExecution: true;
     reviewReport: true;
     reviewFindings: true;
