@@ -34,48 +34,45 @@ export interface WorkflowRepositoryContext extends RepositoryContext {
   workingBranch?: string | null;
 }
 
-export interface SplitTasksInput {
-  requirement: RequirementRecord;
-  workspace?: WorkspaceContext | null;
-  humanFeedback?: string | null;
-  previousOutput?: SplitTasksOutput | null;
-  demoPageContext?: unknown | null;
+export interface SpecPlanSpec {
+  goal: string;
+  scope: string[];
+  nonGoals: string[];
+  acceptanceCriteria: string[];
+  constraints: string[];
 }
 
-export interface SplitTaskItem {
-  title: string;
-  description: string;
-  surface: string;
-  repositoryNames: string[];
-}
-
-export interface SplitTasksOutput {
-  tasks: SplitTaskItem[];
-  ambiguities: string[];
+export interface SpecPlanPlan {
+  approach: string;
+  touchpoints: string[];
+  sequence: string[];
   risks: string[];
+  verification: string[];
 }
 
-export interface GeneratePlanInput {
+export interface SpecPlanNotes {
+  checklist?: string[];
+  openQuestions?: string[];
+}
+
+export interface SpecPlanOutput {
+  spec: SpecPlanSpec;
+  plan: SpecPlanPlan;
+  notes?: SpecPlanNotes;
+}
+
+export interface GenerateSpecPlanInput {
   requirement: RequirementRecord;
-  tasks: SplitTaskItem[];
   workspace?: WorkspaceContext | null;
   humanFeedback?: string | null;
-  previousOutput?: GeneratePlanOutput | null;
-  demoPageContext?: unknown | null;
-}
-
-export interface GeneratePlanOutput {
-  summary: string;
-  implementationPlan: string[];
-  filesToModify: string[];
-  newFiles: string[];
-  riskPoints: string[];
+  previousOutput?: SpecPlanOutput | null;
+  brainstormContext?: unknown | null;
+  designContext?: unknown | null;
 }
 
 export interface ExecuteTaskInput {
   requirement: RequirementRecord;
-  tasks: SplitTaskItem[];
-  plan: GeneratePlanOutput;
+  specPlan: SpecPlanOutput;
   workspace?: WorkspaceContext | null;
   humanFeedback?: string | null;
 }
@@ -100,7 +97,7 @@ export interface ExecuteTaskOutput {
 
 export interface ReviewCodeInput {
   requirement: RequirementRecord;
-  plan: GeneratePlanOutput;
+  specPlan: SpecPlanOutput;
   execution: ExecuteTaskOutput;
   workspace?: WorkspaceContext | null;
   humanFeedback?: string | null;

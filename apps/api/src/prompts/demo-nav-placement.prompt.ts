@@ -1,4 +1,4 @@
-/** JSON stage (same stack as design/task-split): infer where to add a demo sidebar entry from repo excerpts only. */
+/** JSON stage (same stack as design/spec-plan): infer where to add a demo sidebar entry from repo excerpts only. */
 export const demoNavPlacementPrompt = {
   name: 'demo-nav-placement',
   version: '1.0.0',

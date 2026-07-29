@@ -7,43 +7,17 @@ import {
   GenerateDesignInput,
   GenerateDesignOptions,
   GenerateDesignOutput,
-  GeneratePlanInput,
-  GeneratePlanOutput,
+  GenerateSpecPlanInput,
   RepositoryComponentContext,
   RepositoryContext,
   ReviewCodeInput,
   ReviewCodeOutput,
   ReviewDailyChangesInput,
   DailyCodeReviewUnitOutput,
-  SplitTaskItem,
-  SplitTasksInput,
-  SplitTasksOutput,
+  SpecPlanOutput,
 } from '../common/types';
 import { AIExecutor, type AIInvocationContext } from './ai-executor';
 import { CodexAiExecutor } from './codex-ai.executor';
-
-function createBaselineTasks(title: string): SplitTaskItem[] {
-  return [
-    {
-      title: `Clarify requirement intake experience for ${title}`,
-      description: 'Define what information users need to submit, review, and confirm so the requirement can enter the workflow clearly.',
-      surface: 'web',
-      repositoryNames: ['flowx-web'],
-    },
-    {
-      title: `Define the staged collaboration flow for ${title}`,
-      description: 'Describe how users move from task split to technical plan, execution, and review with clear confirmation checkpoints.',
-      surface: 'api',
-      repositoryNames: ['flowx-api'],
-    },
-    {
-      title: `Provide workflow visibility and confirmation for ${title}`,
-      description: 'Ensure operators can inspect stage outputs, understand progress, and make confirmation decisions at each key step.',
-      surface: 'web',
-      repositoryNames: ['flowx-web'],
-    },
-  ];
-}
 
 @Injectable()
 export class MockAiExecutor implements AIExecutor {
@@ -235,74 +209,47 @@ footer { padding: 20px 40px 40px; color: #64748b; font-size: 13px; }
     };
   }
 
-  async splitTasks(input: SplitTasksInput, _context?: AIInvocationContext): Promise<SplitTasksOutput> {
-    const workspaceName = input.workspace?.name;
+  async generateSpecPlan(
+    input: GenerateSpecPlanInput,
+    _context?: AIInvocationContext,
+  ): Promise<SpecPlanOutput> {
     return {
-      tasks: createBaselineTasks(
-        workspaceName ? `${input.requirement.title} in ${workspaceName}` : input.requirement.title,
-      ),
-      ambiguities: [
-        'Whether execution should apply real patches or only store generated patch metadata in MVP.',
-        'Whether human review decisions should be recorded per issue or per workflow run.',
-      ],
-      risks: [
-        'Stage outputs can drift without strict schema validation.',
-        'Workflow state can become inconsistent if stage transitions are not centralized.',
-      ],
-    };
-  }
-
-  async generatePlan(input: GeneratePlanInput, _context?: AIInvocationContext): Promise<GeneratePlanOutput> {
-    const taskTitles = input.tasks.map((task) => task.title);
-    return {
-      summary: `Implement a staged workflow service for "${input.requirement.title}" with explicit confirmation gates.`,
-      implementationPlan: [
-        'Create database models for workflow state, stage execution, tasks, plans, execution, and review artifacts.',
-        'Implement centralized state machine guards for workflow and stage transitions.',
-        `Expose REST APIs for confirmed tasks: ${taskTitles.join(', ')}.`,
-        'Store AI stage outputs in structured JSON fields for reuse by later stages.',
-      ],
-      filesToModify: [
-        'apps/api/src/workflow/workflow.service.ts',
-        'apps/api/src/workflow/workflow.controller.ts',
-        'prisma/schema.prisma',
-      ],
-      newFiles: [
-        'apps/api/src/common/workflow-state-machine.ts',
-        'apps/api/src/ai/ai-executor.ts',
-        'apps/web/src/App.tsx',
-      ],
-      riskPoints: [
-        'Prompt/template versions should be tracked to explain why outputs differ across runs.',
-        'Rejected stages must not leave stale domain artifacts marked as confirmed.',
-      ],
+      spec: {
+        goal: input.requirement.title,
+        scope: [input.requirement.description || '实现已确认需求'],
+        nonGoals: ['本阶段不扩展无关功能'],
+        acceptanceCriteria: ['核心路径可用', '关键验收可验证'],
+        constraints: [],
+      },
+      plan: {
+        approach: '按 Spec 在目标仓库落地最小可合并改动',
+        touchpoints: [],
+        sequence: ['阅读 Spec', '实现', '本地验证'],
+        risks: [],
+        verification: ['对照 acceptanceCriteria 自检'],
+      },
+      notes: { checklist: [], openQuestions: [] },
     };
   }
 
   async executeTask(input: ExecuteTaskInput, _context?: AIInvocationContext): Promise<ExecuteTaskOutput> {
+    const touchpoints =
+      input.specPlan.plan.touchpoints.length > 0
+        ? input.specPlan.plan.touchpoints
+        : [
+            'apps/api/src/workflow/workflow.service.ts',
+            'apps/api/src/workflow/workflow.controller.ts',
+            'apps/web/src/App.tsx',
+          ];
+
     return {
-      patchSummary: `Execute approved plan for "${input.requirement.title}" across backend workflow orchestration and operator UI.`,
-      changedFiles: [
-        ...input.plan.filesToModify,
-        ...input.plan.newFiles,
-      ],
-      codeChanges: [
-        {
-          file: 'apps/api/src/workflow/workflow.service.ts',
-          changeType: 'update',
-          summary: 'Add execution orchestration and persistence for confirmed plan output.',
-        },
-        {
-          file: 'apps/api/src/workflow/workflow.controller.ts',
-          changeType: 'update',
-          summary: 'Expose execution and review endpoints guarded by workflow status.',
-        },
-        {
-          file: 'apps/web/src/App.tsx',
-          changeType: 'update',
-          summary: 'Render execution and review actions in the workflow operator console.',
-        },
-      ],
+      patchSummary: `Execute approved Spec&Plan for "${input.requirement.title}" across backend workflow orchestration and operator UI.`,
+      changedFiles: touchpoints,
+      codeChanges: touchpoints.slice(0, 3).map((file) => ({
+        file,
+        changeType: 'update' as const,
+        summary: `Apply Spec&Plan sequence: ${input.specPlan.plan.sequence.join(' → ')}`,
+      })),
       diffArtifacts: [
         {
           repository: input.workspace?.repositories[0]?.name ?? 'mock-repository',
