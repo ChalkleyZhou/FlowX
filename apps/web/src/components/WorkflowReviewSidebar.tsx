@@ -12,13 +12,19 @@ export interface WorkflowWorkspaceAction {
   variant?: 'primary' | 'default';
 }
 
+export type WorkflowSidebarMode = 'feedback' | 'manual-edit';
+
 interface Props {
   stageTitle: string;
   stageStatusLabel?: string;
   helperText: string;
+  mode: WorkflowSidebarMode;
   feedbackText: string;
   feedbackPlaceholder: string;
   onFeedbackChange: (value: string) => void;
+  manualEditText?: string;
+  manualEditPlaceholder?: string;
+  onManualEditChange?: (value: string) => void;
   primaryAction: WorkflowWorkspaceAction;
   secondaryActions: WorkflowWorkspaceAction[];
 }
@@ -41,12 +47,18 @@ export function WorkflowReviewSidebar({
   stageTitle,
   stageStatusLabel,
   helperText,
+  mode,
   feedbackText,
   feedbackPlaceholder,
   onFeedbackChange,
+  manualEditText = '',
+  manualEditPlaceholder,
+  onManualEditChange,
   primaryAction,
   secondaryActions,
 }: Props) {
+  const isManualEdit = mode === 'manual-edit';
+
   return (
     <Card className="border-border">
       <CardContent className="flex flex-col gap-4 p-5">
@@ -54,7 +66,9 @@ export function WorkflowReviewSidebar({
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">Workflow Review</p>
           <div>
             <h4 className="text-base font-semibold text-foreground">工作流反馈区</h4>
-            <p className="text-sm text-muted-foreground">{helperText}</p>
+            <p className="text-sm text-muted-foreground">
+              {isManualEdit ? '直接编辑当前阶段 JSON 产物并保存。' : helperText}
+            </p>
           </div>
         </div>
 
@@ -65,13 +79,15 @@ export function WorkflowReviewSidebar({
         </div>
 
         <div className="space-y-2">
-          <p className="text-sm font-medium text-foreground">修改意见</p>
+          <p className="text-sm font-medium text-foreground">{isManualEdit ? '人工编辑产物' : '修改意见'}</p>
           <Textarea
-            value={feedbackText}
-            onChange={(event) => onFeedbackChange(event.target.value)}
-            placeholder={feedbackPlaceholder}
+            value={isManualEdit ? manualEditText : feedbackText}
+            onChange={(event) =>
+              isManualEdit ? onManualEditChange?.(event.target.value) : onFeedbackChange(event.target.value)
+            }
+            placeholder={isManualEdit ? manualEditPlaceholder : feedbackPlaceholder}
             rows={8}
-            className="min-h-[220px] resize-y"
+            className="min-h-[220px] resize-y font-mono text-xs leading-5"
           />
         </div>
 

@@ -4,9 +4,7 @@ export type StageKey =
   | 'REPOSITORY_GROUNDING'
   | 'BRAINSTORM'
   | 'DESIGN'
-  | 'DEMO'
-  | 'TASK_SPLIT'
-  | 'TECHNICAL_PLAN'
+  | 'SPEC_PLAN'
   | 'EXECUTION'
   | 'AI_REVIEW'
   | 'HUMAN_REVIEW';
@@ -64,9 +62,7 @@ const STAGES: Array<{ key: StageKey; title: string }> = [
   { key: 'REPOSITORY_GROUNDING', title: '仓库 Grounding' },
   { key: 'BRAINSTORM', title: '头脑风暴' },
   { key: 'DESIGN', title: '设计方案' },
-  { key: 'DEMO', title: 'Demo' },
-  { key: 'TASK_SPLIT', title: '任务拆解' },
-  { key: 'TECHNICAL_PLAN', title: '技术方案' },
+  { key: 'SPEC_PLAN', title: 'Spec & Plan' },
   { key: 'EXECUTION', title: '执行' },
   { key: 'AI_REVIEW', title: 'AI 审查' },
   { key: 'HUMAN_REVIEW', title: '人工审核' },
@@ -76,9 +72,7 @@ function currentStageKey(status: string): StageKey | null {
   if (status === 'REPOSITORY_GROUNDING_PENDING') return 'REPOSITORY_GROUNDING';
   if (status === 'BRAINSTORM_PENDING') return 'BRAINSTORM';
   if (status.startsWith('DESIGN_')) return 'DESIGN';
-  if (status.startsWith('DEMO_')) return 'DEMO';
-  if (status.startsWith('TASK_SPLIT_')) return 'TASK_SPLIT';
-  if (status.startsWith('PLAN_')) return 'TECHNICAL_PLAN';
+  if (status.startsWith('SPEC_PLAN_')) return 'SPEC_PLAN';
   if (status.startsWith('EXECUTION_')) return 'EXECUTION';
   if (status === 'REVIEW_PENDING') return 'AI_REVIEW';
   if (status === 'HUMAN_REVIEW_PENDING') return 'HUMAN_REVIEW';
@@ -129,30 +123,13 @@ function actionsForStage(
           { id: 'design.revise', label: '发送修改意见', kind: 'revise', needsFeedback: true },
         ];
       return [];
-    case 'DEMO':
-      if (status === 'DEMO_PENDING') return [{ id: 'demo.run', label: '生成 Demo', kind: 'run' }];
-      if (status === 'DEMO_WAITING_CONFIRMATION')
+    case 'SPEC_PLAN':
+      if (status === 'SPEC_PLAN_PENDING') return [{ id: 'specPlan.run', label: '生成 Spec & Plan', kind: 'run' }];
+      if (status === 'SPEC_PLAN_WAITING_CONFIRMATION')
         return [
-          { id: 'demo.confirm', label: '确认 Demo', kind: 'confirm' },
-          { id: 'demo.revise', label: '发送修改意见', kind: 'revise', needsFeedback: true },
-        ];
-      return [];
-    case 'TASK_SPLIT':
-      if (status === 'TASK_SPLIT_PENDING') return [{ id: 'taskSplit.run', label: '生成任务拆解', kind: 'run' }];
-      if (status === 'TASK_SPLIT_WAITING_CONFIRMATION')
-        return [
-          { id: 'taskSplit.confirm', label: '确认任务拆解', kind: 'confirm' },
-          { id: 'taskSplit.reject', label: '驳回', kind: 'reject', danger: true },
-          { id: 'taskSplit.revise', label: '发送修改意见', kind: 'revise', needsFeedback: true },
-        ];
-      return [];
-    case 'TECHNICAL_PLAN':
-      if (status === 'PLAN_PENDING') return [{ id: 'plan.run', label: '生成技术方案', kind: 'run' }];
-      if (status === 'PLAN_WAITING_CONFIRMATION')
-        return [
-          { id: 'plan.confirm', label: '确认方案', kind: 'confirm' },
-          { id: 'plan.reject', label: '驳回', kind: 'reject', danger: true },
-          { id: 'plan.revise', label: '发送修改意见', kind: 'revise', needsFeedback: true },
+          { id: 'specPlan.confirm', label: '确认 Spec & Plan', kind: 'confirm' },
+          { id: 'specPlan.reject', label: '驳回', kind: 'reject', danger: true },
+          { id: 'specPlan.revise', label: '发送修改意见', kind: 'revise', needsFeedback: true },
         ];
       return [];
     case 'EXECUTION':

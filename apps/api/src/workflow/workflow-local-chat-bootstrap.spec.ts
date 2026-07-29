@@ -47,14 +47,11 @@ describe('WorkflowService local chat bootstrap', () => {
     );
   });
 
-  it('prepares confirmed local chat task and plan without starting execution', async () => {
+  it('prepares confirmed local chat spec plan without starting execution', async () => {
     const service = createService();
     const tx = {
-      task: {
-        create: vi.fn().mockResolvedValue({ id: 'task-1' }),
-      },
-      plan: {
-        create: vi.fn().mockResolvedValue({ id: 'plan-1' }),
+      stageExecution: {
+        findFirst: vi.fn().mockResolvedValue(null),
       },
     };
 
@@ -90,38 +87,30 @@ describe('WorkflowService local chat bootstrap', () => {
       ['flowx-web'],
     );
 
-    expect(tx.task.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        workflowRunId: 'workflow-1',
-        title: 'Add export',
-        surface: 'local_chat',
-        repositoryNames: ['flowx-web'],
-        status: 'CONFIRMED',
-      }),
-    });
-    expect(tx.plan.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        workflowRunId: 'workflow-1',
-        status: 'CONFIRMED',
-        summary: '本地 Chat 实现：Add export',
-      }),
-    });
+    expect(tx.stageExecution.findFirst).toHaveBeenCalled();
+    expect(
+      vi.mocked((service as never).createStageExecution).mock.calls.some(
+        ([, workflowId, stage, payload]) =>
+          workflowId === 'workflow-1' &&
+          stage === StageType.SPEC_PLAN &&
+          payload.status === StageExecutionStatus.COMPLETED &&
+          payload.output?.spec?.goal === 'Add export' &&
+          payload.output?.plan?.approach === '本地 Chat 实现：Add export',
+      ),
+    ).toBe(true);
     expect(
       vi.mocked((service as never).transitionWorkflow).mock.calls.some(
         ([, workflowId, from, transition]) =>
           workflowId === 'workflow-1' &&
-          from === WorkflowRunStatus.PLAN_CONFIRMED &&
+          from === WorkflowRunStatus.SPEC_PLAN_CONFIRMED &&
           transition.to === WorkflowRunStatus.EXECUTION_PENDING,
       ),
     ).toBe(true);
     expect(
       vi.mocked((service as never).createStageExecution).mock.calls.some(
-        ([, workflowId, stage, payload]) =>
-          workflowId === 'workflow-1' &&
-          stage === StageType.TASK_SPLIT &&
-          payload.input.requirementId === 'req-1',
+        ([, , stage]) => stage === StageType.TASK_SPLIT,
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       vi.mocked((service as never).createStageExecution).mock.calls.some(
         ([, , stage, payload]) =>

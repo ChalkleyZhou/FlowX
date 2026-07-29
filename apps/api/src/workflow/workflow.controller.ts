@@ -42,12 +42,6 @@ export class WorkflowController {
     return this.workflowService.findAll(runType ? { runType } : undefined);
   }
 
-  @Get(':id/artifacts/plan')
-  async getPlanArtifact(@Param('id') id: string, @Res({ passthrough: false }) res: any) {
-    const html = await this.workflowService.readPlanArtifactHtml(id);
-    res.type('text/html; charset=utf-8').send(html);
-  }
-
   @Get(':id/artifacts/execution')
   async getExecutionArtifact(@Param('id') id: string, @Res({ passthrough: false }) res: any) {
     const html = await this.workflowService.readExecutionArtifactHtml(id);
@@ -124,74 +118,29 @@ export class WorkflowController {
     return this.workflowService.skipDesign(id);
   }
 
-  @Post(':id/demo/run')
-  runDemo(@Param('id') id: string, @Req() req: WorkflowRequest) {
-    return this.workflowService.runDemo(id, undefined, req.authSession);
+  @Post(':id/spec-plan/run')
+  runSpecPlan(@Param('id') id: string, @Req() req: WorkflowRequest) {
+    return this.workflowService.runSpecPlan(id, undefined, req.authSession);
   }
 
-  @Post(':id/demo/revise')
-  reviseDemo(@Param('id') id: string, @Body() dto: StageFeedbackDto, @Req() req: WorkflowRequest) {
-    return this.workflowService.runDemo(id, dto.feedback, req.authSession);
+  @Post(':id/spec-plan/revise')
+  reviseSpecPlan(@Param('id') id: string, @Body() dto: StageFeedbackDto, @Req() req: WorkflowRequest) {
+    return this.workflowService.runSpecPlan(id, dto.feedback, req.authSession);
   }
 
-  @Post(':id/demo/confirm')
-  confirmDemo(@Param('id') id: string) {
-    return this.workflowService.confirmDemo(id);
+  @Patch(':id/spec-plan/manual-edit')
+  manualEditSpecPlan(@Param('id') id: string, @Body() dto: StageManualEditDto) {
+    return this.workflowService.manualEditSpecPlan(id, dto.output);
   }
 
-  @Post(':id/demo/skip')
-  skipDemo(@Param('id') id: string) {
-    return this.workflowService.skipDemo(id);
+  @Post(':id/spec-plan/confirm')
+  confirmSpecPlan(@Param('id') id: string, @Req() req: WorkflowRequest) {
+    return this.workflowService.confirmSpecPlan(id, req.authSession);
   }
 
-  @Post(':id/task-split/run')
-  runTaskSplit(@Param('id') id: string, @Req() req: WorkflowRequest) {
-    return this.workflowService.runTaskSplit(id, undefined, req.authSession);
-  }
-
-  @Post(':id/task-split/revise')
-  reviseTaskSplit(@Param('id') id: string, @Body() dto: StageFeedbackDto, @Req() req: WorkflowRequest) {
-    return this.workflowService.runTaskSplit(id, dto.feedback, req.authSession);
-  }
-
-  @Patch(':id/task-split/manual-edit')
-  manualEditTaskSplit(@Param('id') id: string, @Body() dto: StageManualEditDto) {
-    return this.workflowService.manualEditTaskSplit(id, dto.output);
-  }
-
-  @Post(':id/task-split/confirm')
-  confirmTaskSplit(@Param('id') id: string, @Req() req: WorkflowRequest) {
-    return this.workflowService.confirmTaskSplit(id, req.authSession);
-  }
-
-  @Post(':id/task-split/reject')
-  rejectTaskSplit(@Param('id') id: string) {
-    return this.workflowService.rejectTaskSplit(id);
-  }
-
-  @Post(':id/plan/run')
-  runPlan(@Param('id') id: string, @Req() req: WorkflowRequest) {
-    return this.workflowService.runPlan(id, undefined, req.authSession);
-  }
-
-  @Post(':id/plan/revise')
-  revisePlan(@Param('id') id: string, @Body() dto: StageFeedbackDto, @Req() req: WorkflowRequest) {
-    return this.workflowService.runPlan(id, dto.feedback, req.authSession);
-  }
-
-  @Patch(':id/plan/manual-edit')
-  manualEditPlan(@Param('id') id: string, @Body() dto: StageManualEditDto) {
-    return this.workflowService.manualEditPlan(id, dto.output);
-  }
-
-  @Post(':id/plan/confirm')
-  confirmPlan(@Param('id') id: string, @Req() req: WorkflowRequest) {
-    return this.workflowService.confirmPlan(id, req.authSession);
-  }
-
-  @Post(':id/plan/reject')
-  rejectPlan(@Param('id') id: string) {
-    return this.workflowService.rejectPlan(id);
+  @Post(':id/spec-plan/reject')
+  rejectSpecPlan(@Param('id') id: string, @Body() dto: StageFeedbackDto) {
+    return this.workflowService.rejectSpecPlan(id, dto.feedback);
   }
 
   @Post(':id/execution/run')

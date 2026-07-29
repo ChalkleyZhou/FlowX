@@ -378,22 +378,6 @@ export interface WorkflowRun {
     syncError?: string | null;
     preparedAt?: string | null;
   }>;
-  tasks: Array<{
-    id: string;
-    title: string;
-    description: string;
-    surface?: string | null;
-    repositoryNames?: string[];
-    status: string;
-  }>;
-  plan?: {
-    summary: string;
-    implementationPlan: string[];
-    filesToModify: string[];
-    newFiles: string[];
-    riskPoints: string[];
-    status: string;
-  };
   codeExecution?: {
     patchSummary: string;
     changedFiles: string[];
@@ -773,7 +757,7 @@ export interface ExecutionSessionEventsPage {
 
 export interface IdeationSession {
   id: string;
-  stage: 'BRAINSTORM' | 'DESIGN' | 'DEMO';
+  stage: 'BRAINSTORM' | 'DESIGN';
   attempt: number;
   status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'WAITING_CONFIRMATION';
   statusMessage?: string | null;
@@ -795,36 +779,37 @@ export interface IdeationSessionEvent {
   createdAt: string;
 }
 
-export interface DemoPage {
-  route: string;
-  componentName: string;
-  componentCode: string;
-  mockData: Record<string, unknown>;
-  filePath: string;
-  previewUrl?: string;
-}
-
-export interface DemoFlow {
-  name: string;
-  goal: string;
-  entry: string;
-  states: string[];
-}
-
-export interface DemoArtifact {
-  summary: string;
-  flows: DemoFlow[];
-  scope: {
-    included: string[];
-    excluded: string[];
-  };
-  knownGaps: string[];
-}
-
 export interface IdeationArtifact {
   id: string;
-  type: 'BRAINSTORM_BRIEF' | 'DESIGN_SPEC' | 'DEMO_PAGE';
+  type: 'BRAINSTORM_BRIEF' | 'DESIGN_SPEC';
   content: unknown;
   version: number;
   createdAt: string;
+}
+
+export interface SpecPlanSpec {
+  goal: string;
+  scope: string[];
+  nonGoals: string[];
+  acceptanceCriteria: string[];
+  constraints: string[];
+}
+
+export interface SpecPlanPlan {
+  approach: string;
+  touchpoints: string[];
+  sequence: string[];
+  risks: string[];
+  verification: string[];
+}
+
+export interface SpecPlanNotes {
+  checklist?: string[];
+  openQuestions?: string[];
+}
+
+export interface SpecPlanOutput {
+  spec: SpecPlanSpec;
+  plan: SpecPlanPlan;
+  notes?: SpecPlanNotes;
 }

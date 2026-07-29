@@ -21,7 +21,7 @@ describe('WorkflowStateMachine', () => {
     expect(machine.canBootstrapLocalChatWorkflow(WorkflowRunType.FULL)).toBe(false);
   });
 
-  it('routes repository grounding into brainstorm before task split', () => {
+  it('routes repository grounding into brainstorm before spec plan', () => {
     const machine = new WorkflowStateMachine();
 
     expect(
@@ -33,7 +33,7 @@ describe('WorkflowStateMachine', () => {
     expect(
       machine.canTransitionWorkflow(
         WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING,
-        WorkflowRunStatus.TASK_SPLIT_PENDING,
+        WorkflowRunStatus.SPEC_PLAN_PENDING,
       ),
     ).toBe(false);
   });
@@ -49,63 +49,55 @@ describe('WorkflowStateMachine', () => {
     ).toBe(true);
   });
 
-  it('routes design through waiting confirmation before demo, and demo before task split', () => {
+  it('routes design through waiting confirmation into spec plan, then execution', () => {
     const machine = new WorkflowStateMachine();
 
     expect(
       machine.canTransitionWorkflow(
-        WorkflowRunStatus.BRAINSTORM_PENDING,
-        WorkflowRunStatus.DESIGN_PENDING,
-      ),
-    ).toBe(true);
-    expect(
-      machine.canTransitionWorkflow(
-        WorkflowRunStatus.DESIGN_PENDING,
         WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION,
+        WorkflowRunStatus.SPEC_PLAN_PENDING,
       ),
     ).toBe(true);
     expect(
       machine.canTransitionWorkflow(
         WorkflowRunStatus.DESIGN_PENDING,
-        WorkflowRunStatus.DEMO_PENDING,
+        WorkflowRunStatus.SPEC_PLAN_PENDING,
       ),
     ).toBe(true);
     expect(
       machine.canTransitionWorkflow(
         WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION,
-        WorkflowRunStatus.DEMO_PENDING,
+        'demo_pending' as WorkflowRunStatus,
+      ),
+    ).toBe(false);
+    expect(
+      machine.canTransitionWorkflow(
+        WorkflowRunStatus.SPEC_PLAN_PENDING,
+        WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION,
       ),
     ).toBe(true);
+    expect(
+      machine.canTransitionWorkflow(
+        WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION,
+        WorkflowRunStatus.SPEC_PLAN_CONFIRMED,
+      ),
+    ).toBe(true);
+    expect(
+      machine.canTransitionWorkflow(
+        WorkflowRunStatus.SPEC_PLAN_CONFIRMED,
+        WorkflowRunStatus.EXECUTION_PENDING,
+      ),
+    ).toBe(true);
+  });
+
+  it('does not allow skipping from design directly to execution', () => {
+    const machine = new WorkflowStateMachine();
     expect(
       machine.canTransitionWorkflow(
         WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION,
-        WorkflowRunStatus.DESIGN_PENDING,
+        WorkflowRunStatus.EXECUTION_PENDING,
       ),
-    ).toBe(true);
-    expect(
-      machine.canTransitionWorkflow(
-        WorkflowRunStatus.DEMO_PENDING,
-        WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
-      ),
-    ).toBe(true);
-    expect(
-      machine.canTransitionWorkflow(
-        WorkflowRunStatus.DEMO_PENDING,
-        WorkflowRunStatus.TASK_SPLIT_PENDING,
-      ),
-    ).toBe(true);
-    expect(
-      machine.canTransitionWorkflow(
-        WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
-        WorkflowRunStatus.TASK_SPLIT_PENDING,
-      ),
-    ).toBe(true);
-    expect(
-      machine.canTransitionWorkflow(
-        WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
-        WorkflowRunStatus.DEMO_PENDING,
-      ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('allows optional-stage executions to be skipped from waiting confirmation', () => {
@@ -116,13 +108,13 @@ describe('WorkflowStateMachine', () => {
     ).toBe(true);
   });
 
-  it('rejects skipping directly from created to plan pending', () => {
+  it('rejects skipping directly from created to spec plan pending', () => {
     const machine = new WorkflowStateMachine();
 
     expect(
       machine.canTransitionWorkflow(
         WorkflowRunStatus.CREATED,
-        WorkflowRunStatus.PLAN_PENDING,
+        WorkflowRunStatus.SPEC_PLAN_PENDING,
       ),
     ).toBe(false);
   });
@@ -160,13 +152,13 @@ describe('WorkflowStateMachine', () => {
     ).toBe(false);
   });
 
-  it('allows technical plan stage while plan is waiting for confirmation', () => {
+  it('allows spec plan stage while spec plan is waiting for confirmation', () => {
     const machine = new WorkflowStateMachine();
 
     expect(() =>
       machine.assertStageMatchesWorkflow(
-        StageType.TECHNICAL_PLAN,
-        WorkflowRunStatus.PLAN_WAITING_CONFIRMATION,
+        StageType.SPEC_PLAN,
+        WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION,
       ),
     ).not.toThrow();
   });
@@ -176,7 +168,7 @@ describe('WorkflowStateMachine', () => {
 
     expect(() =>
       machine.assertStageMatchesWorkflow(
-        StageType.TECHNICAL_PLAN,
+        StageType.SPEC_PLAN,
         WorkflowRunStatus.EXECUTION_RUNNING,
       ),
     ).toThrow(/does not allow stage/i);
@@ -198,21 +190,21 @@ describe('WorkflowStateMachine', () => {
 
     expect(
       machine.canTransitionWorkflow(
-        WorkflowRunStatus.PLAN_CONFIRMED,
-        WorkflowRunStatus.TASK_SPLIT_PENDING,
+        WorkflowRunStatus.SPEC_PLAN_CONFIRMED,
+        WorkflowRunStatus.SPEC_PLAN_PENDING,
       ),
     ).toBe(true);
     expect(
       machine.canTransitionWorkflow(
         WorkflowRunStatus.EXECUTION_PENDING,
-        WorkflowRunStatus.PLAN_PENDING,
+        WorkflowRunStatus.SPEC_PLAN_PENDING,
       ),
     ).toBe(true);
     expect(
       machine.canTransitionWorkflow(WorkflowRunStatus.DONE, WorkflowRunStatus.HUMAN_REVIEW_PENDING),
     ).toBe(true);
     expect(
-      machine.canTransitionWorkflow(WorkflowRunStatus.FAILED, WorkflowRunStatus.PLAN_PENDING),
+      machine.canTransitionWorkflow(WorkflowRunStatus.FAILED, WorkflowRunStatus.SPEC_PLAN_PENDING),
     ).toBe(true);
   });
 });

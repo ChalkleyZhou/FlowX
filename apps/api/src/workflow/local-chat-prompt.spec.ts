@@ -75,13 +75,9 @@ describe('local chat workflow helpers', () => {
       acceptanceCriteria: ' CSV downloads with headers ',
     });
 
-    expect(bootstrap.task).toEqual({
-      title: 'Add export',
-      description: 'Users need CSV export',
-      surface: 'local_chat',
-      repositoryNames: [],
-    });
-    expect(bootstrap.plan.summary).toBe('本地 Chat 实现：Add export');
-    expect(bootstrap.plan.implementationPlan).toContain('验收：CSV downloads with headers');
+    expect(bootstrap.specPlan.spec.goal).toBe('Add export');
+    expect(bootstrap.specPlan.spec.scope).toEqual(['Users need CSV export']);
+    expect(bootstrap.specPlan.plan.approach).toBe('本地 Chat 实现：Add export');
+    expect(bootstrap.specPlan.plan.verification).toContain('CSV downloads with headers');
   });
 });

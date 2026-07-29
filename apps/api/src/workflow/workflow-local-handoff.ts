@@ -1,4 +1,4 @@
-import type { GeneratePlanOutput } from '../common/types';
+import type { SpecPlanOutput } from '../common/types';
 
 export interface LocalHandoffCheckoutHints {
   fetch: string;
@@ -17,14 +17,6 @@ export interface LocalHandoffRepository {
   suggestedCommitMessage: string;
 }
 
-export interface LocalHandoffTask {
-  id: string;
-  title: string;
-  description: string;
-  surface: string | null;
-  repositoryNames: string[];
-}
-
 export interface LocalHandoffPayload {
   workflowRunId: string;
   status: string;
@@ -38,8 +30,7 @@ export interface LocalHandoffPayload {
     description: string;
     acceptanceCriteria: string;
   };
-  plan: GeneratePlanOutput;
-  tasks: LocalHandoffTask[];
+  specPlan: SpecPlanOutput;
   repositories: LocalHandoffRepository[];
   artifacts: {
     planMetaPath: string | null;
@@ -51,14 +42,7 @@ export interface BuildLocalHandoffInput {
   workflowRunId: string;
   status: string;
   requirement: LocalHandoffPayload['requirement'];
-  plan: GeneratePlanOutput;
-  tasks: Array<{
-    id: string;
-    title: string;
-    description: string;
-    surface?: string | null;
-    repositoryNames?: unknown;
-  }>;
+  specPlan: SpecPlanOutput;
   workflowRepositories: Array<{
     id: string;
     repositoryId: string | null;
@@ -111,14 +95,7 @@ export function buildLocalHandoff(input: BuildLocalHandoffInput): LocalHandoffPa
         }
       : {}),
     requirement: input.requirement,
-    plan: input.plan,
-    tasks: input.tasks.map((task) => ({
-      id: task.id,
-      title: task.title,
-      description: task.description,
-      surface: task.surface ?? null,
-      repositoryNames: Array.isArray(task.repositoryNames) ? task.repositoryNames.map(String) : [],
-    })),
+    specPlan: input.specPlan,
     repositories: input.workflowRepositories.map((repository) => ({
       workflowRepositoryId: repository.id,
       repositoryId: repository.repositoryId,

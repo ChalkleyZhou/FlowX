@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import type { GeneratePlanOutput } from '../common/types';
+import type { SpecPlanOutput } from '../common/types';
 import { StageType } from '../common/enums';
 import { LocalCompletionCommand, type LocalCompletionWorkflowGateway } from './local-completion.command';
 import { WorkflowArtifactService } from './workflow-artifact.service';
@@ -8,12 +8,21 @@ import { WorkflowGitRemoteService } from './workflow-git-remote.service';
 import type { LocalHandoffPayload } from './workflow-local-handoff';
 import type { LocalExecutionSessionProjection, WorkflowPayload } from './workflow.service';
 
-const confirmedPlan: GeneratePlanOutput = {
-  summary: 'Plan summary',
-  implementationPlan: ['step'],
-  filesToModify: ['src/App.tsx'],
-  newFiles: [],
-  riskPoints: [],
+const confirmedSpecPlan: SpecPlanOutput = {
+  spec: {
+    goal: 'Plan summary',
+    scope: ['Local handoff feature'],
+    nonGoals: [],
+    acceptanceCriteria: ['criteria'],
+    constraints: [],
+  },
+  plan: {
+    approach: 'Plan summary',
+    touchpoints: ['src/App.tsx'],
+    sequence: ['step'],
+    risks: [],
+    verification: ['criteria'],
+  },
 };
 
 const baseHandoff: LocalHandoffPayload = {
@@ -26,8 +35,7 @@ const baseHandoff: LocalHandoffPayload = {
     description: 'desc',
     acceptanceCriteria: 'criteria',
   },
-  plan: confirmedPlan,
-  tasks: [],
+  specPlan: confirmedSpecPlan,
   repositories: [
     {
       workflowRepositoryId: 'wr-1',

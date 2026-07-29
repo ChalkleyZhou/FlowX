@@ -5,14 +5,6 @@ import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkflowArtifactService } from './workflow-artifact.service';
 
-const sampleOutput = {
-  summary: 'Add welcome modal',
-  implementationPlan: ['Wire modal in App'],
-  filesToModify: ['src/App.tsx'],
-  newFiles: ['src/WelcomeModal.tsx'],
-  riskPoints: ['Rate limit TBD'],
-};
-
 describe('WorkflowArtifactService', () => {
   let artifactsRoot: string;
   let originalArtifactsRoot: string | undefined;
@@ -34,16 +26,47 @@ describe('WorkflowArtifactService', () => {
     await rm(artifactsRoot, { recursive: true, force: true });
   });
 
-  it('writePlanArtifact creates plan files and manifest', async () => {
-    const result = await service.writePlanArtifact({
+  it('writeExecutionArtifact creates execution files and manifest', async () => {
+    const completedAt = '2026-07-29T08:00:00.000Z';
+    const result = await service.writeExecutionArtifact({
       workflowRunId: runId,
       version: 1,
-      output: sampleOutput,
-      status: 'WAITING_HUMAN_CONFIRMATION',
+      executor: 'LOCAL',
+      patchSummary: 'Added welcome modal',
+      changedFiles: ['src/App.tsx'],
+      meta: {
+        executor: 'LOCAL',
+        status: 'COMPLETED',
+        completedAt,
+        patchSummary: 'Added welcome modal',
+        changedFiles: ['src/App.tsx'],
+        pushed: true,
+        repositories: [
+          {
+            workflowRepositoryId: 'wr-1',
+            name: 'flowx',
+            workingBranch: 'flowx/work/local',
+            headSha: 'deadbeef',
+            changedFiles: ['src/App.tsx'],
+            verified: true,
+          },
+        ],
+      },
+      repositoryRows: [
+        {
+          name: 'flowx',
+          workingBranch: 'flowx/work/local',
+          headSha: 'deadbeef',
+          changedFileCount: 1,
+          pushed: true,
+          verified: true,
+        },
+      ],
+      pushed: true,
     });
 
-    expect(result.htmlPath).toBe('plan/v1/plan.html');
-    expect(result.metaPath).toBe('plan/v1/plan.meta.json');
+    expect(result.htmlPath).toBe('execution/v1/report.html');
+    expect(result.metaPath).toBe('execution/v1/execution.meta.json');
 
     const root = service.getArtifactsRoot(runId);
     await access(join(root, result.htmlPath));
@@ -52,74 +75,69 @@ describe('WorkflowArtifactService', () => {
     const html = await readFile(join(root, result.htmlPath), 'utf8');
     const expectedSha = createHash('sha256').update(html).digest('hex');
     expect(result.sha256).toBe(expectedSha);
-
-    const meta = JSON.parse(await readFile(join(root, result.metaPath), 'utf8'));
-    expect(meta).toMatchObject({
-      ...sampleOutput,
-      status: 'WAITING_HUMAN_CONFIRMATION',
-      confirmedAt: null,
-    });
+    expect(html).toContain('Added welcome modal');
 
     const manifest = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8'));
-    expect(manifest.plan).toEqual({
+    expect(manifest.execution).toEqual({
       version: 1,
-      path: 'plan/v1/plan.html',
-      metaPath: 'plan/v1/plan.meta.json',
+      path: 'execution/v1/report.html',
+      metaPath: 'execution/v1/execution.meta.json',
       sha256: expectedSha,
-      confirmedAt: null,
+      executor: 'LOCAL',
+      completedAt,
     });
   });
 
-  it('confirmPlanArtifact sets CONFIRMED and manifest confirmedAt', async () => {
-    await service.writePlanArtifact({
+  it('readExecutionHtml returns html after write', async () => {
+    await service.writeExecutionArtifact({
       workflowRunId: runId,
       version: 1,
-      output: sampleOutput,
-      status: 'WAITING_HUMAN_CONFIRMATION',
+      executor: 'LOCAL',
+      patchSummary: 'Added welcome modal',
+      changedFiles: ['src/App.tsx'],
+      meta: {
+        executor: 'LOCAL',
+        status: 'COMPLETED',
+        completedAt: '2026-07-29T08:00:00.000Z',
+        patchSummary: 'Added welcome modal',
+        changedFiles: ['src/App.tsx'],
+        pushed: true,
+        repositories: [],
+      },
+      repositoryRows: [],
+      pushed: true,
     });
 
-    await service.confirmPlanArtifact(runId);
-
-    const meta = await service.loadPlanMeta(runId);
-    expect(meta?.status).toBe('CONFIRMED');
-    expect(meta?.confirmedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-
-    const root = service.getArtifactsRoot(runId);
-    const manifest = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8'));
-    expect(manifest.plan.confirmedAt).toBe(meta?.confirmedAt);
-  });
-
-  it('loadPlanMeta returns null when no artifact', async () => {
-    expect(await service.loadPlanMeta('run_missing')).toBeNull();
-  });
-
-  it('readPlanHtml returns html after write', async () => {
-    await service.writePlanArtifact({
-      workflowRunId: runId,
-      version: 1,
-      output: sampleOutput,
-      status: 'WAITING_HUMAN_CONFIRMATION',
-    });
-
-    const html = await service.readPlanHtml(runId);
+    const html = await service.readExecutionHtml(runId);
     expect(html).not.toBeNull();
-    expect(html).toContain('Add welcome modal');
-    expect(html).toContain('技术方案');
+    expect(html).toContain('Added welcome modal');
   });
 
-  it('readPlanHtml returns null when no artifact', async () => {
-    expect(await service.readPlanHtml('run_missing')).toBeNull();
+  it('readExecutionHtml returns null when no artifact', async () => {
+    expect(await service.readExecutionHtml('run_missing')).toBeNull();
   });
 
   it('keeps the written file when metadata registration fails', async () => {
     const registerWorkflowArtifact = vi.fn().mockRejectedValue(new Error('database unavailable'));
     const registeringService = new WorkflowArtifactService({ registerWorkflowArtifact } as never);
 
-    const result = await registeringService.writePlanArtifact({
+    const result = await registeringService.writeExecutionArtifact({
       workflowRunId: runId,
       version: 2,
-      output: sampleOutput,
-      status: 'WAITING_HUMAN_CONFIRMATION',
+      executor: 'LOCAL',
+      patchSummary: 'Added welcome modal',
+      changedFiles: ['src/App.tsx'],
+      meta: {
+        executor: 'LOCAL',
+        status: 'COMPLETED',
+        completedAt: '2026-07-29T08:00:00.000Z',
+        patchSummary: 'Added welcome modal',
+        changedFiles: ['src/App.tsx'],
+        pushed: true,
+        repositories: [],
+      },
+      repositoryRows: [],
+      pushed: true,
     });
 
     await access(join(registeringService.getArtifactsRoot(runId), result.htmlPath));

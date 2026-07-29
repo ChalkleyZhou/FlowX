@@ -2,10 +2,8 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/
 import { CreateRequirementDto } from './dto/create-requirement.dto';
 import {
   ReviseBrainstormDto,
-  ReviseDemoDto,
   ReviseDesignDto,
   StartBrainstormDto,
-  StartDemoDto,
   StartDesignDto,
 } from './dto/ideation.dto';
 import { UpdateRequirementDto } from './dto/update-requirement.dto';
@@ -94,21 +92,6 @@ export class RequirementsController {
   @Post(':id/design/confirm')
   confirmDesign(@Param('id') id: string) {
     return this.requirementsService.confirmDesign(id);
-  }
-
-  @Post(':id/demo/run')
-  startDemo(@Param('id') id: string, @Body() dto: StartDemoDto, @Req() req: RequirementsRequest) {
-    return this.requirementsService.startDemoGeneration(id, dto.humanHint, req.authSession);
-  }
-
-  @Post(':id/demo/revise')
-  reviseDemo(@Param('id') id: string, @Body() dto: ReviseDemoDto, @Req() req: RequirementsRequest) {
-    return this.requirementsService.reviseDemoGeneration(id, dto.feedback, req.authSession);
-  }
-
-  @Post(':id/demo/confirm')
-  confirmDemo(@Param('id') id: string) {
-    return this.requirementsService.confirmDemoGeneration(id);
   }
 
   @Get(':id/ideation/sessions/:sessionId/events')

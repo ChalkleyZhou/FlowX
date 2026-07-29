@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["spec", "plan"],
+  "properties": {
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["goal", "scope", "nonGoals", "acceptanceCriteria", "constraints"],
+      "properties": {
+        "goal": {
+          "type": "string",
+          "minLength": 1,
+          "description": "本阶段要实现的核心目标（一句话）。"
+        },
+        "scope": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "明确纳入本次实现的边界与能力。"
+        },
+        "nonGoals": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "明确不在本次实现范围内的事项。"
+        },
+        "acceptanceCriteria": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "可验证的验收标准。"
+        },
+        "constraints": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "技术、业务或协作约束。"
+        }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approach", "touchpoints", "sequence", "risks", "verification"],
+      "properties": {
+        "approach": {
+          "type": "string",
+          "minLength": 1,
+          "description": "整体实现路径与策略说明。"
+        },
+        "touchpoints": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "会触及的模块、服务、页面或集成点（文档级描述，非强制文件清单）。"
+        },
+        "sequence": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "建议的落地顺序。"
+        },
+        "risks": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "主要风险与不确定性。"
+        },
+        "verification": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "如何验证实现符合 Spec。"
+        }
+      }
+    },
+    "notes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "checklist": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "openQuestions": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

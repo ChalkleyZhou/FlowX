@@ -15,6 +15,20 @@ const task: FlowXTaskItem = {
 const handoff: LocalHandoffPayload = {
   workflowRunId: 'run-1',
   requirement: { id: 'req-1', title: '导出 CSV', description: 'desc', acceptanceCriteria: 'ac' },
+  specPlan: {
+    spec: {
+      goal: 'Goal',
+      scope: ['scope 1'],
+      acceptanceCriteria: ['AC 1'],
+    },
+    plan: {
+      approach: 'Approach',
+      sequence: ['Step 1'],
+      touchpoints: ['Touch 1'],
+      risks: ['Risk 1'],
+      verification: ['Verify 1'],
+    },
+  },
   repositories: [{ workflowRepositoryId: 'wr-1', name: 'flowx-web', url: 'git@x:flowx.git', workingBranch: 'flowx/work/x' }],
 };
 

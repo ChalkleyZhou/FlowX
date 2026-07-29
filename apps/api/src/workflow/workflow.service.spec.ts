@@ -1,30 +1,32 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AiInvocationContextService } from '../ai/ai-invocation-context.service';
 import type { AiCredentialsService } from '../auth/ai-credentials.service';
-import { WorkflowRunStatus } from '../common/enums';
-import type { GeneratePlanOutput } from '../common/types';
+import { StageType, WorkflowRunStatus } from '../common/enums';
+import type { SpecPlanOutput } from '../common/types';
 import { WorkflowStateMachine } from '../common/workflow-state-machine';
-import type { PlanArtifactMeta } from './workflow-artifact.service';
 import { WorkflowArtifactService } from './workflow-artifact.service';
 import { WorkflowService } from './workflow.service';
 
-const confirmedPlanMeta: PlanArtifactMeta = {
-  summary: 'From artifact meta',
-  implementationPlan: ['meta step'],
-  filesToModify: ['meta/App.tsx'],
-  newFiles: ['meta/Modal.tsx'],
-  riskPoints: ['meta risk'],
-  status: 'CONFIRMED',
-  confirmedAt: '2026-06-03T00:00:00.000Z',
-};
-
-const dbPlanOutput: GeneratePlanOutput = {
-  summary: 'From database plan',
-  implementationPlan: ['db step'],
-  filesToModify: ['db/App.tsx'],
-  newFiles: ['db/Modal.tsx'],
-  riskPoints: ['db risk'],
+const sampleSpecPlan: SpecPlanOutput = {
+  spec: {
+    goal: '登录后展示欢迎弹框',
+    scope: ['欢迎弹框展示'],
+    nonGoals: ['改登录鉴权'],
+    acceptanceCriteria: ['登录成功后展示一次'],
+    constraints: ['复用现有弹框组件'],
+  },
+  plan: {
+    approach: '在 App 挂载欢迎弹框并做频控',
+    touchpoints: ['apps/web/src/App.tsx'],
+    sequence: ['挂载组件', '加频控', '联调'],
+    risks: ['频控状态丢失'],
+    verification: ['手动登录验证'],
+  },
+  notes: {
+    checklist: ['确认文案'],
+    openQuestions: [],
+  },
 };
 
 function createService(workflowArtifactService: Partial<WorkflowArtifactService> = {}) {
@@ -64,139 +66,286 @@ function createService(workflowArtifactService: Partial<WorkflowArtifactService>
   };
 }
 
-describe('WorkflowService resolveConfirmedPlan', () => {
-  it('uses CONFIRMED plan meta when available', async () => {
-    const loadPlanMeta = vi.fn().mockResolvedValue(confirmedPlanMeta);
-    const { service } = createService({ loadPlanMeta });
+describe('WorkflowService resolveConfirmedSpecPlan', () => {
+  it('reads SpecPlan from the latest completed SPEC_PLAN stage output', async () => {
+    const { service } = createService();
 
     const resolved = await (
       service as unknown as {
-        resolveConfirmedPlan: (workflow: {
+        resolveConfirmedSpecPlan: (workflow: {
           id: string;
-          plan: GeneratePlanOutput & { status: string };
-        }) => Promise<GeneratePlanOutput>;
+          stageExecutions: Array<{
+            stage: string;
+            status: string;
+            attempt: number;
+            output: unknown;
+          }>;
+        }) => Promise<SpecPlanOutput>;
       }
-    ).resolveConfirmedPlan({
-      id: 'run-meta',
-      plan: { ...dbPlanOutput, status: 'CONFIRMED' },
+    ).resolveConfirmedSpecPlan({
+      id: 'run-spec',
+      stageExecutions: [
+        {
+          stage: 'SPEC_PLAN',
+          status: 'COMPLETED',
+          attempt: 1,
+          output: sampleSpecPlan,
+        },
+      ],
     });
 
-    expect(loadPlanMeta).toHaveBeenCalledWith('run-meta');
-    expect(resolved).toEqual({
-      summary: confirmedPlanMeta.summary,
-      implementationPlan: confirmedPlanMeta.implementationPlan,
-      filesToModify: confirmedPlanMeta.filesToModify,
-      newFiles: confirmedPlanMeta.newFiles,
-      riskPoints: confirmedPlanMeta.riskPoints,
-    });
+    expect(resolved).toEqual(sampleSpecPlan);
   });
 
-  it('falls back to workflow.plan when meta is null', async () => {
-    const loadPlanMeta = vi.fn().mockResolvedValue(null);
-    const { service } = createService({ loadPlanMeta });
+  it('prefers the highest attempt among completed SPEC_PLAN stages', async () => {
+    const { service } = createService();
+    const newer: SpecPlanOutput = {
+      ...sampleSpecPlan,
+      spec: { ...sampleSpecPlan.spec, goal: 'newer goal' },
+    };
 
     const resolved = await (
       service as unknown as {
-        resolveConfirmedPlan: (workflow: {
+        resolveConfirmedSpecPlan: (workflow: {
           id: string;
-          plan: GeneratePlanOutput & { status: string };
-        }) => Promise<GeneratePlanOutput>;
+          stageExecutions: Array<{
+            stage: string;
+            status: string;
+            attempt: number;
+            output: unknown;
+          }>;
+        }) => Promise<SpecPlanOutput>;
       }
-    ).resolveConfirmedPlan({
-      id: 'run-db',
-      plan: { ...dbPlanOutput, status: 'CONFIRMED' },
+    ).resolveConfirmedSpecPlan({
+      id: 'run-spec',
+      stageExecutions: [
+        {
+          stage: 'SPEC_PLAN',
+          status: 'COMPLETED',
+          attempt: 1,
+          output: sampleSpecPlan,
+        },
+        {
+          stage: 'SPEC_PLAN',
+          status: 'COMPLETED',
+          attempt: 2,
+          output: newer,
+        },
+      ],
     });
 
-    expect(loadPlanMeta).toHaveBeenCalledWith('run-db');
-    expect(resolved).toEqual(dbPlanOutput);
+    expect(resolved.spec.goal).toBe('newer goal');
   });
 
-  it('throws NotFoundException when meta is not confirmed and plan is missing', async () => {
-    const { service } = createService({
-      loadPlanMeta: vi.fn().mockResolvedValue({
-        ...confirmedPlanMeta,
-        status: 'WAITING_HUMAN_CONFIRMATION',
-      }),
-    });
+  it('throws NotFoundException when SPEC_PLAN output is missing', async () => {
+    const { service } = createService();
 
     await expect(
       (
         service as unknown as {
-          resolveConfirmedPlan: (workflow: { id: string; plan: null }) => Promise<GeneratePlanOutput>;
+          resolveConfirmedSpecPlan: (workflow: {
+            id: string;
+            stageExecutions: Array<{ stage: string; status: string; attempt: number; output: unknown }>;
+          }) => Promise<SpecPlanOutput>;
         }
-      ).resolveConfirmedPlan({ id: 'run-missing', plan: null }),
+      ).resolveConfirmedSpecPlan({ id: 'run-missing', stageExecutions: [] }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 
-describe('WorkflowService plan normalization', () => {
-  it('normalizes Cursor-style technical plan payloads into GeneratePlanOutput', () => {
-    const { service } = createService();
+function buildWaitingSpecPlanWorkflow(output: unknown = sampleSpecPlan) {
+  return {
+    id: 'run-sp',
+    status: 'SPEC_PLAN_WAITING_CONFIRMATION',
+    aiProvider: 'mock',
+    requirement: { id: 'req-1', title: 'Test requirement' },
+    stageExecutions: [
+      {
+        id: 'se-1',
+        stage: 'SPEC_PLAN',
+        status: 'WAITING_CONFIRMATION',
+        attempt: 1,
+        output,
+      },
+    ],
+  };
+}
 
-    const normalized = (service as unknown as {
-      normalizePlanOutput: (output: Record<string, unknown>) => {
-        summary: string;
-        implementationPlan: string[];
-        filesToModify: string[];
-        newFiles: string[];
-        riskPoints: string[];
-      };
-    }).normalizePlanOutput({
-      objective: '在登录成功后展示欢迎弹框',
-      stages: [
-        {
-          name: '行为与挂载点设计',
-          goals: ['确定展示时机', '确定频控策略'],
-          implementationSteps: ['在 App.tsx 中挂载欢迎弹框'],
-          filesToModify: ['apps/admin-app/src/App.tsx'],
-          newFiles: [],
-        },
-        {
-          name: '欢迎弹框组件实现',
-          goals: ['实现欢迎弹框组件'],
-          newFiles: ['apps/admin-app/src/components/welcome/WelcomeModal.tsx'],
-        },
-      ],
-      riskPoints: ['频控策略需要和产品确认'],
+describe('WorkflowService SpecPlan lifecycle', () => {
+  it('runSpecPlan stores normalized output and moves workflow to waiting confirmation', async () => {
+    const service = makeServiceWithPrisma({});
+    const workflow = {
+      id: 'run-sp',
+      status: 'SPEC_PLAN_PENDING',
+      aiProvider: 'mock',
+      requirement: {
+        id: 'req-1',
+        title: 'Test requirement',
+        description: 'desc',
+        acceptanceCriteria: 'criteria',
+        workspace: { name: 'ws' },
+      },
+      workflowRepositories: [],
+      stageExecutions: [],
+    };
+    let capturedOutput: unknown;
+    let workflowStatus = 'SPEC_PLAN_PENDING';
+    const tx = {
+      stageExecution: {
+        findFirst: vi.fn().mockResolvedValue({ attempt: 0 }),
+        findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'se-run', status: 'RUNNING', attempt: 1 }),
+        findUniqueOrThrow: vi.fn().mockImplementation(async () => ({ id: 'se-run', status: 'RUNNING' })),
+        create: vi.fn().mockResolvedValue({ id: 'se-run', attempt: 1, status: 'RUNNING' }),
+        update: vi.fn().mockImplementation(async ({ data }: { data: { status?: string; output?: unknown } }) => {
+          if (data.output) {
+            capturedOutput = data.output;
+          }
+          return { id: 'se-run', status: data.status ?? 'RUNNING' };
+        }),
+      },
+      workflowRun: {
+        update: vi.fn().mockImplementation(async ({ data }: { data: { status: string } }) => {
+          workflowStatus = data.status;
+          return { id: 'run-sp', status: data.status };
+        }),
+        findUniqueOrThrow: vi.fn().mockImplementation(async () => ({
+          ...workflow,
+          status: workflowStatus,
+        })),
+      },
+    };
+    const prisma = {
+      $transaction: vi.fn().mockImplementation((cb: (transaction: typeof tx) => unknown) => cb(tx)),
+    };
+    Object.assign(service, { prisma });
+
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(workflow as never);
+    vi.spyOn(service as never, 'runInBackground' as never).mockImplementation(
+      ((_taskName: string, job: () => Promise<void>) => {
+        void job();
+      }) as never,
+    );
+    vi.spyOn(service as never, 'resolveAiExecutor' as never).mockReturnValue({
+      generateSpecPlan: vi.fn().mockResolvedValue(sampleSpecPlan),
+    } as never);
+    vi.spyOn(service as never, 'buildWorkspaceContext' as never).mockReturnValue({} as never);
+    vi.spyOn(service as never, 'getWorkflowBriefContext' as never).mockReturnValue(null as never);
+    vi.spyOn(service as never, 'getWorkflowDesignContext' as never).mockReturnValue(null as never);
+    vi.spyOn(service as never, 'getAiProviderLabel' as never).mockReturnValue('Mock' as never);
+    Object.assign(service as object, {
+      aiInvocationContextService: {
+        resolveInvocationContext: vi.fn().mockResolvedValue({}),
+      },
     });
 
-    expect(normalized.summary).toBe('在登录成功后展示欢迎弹框');
-    expect(normalized.implementationPlan).toEqual([
-      '行为与挂载点设计: 确定展示时机',
-      '行为与挂载点设计: 确定频控策略',
-      '行为与挂载点设计: 在 App.tsx 中挂载欢迎弹框',
-      '欢迎弹框组件实现: 实现欢迎弹框组件',
-    ]);
-    expect(normalized.filesToModify).toEqual(['apps/admin-app/src/App.tsx']);
-    expect(normalized.newFiles).toEqual(['apps/admin-app/src/components/welcome/WelcomeModal.tsx']);
-    expect(normalized.riskPoints).toEqual(['频控策略需要和产品确认']);
+    await service.runSpecPlan('run-sp');
+
+    await vi.waitFor(() => {
+      expect(capturedOutput).toEqual(sampleSpecPlan);
+      expect(workflowStatus).toBe('SPEC_PLAN_WAITING_CONFIRMATION');
+    });
   });
-});
 
-describe('WorkflowService plan path validation', () => {
-  it('accepts new files whose nearest existing ancestor directory already exists', async () => {
-    const { service } = createService();
-    const repositories = [
-      {
-        name: 'ai-platform',
-        localPath:
-          '/Users/chalkley/workspace/FlowX/apps/api/.flowx-data/workflows/cmny2zzgz000720jjtqqsns8a/repositories/ai-platform-cmny2zzh',
+  it('confirmSpecPlan advances to execution pending when output is valid', async () => {
+    let finalStatus = 'SPEC_PLAN_WAITING_CONFIRMATION';
+    const tx = {
+      stageExecution: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ id: 'se-1', status: 'WAITING_CONFIRMATION' }),
+        update: vi.fn().mockResolvedValue({ id: 'se-1', status: 'COMPLETED' }),
       },
-    ] as never;
+      workflowRun: {
+        update: vi.fn().mockImplementation(async ({ data }: { data: { status: string } }) => {
+          finalStatus = data.status;
+          return { id: 'run-sp', status: data.status };
+        }),
+        findUniqueOrThrow: vi.fn().mockImplementation(async () => ({
+          ...buildWaitingSpecPlanWorkflow(),
+          status: finalStatus,
+          stageExecutions: [],
+        })),
+      },
+    };
+    const prisma = {
+      workflowRun: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue(buildWaitingSpecPlanWorkflow()),
+      },
+      $transaction: vi.fn().mockImplementation((cb: (transaction: typeof tx) => unknown) => cb(tx)),
+    };
+    const service = makeServiceWithPrisma(prisma);
+    vi.spyOn(service as never, 'notifyStageCompleted' as never).mockImplementation((() => undefined) as never);
 
-    await expect(
-      (service as unknown as {
-        planPathExistsInRepositories: (
-          value: string,
-          repositories: unknown,
-          allowParentDirectory: boolean,
-        ) => Promise<boolean>;
-      }).planPathExistsInRepositories(
-        'apps/admin-app/src/components/welcome/WelcomeModal.tsx',
-        repositories,
-        true,
-      ),
-    ).resolves.toBe(true);
+    const result = (await service.confirmSpecPlan('run-sp')) as { status: string };
+
+    expect(result.status).toBe('EXECUTION_PENDING');
+  });
+
+  it('confirmSpecPlan rejects empty output before advancing', async () => {
+    const prisma = {
+      workflowRun: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue(
+          buildWaitingSpecPlanWorkflow({
+            spec: { goal: '', scope: [], nonGoals: [], acceptanceCriteria: [], constraints: [] },
+            plan: { approach: '', touchpoints: [], sequence: [], risks: [], verification: [] },
+          }),
+        ),
+      },
+      $transaction: vi.fn(),
+    };
+    const service = makeServiceWithPrisma(prisma);
+
+    await expect(service.confirmSpecPlan('run-sp')).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejectSpecPlan returns to pending and records feedback on the rejected stage', async () => {
+    let rejectedStatusMessage: string | undefined;
+    let rejectedOutput: Record<string, unknown> | undefined;
+    let finalStatus = 'SPEC_PLAN_WAITING_CONFIRMATION';
+    const tx = {
+      stageExecution: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ id: 'se-1', status: 'WAITING_CONFIRMATION' }),
+        findFirst: vi.fn().mockResolvedValue({ attempt: 1 }),
+        create: vi.fn().mockResolvedValue({ id: 'se-2', status: 'PENDING', attempt: 2 }),
+        update: vi.fn().mockImplementation(async ({ data }: { data: { statusMessage?: string; output?: Record<string, unknown> } }) => {
+          rejectedStatusMessage = data.statusMessage;
+          rejectedOutput = data.output;
+          return { id: 'se-1', status: 'REJECTED' };
+        }),
+      },
+      workflowRun: {
+        update: vi.fn().mockImplementation(async ({ data }: { data: { status: string } }) => {
+          finalStatus = data.status;
+          return { id: 'run-sp', status: data.status };
+        }),
+        findUniqueOrThrow: vi.fn().mockImplementation(async () => ({
+          ...buildWaitingSpecPlanWorkflow(),
+          status: finalStatus,
+          stageExecutions: [],
+        })),
+      },
+    };
+    const prisma = {
+      workflowRun: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue(buildWaitingSpecPlanWorkflow()),
+      },
+      $transaction: vi.fn().mockImplementation((cb: (transaction: typeof tx) => unknown) => cb(tx)),
+    };
+    const service = makeServiceWithPrisma(prisma);
+
+    const result = (await service.rejectSpecPlan('run-sp', 'needs more detail')) as { status: string };
+
+    expect(result.status).toBe('SPEC_PLAN_PENDING');
+    expect(rejectedStatusMessage).toContain('needs more detail');
+    expect(rejectedOutput?.rejectionFeedback).toBe('needs more detail');
+    expect(tx.stageExecution.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'PENDING',
+          statusMessage: expect.stringContaining('needs more detail'),
+          input: expect.objectContaining({ humanFeedback: 'needs more detail' }),
+        }),
+      }),
+    );
   });
 });
 
@@ -364,97 +513,32 @@ describe('WorkflowService optional ideation stages', () => {
     expect(context?.componentFiles).toEqual(['src/components/NoticeList.tsx']);
   });
 
-  it('allows rerunning demo while demo is waiting for confirmation', () => {
+  it('routes design skip to SPEC_PLAN_PENDING', () => {
     const { service } = createService();
 
-    const canRun = (service as unknown as {
-      canRunDemoFromWorkflow: (
-        workflow: {
-          stageExecutions: Array<{ stage: string; attempt: number }>;
-        },
-        status: string,
-      ) => boolean;
-    }).canRunDemoFromWorkflow(
-      {
-        stageExecutions: [
-          {
-            stage: 'DEMO',
-            attempt: 1,
-          },
-        ],
-      },
-      WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
-    );
+    const target = (
+      service as unknown as {
+        resolveOptionalStageSkipTarget: (stage: StageType) => {
+          to: WorkflowRunStatus;
+          pendingStage: StageType | null;
+        };
+      }
+    ).resolveOptionalStageSkipTarget(StageType.DESIGN);
 
-    expect(canRun).toBe(true);
+    expect(target.to).toBe(WorkflowRunStatus.SPEC_PLAN_PENDING);
+    expect(target.pendingStage).toBe(StageType.SPEC_PLAN);
   });
 
-  it('normalizes demo summary payloads from design generation output', () => {
+  it('does not allow skipping SPEC_PLAN', () => {
     const { service } = createService();
 
-    const normalized = (service as unknown as {
-      normalizeDesignOutput: (output: Record<string, unknown>) => {
-        demo: {
-          summary: string;
-          flows: Array<{ name: string; goal: string; entry: string; states: string[] }>;
-          scope: { included: string[]; excluded: string[] };
-          knownGaps: string[];
-        };
-        demoPages?: Array<{ componentName: string }>;
-      };
-    }).normalizeDesignOutput({
-      design: {
-        overview: 'Overview',
-        pages: [
-          {
-            name: 'Home',
-            route: '/',
-            layout: 'Layout',
-            keyComponents: ['X'],
-            interactions: ['Y'],
-          },
-        ],
-        demoScenario: 'Scenario',
-        designRationale: 'Rationale',
-      },
-      demo: {
-        summary: '验证主流程',
-        flows: [
-          {
-            name: '新建流程',
-            goal: '验证用户可以完成新建',
-            entry: '列表页右上角',
-            states: ['空态', '填写完成'],
-          },
-        ],
-        scope: {
-          included: ['列表', '新建弹窗'],
-          excluded: ['批量导出'],
-        },
-        knownGaps: ['暂未接真实数据'],
-      },
-      demoPages: [
-        {
-          route: 'flowx-demo',
-          componentName: 'DemoHubPage',
-          componentCode: 'export function DemoHubPage() { return null; }',
-          mockData: {},
-          filePath: 'src/pages/flowx-demo/DemoHubPage.tsx',
-        },
-        {
-          route: '/flowx-demo/create',
-          componentName: 'CreateDemoPage',
-          componentCode: 'export function CreateDemoPage() { return null; }',
-          mockData: {},
-          filePath: 'src/pages/CreateDemoPage.tsx',
-        },
-      ],
-    });
-
-    expect(normalized.demo.summary).toBe('验证主流程');
-    expect(normalized.demo.scope.included).toContain('列表');
-    expect(normalized.demoPages?.[0]?.componentName).toBe('DemoHubPage');
-    expect(normalized.demoPages?.[1]?.componentName).toBe('CreateDemoPage');
+    expect(() =>
+      (
+        service as unknown as {
+          resolveOptionalStageSkipTarget: (stage: StageType) => unknown;
+        }
+      ).resolveOptionalStageSkipTarget(StageType.SPEC_PLAN),
+    ).toThrow(/cannot be skipped/i);
   });
 });
 
@@ -499,7 +583,7 @@ describe('WorkflowService submitLocalDesign', () => {
       workflowRun: {
         findUniqueOrThrow: vi.fn().mockResolvedValue({
           id: 'run-ld',
-          status: 'TASK_SPLIT_PENDING',
+          status: 'SPEC_PLAN_PENDING',
           stageExecutions: [],
         }),
       },
@@ -717,7 +801,14 @@ describe('WorkflowService publish retry after partial failure', () => {
       codeExecution: {
         changedFiles: ['apps/api/src/workflow/workflow.service.ts'],
       },
-      plan: null,
+      stageExecutions: [
+        {
+          stage: 'SPEC_PLAN',
+          status: 'COMPLETED',
+          attempt: 1,
+          output: sampleSpecPlan,
+        },
+      ],
       workflowRepositories: [
         {
           name: 'flowx',

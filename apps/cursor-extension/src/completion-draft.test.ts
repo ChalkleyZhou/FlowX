@@ -41,6 +41,16 @@ describe('handoff snapshots', () => {
       {
         executionSessionId: 'session-1',
         requirement: { acceptanceCriteria: '', description: '', id: 'req-1', title: 'Add local handoff' },
+        specPlan: {
+          spec: { goal: 'Goal', scope: ['scope'], acceptanceCriteria: ['AC'] },
+          plan: {
+            approach: 'Approach',
+            sequence: ['Step 1'],
+            touchpoints: ['Touch 1'],
+            risks: ['Risk 1'],
+            verification: ['Verify 1'],
+          },
+        },
         repositories: [{ name: 'FlowX', url: null, workflowRepositoryId: 'workflow-repo-1', workingBranch: 'main' }],
         workflowRunId: 'workflow-1',
       },

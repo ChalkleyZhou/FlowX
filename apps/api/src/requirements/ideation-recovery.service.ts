@@ -7,8 +7,6 @@ const ideationStatusOrder = [
   'BRAINSTORM_CONFIRMED',
   'DESIGN_WAITING_CONFIRMATION',
   'DESIGN_CONFIRMED',
-  'DEMO_WAITING_CONFIRMATION',
-  'DEMO_CONFIRMED',
   'FINALIZED',
 ] as const;
 
@@ -112,12 +110,12 @@ export class IdeationRecoveryService implements OnModuleInit {
         id: true,
         ideationStatus: true,
         ideationSessions: {
-          where: { stage: { in: ['BRAINSTORM', 'DESIGN', 'DEMO'] } },
+          where: { stage: { in: ['BRAINSTORM', 'DESIGN'] } },
           select: { stage: true, status: true, createdAt: true },
           orderBy: { createdAt: 'desc' },
         },
         ideationArtifacts: {
-          where: { type: { in: ['BRAINSTORM_BRIEF', 'DESIGN_SPEC', 'DEMO_PAGE'] } },
+          where: { type: { in: ['BRAINSTORM_BRIEF', 'DESIGN_SPEC'] } },
           select: { type: true },
         },
       },
@@ -155,18 +153,6 @@ export class IdeationRecoveryService implements OnModuleInit {
     }
 
     const hasDesignArtifact = requirement.ideationArtifacts.some((artifact) => artifact.type === 'DESIGN_SPEC');
-    const hasDemoWaiting = requirement.ideationSessions.some(
-      (session) => session.stage === 'DEMO' && session.status === 'WAITING_CONFIRMATION',
-    );
-    if (hasDemoWaiting) {
-      return 'DEMO_WAITING_CONFIRMATION';
-    }
-
-    const hasDemoArtifact = requirement.ideationArtifacts.some((artifact) => artifact.type === 'DEMO_PAGE');
-    if (hasDemoArtifact) {
-      return 'DEMO_CONFIRMED';
-    }
-
     if (hasDesignArtifact) {
       return 'DESIGN_CONFIRMED';
     }

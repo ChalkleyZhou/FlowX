@@ -23,15 +23,3 @@ export class ReviseDesignDto {
   @IsNotEmpty()
   feedback!: string;
 }
-
-export class StartDemoDto {
-  @IsOptional()
-  @IsString()
-  humanHint?: string;
-}
-
-export class ReviseDemoDto {
-  @IsString()
-  @IsNotEmpty()
-  feedback!: string;
-}

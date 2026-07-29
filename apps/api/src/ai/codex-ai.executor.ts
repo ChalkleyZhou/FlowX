@@ -13,16 +13,14 @@ import {
   GenerateDesignInput,
   GenerateDesignOptions,
   GenerateDesignOutput,
-  GeneratePlanInput,
-  GeneratePlanOutput,
+  GenerateSpecPlanInput,
   RepositoryComponentContext,
   RepositoryContext,
   ReviewCodeInput,
   ReviewCodeOutput,
   ReviewDailyChangesInput,
   DailyCodeReviewUnitOutput,
-  SplitTasksInput,
-  SplitTasksOutput,
+  SpecPlanOutput,
 } from '../common/types';
 import { assertDesignSpecOutput, assertStrictGenerateDesignOutput } from './design-output-validate';
 import { brainstormPrompt } from '../prompts/brainstorm.prompt';
@@ -42,8 +40,7 @@ import { demoNavPlacementPrompt } from '../prompts/demo-nav-placement.prompt';
 import { executionPrompt } from '../prompts/execution.prompt';
 import { reviewPrompt } from '../prompts/review.prompt';
 import { dailyCodeReviewPrompt } from '../prompts/daily-code-review.prompt';
-import { taskSplitPrompt } from '../prompts/task-split.prompt';
-import { technicalPlanPrompt } from '../prompts/technical-plan.prompt';
+import { specPlanPrompt } from '../prompts/spec-plan.prompt';
 import { BRAINSTORM_MIN_EDGE_CASES, BRAINSTORM_MIN_USER_STORIES } from './brainstorm-schema-limits';
 import { AIExecutor, type AIInvocationContext } from './ai-executor';
 import { applyDemoNavAgentPatches } from '../common/apply-demo-nav-agent-patches';
@@ -216,28 +213,20 @@ ${body}
     };
   }
 
-  async splitTasks(input: SplitTasksInput, context?: AIInvocationContext): Promise<SplitTasksOutput> {
-    const prompt = await this.buildTaskSplitPrompt(input);
-    const parsed = await this.runJsonStage<SplitTasksOutput>(
-      'task-split.output.schema.json',
+  async generateSpecPlan(
+    input: GenerateSpecPlanInput,
+    context?: AIInvocationContext,
+  ): Promise<SpecPlanOutput> {
+    const prompt = await this.buildSpecPlanPrompt(input);
+    const parsed = await this.runJsonStage<SpecPlanOutput>(
+      'spec-plan.output.schema.json',
       prompt,
-      'task split',
+      'spec plan',
       this.getReadableRepositoryDirs(input.workspace?.repositories),
       context,
     );
-    this.assertSplitTasksOutput(parsed);
+    this.assertSpecPlanOutput(parsed);
     return parsed;
-  }
-
-  async generatePlan(input: GeneratePlanInput, context?: AIInvocationContext): Promise<GeneratePlanOutput> {
-    const prompt = await this.buildTechnicalPlanPrompt(input);
-    return this.runJsonStage<GeneratePlanOutput>(
-      'technical-plan.output.schema.json',
-      prompt,
-      'technical plan',
-      this.getReadableRepositoryDirs(input.workspace?.repositories),
-      context,
-    );
   }
 
   async executeTask(input: ExecuteTaskInput, context?: AIInvocationContext): Promise<ExecuteTaskOutput> {
@@ -303,62 +292,8 @@ ${body}
     );
   }
 
-  protected async buildTaskSplitPrompt(input: SplitTasksInput) {
+  protected async buildSpecPlanPrompt(input: GenerateSpecPlanInput) {
     const workspaceSection = await this.buildWorkspaceSection(input.workspace, 'snapshot');
-    const revisionSection = input.humanFeedback
-      ? `
-
-人工反馈:
-${input.humanFeedback}
-
-上一次任务拆解结果:
-${JSON.stringify(input.previousOutput ?? {}, null, 2)}
-
-请根据人工反馈修正上一次结果，而不是完全忽略既有上下文。`
-      : '';
-
-    const demoSection = input.demoPageContext
-      ? `
-
-已确认的 Demo 页面设计（参考）:
-${JSON.stringify(input.demoPageContext, null, 2)}
-
-请在任务拆解时参考 Demo 页面设计，确保任务与已确认的视觉方向一致。`
-      : '';
-
-    return `${taskSplitPrompt.system}
-
-你必须只返回符合 JSON Schema 的 JSON，不要输出解释文字或 Markdown。
-
-${taskSplitPrompt.user}
-
-这一阶段的目标是先做“功能层面的需求拆解”，而不是技术实现拆解。
-tasks 必须描述产品功能、用户流程、业务能力、交互结果或验收视角下的工作项，不要直接写成接口开发、表设计、组件改造、模块重构、文件修改之类的技术任务。
-你可以参考下方工作区信息理解业务边界与现有系统范围，但不要在这一阶段输出具体文件路径、代码目录、技术模块分工或仓库改动方案。
-如果仓库证据不足，只能帮助你判断产品边界或系统归属；不能因此脑补技术实现。真正的仓库落地方案留到 technical plan 阶段。
-每个 task 还必须补充:
-- surface: 该任务主要属于哪个产品端或协作面，例如 web、api、admin、mobile、ops；保持简洁，不要混合多个端
-- repositoryNames: 与该任务最相关的仓库名称数组，用于后续任务分配铺垫；只列最关键的 1 到 2 个仓库，避免泛化到整个工作区
-任务数量保持克制，优先输出少量但边界清晰的功能任务，不要为了覆盖仓库而过度拆分。
-
-需求信息:
-- 标题: ${input.requirement.title}
-- 描述: ${input.requirement.description}
-- 验收标准: ${input.requirement.acceptanceCriteria}
-${workspaceSection}
-${revisionSection}
-${demoSection}
-
-请输出:
-1. tasks: 面向产品功能和业务目标的任务拆解，每个任务都应该能表达一个独立的功能点、用户价值或业务能力
-   - 每个 task 必须包含 title、description、surface、repositoryNames
-2. ambiguities: 仍待人工确认的关键不明确点
-3. risks: 该需求实施过程中的主要风险
-`;
-  }
-
-  protected async buildTechnicalPlanPrompt(input: GeneratePlanInput) {
-    const groundingSection = await this.buildWorkspaceSection(input.workspace, 'snapshot');
     const liveWorkspaceSection = await this.buildWorkspaceSection(input.workspace, 'live');
     const revisionSection = input.humanFeedback
       ? `
@@ -366,53 +301,49 @@ ${demoSection}
 人工反馈:
 ${input.humanFeedback}
 
-上一次技术方案:
+上一次 Spec&Plan 结果:
 ${JSON.stringify(input.previousOutput ?? {}, null, 2)}
 
-请根据人工反馈修正方案，并尽量保留仍然合理的部分。`
+请根据人工反馈修正上一次结果，并尽量保留仍然合理的部分。`
       : '';
 
-    const demoSection = input.demoPageContext
+    const brainstormSection = input.brainstormContext
       ? `
 
-已确认的 Demo 页面设计（参考，制定技术方案时请考虑）:
-${JSON.stringify(input.demoPageContext, null, 2)}`
+已确认的头脑风暴上下文（参考）:
+${JSON.stringify(input.brainstormContext, null, 2)}`
       : '';
 
-    return `${technicalPlanPrompt.system}
+    const designSection = input.designContext
+      ? `
+
+已确认的设计上下文（参考）:
+${JSON.stringify(input.designContext, null, 2)}`
+      : '';
+
+    return `${specPlanPrompt.system}
 
 你必须只返回符合 JSON Schema 的 JSON，不要输出解释文字或 Markdown。
-顶层只允许这 5 个字段：summary、implementationPlan、filesToModify、newFiles、riskPoints。不要输出 meta、stages、objective、notes、verification、aggregateFilesToModify 等额外字段。
-这不是技术文档生成阶段，不要输出 spec、章节、标题树、Markdown 正文或“先分析后给 JSON”的说明文字。
-implementationPlan 必须是按执行顺序排列的字符串数组，每一项都要是“可执行动作句子”，不要只写阶段名、栏目名、目标名或抽象标题。
-所有 filesToModify / newFiles 都必须使用“目标代码仓库根目录下的相对路径”。
-filesToModify 只能填写当前仓库里已经存在的文件路径。
-newFiles 填写准备新增的最终文件路径；允许位于新建子目录下，但不要输出目录路径本身。
-riskPoints 只输出简洁风险点数组，不要扩展成长段说明或 mitigation 对象。
-不要输出 FlowX 编排系统文件、绝对路径、本地工作目录路径或临时目录路径。
+顶层只允许 spec、plan，以及可选的 notes；不要输出 tasks、demoPages、Markdown 正文或其他额外字段。
+spec 描述实现边界：goal、scope、nonGoals、acceptanceCriteria、constraints。
+plan 描述实现路径：approach、touchpoints、sequence、risks、verification。
+以文档为主，不要强制拆成 tasks 列表；禁止再生成或写入仓库 Demo 页面。
+touchpoints 可用模块/服务/页面级描述，不必强制完整文件路径清单。
 
-${technicalPlanPrompt.user}
-
-这一阶段才进入技术实现设计。你需要基于“已确认的功能任务”结合真实仓库上下文，把功能目标映射为技术落地方案。
-你必须严格依据下方给出的 repository grounding 结果和当前 workflow 仓库副本实时结构来生成方案。
-grounding 结果用于告诉你仓库职责、说明文件、候选入口与证据文件；实时结构用于确认当前目录与文件现状。
-不要假设项目一定存在 src/app.tsx、src/layouts、src/pages 等常见前端目录。
-如果目标文件在仓库证据中无法成立，请调整方案，或者把不确定点写进风险与说明中。
+${specPlanPrompt.user}
 
 需求信息:
 - 标题: ${input.requirement.title}
 - 描述: ${input.requirement.description}
 - 验收标准: ${input.requirement.acceptanceCriteria}
 repository grounding:
-${groundingSection}
+${workspaceSection}
 
 当前仓库实时结构:
 ${liveWorkspaceSection}
 ${revisionSection}
-${demoSection}
-
-已确认任务:
-${input.tasks.map((task, index) => `${index + 1}. ${task.title}: ${task.description}`).join('\n')}
+${brainstormSection}
+${designSection}
 `;
   }
 
@@ -429,6 +360,7 @@ ${input.humanFeedback}
 
 你需要基于这条反馈继续修改当前仓库，而不是回退已完成的合理改动。`
       : '';
+    const { spec, plan } = input.specPlan;
 
     return `${executionPrompt.system}
 
@@ -442,13 +374,13 @@ ${executionPrompt.user}
 
 目标要求:
 - 只在当前仓库内进行必要改动
-- 优先落地已确认技术方案中与当前仓库相关的部分
+- 优先落地已确认 Spec&Plan 中与当前仓库相关的部分
 - 不要创建与当前仓库无关的改动
 - 所有涉及文件的描述都使用当前仓库根目录下的相对路径
 - 不要提及 FlowX 编排系统文件或本地绝对路径
 - 如果当前仓库存在可实施项，你必须至少落地一个真实文件改动，不能只做分析
-- 如果你判断当前仓库不该改，请先检查技术方案中的文件和任务是否真的与当前仓库无关
-- 如果最终仍无法修改，请在结束前明确写出阻塞原因，例如“计划文件路径不存在”或“当前仓库不包含目标模块”
+- 如果你判断当前仓库不该改，请先检查 Spec&Plan 的 touchpoints 与 sequence 是否真的与当前仓库无关
+- 如果最终仍无法修改，请在结束前明确写出阻塞原因，例如“计划触点不存在”或“当前仓库不包含目标模块”
 - 完成后不要输出 Markdown，只需结束任务
 
 需求信息:
@@ -460,19 +392,27 @@ ${executionPrompt.user}
 ${workspaceSection}
 ${revisionSection}
 
-任务:
-${input.tasks.map((task, index) => `${index + 1}. ${task.title}: ${task.description}`).join('\n')}
+已确认 Spec:
+- 目标: ${spec.goal}
+- 范围:
+${spec.scope.map((item) => `  - ${item}`).join('\n') || '  - 无'}
+- 非目标:
+${spec.nonGoals.map((item) => `  - ${item}`).join('\n') || '  - 无'}
+- 验收标准:
+${spec.acceptanceCriteria.map((item) => `  - ${item}`).join('\n') || '  - 无'}
+- 约束:
+${spec.constraints.map((item) => `  - ${item}`).join('\n') || '  - 无'}
 
-已确认技术方案:
-- 摘要: ${input.plan.summary}
-- 实施步骤:
-${input.plan.implementationPlan.map((item, index) => `${index + 1}. ${item}`).join('\n')}
-- 修改文件:
-${input.plan.filesToModify.map((item) => `  - ${item}`).join('\n') || '  - 无'}
-- 新增文件:
-${input.plan.newFiles.map((item) => `  - ${item}`).join('\n') || '  - 无'}
-- 风险点:
-${input.plan.riskPoints.map((item) => `  - ${item}`).join('\n') || '  - 无'}
+已确认 Plan:
+- 方案: ${plan.approach}
+- 触点:
+${plan.touchpoints.map((item) => `  - ${item}`).join('\n') || '  - 无'}
+- 顺序:
+${plan.sequence.map((item, index) => `${index + 1}. ${item}`).join('\n') || '无'}
+- 风险:
+${plan.risks.map((item) => `  - ${item}`).join('\n') || '  - 无'}
+- 验证:
+${plan.verification.map((item) => `  - ${item}`).join('\n') || '  - 无'}
 `;
   }
 
@@ -492,6 +432,7 @@ ${JSON.stringify(input.previousOutput ?? {}, null, 2)}
 
 请根据人工反馈修正审查结论。`
       : '';
+    const { spec, plan } = input.specPlan;
 
     return `${reviewPrompt.system}
 
@@ -506,10 +447,15 @@ ${reviewPrompt.user}
 ${workspaceSection}
 ${revisionSection}
 
-技术方案:
-- 摘要: ${input.plan.summary}
-- 实施步骤:
-${input.plan.implementationPlan.map((item, index) => `${index + 1}. ${item}`).join('\n')}
+Spec&Plan:
+- 目标: ${spec.goal}
+- 方案: ${plan.approach}
+- 验收标准:
+${spec.acceptanceCriteria.map((item) => `  - ${item}`).join('\n') || '  - 无'}
+- 顺序:
+${plan.sequence.map((item, index) => `${index + 1}. ${item}`).join('\n') || '无'}
+- 验证:
+${plan.verification.map((item) => `  - ${item}`).join('\n') || '  - 无'}
 
 执行结果:
 - Patch 摘要: ${input.execution.patchSummary}
@@ -1234,11 +1180,8 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     }
   }
 
-  protected assertSplitTasksOutput(output: SplitTasksOutput) {
-    if (!Array.isArray(output.tasks) || output.tasks.length === 0) {
-      throw new Error(`${this.providerLabel} did not return any tasks.`);
-    }
-    if (!Array.isArray(output.ambiguities) || !Array.isArray(output.risks)) {
+  protected assertSpecPlanOutput(output: SpecPlanOutput) {
+    if (!output?.spec?.goal || !output?.plan?.approach) {
       throw new Error(`${this.providerLabel} output shape is invalid.`);
     }
   }
@@ -1594,10 +1537,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     repositories: RepositoryContext[],
     diffArtifacts: ExecuteTaskOutput['diffArtifacts'],
   ) {
-    const planFiles = [
-      ...(input.plan.filesToModify ?? []),
-      ...(input.plan.newFiles ?? []),
-    ];
+    const { plan } = input.specPlan;
 
     const repositoryLines = repositories.map((repository) => {
       const artifact = diffArtifacts.find((item) => item.repository === repository.name);
@@ -1611,10 +1551,10 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
 
     return [
       `${this.providerLabel} execution finished without producing any code changes.`,
-      `Plan filesToModify: ${input.plan.filesToModify.join(', ') || '无'}`,
-      `Plan newFiles: ${input.plan.newFiles.join(', ') || '无'}`,
-      `Plan implementation steps: ${input.plan.implementationPlan.join(' | ') || '无'}`,
-      `All planned files: ${planFiles.join(', ') || '无'}`,
+      `Spec goal: ${input.specPlan.spec.goal}`,
+      `Plan approach: ${plan.approach}`,
+      `Plan touchpoints: ${plan.touchpoints.join(', ') || '无'}`,
+      `Plan sequence: ${plan.sequence.join(' | ') || '无'}`,
       `Repositories inspected: ${repositoryLines.join(' || ') || '无'}`,
       input.humanFeedback ? `Human feedback: ${input.humanFeedback}` : 'Human feedback: 无',
     ].join(' ');

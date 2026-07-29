@@ -183,7 +183,6 @@ Agent 典型调用顺序：`flowx_list_tasks` → `flowx_bind_workflow` → `flo
   "summary": "设计摘要",
   "output": {
     "design": {},
-    "demo": {},
     "designArtifact": {
       "html": "<!doctype html><html>...</html>"
     }

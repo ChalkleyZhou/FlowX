@@ -50,6 +50,20 @@ export interface LocalHandoffPayload {
     description: string;
     acceptanceCriteria: string;
   };
+  specPlan: {
+    spec: {
+      goal: string;
+      scope: string[];
+      acceptanceCriteria: string[];
+    };
+    plan: {
+      approach: string;
+      sequence: string[];
+      touchpoints: string[];
+      verification: string[];
+      risks: string[];
+    };
+  };
   repositories: Array<{
     workflowRepositoryId: string;
     repositoryId?: string | null;
@@ -166,40 +180,17 @@ export class FlowXClient {
     return this.post(id, 'design/revise', { feedback });
   }
 
-  runDemo(id: string) {
-    return this.post(id, 'demo/run');
+  runSpecPlan(id: string) {
+    return this.post(id, 'spec-plan/run');
   }
-  confirmDemo(id: string) {
-    return this.post(id, 'demo/confirm');
+  confirmSpecPlan(id: string) {
+    return this.post(id, 'spec-plan/confirm');
   }
-  reviseDemo(id: string, feedback: string) {
-    return this.post(id, 'demo/revise', { feedback });
+  rejectSpecPlan(id: string) {
+    return this.post(id, 'spec-plan/reject');
   }
-
-  runTaskSplit(id: string) {
-    return this.post(id, 'task-split/run');
-  }
-  confirmTaskSplit(id: string) {
-    return this.post(id, 'task-split/confirm');
-  }
-  rejectTaskSplit(id: string) {
-    return this.post(id, 'task-split/reject');
-  }
-  reviseTaskSplit(id: string, feedback: string) {
-    return this.post(id, 'task-split/revise', { feedback });
-  }
-
-  runPlan(id: string) {
-    return this.post(id, 'plan/run');
-  }
-  confirmPlan(id: string) {
-    return this.post(id, 'plan/confirm');
-  }
-  rejectPlan(id: string) {
-    return this.post(id, 'plan/reject');
-  }
-  revisePlan(id: string, feedback: string) {
-    return this.post(id, 'plan/revise', { feedback });
+  reviseSpecPlan(id: string, feedback: string) {
+    return this.post(id, 'spec-plan/revise', { feedback });
   }
 
   runExecution(id: string) {

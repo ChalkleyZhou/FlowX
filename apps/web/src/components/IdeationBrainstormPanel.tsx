@@ -144,9 +144,6 @@ export function IdeationBrainstormPanel({
     ideationStatus === 'DESIGN_PENDING' ||
     ideationStatus === 'DESIGN_WAITING_CONFIRMATION' ||
     ideationStatus === 'DESIGN_CONFIRMED' ||
-    ideationStatus === 'DEMO_PENDING' ||
-    ideationStatus === 'DEMO_WAITING_CONFIRMATION' ||
-    ideationStatus === 'DEMO_CONFIRMED' ||
     ideationStatus === 'FINALIZED';
 
   const brief: BrainstormBrief | null = latestOutputSession ? parseBrainstormBrief(latestOutputSession.output) : null;

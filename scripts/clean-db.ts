@@ -136,8 +136,6 @@ async function cleanWorkflowData(prisma: PrismaClient) {
     });
     await tx.reviewReport.deleteMany();
     await tx.codeExecution.deleteMany();
-    await tx.plan.deleteMany();
-    await tx.task.deleteMany();
     await tx.stageExecution.deleteMany();
     await tx.workflowRepository.deleteMany();
     await tx.deployJobRecord.deleteMany({ where: { workflowRunId: { not: null } } });
@@ -152,8 +150,6 @@ async function cleanBusinessData(prisma: PrismaClient) {
     await tx.bug.deleteMany();
     await tx.reviewReport.deleteMany();
     await tx.codeExecution.deleteMany();
-    await tx.plan.deleteMany();
-    await tx.task.deleteMany();
     await tx.stageExecution.deleteMany();
     await tx.workflowRepository.deleteMany();
     await tx.deployJobRecord.deleteMany();

@@ -60,7 +60,7 @@ flowchart LR
 | --- | --- | --- |
 | `workspaces` | 工作区、Repository 登记、同步和本地副本 | 项目管理中心 / AI 上下文中心 |
 | `projects` | 项目基础信息 | 项目管理中心 |
-| `requirements` | 需求、ideation、设计和 demo 编排 | 项目管理中心 / 研发流程中心 |
+| `requirements` | 需求、ideation 与设计编排 | 项目管理中心 / 研发流程中心 |
 | `workflow` | 工作流状态机、阶段执行、本地/云端执行和审查 | 研发流程中心 |
 | `ai`、`prompts` | Executor、Prompt 和输出 schema | AI 上下文中心 |
 | `schedule` | 需求排期与成员分配 | 项目管理中心 |
@@ -103,7 +103,7 @@ Workspace
   -> WorkflowRun
   -> WorkflowRepository
   -> StageExecution
-  -> Task / Plan / CodeExecution / ReviewReport
+  -> CodeExecution / ReviewReport
   -> ReviewFinding
   -> Issue / Bug
   -> DeployJobRecord

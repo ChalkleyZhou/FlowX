@@ -29,11 +29,11 @@ describe('buildRunDetailModel action gating', () => {
     ]);
   });
 
-  it('offers confirm/reject/revise only when plan is waiting for confirmation', () => {
-    expect(actionIds(buildRunDetailModel(makeRun('PLAN_WAITING_CONFIRMATION')), 'TECHNICAL_PLAN')).toEqual([
-      'plan.confirm',
-      'plan.reject',
-      'plan.revise',
+  it('offers confirm/reject/revise only when spec-plan is waiting for confirmation', () => {
+    expect(actionIds(buildRunDetailModel(makeRun('SPEC_PLAN_WAITING_CONFIRMATION')), 'SPEC_PLAN')).toEqual([
+      'specPlan.confirm',
+      'specPlan.reject',
+      'specPlan.revise',
     ]);
   });
 
@@ -68,10 +68,10 @@ describe('buildRunDetailModel action gating', () => {
   });
 
   it('marks only the current stage and gives non-current stages no actions', () => {
-    const model = buildRunDetailModel(makeRun('PLAN_WAITING_CONFIRMATION'));
+    const model = buildRunDetailModel(makeRun('SPEC_PLAN_WAITING_CONFIRMATION'));
     const current = model.timeline.filter((item) => item.isCurrent);
     expect(current).toHaveLength(1);
-    expect(current[0]?.key).toBe('TECHNICAL_PLAN');
+    expect(current[0]?.key).toBe('SPEC_PLAN');
     expect(actionIds(model, 'DESIGN')).toEqual([]);
   });
 });

@@ -60,10 +60,7 @@ FlowX 容器内部包含两个服务：
 | `OPENAI_API_KEY`                       | Codex/API 认证方式之一                                                                 | 否              |
 | `CURSOR_API_KEY`                       | Cursor CLI 服务端认证                                                                 | `cursor` 时建议填写 |
 | `OPENDESIGN_MCP_ENABLED`               | 设计阶段是否提示 agent 用 OpenDesign MCP 取材生成高保真 HTML 设计稿；需 host 预装 `od` 并 `od mcp install` | 否，默认关闭         |
-| `CURSOR_DEMO_WALL_TIMEOUT_MS`          | Demo 生成最大墙钟超时（毫秒），有持续进度时允许长跑                                                     | 否，默认 `1200000` |
 | `CURSOR_NO_PROGRESS_TIMEOUT_MS`        | Cursor 进程无输出/无进展判定超时（毫秒）；设 `0` 关闭该判定                                            | 否，默认 `0`       |
-| `FLOWX_DEMO_GENERATION_TIMEOUT_MS`     | 需求服务层 Demo 生成总超时（毫秒）                                                            | 否，默认 `1200000` |
-| `FLOWX_DEMO_INCLUDE_COMPONENT_CONTEXT` | Demo 生成时是否注入完整组件上下文（关闭后仅传轻量仓库结构摘要）                                          | 否，默认 `false`   |
 | `FLOWX_IDEATION_STALE_HEARTBEAT_MS`    | 启动恢复时判定 RUNNING 会话“心跳过期”的阈值（毫秒）                                                | 否，默认 `120000`  |
 | `FLOWX_CREDENTIAL_MASTER_KEY`          | 用户级 Cursor 凭据加密主密钥（BYO 模式）                                                       | 启用用户自有凭据时必填    |
 | `FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL` | 是否强制仅允许用户级 Cursor 凭据（禁用实例级/登录态回退）                                                | 否，默认 `false`   |

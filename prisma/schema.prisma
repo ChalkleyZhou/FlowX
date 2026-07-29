@@ -550,8 +550,6 @@ model WorkflowRun {
   requirement          Requirement          @relation(fields: [requirementId], references: [id])
   fixForBug            Bug?                 @relation("BugFixWorkflow")
   stageExecutions      StageExecution[]
-  tasks                Task[]
-  plan                 Plan?
   codeExecution        CodeExecution?
   reviewReport         ReviewReport?
   workflowRepositories WorkflowRepository[]
@@ -739,34 +737,6 @@ model Evidence {
   @@index([executionSessionId, evidenceType, occurredAt])
   @@index([artifactId, createdAt])
   @@index([status, occurredAt])
-}
-
-model Task {
-  id            String      @id @default(cuid())
-  workflowRunId String
-  workflowRun   WorkflowRun @relation(fields: [workflowRunId], references: [id])
-  title         String
-  description   String
-  surface       String?
-  repositoryNames Json?
-  order         Int
-  status        String      @default("DRAFT")
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-}
-
-model Plan {
-  id                 String      @id @default(cuid())
-  workflowRunId      String      @unique
-  workflowRun        WorkflowRun @relation(fields: [workflowRunId], references: [id])
-  status             String      @default("DRAFT")
-  summary            String
-  implementationPlan Json
-  filesToModify      Json
-  newFiles           Json
-  riskPoints         Json
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
 }
 
 model CodeExecution {

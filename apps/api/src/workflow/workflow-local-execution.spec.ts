@@ -1,17 +1,26 @@
 import { BadRequestException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import type { GeneratePlanOutput } from '../common/types';
+import type { SpecPlanOutput } from '../common/types';
 import { WorkflowArtifactService } from './workflow-artifact.service';
 import { WorkflowGitRemoteService } from './workflow-git-remote.service';
 import { buildExecutionOutputFromLocalReport } from './workflow-local-execution-output';
 import { WorkflowService } from './workflow.service';
 
-const confirmedPlan: GeneratePlanOutput = {
-  summary: 'Plan summary',
-  implementationPlan: ['step'],
-  filesToModify: ['src/App.tsx'],
-  newFiles: [],
-  riskPoints: [],
+const confirmedSpecPlan: SpecPlanOutput = {
+  spec: {
+    goal: 'Plan summary',
+    scope: ['Local handoff feature'],
+    nonGoals: [],
+    acceptanceCriteria: ['criteria'],
+    constraints: [],
+  },
+  plan: {
+    approach: 'Plan summary',
+    touchpoints: ['src/App.tsx'],
+    sequence: ['step'],
+    risks: [],
+    verification: ['criteria'],
+  },
 };
 
 function createLocalExecutionService(prisma: Record<string, unknown> = {}) {
@@ -78,7 +87,7 @@ const baseWorkflow = {
     acceptanceCriteria: 'criteria',
   },
   tasks: [],
-  plan: { ...confirmedPlan, status: 'CONFIRMED' },
+  plan: null,
   workflowRepositories: [
     {
       id: 'wr-1',
@@ -142,7 +151,7 @@ describe('WorkflowService local execution', () => {
     const { service } = createLocalExecutionService(prisma);
 
     vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(baseWorkflow);
-    vi.spyOn(service as never, 'resolveConfirmedPlan' as never).mockResolvedValue(confirmedPlan);
+    vi.spyOn(service as never, 'resolveConfirmedSpecPlan' as never).mockResolvedValue(confirmedSpecPlan);
     vi.spyOn(service as never, 'assertStageNotRunning' as never).mockImplementation(() => undefined);
     vi.spyOn(service as never, 'transitionWorkflow' as never).mockResolvedValue(undefined);
     vi.spyOn(service as never, 'createStageExecution' as never).mockResolvedValue({
@@ -177,7 +186,7 @@ describe('WorkflowService local execution', () => {
 
     vi.spyOn(workflowGitRemoteService, 'verifyBranchTip').mockResolvedValue(false);
     vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(runningWorkflow);
-    vi.spyOn(service as never, 'resolveConfirmedPlan' as never).mockResolvedValue(confirmedPlan);
+    vi.spyOn(service as never, 'resolveConfirmedSpecPlan' as never).mockResolvedValue(confirmedSpecPlan);
 
     await expect(
       service.completeLocalExecution('workflow-run-local-001', {
@@ -225,7 +234,7 @@ describe('WorkflowService local execution', () => {
       ],
     };
     vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(runningWorkflow);
-    vi.spyOn(service as never, 'resolveConfirmedPlan' as never).mockResolvedValue(confirmedPlan);
+    vi.spyOn(service as never, 'resolveConfirmedSpecPlan' as never).mockResolvedValue(confirmedSpecPlan);
     vi.spyOn(service as never, 'finalizeExecutionSuccess' as never).mockResolvedValue(undefined);
 
     const result = await service.completeLocalExecutionBySession('session-1', {
@@ -311,7 +320,7 @@ describe('WorkflowService local execution', () => {
       ],
     };
     vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(completedWorkflow);
-    vi.spyOn(service as never, 'resolveConfirmedPlan' as never).mockResolvedValue(confirmedPlan);
+    vi.spyOn(service as never, 'resolveConfirmedSpecPlan' as never).mockResolvedValue(confirmedSpecPlan);
 
     const result = await service.completeLocalExecution('workflow-run-local-001', {
       idempotencyKey: 'complete-1',
@@ -408,8 +417,7 @@ describe('buildExecutionOutputFromLocalReport', () => {
           description: 'desc',
           acceptanceCriteria: 'criteria',
         },
-        plan: confirmedPlan,
-        tasks: [],
+        specPlan: confirmedSpecPlan,
         repositories: [
           {
             workflowRepositoryId: 'wr-1',

@@ -117,7 +117,7 @@ FlowX 工作流详情重新打开本地设计，刷新会话凭据后再同步�
 
 ### result.json 校验失败
 
-确认 `idempotencyKey` 非空，并且 `output.design`、`output.demo`、
+确认 `idempotencyKey` 非空，并且 `output.design`、
 `output.designArtifact.html` 都存在。HTML 必须是完整、自包含文档。
 
 ## 安全边界

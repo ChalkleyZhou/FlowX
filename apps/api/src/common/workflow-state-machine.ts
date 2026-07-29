@@ -5,9 +5,7 @@ const rollbackTargets: WorkflowRunStatus[] = [
   WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING,
   WorkflowRunStatus.BRAINSTORM_PENDING,
   WorkflowRunStatus.DESIGN_PENDING,
-  WorkflowRunStatus.DEMO_PENDING,
-  WorkflowRunStatus.TASK_SPLIT_PENDING,
-  WorkflowRunStatus.PLAN_PENDING,
+  WorkflowRunStatus.SPEC_PLAN_PENDING,
   WorkflowRunStatus.EXECUTION_PENDING,
   WorkflowRunStatus.REVIEW_PENDING,
   WorkflowRunStatus.HUMAN_REVIEW_PENDING,
@@ -27,68 +25,40 @@ const workflowTransitions: Record<WorkflowRunStatus, WorkflowRunStatus[]> = {
   ],
   [WorkflowRunStatus.DESIGN_PENDING]: [
     WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION,
-    WorkflowRunStatus.DEMO_PENDING,
+    WorkflowRunStatus.SPEC_PLAN_PENDING,
     WorkflowRunStatus.BRAINSTORM_PENDING,
     WorkflowRunStatus.FAILED,
   ],
   [WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION]: [
-    WorkflowRunStatus.DEMO_PENDING,
+    WorkflowRunStatus.SPEC_PLAN_PENDING,
     WorkflowRunStatus.DESIGN_PENDING,
     WorkflowRunStatus.BRAINSTORM_PENDING,
     WorkflowRunStatus.FAILED,
   ],
-  [WorkflowRunStatus.DEMO_PENDING]: [
-    WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
-    WorkflowRunStatus.TASK_SPLIT_PENDING,
+  [WorkflowRunStatus.SPEC_PLAN_PENDING]: [
+    WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION,
     WorkflowRunStatus.DESIGN_PENDING,
     WorkflowRunStatus.FAILED,
   ],
-  [WorkflowRunStatus.DEMO_WAITING_CONFIRMATION]: [
-    WorkflowRunStatus.DEMO_PENDING,
-    WorkflowRunStatus.TASK_SPLIT_PENDING,
+  [WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION]: [
+    WorkflowRunStatus.SPEC_PLAN_CONFIRMED,
+    WorkflowRunStatus.SPEC_PLAN_PENDING,
     WorkflowRunStatus.DESIGN_PENDING,
     WorkflowRunStatus.FAILED,
   ],
-  [WorkflowRunStatus.TASK_SPLIT_PENDING]: [
-    WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION,
-    WorkflowRunStatus.DEMO_PENDING,
-    WorkflowRunStatus.FAILED,
-  ],
-  [WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION]: [
-    WorkflowRunStatus.TASK_SPLIT_CONFIRMED,
-    WorkflowRunStatus.TASK_SPLIT_PENDING,
-    WorkflowRunStatus.DEMO_PENDING,
-    WorkflowRunStatus.FAILED,
-  ],
-  [WorkflowRunStatus.TASK_SPLIT_CONFIRMED]: [
-    WorkflowRunStatus.PLAN_PENDING,
-    WorkflowRunStatus.DEMO_PENDING,
-  ],
-  [WorkflowRunStatus.PLAN_PENDING]: [
-    WorkflowRunStatus.PLAN_WAITING_CONFIRMATION,
-    WorkflowRunStatus.TASK_SPLIT_PENDING,
-    WorkflowRunStatus.FAILED,
-  ],
-  [WorkflowRunStatus.PLAN_WAITING_CONFIRMATION]: [
-    WorkflowRunStatus.PLAN_CONFIRMED,
-    WorkflowRunStatus.PLAN_PENDING,
-    WorkflowRunStatus.TASK_SPLIT_PENDING,
-    WorkflowRunStatus.FAILED,
-  ],
-  [WorkflowRunStatus.PLAN_CONFIRMED]: [
+  [WorkflowRunStatus.SPEC_PLAN_CONFIRMED]: [
     WorkflowRunStatus.EXECUTION_PENDING,
-    WorkflowRunStatus.PLAN_PENDING,
-    WorkflowRunStatus.TASK_SPLIT_PENDING,
+    WorkflowRunStatus.SPEC_PLAN_PENDING,
   ],
   [WorkflowRunStatus.EXECUTION_PENDING]: [
     WorkflowRunStatus.EXECUTION_RUNNING,
-    WorkflowRunStatus.PLAN_PENDING,
+    WorkflowRunStatus.SPEC_PLAN_PENDING,
     WorkflowRunStatus.FAILED,
   ],
   [WorkflowRunStatus.EXECUTION_RUNNING]: [
     WorkflowRunStatus.REVIEW_PENDING,
     WorkflowRunStatus.EXECUTION_PENDING,
-    WorkflowRunStatus.PLAN_PENDING,
+    WorkflowRunStatus.SPEC_PLAN_PENDING,
     WorkflowRunStatus.FAILED,
   ],
   [WorkflowRunStatus.REVIEW_PENDING]: [
@@ -167,18 +137,10 @@ export class WorkflowStateMachine {
         WorkflowRunStatus.DESIGN_PENDING,
         WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION,
       ],
-      [StageType.DEMO]: [
-        WorkflowRunStatus.DEMO_PENDING,
-        WorkflowRunStatus.DEMO_WAITING_CONFIRMATION,
-      ],
-      [StageType.TASK_SPLIT]: [
-        WorkflowRunStatus.TASK_SPLIT_PENDING,
-        WorkflowRunStatus.TASK_SPLIT_WAITING_CONFIRMATION,
-      ],
-      [StageType.TECHNICAL_PLAN]: [
-        WorkflowRunStatus.PLAN_PENDING,
-        WorkflowRunStatus.PLAN_WAITING_CONFIRMATION,
-        WorkflowRunStatus.PLAN_CONFIRMED,
+      [StageType.SPEC_PLAN]: [
+        WorkflowRunStatus.SPEC_PLAN_PENDING,
+        WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION,
+        WorkflowRunStatus.SPEC_PLAN_CONFIRMED,
       ],
       [StageType.EXECUTION]: [
         WorkflowRunStatus.EXECUTION_PENDING,
