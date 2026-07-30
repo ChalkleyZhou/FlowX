@@ -71,3 +71,16 @@ if [ "$(table_exists CodeReviewSource)" = "0" ] \
   echo "Creating CodeReviewSource and backfilling from BriefingSource in ${DB_PATH}..."
   sqlite3 "$DB_PATH" < "$CODE_REVIEW_SOURCE_MIGRATION_SQL"
 fi
+
+# --- Spec & Plan redesign: drop obsolete Task/Plan tables before db push ---
+# Spec & Plan content now lives in StageExecution.output; keeping non-empty Task/Plan
+# tables causes `prisma db push` to abort with a data-loss warning.
+if [ "$(table_exists Task)" = "1" ] || [ "$(table_exists Plan)" = "1" ]; then
+  echo "Dropping obsolete Task/Plan tables for Spec & Plan redesign in ${DB_PATH}..."
+  sqlite3 "$DB_PATH" <<'SQL'
+PRAGMA foreign_keys=OFF;
+DROP TABLE IF EXISTS "Task";
+DROP TABLE IF EXISTS "Plan";
+PRAGMA foreign_keys=ON;
+SQL
+fi
