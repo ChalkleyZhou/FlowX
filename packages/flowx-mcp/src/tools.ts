@@ -51,6 +51,7 @@ function buildIdempotencyKey(prefix: string, executionSessionId: string) {
 
 const designReportSchema = z.object({
   idempotencyKey: z.string().min(1),
+  markdown: z.string().min(1),
   summary: z.string().optional(),
   output: z.object({
     design: z.record(z.string(), z.unknown()),
@@ -477,7 +478,7 @@ export function registerFlowXTools(
     {
       title: 'Submit OpenDesign Result',
       description:
-        'Submit a DesignCompletionReport (including surfaces with self-contained HTML pages) back to FlowX.',
+        'Submit the confirmed design.md body and a DesignCompletionReport with self-contained HTML surfaces back to FlowX.',
       inputSchema: z.object({
         executionSessionId: z
           .string()

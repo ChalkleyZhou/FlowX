@@ -252,6 +252,7 @@ describe('createFlowXToolHandlers', () => {
     const result = await handlers.flowx_submit_design({
       report: {
         idempotencyKey: 'design:session-1:v1',
+        markdown: '# 设计文档\n\n已确认的设计正文。',
         summary: 'Done',
         output: {
           design: { overview: 'A' },
@@ -266,6 +267,40 @@ describe('createFlowXToolHandlers', () => {
       expect.objectContaining({ idempotencyKey: 'design:session-1:v1' }),
     );
     expect(result.isError).toBeUndefined();
+  });
+
+  it('rejects a design report without confirmed markdown', async () => {
+    const apiClient = {
+      submitDesign: vi.fn().mockResolvedValue({ ok: true }),
+    };
+    const handlers = createFlowXToolHandlers({
+      apiClient: apiClient as never,
+      collectGitReport: vi.fn() as never,
+      readActiveDesignSession: async () => ({
+        workflowRunId: 'workflow-1',
+        executionSessionId: 'session-1',
+        apiBaseUrl: 'http://127.0.0.1:3000',
+        accessToken: 'token-1',
+        accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
+        updatedAt: '2026-07-22T00:00:00.000Z',
+      }),
+      resolveDesignClient: async () => apiClient as never,
+    });
+
+    const result = await handlers.flowx_submit_design({
+      report: {
+        idempotencyKey: 'design:session-1:v1',
+        output: {
+          design: { overview: 'A' },
+          demo: { summary: 'B' },
+          surfaces: [{ id: 'Web端', pages: [{ id: 'index', html: '<!doctype html><html><body>Hi</body></html>' }] }],
+        },
+      } as never,
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('Invalid design report');
+    expect(apiClient.submitDesign).not.toHaveBeenCalled();
   });
 
   it('submits brainstorm markdown for the active execution session', async () => {

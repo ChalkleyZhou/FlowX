@@ -64,6 +64,7 @@ export interface RegisterEvidenceInput {
 
 export interface DesignCompletionReportInput {
   idempotencyKey: string;
+  markdown: string;
   summary?: string;
   output: {
     design: Record<string, unknown>;

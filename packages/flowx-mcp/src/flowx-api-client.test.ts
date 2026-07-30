@@ -61,6 +61,7 @@ describe('FlowXApiClient', () => {
     });
     await client.submitDesign('session-1', {
       idempotencyKey: 'k1',
+      markdown: '# 设计文档\n\n已确认的设计正文。',
       output: {
         design: {},
         demo: {},
