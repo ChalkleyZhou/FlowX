@@ -904,35 +904,22 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ requirementId, repositoryIds, aiProvider }),
     }),
-  runTaskSplit: (id: string) =>
-    request<WorkflowRun>(`/workflow-runs/${id}/task-split/run`, { method: 'POST' }),
-  confirmTaskSplit: (id: string) =>
-    request<WorkflowRun>(`/workflow-runs/${id}/task-split/confirm`, { method: 'POST' }),
-  rejectTaskSplit: (id: string) =>
-    request<WorkflowRun>(`/workflow-runs/${id}/task-split/reject`, { method: 'POST' }),
-  reviseTaskSplit: (id: string, feedback: string) =>
-    request<WorkflowRun>(`/workflow-runs/${id}/task-split/revise`, {
+  runSpecPlan: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/run`, { method: 'POST' }),
+  reviseSpecPlan: (id: string, feedback: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/revise`, {
       method: 'POST',
       body: JSON.stringify({ feedback }),
     }),
-  manualEditTaskSplit: (id: string, output: unknown) =>
-    request<WorkflowRun>(`/workflow-runs/${id}/task-split/manual-edit`, {
-      method: 'PATCH',
-      body: JSON.stringify({ output }),
-    }),
-  runPlan: (id: string) =>
-    request<WorkflowRun>(`/workflow-runs/${id}/plan/run`, { method: 'POST' }),
-  confirmPlan: (id: string) =>
-    request<WorkflowRun>(`/workflow-runs/${id}/plan/confirm`, { method: 'POST' }),
-  rejectPlan: (id: string) =>
-    request<WorkflowRun>(`/workflow-runs/${id}/plan/reject`, { method: 'POST' }),
-  revisePlan: (id: string, feedback: string) =>
-    request<WorkflowRun>(`/workflow-runs/${id}/plan/revise`, {
+  confirmSpecPlan: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/confirm`, { method: 'POST' }),
+  rejectSpecPlan: (id: string, feedback?: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/reject`, {
       method: 'POST',
       body: JSON.stringify({ feedback }),
     }),
-  manualEditPlan: (id: string, output: unknown) =>
-    request<WorkflowRun>(`/workflow-runs/${id}/plan/manual-edit`, {
+  manualEditSpecPlan: (id: string, output: SpecPlanOutput) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/manual-edit`, {
       method: 'PATCH',
       body: JSON.stringify({ output }),
     }),
