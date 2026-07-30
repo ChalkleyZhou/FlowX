@@ -68,6 +68,9 @@ describe('OpenDesignAdapter', () => {
       requirementTitle: 'Export',
     });
     expect(launched.imported).toBe(false);
+    expect(readFileSync(join(launched.workspacePath, 'design.md'), 'utf8')).toContain('页面与交互');
+    expect(readFileSync(join(launched.workspacePath, 'README.md'), 'utf8')).toContain('design.md');
+    expect(readFileSync(join(launched.workspacePath, 'README.md'), 'utf8')).toContain('markdown');
     const result = JSON.parse(readFileSync(launched.resultPath, 'utf8'));
     result.output.surfaces = [
       {
@@ -76,6 +79,7 @@ describe('OpenDesignAdapter', () => {
       },
     ];
     writeFileSync(launched.resultPath, JSON.stringify(result));
+    writeFileSync(join(launched.workspacePath, 'design.md'), '# 确认设计\n\n导出页面设计。');
 
     await adapter.launch({
       ...launchInput,
@@ -86,7 +90,11 @@ describe('OpenDesignAdapter', () => {
 
     await adapter.submit('session-1');
     expect(edgeClient.submitDesign).toHaveBeenCalledWith(
-      expect.objectContaining({ executionSessionId: 'session-1', accessToken: 'token-2' }),
+      expect.objectContaining({
+        executionSessionId: 'session-1',
+        accessToken: 'token-2',
+        report: expect.objectContaining({ markdown: '# 确认设计\n\n导出页面设计。' }),
+      }),
     );
   });
 

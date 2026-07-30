@@ -360,6 +360,7 @@ describe('flowx-local MCP server', () => {
       arguments: {
         report: {
           idempotencyKey: 'design-pat',
+          markdown: '# 设计文档\n\nPAT 设计',
           output: {
             design: {},
             demo: {},
@@ -429,6 +430,44 @@ describe('flowx-local MCP server', () => {
     await server.close();
   });
 
+  it('rejects design submission without markdown', async () => {
+    const homeDir = makeHome();
+    await writeActiveDesignSession(
+      {
+        workflowRunId: 'workflow-1',
+        executionSessionId: 'session-1',
+        apiBaseUrl: 'https://flowx.example/api',
+        accessToken: 'session-token',
+        accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
+        stage: 'design',
+      },
+      homeDir,
+    );
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { client, server } = await connectClient(homeDir);
+
+    const submission = await client.callTool({
+      name: 'flowx_submit_design',
+      arguments: {
+        report: {
+          idempotencyKey: 'design-without-markdown',
+          output: {
+            design: {},
+            demo: {},
+            surfaces: [{ id: 'Web端', pages: [{ id: 'index', html: '<main />' }] }],
+          },
+        },
+      },
+    });
+
+    expect(submission.isError).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await client.close();
+    await server.close();
+  });
+
   it('uses the active session for handoff and design submission', async () => {
     const homeDir = makeHome();
     await writeActiveDesignSession(
@@ -466,6 +505,7 @@ describe('flowx-local MCP server', () => {
       arguments: {
         report: {
           idempotencyKey: 'design-1',
+          markdown: '# 设计文档\n\n设计正文',
           output: {
             design: {},
             demo: {},

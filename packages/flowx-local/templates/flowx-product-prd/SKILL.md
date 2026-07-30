@@ -55,7 +55,9 @@ description: FlowX 产品构思：多轮头脑风暴澄清产品需求后，写�
 
 ## 多端设计稿（设计阶段）
 
-产品构思回传成功后进入设计阶段。若需求涉及多端，在项目或会话 `design/` 下按端建目录，**推荐**：
+产品构思回传成功后进入设计阶段。先写 `design.md`，它是平台「设计文档」模块的唯一正文；与 HTML 设计稿目录并列，不要把设计说明只留在 JSON 字段中。向用户展示并确认 `design.md` 后，再回传。
+
+若需求涉及多端，在项目或会话 `design/` 下按端建目录，**推荐**：
 
 - `Web端/`
 - `移动端/`
@@ -63,4 +65,4 @@ description: FlowX 产品构思：多轮头脑风暴澄清产品需求后，写�
 
 每端可有多个 `.html`。其它目录名也可；FlowX Web 按实际上传的端展示 Tab（有啥展示啥）。
 
-按端回传：`flowx_submit_design` 的 `output.surfaces`（一次可只交一端；该端 pages 为完整页集）。不要使用已移除的 `designArtifact` 字段。
+回传：`flowx_submit_design({ markdown, output })`，其中 `markdown` 是确认后的完整 `design.md` 正文；`output.surfaces` 仍按端多页回传（一次可只交一端；该端 pages 为完整页集）。不要使用已移除的 `designArtifact` 字段。

@@ -45,6 +45,7 @@ class LocalFlowXApiClient {
 
 const designReportSchema = z.object({
   idempotencyKey: z.string().min(1),
+  markdown: z.string().min(1),
   summary: z.string().optional(),
   output: z.object({
     design: z.record(z.string(), z.unknown()),
@@ -339,7 +340,8 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     'flowx_submit_design',
     {
       title: 'Submit OpenDesign Result',
-      description: 'Submit a complete OpenDesign result back to FlowX.',
+      description:
+        'Submit the confirmed design.md Markdown and complete OpenDesign result back to FlowX.',
       inputSchema: z.object({
         executionSessionId: z.string().optional(),
         report: designReportSchema,

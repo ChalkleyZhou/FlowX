@@ -65,6 +65,7 @@ export class OpenDesignAdapter
       await writeInitialMarkdown(resultPath);
     } else {
       await mkdir(join(workspacePath, 'design', 'Web端'), { recursive: true });
+      await writeInitialDesignMarkdown(join(workspacePath, 'design.md'));
       await writeInitialResult(resultPath, input.handoff.executionSessionId);
     }
     await writeFile(
@@ -153,6 +154,7 @@ export class OpenDesignAdapter
       });
     }
     const report = JSON.parse(await readFile(session.resultPath, 'utf8')) as DesignCompletionReport;
+    report.markdown = await readDesignMarkdown(dirname(session.resultPath));
     await validateReport(report, dirname(session.resultPath));
     return this.edgeClient.submitDesign({
       apiBaseUrl: session.apiBaseUrl,
@@ -205,6 +207,7 @@ function resolveStage(input: RedeemedOpenDesignLaunch): 'brainstorm' | 'design' 
 function buildResultTemplate(executionSessionId: string): DesignCompletionReport {
   return {
     idempotencyKey: `design:${executionSessionId}:v1`,
+    markdown: '# 设计文档\n\n请完成并确认 design.md 后，再提交其完整正文。',
     summary: '',
     output: {
       design: {
@@ -275,6 +278,31 @@ async function writeInitialMarkdown(resultPath: string) {
   }
 }
 
+async function writeInitialDesignMarkdown(designMarkdownPath: string) {
+  try {
+    await writeFile(
+      designMarkdownPath,
+      [
+        '# 设计文档',
+        '',
+        '请根据 FlowX 上下文完成本设计文档；先向用户展示全文并确认，再将完整正文作为 `markdown` 调用 `flowx_submit_design`。',
+        '',
+        '## 概述',
+        '',
+        '## 页面与交互',
+        '',
+        '## 多端说明',
+        '',
+        '## 验收要点',
+        '',
+      ].join('\n'),
+      { encoding: 'utf8', flag: 'wx' },
+    );
+  } catch (error) {
+    if (!isAlreadyExists(error)) throw error;
+  }
+}
+
 async function readBrainstormMarkdown(resultPath: string): Promise<string> {
   const root = dirname(resultPath);
   const candidates = [
@@ -297,6 +325,14 @@ async function readBrainstormMarkdown(resultPath: string): Promise<string> {
     }
   }
   return '';
+}
+
+async function readDesignMarkdown(sessionDir: string): Promise<string> {
+  try {
+    return await readFile(join(sessionDir, 'design.md'), 'utf8');
+  } catch {
+    return '';
+  }
 }
 
 function isAlreadyExists(error: unknown) {
@@ -340,22 +376,28 @@ function buildInstructions(
 2. 通过 FlowX MCP 拉取上下文：
    - \`flowx_get_active_design_session\`
    - \`flowx_get_design_handoff\`（可省略参数，默认用当前活跃会话）
-3. 在项目里按端组织 HTML 设计稿（可复制到本会话 \`design/\` 或直接在回传 JSON 中填写）：
+3. 在项目里完成 \`design.md\`：写清概述、页面与交互、多端说明和验收要点，并向用户展示全文确认。
+4. 按端组织 HTML 设计稿（可复制到本会话 \`design/\` 或直接在回传 JSON 中填写）：
    - 推荐目录名：\`Web端\` / \`移动端\` / \`管理后台\`（按需，有啥交啥）
    - 每端可有多个 \`.html\` 文件
-4. 通过 MCP 回传：\`flowx_submit_design\`，\`output.surfaces\` 为按端多页 HTML（可一次只交一端）。
+5. 确认 \`design.md\` 后通过 MCP 回传：\`flowx_submit_design({ markdown, output })\`，其中 \`markdown\` 为完整 \`design.md\` 正文，\`output.surfaces\` 仍为按端多页 HTML（可一次只交一端）。
 
 会话标识：
 - workflowRunId: \`${workflowRunId}\`
 - executionSessionId: \`${executionSessionId}\`
 - stage: design
 
-兼容回传（可选）：若仍写入本目录 \`result.json\` 或 \`design/<端>/*.html\`，可执行 \`flowx-local design-submit ${executionSessionId}\`。
+兼容回传（可选）：若仍写入本目录 \`design.md\`、\`result.json\` 或 \`design/<端>/*.html\`，可执行 \`flowx-local design-submit ${executionSessionId}\`。
 `;
 }
 
 async function validateReport(report: DesignCompletionReport, sessionDir?: string) {
-  if (!report?.idempotencyKey?.trim() || !report.output?.design || !report.output?.demo) {
+  if (
+    !report?.idempotencyKey?.trim() ||
+    !report.markdown?.trim() ||
+    !report.output?.design ||
+    !report.output?.demo
+  ) {
     throw new Error('OpenDesign result.json is incomplete.');
   }
   let surfaces = report.output.surfaces;
