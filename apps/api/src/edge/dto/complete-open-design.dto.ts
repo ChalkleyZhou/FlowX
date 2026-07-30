@@ -10,6 +10,10 @@ export class CompleteOpenDesignDto {
   @MaxLength(4000)
   summary?: string;
 
+  @IsString()
+  @MaxLength(200_000)
+  markdown!: string;
+
   @IsObject()
   output!: {
     design: Record<string, unknown>;

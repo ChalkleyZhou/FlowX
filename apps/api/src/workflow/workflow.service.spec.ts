@@ -670,6 +670,12 @@ describe('WorkflowService submitLocalDesign', () => {
       ]),
     );
     expect(capturedOutput?.design).toBeDefined();
+    expect(capturedOutput).toMatchObject({
+      format: 'markdown',
+      design: validLocalDesign.design,
+      demo: validLocalDesign.demo,
+    });
+    expect(capturedOutput?.markdown).toContain('# 设计文档');
     expect(stageStatus).toBe('WAITING_CONFIRMATION');
   });
 });

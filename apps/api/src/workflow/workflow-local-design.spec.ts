@@ -91,6 +91,7 @@ describe('WorkflowService local OpenDesign', () => {
     );
     expect(result.handoff.contextPackage.requirement.id).toBe('req-1');
     expect(result.handoff.contextPackage.outputContract.resultFileName).toBe('result.json');
+    expect(result.handoff.contextPackage.outputContract.markdownFileName).toBe('design.md');
   });
 
   it('claims the BRAINSTORM stage for markdown OpenDesign handoff', async () => {
@@ -133,7 +134,42 @@ describe('WorkflowService local OpenDesign', () => {
     expect(result.handoff.contextPackage.outputContract.resultFileName).toBe('prd.md');
   });
 
-  it('completes the design session and moves the workflow to confirmation', async () => {
+  it('rejects local design completion without markdown', async () => {
+    const activeSession = {
+      id: 'session-1',
+      workflowRunId: 'workflow-design-1',
+      stageExecutionId: 'stage-design-1',
+      organizationId: 'org-1',
+      status: 'RUNNING',
+      sourceTool: 'opendesign',
+      protocolVersion: '1.0',
+      traceId: 'trace-1',
+      metadata: { stage: 'DESIGN' },
+    };
+    const prisma = {
+      executionSession: { findUnique: vi.fn().mockResolvedValue(activeSession) },
+    };
+    const service = createService(prisma);
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(workflow);
+
+    await expect(
+      service.completeLocalDesignSession(
+        'session-1',
+        {
+          idempotencyKey: 'design:session-1:v1',
+          markdown: '   ',
+          output: {
+            design: {},
+            demo: {},
+            surfaces: [],
+          },
+        },
+        { organizationId: 'org-1' },
+      ),
+    ).rejects.toThrow(/markdown/i);
+  });
+
+  it('completes the design session and persists markdown before confirmation', async () => {
     const activeSession = {
       id: 'session-1',
       workflowRunId: 'workflow-design-1',
@@ -175,7 +211,9 @@ describe('WorkflowService local OpenDesign', () => {
         ],
       },
     ]);
-    vi.spyOn(service as never, 'updateStageExecution' as never).mockResolvedValue(undefined);
+    const updateStageExecution = vi
+      .spyOn(service as never, 'updateStageExecution' as never)
+      .mockResolvedValue(undefined);
     vi.spyOn(service as never, 'transitionWorkflow' as never).mockResolvedValue(undefined);
 
     const result = await service.completeLocalDesignSession(
@@ -183,6 +221,7 @@ describe('WorkflowService local OpenDesign', () => {
       {
         idempotencyKey: 'design:session-1:v1',
         summary: 'Completed locally',
+        markdown: '# Export design\n\nCompleted locally.',
         output: {
           design: {
             overview: 'High fidelity design',
@@ -212,6 +251,19 @@ describe('WorkflowService local OpenDesign', () => {
       expect.objectContaining({ data: expect.objectContaining({ status: 'COMPLETED' }) }),
     );
     expect(tx.evidence.create).toHaveBeenCalled();
+    expect(updateStageExecution).toHaveBeenCalledWith(
+      tx,
+      'stage-design-1',
+      'waiting_confirmation',
+      expect.objectContaining({
+        output: expect.objectContaining({
+          format: 'markdown',
+          markdown: '# Export design\n\nCompleted locally.',
+          design: expect.any(Object),
+          surfaces: expect.any(Array),
+        }),
+      }),
+    );
   });
 
   it('creates a new OpenDesign session after the previous design was rejected', async () => {
@@ -293,6 +345,7 @@ describe('WorkflowService local OpenDesign', () => {
         repositories: [],
         outputContract: {
           resultFileName: 'result.json' as const,
+          markdownFileName: 'design.md' as const,
           format: 'flowx-design-result-v2' as const,
           requiredFields: ['design', 'demo', 'surfaces'] as const,
         },

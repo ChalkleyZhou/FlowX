@@ -27,8 +27,9 @@ const handoff = {
     repositories: [],
     outputContract: {
       resultFileName: 'result.json',
-          format: 'flowx-design-result-v2' as const,
-          requiredFields: ['design', 'demo', 'surfaces'] as const,
+      markdownFileName: 'design.md',
+      format: 'flowx-design-result-v2' as const,
+      requiredFields: ['design', 'demo', 'surfaces'] as const,
     },
   },
   completionEndpoint: '/execution-sessions/session-1/design/complete',
@@ -140,6 +141,7 @@ describe('OpenDesignEdgeService', () => {
     const { service, workflow } = createService();
     const report = {
       idempotencyKey: 'design:session-1:v1',
+      markdown: '# Export design',
       output: {
         design: { overview: 'Design' },
         demo: { summary: 'Flow' },

@@ -32,6 +32,7 @@ import {
 } from '../ai/ai-executor';
 import { AiInvocationContextService } from '../ai/ai-invocation-context.service';
 import { ArtifactsService } from '../artifacts/artifacts.service';
+import { buildDesignMarkdownFromStructured } from '../ai/design-markdown';
 import { assertDesignSpecOutput, assertStrictGenerateDesignOutput } from '../ai/design-output-validate';
 import {
   HumanReviewDecision,
@@ -1205,7 +1206,11 @@ export class WorkflowService {
           previousSurfaces,
           designResult.surfaces,
         );
-        const persistedOutput = this.toPersistedDesignStageOutput(designResult, persistedSurfaces);
+        const persistedOutput = this.toPersistedDesignStageOutput(
+          buildDesignMarkdownFromStructured(designResult.design, designResult.demo),
+          designResult,
+          persistedSurfaces,
+        );
 
         await this.prisma.$transaction(async (tx) => {
           const designStage = await tx.stageExecution.findFirstOrThrow({
@@ -1465,6 +1470,10 @@ export class WorkflowService {
       throw new BadRequestException('Workflow is no longer waiting for a local design.');
     }
 
+    const markdown = report.markdown?.trim();
+    if (!markdown) {
+      throw new BadRequestException('Design markdown is required.');
+    }
     const parsed = assertDesignSpecOutput(report.output);
     const previousSurfaces = this.getDesignSurfaceInventory(workflow);
     const persistedSurfaces = await this.persistAndMergeDesignSurfaces(
@@ -1473,6 +1482,7 @@ export class WorkflowService {
       parsed.surfaces,
     );
     const persistedOutput = this.toPersistedDesignStageOutput(
+      markdown,
       { design: parsed.design, demo: parsed.demo },
       persistedSurfaces,
     );
@@ -1697,6 +1707,14 @@ export class WorkflowService {
     }
 
     const parsed = assertDesignSpecOutput(rawOutput);
+    const rawMarkdown =
+      typeof rawOutput === 'object' && rawOutput !== null && !Array.isArray(rawOutput)
+        ? (rawOutput as { markdown?: unknown }).markdown
+        : undefined;
+    const markdown =
+      typeof rawMarkdown === 'string'
+        ? rawMarkdown
+        : buildDesignMarkdownFromStructured(parsed.design, parsed.demo);
     const previousSurfaces = this.getDesignSurfaceInventory(workflow);
     const persistedSurfaces = await this.persistAndMergeDesignSurfaces(
       id,
@@ -1704,6 +1722,7 @@ export class WorkflowService {
       parsed.surfaces,
     );
     const persistedOutput = this.toPersistedDesignStageOutput(
+      markdown,
       { design: parsed.design, demo: parsed.demo },
       persistedSurfaces,
     );
@@ -2853,6 +2872,7 @@ export class WorkflowService {
       })),
       outputContract: {
         resultFileName: 'result.json',
+        markdownFileName: 'design.md',
         format: 'flowx-design-result-v2',
         requiredFields: ['design', 'demo', 'surfaces'],
       },
@@ -3658,10 +3678,19 @@ export class WorkflowService {
    * Runnable demo pages are generated in the Demo stage after the spec is confirmed.
    */
   private toPersistedDesignStageOutput(
+    markdown: string,
     output: Pick<GenerateDesignOutput, 'design' | 'demo'> | { design: DesignSpec; demo: DemoArtifact },
     surfaces: DesignSurfaceInventory[],
-  ): { design: DesignSpec; demo: DemoArtifact; surfaces: DesignSurfaceInventory[] } {
+  ): {
+    format: 'markdown';
+    markdown: string;
+    design: DesignSpec;
+    demo: DemoArtifact;
+    surfaces: DesignSurfaceInventory[];
+  } {
     return {
+      format: 'markdown',
+      markdown,
       design: output.design,
       demo: output.demo,
       surfaces,
