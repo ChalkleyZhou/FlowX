@@ -641,6 +641,64 @@ describe('WorkflowRunDetailPage', () => {
     expect(api.runDesign).toHaveBeenCalledWith('workflow-1');
   });
 
+  it('shows design markdown without the structured design field tree', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'DESIGN_WAITING_CONFIRMATION',
+        stageExecutions: [
+          {
+            id: 'stage-design',
+            stage: 'DESIGN',
+            status: 'WAITING_CONFIRMATION',
+            statusMessage: null,
+            attempt: 1,
+            output: {
+              markdown: '# 设计文档\n\n这是已确认的设计正文。',
+              design: { overview: '结构化概览（不应显示）' },
+              demo: { summary: '结构化 Demo（不应显示）' },
+              surfaces: [],
+            },
+          },
+        ],
+      }),
+    );
+
+    await renderPage();
+
+    const text = container.textContent ?? '';
+    expect(text).toContain('这是已确认的设计正文。');
+    expect(text).not.toContain('结构化概览（不应显示）');
+    expect(text).not.toContain('结构化 Demo（不应显示）');
+  });
+
+  it('shows a design document empty state when markdown is missing', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'DESIGN_WAITING_CONFIRMATION',
+        stageExecutions: [
+          {
+            id: 'stage-design',
+            stage: 'DESIGN',
+            status: 'WAITING_CONFIRMATION',
+            statusMessage: null,
+            attempt: 1,
+            output: {
+              design: { overview: '结构化概览（不应显示）' },
+              demo: {},
+              surfaces: [],
+            },
+          },
+        ],
+      }),
+    );
+
+    await renderPage();
+
+    const text = container.textContent ?? '';
+    expect(text).toContain('尚未提交设计文档');
+    expect(text).not.toContain('结构化概览（不应显示）');
+  });
+
 
   it('renders structured Spec & Plan document sections', async () => {
     vi.mocked(api.getWorkflowRun).mockResolvedValue(

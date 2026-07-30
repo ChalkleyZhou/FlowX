@@ -4,6 +4,7 @@ import { api, getFlowxApiBaseUrl } from '../api';
 import { ContextPanel } from '../components/ContextPanel';
 import { OpenDesignLaunchGuideDialog } from '../components/OpenDesignLaunchGuideDialog';
 import { DesignArtifactPreview } from '../components/DesignArtifactPreview';
+import { DesignDocumentPanel } from '../components/DesignDocumentPanel';
 import { DiffFileListPanel } from '../components/DiffFileListPanel';
 import { DiffViewerPanel } from '../components/DiffViewerPanel';
 import { EmptyState } from '../components/EmptyState';
@@ -1408,7 +1409,7 @@ export function WorkflowRunDetailPage() {
         status: designStage?.status,
         statusMessage: designStage?.statusMessage,
         attempt: designStage?.attempt,
-        output: sanitizeDisplayValue(designStage?.output, repositoryPaths),
+        output: null,
         actions: [
           {
             key: 'open-local-opendesign',
@@ -2248,6 +2249,10 @@ export function WorkflowRunDetailPage() {
                   </CardContent>
                 </Card>
               )}
+
+              {selectedStage === 'DESIGN' && workflowRun ? (
+                <DesignDocumentPanel output={getStage(workflowRun, 'DESIGN')?.output} />
+              ) : null}
 
               {selectedStage === 'DESIGN' && workflowRun ? (
                 <Card className="rounded-md border-border bg-card">
