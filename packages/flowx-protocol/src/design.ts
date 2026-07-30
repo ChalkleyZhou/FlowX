@@ -16,6 +16,8 @@ export interface OpenDesignContextPackage {
   repositories: ContextRepository[];
   outputContract: {
     resultFileName: string;
+    /** 人读设计文档，与 brainstorm 的 prd.md 对齐 */
+    markdownFileName: 'design.md';
     format: 'flowx-design-result-v2';
     requiredFields: readonly ['design', 'demo', 'surfaces'];
   };
@@ -43,6 +45,8 @@ export interface FlowXDesignOutput {
 
 export interface DesignCompletionReport {
   idempotencyKey: string;
+  /** 平台「设计文档」模块唯一正文 */
+  markdown: string;
   summary?: string;
   output: FlowXDesignOutput;
   metadata?: Record<string, unknown>;

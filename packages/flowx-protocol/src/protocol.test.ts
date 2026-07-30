@@ -98,12 +98,14 @@ describe('flowx protocol', () => {
       repositories: [],
       outputContract: {
         resultFileName: 'result.json',
+        markdownFileName: 'design.md',
         format: 'flowx-design-result-v2',
         requiredFields: ['design', 'demo', 'surfaces'],
       },
     };
     const report: DesignCompletionReport = {
       idempotencyKey: 'design:session-1:v1',
+      markdown: '# 设计文档\n\n概述…',
       output: {
         design: { overview: 'Export page' },
         demo: { summary: 'Primary flow' },
@@ -117,6 +119,8 @@ describe('flowx protocol', () => {
     };
 
     expect(context.sourceTool).toBe('opendesign');
+    expect(report.markdown.length).toBeGreaterThan(0);
+    expect(context.outputContract.markdownFileName).toBe('design.md');
     expect(report.output.surfaces[0].pages[0].html).toContain('<!doctype html>');
   });
 
