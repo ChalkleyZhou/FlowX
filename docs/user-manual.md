@@ -117,8 +117,8 @@ flowx-local serve
 2. 在「设置」→ [API Token](/settings/api-tokens) 生成 Personal API Token（`fxpat_…`），再执行 `flowx-local login`（默认连本机 `http://127.0.0.1:3000`；远程请用 `flowx-local login --api-base-url https://你的-flowx-域名 --token …`，或设置 `FLOWX_API_TOKEN` + `FLOWX_API_BASE_URL`）。
 3. 在 Cursor / Codex 启用 `flowx-local mcp`：`flowx_list_tasks` → 确认工作流 → `flowx_bind_workflow`。
 4. **产品构思**（面向产品经理 / 设计师，不写实现细节）：`flowx_get_brainstorm_handoff` → 多轮头脑风暴澄清需求 → 写 `prd.md` → 用户确认 → `flowx_submit_brainstorm`（响应会提示进入 design）。旧版 `spec.md` 仍可作为兼容文件名回传，但新流程以 `prd.md` 为准。
-5. **同一会话**立刻 `flowx_get_design_handoff` → 完成设计 → `flowx_submit_design`（也可在工作流详情点击 `回传本地设计`）。
-6. 平台进入 `待确认设计方案`，由人工确认、驳回或跳过后继续下一阶段。
+5. **同一会话**立刻 `flowx_get_design_handoff` → 完成 `design.md` 与 HTML 原型 → 向用户确认 `design.md` 全文后 `flowx_submit_design({ markdown, output })`（也可在工作流详情点击 `回传本地设计`）。
+6. 平台进入 `待确认设计方案`：工作流详情展示 **设计文档（Markdown）** 与 **HTML 预览** 两个模块，由人工确认、驳回或跳过后继续下一阶段。旧 run 无 `markdown` 时，「设计文档」显示「尚未提交设计文档」。
 
 **可选兜底**：未配置长期 token 时，可在工作流详情点击 `打开本地构思` / `打开本地 OpenDesign` 写入短期会话；金路径下不需要第二次点击「打开本地 OpenDesign」。点击「打开本地构思」或「打开本地 OpenDesign」时，平台会先弹出两步操作引导（选择项目目录、输入「获取FlowX任务」），确认后再打开应用。
 
@@ -174,7 +174,7 @@ Cursor 会按需启动 `flowx-local mcp`。配置 PAT 后，它通过 `~/.flowx/
 
 1. 仓库准备：同步仓库并生成代码上下文
 2. 产品构思：本地头脑风暴并产出产品需求（PRD），或 AI 生成产品简报，可跳过；若已进入设计阶段，可在「产品构思」面板点击「重新构思」回到构思（设计产物保留对照），再用 MCP 或（可选）打开本地构思重写 `prd.md`
-3. 设计方案：本地 OpenDesign 回传或生成设计稿，可确认、驳回或跳过；设计 Artifact 即给人看的交互预览，不再单独生成仓库 Demo 页；推荐构思提交后同一会话继续设计，Web「打开本地 OpenDesign」为可选兜底
+3. 设计方案：本地 OpenDesign 回传或生成设计稿，可确认、驳回或跳过；平台展示 **设计文档（design.md / Markdown）** 与 **HTML 预览** 两个模块（不再展示结构化字段树）；HTML Artifact 即给人看的交互预览，不再单独生成仓库 Demo 页；推荐构思提交后同一会话继续设计，Web「打开本地 OpenDesign」为可选兜底
 4. Spec & Plan：AI 生成实现边界（spec）与实现路径（plan），需人工确认或驳回修订；**不可跳过**
 5. 执行开发（Execution）
 6. AI 审查（AI Review）

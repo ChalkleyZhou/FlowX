@@ -126,9 +126,9 @@ MCP 鉴权顺序：
 2. 在 Cursor / Codex 配置 `flowx-local mcp`
 3. Agent 调用 `flowx_list_tasks` → 与你确认一条工作流 → `flowx_bind_workflow`（写入 `~/.flowx/current-workflow.json`）
 4. **产品构思**：`flowx_get_brainstorm_handoff` → 头脑风暴澄清 → 写 `prd.md` → 确认后 `flowx_submit_brainstorm`（响应含 `next.stage=design`，binding 切到 design）
-5. **同一会话设计**：立刻 `flowx_get_design_handoff`（服务端惰性创建 design 会话）→ 在 Open Design 中完成设计 → `flowx_submit_design`
-   - 多端时在 `design/` 下按端建目录（推荐 `Web端` / `移动端` / `管理后台`，每端可多页 HTML），回传 `output.surfaces`；平台 Web 按实际上传的端展示 Tab。
-6. 平台进入 `待确认设计方案`
+5. **同一会话设计**：立刻 `flowx_get_design_handoff`（服务端惰性创建 design 会话）→ 在 Open Design 中完成 `design.md` 与 HTML 原型 → 向用户确认 `design.md` 全文后 `flowx_submit_design({ markdown, output })`
+   - `markdown` 为完整 `design.md` 正文；多端时在 `design/` 下按端建目录（推荐 `Web端` / `移动端` / `管理后台`，每端可多页 HTML），回传 `output.surfaces`。
+6. 平台进入 `待确认设计方案`：工作流详情展示 **设计文档（Markdown）** 与 **HTML 预览** 两个模块（按实际上传的端展示 Tab）；旧 run 无 `markdown` 时显示「尚未提交设计文档」
 
 设计确认或跳过后，工作流进入 **Spec & Plan** 阶段。该阶段在 Web 端生成与确认实现边界（spec）与实现路径（plan），**不可跳过**；当前本地 MCP 不提供 Spec & Plan handoff。确认 Spec & Plan 后，工作流进入 **待执行开发**，可按 §4.1 进行本地启动。
 

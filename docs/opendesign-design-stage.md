@@ -24,8 +24,8 @@ Web 设置生成 Personal API Token（fxpat_…）或 flowx-local login --token
 2. **安装并配置 MCP**：`flowx-local setup`，在 Cursor / Codex 中配置 `flowx-local mcp`。
 3. **领取任务**：Agent 调用 `flowx_list_tasks` 列出可构思 / 可设计的工作流 → 与用户确认一条 → `flowx_bind_workflow` 写入 `~/.flowx/current-workflow.json`（含 `workflowRunId`、stage 等；**不含** token）。
 4. **产品构思**（面向产品经理 / 设计师，不写实现细节）：`flowx_get_brainstorm_handoff` → 多轮头脑风暴澄清 → 写 `prd.md` → 用户确认后 `flowx_submit_brainstorm`。请先 `flowx-local setup` 安装 `flowx-product-prd` Skill；本机若仍为旧 Skill，用 `flowx-local setup --force` 迁移。
-5. **同一会话进入设计**：submit 成功响应带 `next.stage=design`（及 hint）；本地 binding 切到 `design`。立刻调用 `flowx_get_design_handoff`（服务端按需惰性创建 design `ExecutionSession`）→ 完成设计 → `flowx_submit_design`。
-6. Web 进入 `DESIGN_WAITING_CONFIRMATION`，人工确认设计方案。
+5. **同一会话进入设计**：submit 成功响应带 `next.stage=design`（及 hint）；本地 binding 切到 `design`。立刻调用 `flowx_get_design_handoff`（服务端按需惰性创建 design `ExecutionSession`）→ 完成 `design.md` 与多端 HTML → 向用户确认 `design.md` 全文后 `flowx_submit_design({ markdown, output })`。
+6. Web 进入 `DESIGN_WAITING_CONFIRMATION`，在「设计文档」与「设计稿预览」两个模块中审阅后人工确认。
 
 ### MCP 鉴权顺序
 
@@ -168,6 +168,7 @@ Agent 典型调用顺序：`flowx_list_tasks` → `flowx_bind_workflow` → `flo
 
 | 文件 | 用途 |
 | --- | --- |
+| `design.md` | 设计文档正文（概述、页面与交互、多端说明、验收要点）；提交前需向用户展示全文并确认 |
 | `context.json` | 版本化需求、验收标准、仓库上下文和输出契约 |
 | `result.json` | `DesignCompletionReport` 模板，也是最终回传内容 |
 | `README.md` | 当前会话的操作说明与回传命令 |
@@ -175,9 +176,12 @@ Agent 典型调用顺序：`flowx_list_tasks` → `flowx_bind_workflow` → `flo
 
 ## 完成与回传
 
-在 OpenDesign 完成设计后，将结果写入 `result.json`，或把 HTML 放在会话目录：
+设计阶段与产品构思对齐：先写并确认 **`design.md`**，再回传多端 HTML。平台 DESIGN 视图只展示两个主模块——**设计文档（Markdown）** 与 **HTML 预览**；结构化 `design` / `demo` 字段仍随 `output` 持久化，但 Web 不再渲染字段树。旧 run 若无 `markdown`，「设计文档」模块显示空态「尚未提交设计文档」。
+
+### 本地文件布局
 
 ```text
+design.md
 design/
   Web端/
     首页.html
@@ -185,11 +189,20 @@ design/
     首页.html
 ```
 
-`result.json` 必须包含：
+### 提交前确认 design.md
+
+1. 在 OpenDesign / IDE 中完成 `design.md`（写清概述、页面与交互、多端说明与验收要点）。
+2. 向用户展示 `design.md` 全文并确认。
+3. 确认后再回传；`markdown` 必须为完整 `design.md` 正文。
+
+### result.json 形状
+
+`result.json` 必须包含顶层 `markdown` 与 `output`：
 
 ```json
 {
   "idempotencyKey": "本次设计结果的稳定唯一键",
+  "markdown": "# 设计文档\n\n…",
   "summary": "设计摘要",
   "output": {
     "design": {},
@@ -208,14 +221,15 @@ design/
 
 推荐 surface id：`Web端` / `移动端` / `管理后台`（按需）；平台不强制枚举，Web 按实际上传的端展示 Tab。每页 `html` 必须是完整、自包含的 HTML 文档。一次 submit 可只带一端（该端 pages 整端替换）。然后任选一种方式回传：
 
-- 推荐：MCP `flowx_submit_design`
-- 或：`flowx-local design-submit <executionSessionId>`（可从 `design/` 目录扫描补全 surfaces）
+- 推荐：MCP `flowx_submit_design({ markdown, output })`（`markdown` 为完整 `design.md` 正文）
+- 或：`flowx-local design-submit <executionSessionId>`（从 `design.md` 读取 `markdown`，并从 `design/` 目录扫描补全 `output.surfaces`）
 - 或：在工作流详情点击 `回传本地设计`
 
 回传成功后：
 
 - DESIGN Stage 进入待人工确认。
-- 各端各页 HTML 落盘并登记为 Artifact，可在 FlowX 中按端 Tab 预览。
+- 工作流详情展示「设计文档」（Markdown 正文）与「设计稿预览」（按端 Tab + 页列表 + iframe）两个模块。
+- 各端各页 HTML 落盘并登记为 Artifact。
 - 本次 ExecutionSession 标记为 `COMPLETED`。
 - 设计摘要登记为 `AGENT_SUMMARY` Evidence。
 
