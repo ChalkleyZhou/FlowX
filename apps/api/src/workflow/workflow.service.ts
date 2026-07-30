@@ -82,6 +82,7 @@ const DESIGN_ARTIFACT_ROOT = join(process.cwd(), '.flowx-data', 'design-artifact
 /** 单页设计稿落盘上限（防止异常大对象写入磁盘 / 占满预览）。 */
 const DESIGN_ARTIFACT_MAX_BYTES = 5 * 1024 * 1024;
 /** 注入 Demo 阶段提示的设计稿 HTML 上限（避免提示过长）。 */
+const DESIGN_ARTIFACT_DEMO_CONTEXT_MAX_CHARS = 12000;
 
 const workflowStatusMap: Record<WorkflowRunStatus, string> = {
   [WorkflowRunStatus.CREATED]: 'CREATED',
@@ -1472,7 +1473,7 @@ export class WorkflowService {
       parsed.surfaces,
     );
     const persistedOutput = this.toPersistedDesignStageOutput(
-      { design: parsed.design, demo: parsed.demo, demoPages: [] },
+      { design: parsed.design, demo: parsed.demo },
       persistedSurfaces,
     );
 
@@ -1703,7 +1704,7 @@ export class WorkflowService {
       parsed.surfaces,
     );
     const persistedOutput = this.toPersistedDesignStageOutput(
-      { design: parsed.design, demo: parsed.demo, demoPages: [] },
+      { design: parsed.design, demo: parsed.demo },
       persistedSurfaces,
     );
 
