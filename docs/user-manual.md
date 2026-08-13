@@ -86,9 +86,11 @@ flowx-local serve
 
 一个工作区下可以有多个项目；一个项目下可以有多条需求。
 
-### 步骤 5：创建需求
+### 步骤 5：创建需求（推荐本地 AI）
 
-进入 `需求` 页面，点击“新增需求”，填写：
+**推荐主路径：** 安装 [本地 Agent](/local-agent)，执行 `flowx-local setup` 与 `flowx-local login` 后，在 Cursor / Codex 说明要新建 FlowX 需求。Agent 会按 `flowx-intake-requirement` Skill：列出项目 → 创建需求 → **经你确认后**启动工作流 → 可选进入产品构思。
+
+**网页兜底：** 进入 `需求` 页面，点击「网页创建」，填写：
 
 - 所属项目
 - 需求标题
@@ -100,20 +102,22 @@ flowx-local serve
 
 ### 创建需求并启动工作流
 
-需求页只负责准备研发输入并启动工作流，不需要先完成额外的前置确认或进入独立流程：
+推荐用本地 AI 一次完成创建与启动（见 [本地 Agent](/local-agent)「本地发起需求」）。需求列表页主按钮「用本地 AI 发起」会打开该指南；「网页创建」为兜底。
 
-1. 在需求页点击 `新增需求`，填写所属项目、标题、描述、验收标准和可选的目标仓库范围。
+若仍用网页：
+
+1. 在需求页点击「网页创建」，填写所属项目、标题、描述、验收标准和可选的目标仓库范围。
 2. 创建后，在需求列表或需求详情点击 `启动工作流`。
 3. 在启动窗口选择 AI 执行器和本次工作流的仓库范围；不选择时使用需求默认范围。
 4. 启动后进入工作流详情页。仓库准备完成后，按阶段推进产品构思、设计方案、Spec & Plan、执行开发、AI 审查和人工确认。
 
-一次研发过程对应一条工作流；如需重新发起，系统会保留历史记录，并检查同一仓库范围是否已有进行中的工作流。日常操作以当前工作流详情页为准。
+一次研发过程对应一条工作流；如需重新发起，系统会保留历史记录，并检查同一仓库范围是否已有进行中的工作流。日常操作以当前工作流详情页为准。平台侧以查看进度与人工确认门禁为主。
 
 ### 使用本地 OpenDesign 构思与设计
 
 如果当前工作流需要在本地 OpenDesign 完成产品构思与 UI/交互设计：
 
-1. 安装本地 Agent，并执行 `flowx-local setup` 安装 `flowx-product-prd` Skill（详见 [本地 Agent](/local-agent)）。若本机仍保留旧版 `flowx-brainstorm-spec`，请执行 `flowx-local setup --force` 迁移。
+1. 安装本地 Agent，并执行 `flowx-local setup` 安装 `flowx-intake-requirement` 与 `flowx-product-prd` Skill（详见 [本地 Agent](/local-agent)）。若本机仍保留旧版 `flowx-brainstorm-spec`，请执行 `flowx-local setup --force` 迁移。
 2. 在「设置」→ [API Token](/settings/api-tokens) 生成 Personal API Token（`fxpat_…`），再执行 `flowx-local login`（默认连本机 `http://127.0.0.1:3000`；远程请用 `flowx-local login --api-base-url https://你的-flowx-域名 --token …`，或设置 `FLOWX_API_TOKEN` + `FLOWX_API_BASE_URL`）。
 3. 在 Cursor / Codex 启用 `flowx-local mcp`：`flowx_list_tasks` → 确认工作流 → `flowx_bind_workflow`。
 4. **产品构思**（面向产品经理 / 设计师，不写实现细节）：`flowx_get_brainstorm_handoff` → 多轮头脑风暴澄清需求 → 写 `prd.md` → 用户确认 → `flowx_submit_brainstorm`（响应会提示进入 design）。旧版 `spec.md` 仍可作为兼容文件名回传，但新流程以 `prd.md` 为准。

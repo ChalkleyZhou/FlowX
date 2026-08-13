@@ -58,6 +58,9 @@ describe('flowx-local MCP server', () => {
       'flowx_get_brainstorm_handoff',
       'flowx_submit_design',
       'flowx_submit_brainstorm',
+      'flowx_list_projects',
+      'flowx_create_requirement',
+      'flowx_start_workflow',
       'flowx_list_tasks',
       'flowx_get_task_context',
       'flowx_collect_git_report',
@@ -203,6 +206,122 @@ describe('flowx-local MCP server', () => {
     expect(String((result.content as Array<{ text: string }>)[0].text)).toMatch(
       /flowx_list_tasks.*flowx_bind_workflow/,
     );
+
+    await client.close();
+    await server.close();
+  });
+
+  it('lists projects via GET /projects and creates requirements via POST /requirements', async () => {
+    const homeDir = makeHome();
+    delete process.env.FLOWX_API_TOKEN;
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/projects') && (!init?.method || init.method === 'GET')) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: 'proj_1',
+              name: 'Demo',
+              workspaceId: 'ws_1',
+              workspace: {
+                id: 'ws_1',
+                name: 'WS',
+                repositories: [{ id: 'repo_1', name: 'app', url: 'https://git.example/app.git' }],
+              },
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith('/requirements') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body));
+        expect(body).toMatchObject({
+          projectId: 'proj_1',
+          title: '本地发起',
+          description: '描述',
+          acceptanceCriteria: '可在列表看到该需求',
+        });
+        return new Response(
+          JSON.stringify({ id: 'req_1', title: body.title, projectId: body.projectId }),
+          { status: 201 },
+        );
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { client, server } = await connectClient(homeDir);
+
+    const listed = await client.callTool({ name: 'flowx_list_projects', arguments: {} });
+    expect(listed.isError).toBeUndefined();
+    const listedPayload = JSON.parse(String((listed.content as Array<{ text: string }>)[0].text));
+    expect(listedPayload.projects[0]).toMatchObject({
+      id: 'proj_1',
+      name: 'Demo',
+      workspaceId: 'ws_1',
+      workspaceName: 'WS',
+      repositories: [{ id: 'repo_1', name: 'app' }],
+    });
+
+    const created = await client.callTool({
+      name: 'flowx_create_requirement',
+      arguments: {
+        projectId: 'proj_1',
+        title: '本地发起',
+        description: '描述',
+        acceptanceCriteria: '可在列表看到该需求',
+      },
+    });
+    expect(created.isError).toBeUndefined();
+    expect(JSON.parse(String((created.content as Array<{ text: string }>)[0].text))).toMatchObject({
+      id: 'req_1',
+      title: '本地发起',
+      projectId: 'proj_1',
+    });
+
+    expect(fetchMock).toHaveBeenCalled();
+    await client.close();
+    await server.close();
+  });
+
+  it('rejects start_workflow without userConfirmedStart and starts when confirmed', async () => {
+    const homeDir = makeHome();
+    delete process.env.FLOWX_API_TOKEN;
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/workflow-runs') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body));
+        expect(body).toMatchObject({ requirementId: 'req_1', aiProvider: 'cursor' });
+        expect(body.userConfirmedStart).toBeUndefined();
+        return new Response(JSON.stringify({ id: 'wr_1', requirementId: 'req_1' }), { status: 201 });
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { client, server } = await connectClient(homeDir);
+
+    const denied = await client.callTool({
+      name: 'flowx_start_workflow',
+      arguments: { requirementId: 'req_1', userConfirmedStart: false },
+    });
+    expect(denied.isError).toBe(true);
+    expect(String((denied.content as Array<{ text: string }>)[0].text)).toMatch(/userConfirmedStart/);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const started = await client.callTool({
+      name: 'flowx_start_workflow',
+      arguments: {
+        requirementId: 'req_1',
+        userConfirmedStart: true,
+        aiProvider: 'cursor',
+      },
+    });
+    expect(started.isError).toBeUndefined();
+    expect(JSON.parse(String((started.content as Array<{ text: string }>)[0].text))).toMatchObject({
+      id: 'wr_1',
+      requirementId: 'req_1',
+    });
 
     await client.close();
     await server.close();

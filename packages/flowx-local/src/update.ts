@@ -4,7 +4,12 @@ import { homedir } from 'node:os';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { parseSetupTargets, resolveSkillInstallPaths, type SetupTarget } from './setup.js';
+import {
+  parseSetupTargets,
+  resolveSkillInstallPaths,
+  SETUP_SKILL_NAMES,
+  type SetupTarget,
+} from './setup.js';
 
 export type PackageInstaller = 'npm' | 'pnpm' | 'unknown';
 
@@ -20,8 +25,10 @@ export function pickUpdateTargets(
   const existing: SetupTarget[] = [];
 
   for (const target of candidates) {
-    const [path] = resolveSkillInstallPaths(target, homeDir);
-    if (existsSync(path)) {
+    const paths = SETUP_SKILL_NAMES.flatMap((skill) =>
+      resolveSkillInstallPaths(target, homeDir, skill),
+    );
+    if (paths.some((path) => existsSync(path))) {
       existing.push(target);
     }
   }

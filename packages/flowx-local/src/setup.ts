@@ -16,8 +16,10 @@ export type SetupResult = {
   skipped: string[];
 };
 
+export const SETUP_SKILL_NAMES = ['flowx-product-prd', 'flowx-intake-requirement'] as const;
+export type SetupSkillName = (typeof SETUP_SKILL_NAMES)[number];
+
 const DEFAULT_TARGETS: SetupTarget[] = ['cursor', 'codex', 'od'];
-const SKILL_NAME = 'flowx-product-prd';
 
 export function parseSetupTargets(raw?: string): SetupTarget[] {
   const text = raw?.trim();
@@ -44,12 +46,12 @@ export function parseSetupTargets(raw?: string): SetupTarget[] {
   return targets;
 }
 
-export function skillTemplatePath(): string {
+export function skillTemplatePath(skillName: SetupSkillName): string {
   return join(
     dirname(fileURLToPath(import.meta.url)),
     '..',
     'templates',
-    SKILL_NAME,
+    skillName,
     'SKILL.md',
   );
 }
@@ -57,11 +59,12 @@ export function skillTemplatePath(): string {
 export function resolveSkillInstallPaths(
   target: SetupTarget,
   homeDir = homedir(),
+  skillName: SetupSkillName = 'flowx-product-prd',
 ): string[] {
   if (target === 'cursor') {
-    return [join(homeDir, '.cursor', 'skills', SKILL_NAME, 'SKILL.md')];
+    return [join(homeDir, '.cursor', 'skills', skillName, 'SKILL.md')];
   }
-  return [join(homeDir, '.agents', 'skills', SKILL_NAME, 'SKILL.md')];
+  return [join(homeDir, '.agents', 'skills', skillName, 'SKILL.md')];
 }
 
 function writeSkill(path: string, content: string, force: boolean): 'written' | 'skipped' {
@@ -77,22 +80,24 @@ export function runSetup(options: SetupOptions = {}): SetupResult {
   const homeDir = options.homeDir ?? homedir();
   const force = options.force === true;
   const targets = parseSetupTargets(options.targets);
-  const content = readFileSync(skillTemplatePath(), 'utf8');
   const written: string[] = [];
   const skipped: string[] = [];
   const seen = new Set<string>();
 
-  for (const target of targets) {
-    for (const path of resolveSkillInstallPaths(target, homeDir)) {
-      if (seen.has(path)) {
-        continue;
-      }
-      seen.add(path);
-      const outcome = writeSkill(path, content, force);
-      if (outcome === 'written') {
-        written.push(path);
-      } else {
-        skipped.push(path);
+  for (const skillName of SETUP_SKILL_NAMES) {
+    const content = readFileSync(skillTemplatePath(skillName), 'utf8');
+    for (const target of targets) {
+      for (const path of resolveSkillInstallPaths(target, homeDir, skillName)) {
+        if (seen.has(path)) {
+          continue;
+        }
+        seen.add(path);
+        const outcome = writeSkill(path, content, force);
+        if (outcome === 'written') {
+          written.push(path);
+        } else {
+          skipped.push(path);
+        }
       }
     }
   }

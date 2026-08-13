@@ -51,9 +51,9 @@ curl http://127.0.0.1:3920/health
 
 首次运行会在 `~/.flowx/local.json` 写入设备身份与端口等配置。
 
-## 3.1 安装构思 Skill（首次建议）
+## 3.1 安装本地 Skill（首次建议）
 
-在第一次做「产品构思」前，把用户级 Skill 装到本机 Cursor / Codex / OpenDesign 可发现的目录：
+在第一次「本地发起需求」或「产品构思」前，把用户级 Skill 装到本机 Cursor / Codex / OpenDesign 可发现的目录：
 
 ```bash
 flowx-local setup                 # 默认 cursor,codex,od
@@ -61,7 +61,12 @@ flowx-local setup cursor
 flowx-local setup cursor,codex,od --force
 ```
 
-这会写入 `flowx-product-prd` Skill（不覆盖已有文件，除非加 `--force`）。`serve` **不会**静默安装 Skill。
+这会写入：
+
+- `flowx-intake-requirement`：本地创建需求并确认后启动工作流
+- `flowx-product-prd`：产品构思 → 确认后的 `prd.md` → MCP 回传
+
+不覆盖已有文件，除非加 `--force`。`serve` **不会**静默安装 Skill。
 
 若本机仍保留旧版 `flowx-brainstorm-spec`，请执行 `flowx-local setup --force` 切换到新 Skill。
 
@@ -111,6 +116,29 @@ MCP 鉴权顺序：
 
 ## 4. 在 FlowX 里怎么用
 
+### 4.0 本地发起需求（推荐主路径）
+
+平台以查看、确认门禁与治理为主；**新建需求并启动工作流**推荐在 Cursor / Codex 用本地 AI 完成，网页「创建」仅为兜底。
+
+前置：已 `flowx-local login`，并执行 `flowx-local setup`（含 `flowx-intake-requirement`）。
+
+1. 在 IDE 中说明要「新建 / 发起 FlowX 需求」（触发 `flowx-intake-requirement` Skill）
+2. Agent 调用 `flowx_list_projects`，由你选定项目（不要用本地仓库路径猜测）
+3. 收齐标题、描述；验收标准若未给，可用短占位（可日后在 Web 改）
+4. `flowx_create_requirement` 创建需求
+5. Agent 展示启动摘要（需求、仓库范围、执行器、是否进入构思）；**你确认后**再以 `userConfirmedStart: true` 调用 `flowx_start_workflow`
+6. 若选择进入构思：`flowx_bind_workflow` → 按 `flowx-product-prd` 继续；若仅启动，可稍后在 Web 查看或再 `flowx_list_tasks`
+
+相关 MCP 工具：
+
+| 工具 | 作用 |
+| --- | --- |
+| `flowx_list_projects` | 列出可见工作区/项目 |
+| `flowx_create_requirement` | 创建需求 |
+| `flowx_start_workflow` | 启动工作流；必须先确认，且 `userConfirmedStart=true` |
+
+已创建但启动失败时，需求会保留，可再次确认后重试启动，或回 Web 启动。
+
 ### 4.1 工作流「本地启动」
 
 1. 打开一条 **Spec & Plan 已确认**、进入开发执行阶段的工作流
@@ -158,7 +186,7 @@ Cursor 的 MCP 配置可以写成：
 | 命令 | 作用 |
 | --- | --- |
 | `flowx-local serve` | 启动本机 Agent |
-| `flowx-local setup [targets] [--force]` | 安装用户级 Skill（默认 cursor,codex,od） |
+| `flowx-local setup [targets] [--force]` | 安装用户级 Skill：`flowx-intake-requirement` + `flowx-product-prd`（默认 cursor,codex,od） |
 | `flowx-local update [targets] [--no-force]` | 升级本机包并刷新对应 Skill（默认覆盖；通过 --no-force 保留自定义） |
 | `flowx-local login [--token TOKEN] [--api-base-url URL]` | 写入 Personal API Token；默认 API 为 `http://127.0.0.1:3000`，远程环境请传 `--api-base-url` |
 | `flowx-local logout` | 清除本机凭据 |

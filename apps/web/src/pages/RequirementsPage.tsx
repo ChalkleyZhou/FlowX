@@ -474,7 +474,7 @@ export function RequirementsPage() {
       <PageHeader
         eyebrow="Requirements"
         title="需求录入与流程发起"
-        description="需求现在先归属于项目，再沿着项目所在工作区继承代码上下文和执行链路。"
+        description="推荐用本地 AI + Skill 发起需求并启动工作流；本页用于查看、确认门禁，以及网页兜底创建。"
       />
       <div className="grid gap-5 md:grid-cols-4">
         <MetricCard label="需求总数" value={requirementSummary.requirementCount} />
@@ -488,9 +488,14 @@ export function RequirementsPage() {
             eyebrow="Requirement Pool"
             title="需求列表"
             extra={(
-              <UiButton onClick={() => setCreateModalOpen(true)}>
-                新增需求
-              </UiButton>
+              <div className="flex flex-wrap items-center gap-2">
+                <UiButton asChild>
+                  <Link to="/local-agent">用本地 AI 发起</Link>
+                </UiButton>
+                <UiButton variant="outline" onClick={() => setCreateModalOpen(true)}>
+                  网页创建
+                </UiButton>
+              </div>
             )}
           />
         </CardHeader>

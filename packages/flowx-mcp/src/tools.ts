@@ -35,6 +35,38 @@ function textResult(value: unknown, isError = false): ToolResult {
   };
 }
 
+function summarizeProjects(raw: unknown) {
+  const list = Array.isArray(raw) ? raw : [];
+  return {
+    projects: list.map((item) => {
+      const project = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+      const workspace =
+        project.workspace && typeof project.workspace === 'object'
+          ? (project.workspace as Record<string, unknown>)
+          : {};
+      const repositories = Array.isArray(workspace.repositories) ? workspace.repositories : [];
+      return {
+        id: typeof project.id === 'string' ? project.id : '',
+        name: typeof project.name === 'string' ? project.name : '',
+        workspaceId:
+          typeof project.workspaceId === 'string'
+            ? project.workspaceId
+            : typeof workspace.id === 'string'
+              ? workspace.id
+              : '',
+        workspaceName: typeof workspace.name === 'string' ? workspace.name : '',
+        repositories: repositories.map((repo) => {
+          const row = repo && typeof repo === 'object' ? (repo as Record<string, unknown>) : {};
+          return {
+            id: typeof row.id === 'string' ? row.id : '',
+            name: typeof row.name === 'string' ? row.name : '',
+          };
+        }),
+      };
+    }),
+  };
+}
+
 const evidenceTypeSchema = z.enum([
   'GIT_COMMIT',
   'REMOTE_BRANCH_VERIFICATION',
@@ -93,6 +125,49 @@ export function createFlowXToolHandlers(deps: FlowXToolDependencies) {
     deps.resolveDesignClient ?? (() => FlowXApiClient.forDesignTools());
 
   return {
+    async flowx_list_projects() {
+      return textResult(summarizeProjects(await deps.apiClient.listProjects()));
+    },
+
+    async flowx_create_requirement(input: {
+      projectId: string;
+      title: string;
+      description: string;
+      acceptanceCriteria: string;
+      repositoryIds?: string[];
+    }) {
+      return textResult(
+        await deps.apiClient.createRequirement({
+          projectId: input.projectId,
+          title: input.title,
+          description: input.description,
+          acceptanceCriteria: input.acceptanceCriteria,
+          ...(input.repositoryIds?.length ? { repositoryIds: input.repositoryIds } : {}),
+        }),
+      );
+    },
+
+    async flowx_start_workflow(input: {
+      requirementId: string;
+      userConfirmedStart: boolean;
+      repositoryIds?: string[];
+      aiProvider?: 'codex' | 'cursor';
+    }) {
+      if (input.userConfirmedStart !== true) {
+        return textResult(
+          'Refusing to start workflow: userConfirmedStart must be true after the user explicitly confirmed the start summary.',
+          true,
+        );
+      }
+      return textResult(
+        await deps.apiClient.createWorkflowRun({
+          requirementId: input.requirementId,
+          ...(input.repositoryIds?.length ? { repositoryIds: input.repositoryIds } : {}),
+          ...(input.aiProvider ? { aiProvider: input.aiProvider } : {}),
+        }),
+      );
+    },
+
     async flowx_list_tasks(input: { workspaceId?: string }) {
       return textResult(await deps.apiClient.listTasks(input.workspaceId));
     },
@@ -349,6 +424,47 @@ export function registerFlowXTools(
 ) {
   const handlers = createFlowXToolHandlers(deps);
 
+  server.registerTool(
+    'flowx_list_projects',
+    {
+      title: 'List FlowX Projects',
+      description:
+        'List workspaces/projects visible to the current token for local requirement intake. Ask the user to pick a projectId; do not infer from local repo paths.',
+      inputSchema: z.object({}),
+    },
+    handlers.flowx_list_projects,
+  );
+  server.registerTool(
+    'flowx_create_requirement',
+    {
+      title: 'Create FlowX Requirement',
+      description:
+        'Create a requirement on FlowX (local intake). Requires projectId, title, description, acceptanceCriteria. Prefer confirming title/description with the user first; acceptanceCriteria may be a short placeholder if the user has not provided one yet.',
+      inputSchema: z.object({
+        projectId: z.string().min(1),
+        title: z.string().min(1),
+        description: z.string().min(1),
+        acceptanceCriteria: z.string().min(1),
+        repositoryIds: z.array(z.string()).optional(),
+      }),
+    },
+    handlers.flowx_create_requirement,
+  );
+  server.registerTool(
+    'flowx_start_workflow',
+    {
+      title: 'Start FlowX Workflow',
+      description:
+        'Start a workflow for an existing requirement after showing the user a start summary and receiving explicit confirmation. Always pass userConfirmedStart=true only after that confirmation. Then ask whether to continue into product brainstorm (bind + flowx-product-prd) or stop.',
+      inputSchema: z.object({
+        requirementId: z.string().min(1),
+        userConfirmedStart: z.boolean(),
+        repositoryIds: z.array(z.string()).optional(),
+        aiProvider: z.enum(['codex', 'cursor']).optional(),
+      }),
+    },
+    handlers.flowx_start_workflow,
+  );
   server.registerTool(
     'flowx_list_tasks',
     {

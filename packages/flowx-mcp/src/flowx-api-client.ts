@@ -112,6 +112,28 @@ export class FlowXApiClient {
     });
   }
 
+  listProjects() {
+    return this.request('/projects');
+  }
+
+  createRequirement(body: {
+    projectId: string;
+    title: string;
+    description: string;
+    acceptanceCriteria: string;
+    repositoryIds?: string[];
+  }) {
+    return this.request('/requirements', { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  createWorkflowRun(body: {
+    requirementId: string;
+    repositoryIds?: string[];
+    aiProvider?: 'codex' | 'cursor';
+  }) {
+    return this.request('/workflow-runs', { method: 'POST', body: JSON.stringify(body) });
+  }
+
   listTasks(workspaceId?: string) {
     const params = new URLSearchParams();
     if (workspaceId?.trim()) {

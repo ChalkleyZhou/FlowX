@@ -21,6 +21,73 @@ describe('createFlowXToolHandlers', () => {
     expect(result.content[0]?.text).toContain('req-1');
   });
 
+  it('lists projects and creates requirements through the FlowX API client', async () => {
+    const apiClient = {
+      listProjects: vi.fn().mockResolvedValue([
+        {
+          id: 'proj_1',
+          name: 'Demo',
+          workspaceId: 'ws_1',
+          workspace: { id: 'ws_1', name: 'WS', repositories: [{ id: 'repo_1', name: 'app' }] },
+        },
+      ]),
+      createRequirement: vi.fn().mockResolvedValue({ id: 'req_1', title: '本地发起', projectId: 'proj_1' }),
+    };
+    const handlers = createFlowXToolHandlers({
+      apiClient: apiClient as never,
+      collectGitReport: vi.fn() as never,
+    });
+
+    const listed = await handlers.flowx_list_projects();
+    expect(apiClient.listProjects).toHaveBeenCalled();
+    expect(listed.content[0]?.text).toContain('proj_1');
+    expect(listed.content[0]?.text).toContain('WS');
+
+    const created = await handlers.flowx_create_requirement({
+      projectId: 'proj_1',
+      title: '本地发起',
+      description: '描述',
+      acceptanceCriteria: '可在列表看到该需求',
+    });
+    expect(apiClient.createRequirement).toHaveBeenCalledWith({
+      projectId: 'proj_1',
+      title: '本地发起',
+      description: '描述',
+      acceptanceCriteria: '可在列表看到该需求',
+    });
+    expect(created.content[0]?.text).toContain('req_1');
+  });
+
+  it('rejects start_workflow without userConfirmedStart', async () => {
+    const apiClient = {
+      createWorkflowRun: vi.fn(),
+    };
+    const handlers = createFlowXToolHandlers({
+      apiClient: apiClient as never,
+      collectGitReport: vi.fn() as never,
+    });
+
+    const denied = await handlers.flowx_start_workflow({
+      requirementId: 'req_1',
+      userConfirmedStart: false,
+    });
+    expect(denied.isError).toBe(true);
+    expect(denied.content[0]?.text).toMatch(/userConfirmedStart/);
+    expect(apiClient.createWorkflowRun).not.toHaveBeenCalled();
+
+    apiClient.createWorkflowRun.mockResolvedValue({ id: 'wr_1', requirementId: 'req_1' });
+    const started = await handlers.flowx_start_workflow({
+      requirementId: 'req_1',
+      userConfirmedStart: true,
+      aiProvider: 'cursor',
+    });
+    expect(started.isError).toBeUndefined();
+    expect(apiClient.createWorkflowRun).toHaveBeenCalledWith({
+      requirementId: 'req_1',
+      aiProvider: 'cursor',
+    });
+  });
+
   it('returns a tool error when completion has no changed files', async () => {
     const handlers = createFlowXToolHandlers({
       apiClient: {} as never,

@@ -36,6 +36,9 @@ describe('flowx-local setup', () => {
     expect(resolveSkillInstallPaths('codex', '/tmp/home')).toEqual([
       '/tmp/home/.agents/skills/flowx-product-prd/SKILL.md',
     ]);
+    expect(resolveSkillInstallPaths('cursor', '/tmp/home', 'flowx-intake-requirement')).toEqual([
+      '/tmp/home/.cursor/skills/flowx-intake-requirement/SKILL.md',
+    ]);
   });
 
   it('writes missing skills and skips existing ones unless force', () => {
@@ -43,29 +46,33 @@ describe('flowx-local setup', () => {
     homes.push(home);
 
     const first = runSetup({ homeDir: home, targets: 'cursor,codex,od' });
-    // codex 和 od 写入相同文件路径，因此只有 cursor + agents 两个不同目标文件。
-    expect(first.written).toHaveLength(2);
+    // 2 skills × (cursor + agents) = 4 paths; codex/od share agents roots per skill.
+    expect(first.written).toHaveLength(4);
     expect(first.skipped).toEqual([]);
-    const cursorSkill = join(home, '.cursor', 'skills', 'flowx-product-prd', 'SKILL.md');
-    const agentsSkill = join(home, '.agents', 'skills', 'flowx-product-prd', 'SKILL.md');
-    const odSkill = agentsSkill;
-    expect(existsSync(cursorSkill)).toBe(true);
-    expect(existsSync(agentsSkill)).toBe(true);
-    expect(existsSync(odSkill)).toBe(true);
-    expect(cursorSkill).toContain('flowx-product-prd');
-    expect(readFileSync(cursorSkill, 'utf8')).toContain('prd.md');
-    expect(readFileSync(cursorSkill, 'utf8')).toContain('头脑风暴');
-    expect(readFileSync(cursorSkill, 'utf8')).not.toContain('Superpowers');
-    expect(readFileSync(cursorSkill, 'utf8')).not.toContain('OpenSpec');
+    const cursorPrd = join(home, '.cursor', 'skills', 'flowx-product-prd', 'SKILL.md');
+    const agentsPrd = join(home, '.agents', 'skills', 'flowx-product-prd', 'SKILL.md');
+    const cursorIntake = join(home, '.cursor', 'skills', 'flowx-intake-requirement', 'SKILL.md');
+    const agentsIntake = join(home, '.agents', 'skills', 'flowx-intake-requirement', 'SKILL.md');
+    expect(existsSync(cursorPrd)).toBe(true);
+    expect(existsSync(agentsPrd)).toBe(true);
+    expect(existsSync(cursorIntake)).toBe(true);
+    expect(existsSync(agentsIntake)).toBe(true);
+    expect(readFileSync(cursorPrd, 'utf8')).toContain('prd.md');
+    expect(readFileSync(cursorPrd, 'utf8')).toContain('头脑风暴');
+    expect(readFileSync(cursorPrd, 'utf8')).not.toContain('Superpowers');
+    expect(readFileSync(cursorPrd, 'utf8')).not.toContain('OpenSpec');
+    expect(readFileSync(cursorIntake, 'utf8')).toContain('flowx_start_workflow');
+    expect(readFileSync(cursorIntake, 'utf8')).toContain('userConfirmedStart');
 
-    writeFileSync(cursorSkill, '# custom\n', 'utf8');
+    writeFileSync(cursorPrd, '# custom\n', 'utf8');
     const second = runSetup({ homeDir: home, targets: 'cursor' });
     expect(second.written).toEqual([]);
-    expect(second.skipped).toEqual([cursorSkill]);
-    expect(readFileSync(cursorSkill, 'utf8')).toBe('# custom\n');
+    expect(second.skipped).toEqual([cursorPrd, cursorIntake]);
+    expect(readFileSync(cursorPrd, 'utf8')).toBe('# custom\n');
 
     const forced = runSetup({ homeDir: home, targets: 'cursor', force: true });
-    expect(forced.written).toEqual([cursorSkill]);
-    expect(readFileSync(cursorSkill, 'utf8')).toContain('flowx_submit_brainstorm');
+    expect(forced.written).toEqual([cursorPrd, cursorIntake]);
+    expect(readFileSync(cursorPrd, 'utf8')).toContain('flowx_submit_brainstorm');
+    expect(readFileSync(cursorIntake, 'utf8')).toContain('flowx_create_requirement');
   });
 });

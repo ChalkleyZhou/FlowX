@@ -110,4 +110,38 @@ describe('RequirementsPage', () => {
     expect(button).toBeUndefined();
     expect(container.textContent).toContain('启动工作流');
   });
+
+  it('prefers local AI intake CTA and keeps web create as secondary', async () => {
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/requirements']}>
+          <Routes>
+            <Route path="/requirements" element={<RequirementsPage />} />
+            <Route path="/local-agent" element={<div>本地 Agent 指南</div>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('用本地 AI 发起');
+    expect(container.textContent).toContain('网页创建');
+    expect(container.textContent).toContain('推荐用本地 AI + Skill 发起需求');
+
+    const localLink = Array.from(container.querySelectorAll('a')).find(
+      (element) => element.textContent?.trim() === '用本地 AI 发起',
+    );
+    expect(localLink?.getAttribute('href')).toBe('/local-agent');
+
+    const webCreate = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent?.trim() === '网页创建',
+    );
+    expect(webCreate).toBeTruthy();
+    expect(
+      Array.from(container.querySelectorAll('button')).some(
+        (element) => element.textContent?.trim() === '新增需求',
+      ),
+    ).toBe(false);
+  });
 });
