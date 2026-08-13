@@ -30,6 +30,7 @@ import type {
   Project,
   ProjectBriefingConfig,
   ProjectCodeReviewConfig,
+  ProjectVersionSummary,
   RequirementAssignment,
   RepositoryDeployConfig,
   Repository,
@@ -71,6 +72,7 @@ interface RequirementPayload {
   description: string;
   acceptanceCriteria: string;
   repositoryIds?: string[];
+  versionId?: string | null;
 }
 
 function queryString(params?: Record<string, string | undefined>) {
@@ -264,6 +266,25 @@ export const api = {
   getWorkspaces: () => request<Workspace[]>('/workspaces'),
   getProjects: () => request<Project[]>('/projects'),
   getProject: (id: string) => request<Project>(`/projects/${id}`),
+  listProjectVersions: (projectId: string) =>
+    request<ProjectVersionSummary[]>(`/projects/${projectId}/versions`),
+  createProjectVersion: (projectId: string, payload: { name: string }) =>
+    request<ProjectVersionSummary>(`/projects/${projectId}/versions`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateProjectVersion: (projectId: string, versionId: string, payload: { name: string }) =>
+    request<ProjectVersionSummary>(`/projects/${projectId}/versions/${versionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteProjectVersion: (projectId: string, versionId: string) =>
+    request<{ ok: true }>(`/projects/${projectId}/versions/${versionId}`, { method: 'DELETE' }),
+  updateProjectCurrentVersion: (projectId: string, currentVersionId: string | null) =>
+    request<Project>(`/projects/${projectId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ currentVersionId }),
+    }),
   getOrganizationMembers: () => request<OrganizationMember[]>('/auth/organization/members'),
   resolveOrganizationMemberEmail: (userId: string) =>
     request<{ email: string; source: 'profile' | 'dingtalk' }>(
@@ -624,7 +645,7 @@ export const api = {
   getRequirement: (id: string) => request<Requirement>(`/requirements/${id}`),
   updateRequirement: (
     id: string,
-    payload: { priority?: string; planningStatus?: string },
+    payload: { priority?: string; planningStatus?: string; versionId?: string | null },
   ) =>
     request<Requirement>(`/requirements/${id}`, {
       method: 'PATCH',

@@ -232,6 +232,7 @@ export function ProjectsPage() {
                     <>
                       <Badge variant="outline">{project.workspace.name}</Badge>
                       {project.code ? <Badge variant="secondary">{project.code}</Badge> : null}
+                      {project.currentVersion ? <Badge variant="secondary">{project.currentVersion.name}</Badge> : null}
                       <Badge variant="default">{project._count?.requirements ?? 0} 条需求</Badge>
                     </>
                   }

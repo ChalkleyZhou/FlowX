@@ -124,17 +124,19 @@ MCP 鉴权顺序：
 
 1. 在 IDE 中说明要「新建 / 发起 FlowX 需求」（触发 `flowx-intake-requirement` Skill）
 2. Agent 调用 `flowx_list_projects`，由你选定项目（不要用本地仓库路径猜测）
-3. 收齐标题、描述；验收标准若未给，可用短占位（可日后在 Web 改）
-4. `flowx_create_requirement` 创建需求
-5. Agent 展示启动摘要（需求、仓库范围、执行器、是否进入构思）；**你确认后**再以 `userConfirmedStart: true` 调用 `flowx_start_workflow`
-6. 若选择进入构思：`flowx_bind_workflow` → 按 `flowx-product-prd` 继续；若仅启动，可稍后在 Web 查看或再 `flowx_list_tasks`
+3. **确认发布版本（硬门禁）**：Agent 必须展示该项目当前版本（没有则明确说「当前无版本」）以及版本清单，等你选择后再创建。有当前版本时选 **用当前版本** 或 **新建版本**；无当前版本时选 **新建版本** 或 **本需求暂不挂版本**。新建时 Agent 调用 `flowx_create_project_version`（`setAsCurrent: true`）
+4. 收齐标题、描述；验收标准若未给，可用短占位（可日后在 Web 改）
+5. `flowx_create_requirement` 创建需求，**必须传入**确认后的 `versionId`（具体 id 或 `null`），禁止省略该字段靠服务端默认
+6. Agent 展示启动摘要（需求、仓库范围、执行器、是否进入构思）；**你确认后**再以 `userConfirmedStart: true` 调用 `flowx_start_workflow`
+7. 若选择进入构思：`flowx_bind_workflow` → 按 `flowx-product-prd` 继续；若仅启动，可稍后在 Web 查看或再 `flowx_list_tasks`
 
 相关 MCP 工具：
 
 | 工具 | 作用 |
 | --- | --- |
-| `flowx_list_projects` | 列出可见工作区/项目 |
-| `flowx_create_requirement` | 创建需求 |
+| `flowx_list_projects` | 列出可见工作区/项目（含 `currentVersion` 与 `versions`） |
+| `flowx_create_project_version` | 新建发布版本；intake 选「新建版本」时传 `setAsCurrent: true` |
+| `flowx_create_requirement` | 创建需求；必须带确认后的 `versionId`（id 或 `null`） |
 | `flowx_start_workflow` | 启动工作流；必须先确认，且 `userConfirmedStart=true` |
 
 已创建但启动失败时，需求会保留，可再次确认后重试启动，或回 Web 启动。

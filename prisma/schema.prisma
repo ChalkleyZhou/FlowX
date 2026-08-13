@@ -17,6 +17,8 @@ model Requirement {
   planningStatus          String                  @default("UNSCHEDULED")
   projectId               String
   project                 Project                 @relation(fields: [projectId], references: [id])
+  versionId               String?
+  version                 ProjectVersion?         @relation(fields: [versionId], references: [id], onDelete: Restrict)
   workspaceId             String?
   workspace               Workspace?              @relation(fields: [workspaceId], references: [id])
   ideationStatus          String                  @default("NONE")
@@ -32,6 +34,7 @@ model Requirement {
   updatedAt               DateTime                @updatedAt
 
   @@index([projectId, createdAt])
+  @@index([projectId, versionId])
 }
 
 model RequirementAssignment {
@@ -80,10 +83,13 @@ model Project {
   status       String        @default("ACTIVE")
   workspaceId  String
   workspace    Workspace     @relation(fields: [workspaceId], references: [id])
-  name         String
-  code         String?
-  description  String?
-  requirements Requirement[]
+  name             String
+  code             String?
+  description      String?
+  currentVersionId String?
+  currentVersion   ProjectVersion?  @relation("ProjectCurrentVersion", fields: [currentVersionId], references: [id], onDelete: Restrict)
+  versions         ProjectVersion[] @relation("ProjectVersions")
+  requirements     Requirement[]
   bugs         Bug[]
   briefingConfig ProjectBriefingConfig?
   codeReviewConfig ProjectCodeReviewConfig?
@@ -98,6 +104,20 @@ model Project {
   updatedAt    DateTime      @updatedAt
 
   @@index([workspaceId, createdAt])
+}
+
+model ProjectVersion {
+  id                 String        @id @default(cuid())
+  projectId          String
+  project            Project       @relation("ProjectVersions", fields: [projectId], references: [id], onDelete: Cascade)
+  name               String
+  currentForProjects Project[]     @relation("ProjectCurrentVersion")
+  requirements       Requirement[]
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@unique([projectId, name])
+  @@index([projectId, createdAt])
 }
 
 model ProjectDeployConfig {

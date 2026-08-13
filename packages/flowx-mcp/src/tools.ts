@@ -62,9 +62,26 @@ function summarizeProjects(raw: unknown) {
             name: typeof row.name === 'string' ? row.name : '',
           };
         }),
+        currentVersion: summarizeVersion(project.currentVersion),
+        versions: (Array.isArray(project.versions) ? project.versions : [])
+          .map((row) => summarizeVersion(row))
+          .filter((row): row is { id: string; name: string } => row !== null),
       };
     }),
   };
+}
+
+function summarizeVersion(raw: unknown): { id: string; name: string } | null {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+  const version = raw as Record<string, unknown>;
+  const id = typeof version.id === 'string' ? version.id : '';
+  const name = typeof version.name === 'string' ? version.name : '';
+  if (!id && !name) {
+    return null;
+  }
+  return { id, name };
 }
 
 const evidenceTypeSchema = z.enum([
@@ -135,6 +152,7 @@ export function createFlowXToolHandlers(deps: FlowXToolDependencies) {
       description: string;
       acceptanceCriteria: string;
       repositoryIds?: string[];
+      versionId?: string | null;
     }) {
       return textResult(
         await deps.apiClient.createRequirement({
@@ -143,8 +161,21 @@ export function createFlowXToolHandlers(deps: FlowXToolDependencies) {
           description: input.description,
           acceptanceCriteria: input.acceptanceCriteria,
           ...(input.repositoryIds?.length ? { repositoryIds: input.repositoryIds } : {}),
+          ...(input.versionId !== undefined ? { versionId: input.versionId } : {}),
         }),
       );
+    },
+
+    async flowx_create_project_version(input: {
+      projectId: string;
+      name: string;
+      setAsCurrent?: boolean;
+    }) {
+      const created = await deps.apiClient.createProjectVersion(input.projectId, { name: input.name });
+      if (input.setAsCurrent === true && created && typeof created === 'object' && 'id' in created) {
+        await deps.apiClient.setProjectCurrentVersion(input.projectId, (created as { id: string }).id);
+      }
+      return textResult(created);
     },
 
     async flowx_start_workflow(input: {
@@ -435,17 +466,32 @@ export function registerFlowXTools(
     handlers.flowx_list_projects,
   );
   server.registerTool(
+    'flowx_create_project_version',
+    {
+      title: 'Create FlowX Project Version',
+      description:
+        'Create a release version on a FlowX project. For local intake, pass setAsCurrent=true only after the user chose to create a new version instead of using the current one.',
+      inputSchema: z.object({
+        projectId: z.string().min(1),
+        name: z.string().min(1),
+        setAsCurrent: z.boolean().optional(),
+      }),
+    },
+    handlers.flowx_create_project_version,
+  );
+  server.registerTool(
     'flowx_create_requirement',
     {
       title: 'Create FlowX Requirement',
       description:
-        'Create a requirement on FlowX (local intake). Requires projectId, title, description, acceptanceCriteria. Prefer confirming title/description with the user first; acceptanceCriteria may be a short placeholder if the user has not provided one yet.',
+        'Create a requirement on FlowX (local intake). Requires projectId, title, description, acceptanceCriteria. Confirm the release version with the user first and always pass versionId (id or null); do not omit it to rely on server default.',
       inputSchema: z.object({
         projectId: z.string().min(1),
         title: z.string().min(1),
         description: z.string().min(1),
         acceptanceCriteria: z.string().min(1),
         repositoryIds: z.array(z.string()).optional(),
+        versionId: z.string().min(1).nullable().optional(),
       }),
     },
     handlers.flowx_create_requirement,

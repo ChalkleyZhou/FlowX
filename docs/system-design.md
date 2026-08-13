@@ -25,7 +25,7 @@ flowchart LR
 
     subgraph Domains["当前业务模块"]
         Workspace["Workspace / Repository"]
-        Project["Project / Requirement / Schedule"]
+        Project["Project / ProjectVersion / Requirement / Schedule"]
         Workflow["Ideation / Workflow / StageExecution"]
         Review["ReviewFinding / Issue / Bug"]
         Briefing["Briefing / Daily Code Review"]
@@ -59,7 +59,7 @@ flowchart LR
 | 模块 | 当前职责 | 目标中心 |
 | --- | --- | --- |
 | `workspaces` | 工作区、Repository 登记、同步和本地副本 | 项目管理中心 / AI 上下文中心 |
-| `projects` | 项目基础信息 | 项目管理中心 |
+| `projects` | 项目基础信息、发布版本清单与当前版本 | 项目管理中心 |
 | `requirements` | 需求、ideation 与设计编排 | 项目管理中心 / 研发流程中心 |
 | `workflow` | 工作流状态机、阶段执行、本地/云端执行和审查 | 研发流程中心 |
 | `ai`、`prompts` | Executor、Prompt 和输出 schema | AI 上下文中心 |
@@ -77,7 +77,7 @@ flowchart LR
 FlowX Web 当前提供：
 
 - 工作区和 Repository 管理。
-- 项目、需求、工作流和排期。
+- 项目、发布版本、需求、工作流和排期。
 - Ideation、设计 Artifact、执行、Review 和人工确认。
 - Issue、Bug、项目简报和每日 Code Review。
 - AI/Git 凭据、组织用户、数据源和投递目标设置。
@@ -98,7 +98,8 @@ FlowX Web 当前提供：
 ```text
 Workspace
   -> Project
-  -> Requirement
+     -> ProjectVersion (currentVersionId)
+     -> Requirement (versionId?)
   -> RequirementRepository
   -> WorkflowRun
   -> WorkflowRepository

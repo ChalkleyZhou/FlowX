@@ -63,6 +63,9 @@ describe('flowx-local setup', () => {
     expect(readFileSync(cursorPrd, 'utf8')).not.toContain('OpenSpec');
     expect(readFileSync(cursorIntake, 'utf8')).toContain('flowx_start_workflow');
     expect(readFileSync(cursorIntake, 'utf8')).toContain('userConfirmedStart');
+    expect(readFileSync(cursorIntake, 'utf8')).toContain('用当前版本');
+    expect(readFileSync(cursorIntake, 'utf8')).toContain('flowx_create_project_version');
+    expect(readFileSync(cursorIntake, 'utf8')).toContain('禁止省略');
 
     writeFileSync(cursorPrd, '# custom\n', 'utf8');
     const second = runSetup({ homeDir: home, targets: 'cursor' });

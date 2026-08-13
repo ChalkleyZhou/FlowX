@@ -116,12 +116,27 @@ export class FlowXApiClient {
     return this.request('/projects');
   }
 
+  createProjectVersion(projectId: string, body: { name: string }) {
+    return this.request(`/projects/${encodeURIComponent(projectId)}/versions`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  setProjectCurrentVersion(projectId: string, currentVersionId: string | null) {
+    return this.request(`/projects/${encodeURIComponent(projectId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ currentVersionId }),
+    });
+  }
+
   createRequirement(body: {
     projectId: string;
     title: string;
     description: string;
     acceptanceCriteria: string;
     repositoryIds?: string[];
+    versionId?: string | null;
   }) {
     return this.request('/requirements', { method: 'POST', body: JSON.stringify(body) });
   }

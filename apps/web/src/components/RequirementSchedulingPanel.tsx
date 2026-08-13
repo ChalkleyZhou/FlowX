@@ -20,6 +20,7 @@ import { formatAssignmentRole, formatPlanningStatus, formatPriority } from '../u
 
 const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH'] as const;
 const PLANNING_OPTIONS = ['UNSCHEDULED', 'SCHEDULED', 'IN_PROGRESS', 'DONE'] as const;
+const UNVERSIONED = '__unversioned__';
 
 interface RequirementSchedulingPanelProps {
   requirement: Requirement;
@@ -34,6 +35,8 @@ export function RequirementSchedulingPanel({ requirement, onChanged }: Requireme
   const [editing, setEditing] = useState<RequirementAssignment | null>(null);
   const [priority, setPriority] = useState(requirement.priority ?? 'MEDIUM');
   const [planningStatus, setPlanningStatus] = useState(requirement.planningStatus ?? 'UNSCHEDULED');
+  const [versionId, setVersionId] = useState(requirement.versionId ?? UNVERSIONED);
+  const [versions, setVersions] = useState(requirement.project.versions ?? []);
 
   const totalEstimatedDays = useMemo(
     () => assignments.reduce((sum, item) => sum + displayEstimatedDays(item), 0),
@@ -55,7 +58,18 @@ export function RequirementSchedulingPanel({ requirement, onChanged }: Requireme
     setAssignments(requirement.assignments ?? []);
     setPriority(requirement.priority ?? 'MEDIUM');
     setPlanningStatus(requirement.planningStatus ?? 'UNSCHEDULED');
+    setVersionId(requirement.versionId ?? UNVERSIONED);
+    setVersions(requirement.project.versions ?? []);
   }, [requirement]);
+
+  useEffect(() => {
+    if ((requirement.project.versions ?? []).length > 0) {
+      return;
+    }
+    void api.listProjectVersions(requirement.project.id).then(setVersions).catch((error) => {
+      toast.error(error instanceof Error ? error.message : '加载版本失败');
+    });
+  }, [requirement.project.id, requirement.project.versions]);
 
   function openCreateDialog() {
     setEditing(null);
@@ -67,10 +81,15 @@ export function RequirementSchedulingPanel({ requirement, onChanged }: Requireme
     setDialogOpen(true);
   }
 
-  async function savePlanningMeta(nextPriority = priority, nextPlanningStatus = planningStatus) {
+  async function savePlanningMeta(
+    nextPriority = priority,
+    nextPlanningStatus = planningStatus,
+    nextVersionId = versionId,
+  ) {
     await api.updateRequirement(requirement.id, {
       priority: nextPriority,
       planningStatus: nextPlanningStatus,
+      versionId: nextVersionId === UNVERSIONED ? null : nextVersionId,
     });
     await onChanged();
   }
@@ -104,7 +123,7 @@ export function RequirementSchedulingPanel({ requirement, onChanged }: Requireme
         </div>
       </CardHeader>
       <CardContent className="space-y-5 p-5 pt-0">
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-4">
           <div className="space-y-2">
             <label className="text-sm font-semibold text-foreground">优先级</label>
             <Select
@@ -142,6 +161,28 @@ export function RequirementSchedulingPanel({ requirement, onChanged }: Requireme
                 {PLANNING_OPTIONS.map((item) => (
                   <SelectItem key={item} value={item}>
                     {formatPlanningStatus(item)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-foreground">发布版本</label>
+            <Select
+              value={versionId}
+              onValueChange={(value) => {
+                setVersionId(value);
+                void savePlanningMeta(priority, planningStatus, value);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="不挂版本" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={UNVERSIONED}>不挂版本</SelectItem>
+                {versions.map((version) => (
+                  <SelectItem key={version.id} value={version.id}>
+                    {version.name}
                   </SelectItem>
                 ))}
               </SelectContent>

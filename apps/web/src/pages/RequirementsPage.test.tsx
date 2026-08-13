@@ -41,6 +41,9 @@ describe('RequirementsPage', () => {
     project: {
       id: 'project-1',
       name: 'FlowX',
+      currentVersionId: 'ver-1',
+      currentVersion: { id: 'ver-1', name: '2.6.0' },
+      versions: [{ id: 'ver-1', name: '2.6.0' }],
       workspace: {
         id: 'workspace-1',
         name: '研发平台',
@@ -49,6 +52,8 @@ describe('RequirementsPage', () => {
         ],
       },
     },
+    versionId: 'ver-1',
+    version: { id: 'ver-1', name: '2.6.0' },
     workflowRuns: [],
     requirementRepositories: [
       {
@@ -127,6 +132,7 @@ describe('RequirementsPage', () => {
 
     expect(container.textContent).toContain('用本地 AI 发起');
     expect(container.textContent).toContain('网页创建');
+    expect(container.textContent).toContain('2.6.0');
     expect(container.textContent).toContain('推荐用本地 AI + Skill 发起需求');
 
     const localLink = Array.from(container.querySelectorAll('a')).find(

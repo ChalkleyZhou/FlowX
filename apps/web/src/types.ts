@@ -66,11 +66,19 @@ export interface GanttPayload {
   bars: GanttBar[];
 }
 
+export interface ProjectVersionSummary {
+  id: string;
+  name: string;
+}
+
 export interface Project {
   id: string;
   name: string;
   code?: string | null;
   description?: string | null;
+  currentVersionId?: string | null;
+  currentVersion?: ProjectVersionSummary | null;
+  versions?: ProjectVersionSummary[];
   workspace: Workspace;
   requirements?: Array<
     Requirement & {
@@ -317,6 +325,8 @@ export interface Requirement {
     id: string;
     repository: Repository;
   }>;
+  versionId?: string | null;
+  version?: ProjectVersionSummary | null;
 }
 
 export interface Repository {

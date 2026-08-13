@@ -88,6 +88,9 @@ export function RequirementDetailPage() {
             label: formatPriority(requirement.priority),
             variant: 'secondary',
           },
+          ...(requirement.version
+            ? [{ key: 'version', label: requirement.version.name, variant: 'outline' as const }]
+            : []),
         ]}
         actions={(
           <div className="flex flex-wrap items-center gap-3">

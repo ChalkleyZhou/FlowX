@@ -28,6 +28,8 @@ describe('createFlowXToolHandlers', () => {
           id: 'proj_1',
           name: 'Demo',
           workspaceId: 'ws_1',
+          currentVersion: { id: 'ver-1', name: '2.6.0' },
+          versions: [{ id: 'ver-1', name: '2.6.0' }],
           workspace: { id: 'ws_1', name: 'WS', repositories: [{ id: 'repo_1', name: 'app' }] },
         },
       ]),
@@ -41,6 +43,7 @@ describe('createFlowXToolHandlers', () => {
     const listed = await handlers.flowx_list_projects();
     expect(apiClient.listProjects).toHaveBeenCalled();
     expect(listed.content[0]?.text).toContain('proj_1');
+    expect(listed.content[0]?.text).toContain('2.6.0');
     expect(listed.content[0]?.text).toContain('WS');
 
     const created = await handlers.flowx_create_requirement({
@@ -56,6 +59,51 @@ describe('createFlowXToolHandlers', () => {
       acceptanceCriteria: '可在列表看到该需求',
     });
     expect(created.content[0]?.text).toContain('req_1');
+  });
+
+  it('creates a project version and can set it current', async () => {
+    const apiClient = {
+      createProjectVersion: vi.fn().mockResolvedValue({ id: 'ver-2', name: '2.7.0', projectId: 'proj_1' }),
+      setProjectCurrentVersion: vi.fn().mockResolvedValue({ id: 'proj_1', currentVersionId: 'ver-2' }),
+    };
+    const handlers = createFlowXToolHandlers({
+      apiClient: apiClient as never,
+      collectGitReport: vi.fn() as never,
+    });
+
+    const created = await handlers.flowx_create_project_version({
+      projectId: 'proj_1',
+      name: '2.7.0',
+      setAsCurrent: true,
+    });
+    expect(apiClient.createProjectVersion).toHaveBeenCalledWith('proj_1', { name: '2.7.0' });
+    expect(apiClient.setProjectCurrentVersion).toHaveBeenCalledWith('proj_1', 'ver-2');
+    expect(created.content[0]?.text).toContain('ver-2');
+  });
+
+  it('forwards versionId including null on create_requirement', async () => {
+    const apiClient = {
+      createRequirement: vi.fn().mockResolvedValue({ id: 'req_1', versionId: null }),
+    };
+    const handlers = createFlowXToolHandlers({
+      apiClient: apiClient as never,
+      collectGitReport: vi.fn() as never,
+    });
+
+    await handlers.flowx_create_requirement({
+      projectId: 'proj_1',
+      title: '本地发起',
+      description: '描述',
+      acceptanceCriteria: '可在列表看到该需求',
+      versionId: null,
+    });
+    expect(apiClient.createRequirement).toHaveBeenCalledWith({
+      projectId: 'proj_1',
+      title: '本地发起',
+      description: '描述',
+      acceptanceCriteria: '可在列表看到该需求',
+      versionId: null,
+    });
   });
 
   it('rejects start_workflow without userConfirmedStart', async () => {

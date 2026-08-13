@@ -31,6 +31,8 @@ export class ProjectsService {
             },
           },
         },
+        currentVersion: { select: { id: true, name: true } },
+        versions: { select: { id: true, name: true }, orderBy: { createdAt: 'asc' as const } },
         _count: {
           select: {
             requirements: true,
@@ -53,6 +55,8 @@ export class ProjectsService {
             },
           },
         },
+        currentVersion: { select: { id: true, name: true } },
+        versions: { select: { id: true, name: true }, orderBy: { createdAt: 'asc' as const } },
         _count: {
           select: {
             requirements: true,
@@ -73,9 +77,12 @@ export class ProjectsService {
             },
           },
         },
+        currentVersion: { select: { id: true, name: true } },
+        versions: { select: { id: true, name: true }, orderBy: { createdAt: 'asc' as const } },
         requirements: {
           orderBy: { createdAt: 'desc' },
           include: {
+            version: { select: { id: true, name: true } },
             assignments: {
               include: { user: true },
               orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
@@ -87,6 +94,7 @@ export class ProjectsService {
             requirements: true,
           },
         },
+      },
       },
     });
 

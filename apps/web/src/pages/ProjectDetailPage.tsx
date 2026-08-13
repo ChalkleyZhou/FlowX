@@ -1,13 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { PageHeader } from '../components/PageHeader';
 import { ProjectBriefingConfigPanel } from '../components/ProjectBriefingConfigPanel';
 import { ProjectCodeReviewConfigPanel } from '../components/ProjectCodeReviewConfigPanel';
+import { ProjectVersionsPanel } from '../components/ProjectVersionsPanel';
 import { SectionHeader } from '../components/SectionHeader';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
 import type { Project } from '../types';
@@ -19,6 +27,7 @@ export function ProjectDetailPage() {
   const toast = useToast();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
+  const [versionFilter, setVersionFilter] = useState('__all__');
 
   async function refresh() {
     if (!projectId) {
@@ -37,6 +46,17 @@ export function ProjectDetailPage() {
   useEffect(() => {
     void refresh();
   }, [projectId]);
+
+  const filteredRequirements = useMemo(() => {
+    const rows = project?.requirements ?? [];
+    if (versionFilter === '__all__') {
+      return rows;
+    }
+    if (versionFilter === '__unversioned__') {
+      return rows.filter((requirement) => !requirement.versionId);
+    }
+    return rows.filter((requirement) => requirement.versionId === versionFilter);
+  }, [project?.requirements, versionFilter]);
 
   if (!projectId) {
     return <p className="text-sm text-muted-foreground">缺少项目 ID。</p>;
@@ -75,6 +95,7 @@ export function ProjectDetailPage() {
       <div className="mb-5 flex flex-wrap gap-3">
         <Badge variant="outline">{project.workspace.name}</Badge>
         {project.code ? <Badge variant="secondary">{project.code}</Badge> : null}
+        {project.currentVersion ? <Badge variant="secondary">{project.currentVersion.name}</Badge> : null}
         <Badge variant="default">{project.requirements?.length ?? 0} 条需求</Badge>
       </div>
 
@@ -83,17 +104,42 @@ export function ProjectDetailPage() {
         <ProjectCodeReviewConfigPanel projectId={projectId} />
       </div>
 
+      <div className="mt-5">
+        <ProjectVersionsPanel
+          projectId={projectId}
+          currentVersionId={project.currentVersionId}
+          onChanged={refresh}
+        />
+      </div>
+
       <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
-          <SectionHeader eyebrow="Requirements" title="需求列表" />
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <SectionHeader eyebrow="Requirements" title="需求列表" />
+            <Select value={versionFilter} onValueChange={setVersionFilter}>
+              <SelectTrigger className="w-44" aria-label="按版本筛选">
+                <SelectValue placeholder="全部版本" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">全部版本</SelectItem>
+                <SelectItem value="__unversioned__">未挂版本</SelectItem>
+                {(project.versions ?? []).map((version) => (
+                  <SelectItem key={version.id} value={version.id}>
+                    {version.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent className="p-5 pt-0">
-          {(project.requirements ?? []).length > 0 ? (
+          {filteredRequirements.length > 0 ? (
             <div className="overflow-x-auto rounded-md border border-border">
               <table className="min-w-full text-sm">
                 <thead className="bg-muted/40 text-left text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 font-medium">需求</th>
+                    <th className="px-4 py-3 font-medium">版本</th>
                     <th className="px-4 py-3 font-medium">排期状态</th>
                     <th className="px-4 py-3 font-medium">优先级</th>
                     <th className="px-4 py-3 font-medium">人员</th>
@@ -103,7 +149,7 @@ export function ProjectDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(project.requirements ?? []).map((requirement) => (
+                  {filteredRequirements.map((requirement) => (
                     <tr key={requirement.id} className="border-t border-border">
                       <td className="px-4 py-3 font-medium">
                         <Link
@@ -113,6 +159,7 @@ export function ProjectDetailPage() {
                           {requirement.title}
                         </Link>
                       </td>
+                      <td className="px-4 py-3 text-muted-foreground">{requirement.version?.name ?? ''}</td>
                       <td className="px-4 py-3">{formatPlanningStatus(requirement.planningStatus)}</td>
                       <td className="px-4 py-3">{formatPriority(requirement.priority)}</td>
                       <td className="px-4 py-3 text-muted-foreground">

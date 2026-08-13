@@ -24,6 +24,7 @@ import { RepositorySyncService } from '../workspaces/repository-sync.service';
 import { CreateRequirementDto } from './dto/create-requirement.dto';
 import { UpdateRequirementDto } from './dto/update-requirement.dto';
 import { toRequirementAssignmentResponse } from './requirement-assignment.mapper';
+import { resolveRequirementVersionId } from './resolve-requirement-version';
 import {
   IdeationSessionEventsRepository,
 } from './ideation-session-events.repository';
@@ -104,6 +105,14 @@ export class RequirementsService {
       throw new NotFoundException('One or more selected repositories do not belong to the project workspace.');
     }
 
+    const versionId = await resolveRequirementVersionId({
+      ...(Object.prototype.hasOwnProperty.call(dto, 'versionId') ? { versionId: dto.versionId } : {}),
+      currentVersionId: project.currentVersionId,
+      assertOwned: async (id) => {
+        await this.assertVersionOwned(dto.projectId, id);
+      },
+    });
+
     return this.prisma.requirement.create({
       data: {
         projectId: dto.projectId,
@@ -111,6 +120,7 @@ export class RequirementsService {
         description: dto.description,
         acceptanceCriteria: dto.acceptanceCriteria,
         workspaceId: project.workspaceId,
+        versionId,
         requirementRepositories:
           requestedRepositoryIds.length > 0
             ? {
@@ -141,11 +151,13 @@ export class RequirementsService {
             createdAt: 'asc',
           },
         },
+        version: { select: { id: true, name: true } },
       },
     });
   }
 
   private readonly requirementRelationsInclude = {
+    version: { select: { id: true, name: true } },
     assignments: {
       include: { user: true },
       orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }],
@@ -165,12 +177,16 @@ export class RequirementsService {
   }
 
   async update(id: string, dto: UpdateRequirementDto) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
+    if (Object.prototype.hasOwnProperty.call(dto, 'versionId') && dto.versionId) {
+      await this.assertVersionOwned(existing.project.id, dto.versionId);
+    }
     const updated = await this.prisma.requirement.update({
       where: { id },
       data: {
         ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
         ...(dto.planningStatus !== undefined ? { planningStatus: dto.planningStatus } : {}),
+        ...(Object.prototype.hasOwnProperty.call(dto, 'versionId') ? { versionId: dto.versionId ?? null } : {}),
       },
       include: {
         project: {
@@ -301,6 +317,13 @@ export class RequirementsService {
       },
     });
     return this.enrichRequirement(requirement);
+  }
+
+  private async assertVersionOwned(projectId: string, versionId: string) {
+    const owned = await this.prisma.projectVersion.findFirst({ where: { id: versionId, projectId } });
+    if (!owned) {
+      throw new BadRequestException('Version does not belong to this project.');
+    }
   }
 
   // ── Ideation methods ──

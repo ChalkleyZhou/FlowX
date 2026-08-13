@@ -59,6 +59,7 @@ describe('flowx-local MCP server', () => {
       'flowx_submit_design',
       'flowx_submit_brainstorm',
       'flowx_list_projects',
+      'flowx_create_project_version',
       'flowx_create_requirement',
       'flowx_start_workflow',
       'flowx_list_tasks',
@@ -224,6 +225,8 @@ describe('flowx-local MCP server', () => {
               id: 'proj_1',
               name: 'Demo',
               workspaceId: 'ws_1',
+              currentVersion: { id: 'ver-1', name: '2.6.0' },
+              versions: [{ id: 'ver-1', name: '2.6.0' }],
               workspace: {
                 id: 'ws_1',
                 name: 'WS',
@@ -260,6 +263,8 @@ describe('flowx-local MCP server', () => {
       name: 'Demo',
       workspaceId: 'ws_1',
       workspaceName: 'WS',
+      currentVersion: { id: 'ver-1', name: '2.6.0' },
+      versions: [{ id: 'ver-1', name: '2.6.0' }],
       repositories: [{ id: 'repo_1', name: 'app' }],
     });
 
@@ -280,6 +285,77 @@ describe('flowx-local MCP server', () => {
     });
 
     expect(fetchMock).toHaveBeenCalled();
+    await client.close();
+    await server.close();
+  });
+
+  it('creates a project version and can set it current', async () => {
+    const homeDir = makeHome();
+    delete process.env.FLOWX_API_TOKEN;
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/projects/proj_1/versions') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body));
+        expect(body).toEqual({ name: '2.7.0' });
+        return new Response(
+          JSON.stringify({ id: 'ver-2', name: '2.7.0', projectId: 'proj_1' }),
+          { status: 201 },
+        );
+      }
+      if (url.endsWith('/projects/proj_1') && init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body));
+        expect(body).toEqual({ currentVersionId: 'ver-2' });
+        return new Response(JSON.stringify({ id: 'proj_1', currentVersionId: 'ver-2' }), { status: 200 });
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { client, server } = await connectClient(homeDir);
+
+    const created = await client.callTool({
+      name: 'flowx_create_project_version',
+      arguments: { projectId: 'proj_1', name: '2.7.0', setAsCurrent: true },
+    });
+    expect(created.isError).toBeUndefined();
+    expect(JSON.parse(String((created.content as Array<{ text: string }>)[0].text))).toMatchObject({
+      id: 'ver-2',
+      name: '2.7.0',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await client.close();
+    await server.close();
+  });
+
+  it('forwards versionId including null on create_requirement', async () => {
+    const homeDir = makeHome();
+    delete process.env.FLOWX_API_TOKEN;
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/requirements') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body));
+        expect(body.versionId).toBeNull();
+        return new Response(JSON.stringify({ id: 'req_1', title: body.title, versionId: null }), { status: 201 });
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { client, server } = await connectClient(homeDir);
+
+    const created = await client.callTool({
+      name: 'flowx_create_requirement',
+      arguments: {
+        projectId: 'proj_1',
+        title: '本地发起',
+        description: '描述',
+        acceptanceCriteria: '可在列表看到该需求',
+        versionId: null,
+      },
+    });
+    expect(created.isError).toBeUndefined();
+
     await client.close();
     await server.close();
   });

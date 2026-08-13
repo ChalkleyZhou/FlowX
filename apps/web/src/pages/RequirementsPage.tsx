@@ -32,6 +32,16 @@ import type { Project, Requirement, Workspace } from '../types';
 import { formatAssignmentSummary, formatScheduleRange } from '../utils/business-days';
 import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
 
+const UNVERSIONED = '__unversioned__';
+const emptyCreateDraft = {
+  projectId: '',
+  title: '',
+  description: '',
+  acceptanceCriteria: '',
+  repositoryIds: [] as string[],
+  versionId: UNVERSIONED,
+};
+
 const AI_PROVIDER_STORAGE_KEY = 'flowx-default-ai-provider';
 
 export function RequirementsPage() {
@@ -53,13 +63,7 @@ export function RequirementsPage() {
     { id: 'cursor', label: 'Cursor CLI' },
   ]);
   const [launchSubmitting, setLaunchSubmitting] = useState(false);
-  const [createDraft, setCreateDraft] = useState({
-    projectId: '',
-    title: '',
-    description: '',
-    acceptanceCriteria: '',
-    repositoryIds: [] as string[],
-  });
+  const [createDraft, setCreateDraft] = useState(emptyCreateDraft);
   const toast = useToast();
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === createDraft.projectId) ?? null,
@@ -144,16 +148,11 @@ export function RequirementsPage() {
     description: string;
     acceptanceCriteria: string;
     repositoryIds: string[];
+    versionId: string | null;
   }) {
     try {
       await api.createRequirement(values);
-      setCreateDraft({
-        projectId: '',
-        title: '',
-        description: '',
-        acceptanceCriteria: '',
-        repositoryIds: [],
-      });
+      setCreateDraft(emptyCreateDraft);
       setCreateModalOpen(false);
       setSelectedProjectId(values.projectId);
       await refresh();
@@ -210,6 +209,7 @@ export function RequirementsPage() {
       description: createDraft.description.trim(),
       acceptanceCriteria: createDraft.acceptanceCriteria.trim(),
       repositoryIds: createDraft.repositoryIds,
+      versionId: createDraft.versionId === UNVERSIONED ? null : createDraft.versionId,
     });
   }
 
@@ -367,13 +367,7 @@ export function RequirementsPage() {
         onOpenChange={(open) => {
           setCreateModalOpen(open);
           if (!open) {
-            setCreateDraft({
-              projectId: '',
-              title: '',
-              description: '',
-              acceptanceCriteria: '',
-              repositoryIds: [],
-            });
+            setCreateDraft(emptyCreateDraft);
           }
         }}
       >
@@ -387,12 +381,15 @@ export function RequirementsPage() {
               <label className="text-sm font-semibold text-foreground">所属项目</label>
               <Select
                 value={createDraft.projectId || undefined}
-                onValueChange={(value) =>
+                onValueChange={(value) => {
+                  const project = projects.find((item) => item.id === value);
                   setCreateDraft((current) => ({
                     ...current,
                     projectId: value,
                     repositoryIds: [],
-                  }))}
+                    versionId: project?.currentVersionId ?? UNVERSIONED,
+                  }));
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="选择需求归属的项目" />
@@ -406,6 +403,27 @@ export function RequirementsPage() {
                 </SelectContent>
               </Select>
             </div>
+            {createDraft.projectId ? (
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-foreground">发布版本</label>
+                <Select
+                  value={createDraft.versionId}
+                  onValueChange={(value) => setCreateDraft((current) => ({ ...current, versionId: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择发布版本" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={UNVERSIONED}>不挂版本</SelectItem>
+                    {(selectedProject?.versions ?? []).map((version) => (
+                      <SelectItem key={version.id} value={version.id}>
+                        {version.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-foreground" htmlFor="requirement-title">需求标题</label>
               <UiInput
@@ -580,6 +598,7 @@ export function RequirementsPage() {
                       <Badge variant="outline">{item.project.workspace.name}</Badge>
                       <Badge variant="outline">{formatPlanningStatus(item.planningStatus)}</Badge>
                       <Badge variant="outline">{formatPriority(item.priority)}</Badge>
+                      {item.version ? <Badge variant="outline">{item.version.name}</Badge> : null}
                       <Badge variant="default">{item.workflowRuns?.length ?? 0} 条工作流</Badge>
                       <Badge variant={getActiveWorkflowRuns(item).length > 0 ? 'warning' : 'outline'}>
                         {getActiveWorkflowRuns(item).length} 条活跃流

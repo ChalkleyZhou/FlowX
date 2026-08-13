@@ -1,4 +1,4 @@
-import { IsArray, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsNotEmpty, IsOptional, IsString, ValidateIf } from 'class-validator';
 
 export class CreateRequirementDto {
   @IsString()
@@ -21,4 +21,10 @@ export class CreateRequirementDto {
   @IsArray()
   @IsString({ each: true })
   repositoryIds?: string[];
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @IsNotEmpty()
+  versionId?: string | null;
 }
