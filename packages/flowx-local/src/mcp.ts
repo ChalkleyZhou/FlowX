@@ -248,7 +248,7 @@ async function runRequest(request: () => Promise<unknown>) {
 }
 
 export function createLocalMcpServer(options: LocalMcpOptions = {}) {
-  const server = new McpServer({ name: 'flowx-local', version: '0.4.6' });
+  const server = new McpServer({ name: 'flowx-local', version: '0.4.7' });
 
   server.registerTool(
     'flowx_get_active_design_session',
