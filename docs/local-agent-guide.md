@@ -118,7 +118,7 @@ MCP 鉴权顺序：
 
 ### 4.0 本地发起需求（推荐主路径）
 
-平台以查看、确认门禁与治理为主；**新建需求并启动工作流**推荐在 Cursor / Codex 用本地 AI 完成，网页「创建」仅为兜底。
+平台需求页主按钮是「创建需求」。已安装本地 Agent 时，**新建需求并启动工作流**也可以在 Cursor / Codex 用本地 AI 完成；需求页次要入口「用 Cursor / Codex 发起」会打开本指南。
 
 前置：已 `flowx-local login`，并执行 `flowx-local setup`（含 `flowx-intake-requirement`）。
 

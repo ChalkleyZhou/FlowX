@@ -116,7 +116,7 @@ describe('RequirementsPage', () => {
     expect(container.textContent).toContain('启动工作流');
   });
 
-  it('prefers local AI intake CTA and keeps web create as secondary', async () => {
+  it('uses web create as the primary CTA and keeps local intake as secondary', async () => {
     await act(async () => {
       root?.render(
         <MemoryRouter initialEntries={['/requirements']}>
@@ -130,23 +130,23 @@ describe('RequirementsPage', () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain('用本地 AI 发起');
-    expect(container.textContent).toContain('网页创建');
+    expect(container.textContent).toContain('创建需求');
+    expect(container.textContent).toContain('用 Cursor / Codex 发起');
     expect(container.textContent).toContain('2.6.0');
-    expect(container.textContent).toContain('推荐用本地 AI + Skill 发起需求');
+    expect(container.textContent).toContain('本页可直接创建需求');
 
     const localLink = Array.from(container.querySelectorAll('a')).find(
-      (element) => element.textContent?.trim() === '用本地 AI 发起',
+      (element) => element.textContent?.trim() === '用 Cursor / Codex 发起',
     );
     expect(localLink?.getAttribute('href')).toBe('/local-agent');
 
     const webCreate = Array.from(container.querySelectorAll('button')).find(
-      (element) => element.textContent?.trim() === '网页创建',
+      (element) => element.textContent?.trim() === '创建需求',
     );
     expect(webCreate).toBeTruthy();
     expect(
       Array.from(container.querySelectorAll('button')).some(
-        (element) => element.textContent?.trim() === '新增需求',
+        (element) => element.textContent?.trim() === '网页创建',
       ),
     ).toBe(false);
   });

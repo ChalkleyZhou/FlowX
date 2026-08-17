@@ -243,7 +243,7 @@ export function ProjectsPage() {
                   }
                   actions={(
                     <UiButton variant="outline" asChild>
-                      <Link to={`/projects/${project.id}`}>排期总览</Link>
+                      <Link to={`/projects/${project.id}`}>项目详情</Link>
                     </UiButton>
                   )}
                 />

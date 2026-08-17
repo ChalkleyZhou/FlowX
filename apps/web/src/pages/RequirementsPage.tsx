@@ -491,8 +491,8 @@ export function RequirementsPage() {
       </Dialog>
       <PageHeader
         eyebrow="Requirements"
-        title="需求录入与流程发起"
-        description="推荐用本地 AI + Skill 发起需求并启动工作流；本页用于查看、确认门禁，以及网页兜底创建。"
+        title="需求"
+        description="查看需求、确认门禁并启动工作流。本页可直接创建需求；已安装本地 Agent 时，也可用 Cursor / Codex 发起。"
       />
       <div className="grid gap-5 md:grid-cols-4">
         <MetricCard label="需求总数" value={requirementSummary.requirementCount} />
@@ -507,11 +507,11 @@ export function RequirementsPage() {
             title="需求列表"
             extra={(
               <div className="flex flex-wrap items-center gap-2">
-                <UiButton asChild>
-                  <Link to="/local-agent">用本地 AI 发起</Link>
+                <UiButton onClick={() => setCreateModalOpen(true)}>
+                  创建需求
                 </UiButton>
-                <UiButton variant="outline" onClick={() => setCreateModalOpen(true)}>
-                  网页创建
+                <UiButton variant="outline" asChild>
+                  <Link to="/local-agent">用 Cursor / Codex 发起</Link>
                 </UiButton>
               </div>
             )}
