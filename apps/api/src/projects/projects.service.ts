@@ -95,7 +95,6 @@ export class ProjectsService {
           },
         },
       },
-      },
     });
 
     return {
