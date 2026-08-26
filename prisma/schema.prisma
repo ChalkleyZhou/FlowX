@@ -58,10 +58,12 @@ model RequirementAssignment {
 }
 
 model Workspace {
-  id           String        @id @default(cuid())
-  status       String        @default("ACTIVE")
-  name         String
-  description  String?
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  status         String       @default("ACTIVE")
+  name           String
+  description    String?
   projects     Project[]
   repositories Repository[]
   requirements Requirement[]
@@ -76,6 +78,8 @@ model Workspace {
   artifacts         Artifact[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+
+  @@index([organizationId, createdAt])
 }
 
 model Project {
@@ -488,6 +492,7 @@ model Organization {
   memberships            UserOrganization[]
   sessions               UserSession[]
   personalApiTokens      PersonalApiToken[]
+  workspaces             Workspace[]
   executionSessions      ExecutionSession[]
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt

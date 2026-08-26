@@ -37,7 +37,11 @@ describe('WorkspacesService.updateRepository', () => {
     return {
       prisma,
       repositorySyncService,
-      service: new WorkspacesService(prisma as never, repositorySyncService as never),
+      service: new WorkspacesService(
+        prisma as never,
+        repositorySyncService as never,
+        { getScope: () => ({ organizationId: 'org-1' }) } as never,
+      ),
     };
   }
 

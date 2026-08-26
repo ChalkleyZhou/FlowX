@@ -633,6 +633,7 @@ export class WorkflowService {
   }
 
   async readExecutionArtifactHtml(id: string): Promise<string> {
+    await this.getWorkflowOrThrow(id);
     const html = await this.workflowArtifactService.readExecutionHtml(id);
     if (!html) {
       throw new NotFoundException('Execution artifact not found.');

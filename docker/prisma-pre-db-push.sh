@@ -7,6 +7,7 @@ SCHEMA_PATH="${1:-/app/prisma/schema.prisma}"
 DELIVERY_TARGET_MIGRATION_SQL="/app/prisma/migrations/20260604180000_delivery_target_project_scope/migration.sql"
 CODE_REVIEW_CONFIG_MIGRATION_SQL="/app/prisma/migrations/20260717080000_add_project_code_review_config/migration.sql"
 CODE_REVIEW_SOURCE_MIGRATION_SQL="/app/prisma/migrations/20260717100000_add_code_review_source/migration.sql"
+WORKSPACE_ORGANIZATION_MIGRATION_SQL="/app/prisma/migrations/20260826160000_add_workspace_organization/migration.sql"
 
 resolve_db_path() {
   db_url="${DATABASE_URL:-file:/data/dev.db}"
@@ -70,6 +71,13 @@ if [ "$(table_exists CodeReviewSource)" = "0" ] \
   && [ "$(table_exists ProjectCodeReviewConfig)" = "1" ]; then
   echo "Creating CodeReviewSource and backfilling from BriefingSource in ${DB_PATH}..."
   sqlite3 "$DB_PATH" < "$CODE_REVIEW_SOURCE_MIGRATION_SQL"
+fi
+
+# --- Workspace: establish the organization tenant boundary for existing data ---
+if [ "$(table_exists Workspace)" = "1" ] \
+  && [ "$(column_exists Workspace organizationId)" = "0" ]; then
+  echo "Adding organization ownership to existing workspaces in ${DB_PATH}..."
+  sqlite3 "$DB_PATH" < "$WORKSPACE_ORGANIZATION_MIGRATION_SQL"
 fi
 
 # --- Spec & Plan redesign: drop obsolete Task/Plan tables before db push ---

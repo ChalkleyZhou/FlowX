@@ -169,4 +169,38 @@ describe('AuthService.removeOrganizationMember', () => {
       'You cannot remove yourself from the organization.',
     );
   });
+
+  it('removes membership and revokes organization sessions and API tokens', async () => {
+    const prisma = {
+      userOrganization: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValueOnce({ role: 'admin' })
+          .mockResolvedValueOnce({ id: 'membership-1', role: 'member' }),
+        delete: vi.fn().mockResolvedValue({}),
+      },
+      userSession: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      personalApiToken: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      $transaction: vi.fn().mockImplementation(async (ops: Promise<unknown>[]) => {
+        await Promise.all(ops);
+      }),
+    };
+    const service = buildService(prisma);
+
+    await expect(
+      service.removeOrganizationMember('org1', 'member-1', 'admin-1'),
+    ).resolves.toEqual({ removed: true });
+
+    expect(prisma.userSession.deleteMany).toHaveBeenCalledWith({
+      where: { userId: 'member-1', organizationId: 'org1' },
+    });
+    expect(prisma.personalApiToken.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'member-1', organizationId: 'org1', revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
+  });
 });

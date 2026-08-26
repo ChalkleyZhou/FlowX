@@ -6,6 +6,7 @@ describe('AuthService organization resolution', () => {
     const prisma = {
       userOrganization: {
         findFirst: vi.fn(),
+        findUnique: vi.fn(),
         upsert: vi.fn(),
         count: vi.fn().mockResolvedValue(1),
       },
@@ -53,7 +54,7 @@ describe('AuthService organization resolution', () => {
     });
   });
 
-  it('auto-joins the only organization for password users', async () => {
+  it('does not auto-join an unrelated singleton organization', async () => {
     const { service, prisma } = createService();
     vi.mocked(prisma.userOrganization.findFirst).mockResolvedValue(null);
     vi.mocked(prisma.organization.findMany).mockResolvedValue([
@@ -63,34 +64,15 @@ describe('AuthService organization resolution', () => {
         providerOrganizationId: 'corp-1',
       },
     ]);
-    vi.mocked(prisma.userOrganization.upsert).mockResolvedValue({});
-
     const resolved = await (service as unknown as {
       resolveOrganizationForSession: (
         userId: string,
         requestedOrganizationId: string | null,
       ) => Promise<{ id: string; name: string; providerOrganizationId: string } | null>;
-      }).resolveOrganizationForSession('user-1', null, { allowSingletonFallback: true });
+      }).resolveOrganizationForSession('user-1', null);
 
-    expect(prisma.userOrganization.upsert).toHaveBeenCalledWith({
-      where: {
-        userId_organizationId: {
-          userId: 'user-1',
-          organizationId: 'org-1',
-        },
-      },
-      create: {
-        userId: 'user-1',
-        organizationId: 'org-1',
-        role: 'member',
-      },
-      update: {},
-    });
-    expect(resolved).toEqual({
-      id: 'org-1',
-      name: 'FlowX Org',
-      providerOrganizationId: 'corp-1',
-    });
+    expect(prisma.userOrganization.upsert).not.toHaveBeenCalled();
+    expect(resolved).toBeNull();
   });
 
   it('does not auto-join the only organization for oauth users without org context', async () => {
@@ -108,11 +90,33 @@ describe('AuthService organization resolution', () => {
       resolveOrganizationForSession: (
         userId: string,
         requestedOrganizationId: string | null,
-        options?: { allowSingletonFallback?: boolean },
       ) => Promise<{ id: string; name: string; providerOrganizationId: string } | null>;
     }).resolveOrganizationForSession('user-1', null);
 
     expect(prisma.userOrganization.upsert).not.toHaveBeenCalled();
+    expect(resolved).toBeNull();
+  });
+
+  it('does not resolve an explicitly requested organization without membership', async () => {
+    const { service, prisma } = createService();
+    vi.mocked(prisma.userOrganization.findUnique).mockResolvedValue(null);
+
+    const resolved = await (service as unknown as {
+      resolveOrganizationForSession: (
+        userId: string,
+        requestedOrganizationId: string | null,
+      ) => Promise<{ id: string; name: string; providerOrganizationId: string } | null>;
+    }).resolveOrganizationForSession('user-1', 'org-other');
+
+    expect(prisma.userOrganization.findUnique).toHaveBeenCalledWith({
+      where: {
+        userId_organizationId: {
+          userId: 'user-1',
+          organizationId: 'org-other',
+        },
+      },
+      include: { organization: true },
+    });
     expect(resolved).toBeNull();
   });
 
@@ -215,6 +219,23 @@ describe('AuthService.resolveBearerAuth', () => {
     expect(personalApiTokenService.resolveToken).toHaveBeenCalledWith('fxpat_abc');
   });
 
+  it('resolveBearerAuth rejects a personal API token after organization access is removed', async () => {
+    const personalApiTokenService = {
+      resolveToken: vi.fn().mockResolvedValue({
+        kind: 'personal_api_token',
+        tokenId: 'pat-1',
+        user: { id: 'u1', email: null, displayName: 'A', avatarUrl: null },
+        organization: { id: 'o1', name: 'Org', providerOrganizationId: 'p1' },
+      }),
+    };
+    const { service, prisma } = createServiceWithPat(personalApiTokenService);
+    vi.mocked(prisma.userOrganization.findUnique).mockResolvedValue(null);
+
+    await expect(service.resolveBearerAuth('fxpat_abc')).rejects.toThrow(
+      'Organization access revoked.',
+    );
+  });
+
   it('resolveBearerAuth uses getSession for non-fxpat tokens', async () => {
     const personalApiTokenService = { resolveToken: vi.fn() };
     const { service } = createServiceWithPat(personalApiTokenService);
@@ -232,5 +253,44 @@ describe('AuthService.resolveBearerAuth', () => {
     expect(personalApiTokenService.resolveToken).not.toHaveBeenCalled();
     expect(getSessionSpy).toHaveBeenCalledWith('regular-session-token');
     getSessionSpy.mockRestore();
+  });
+});
+
+describe('AuthService.getSession organization membership', () => {
+  it('rejects an existing session after its organization membership is removed', async () => {
+    const prisma = {
+      userSession: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'session-1',
+          token: 'session-token',
+          userId: 'user-1',
+          organizationId: 'org-1',
+          expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+          user: {
+            id: 'user-1',
+            email: null,
+            displayName: 'Alice',
+            avatarUrl: null,
+          },
+          organization: {
+            id: 'org-1',
+            name: 'Org',
+            providerOrganizationId: 'provider-org-1',
+          },
+        }),
+      },
+      userOrganization: {
+        findUnique: vi.fn().mockResolvedValue(null),
+      },
+    };
+    const service = new AuthService(
+      prisma as never,
+      { listProviders: () => [] } as never,
+      { hashPassword: vi.fn(), verifyPassword: vi.fn() } as never,
+    );
+
+    await expect(service.getSession('session-token')).rejects.toThrow(
+      'Organization access revoked.',
+    );
   });
 });

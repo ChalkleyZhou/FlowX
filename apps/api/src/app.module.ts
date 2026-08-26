@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AiModule } from './ai/ai.module';
 import { ArtifactsModule } from './artifacts/artifacts.module';
 import { AuthModule } from './auth/auth.module';
@@ -13,6 +13,7 @@ import { ExecutionSessionsModule } from './execution-sessions/execution-sessions
 import { EdgeModule } from './edge/edge.module';
 import { SessionAuthGuard } from './auth/session-auth.guard';
 import { PrismaModule } from './prisma/prisma.module';
+import { OrganizationScopeInterceptor } from './prisma/organization-scope.interceptor';
 import { ProjectsModule } from './projects/projects.module';
 import { ScheduleModule } from './schedule/schedule.module';
 import { ReviewArtifactsModule } from './review-artifacts/review-artifacts.module';
@@ -48,6 +49,10 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
     {
       provide: APP_GUARD,
       useClass: SessionAuthGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: OrganizationScopeInterceptor,
     },
   ],
 })

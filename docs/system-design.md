@@ -81,6 +81,7 @@ FlowX Web 当前提供：
 - Ideation、设计 Artifact、执行、Review 和人工确认。
 - Issue、Bug、项目简报和每日 Code Review。
 - AI/Git 凭据、组织用户、数据源和投递目标设置。
+- Workspace 是业务数据的组织隔离根；Project、Requirement、WorkflowRun、Issue、Bug、简报、Code Review、部署与产物均沿 Workspace 继承组织边界，跨组织按 ID 访问也必须返回不可见。
 
 后续页面应围绕六个中心组织，但在功能具备前不进行只改导航名称的空壳重构。
 

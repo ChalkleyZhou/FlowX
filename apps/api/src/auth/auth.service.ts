@@ -311,11 +311,26 @@ export class AuthService {
       throw new UnauthorizedException('Session expired.');
     }
 
-    const resolvedOrganization = session.organization
+    const sessionMembership = session.organizationId
+      ? await this.prisma.userOrganization.findUnique({
+          where: {
+            userId_organizationId: {
+              userId: session.userId,
+              organizationId: session.organizationId,
+            },
+          },
+          include: { organization: true },
+        })
+      : null;
+    if (session.organizationId && !sessionMembership) {
+      throw new UnauthorizedException('Organization access revoked.');
+    }
+
+    const resolvedOrganization = sessionMembership
       ? {
-          id: session.organization.id,
-          name: session.organization.name,
-          providerOrganizationId: session.organization.providerOrganizationId,
+          id: sessionMembership.organization.id,
+          name: sessionMembership.organization.name,
+          providerOrganizationId: sessionMembership.organization.providerOrganizationId,
         }
       : await this.resolveOrganizationForSession(session.userId, null);
 
@@ -328,9 +343,10 @@ export class AuthService {
       });
     }
 
-    const organizationRole = resolvedOrganization
-      ? await this.getOrganizationRole(resolvedOrganization.id, session.userId)
-      : null;
+    const organizationRole = sessionMembership?.role
+      ?? (resolvedOrganization
+        ? await this.getOrganizationRole(resolvedOrganization.id, session.userId)
+        : null);
 
     return {
       token: session.token,
@@ -358,6 +374,9 @@ export class AuthService {
       }
       const pat = await this.personalApiTokenService.resolveToken(token);
       const role = await this.getOrganizationRole(pat.organization.id, pat.user.id);
+      if (!role) {
+        throw new UnauthorizedException('Organization access revoked.');
+      }
       return {
         token,
         expiresAt: null as Date | null,
@@ -626,9 +645,19 @@ export class AuthService {
       }
     }
 
-    await this.prisma.userOrganization.delete({
-      where: { id: membership.id },
-    });
+    const revokedAt = new Date();
+    await this.prisma.$transaction([
+      this.prisma.userOrganization.delete({
+        where: { id: membership.id },
+      }),
+      this.prisma.userSession.deleteMany({
+        where: { userId, organizationId },
+      }),
+      this.prisma.personalApiToken.updateMany({
+        where: { userId, organizationId, revokedAt: null },
+        data: { revokedAt },
+      }),
+    ]);
 
     return { removed: true };
   }
@@ -716,21 +745,42 @@ export class AuthService {
       throw new ConflictException('Account already exists.');
     }
 
+    const displayName = input.displayName?.trim() || account;
     const passwordHash = this.passwordService.hashPassword(input.password);
-    const user = await this.prisma.user.create({
-      data: {
-        account,
-        displayName: input.displayName?.trim() || account,
-        localCredential: {
-          create: {
-            account,
-            passwordHash,
+    const { user, organization } = await this.prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          account,
+          displayName,
+          localCredential: {
+            create: {
+              account,
+              passwordHash,
+            },
           },
         },
-      },
+      });
+      const createdOrganization = await tx.organization.create({
+        data: {
+          provider: 'local',
+          providerOrganizationId: `local:${createdUser.id}`,
+          name: `${displayName} 的组织`,
+        },
+      });
+      await tx.userOrganization.create({
+        data: {
+          userId: createdUser.id,
+          organizationId: createdOrganization.id,
+          role: 'admin',
+        },
+      });
+      return {
+        user: createdUser,
+        organization: createdOrganization,
+      };
     });
 
-    return this.createSession(user.id, null, { allowSingletonFallback: true });
+    return this.createSession(user.id, organization.id);
   }
 
   async loginByPassword(input: { account: string; password: string }) {
@@ -751,7 +801,11 @@ export class AuthService {
       throw new UnauthorizedException('Invalid password.');
     }
 
-    return this.createSession(credential.userId, null, { allowSingletonFallback: true });
+    const organizationId = await this.ensurePasswordUserOrganization({
+      id: credential.userId,
+      displayName: credential.user.displayName,
+    });
+    return this.createSession(credential.userId, organizationId);
   }
 
   private async finalizeLogin(
@@ -861,9 +915,7 @@ export class AuthService {
       });
     }
 
-    const session = await this.createSession(user.id, organizationRecord?.id ?? null, {
-      allowSingletonFallback: false,
-    });
+    const session = await this.createSession(user.id, organizationRecord?.id ?? null);
     return {
       needOrganizationSelection: false,
       ...session,
@@ -875,10 +927,7 @@ export class AuthService {
     organizationId: string | null,
     ttlMs = 2 * 60 * 60 * 1000,
   ) {
-    const session = await this.createSession(userId, organizationId, {
-      allowSingletonFallback: false,
-      ttlMs,
-    });
+    const session = await this.createSession(userId, organizationId, { ttlMs });
     return {
       token: session.token,
       expiresAt: session.expiresAt,
@@ -888,7 +937,7 @@ export class AuthService {
   private async createSession(
     userId: string,
     organizationId: string | null,
-    options?: { allowSingletonFallback?: boolean; ttlMs?: number },
+    options?: { ttlMs?: number },
   ) {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
@@ -896,7 +945,6 @@ export class AuthService {
     const organization = await this.resolveOrganizationForSession(
       user.id,
       organizationId,
-      options,
     );
     const organizationRole = organization
       ? await this.getOrganizationRole(organization.id, user.id)
@@ -937,20 +985,26 @@ export class AuthService {
   private async resolveOrganizationForSession(
     userId: string,
     requestedOrganizationId: string | null,
-    options?: { allowSingletonFallback?: boolean },
   ) {
     if (requestedOrganizationId) {
-      const explicitOrganization = await this.prisma.organization.findUnique({
-        where: { id: requestedOrganizationId },
+      const explicitMembership = await this.prisma.userOrganization.findUnique({
+        where: {
+          userId_organizationId: {
+            userId,
+            organizationId: requestedOrganizationId,
+          },
+        },
+        include: { organization: true },
       });
 
-      if (explicitOrganization) {
+      if (explicitMembership?.organization) {
         return {
-          id: explicitOrganization.id,
-          name: explicitOrganization.name,
-          providerOrganizationId: explicitOrganization.providerOrganizationId,
+          id: explicitMembership.organization.id,
+          name: explicitMembership.organization.name,
+          providerOrganizationId: explicitMembership.organization.providerOrganizationId,
         };
       }
+      return null;
     }
 
     const membership = await this.prisma.userOrganization.findFirst({
@@ -967,41 +1021,50 @@ export class AuthService {
       };
     }
 
-    if (!options?.allowSingletonFallback) {
-      return null;
-    }
+    return null;
+  }
 
-    const singletonOrganizations = await this.prisma.organization.findMany({
+  private async ensurePasswordUserOrganization(user: { id: string; displayName: string }) {
+    const membership = await this.prisma.userOrganization.findFirst({
+      where: { userId: user.id },
+      select: { organizationId: true },
       orderBy: { createdAt: 'asc' },
-      take: 2,
     });
-
-    if (singletonOrganizations.length !== 1) {
-      return null;
+    if (membership) {
+      return membership.organizationId;
     }
 
-    const defaultOrganization = singletonOrganizations[0]!;
-    const initialRole = await this.resolveInitialMembershipRole(defaultOrganization.id);
-    await this.prisma.userOrganization.upsert({
-      where: {
-        userId_organizationId: {
-          userId,
-          organizationId: defaultOrganization.id,
+    return this.prisma.$transaction(async (tx) => {
+      const organization = await tx.organization.upsert({
+        where: {
+          provider_providerOrganizationId: {
+            provider: 'local',
+            providerOrganizationId: `local:${user.id}`,
+          },
         },
-      },
-      create: {
-        userId,
-        organizationId: defaultOrganization.id,
-        role: initialRole,
-      },
-      update: {},
+        create: {
+          provider: 'local',
+          providerOrganizationId: `local:${user.id}`,
+          name: `${user.displayName} 的组织`,
+        },
+        update: {},
+      });
+      await tx.userOrganization.upsert({
+        where: {
+          userId_organizationId: {
+            userId: user.id,
+            organizationId: organization.id,
+          },
+        },
+        create: {
+          userId: user.id,
+          organizationId: organization.id,
+          role: 'admin',
+        },
+        update: {},
+      });
+      return organization.id;
     });
-
-    return {
-      id: defaultOrganization.id,
-      name: defaultOrganization.name,
-      providerOrganizationId: defaultOrganization.providerOrganizationId,
-    };
   }
 
   private createToken(bytes: number) {

@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { OrganizationContextService } from '../prisma/organization-context.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRepositoryDto } from './dto/create-repository.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
@@ -11,11 +12,17 @@ export class WorkspacesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly repositorySyncService: RepositorySyncService,
+    private readonly organizationContext: OrganizationContextService,
   ) {}
 
   create(dto: CreateWorkspaceDto) {
+    const organizationId = this.organizationContext.getScope()?.organizationId;
+    if (!organizationId) {
+      throw new ForbiddenException('Organization context is required.');
+    }
     return this.prisma.workspace.create({
       data: {
+        organizationId,
         name: dto.name,
         description: dto.description?.trim() || null,
       },
