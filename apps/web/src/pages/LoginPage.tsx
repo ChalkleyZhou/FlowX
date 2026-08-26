@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { api, toApiUrl } from '../api';
@@ -43,6 +44,7 @@ export function LoginPage() {
   const [account, setAccount] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const toast = useToast();
 
   const redirectPath = useMemo(() => {
@@ -340,14 +342,29 @@ export function LoginPage() {
             ) : null}
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-foreground" htmlFor="login-password">密码</label>
-              <UiInput
-                id="login-password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="请输入密码"
-                autoComplete="current-password"
-              />
+              <div className="relative">
+                <UiInput
+                  id="login-password"
+                  className="pr-10"
+                  type={passwordVisible ? 'text' : 'password'}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="请输入密码"
+                  autoComplete={loginMode === 'password' ? 'current-password' : 'new-password'}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 text-muted-foreground hover:text-foreground"
+                  aria-label={passwordVisible ? '隐藏密码' : '显示密码'}
+                  aria-pressed={passwordVisible}
+                  title={passwordVisible ? '隐藏密码' : '显示密码'}
+                  onClick={() => setPasswordVisible((visible) => !visible)}
+                >
+                  {passwordVisible ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+                </Button>
+              </div>
             </div>
 
             <div className="mt-1.5 flex flex-col gap-3">

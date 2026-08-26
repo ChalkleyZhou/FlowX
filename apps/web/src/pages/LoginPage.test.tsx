@@ -181,6 +181,46 @@ describe('LoginPage', () => {
     expect(text).not.toContain('全链路产研协同');
   });
 
+  it('toggles password visibility without submitting the form', async () => {
+    const { api } = await import('../api');
+    vi.mocked(api.getCurrentSession).mockRejectedValue(new Error('unauthorized'));
+
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/login']}>
+          <AuthProvider>
+            <LoginPage />
+          </AuthProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const passwordInput = container.querySelector('#login-password') as HTMLInputElement | null;
+    const showPasswordButton = container.querySelector('button[aria-label="显示密码"]') as HTMLButtonElement | null;
+
+    expect(passwordInput?.type).toBe('password');
+    expect(showPasswordButton?.getAttribute('aria-pressed')).toBe('false');
+
+    await act(async () => {
+      showPasswordButton?.click();
+    });
+
+    const hidePasswordButton = container.querySelector('button[aria-label="隐藏密码"]') as HTMLButtonElement | null;
+    expect(passwordInput?.type).toBe('text');
+    expect(hidePasswordButton?.getAttribute('aria-pressed')).toBe('true');
+
+    await act(async () => {
+      hidePasswordButton?.click();
+    });
+
+    expect(passwordInput?.type).toBe('password');
+    expect(api.loginByPassword).not.toHaveBeenCalled();
+  });
+
   it('processes oauth callback only once in strict mode', async () => {
     const { StrictMode } = await import('react');
     const { api } = await import('../api');

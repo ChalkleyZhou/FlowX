@@ -26,7 +26,7 @@ FlowX 把研发流程拆成可中断、可确认的阶段，核心目标是：
 - `工作流`：查看和推进每条研发流程
 - `问题项`：沉淀 AI 审查里的改进项（Issue）
 - `缺陷`：沉淀明确 Bug（Bug）
-- `AI 凭据`：配置你个人的 Cursor / Codex 凭据
+- `AI 凭据`：配置当前组织共享的 Cursor / Codex 凭据
 - `API Token`（设置 → `/settings/api-tokens`）：生成本机 OpenDesign / MCP 用的长期 Personal API Token（`fxpat_…`）
 
 ## 本地 Agent 与 OpenDesign
@@ -61,14 +61,19 @@ flowx-local serve
 - 账号密码登录（也支持注册后登录）
 - 钉钉登录（适合企业组织身份接入）
 
-### 步骤 2：配置个人 AI 凭据（推荐）
+### 步骤 2：配置组织 AI 凭据（推荐）
 
 进入 `AI 凭据` 页面，按需配置：
 
 - `Cursor API Key`
 - `Codex / OpenAI API Key`
 
-保存后，系统在工作流执行时会优先使用你的用户凭据。
+获取入口：
+
+- Cursor：登录 [Cursor Dashboard](https://cursor.com/dashboard?tab=integrations)，进入 Integrations，在 User API Keys 中创建 API Key。
+- Codex / OpenAI：登录 [OpenAI Platform](https://platform.openai.com/api-keys)，在 API Keys 页面创建 Project API Key，并确认对应 Project 有可用 API 额度。这里需要 API Key，不是 ChatGPT 登录密码。
+
+保存后，系统会在当前组织的工作流执行时优先使用这组组织凭据。
 
 ### 步骤 3：创建工作区并收录仓库
 
@@ -250,7 +255,7 @@ AI 审查完成后，人工决策通常有三种：
 
 请确认：
 
-- 你当前登录账号与配置凭据的是同一账号
+- 当前登录会话选择的是已配置凭据的组织
 - 页面状态显示“已配置”
 - 工作流是凭据配置后新启动的（旧流程可能仍使用旧上下文）
 
@@ -259,7 +264,7 @@ AI 审查完成后，人工决策通常有三种：
 建议团队按下面顺序落地：
 
 1. 管理员先完成工作区、仓库、部署模板初始化
-2. 各成员配置自己的 `AI 凭据`
+2. 由管理员或指定成员配置当前组织的 `AI 凭据`
 3. 项目负责人按项目组织需求
 4. 创建需求后直接发起一条工作流，在工作流详情中按阶段确认和推进
 5. 在 AI 审查后坚持人工决策与问题沉淀
