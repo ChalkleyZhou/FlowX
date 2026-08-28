@@ -1,19 +1,17 @@
 import {
   BadGatewayException,
-  ForbiddenException,
+  BadRequestException,
+  ServiceUnavailableException,
   UnprocessableEntityException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { YunxiaoWebhooksService } from './yunxiao-webhooks.service';
 
 describe('YunxiaoWebhooksService', () => {
-  const organizationFindUnique = vi.fn();
-  const membershipFindUnique = vi.fn();
   const membershipFindMany = vi.fn();
-  const configFindUnique = vi.fn();
-  const configUpsert = vi.fn();
   const deliveryCreate = vi.fn();
   const deliveryFindUnique = vi.fn();
   const deliveryUpdate = vi.fn();
@@ -22,35 +20,18 @@ describe('YunxiaoWebhooksService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    organizationFindUnique.mockResolvedValue({
-      id: 'org-1',
-      provider: 'dingtalk',
-      providerOrganizationId: 'corp-1',
-    });
-    membershipFindUnique.mockResolvedValue({ role: 'admin' });
-    configFindUnique.mockResolvedValue({
-      id: 'config-1',
-      organizationId: 'org-1',
-      webhookSecret: 'secret-1',
-      isActive: true,
-    });
     deliveryCreate.mockResolvedValue({ id: 'delivery-1' });
     deliveryUpdate.mockResolvedValue({ id: 'delivery-1' });
     sendPersonalMarkdown.mockResolvedValue({ errcode: 0, task_id: 123 });
   });
 
-  function createService() {
+  function createService(secret = 'yunxiao-secret') {
     return new YunxiaoWebhooksService(
       {
-        organization: { findUnique: organizationFindUnique },
-        userOrganization: {
-          findUnique: membershipFindUnique,
-          findMany: membershipFindMany,
-        },
-        yunxiaoWebhookConfig: {
-          findUnique: configFindUnique,
-          upsert: configUpsert,
-        },
+        get: (key: string) => key === 'YUNXIAO_WEBHOOK_SECRET' ? secret : undefined,
+      } as ConfigService,
+      {
+        userOrganization: { findMany: membershipFindMany },
         yunxiaoWebhookDelivery: {
           create: deliveryCreate,
           findUnique: deliveryFindUnique,
@@ -63,125 +44,115 @@ describe('YunxiaoWebhooksService', () => {
   }
 
   const payload = {
-    eventId: 'workitem-42-status-changed-20260828',
-    recipient: { email: 'alice@example.com' },
-    title: '云效任务状态变更',
-    markdown: '任务 **支付回调** 已进入待处理状态。',
-    url: 'https://devops.aliyun.com/workitem/42',
+    id: 'workitem-42',
+    serialNumber: 'PROJ-42',
+    subject: '支付回调异常处理',
+    gmtModified: '2026-08-28T15:00:00+08:00',
+    assignedTo: { id: 'yunxiao-user-1', name: '张三' },
+    status: { id: 'status-1', name: '处理中', displayName: '处理中' },
+    space: { id: 'space-1', name: '支付平台' },
+    url: 'https://devops.aliyun.com/workitem/workitem-42',
   };
 
-  it('仅允许组织管理员读取或创建 Webhook 配置', async () => {
-    membershipFindUnique.mockResolvedValue({ role: 'member' });
+  it('按云效 X-Projex-Signature 校验 Secret', async () => {
+    await expect(createService().receive('wrong-secret', payload)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    expect(membershipFindMany).not.toHaveBeenCalled();
+  });
 
-    await expect(createService().getOrCreateConfig('org-1', 'user-1')).rejects.toBeInstanceOf(
-      ForbiddenException,
+  it('服务端未配置 Secret 时拒绝接收', async () => {
+    await expect(createService('').receive('yunxiao-secret', payload)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
     );
   });
 
-  it('拒绝无效的 Webhook Secret', async () => {
-    await expect(
-      createService().receive('config-1', 'wrong-secret', payload),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
-
-    expect(deliveryCreate).not.toHaveBeenCalled();
-    expect(sendPersonalMarkdown).not.toHaveBeenCalled();
-  });
-
-  it('优先按钉钉 userid 匹配组织成员并发送个人消息', async () => {
+  it('按负责人姓名匹配唯一的钉钉组织成员并发送个人消息', async () => {
     membershipFindMany.mockResolvedValue([
-      member('user-1', 'Alice', {
-        email: 'alice@example.com',
-        rawProfile: { userid: 'staff-1' },
-      }),
-      member('user-2', 'Bob', {
-        email: 'bob@example.com',
-        rawProfile: { userid: 'staff-2' },
-      }),
+      member('user-1', '张三', 'org-1', 'corp-1'),
+      member('user-2', '李四', 'org-1', 'corp-1'),
     ]);
 
-    const result = await createService().receive('config-1', 'secret-1', {
-      ...payload,
-      recipient: {
-        dingtalkUserId: 'staff-2',
-        email: 'alice@example.com',
-      },
-    });
-
-    expect(result).toEqual({
+    await expect(createService().receive('yunxiao-secret', payload)).resolves.toEqual({
       accepted: true,
       duplicate: false,
       deliveryId: 'delivery-1',
-      matchedBy: 'dingtalkUserId',
+      matchedBy: 'assignedTo.name',
     });
+
     expect(sendPersonalMarkdown).toHaveBeenCalledWith({
-      flowxUserId: 'user-2',
+      flowxUserId: 'user-1',
       corpId: 'corp-1',
-      title: payload.title,
-      markdown: `${payload.markdown}\n\n[查看详情](${payload.url})`,
+      title: '云效工作项：支付回调异常处理',
+      markdown: [
+        '## 支付回调异常处理',
+        '',
+        '- 编号：PROJ-42',
+        '- 项目：支付平台',
+        '- 状态：处理中',
+        '- 负责人：张三',
+        '',
+        '[查看工作项](https://devops.aliyun.com/workitem/workitem-42)',
+      ].join('\n'),
     });
-    expect(deliveryUpdate).toHaveBeenCalledWith({
-      where: { id: 'delivery-1' },
+    expect(deliveryCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        status: 'SENT',
-        matchedUserId: 'user-2',
-        matchedBy: 'dingtalkUserId',
-        sentAt: expect.any(Date),
+        organizationId: 'org-1',
+        eventId: 'workitem-42:2026-08-28T15:00:00+08:00',
+        matchedUserId: 'user-1',
       }),
     });
   });
 
-  it('找不到接收人时记录失败且不发送消息', async () => {
+  it('优先按负责人 ID 匹配 FlowX 用户账号', async () => {
     membershipFindMany.mockResolvedValue([
-      member('user-1', 'Alice', { email: 'alice@example.com' }),
+      member('user-1', '钉钉张三', 'org-1', 'corp-1', 'yunxiao-user-1'),
+      member('user-2', '张三', 'org-1', 'corp-1'),
     ]);
 
-    await expect(
-      createService().receive('config-1', 'secret-1', {
-        ...payload,
-        recipient: { email: 'missing@example.com' },
-      }),
-    ).rejects.toBeInstanceOf(UnprocessableEntityException);
-
-    expect(sendPersonalMarkdown).not.toHaveBeenCalled();
-    expect(deliveryUpdate).toHaveBeenCalledWith({
-      where: { id: 'delivery-1' },
-      data: expect.objectContaining({ status: 'NO_MATCH' }),
+    await expect(createService().receive('yunxiao-secret', payload)).resolves.toEqual({
+      accepted: true,
+      duplicate: false,
+      deliveryId: 'delivery-1',
+      matchedBy: 'assignedTo.id',
     });
+    expect(sendPersonalMarkdown).toHaveBeenCalledWith(
+      expect.objectContaining({ flowxUserId: 'user-1' }),
+    );
   });
 
-  it('姓名匹配到多个成员时拒绝投递', async () => {
+  it('工作项缺少负责人时拒绝处理', async () => {
+    await expect(
+      createService().receive('yunxiao-secret', { ...payload, assignedTo: null }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(membershipFindMany).not.toHaveBeenCalled();
+  });
+
+  it('负责人姓名在多个钉钉组织成员中重复时拒绝投递', async () => {
     membershipFindMany.mockResolvedValue([
-      member('user-1', '张三', { email: 'zhangsan-1@example.com' }),
-      member('user-2', '张三', { email: 'zhangsan-2@example.com' }),
+      member('user-1', '张三', 'org-1', 'corp-1'),
+      member('user-2', '张三', 'org-2', 'corp-2'),
     ]);
 
-    await expect(
-      createService().receive('config-1', 'secret-1', {
-        ...payload,
-        recipient: { name: '张三' },
-      }),
-    ).rejects.toBeInstanceOf(UnprocessableEntityException);
-
+    await expect(createService().receive('yunxiao-secret', payload)).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    );
     expect(sendPersonalMarkdown).not.toHaveBeenCalled();
-    expect(deliveryUpdate).toHaveBeenCalledWith({
-      where: { id: 'delivery-1' },
-      data: expect.objectContaining({ status: 'AMBIGUOUS' }),
-    });
   });
 
-  it('已成功处理的事件重复到达时不重复发送', async () => {
+  it('同一组织中已成功处理的事件不会重复发送', async () => {
+    membershipFindMany.mockResolvedValue([
+      member('user-1', '张三', 'org-1', 'corp-1'),
+    ]);
     deliveryCreate.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError('duplicate', {
         code: 'P2002',
         clientVersion: '6.19.2',
       }),
     );
-    deliveryFindUnique.mockResolvedValue({
-      id: 'delivery-1',
-      status: 'SENT',
-    });
+    deliveryFindUnique.mockResolvedValue({ id: 'delivery-1', status: 'SENT' });
 
-    await expect(createService().receive('config-1', 'secret-1', payload)).resolves.toEqual({
+    await expect(createService().receive('yunxiao-secret', payload)).resolves.toEqual({
       accepted: true,
       duplicate: true,
       deliveryId: 'delivery-1',
@@ -190,27 +161,24 @@ describe('YunxiaoWebhooksService', () => {
     expect(sendPersonalMarkdown).not.toHaveBeenCalled();
   });
 
-  it('允许使用相同事件 ID 重试之前失败的投递', async () => {
+  it('允许重试之前发送失败的同一事件', async () => {
+    membershipFindMany.mockResolvedValue([
+      member('user-1', '张三', 'org-1', 'corp-1'),
+    ]);
     deliveryCreate.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError('duplicate', {
         code: 'P2002',
         clientVersion: '6.19.2',
       }),
     );
-    deliveryFindUnique.mockResolvedValue({
-      id: 'delivery-1',
-      status: 'FAILED',
-    });
+    deliveryFindUnique.mockResolvedValue({ id: 'delivery-1', status: 'FAILED' });
     deliveryUpdateMany.mockResolvedValue({ count: 1 });
-    membershipFindMany.mockResolvedValue([
-      member('user-1', 'Alice', { email: 'alice@example.com' }),
-    ]);
 
-    await expect(createService().receive('config-1', 'secret-1', payload)).resolves.toEqual({
+    await expect(createService().receive('yunxiao-secret', payload)).resolves.toEqual({
       accepted: true,
       duplicate: false,
       deliveryId: 'delivery-1',
-      matchedBy: 'email',
+      matchedBy: 'assignedTo.name',
     });
     expect(deliveryUpdateMany).toHaveBeenCalledWith({
       where: { id: 'delivery-1', status: 'FAILED' },
@@ -219,16 +187,15 @@ describe('YunxiaoWebhooksService', () => {
     expect(sendPersonalMarkdown).toHaveBeenCalledOnce();
   });
 
-  it('钉钉发送失败时记录通用错误且不泄露提供方响应', async () => {
+  it('钉钉发送失败时记录通用错误', async () => {
     membershipFindMany.mockResolvedValue([
-      member('user-1', 'Alice', { email: 'alice@example.com' }),
+      member('user-1', '张三', 'org-1', 'corp-1'),
     ]);
     sendPersonalMarkdown.mockRejectedValue(new Error('token=secret-provider-error'));
 
-    await expect(
-      createService().receive('config-1', 'secret-1', payload),
-    ).rejects.toBeInstanceOf(BadGatewayException);
-
+    await expect(createService().receive('yunxiao-secret', payload)).rejects.toBeInstanceOf(
+      BadGatewayException,
+    );
     expect(deliveryUpdate).toHaveBeenCalledWith({
       where: { id: 'delivery-1' },
       data: {
@@ -242,30 +209,25 @@ describe('YunxiaoWebhooksService', () => {
 function member(
   userId: string,
   displayName: string,
-  input: {
-    email?: string;
-    account?: string;
-    unionId?: string;
-    rawProfile?: Record<string, unknown>;
-  },
+  organizationId: string,
+  corpId: string,
+  account: string | null = null,
 ) {
   return {
     userId,
+    organizationId,
+    organization: {
+      id: organizationId,
+      provider: 'dingtalk',
+      providerOrganizationId: corpId,
+    },
     user: {
       id: userId,
       displayName,
-      email: input.email ?? null,
-      account: input.account ?? null,
+      account,
+      email: null,
       status: 'ACTIVE',
       localCredential: null,
-      identities: [
-        {
-          provider: 'dingtalk',
-          providerUserId: `corp-1:${String(input.rawProfile?.userid ?? userId)}`,
-          providerUnionId: input.unionId ?? null,
-          providerRawProfile: input.rawProfile ?? {},
-        },
-      ],
     },
   };
 }

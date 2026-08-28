@@ -1,121 +1,65 @@
 # 云效 Webhook 钉钉通知接入
 
-FlowX 可以接收阿里云云效自动化规则发送的 Webhook，按事件中的人员标识匹配当前 FlowX 组织成员，再通过钉钉应用工作通知发送个人 Markdown 消息。
+FlowX 接收云效 Projex 自动化规则发送的原生“工作项数据”，根据负责人匹配 FlowX 中已同步的钉钉用户，并发送个人工作通知。
 
-## 前置条件
+## FlowX 配置
 
-- 当前 FlowX 组织由钉钉登录创建，并具有有效的 `providerOrganizationId`。
-- API 已配置 `DINGTALK_APP_ID`、`DINGTALK_APP_SECRET` 和 `DINGTALK_AGENT_ID`。
-- 管理员已在“用户管理”中同步钉钉用户。此功能只依赖用户资料，不依赖部门或组织架构。
+API 服务配置一个专用 Webhook Secret：
 
-## 获取接收地址和 Secret
-
-组织管理员使用当前登录 Bearer Token 调用：
-
-```http
-GET /api/yunxiao-webhooks/config
-Authorization: Bearer <FlowX 登录 Token>
+```env
+YUNXIAO_WEBHOOK_SECRET="请使用随机且不可猜测的值"
 ```
 
-首次调用会为当前组织创建配置，响应示例：
+该 Secret 只用于验证云效 Webhook，不是个人 API Token，也不授予 FlowX 用户权限。
 
-```json
-{
-  "id": "cm123",
-  "webhookSecret": "generated-secret",
-  "isActive": true,
-  "endpointPath": "/yunxiao-webhooks/cm123/events",
-  "createdAt": "2026-08-28T07:00:00.000Z",
-  "updatedAt": "2026-08-28T07:00:00.000Z"
-}
-```
+## 云效配置
 
-云效中填写的完整地址为：
+在云效 Projex 自动化规则中选择 Webhook 动作并填写：
 
 ```text
-https://<FlowX 域名>/api/yunxiao-webhooks/cm123/events
+Webhook URL: https://<FlowX 域名>/api/yunxiao-webhooks
+HTTP Method: POST
+Secret: 与 YUNXIAO_WEBHOOK_SECRET 相同
+Webhook Body: 工作项数据
 ```
 
-请求方式选择 `POST`，并配置以下请求头：
+设置 Secret 后，云效会自动增加请求头：
 
 ```text
-Content-Type: application/json
-X-FlowX-Webhook-Secret: generated-secret
+X-Projex-Signature: <Secret>
 ```
 
-不要把 Secret 放进消息正文、事件 ID或查询参数。
+FlowX 严格校验该请求头，无需在 URL、Body 或自定义 Header 中放置个人 Token。云效官方协议说明见[《Webhook配置指南》](https://help.aliyun.com/zh/yunxiao/user-guide/webhook-configuration-guide)。
 
-## 请求体
+## 用户匹配
 
-在云效自动化规则中，将云效提供的变量映射为以下 JSON。变量名以云效页面实际可选字段为准：
+FlowX 从工作项的 `assignedTo` 读取负责人：
 
-```json
-{
-  "eventId": "workitem-42-status-changed-20260828T150000",
-  "recipient": {
-    "dingtalkUserId": "manager0123",
-    "unionId": "union-id",
-    "email": "zhangsan@example.com",
-    "account": "zhangsan",
-    "name": "张三"
-  },
-  "title": "云效任务状态变更",
-  "markdown": "任务 **支付回调异常处理** 已进入待处理状态。",
-  "url": "https://devops.aliyun.com/workitem/42"
-}
-```
+1. 优先尝试用 `assignedTo.id` 匹配 FlowX 用户账号。
+2. 再用 `assignedTo.name` 精确匹配 FlowX 用户姓名。
+3. 只考虑已加入钉钉组织且未停用的 FlowX 用户。
+4. 找不到用户或存在重名时返回 `422`，不会猜测接收人或误发消息。
 
-字段约束：
+因此，接入前应先由管理员在 FlowX“用户管理”中完成钉钉用户同步。若云效负责人姓名和钉钉通讯录姓名不同，应统一姓名或将云效用户 ID 维护为对应 FlowX 账号。
 
-- `eventId` 必填，同一条逻辑事件必须稳定且唯一。推荐组合工作项 ID、事件类型和变更时间。
-- `recipient` 必填，内部至少提供一个非空标识。
-- `title`、`markdown` 必填；`url` 可选，只允许 `http` 或 `https` 地址。
-- 接收人匹配顺序为：`dingtalkUserId`、`unionId`、`email`、`account`、`name`。
-- `name` 只有在当前组织内唯一时才会使用；重名时 FlowX 返回 `422`，不会猜测接收人。
+## 消息内容与重试
 
-不需要的接收人字段可以省略。建议优先传 `dingtalkUserId` 或 `unionId`；只有云效规则无法提供钉钉身份时，再使用邮箱或账号。
+钉钉消息根据云效原生字段生成，包含：
 
-## 响应与重试
+- 工作项标题 `subject`
+- 编号 `serialNumber`
+- 项目 `space.name`
+- 状态 `status.displayName` 或 `status.name`
+- 负责人 `assignedTo.name`
+- 工作项链接（请求中存在合法 `url` 或 `webUrl` 时）
 
-首次成功投递：
+FlowX 使用工作项 `id` 与 `gmtModified`（或 `updateStatusAt`）组成事件 ID。相同事件重试不会重复发送；钉钉发送失败时允许云效使用同一事件再次重试。
 
-```json
-{
-  "accepted": true,
-  "duplicate": false,
-  "deliveryId": "cm456",
-  "matchedBy": "email"
-}
-```
+常见响应：
 
-同一 `eventId` 已发送成功时，FlowX 返回成功但不再次发送：
-
-```json
-{
-  "accepted": true,
-  "duplicate": true,
-  "deliveryId": "cm456",
-  "status": "SENT"
-}
-```
-
-- `401`：配置不存在、已停用或 Secret 不正确。
-- `400`：请求字段不完整或格式错误。
-- `422`：组织未连接钉钉、找不到成员或匹配到多个成员。
-- `502`：钉钉发送失败。云效可使用相同 `eventId` 重试；失败、无匹配和歧义记录允许重新处理，已成功记录不会重复发送。
-
-组织管理员可查看最近 100 条投递记录：
-
-```http
-GET /api/yunxiao-webhooks/deliveries
-Authorization: Bearer <FlowX 登录 Token>
-```
-
-Secret 泄露后可立即轮换：
-
-```http
-POST /api/yunxiao-webhooks/config/rotate-secret
-Authorization: Bearer <FlowX 登录 Token>
-```
-
-轮换后必须同步更新云效规则中的 `X-FlowX-Webhook-Secret`。
+- `200`：发送成功，或相同事件已经处理。
+- `400`：缺少工作项 ID、标题或负责人。
+- `401`：`X-Projex-Signature` 缺失或不正确。
+- `422`：找不到负责人或匹配到多个 FlowX 用户。
+- `502`：钉钉发送失败，可重试。
+- `503`：FlowX 未配置 `YUNXIAO_WEBHOOK_SECRET`。

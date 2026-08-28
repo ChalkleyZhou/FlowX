@@ -495,7 +495,6 @@ model Organization {
   personalApiTokens      PersonalApiToken[]
   workspaces             Workspace[]
   executionSessions      ExecutionSession[]
-  yunxiaoWebhookConfig   YunxiaoWebhookConfig?
   yunxiaoWebhookDeliveries YunxiaoWebhookDelivery[]
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
@@ -503,21 +502,8 @@ model Organization {
   @@unique([provider, providerOrganizationId])
 }
 
-model YunxiaoWebhookConfig {
-  id             String                    @id @default(cuid())
-  organizationId String                    @unique
-  organization   Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  webhookSecret  String
-  isActive       Boolean                   @default(true)
-  deliveries     YunxiaoWebhookDelivery[]
-  createdAt      DateTime                  @default(now())
-  updatedAt      DateTime                  @updatedAt
-}
-
 model YunxiaoWebhookDelivery {
   id               String                @id @default(cuid())
-  configId         String
-  config           YunxiaoWebhookConfig  @relation(fields: [configId], references: [id], onDelete: Cascade)
   organizationId   String
   organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   eventId           String
@@ -536,7 +522,7 @@ model YunxiaoWebhookDelivery {
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
 
-  @@unique([configId, eventId])
+  @@unique([organizationId, eventId])
   @@index([organizationId, createdAt])
   @@index([matchedUserId, createdAt])
   @@index([status, createdAt])

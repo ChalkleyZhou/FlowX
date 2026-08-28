@@ -1,122 +1,72 @@
 import {
   BadGatewayException,
   BadRequestException,
-  ForbiddenException,
   Injectable,
+  ServiceUnavailableException,
   UnauthorizedException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { DingTalkNotificationService } from '../notifications/dingtalk-notification.service';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  YunxiaoWebhookEventDto,
-  YunxiaoWebhookRecipientDto,
-} from './dto/yunxiao-webhook-event.dto';
+
+type YunxiaoPerson = {
+  id: string | null;
+  name: string;
+};
+
+type NormalizedWorkItem = {
+  id: string;
+  eventId: string;
+  serialNumber: string | null;
+  subject: string;
+  assignedTo: YunxiaoPerson;
+  statusName: string | null;
+  spaceName: string | null;
+  url: string | null;
+};
 
 type Member = {
   userId: string;
+  organizationId: string;
   user: {
     id: string;
     displayName: string;
-    email: string | null;
     account: string | null;
+    email: string | null;
     status: string;
     localCredential: { account: string } | null;
-    identities: Array<{
-      provider: string;
-      providerUserId: string;
-      providerUnionId: string | null;
-      providerRawProfile: Prisma.JsonValue | null;
-    }>;
+  };
+  organization: {
+    id: string;
+    provider: string;
+    providerOrganizationId: string;
   };
 };
 
-type MatchResult =
-  | { kind: 'matched'; userId: string; matchedBy: string }
-  | { kind: 'none' }
-  | { kind: 'ambiguous'; matchedBy: string };
+type MatchedMember = {
+  userId: string;
+  organizationId: string;
+  corpId: string;
+  matchedBy: 'assignedTo.id' | 'assignedTo.name';
+};
 
 @Injectable()
 export class YunxiaoWebhooksService {
   constructor(
+    private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly dingTalkNotification: DingTalkNotificationService,
   ) {}
 
-  async getOrCreateConfig(organizationId: string, actingUserId: string) {
-    await this.requireOrganizationAdmin(organizationId, actingUserId);
-    await this.requireDingTalkOrganization(organizationId);
-    const config = await this.prisma.yunxiaoWebhookConfig.upsert({
-      where: { organizationId },
-      create: {
-        organizationId,
-        webhookSecret: this.generateSecret(),
-      },
-      update: {},
-    });
-    return this.presentConfig(config);
-  }
-
-  async rotateSecret(organizationId: string, actingUserId: string) {
-    await this.requireOrganizationAdmin(organizationId, actingUserId);
-    await this.requireDingTalkOrganization(organizationId);
-    const config = await this.prisma.yunxiaoWebhookConfig.upsert({
-      where: { organizationId },
-      create: {
-        organizationId,
-        webhookSecret: this.generateSecret(),
-      },
-      update: {
-        webhookSecret: this.generateSecret(),
-      },
-    });
-    return this.presentConfig(config);
-  }
-
-  async listDeliveries(organizationId: string, actingUserId: string) {
-    await this.requireOrganizationAdmin(organizationId, actingUserId);
-    return this.prisma.yunxiaoWebhookDelivery.findMany({
-      where: { organizationId },
-      select: {
-        id: true,
-        eventId: true,
-        status: true,
-        recipient: true,
-        matchedUserId: true,
-        matchedBy: true,
-        title: true,
-        linkUrl: true,
-        errorMessage: true,
-        sentAt: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
-  }
-
-  async receive(
-    configId: string,
-    suppliedSecret: string | undefined,
-    input: YunxiaoWebhookEventDto,
-  ) {
-    const config = await this.prisma.yunxiaoWebhookConfig.findUnique({
-      where: { id: configId },
-    });
-    if (
-      !config ||
-      !config.isActive ||
-      !this.secretsEqual(config.webhookSecret, suppliedSecret)
-    ) {
-      throw new UnauthorizedException('Invalid Yunxiao webhook credentials.');
-    }
-    if (!input.recipient || !this.hasRecipientIdentifier(input.recipient)) {
-      throw new BadRequestException('At least one recipient identifier is required.');
-    }
-
-    const claim = await this.claimDelivery(config, input);
+  async receive(signature: string | undefined, payload: Record<string, unknown>) {
+    this.verifySignature(signature);
+    const workItem = this.normalizeWorkItem(payload);
+    const matched = await this.resolveRecipient(workItem.assignedTo);
+    const markdown = this.buildMarkdown(workItem);
+    const claim = await this.claimDelivery(matched, workItem, payload, markdown);
     if (claim.duplicate) {
       return {
         accepted: true,
@@ -126,59 +76,13 @@ export class YunxiaoWebhooksService {
       };
     }
 
-    const organization = await this.prisma.organization.findUnique({
-      where: { id: config.organizationId },
-    });
-    if (
-      !organization ||
-      organization.provider !== 'dingtalk' ||
-      !organization.providerOrganizationId.trim()
-    ) {
-      await this.markFailed(claim.deliveryId, 'DingTalk organization is not configured.');
-      throw new UnprocessableEntityException('DingTalk organization is not configured.');
-    }
-
-    const members = (await this.prisma.userOrganization.findMany({
-      where: {
-        organizationId: config.organizationId,
-        user: { status: { not: 'DISABLED' } },
-      },
-      include: {
-        user: {
-          include: {
-            localCredential: true,
-            identities: {
-              where: { provider: 'dingtalk' },
-            },
-          },
-        },
-      },
-    })) as Member[];
-    const match = this.matchRecipient(members, input.recipient);
-
-    if (match.kind !== 'matched') {
-      const ambiguous = match.kind === 'ambiguous';
-      const message = ambiguous
-        ? 'Recipient matched multiple organization members.'
-        : 'No organization member matched the recipient.';
-      await this.prisma.yunxiaoWebhookDelivery.update({
-        where: { id: claim.deliveryId },
-        data: {
-          status: ambiguous ? 'AMBIGUOUS' : 'NO_MATCH',
-          matchedBy: ambiguous ? match.matchedBy : null,
-          errorMessage: message,
-        },
-      });
-      throw new UnprocessableEntityException(message);
-    }
-
     let providerResponse: unknown;
     try {
       providerResponse = await this.dingTalkNotification.sendPersonalMarkdown({
-        flowxUserId: match.userId,
-        corpId: organization.providerOrganizationId.trim(),
-        title: input.title.trim(),
-        markdown: this.buildMarkdown(input.markdown, input.url),
+        flowxUserId: matched.userId,
+        corpId: matched.corpId,
+        title: `云效工作项：${workItem.subject}`,
+        markdown,
       });
     } catch {
       await this.markFailed(claim.deliveryId, 'DingTalk message delivery failed.');
@@ -189,8 +93,6 @@ export class YunxiaoWebhooksService {
       where: { id: claim.deliveryId },
       data: {
         status: 'SENT',
-        matchedUserId: match.userId,
-        matchedBy: match.matchedBy,
         providerResponse: this.toJson(providerResponse),
         errorMessage: null,
         sentAt: new Date(),
@@ -201,13 +103,118 @@ export class YunxiaoWebhooksService {
       accepted: true,
       duplicate: false,
       deliveryId: claim.deliveryId,
-      matchedBy: match.matchedBy,
+      matchedBy: matched.matchedBy,
+    };
+  }
+
+  private verifySignature(signature: string | undefined) {
+    const secret = this.configService.get<string>('YUNXIAO_WEBHOOK_SECRET')?.trim();
+    if (!secret) {
+      throw new ServiceUnavailableException('Yunxiao webhook secret is not configured.');
+    }
+    if (!signature || !this.secretsEqual(secret, signature.trim())) {
+      throw new UnauthorizedException('Invalid Yunxiao webhook signature.');
+    }
+  }
+
+  private normalizeWorkItem(payload: Record<string, unknown>): NormalizedWorkItem {
+    const assignedTo = this.asRecord(payload.assignedTo);
+    const assignedToName = this.pickString(assignedTo?.name);
+    if (!assignedToName) {
+      throw new BadRequestException('Yunxiao work item assignee is required.');
+    }
+
+    const id = this.pickString(payload.id);
+    const subject = this.pickString(payload.subject);
+    if (!id || !subject) {
+      throw new BadRequestException('Yunxiao work item id and subject are required.');
+    }
+
+    const modifiedAt = this.pickString(payload.gmtModified, payload.updateStatusAt);
+    const payloadHash = createHash('sha256')
+      .update(JSON.stringify(payload), 'utf8')
+      .digest('hex')
+      .slice(0, 24);
+    const status = this.asRecord(payload.status);
+    const space = this.asRecord(payload.space);
+    const candidateUrl = this.pickString(payload.url, payload.webUrl);
+
+    return {
+      id,
+      eventId: `${id}:${modifiedAt ?? payloadHash}`,
+      serialNumber: this.pickString(payload.serialNumber),
+      subject,
+      assignedTo: {
+        id: this.pickString(assignedTo?.id),
+        name: assignedToName,
+      },
+      statusName: this.pickString(status?.displayName, status?.name),
+      spaceName: this.pickString(space?.name),
+      url: candidateUrl && /^https?:\/\//i.test(candidateUrl) ? candidateUrl : null,
+    };
+  }
+
+  private async resolveRecipient(assignedTo: YunxiaoPerson): Promise<MatchedMember> {
+    const memberships = (await this.prisma.userOrganization.findMany({
+      where: {
+        user: { status: { not: 'DISABLED' } },
+        organization: { provider: 'dingtalk' },
+      },
+      include: {
+        user: { include: { localCredential: true } },
+        organization: true,
+      },
+    })) as Member[];
+
+    if (assignedTo.id) {
+      const idMatches = memberships.filter((membership) =>
+        [membership.user.account, membership.user.localCredential?.account].some((value) =>
+          this.same(value, assignedTo.id as string),
+        ),
+      );
+      if (idMatches.length === 1) {
+        return this.toMatchedMember(idMatches[0], 'assignedTo.id');
+      }
+      if (idMatches.length > 1) {
+        throw new UnprocessableEntityException(
+          'Yunxiao assignee matched multiple FlowX organization members.',
+        );
+      }
+    }
+
+    const nameMatches = memberships.filter((membership) =>
+      this.same(membership.user.displayName, assignedTo.name),
+    );
+    if (nameMatches.length === 1) {
+      return this.toMatchedMember(nameMatches[0], 'assignedTo.name');
+    }
+    if (nameMatches.length > 1) {
+      throw new UnprocessableEntityException(
+        'Yunxiao assignee matched multiple FlowX organization members.',
+      );
+    }
+    throw new UnprocessableEntityException(
+      'No FlowX organization member matched the Yunxiao assignee.',
+    );
+  }
+
+  private toMatchedMember(
+    membership: Member,
+    matchedBy: MatchedMember['matchedBy'],
+  ): MatchedMember {
+    return {
+      userId: membership.userId,
+      organizationId: membership.organizationId,
+      corpId: membership.organization.providerOrganizationId,
+      matchedBy,
     };
   }
 
   private async claimDelivery(
-    config: { id: string; organizationId: string },
-    input: YunxiaoWebhookEventDto,
+    matched: MatchedMember,
+    workItem: NormalizedWorkItem,
+    payload: Record<string, unknown>,
+    markdown: string,
   ): Promise<
     | { duplicate: false; deliveryId: string }
     | { duplicate: true; deliveryId: string; status: string }
@@ -215,15 +222,16 @@ export class YunxiaoWebhooksService {
     try {
       const delivery = await this.prisma.yunxiaoWebhookDelivery.create({
         data: {
-          configId: config.id,
-          organizationId: config.organizationId,
-          eventId: input.eventId.trim(),
+          organizationId: matched.organizationId,
+          eventId: workItem.eventId,
           status: 'PROCESSING',
-          recipient: this.toJson(input.recipient),
-          title: input.title.trim(),
-          markdown: input.markdown.trim(),
-          linkUrl: input.url?.trim() || null,
-          rawPayload: this.toJson(input),
+          recipient: this.toJson(workItem.assignedTo),
+          matchedUserId: matched.userId,
+          matchedBy: matched.matchedBy,
+          title: `云效工作项：${workItem.subject}`,
+          markdown,
+          linkUrl: workItem.url,
+          rawPayload: this.toJson(payload),
         },
       });
       return { duplicate: false, deliveryId: delivery.id };
@@ -235,9 +243,9 @@ export class YunxiaoWebhooksService {
 
     const existing = await this.prisma.yunxiaoWebhookDelivery.findUnique({
       where: {
-        configId_eventId: {
-          configId: config.id,
-          eventId: input.eventId.trim(),
+        organizationId_eventId: {
+          organizationId: matched.organizationId,
+          eventId: workItem.eventId,
         },
       },
       select: { id: true, status: true },
@@ -246,21 +254,18 @@ export class YunxiaoWebhooksService {
       throw new BadGatewayException('Unable to resolve duplicate Yunxiao webhook event.');
     }
 
-    if (['FAILED', 'NO_MATCH', 'AMBIGUOUS'].includes(existing.status)) {
+    if (existing.status === 'FAILED') {
       const reclaimed = await this.prisma.yunxiaoWebhookDelivery.updateMany({
-        where: {
-          id: existing.id,
-          status: existing.status,
-        },
+        where: { id: existing.id, status: 'FAILED' },
         data: {
           status: 'PROCESSING',
-          recipient: this.toJson(input.recipient),
-          title: input.title.trim(),
-          markdown: input.markdown.trim(),
-          linkUrl: input.url?.trim() || null,
-          rawPayload: this.toJson(input),
-          matchedUserId: null,
-          matchedBy: null,
+          recipient: this.toJson(workItem.assignedTo),
+          matchedUserId: matched.userId,
+          matchedBy: matched.matchedBy,
+          title: `云效工作项：${workItem.subject}`,
+          markdown,
+          linkUrl: workItem.url,
+          rawPayload: this.toJson(payload),
           providerResponse: Prisma.JsonNull,
           errorMessage: null,
           sentAt: null,
@@ -278,159 +283,50 @@ export class YunxiaoWebhooksService {
     };
   }
 
-  private matchRecipient(members: Member[], recipient: YunxiaoWebhookRecipientDto): MatchResult {
-    const matchers: Array<{
-      key: keyof YunxiaoWebhookRecipientDto;
-      matches: (member: Member, expected: string) => boolean;
-    }> = [
-      {
-        key: 'dingtalkUserId',
-        matches: (member, expected) =>
-          member.user.identities.some((identity) => {
-            const raw = this.asRecord(identity.providerRawProfile);
-            const staffIds = [
-              raw?.userid,
-              raw?.userId,
-              raw?.staffId,
-              raw?.staffid,
-              identity.providerUserId,
-              identity.providerUserId.split(':').at(-1),
-            ];
-            return staffIds.some((value) => this.same(value, expected));
-          }),
-      },
-      {
-        key: 'unionId',
-        matches: (member, expected) =>
-          member.user.identities.some((identity) => {
-            const raw = this.asRecord(identity.providerRawProfile);
-            return [identity.providerUnionId, raw?.unionId, raw?.unionid].some((value) =>
-              this.same(value, expected),
-            );
-          }),
-      },
-      {
-        key: 'email',
-        matches: (member, expected) => this.same(member.user.email, expected),
-      },
-      {
-        key: 'account',
-        matches: (member, expected) =>
-          [member.user.localCredential?.account, member.user.account].some((value) =>
-            this.same(value, expected),
-          ),
-      },
-      {
-        key: 'name',
-        matches: (member, expected) => this.same(member.user.displayName, expected),
-      },
-    ];
-
-    for (const matcher of matchers) {
-      const expected = recipient[matcher.key]?.trim();
-      if (!expected) {
-        continue;
-      }
-      const matches = members.filter((member) => matcher.matches(member, expected));
-      if (matches.length === 1) {
-        return {
-          kind: 'matched',
-          userId: matches[0].userId,
-          matchedBy: matcher.key,
-        };
-      }
-      if (matches.length > 1) {
-        return { kind: 'ambiguous', matchedBy: matcher.key };
-      }
+  private buildMarkdown(workItem: NormalizedWorkItem) {
+    const lines = [`## ${workItem.subject}`, ''];
+    if (workItem.serialNumber) {
+      lines.push(`- 编号：${workItem.serialNumber}`);
     }
-    return { kind: 'none' };
-  }
-
-  private async requireOrganizationAdmin(organizationId: string, actingUserId: string) {
-    const membership = await this.prisma.userOrganization.findUnique({
-      where: {
-        userId_organizationId: {
-          userId: actingUserId,
-          organizationId,
-        },
-      },
-      select: { role: true },
-    });
-    if (membership?.role !== 'admin') {
-      throw new ForbiddenException('Organization admin access is required.');
+    if (workItem.spaceName) {
+      lines.push(`- 项目：${workItem.spaceName}`);
     }
-  }
-
-  private async requireDingTalkOrganization(organizationId: string) {
-    const organization = await this.prisma.organization.findUnique({
-      where: { id: organizationId },
-      select: { provider: true, providerOrganizationId: true },
-    });
-    if (organization?.provider !== 'dingtalk' || !organization.providerOrganizationId.trim()) {
-      throw new BadRequestException('Current organization is not connected to DingTalk.');
+    if (workItem.statusName) {
+      lines.push(`- 状态：${workItem.statusName}`);
     }
-  }
-
-  private presentConfig(config: {
-    id: string;
-    webhookSecret: string;
-    isActive: boolean;
-    createdAt: Date;
-    updatedAt: Date;
-  }) {
-    return {
-      id: config.id,
-      webhookSecret: config.webhookSecret,
-      isActive: config.isActive,
-      endpointPath: `/yunxiao-webhooks/${config.id}/events`,
-      createdAt: config.createdAt,
-      updatedAt: config.updatedAt,
-    };
-  }
-
-  private hasRecipientIdentifier(recipient: YunxiaoWebhookRecipientDto) {
-    return [
-      recipient.dingtalkUserId,
-      recipient.unionId,
-      recipient.email,
-      recipient.account,
-      recipient.name,
-    ].some((value) => Boolean(value?.trim()));
-  }
-
-  private buildMarkdown(markdown: string, url?: string) {
-    const content = markdown.trim();
-    return url?.trim() ? `${content}\n\n[查看详情](${url.trim()})` : content;
+    lines.push(`- 负责人：${workItem.assignedTo.name}`);
+    if (workItem.url) {
+      lines.push('', `[查看工作项](${workItem.url})`);
+    }
+    return lines.join('\n');
   }
 
   private async markFailed(deliveryId: string, message: string) {
     await this.prisma.yunxiaoWebhookDelivery.update({
       where: { id: deliveryId },
-      data: {
-        status: 'FAILED',
-        errorMessage: message,
-      },
+      data: { status: 'FAILED', errorMessage: message },
     });
   }
 
-  private same(actual: unknown, expected: string) {
-    return typeof actual === 'string' && actual.trim().toLocaleLowerCase() === expected.toLocaleLowerCase();
-  }
-
-  private secretsEqual(expected: string, supplied: string | undefined) {
-    if (!supplied) {
-      return false;
-    }
+  private secretsEqual(expected: string, actual: string) {
     const expectedBuffer = Buffer.from(expected);
-    const suppliedBuffer = Buffer.from(supplied.trim());
-    return (
-      expectedBuffer.length === suppliedBuffer.length &&
-      timingSafeEqual(expectedBuffer, suppliedBuffer)
-    );
+    const actualBuffer = Buffer.from(actual);
+    return expectedBuffer.length === actualBuffer.length
+      && timingSafeEqual(expectedBuffer, actualBuffer);
   }
 
-  private generateSecret() {
-    return randomBytes(32).toString('base64url');
+  private same(actual: unknown, expected: string) {
+    return typeof actual === 'string'
+      && actual.trim().toLocaleLowerCase() === expected.trim().toLocaleLowerCase();
+  }
+
+  private pickString(...values: unknown[]) {
+    for (const value of values) {
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+    return null;
   }
 
   private asRecord(value: unknown) {

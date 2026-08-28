@@ -87,7 +87,6 @@ const scopeFactories: Record<string, (organizationId: string) => Record<string, 
   }),
   IdeationArtifact: (organizationId) => ({ requirement: requirementScope(organizationId) }),
   Bug: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
-  YunxiaoWebhookConfig: (organizationId) => ({ organizationId }),
   YunxiaoWebhookDelivery: (organizationId) => ({ organizationId }),
 };
 

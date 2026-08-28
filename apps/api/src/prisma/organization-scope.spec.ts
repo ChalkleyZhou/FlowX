@@ -11,7 +11,6 @@ describe('applyOrganizationScope', () => {
     ['WorkflowRun', { requirement: { project: { workspace: { organizationId } } } }],
     ['Issue', { workspace: { organizationId } }],
     ['Bug', { workspace: { organizationId } }],
-    ['YunxiaoWebhookConfig', { organizationId }],
     ['YunxiaoWebhookDelivery', { organizationId }],
   ])('adds the organization boundary to %s reads', (model, expectedScope) => {
     const args = applyOrganizationScope(model, 'findMany', {

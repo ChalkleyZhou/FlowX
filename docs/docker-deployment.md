@@ -70,6 +70,7 @@ FlowX 容器内部包含两个服务：
 | `DINGTALK_APP_ID`                      | 钉钉登录 App ID                                                                      | 仅钉钉登录时必填       |
 | `DINGTALK_APP_SECRET`                  | 钉钉登录 App Secret                                                                  | 仅钉钉登录时必填       |
 | `DINGTALK_AGENT_ID`                    | 钉钉通知 Agent ID                                                                    | 仅钉钉通知时必填       |
+| `YUNXIAO_WEBHOOK_SECRET`               | 云效 Webhook 专用 Secret，用于校验 `X-Projex-Signature`，不是个人 API Token                       | 启用云效通知时必填      |
 | `GIT_AUTHOR_NAME`                      | Git 提交用户名                                                                        | 建议填写           |
 | `GIT_AUTHOR_EMAIL`                     | Git 提交邮箱                                                                         | 建议填写           |
 
@@ -231,6 +232,7 @@ cp .env.docker.example .env.docker
 - `DINGTALK_APP_ID`
 - `DINGTALK_APP_SECRET`
 - `DINGTALK_AGENT_ID`
+- `YUNXIAO_WEBHOOK_SECRET`
 - `OPENAI_API_KEY`
 - `GIT_AUTHOR_NAME`
 - `GIT_AUTHOR_EMAIL`
