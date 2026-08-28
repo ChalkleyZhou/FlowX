@@ -5,10 +5,12 @@ import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { useToast } from '../components/ui/toast';
+import { useConfirm } from '../components/ConfirmDialog';
 import type { GitCredentialStatus } from '../types';
 
 export function GitCredentialsPage() {
   const toast = useToast();
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -53,7 +55,10 @@ export function GitCredentialsPage() {
   }
 
   async function handleDeleteGithub() {
-    const confirmed = window.confirm('确认删除当前组织的 GitHub Access Token 吗？');
+    const confirmed = await confirm({
+      description: '确认删除当前组织的 GitHub Access Token 吗？',
+      destructive: true,
+    });
     if (!confirmed) {
       return;
     }
@@ -85,7 +90,10 @@ export function GitCredentialsPage() {
   }
 
   async function handleDeleteGitlab() {
-    const confirmed = window.confirm('确认删除当前组织的 GitLab Access Token 吗？');
+    const confirmed = await confirm({
+      description: '确认删除当前组织的 GitLab Access Token 吗？',
+      destructive: true,
+    });
     if (!confirmed) {
       return;
     }

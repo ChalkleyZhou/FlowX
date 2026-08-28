@@ -29,6 +29,7 @@ import {
 } from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
+import { useConfirm } from '../components/ConfirmDialog';
 import type { OrganizationMember } from '../types';
 
 type MemberDraft = {
@@ -54,6 +55,7 @@ function statusLabel(status?: string) {
 export function OrganizationUsersPage() {
   const { session, refreshSession } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(false);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [search, setSearch] = useState('');
@@ -146,9 +148,9 @@ export function OrganizationUsersPage() {
   }
 
   async function handleDingTalkSync() {
-    const confirmed = window.confirm(
-      '将从钉钉通讯录同步用户到当前组织。该操作只新增或更新用户，不会删除现有成员，是否继续？',
-    );
+    const confirmed = await confirm({
+      description: '将从钉钉通讯录同步用户到当前组织。该操作只新增或更新用户，不会删除现有成员，是否继续？',
+    });
     if (!confirmed) {
       return;
     }
@@ -198,9 +200,10 @@ export function OrganizationUsersPage() {
   }
 
   async function handleTransfer(member: OrganizationMember) {
-    const confirmed = window.confirm(
-      `确认将组织管理员转让给「${member.displayName}」吗？转让后你将变为普通成员。`,
-    );
+    const confirmed = await confirm({
+      description: `确认将组织管理员转让给「${member.displayName}」吗？转让后你将变为普通成员。`,
+      destructive: true,
+    });
     if (!confirmed) {
       return;
     }
@@ -219,7 +222,10 @@ export function OrganizationUsersPage() {
   }
 
   async function handleRemove(member: OrganizationMember) {
-    const confirmed = window.confirm(`确认将「${member.displayName}」移出组织「${organizationName}」吗？`);
+    const confirmed = await confirm({
+      description: `确认将「${member.displayName}」移出组织「${organizationName}」吗？`,
+      destructive: true,
+    });
     if (!confirmed) {
       return;
     }

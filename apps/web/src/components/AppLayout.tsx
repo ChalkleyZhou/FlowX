@@ -35,6 +35,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
+import { ConfirmProvider, useConfirm } from './ConfirmDialog';
 
 const primaryItems = [
   { key: '/requirements', label: '需求', icon: ClipboardList },
@@ -59,18 +60,30 @@ const secondaryItems = [
   { key: '/settings/delivery-targets', label: '投递目标', icon: Send },
 ] satisfies Array<{ key: string; label: string; icon: LucideIcon }>;
 
-export function AppLayout({ children }: PropsWithChildren) {
+export function AppLayout(props: PropsWithChildren) {
+  return (
+    <ConfirmProvider>
+      <AppLayoutContent {...props} />
+    </ConfirmProvider>
+  );
+}
+
+function AppLayoutContent({ children }: PropsWithChildren) {
   const { session, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const [showAiCredentialReminder, setShowAiCredentialReminder] = useState(false);
   const [showSecondaryMenu, setShowSecondaryMenu] = useState(false);
 
   const selectedKey =
     [...primaryItems, ...secondaryItems].find((item) => location.pathname.startsWith(item.key))?.key ?? '/requirements';
 
-  function handleLogout() {
-    if (!window.confirm('确认退出登录吗？')) {
+  async function handleLogout() {
+    const confirmed = await confirm({
+      description: '确认退出登录吗？',
+    });
+    if (!confirmed) {
       return;
     }
     logout();

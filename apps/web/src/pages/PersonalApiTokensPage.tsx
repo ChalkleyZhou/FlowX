@@ -6,10 +6,12 @@ import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { useToast } from '../components/ui/toast';
+import { useConfirm } from '../components/ConfirmDialog';
 import type { PersonalApiTokenCreated, PersonalApiTokenMeta } from '../types';
 
 export function PersonalApiTokensPage() {
   const toast = useToast();
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
@@ -59,7 +61,10 @@ export function PersonalApiTokensPage() {
   }
 
   async function handleRevoke(tokenId: string) {
-    const confirmed = window.confirm('确认撤销该 API Token 吗？撤销后本地与 CLI 将立即失效。');
+    const confirmed = await confirm({
+      description: '确认撤销该 API Token 吗？撤销后本地与 CLI 将立即失效。',
+      destructive: true,
+    });
     if (!confirmed) {
       return;
     }

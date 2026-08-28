@@ -36,7 +36,7 @@ export default function App() {
     <AuthProvider>
       <ThemeProvider>
         <ToastProvider>
-        <Routes>
+          <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route
             path="/"
@@ -74,7 +74,7 @@ export default function App() {
             <Route path="/settings/delivery-targets" element={<DeliveryTargetsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+          </Routes>
       </ToastProvider>
       </ThemeProvider>
     </AuthProvider>

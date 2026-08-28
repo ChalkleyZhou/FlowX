@@ -10,6 +10,7 @@ import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
+import { useConfirm } from '../components/ConfirmDialog';
 import { cn } from '../lib/utils';
 import { copyToClipboard } from '../lib/clipboard';
 import type { BriefingSource, Repository, Workspace } from '../types';
@@ -126,6 +127,7 @@ export function BriefingSourcesPage() {
   const [bindingLoading, setBindingLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const toast = useToast();
+  const confirm = useConfirm();
 
   const repositories = useMemo(
     () => workspaces.find((workspace) => workspace.id === workspaceId)?.repositories ?? [],
@@ -208,7 +210,10 @@ export function BriefingSourcesPage() {
   }
 
   async function deleteSource(source: BriefingSource) {
-    if (!window.confirm(`确认删除 ${source.provider}://${source.externalPath} 吗？`)) {
+    if (!await confirm({
+      description: `确认删除 ${source.provider}://${source.externalPath} 吗？`,
+      destructive: true,
+    })) {
       return;
     }
     await api.deleteBriefingSource(source.id);
@@ -219,11 +224,10 @@ export function BriefingSourcesPage() {
   }
 
   async function regenerateSecret(source: BriefingSource) {
-    if (
-      !window.confirm(
-        '重新生成后，请同步更新 GitLab/GitHub 上的 Secret，否则 webhook 会校验失败。继续吗？',
-      )
-    ) {
+    if (!await confirm({
+      description: '重新生成后，请同步更新 GitLab/GitHub 上的 Secret，否则 webhook 会校验失败。继续吗？',
+      destructive: true,
+    })) {
       return;
     }
     try {

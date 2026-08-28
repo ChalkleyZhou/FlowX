@@ -105,9 +105,6 @@ describe('AppLayout', () => {
   });
 
   it('does not logout when user cancels confirmation', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm');
-    confirmSpy.mockReturnValue(false);
-
     await act(async () => {
       root?.render(
         <MemoryRouter initialEntries={['/workspaces']}>
@@ -125,17 +122,23 @@ describe('AppLayout', () => {
 
     await act(async () => {
       logoutButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
     });
 
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    const cancelButton = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.trim() === '取消',
+    );
+    expect(cancelButton).toBeTruthy();
+
+    await act(async () => {
+      cancelButton?.click();
+    });
+
     expect(logoutSpy).not.toHaveBeenCalled();
     expect(navigateSpy).not.toHaveBeenCalled();
   });
 
   it('logs out and navigates when user confirms', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm');
-    confirmSpy.mockReturnValue(true);
-
     await act(async () => {
       root?.render(
         <MemoryRouter initialEntries={['/workspaces']}>
@@ -153,9 +156,19 @@ describe('AppLayout', () => {
 
     await act(async () => {
       logoutButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
     });
 
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    const confirmButton = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.trim() === '确认',
+    );
+    expect(confirmButton).toBeTruthy();
+
+    await act(async () => {
+      confirmButton?.click();
+      await Promise.resolve();
+    });
+
     expect(logoutSpy).toHaveBeenCalledTimes(1);
     expect(navigateSpy).toHaveBeenCalledTimes(1);
     expect(navigateSpy).toHaveBeenCalledWith('/login', { replace: true });

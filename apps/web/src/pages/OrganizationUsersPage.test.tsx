@@ -7,6 +7,7 @@ import { OrganizationUsersPage } from './OrganizationUsersPage';
 import { api } from '../api';
 import { ThemeProvider } from '../components/theme-provider';
 import { ToastProvider } from '../components/ui/toast';
+import { ConfirmProvider } from '../components/ConfirmDialog';
 
 vi.mock('../api', () => ({
   api: {
@@ -94,7 +95,9 @@ describe('OrganizationUsersPage', () => {
         <MemoryRouter>
           <ThemeProvider>
             <ToastProvider>
-              <OrganizationUsersPage />
+              <ConfirmProvider>
+                <OrganizationUsersPage />
+              </ConfirmProvider>
             </ToastProvider>
           </ThemeProvider>
         </MemoryRouter>,
@@ -116,7 +119,6 @@ describe('OrganizationUsersPage', () => {
   });
 
   it('syncs DingTalk users and refreshes the member list', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     vi.mocked(api.syncDingTalkOrganizationUsers).mockResolvedValue({
       total: 2,
       created: 1,
@@ -132,6 +134,16 @@ describe('OrganizationUsersPage', () => {
 
     await act(async () => {
       button?.click();
+      await Promise.resolve();
+    });
+
+    const confirmButton = Array.from(document.body.querySelectorAll('button')).find(
+      (item) => item.textContent?.trim() === '确认',
+    );
+    expect(confirmButton).toBeTruthy();
+
+    await act(async () => {
+      confirmButton?.click();
       await Promise.resolve();
     });
 

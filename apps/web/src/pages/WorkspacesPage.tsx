@@ -21,6 +21,7 @@ import {
 import { Spinner } from '../components/ui/spinner';
 import { Textarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
+import { useConfirm } from '../components/ConfirmDialog';
 import { formatRepositorySyncStatus } from '../utils/label-utils';
 
 export function WorkspacesPage() {
@@ -60,6 +61,7 @@ export function WorkspacesPage() {
   const [updatingRepositoryMeta, setUpdatingRepositoryMeta] = useState(false);
   const [resyncingRepositoryId, setResyncingRepositoryId] = useState<string | null>(null);
   const toast = useToast();
+  const confirm = useConfirm();
 
   const workspaceSummary = useMemo(() => {
     const repositoryCount = workspaces.reduce((sum, workspace) => sum + workspace.repositories.length, 0);
@@ -266,7 +268,10 @@ export function WorkspacesPage() {
   }
 
   async function deleteRepository(workspaceId: string, repository: Repository) {
-    const confirmed = window.confirm(`确认删除代码库“${repository.name}”吗？这会移除工作区中的仓库记录和本地副本。`);
+    const confirmed = await confirm({
+      description: `确认删除代码库“${repository.name}”吗？这会移除工作区中的仓库记录和本地副本。`,
+      destructive: true,
+    });
     if (!confirmed) {
       return;
     }

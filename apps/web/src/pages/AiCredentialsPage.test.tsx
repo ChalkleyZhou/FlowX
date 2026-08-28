@@ -4,6 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiCredentialsPage } from './AiCredentialsPage';
+import { ConfirmProvider } from '../components/ConfirmDialog';
 
 const { errorToastSpy } = vi.hoisted(() => ({
   errorToastSpy: vi.fn(),
@@ -54,7 +55,11 @@ describe('AiCredentialsPage', () => {
 
   it('explains where to obtain Cursor and OpenAI API keys', async () => {
     await act(async () => {
-      root?.render(<AiCredentialsPage />);
+      root?.render(
+        <ConfirmProvider>
+          <AiCredentialsPage />
+        </ConfirmProvider>,
+      );
       await Promise.resolve();
     });
 

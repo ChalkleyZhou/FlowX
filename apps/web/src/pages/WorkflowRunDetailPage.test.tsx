@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkflowRunDetailPage } from './WorkflowRunDetailPage';
 import { api } from '../api';
+import { ConfirmProvider } from '../components/ConfirmDialog';
 import type { SpecPlanOutput, WorkflowRun } from '../types';
 
 vi.mock('../api', () => ({
@@ -156,9 +157,11 @@ describe('WorkflowRunDetailPage', () => {
     await act(async () => {
       root?.render(
         <MemoryRouter initialEntries={['/workflow-runs/workflow-1']}>
-          <Routes>
-            <Route path="/workflow-runs/:workflowRunId" element={<WorkflowRunDetailPage />} />
-          </Routes>
+          <ConfirmProvider>
+            <Routes>
+              <Route path="/workflow-runs/:workflowRunId" element={<WorkflowRunDetailPage />} />
+            </Routes>
+          </ConfirmProvider>
         </MemoryRouter>,
       );
     });
@@ -399,7 +402,6 @@ describe('WorkflowRunDetailPage', () => {
   });
 
   it('calls rollback when restart brainstorm is confirmed', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const initialRun = createWorkflowRun({
       status: 'DESIGN_WAITING_CONFIRMATION',
       stageExecutions: [
@@ -456,12 +458,19 @@ describe('WorkflowRunDetailPage', () => {
     await act(async () => {
       restartButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
+    });
+
+    const confirmButton = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.trim() === '确认',
+    );
+    expect(confirmButton).toBeTruthy();
+
+    await act(async () => {
+      confirmButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(window.confirm).toHaveBeenCalledWith(
-      '将回到产品构思并重新编写产品需求；已有设计产物会保留供对照。',
-    );
     expect(api.rollbackWorkflowToPreviousStage).toHaveBeenCalledWith('workflow-1');
     expect(api.getWorkflowRun).toHaveBeenCalledTimes(2);
 

@@ -31,6 +31,7 @@ import { Spinner } from '../components/ui/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Textarea as UiTextarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
+import { useConfirm } from '../components/ConfirmDialog';
 import {
   launchFlowxLocal,
   launchOpenDesignLocal,
@@ -420,6 +421,7 @@ export function WorkflowRunDetailPage() {
     image: '',
   });
   const toast = useToast();
+  const confirm = useConfirm();
   const lastWorkflowSnapshotRef = useRef<string>('');
   const hasInitializedStageSelectionRef = useRef(false);
   const syncedReviewReportIdRef = useRef<string | null>(null);
@@ -1130,9 +1132,10 @@ export function WorkflowRunDetailPage() {
       return;
     }
 
-    const confirmed = window.confirm(
-      '确定回退到上一阶段吗？后续阶段产生的产物可能被清除，请在重新执行前确认需求与上下文。',
-    );
+    const confirmed = await confirm({
+      description: '确定回退到上一阶段吗？后续阶段产生的产物可能被清除，请在重新执行前确认需求与上下文。',
+      destructive: true,
+    });
     if (!confirmed) {
       return;
     }
@@ -1154,7 +1157,10 @@ export function WorkflowRunDetailPage() {
       return;
     }
 
-    const confirmed = window.confirm('删除后将清空这条工作流的阶段记录、审查结果和工作副本。确认删除吗？');
+    const confirmed = await confirm({
+      description: '删除后将清空这条工作流的阶段记录、审查结果和工作副本。确认删除吗？',
+      destructive: true,
+    });
     if (!confirmed) {
       return;
     }
@@ -1383,13 +1389,14 @@ export function WorkflowRunDetailPage() {
                   disabled: stageActionsLocked,
                   loading: busyStage === 'BRAINSTORM',
                   onClick: () => {
-                    const confirmed = window.confirm(
-                      '将回到产品构思并重新编写产品需求；已有设计产物会保留供对照。',
-                    );
-                    if (!confirmed) {
-                      return;
-                    }
                     void (async () => {
+                      const confirmed = await confirm({
+                        description: '将回到产品构思并重新编写产品需求；已有设计产物会保留供对照。',
+                        destructive: true,
+                      });
+                      if (!confirmed) {
+                        return;
+                      }
                       await runAction(
                         'BRAINSTORM',
                         () => api.rollbackWorkflowToPreviousStage(workflowRun.id),

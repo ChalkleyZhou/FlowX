@@ -147,6 +147,10 @@ export function FlowxDemoDictionaryAdminPage() {
 
   const [itemDialogOpen, setItemDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<DictionaryDemoItem | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<{
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
   const [itemDraft, setItemDraft] = useState({
     label: '',
     value: '',
@@ -331,11 +335,13 @@ export function FlowxDemoDictionaryAdminPage() {
     if (!canManage) {
       return;
     }
-    if (!window.confirm(`确认删除字典项「${item.label}」？删除后历史数据仍应能展示，但不应再被新业务选择。`)) {
-      return;
-    }
-    setItems((prev) => prev.filter((i) => i.id !== item.id));
-    toast.success('字典项已删除（演示）');
+    setPendingConfirmation({
+      message: `确认删除字典项「${item.label}」？删除后历史数据仍应能展示，但不应再被新业务选择。`,
+      onConfirm: () => {
+        setItems((prev) => prev.filter((i) => i.id !== item.id));
+        toast.success('字典项已删除（演示）');
+      },
+    });
   }
 
   function removeCategory(cat: DictionaryDemoCategory) {
@@ -347,19 +353,17 @@ export function FlowxDemoDictionaryAdminPage() {
       toast.error('该分类下仍有字典项：请先清理或迁移后再删除，以避免误伤业务引用。');
       return;
     }
-    if (
-      !window.confirm(
-        `确认删除字典分类「${cat.name}」？若该字典仍被业务使用，生产环境应改为限制删除或二次确认策略。`,
-      )
-    ) {
-      return;
-    }
-    const nextCategories = categories.filter((c) => c.id !== cat.id);
-    setCategories(nextCategories);
-    if (selectedId === cat.id) {
-      setSelectedId(nextCategories[0]?.id ?? '');
-    }
-    toast.success('字典分类已删除（演示）');
+    setPendingConfirmation({
+      message: `确认删除字典分类「${cat.name}」？若该字典仍被业务使用，生产环境应改为限制删除或二次确认策略。`,
+      onConfirm: () => {
+        const nextCategories = categories.filter((c) => c.id !== cat.id);
+        setCategories(nextCategories);
+        if (selectedId === cat.id) {
+          setSelectedId(nextCategories[0]?.id ?? '');
+        }
+        toast.success('字典分类已删除（演示）');
+      },
+    });
   }
 
   return (
@@ -708,6 +712,37 @@ export function FlowxDemoDictionaryAdminPage() {
             </Button>
             <Button type="button" onClick={saveItem}>
               保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={pendingConfirmation !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingConfirmation(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>确认操作</DialogTitle>
+            <DialogDescription>{pendingConfirmation?.message}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setPendingConfirmation(null)}>
+              取消
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                const action = pendingConfirmation?.onConfirm;
+                setPendingConfirmation(null);
+                action?.();
+              }}
+            >
+              确认
             </Button>
           </DialogFooter>
         </DialogContent>

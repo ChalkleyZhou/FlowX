@@ -25,7 +25,7 @@
 | 组件 | 路径 | 现状 | 缺口 |
 | --- | --- | --- | --- |
 | ListToolbar / FilterBar | `apps/web/src/components/{ListToolbar,FilterBar}.tsx` | 统一容器，支持 search 和 filters | 缺少清除筛选、结果计数、保存视图和状态同步 |
-| Dialog / Alert / Toast | `apps/web/src/components/ui/*` | 基础弹层和提示已存在 | 高风险工作流动作仍有 `window.confirm` |
+| Dialog / Alert / Toast | `apps/web/src/components/ui/*`、`apps/web/src/components/ConfirmDialog.tsx` | 基础弹层和提示已存在，确认操作统一使用自定义 Dialog | 高风险工作流动作使用统一确认服务 |
 | Spinner | `apps/web/src/components/ui/spinner.tsx` | 加载图标 | 缺少列表 skeleton 和局部 pending 模式 |
 
 ## Workflow domain

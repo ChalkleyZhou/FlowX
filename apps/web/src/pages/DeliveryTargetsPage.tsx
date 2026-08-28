@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { useToast } from '../components/ui/toast';
+import { useConfirm } from '../components/ConfirmDialog';
 import type { DeliveryTarget, OrganizationMember, Project, Workspace } from '../types';
 
 const MANUAL_MEMBER_VALUE = '__manual__';
@@ -29,6 +30,7 @@ export function DeliveryTargetsPage() {
   const [forCodeReview, setForCodeReview] = useState(true);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
+  const confirm = useConfirm();
 
   const usesMemberPicker = type === 'DINGTALK_APP';
   const usesWebhook = type === 'DINGTALK_ROBOT';
@@ -157,7 +159,10 @@ export function DeliveryTargetsPage() {
   }
 
   async function deleteTarget(target: DeliveryTarget) {
-    if (!window.confirm(`确认删除 ${target.name} 吗？`)) {
+    if (!await confirm({
+      description: `确认删除 ${target.name} 吗？`,
+      destructive: true,
+    })) {
       return;
     }
     await api.deleteDeliveryTarget(target.id);

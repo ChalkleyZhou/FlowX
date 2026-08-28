@@ -19,6 +19,7 @@ import {
 } from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
+import { useConfirm } from '../components/ConfirmDialog';
 import type { Project, Requirement, WorkflowRun, Workspace } from '../types';
 import { formatWorkflowRunType, formatWorkflowStatus } from '../utils/workflow-ui';
 
@@ -32,6 +33,7 @@ export function WorkflowRunsPage() {
   const [loading, setLoading] = useState(false);
   const [deletingWorkflowId, setDeletingWorkflowId] = useState<string | null>(null);
   const toast = useToast();
+  const confirm = useConfirm();
   const workspaceId = searchParams.get('workspaceId') ?? '';
   const projectId = searchParams.get('projectId') ?? '';
   const requirementId = searchParams.get('requirementId') ?? '';
@@ -111,7 +113,10 @@ export function WorkflowRunsPage() {
   }, [runType]);
 
   async function handleDeleteWorkflow(workflowRunId: string) {
-    const confirmed = window.confirm('删除后将清空这条工作流的阶段记录、审查结果和工作副本。确认删除吗？');
+    const confirmed = await confirm({
+      description: '删除后将清空这条工作流的阶段记录、审查结果和工作副本。确认删除吗？',
+      destructive: true,
+    });
     if (!confirmed) {
       return;
     }

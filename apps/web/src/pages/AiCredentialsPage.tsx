@@ -7,10 +7,12 @@ import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { useToast } from '../components/ui/toast';
+import { useConfirm } from '../components/ConfirmDialog';
 import type { AiCredentialStatus } from '../types';
 
 export function AiCredentialsPage() {
   const toast = useToast();
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -55,7 +57,10 @@ export function AiCredentialsPage() {
   }
 
   async function handleDeleteCursor() {
-    const confirmed = window.confirm('确认删除当前组织的 Cursor API Key 吗？');
+    const confirmed = await confirm({
+      description: '确认删除当前组织的 Cursor API Key 吗？',
+      destructive: true,
+    });
     if (!confirmed) {
       return;
     }
@@ -87,7 +92,10 @@ export function AiCredentialsPage() {
   }
 
   async function handleDeleteCodex() {
-    const confirmed = window.confirm('确认删除当前组织的 Codex/OpenAI API Key 吗？');
+    const confirmed = await confirm({
+      description: '确认删除当前组织的 Codex/OpenAI API Key 吗？',
+      destructive: true,
+    });
     if (!confirmed) {
       return;
     }
