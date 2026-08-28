@@ -14,7 +14,7 @@ FlowX 已有一套可用的 shadcn/ui + Tailwind 组件和中性 B2B 管理台�
 
 整体：Medium-Low。
 
-- Foundations：Medium。颜色、字体、间距和圆角已有 token，但文档与代码存在冲突。
+- Foundations：Medium。颜色、字体、间距和圆角已有 token，当前生效文档已与代码对齐。
 - Components：Medium。基础组件和若干业务组合组件齐全，但缺少 Pagination、统一状态 Badge、列表查询和工作流操作栏。
 - Interaction：Low。列表分页、URL 状态、筛选偏好和复杂状态反馈未形成公共模式。
 - Governance：Low。已有前端规范，但没有明确 source of truth、采用度检查和视觉回归门禁。
@@ -25,7 +25,6 @@ FlowX 已有一套可用的 shadcn/ui + Tailwind 组件和中性 B2B 管理台�
 
 - 列表接口返回全量数组，数据增长后性能和可用性同时恶化。
 - 工作流详情把多个用户任务和状态分支放入单页，容易误操作或遗漏待处理动作。
-- `docs/frontend-shadcn-design-spec.md` 的蓝色/Avenir 描述与实际黑色/Inter 实现不一致。
 - 筛选和分页状态不能可靠恢复，用户无法分享工作视图。
 
 ## Top opportunities

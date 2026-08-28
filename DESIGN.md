@@ -64,4 +64,3 @@ FlowX 使用 `Control Room` 设计语言。它服务于反复扫描、比较、�
 - 产品与交互方案：[docs/product-ux-review.md](docs/product-ux-review.md)
 - Web 设计系统：[apps/web/docs/design-system.md](apps/web/docs/design-system.md)
 - 详细设计系统审计：[design-system-audit/00-executive-summary.md](design-system-audit/00-executive-summary.md)
-- 现有前端规范：[docs/frontend-shadcn-design-spec.md](docs/frontend-shadcn-design-spec.md)

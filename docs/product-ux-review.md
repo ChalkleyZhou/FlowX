@@ -244,7 +244,7 @@ Sticky side rail
 
 视觉上继续保持现有克制的 B2B 管理台方向：中性画布、轻边框、有限状态色和较高信息密度。不要通过增加卡片、彩色 Badge 或大面积背景来掩盖信息架构问题。
 
-需要先解决规范与实现的事实冲突：`docs/frontend-shadcn-design-spec.md` 声明主色为蓝色、字体为 Avenir Next，但 `apps/web/src/globals.css` 和 `design-tokens.ts` 实际使用黑色主色、Inter 字体。应选择一个 source of truth，并同步文档、token 和视觉回归基线。
+设计规范与实现当前已对齐：`apps/web/src/globals.css` 和 `design-tokens.ts` 使用黑色主操作色（暗色主题反相为白色）、Inter 字体，`apps/web/docs/design-system.md` 是 Web 端唯一日常规范。后续应保持 CSS token、TypeScript token 和该规范同步，并补充视觉回归基线。
 
 ## 5. 分阶段实施路线
 

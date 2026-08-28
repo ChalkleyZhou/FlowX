@@ -2,25 +2,25 @@
 
 ## Colors
 
-Evidence：`apps/web/src/globals.css`、`apps/web/src/design-tokens.ts`、`apps/web/tailwind.config.ts`。
+Evidence：`apps/web/src/globals.css`、`apps/web/src/design-tokens.ts`、`apps/web/tailwind.config.ts`、`apps/web/docs/design-system.md`。
 
 Findings：实际主题是中性冷白背景、白色 surface、黑色 primary、灰色文本，并有 success、warning、danger、teal accent。状态色语义基本清楚，适合研发控制台。
 
-Gaps：`docs/frontend-shadcn-design-spec.md` 声明“唯一主色：蓝色系”，但代码实际 primary 为黑色；必须选择代码或文档作为 source of truth，并做视觉回归。
+Gaps：CSS 与 TypeScript token 仍需双向同步维护；应通过检查避免令牌值漂移，并补充视觉回归。
 
 历史页面仍可能存在硬编码颜色和 `dark:` 覆盖，应逐步迁移到语义类。
 
 ## Typography
 
-Evidence：`globals.css` 使用 `Inter, ui-sans-serif, system-ui`；`design-tokens.ts` 定义 12/13/14/16/18/24px 尺寸和对应行高。
+Evidence：`globals.css` 使用 `Inter, ui-sans-serif, system-ui`；`design-tokens.ts` 定义 12/13/14/16/18/24px 尺寸和对应行高；`apps/web/docs/design-system.md` 记录采用规则。
 
 Findings：尺寸层级适合密集管理台，中文回退字体也已提供。
 
-Gaps：前端规范写的是 Avenir Next，与代码不一致；标题、表格正文、辅助文本的实际采用度没有自动检查。
+Gaps：标题、表格正文、辅助文本的实际采用度没有自动检查。
 
 ## Spacing and Layout
 
-Evidence：token 使用 4px 到 64px 的间距；`AppLayout` 使用固定侧栏和受限主内容宽度；`docs/frontend-shadcn-design-spec.md` 定义列表页和详情页模板。
+Evidence：token 使用 4px 到 64px 的间距；`AppLayout` 使用固定侧栏和受限主内容宽度；`apps/web/docs/design-system.md` 定义列表页、详情页和工作流页模板。
 
 Findings：布局基础稳定，页面已有 `PageHeader`、`ListToolbar`、`Card` 等复用能力。
 

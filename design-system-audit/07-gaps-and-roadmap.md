@@ -7,7 +7,6 @@
 | 无统一服务端分页 | 多数 API helper 返回数组；后端 `findMany` 无 `skip/take/count` | 定义 `PageResult<T>`，先改造工作流、需求、问题、缺陷 | 性能可控，结果可分享 | 1-2 周 |
 | 筛选状态不可恢复 | Issue/Bug 使用 React state；工作流仅部分筛选在 URL | 统一 URL query + 用户级偏好 hook | 刷新、返回、分享可靠 | 3-5 天 |
 | 工作流主动作不突出 | `WorkflowRunDetailPage.tsx` 集中多个阶段动作和状态分支 | 当前阶段唯一主动作 + sticky ActionBar | 降低误操作，缩短完成路径 | 1 周 |
-| 规范和代码漂移 | 文档蓝色/Avenir；代码黑色/Inter | 确认视觉 source of truth 并同步 | 避免持续产生两套界面 | 1-2 天 |
 
 已有视觉治理的 quick wins 仍然有效：清理共享组件外的任意阴影/圆角覆盖，并为 Button/Input/Select/Badge 补 loading、error、disabled 和 icon-only 状态测试。
 

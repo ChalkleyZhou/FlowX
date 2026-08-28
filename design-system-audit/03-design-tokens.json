@@ -7,7 +7,7 @@
     ],
     "platforms": ["Web desktop"],
     "notes": [
-      "代码是当前高置信度 source of truth；docs/frontend-shadcn-design-spec.md 存在蓝色主色和 Avenir 字体冲突。"
+      "globals.css 与 design-tokens.ts 是当前高置信度 source of truth，当前生效设计文档已与其对齐。"
     ]
   },
   "tokens": {
