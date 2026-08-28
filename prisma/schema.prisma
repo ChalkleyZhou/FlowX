@@ -411,6 +411,7 @@ model User {
   reportedBugs    Bug[]              @relation("BugReportedBy")
   assignedBugs    Bug[]                    @relation("BugAssignedTo")
   assignments     RequirementAssignment[]
+  yunxiaoWebhookDeliveries YunxiaoWebhookDelivery[]
   claimedExecutionSessions ExecutionSession[]      @relation("ExecutionSessionClaimedBy")
   createdArtifacts         Artifact[]              @relation("ArtifactCreatedBy")
   createdAt       DateTime                 @default(now())
@@ -494,10 +495,51 @@ model Organization {
   personalApiTokens      PersonalApiToken[]
   workspaces             Workspace[]
   executionSessions      ExecutionSession[]
+  yunxiaoWebhookConfig   YunxiaoWebhookConfig?
+  yunxiaoWebhookDeliveries YunxiaoWebhookDelivery[]
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
 
   @@unique([provider, providerOrganizationId])
+}
+
+model YunxiaoWebhookConfig {
+  id             String                    @id @default(cuid())
+  organizationId String                    @unique
+  organization   Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  webhookSecret  String
+  isActive       Boolean                   @default(true)
+  deliveries     YunxiaoWebhookDelivery[]
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+}
+
+model YunxiaoWebhookDelivery {
+  id               String                @id @default(cuid())
+  configId         String
+  config           YunxiaoWebhookConfig  @relation(fields: [configId], references: [id], onDelete: Cascade)
+  organizationId   String
+  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  eventId           String
+  status            String                @default("PROCESSING")
+  recipient         Json
+  matchedUserId     String?
+  matchedUser       User?                 @relation(fields: [matchedUserId], references: [id], onDelete: SetNull)
+  matchedBy         String?
+  title             String
+  markdown          String
+  linkUrl           String?
+  rawPayload        Json
+  providerResponse  Json?
+  errorMessage      String?
+  sentAt            DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@unique([configId, eventId])
+  @@index([organizationId, createdAt])
+  @@index([matchedUserId, createdAt])
+  @@index([status, createdAt])
 }
 
 model UserOrganization {

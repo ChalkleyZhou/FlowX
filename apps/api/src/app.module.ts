@@ -20,6 +20,7 @@ import { ReviewArtifactsModule } from './review-artifacts/review-artifacts.modul
 import { RequirementsModule } from './requirements/requirements.module';
 import { WorkflowModule } from './workflow/workflow.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
+import { YunxiaoWebhooksModule } from './yunxiao-webhooks/yunxiao-webhooks.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
     WorkspacesModule,
     RequirementsModule,
     WorkflowModule,
+    YunxiaoWebhooksModule,
   ],
   providers: [
     {
