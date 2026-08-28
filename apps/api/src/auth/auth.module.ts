@@ -7,6 +7,7 @@ import { GitCredentialsService } from './git-credentials.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { CredentialCryptoService } from './credential-crypto.service';
+import { DingTalkUserSyncService } from './dingtalk-user-sync.service';
 import { PasswordService } from './password.service';
 import { PersonalApiTokenController } from './personal-api-token.controller';
 import { PersonalApiTokenService } from './personal-api-token.service';
@@ -26,6 +27,7 @@ import { ProviderRegistryService } from './providers/provider-registry.service';
     AiCredentialsService,
     GitCredentialsService,
     CredentialCryptoService,
+    DingTalkUserSyncService,
     PasswordService,
     PersonalApiTokenService,
     DingTalkAuthProvider,

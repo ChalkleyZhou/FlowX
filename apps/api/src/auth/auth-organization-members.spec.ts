@@ -12,6 +12,20 @@ function buildService(prisma: Record<string, unknown>) {
   );
 }
 
+function buildSyncService(
+  prisma: Record<string, unknown>,
+  syncOrganizationUsers: ReturnType<typeof vi.fn>,
+) {
+  return new AuthService(
+    prisma as never,
+    { listProviders: () => [] } as never,
+    { hashPassword: (password: string) => `hash:${password}` } as never,
+    undefined,
+    undefined,
+    { syncOrganizationUsers } as never,
+  );
+}
+
 describe('AuthService.listOrganizationMembers', () => {
   it('returns members for organization', async () => {
     const prisma = {
@@ -202,5 +216,67 @@ describe('AuthService.removeOrganizationMember', () => {
       where: { userId: 'member-1', organizationId: 'org1', revokedAt: null },
       data: { revokedAt: expect.any(Date) },
     });
+  });
+});
+
+describe('AuthService.syncDingTalkOrganizationUsers', () => {
+  it('allows an organization admin to sync users for a DingTalk organization', async () => {
+    const syncOrganizationUsers = vi.fn().mockResolvedValue({
+      total: 2,
+      created: 1,
+      updated: 1,
+      addedToOrganization: 1,
+    });
+    const service = buildSyncService({
+      userOrganization: {
+        findUnique: vi.fn().mockResolvedValue({ role: 'admin' }),
+      },
+      organization: {
+        findUnique: vi.fn().mockResolvedValue({
+          provider: 'dingtalk',
+          providerOrganizationId: 'corp-1',
+        }),
+      },
+    }, syncOrganizationUsers);
+
+    await expect(service.syncDingTalkOrganizationUsers('org-1', 'admin-1')).resolves.toEqual({
+      total: 2,
+      created: 1,
+      updated: 1,
+      addedToOrganization: 1,
+    });
+    expect(syncOrganizationUsers).toHaveBeenCalledWith('org-1', 'corp-1');
+  });
+
+  it('rejects non-DingTalk organizations', async () => {
+    const service = buildSyncService({
+      userOrganization: {
+        findUnique: vi.fn().mockResolvedValue({ role: 'admin' }),
+      },
+      organization: {
+        findUnique: vi.fn().mockResolvedValue({
+          provider: 'local',
+          providerOrganizationId: 'local:admin-1',
+        }),
+      },
+    }, vi.fn());
+
+    await expect(
+      service.syncDingTalkOrganizationUsers('org-1', 'admin-1'),
+    ).rejects.toThrow('Current organization is not connected to DingTalk.');
+  });
+
+  it('rejects synchronization for non-admin members', async () => {
+    const syncOrganizationUsers = vi.fn();
+    const service = buildSyncService({
+      userOrganization: {
+        findUnique: vi.fn().mockResolvedValue({ role: 'member' }),
+      },
+    }, syncOrganizationUsers);
+
+    await expect(
+      service.syncDingTalkOrganizationUsers('org-1', 'member-1'),
+    ).rejects.toThrow('Organization admin permission required.');
+    expect(syncOrganizationUsers).not.toHaveBeenCalled();
   });
 });

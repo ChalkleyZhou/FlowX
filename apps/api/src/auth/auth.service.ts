@@ -14,6 +14,7 @@ import { DingTalkNotificationService } from '../notifications/dingtalk-notificat
 import { PrismaService } from '../prisma/prisma.service';
 import { PasswordService } from './password.service';
 import { PersonalApiTokenService } from './personal-api-token.service';
+import { DingTalkUserSyncService } from './dingtalk-user-sync.service';
 import { ProviderRegistryService } from './providers/provider-registry.service';
 
 @Injectable()
@@ -27,6 +28,8 @@ export class AuthService {
     private readonly dingTalkNotification?: DingTalkNotificationService,
     @Optional()
     private readonly personalApiTokenService?: PersonalApiTokenService,
+    @Optional()
+    private readonly dingTalkUserSyncService?: DingTalkUserSyncService,
   ) {}
 
   listProviders() {
@@ -330,6 +333,7 @@ export class AuthService {
       ? {
           id: sessionMembership.organization.id,
           name: sessionMembership.organization.name,
+          provider: sessionMembership.organization.provider,
           providerOrganizationId: sessionMembership.organization.providerOrganizationId,
         }
       : await this.resolveOrganizationForSession(session.userId, null);
@@ -410,6 +414,26 @@ export class AuthService {
       status: row.user.status,
       joinedAt: row.createdAt.toISOString(),
     }));
+  }
+
+  async syncDingTalkOrganizationUsers(organizationId: string, actingUserId: string) {
+    await this.requireOrganizationAdmin(organizationId, actingUserId);
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+    });
+    if (!organization) {
+      throw new NotFoundException('Organization not found.');
+    }
+    if (organization.provider !== 'dingtalk') {
+      throw new BadRequestException('Current organization is not connected to DingTalk.');
+    }
+    if (!this.dingTalkUserSyncService) {
+      throw new BadRequestException('DingTalk user synchronization is unavailable.');
+    }
+    return this.dingTalkUserSyncService.syncOrganizationUsers(
+      organizationId,
+      organization.providerOrganizationId,
+    );
   }
 
   async resolveOrganizationMemberEmail(organizationId: string, userId: string) {
@@ -975,6 +999,7 @@ export class AuthService {
         ? {
             id: organization.id,
             name: organization.name,
+            provider: organization.provider,
             providerOrganizationId: organization.providerOrganizationId,
             role: organizationRole,
           }
@@ -1001,6 +1026,7 @@ export class AuthService {
         return {
           id: explicitMembership.organization.id,
           name: explicitMembership.organization.name,
+          provider: explicitMembership.organization.provider,
           providerOrganizationId: explicitMembership.organization.providerOrganizationId,
         };
       }
@@ -1017,6 +1043,7 @@ export class AuthService {
       return {
         id: membership.organization.id,
         name: membership.organization.name,
+        provider: membership.organization.provider,
         providerOrganizationId: membership.organization.providerOrganizationId,
       };
     }

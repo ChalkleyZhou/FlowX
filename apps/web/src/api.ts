@@ -10,6 +10,7 @@ import type {
   CodeReviewSource,
   DailyCodeReview,
   DeliveryTarget,
+  DingTalkUserSyncResult,
   DeployJobRecord,
   ExecutionSessionDetail,
   ExecutionSessionEvidence,
@@ -286,6 +287,10 @@ export const api = {
       body: JSON.stringify({ currentVersionId }),
     }),
   getOrganizationMembers: () => request<OrganizationMember[]>('/auth/organization/members'),
+  syncDingTalkOrganizationUsers: () =>
+    request<DingTalkUserSyncResult>('/auth/organization/members/sync-dingtalk', {
+      method: 'POST',
+    }),
   resolveOrganizationMemberEmail: (userId: string) =>
     request<{ email: string; source: 'profile' | 'dingtalk' }>(
       `/auth/organization/members/${userId}/email`,

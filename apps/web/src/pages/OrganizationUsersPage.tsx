@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { RefreshCw, UserPlus } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { EmptyState } from '../components/EmptyState';
@@ -64,9 +65,11 @@ export function OrganizationUsersPage() {
     status: 'ACTIVE' as 'ACTIVE' | 'DISABLED',
   });
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const organizationName = session?.organization?.name ?? '当前组织';
   const isAdmin = session?.organization?.role === 'admin';
+  const isDingTalkOrganization = session?.organization?.provider === 'dingtalk';
 
   const filteredMembers = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -139,6 +142,28 @@ export function OrganizationUsersPage() {
       toast.error(error instanceof Error ? error.message : '添加成员失败');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDingTalkSync() {
+    const confirmed = window.confirm(
+      '将从钉钉通讯录同步用户到当前组织。该操作只新增或更新用户，不会删除现有成员，是否继续？',
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      const result = await api.syncDingTalkOrganizationUsers();
+      await refresh();
+      toast.success(
+        `同步完成：读取 ${result.total} 人，新建 ${result.created} 人，更新 ${result.updated} 人，新增组织成员 ${result.addedToOrganization} 人`,
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '同步钉钉用户失败');
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -258,9 +283,23 @@ export function OrganizationUsersPage() {
             description={`仅展示组织「${organizationName}」内的成员，数据与其他组织隔离。`}
             extra={
               isAdmin ? (
-                <Button type="button" onClick={() => setCreateOpen(true)}>
-                  添加成员
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {isDingTalkOrganization ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={syncing || saving}
+                      onClick={() => void handleDingTalkSync()}
+                    >
+                      <RefreshCw className={syncing ? 'animate-spin' : undefined} />
+                      {syncing ? '同步中' : '同步钉钉用户'}
+                    </Button>
+                  ) : null}
+                  <Button type="button" onClick={() => setCreateOpen(true)}>
+                    <UserPlus />
+                    添加成员
+                  </Button>
+                </div>
               ) : null
             }
           />

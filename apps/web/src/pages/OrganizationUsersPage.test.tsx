@@ -15,6 +15,7 @@ vi.mock('../api', () => ({
     updateOrganizationMember: vi.fn(),
     removeOrganizationMember: vi.fn(),
     transferOrganizationAdmin: vi.fn(),
+    syncDingTalkOrganizationUsers: vi.fn(),
   },
 }));
 
@@ -29,7 +30,7 @@ vi.mock('../auth', () => ({
   useAuth: vi.fn(() => ({
     session: {
       ...sessionWithOrg,
-      organization: { ...sessionWithOrg.organization, role: 'admin' },
+      organization: { ...sessionWithOrg.organization, role: 'admin', provider: 'dingtalk' },
     },
     logout: vi.fn(),
     refreshSession: vi.fn().mockResolvedValue(null),
@@ -112,5 +113,30 @@ describe('OrganizationUsersPage', () => {
     expect(document.body.textContent).toContain('Demo Org');
     expect(document.body.textContent).toContain('Bob');
     expect(document.body.textContent).toContain('当前用户');
+  });
+
+  it('syncs DingTalk users and refreshes the member list', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.mocked(api.syncDingTalkOrganizationUsers).mockResolvedValue({
+      total: 2,
+      created: 1,
+      updated: 1,
+      addedToOrganization: 1,
+    });
+    await renderPage();
+
+    const button = Array.from(document.querySelectorAll('button')).find(
+      (item) => item.textContent?.includes('同步钉钉用户'),
+    );
+    expect(button).toBeTruthy();
+
+    await act(async () => {
+      button?.click();
+      await Promise.resolve();
+    });
+
+    expect(api.syncDingTalkOrganizationUsers).toHaveBeenCalled();
+    expect(api.getOrganizationMembers).toHaveBeenCalledTimes(2);
+    expect(document.body.textContent).toContain('同步完成');
   });
 });

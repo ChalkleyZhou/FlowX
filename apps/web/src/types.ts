@@ -619,9 +619,17 @@ export interface Bug {
 export interface AuthOrganization {
   id: string;
   name: string;
+  provider?: string;
   providerOrganizationId?: string;
   logoUrl?: string;
   role?: string | null;
+}
+
+export interface DingTalkUserSyncResult {
+  total: number;
+  created: number;
+  updated: number;
+  addedToOrganization: number;
 }
 
 export interface AuthUser {

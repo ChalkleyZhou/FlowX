@@ -63,6 +63,13 @@ export class AuthController {
     return this.authService.createOrganizationMember(organizationId, actingUserId, dto);
   }
 
+  @Post('organization/members/sync-dingtalk')
+  syncDingTalkOrganizationUsers(@Req() req: AuthRequest) {
+    const organizationId = this.requireOrganizationId(req);
+    const actingUserId = this.requireActingUserId(req);
+    return this.authService.syncDingTalkOrganizationUsers(organizationId, actingUserId);
+  }
+
   @Patch('organization/members/:userId')
   updateOrganizationMember(
     @Req() req: AuthRequest,
