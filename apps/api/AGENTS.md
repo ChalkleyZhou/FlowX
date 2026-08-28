@@ -4,7 +4,7 @@
 
 ## 项目范围
 
-`apps/api` 是 FlowX 的 NestJS + TypeScript + Prisma + SQLite 后端，负责认证与会话、工作区/仓库、需求 ideation、工作流编排、AI executor、审查沉淀、排期、项目简报、每日 Code Review、本地预览和部署集成。
+`apps/api` 是 FlowX 的 NestJS + TypeScript + Prisma + SQLite 后端，负责认证与会话、工作区/仓库、需求 ideation、工作流编排、AI executor、审查沉淀、排期、项目简报、每日 Code Review 和本地预览。
 
 以下区域属于高风险边界：
 

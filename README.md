@@ -28,7 +28,7 @@ flowchart LR
 4. Cursor Extension、`flowx-local`、本地执行交接、可靠 Outbox 和本地完成回传。
 5. Workflow Repository、工作分支、Artifact 和本地预览。
 6. ReviewFinding、Issue、Bug、每日 Code Review 和投递目标。
-7. 部署 Provider、Git 凭据、AI 凭据、认证和组织用户管理。
+7. Git 凭据、AI 凭据、认证和组织用户管理。
 
 ### 目标演进方向
 
@@ -59,7 +59,6 @@ flowchart LR
 - `docs/architecture/edge-cloud-ai-rd-platform.md`: 端云协同目标架构、协议和实施路线
 - `docs/superpowers/plans/2026-07-22-edge-cloud-foundation.md`: 第一阶段端云协同底座实施计划
 - `docs/docker-deployment.md`: Docker 与 Nginx 部署指南
-- `docs/deploy-integration-design.md`: 部署集成设计与扩展方案
 - `apps/api`: backend service
 - `apps/web`: basic management UI
 - `prisma`: Prisma schema
@@ -142,23 +141,6 @@ macOS 未配置时，会自动尝试打开 `/Applications/Open Design.app`。请
 （`flowx_list_tasks` / `flowx_bind_workflow` / `flowx_get_*_handoff` / `flowx_submit_*`）。运维说明见
 [Edge Agent 运维说明](docs/edge-agent-operations.md)。
 
-## Deploy integration
-
-FlowX now includes an isolated deploy integration module for repository-level CI/CD adapters.
-
-- Provider abstraction lives under [apps/api/src/deploy](/Users/chalkley/workspace/FlowX/apps/api/src/deploy)
-- Design document: [docs/deploy-integration-design.md](/Users/chalkley/workspace/FlowX/docs/deploy-integration-design.md)
-- Default provider is `noop`
-- Real providers can be selected with `DEPLOY_PROVIDER`
-
-Example API environment variables for Rokid OPS:
-
-```env
-DEPLOY_PROVIDER=rokid-ops
-DEPLOY_ROKID_OPS_CREATE_JOB_URL=http://ops-manage.rokid-inc.com/api/cicd/app/createJob
-DEPLOY_PROVIDER_TIMEOUT_MS=10000
-```
-
 ## Docker deployment
 
 完整部署说明见 [docs/docker-deployment.md](/Users/chalkley/workspace/FlowX/docs/docker-deployment.md)。
@@ -200,7 +182,7 @@ Notes:
 - Web runs on `4173`
 - SQLite data is stored in `/data/dev.db`, so mounting `/data` is recommended
 - The container startup script will run `prisma db push` automatically before starting services
-- Before `db push`, it also applies idempotent SQLite pre-migrations (including assigning existing workspaces to an organization and dropping obsolete non-empty `Task`/`Plan` tables)
+- Before `db push`, it also applies idempotent SQLite pre-migrations (including assigning existing workspaces to an organization and dropping obsolete `Task`/`Plan` and deploy integration tables)
 - The runtime image now installs both Codex CLI and Cursor CLI
 - Codex login state is stored under `/data/.codex` by default, so mounting `/data` will persist `codex login`
 - `AI_EXECUTOR_DEFAULT_PROVIDER` can be set to `codex` or `cursor` as the default provider for new workflows

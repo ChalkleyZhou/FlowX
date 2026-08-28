@@ -28,9 +28,6 @@ export class WorkspacesService {
       },
       include: {
         repositories: {
-          include: {
-            deployConfig: true,
-          },
           orderBy: { createdAt: 'asc' },
         },
         _count: {
@@ -50,9 +47,6 @@ export class WorkspacesService {
       },
       include: {
         repositories: {
-          include: {
-            deployConfig: true,
-          },
           orderBy: { createdAt: 'asc' },
         },
         _count: {
@@ -83,9 +77,6 @@ export class WorkspacesService {
         defaultBranch: dto.defaultBranch?.trim() || null,
         currentBranch: dto.defaultBranch?.trim() || null,
       },
-      include: {
-        deployConfig: true,
-      },
     });
 
     this.repositorySyncService.scheduleRepositorySync(repository);
@@ -98,9 +89,6 @@ export class WorkspacesService {
         id: repositoryId,
         workspaceId,
         status: 'ACTIVE',
-      },
-      include: {
-        deployConfig: true,
       },
     });
     if (!repository) {
@@ -142,9 +130,6 @@ export class WorkspacesService {
             }
           : {}),
       },
-      include: {
-        deployConfig: true,
-      },
     });
 
     if (urlChanged) {
@@ -178,9 +163,6 @@ export class WorkspacesService {
       where: { id: repositoryId },
       data: {
         currentBranch: dto.currentBranch.trim(),
-      },
-      include: {
-        deployConfig: true,
       },
     });
 
@@ -219,13 +201,6 @@ export class WorkspacesService {
       await tx.bug.updateMany({
         where: { repositoryId },
         data: { repositoryId: null },
-      });
-      await tx.deployJobRecord.updateMany({
-        where: { repositoryId },
-        data: { repositoryId: null },
-      });
-      await tx.repositoryDeployConfig.deleteMany({
-        where: { repositoryId },
       });
       await tx.repository.delete({
         where: { id: repositoryId },

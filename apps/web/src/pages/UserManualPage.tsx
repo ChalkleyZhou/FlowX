@@ -31,7 +31,7 @@ export function UserManualPage() {
         {
           anchor: '常见问题',
           title: '问题排查',
-          description: '快速定位工作流、部署和凭据问题。',
+          description: '快速定位工作流和凭据问题。',
           icon: CircleHelp,
         },
       ]}

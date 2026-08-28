@@ -11,7 +11,6 @@ import type {
   DailyCodeReview,
   DeliveryTarget,
   DingTalkUserSyncResult,
-  DeployJobRecord,
   ExecutionSessionDetail,
   ExecutionSessionEvidence,
   ExecutionSessionEventsPage,
@@ -33,7 +32,6 @@ import type {
   ProjectCodeReviewConfig,
   ProjectVersionSummary,
   RequirementAssignment,
-  RepositoryDeployConfig,
   Repository,
   Requirement,
   ReviewFinding,
@@ -214,11 +212,6 @@ export const api = {
       defaultProvider: 'codex' | 'cursor';
       providers: Array<{ id: 'codex' | 'cursor'; label: string }>;
     }>('/workflow-runs/providers'),
-  getDeployProviders: () =>
-    request<{
-      defaultProvider: string;
-      providers: Array<{ id: string; label: string }>;
-    }>('/deploy/providers'),
   getAuthProviders: () => request<Array<{ name: string }>>('/auth/providers'),
   getDingTalkAuthorizeUrl: (redirectUri: string) =>
     request<{ provider: string; state: string; url: string }>(
@@ -331,42 +324,6 @@ export const api = {
     }),
   createProject: (payload: { workspaceId: string; name: string; code?: string; description?: string }) =>
     request<Project>('/projects', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
-  getRepositoryDeployConfig: (repositoryId: string) =>
-    request<RepositoryDeployConfig>(`/repositories/${repositoryId}/deploy-config`),
-  updateRepositoryDeployConfig: (
-    repositoryId: string,
-    payload: { enabled?: boolean; provider?: string; config?: Record<string, unknown> },
-  ) =>
-    request<RepositoryDeployConfig>(`/repositories/${repositoryId}/deploy-config`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    }),
-  previewRepositoryDeployJob: (
-    repositoryId: string,
-    payload: {
-      workflowRunId?: string;
-      projectId?: string;
-      env?: string;
-      branch?: string;
-      commit?: string;
-      version?: string;
-      versionImage?: string;
-      image?: string;
-      overrides?: Record<string, unknown>;
-    },
-  ) =>
-    request<{
-      projectId: string;
-      provider: string;
-      enabled: boolean;
-      preview: {
-        provider: string;
-        payload: Record<string, unknown>;
-      };
-    }>(`/repositories/${repositoryId}/deploy/preview`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
@@ -531,27 +488,6 @@ export const api = {
     }),
   deleteDeliveryTarget: (id: string) =>
     request<DeliveryTarget>(`/delivery-targets/${id}`, { method: 'DELETE' }),
-  createRepositoryDeployJob: (
-    repositoryId: string,
-    payload: {
-      workflowRunId?: string;
-      projectId?: string;
-      env?: string;
-      branch?: string;
-      commit?: string;
-      version?: string;
-      versionImage?: string;
-      image?: string;
-      overrides?: Record<string, unknown>;
-    },
-  ) =>
-    request<{
-      message: string;
-      job: DeployJobRecord;
-    }>(`/repositories/${repositoryId}/deploy/jobs`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
   addRepositoryToWorkspace: (
     workspaceId: string,
     payload: { name: string; url: string; defaultBranch?: string },
@@ -791,8 +727,6 @@ export const api = {
     }),
   getIdeationSessionEvents: (requirementId: string, sessionId: string) =>
     request<IdeationSessionEvent[]>(`/requirements/${requirementId}/ideation/sessions/${sessionId}/events`),
-  getDemoDeployStatus: (repositoryId: string) =>
-    request<DeployJobRecord[]>(`/repositories/${repositoryId}/deploy/jobs`),
   detectLocalDev: (repositoryId: string, workflowRunId?: string) =>
     request<LocalDevDetectResponse>(
       `/repositories/${repositoryId}/local-dev${workflowRunId ? `?workflowRunId=${encodeURIComponent(workflowRunId)}` : ''}`,

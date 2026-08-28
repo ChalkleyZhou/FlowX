@@ -92,3 +92,17 @@ DROP TABLE IF EXISTS "Plan";
 PRAGMA foreign_keys=ON;
 SQL
 fi
+
+# --- Deploy integration removal: drop obsolete deploy tables before db push ---
+if [ "$(table_exists DeployJobRecord)" = "1" ] \
+  || [ "$(table_exists RepositoryDeployConfig)" = "1" ] \
+  || [ "$(table_exists ProjectDeployConfig)" = "1" ]; then
+  echo "Dropping obsolete deploy integration tables for schema cleanup in ${DB_PATH}..."
+  sqlite3 "$DB_PATH" <<'SQL'
+PRAGMA foreign_keys=OFF;
+DROP TABLE IF EXISTS "DeployJobRecord";
+DROP TABLE IF EXISTS "RepositoryDeployConfig";
+DROP TABLE IF EXISTS "ProjectDeployConfig";
+PRAGMA foreign_keys=ON;
+SQL
+fi

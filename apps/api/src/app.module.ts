@@ -7,7 +7,6 @@ import { AuthModule } from './auth/auth.module';
 import { BriefingsModule } from './briefings/briefings.module';
 import { CursorLocalModule } from './cursor-local/cursor-local.module';
 import { DailyCodeReviewModule } from './daily-code-review/daily-code-review.module';
-import { DeployModule } from './deploy/deploy.module';
 import { DevPreviewModule } from './dev-preview/dev-preview.module';
 import { ExecutionSessionsModule } from './execution-sessions/execution-sessions.module';
 import { EdgeModule } from './edge/edge.module';
@@ -35,7 +34,6 @@ import { YunxiaoWebhooksModule } from './yunxiao-webhooks/yunxiao-webhooks.modul
     BriefingsModule,
     CursorLocalModule,
     DailyCodeReviewModule,
-    DeployModule,
     DevPreviewModule,
     ExecutionSessionsModule,
     EdgeModule,

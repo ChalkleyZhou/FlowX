@@ -90,36 +90,6 @@ export interface Project {
   };
 }
 
-export interface RepositoryDeployConfig {
-  id?: string | null;
-  repositoryId: string;
-  enabled: boolean;
-  provider: string;
-  configJson?: Record<string, unknown> | null;
-  createdAt?: string | null;
-  updatedAt?: string | null;
-}
-
-export interface DeployJobRecord {
-  id: string;
-  projectId?: string | null;
-  repositoryId?: string | null;
-  workflowRunId?: string | null;
-  provider: string;
-  status: string;
-  targetEnv?: string | null;
-  branch?: string | null;
-  commitSha?: string | null;
-  version?: string | null;
-  versionImage?: string | null;
-  image?: string | null;
-  externalJobId?: string | null;
-  externalJobUrl?: string | null;
-  errorMessage?: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface BriefingSource {
   id: string;
   workspaceId: string;
@@ -333,7 +303,6 @@ export interface Repository {
   id: string;
   name: string;
   url: string;
-  deployConfig?: RepositoryDeployConfig | null;
   defaultBranch?: string | null;
   currentBranch?: string | null;
   localPath?: string | null;

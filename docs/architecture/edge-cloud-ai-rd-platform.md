@@ -217,7 +217,7 @@ interface FlowXSyncEvent<TPayload = unknown> {
 | 研发流程中心 | `workflow`、`requirements` ideation | 流程模板、任务图、多 Agent、人工门禁、恢复和 SLA |
 | AI 上下文中心 | `ai`、`prompts`、工作流 Artifact | 项目上下文、Prompt/Skill 版本、技术决策、模型和成本策略 |
 | 测试与质量中心 | `daily-code-review`、`review-artifacts` | Test Plan/Case/Run、Evidence、Code Review、缺陷和质量门禁 |
-| 发布与运维中心 | `deploy`、`dev-preview` | 环境、版本、部署、灰度、回滚和运行反馈 |
+| 发布与运维中心 | `dev-preview` | 本地预览、环境与运行反馈 |
 | 治理与度量中心 | `auth`、凭据、投递日志 | 权限、设备、审计、配额、成本、效能和合规 |
 
 ### 5.5 企业集成中心
@@ -316,7 +316,7 @@ flowchart LR
 
 ## 9. 数据模型演进
 
-现有 `Workspace`、`Project`、`Requirement`、`WorkflowRun`、`StageExecution`、`WorkflowRepository`、`Issue`、`Bug`、`ReviewFinding`、`DeployJobRecord` 保留并逐步演进。
+现有 `Workspace`、`Project`、`Requirement`、`WorkflowRun`、`StageExecution`、`WorkflowRepository`、`Issue`、`Bug`、`ReviewFinding` 保留并逐步演进。
 
 建议新增或抽象：
 

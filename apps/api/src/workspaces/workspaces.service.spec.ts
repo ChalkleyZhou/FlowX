@@ -25,7 +25,6 @@ describe('WorkspacesService.updateRepository', () => {
           url: 'https://git.example.com/new/flowx-web.git',
           localPath: null,
           syncStatus: 'PENDING',
-          deployConfig: null,
         }),
       },
     };
@@ -64,7 +63,6 @@ describe('WorkspacesService.updateRepository', () => {
         syncStatus: 'PENDING',
         syncError: null,
       },
-      include: { deployConfig: true },
     });
     expect(repositorySyncService.removeRepositoryStorage).toHaveBeenCalledWith(
       'workspace-1',

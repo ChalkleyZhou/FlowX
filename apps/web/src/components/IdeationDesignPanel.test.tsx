@@ -9,7 +9,6 @@ import type { IdeationSession } from '../types';
 
 vi.mock('../api', () => ({
   api: {
-    getDemoDeployStatus: vi.fn(),
     detectLocalDev: vi.fn().mockResolvedValue({
       repositoryId: 'repo-1',
       localPath: '/tmp/repo',

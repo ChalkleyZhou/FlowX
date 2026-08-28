@@ -40,18 +40,7 @@ const scopeFactories: Record<string, (organizationId: string) => Record<string, 
   Workspace: workspaceScope,
   Project: projectScope,
   ProjectVersion: (organizationId) => ({ project: projectScope(organizationId) }),
-  ProjectDeployConfig: (organizationId) => ({ project: projectScope(organizationId) }),
-  DeployJobRecord: (organizationId) => ({
-    OR: [
-      { project: projectScope(organizationId) },
-      { repository: { workspace: workspaceScope(organizationId) } },
-      { workflowRun: workflowScope(organizationId) },
-    ],
-  }),
   Repository: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
-  RepositoryDeployConfig: (organizationId) => ({
-    repository: { workspace: workspaceScope(organizationId) },
-  }),
   Requirement: requirementScope,
   RequirementAssignment: (organizationId) => ({ requirement: requirementScope(organizationId) }),
   RequirementRepository: (organizationId) => ({ requirement: requirementScope(organizationId) }),

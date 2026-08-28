@@ -158,7 +158,7 @@ interface ListQuery {
 
 ### 3.1 现状判断
 
-`WorkflowRunDetailPage.tsx` 超过 3000 行，集中管理阶段选择、状态轮询、本地 Agent、OpenDesign、Demo 预览、计划 Artifact、执行证据、Diff、审查 findings、回滚、删除、发布和部署。页面存在 8 个阶段卡片、多个状态分支和大量操作按钮，导致：
+`WorkflowRunDetailPage.tsx` 超过 3000 行，集中管理阶段选择、状态轮询、本地 Agent、OpenDesign、设计预览、计划 Artifact、执行证据、Diff、审查 findings、回滚、删除和发布。页面存在 8 个阶段卡片、多个状态分支和大量操作按钮，导致：
 
 - 用户需要滚动很长距离才能找到当前阶段的内容和下一步。
 - “运行”“确认”“驳回”“反馈”“本地启动”“完成本地执行”等动作分散在不同区域。
@@ -206,7 +206,7 @@ Sticky side rail
 | Waiting confirmation | 我需要确认什么 | 确认并继续 |
 | Failed | 为什么失败、如何恢复 | 查看失败原因 / 重试 |
 | Human review | 哪些发现必须处理 | 处理 findings / 通过审查 |
-| Done | 交付是否完成 | 发布变更 / 创建部署 |
+| Done | 交付是否完成 | 发布变更 |
 
 按钮文案要表达结果而不是内部状态。比如“确认任务拆解并生成技术方案”比“Confirm”更可执行；禁用按钮旁边必须解释“等待本地 Agent 回传完成报告”等原因。
 

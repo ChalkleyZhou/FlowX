@@ -100,8 +100,6 @@ model Project {
   briefings    Briefing[]
   dailyCodeReviews DailyCodeReview[]
   deliveryTargets DeliveryTarget[]
-  legacyDeployConfig ProjectDeployConfig?
-  deployJobs   DeployJobRecord[]
   executionSessions  ExecutionSession[]
   artifacts          Artifact[]
   createdAt    DateTime      @default(now())
@@ -124,48 +122,6 @@ model ProjectVersion {
   @@index([projectId, createdAt])
 }
 
-model ProjectDeployConfig {
-  id         String   @id @default(cuid())
-  projectId  String   @unique
-  project    Project  @relation(fields: [projectId], references: [id])
-  enabled    Boolean  @default(false)
-  provider   String   @default("noop")
-  configJson Json?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-}
-
-model DeployJobRecord {
-  id              String   @id @default(cuid())
-  projectId       String?
-  project         Project? @relation(fields: [projectId], references: [id])
-  repositoryId    String?
-  repository      Repository? @relation(fields: [repositoryId], references: [id])
-  workflowRunId   String?
-  workflowRun     WorkflowRun? @relation(fields: [workflowRunId], references: [id])
-  provider        String
-  status          String   @default("PENDING")
-  targetEnv       String?
-  branch          String?
-  commitSha       String?
-  version         String?
-  versionImage    String?
-  image           String?
-  requestedBy     String?
-  requestPayload  Json?
-  responsePayload Json?
-  externalJobId   String?
-  externalJobUrl  String?
-  errorMessage    String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  @@index([projectId, createdAt])
-  @@index([repositoryId, createdAt])
-  @@index([workflowRunId, createdAt])
-  @@index([provider, createdAt])
-}
-
 model Repository {
   id                      String                  @id @default(cuid())
   status                  String                  @default("ACTIVE")
@@ -181,8 +137,6 @@ model Repository {
   lastSyncedAt            DateTime?
   requirementRepositories RequirementRepository[]
   workflowRepositories    WorkflowRepository[]
-  deployConfig            RepositoryDeployConfig?
-  deployJobs              DeployJobRecord[]
   issues                  Issue[]
   bugs                    Bug[]
   briefingSources         BriefingSource[]
@@ -190,17 +144,6 @@ model Repository {
   codeReviewSource        CodeReviewSource?
   createdAt               DateTime                @default(now())
   updatedAt               DateTime                @updatedAt
-}
-
-model RepositoryDeployConfig {
-  id         String     @id @default(cuid())
-  repositoryId String   @unique
-  repository Repository @relation(fields: [repositoryId], references: [id])
-  enabled    Boolean    @default(false)
-  provider   String     @default("noop")
-  configJson Json?
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
 }
 
 model BriefingSource {
@@ -606,7 +549,6 @@ model WorkflowRun {
   codeExecution        CodeExecution?
   reviewReport         ReviewReport?
   workflowRepositories WorkflowRepository[]
-  deployJobs           DeployJobRecord[]
   reviewFindings       ReviewFinding[]
   issues               Issue[]
   bugs                 Bug[]                @relation("BugSourceWorkflow")

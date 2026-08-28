@@ -4,7 +4,7 @@
 
 ## 1. 系统定位
 
-FlowX 当前是一个支持中断、恢复和人工确认的 AI 研发流程编排系统，已经覆盖工作区、项目、需求、AI ideation、研发工作流、本地执行交接、审查沉淀、排期、项目简报、每日 Code Review 和部署集成。
+FlowX 当前是一个支持中断、恢复和人工确认的 AI 研发流程编排系统，已经覆盖工作区、项目、需求、AI ideation、研发工作流、本地执行交接、审查沉淀、排期、项目简报和每日 Code Review。
 
 后续目标是演进为端云协同 AI 产研平台：用户继续使用 Cursor、Codex、OpenDesign、IDE、CLI 和测试工具完成专业工作，FlowX 作为组织级控制平面统一项目、上下文、流程、状态、证据、质量、交付与治理。
 
@@ -29,7 +29,7 @@ flowchart LR
         Workflow["Ideation / Workflow / StageExecution"]
         Review["ReviewFinding / Issue / Bug"]
         Briefing["Briefing / Daily Code Review"]
-        Deploy["Deploy / Dev Preview"]
+        DevPreview["Dev Preview"]
         Auth["Auth / AI & Git Credentials"]
     end
 
@@ -67,7 +67,6 @@ flowchart LR
 | `briefings` | 项目事件、简报、投递目标 | 项目管理中心 / 治理与度量中心 |
 | `daily-code-review` | 独立 Code Review 调度和报告 | 测试与质量中心 |
 | `review-artifacts` | Finding、Issue、Bug 转换和维护 | 测试与质量中心 |
-| `deploy` | Repository 级部署 Provider | 发布与运维中心 |
 | `dev-preview` | 本地预览命令和生命周期 | 发布与运维中心 |
 | `auth` | 用户、组织、会话、凭据，以及钉钉通讯录用户增量同步（不持久化部门结构） | 治理与度量中心 |
 | `yunxiao-webhooks` | 云效自动化事件接收、组织成员匹配、幂等记录和钉钉个人通知 | 治理与度量中心 |
@@ -82,7 +81,7 @@ FlowX Web 当前提供：
 - Ideation、设计 Artifact、执行、Review 和人工确认。
 - Issue、Bug、项目简报和每日 Code Review。
 - AI/Git 凭据、组织用户、数据源和投递目标设置。
-- Workspace 是业务数据的组织隔离根；Project、Requirement、WorkflowRun、Issue、Bug、简报、Code Review、部署与产物均沿 Workspace 继承组织边界，跨组织按 ID 访问也必须返回不可见。
+- Workspace 是业务数据的组织隔离根；Project、Requirement、WorkflowRun、Issue、Bug、简报、Code Review 与产物均沿 Workspace 继承组织边界，跨组织按 ID 访问也必须返回不可见。
 
 后续页面应围绕六个中心组织，但在功能具备前不进行只改导航名称的空壳重构。
 
@@ -109,7 +108,6 @@ Workspace
   -> CodeExecution / ReviewReport
   -> ReviewFinding
   -> Issue / Bug
-  -> DeployJobRecord
 ```
 
 该链路已经具备研发流程基础，但 Artifact、Evidence、TestRun、ExecutionSession、Release 和 RuntimeFeedback 仍需成为独立领域对象，不能长期依赖 `StageExecution.input/output` 或零散 JSON 承载。
@@ -176,7 +174,7 @@ FlowX 端侧执行平面
 2. 建立 Artifact/Evidence Center 和数字主线关联。
 3. 接入 Cursor、Codex、OpenDesign Adapter。
 4. 建设 Test Plan、Test Case、Test Run 和质量门禁。
-5. 串联 Release、Environment、Deployment 和运行反馈。
+5. 串联 Release、Environment 和运行反馈。
 6. 再推进 PostgreSQL、多实例、企业权限、审计和成本治理。
 
 ## 10. 文档维护规则
