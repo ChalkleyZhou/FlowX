@@ -288,7 +288,7 @@ codex login
   - `DINGTALK_ORGS_URL`
 - For personal stage completion notifications, also set `DINGTALK_AGENT_ID`.
 - FlowX will try to notify only the current DingTalk login user who triggered the stage or confirmation, instead of broadcasting through a group robot.
-- 钉钉组织管理员可在“用户管理”中同步通讯录用户。同步仅新增或更新用户及组织成员关系，不保存部门结构，也不会自动移除现有成员；钉钉应用需具备通讯录部门和用户读取权限。
+- 钉钉组织管理员可在“用户管理”中同步通讯录用户。同步仅新增或更新用户及组织成员关系，不保存部门结构，也不会自动移除现有成员；钉钉应用需具备通讯录部门和用户读取权限，包括 `qyapi_get_department_member`。
 
 ## MVP flow
 

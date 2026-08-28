@@ -78,7 +78,7 @@ FlowX 容器内部包含两个服务：
 
 - 钉钉变量是 `DINGTALK_APP_ID`，不是 `DINGTALK_APPID`
 - 如果你现在只是自己使用，可以先不配置钉钉登录
-- 使用“同步钉钉用户”前，还需在钉钉开放平台为应用开通通讯录部门和用户读取权限；FlowX 只同步用户，不保存部门结构
+- 使用“同步钉钉用户”前，还需在钉钉开放平台为应用开通通讯录部门和用户读取权限（至少包括 `qyapi_get_department_member`）；FlowX 只同步用户，不保存部门结构
 - 如果你要用手动 `codex login`，可以不填 `OPENAI_API_KEY`
 - 如果要启用“每个用户使用自己的 Cursor API Key”，必须设置 `FLOWX_CREDENTIAL_MASTER_KEY`，用于服务端加密存储用户凭据
 - 若希望彻底禁用共享身份回退，可设置 `FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL=true`

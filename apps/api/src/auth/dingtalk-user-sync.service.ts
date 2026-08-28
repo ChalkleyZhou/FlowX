@@ -266,9 +266,26 @@ export class DingTalkUserSyncService {
     });
     const payload = await this.readJson(response);
     if (!response.ok || Number(payload.errcode ?? 0) !== 0) {
-      throw new BadGatewayException('DingTalk directory request failed.');
+      throw new BadGatewayException(this.formatDirectoryError(payload));
     }
     return payload;
+  }
+
+  private formatDirectoryError(payload: Record<string, unknown>) {
+    const errorCode = Number(payload.errcode);
+    const errorMessage = typeof payload.errmsg === 'string' ? payload.errmsg : '';
+    const missingScopes = [
+      'qyapi_get_department_member',
+      'qyapi_get_department_list',
+    ].filter((scope) => errorMessage.includes(scope));
+
+    if (missingScopes.length > 0) {
+      return `DingTalk app is missing required permission: ${missingScopes.join(', ')}.`;
+    }
+    if (Number.isFinite(errorCode)) {
+      return `DingTalk directory request failed (error code ${errorCode}).`;
+    }
+    return 'DingTalk directory request failed.';
   }
 
   private async readJson(response: Response): Promise<Record<string, unknown>> {

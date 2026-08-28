@@ -142,4 +142,24 @@ describe('DingTalkUserSyncService', () => {
       BadGatewayException,
     );
   });
+
+  it('reports the exact missing DingTalk directory permission without exposing app details', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ accessToken: 'token', expireIn: 7200 })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        errcode: 88,
+        errmsg: 'ding talk error[subcode=60011,submsg=missing permission qyapi_get_department_member, app=dingo-secret]',
+      }))));
+    const service = buildService({}, {
+      DINGTALK_APP_ID: 'app-id',
+      DINGTALK_APP_SECRET: 'app-secret',
+    });
+
+    const error = await service.syncOrganizationUsers('org-1', 'corp-1').catch((caught) => caught);
+    expect(error).toBeInstanceOf(BadGatewayException);
+    expect(error.message).toBe(
+      'DingTalk app is missing required permission: qyapi_get_department_member.',
+    );
+    expect(error.message).not.toContain('dingo-secret');
+  });
 });
