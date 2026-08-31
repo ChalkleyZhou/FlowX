@@ -1,6 +1,23 @@
+import { Injectable } from '@nestjs/common';
+import { ExternalIntegrationsService } from './external-integrations.service';
 import type { BuiltInPlugin } from './plugin.types';
 
-export const YunxiaoPlugin: BuiltInPlugin = {
-  id: 'yunxiao',
-  name: '云效',
-};
+@Injectable()
+export class YunxiaoPlugin implements BuiltInPlugin {
+  readonly id = 'yunxiao';
+  readonly name = '云效';
+
+  constructor(private readonly integrations: ExternalIntegrationsService) {}
+
+  getStatus(organizationId: string) {
+    return this.integrations.getYunxiaoStatus(organizationId);
+  }
+
+  updateStatus(organizationId: string, actingUserId: string, enabled: boolean) {
+    return this.integrations.updateYunxiaoStatus(organizationId, actingUserId, enabled);
+  }
+
+  isEnabled(organizationId: string) {
+    return this.integrations.isYunxiaoEnabled(organizationId);
+  }
+}

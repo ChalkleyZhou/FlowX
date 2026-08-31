@@ -15,14 +15,18 @@ import { PluginsController } from './plugins.controller';
   providers: [
     BuiltInPluginRegistry,
     ExternalIntegrationsService,
+    YunxiaoPlugin,
     YunxiaoWebhooksService,
   ],
   exports: [ExternalIntegrationsService],
 })
 export class PluginsModule implements OnModuleInit {
-  constructor(private readonly registry: BuiltInPluginRegistry) {}
+  constructor(
+    private readonly registry: BuiltInPluginRegistry,
+    private readonly yunxiaoPlugin: YunxiaoPlugin,
+  ) {}
 
   onModuleInit() {
-    this.registry.register(YunxiaoPlugin);
+    this.registry.register(this.yunxiaoPlugin);
   }
 }

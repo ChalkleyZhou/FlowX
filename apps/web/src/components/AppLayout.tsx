@@ -2,6 +2,7 @@ import { useEffect, useState, type PropsWithChildren } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { api } from '../api';
+import { builtInPlugins } from '../plugins/registry';
 import { Button } from './ui/button';
 import { FlowXLogo } from './FlowXLogo';
 import { ThemeToggle } from './ThemeToggle';
@@ -21,7 +22,6 @@ import {
   Settings2,
   Workflow,
   Newspaper,
-  PlugZap,
   RadioTower,
   Send,
   SquareTerminal,
@@ -59,7 +59,11 @@ const secondaryItems = [
   { key: '/settings/briefing-sources', label: '简报数据源', icon: RadioTower },
   { key: '/settings/code-review-sources', label: '代码审查数据源', icon: GitPullRequest },
   { key: '/settings/delivery-targets', label: '投递目标', icon: Send },
-  { key: '/settings/integrations/yunxiao', label: '云效集成', icon: PlugZap },
+  ...builtInPlugins.map((plugin) => ({
+    key: plugin.path,
+    label: plugin.label,
+    icon: plugin.icon,
+  })),
 ] satisfies Array<{ key: string; label: string; icon: LucideIcon }>;
 
 export function AppLayout(props: PropsWithChildren) {

@@ -8,7 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { UpdateYunxiaoIntegrationDto } from './dto/update-yunxiao-integration.dto';
-import { ExternalIntegrationsService } from './external-integrations.service';
+import { BuiltInPluginRegistry } from './plugin.registry';
 
 type IntegrationRequest = {
   authSession?: {
@@ -19,12 +19,12 @@ type IntegrationRequest = {
 
 @Controller('integrations')
 export class PluginsController {
-  constructor(private readonly integrations: ExternalIntegrationsService) {}
+  constructor(private readonly registry: BuiltInPluginRegistry) {}
 
   @Get('yunxiao')
   getYunxiao(@Req() req: IntegrationRequest) {
     const organizationId = this.requireOrganizationId(req);
-    return this.integrations.getYunxiaoStatus(organizationId);
+    return this.registry.get('yunxiao').getStatus(organizationId);
   }
 
   @Patch('yunxiao')
@@ -37,7 +37,7 @@ export class PluginsController {
     if (!userId) {
       throw new UnauthorizedException('Missing authenticated user.');
     }
-    return this.integrations.updateYunxiaoStatus(organizationId, userId, dto.enabled);
+    return this.registry.get('yunxiao').updateStatus(organizationId, userId, dto.enabled);
   }
 
   private requireOrganizationId(req: IntegrationRequest) {

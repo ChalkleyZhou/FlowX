@@ -9,6 +9,14 @@ export class BuiltInPluginRegistry {
     this.plugins.set(plugin.id, plugin);
   }
 
+  get(id: string) {
+    const plugin = this.plugins.get(id);
+    if (!plugin) {
+      throw new Error(`Built-in plugin not found: ${id}`);
+    }
+    return plugin;
+  }
+
   list() {
     return [...this.plugins.values()];
   }

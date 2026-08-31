@@ -42,7 +42,7 @@ describe('YunxiaoWebhooksService', () => {
         },
       } as never,
       { sendPersonalMarkdown } as never,
-      { isYunxiaoEnabled } as never,
+      { isEnabled: isYunxiaoEnabled } as never,
     );
   }
 
