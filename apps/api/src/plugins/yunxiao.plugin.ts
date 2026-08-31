@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ExternalIntegrationsService } from './external-integrations.service';
-import type { BuiltInPlugin } from './plugin.types';
+import type { BuiltInPlugin, BuiltInPluginUpdateOptions } from './plugin.types';
 
 @Injectable()
 export class YunxiaoPlugin implements BuiltInPlugin {
@@ -13,8 +13,13 @@ export class YunxiaoPlugin implements BuiltInPlugin {
     return this.integrations.getYunxiaoStatus(organizationId);
   }
 
-  updateStatus(organizationId: string, actingUserId: string, enabled: boolean) {
-    return this.integrations.updateYunxiaoStatus(organizationId, actingUserId, enabled);
+  updateStatus(
+    organizationId: string,
+    actingUserId: string,
+    enabled: boolean,
+    options?: BuiltInPluginUpdateOptions,
+  ) {
+    return this.integrations.updateYunxiaoStatus(organizationId, actingUserId, enabled, options);
   }
 
   isEnabled(organizationId: string) {

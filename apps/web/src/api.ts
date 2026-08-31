@@ -526,7 +526,10 @@ export const api = {
   getCurrentSession: () => request<AuthSession>('/auth/session/me'),
   getYunxiaoIntegration: () =>
     request<YunxiaoIntegrationStatus>('/integrations/yunxiao'),
-  updateYunxiaoIntegration: (payload: { enabled: boolean }) =>
+  updateYunxiaoIntegration: (payload: {
+    enabled: boolean;
+    yunxiaoOrganizationIdentifier?: string | null;
+  }) =>
     request<YunxiaoIntegrationStatus>('/integrations/yunxiao', {
       method: 'PATCH',
       body: JSON.stringify(payload),

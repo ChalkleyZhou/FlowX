@@ -620,6 +620,7 @@ export interface YunxiaoIntegrationStatus {
   enabled: boolean;
   configured: boolean;
   webhookPath: string;
+  yunxiaoOrganizationIdentifier: string | null;
 }
 
 export interface AiCredentialStatus {

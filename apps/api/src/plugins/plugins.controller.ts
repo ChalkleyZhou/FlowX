@@ -37,7 +37,10 @@ export class PluginsController {
     if (!userId) {
       throw new UnauthorizedException('Missing authenticated user.');
     }
-    return this.registry.get('yunxiao').updateStatus(organizationId, userId, dto.enabled);
+    const options = dto.yunxiaoOrganizationIdentifier === undefined
+      ? undefined
+      : { yunxiaoOrganizationIdentifier: dto.yunxiaoOrganizationIdentifier };
+    return this.registry.get('yunxiao').updateStatus(organizationId, userId, dto.enabled, options);
   }
 
   private requireOrganizationId(req: IntegrationRequest) {

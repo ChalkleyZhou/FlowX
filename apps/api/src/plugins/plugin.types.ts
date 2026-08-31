@@ -1,3 +1,7 @@
+export interface BuiltInPluginUpdateOptions {
+  yunxiaoOrganizationIdentifier?: string | null;
+}
+
 export interface BuiltInPlugin {
   id: string;
   name: string;
@@ -6,5 +10,6 @@ export interface BuiltInPlugin {
     organizationId: string,
     actingUserId: string,
     enabled: boolean,
+    options?: BuiltInPluginUpdateOptions,
   ): Promise<unknown>;
 }

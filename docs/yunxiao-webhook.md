@@ -12,7 +12,7 @@ YUNXIAO_WEBHOOK_SECRET="请使用随机且不可猜测的值"
 
 该 Secret 只用于验证云效 Webhook，不是个人 API Token，也不授予 FlowX 用户权限。
 
-配置完成后，组织管理员可以在 FlowX「设置」→「云效集成」中启用或停用云效通知。停用不会删除配置和历史投递记录，重新启用即可恢复。未配置 Secret 时不能启用集成。
+配置完成后，组织管理员需要在 FlowX「设置」→「云效集成」中填写云效 `organizationIdentifier` 并启用云效通知。停用不会删除配置和历史投递记录，重新启用即可恢复。未配置 Secret 或云效组织绑定时不能启用集成。
 
 ## 云效配置
 
@@ -25,7 +25,7 @@ Secret: 与 YUNXIAO_WEBHOOK_SECRET 相同
 Webhook Body: 工作项数据
 ```
 
-第一期继续使用固定 Webhook 地址；组织级开关由 FlowX 页面控制。
+Webhook 地址继续使用固定地址；云效组织与 FlowX 组织的绑定由 FlowX 页面控制。
 
 设置 Secret 后，云效会自动增加请求头：
 
@@ -42,7 +42,7 @@ FlowX 从工作项的 `assignedTo` 读取负责人：
 1. 优先尝试用 `assignedTo.id` 或 `assignedTo.identifier` 匹配 FlowX 用户账号。
 2. 再用 `assignedTo.name`、`assignedTo.realName`、`assignedTo.displayName` 或 `assignedTo.nickName` 精确匹配 FlowX 用户姓名。
 3. 只考虑已加入钉钉组织且未停用的 FlowX 用户。
-4. 找不到用户或存在重名时返回 `422`，不会猜测接收人或误发消息。
+4. 只在绑定的 FlowX 组织内匹配负责人；找不到组织绑定、找不到用户或存在重名时返回 `422`，不会猜测接收人或误发消息。
 
 因此，接入前应先由管理员在 FlowX“用户管理”中完成钉钉用户同步。若云效负责人姓名和钉钉通讯录姓名不同，应统一姓名或将云效用户 ID 维护为对应 FlowX 账号。
 

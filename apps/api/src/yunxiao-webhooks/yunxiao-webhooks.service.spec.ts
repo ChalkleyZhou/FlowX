@@ -12,6 +12,7 @@ import { YunxiaoWebhooksService } from './yunxiao-webhooks.service';
 
 describe('YunxiaoWebhooksService', () => {
   const membershipFindMany = vi.fn();
+  const integrationFindFirst = vi.fn();
   const deliveryCreate = vi.fn();
   const deliveryFindUnique = vi.fn();
   const deliveryUpdate = vi.fn();
@@ -21,6 +22,7 @@ describe('YunxiaoWebhooksService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    integrationFindFirst.mockResolvedValue({ organizationId: 'org-1' });
     deliveryCreate.mockResolvedValue({ id: 'delivery-1' });
     deliveryUpdate.mockResolvedValue({ id: 'delivery-1' });
     sendPersonalMarkdown.mockResolvedValue({ errcode: 0, task_id: 123 });
@@ -33,7 +35,8 @@ describe('YunxiaoWebhooksService', () => {
         get: (key: string) => key === 'YUNXIAO_WEBHOOK_SECRET' ? secret : undefined,
       } as ConfigService,
       {
-        userOrganization: { findMany: membershipFindMany },
+      userOrganization: { findMany: membershipFindMany },
+      externalIntegration: { findFirst: integrationFindFirst },
         yunxiaoWebhookDelivery: {
           create: deliveryCreate,
           findUnique: deliveryFindUnique,
@@ -47,6 +50,7 @@ describe('YunxiaoWebhooksService', () => {
   }
 
   const payload = {
+    organizationIdentifier: 'yunxiao-org-1',
     id: 'workitem-42',
     serialNumber: 'PROJ-42',
     subject: '支付回调异常处理',
@@ -130,6 +134,7 @@ describe('YunxiaoWebhooksService', () => {
     ]);
 
     await expect(createService().receive('yunxiao-secret', {
+      organizationIdentifier: 'yunxiao-org-1',
       identifier: 'workitem-42',
       serialNumber: 2458,
       subject: '支付回调异常处理',
@@ -157,11 +162,23 @@ describe('YunxiaoWebhooksService', () => {
         },
       }),
     });
+    expect(membershipFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ organizationId: 'org-1' }),
+    }));
     expect(sendPersonalMarkdown).toHaveBeenCalledWith(
       expect.objectContaining({
         markdown: expect.stringContaining('- 编号：2458'),
       }),
     );
+  });
+
+  it('没有云效组织绑定时拒绝跨组织匹配', async () => {
+    integrationFindFirst.mockResolvedValue(null);
+
+    await expect(createService().receive('yunxiao-secret', payload)).rejects.toThrow(
+      'No FlowX organization is mapped to the Yunxiao organization.',
+    );
+    expect(membershipFindMany).not.toHaveBeenCalled();
   });
 
   it('工作项缺少负责人时拒绝处理', async () => {

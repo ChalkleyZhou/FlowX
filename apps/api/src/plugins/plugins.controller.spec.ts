@@ -23,4 +23,25 @@ describe('PluginsController', () => {
       { authSession: { user: { id: 'user-1' }, organization: null } },
     )).toThrow(BadRequestException);
   });
+
+  it('更新云效开关时可以同时保存组织绑定', async () => {
+    const updateStatus = vi.fn().mockResolvedValue({ enabled: true });
+    const controller = new PluginsController({
+      get: vi.fn().mockReturnValue({ updateStatus }),
+    } as never);
+
+    await expect(controller.updateYunxiao(
+      {
+        enabled: true,
+        yunxiaoOrganizationIdentifier: 'yunxiao-org-1',
+      },
+      { authSession: { user: { id: 'user-1' }, organization: { id: 'org-1' } } },
+    )).resolves.toEqual({ enabled: true });
+    expect(updateStatus).toHaveBeenCalledWith(
+      'org-1',
+      'user-1',
+      true,
+      { yunxiaoOrganizationIdentifier: 'yunxiao-org-1' },
+    );
+  });
 });

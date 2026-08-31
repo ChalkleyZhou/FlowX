@@ -1,10 +1,13 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import type { BuiltInPluginUpdateOptions } from './plugin.types';
 
 const YUNXIAO_PROVIDER = 'YUNXIAO';
 
@@ -19,13 +22,17 @@ export class ExternalIntegrationsService {
     const integration = await this.prisma.externalIntegration.findFirst({
       where: { organizationId, provider: YUNXIAO_PROVIDER },
     });
-    return this.toStatus(integration?.enabled ?? this.hasWebhookSecret());
+    return this.toStatus(
+      integration?.enabled ?? this.hasWebhookSecret(),
+      integration?.yunxiaoOrganizationIdentifier ?? null,
+    );
   }
 
   async updateYunxiaoStatus(
     organizationId: string,
     actingUserId: string,
     enabled: boolean,
+    options?: BuiltInPluginUpdateOptions,
   ) {
     if (enabled && !this.hasWebhookSecret()) {
       throw new BadRequestException(
@@ -47,20 +54,49 @@ export class ExternalIntegrationsService {
     const current = await this.prisma.externalIntegration.findFirst({
       where: { organizationId, provider: YUNXIAO_PROVIDER },
     });
-    const integration = current
-      ? await this.prisma.externalIntegration.update({
-          where: { id: current.id },
-          data: { enabled },
-        })
-      : await this.prisma.externalIntegration.create({
-          data: {
-            organizationId,
-            provider: YUNXIAO_PROVIDER,
-            enabled,
-          },
-        });
+    const shouldUpdateBinding = options !== undefined;
+    const yunxiaoOrganizationIdentifier = shouldUpdateBinding
+      ? this.normalizeOrganizationIdentifier(options.yunxiaoOrganizationIdentifier)
+      : current?.yunxiaoOrganizationIdentifier ?? null;
+    if (enabled && !yunxiaoOrganizationIdentifier) {
+      throw new BadRequestException(
+        'Yunxiao integration requires a Yunxiao organization identifier before it can be enabled.',
+      );
+    }
 
-    return this.toStatus(integration.enabled);
+    const bindingData = shouldUpdateBinding
+      ? { yunxiaoOrganizationIdentifier }
+      : {};
+    let integration;
+    try {
+      integration = current
+        ? await this.prisma.externalIntegration.update({
+            where: { id: current.id },
+            data: { enabled, ...bindingData },
+          })
+        : await this.prisma.externalIntegration.create({
+            data: {
+              organizationId,
+              provider: YUNXIAO_PROVIDER,
+              enabled,
+              ...bindingData,
+            },
+          });
+    } catch (error) {
+      if (
+        shouldUpdateBinding
+        && yunxiaoOrganizationIdentifier
+        && error instanceof Prisma.PrismaClientKnownRequestError
+        && error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'This Yunxiao organization is already bound to another FlowX organization.',
+        );
+      }
+      throw error;
+    }
+
+    return this.toStatus(integration.enabled, integration.yunxiaoOrganizationIdentifier);
   }
 
   async isYunxiaoEnabled(organizationId: string) {
@@ -70,14 +106,23 @@ export class ExternalIntegrationsService {
     return integration?.enabled ?? this.hasWebhookSecret();
   }
 
-  private toStatus(enabled: boolean) {
+  private toStatus(enabled: boolean, yunxiaoOrganizationIdentifier: string | null) {
     const configured = this.hasWebhookSecret();
     return {
       provider: YUNXIAO_PROVIDER,
       enabled,
       configured,
       webhookPath: '/api/yunxiao-webhooks',
+      yunxiaoOrganizationIdentifier,
     };
+  }
+
+  private normalizeOrganizationIdentifier(value: string | null | undefined) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    const normalized = value.trim();
+    return normalized || null;
   }
 
   private hasWebhookSecret() {

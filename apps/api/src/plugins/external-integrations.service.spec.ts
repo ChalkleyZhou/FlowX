@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ExternalIntegrationsService } from './external-integrations.service';
 
@@ -32,6 +33,7 @@ describe('ExternalIntegrationsService', () => {
       enabled: true,
       configured: true,
       webhookPath: '/api/yunxiao-webhooks',
+      yunxiaoOrganizationIdentifier: null,
     });
   });
 
@@ -74,5 +76,55 @@ describe('ExternalIntegrationsService', () => {
       BadRequestException,
     );
     expect(findUnique).not.toHaveBeenCalled();
+  });
+
+  it('管理员可以保存云效组织绑定', async () => {
+    findUnique.mockResolvedValue({ role: 'admin' });
+    findFirst.mockResolvedValue(null);
+    create.mockResolvedValue({
+      enabled: true,
+      yunxiaoOrganizationIdentifier: 'yunxiao-org-1',
+    });
+
+    await expect(
+      createService().updateYunxiaoStatus(
+        'org-1',
+        'user-1',
+        true,
+        { yunxiaoOrganizationIdentifier: 'yunxiao-org-1' },
+      ),
+    ).resolves.toMatchObject({
+      enabled: true,
+      yunxiaoOrganizationIdentifier: 'yunxiao-org-1',
+    });
+    expect(create).toHaveBeenCalledWith({
+      data: {
+        organizationId: 'org-1',
+        provider: 'YUNXIAO',
+        enabled: true,
+        yunxiaoOrganizationIdentifier: 'yunxiao-org-1',
+      },
+    });
+  });
+
+  it('云效组织已被其他 FlowX 组织绑定时返回冲突', async () => {
+    findUnique.mockResolvedValue({ role: 'admin' });
+    findFirst.mockResolvedValue(null);
+    create.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('duplicate', {
+      code: 'P2002',
+      clientVersion: '6.19.2',
+    }));
+
+    await expect(
+      createService().updateYunxiaoStatus(
+        'org-2',
+        'user-1',
+        false,
+        { yunxiaoOrganizationIdentifier: 'yunxiao-org-1' },
+      ),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: 'This Yunxiao organization is already bound to another FlowX organization.',
+    });
   });
 });

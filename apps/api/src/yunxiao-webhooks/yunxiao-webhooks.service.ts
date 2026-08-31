@@ -20,6 +20,7 @@ type YunxiaoPerson = {
 
 type NormalizedWorkItem = {
   id: string;
+  yunxiaoOrganizationIdentifier: string;
   eventId: string;
   serialNumber: string | null;
   subject: string;
@@ -66,7 +67,10 @@ export class YunxiaoWebhooksService {
   async receive(signature: string | undefined, payload: Record<string, unknown>) {
     this.verifySignature(signature);
     const workItem = this.normalizeWorkItem(payload);
-    const matched = await this.resolveRecipient(workItem.assignedTo);
+    const matched = await this.resolveRecipient(
+      workItem.assignedTo,
+      workItem.yunxiaoOrganizationIdentifier,
+    );
     if (!(await this.yunxiaoPlugin.isEnabled(matched.organizationId))) {
       return {
         accepted: true,
@@ -126,6 +130,11 @@ export class YunxiaoWebhooksService {
   }
 
   private normalizeWorkItem(payload: Record<string, unknown>): NormalizedWorkItem {
+    const yunxiaoOrganizationIdentifier = this.pickString(payload.organizationIdentifier);
+    if (!yunxiaoOrganizationIdentifier) {
+      throw new BadRequestException('Yunxiao organization identifier is required.');
+    }
+
     const assignedTo = this.asRecord(payload.assignedTo);
     const assignedToName = this.pickString(
       assignedTo?.name,
@@ -154,6 +163,7 @@ export class YunxiaoWebhooksService {
 
     return {
       id,
+      yunxiaoOrganizationIdentifier,
       eventId: `${id}:${modifiedAt ?? payloadHash}`,
       serialNumber: this.pickStringOrNumber(payload.serialNumber),
       subject,
@@ -167,9 +177,26 @@ export class YunxiaoWebhooksService {
     };
   }
 
-  private async resolveRecipient(assignedTo: YunxiaoPerson): Promise<MatchedMember> {
+  private async resolveRecipient(
+    assignedTo: YunxiaoPerson,
+    yunxiaoOrganizationIdentifier: string,
+  ): Promise<MatchedMember> {
+    const integration = await this.prisma.externalIntegration.findFirst({
+      where: {
+        provider: 'YUNXIAO',
+        yunxiaoOrganizationIdentifier,
+      },
+      select: { organizationId: true },
+    });
+    if (!integration) {
+      throw new UnprocessableEntityException(
+        'No FlowX organization is mapped to the Yunxiao organization.',
+      );
+    }
+
     const memberships = (await this.prisma.userOrganization.findMany({
       where: {
+        organizationId: integration.organizationId,
         user: { status: { not: 'DISABLED' } },
         organization: { provider: 'dingtalk' },
       },
