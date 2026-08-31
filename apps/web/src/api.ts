@@ -40,6 +40,7 @@ import type {
   WorkflowDesignArtifactsList,
   WorkflowRun,
   Workspace,
+  YunxiaoIntegrationStatus,
 } from './types';
 
 const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
@@ -523,6 +524,13 @@ export const api = {
       method: 'DELETE',
     }),
   getCurrentSession: () => request<AuthSession>('/auth/session/me'),
+  getYunxiaoIntegration: () =>
+    request<YunxiaoIntegrationStatus>('/integrations/yunxiao'),
+  updateYunxiaoIntegration: (payload: { enabled: boolean }) =>
+    request<YunxiaoIntegrationStatus>('/integrations/yunxiao', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
   getCursorCredentialStatus: () =>
     request<AiCredentialStatus>('/auth/ai-credentials/cursor'),
   upsertCursorCredential: (payload: { apiKey: string }) =>

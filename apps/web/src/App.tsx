@@ -26,6 +26,7 @@ import { WorkflowRunsPage } from './pages/WorkflowRunsPage';
 import { WorkspacesPage } from './pages/WorkspacesPage';
 import { UserManualPage } from './pages/UserManualPage';
 import { LocalAgentGuidePage } from './pages/LocalAgentGuidePage';
+import { YunxiaoIntegrationPage } from './pages/YunxiaoIntegrationPage';
 import { ProtectedLayout, ProtectedRoute } from './routes/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
 import { ToastProvider } from './components/ui/toast';
@@ -72,6 +73,7 @@ export default function App() {
             <Route path="/settings/briefing-sources" element={<BriefingSourcesPage />} />
             <Route path="/settings/code-review-sources" element={<CodeReviewSourcesPage />} />
             <Route path="/settings/delivery-targets" element={<DeliveryTargetsPage />} />
+            <Route path="/settings/integrations/yunxiao" element={<YunxiaoIntegrationPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

@@ -69,6 +69,7 @@ flowchart LR
 | `review-artifacts` | Finding、Issue、Bug 转换和维护 | 测试与质量中心 |
 | `dev-preview` | 本地预览命令和生命周期 | 发布与运维中心 |
 | `auth` | 用户、组织、会话、凭据，以及钉钉通讯录用户增量同步（不持久化部门结构） | 治理与度量中心 |
+| `plugins` | 内置外部集成注册、组织级启停和第三方系统适配 | 治理与度量中心 / 企业集成中心 |
 | `yunxiao-webhooks` | 云效自动化事件接收、组织成员匹配、幂等记录和钉钉个人通知 | 治理与度量中心 |
 | `cursor-local` | Cursor 本地任务和 Chat 交接 | 迁移到通用 Edge/Sync 边界 |
 

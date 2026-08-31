@@ -615,6 +615,13 @@ export interface AuthSession {
   organization: AuthOrganization | null;
 }
 
+export interface YunxiaoIntegrationStatus {
+  provider: 'YUNXIAO';
+  enabled: boolean;
+  configured: boolean;
+  webhookPath: string;
+}
+
 export interface AiCredentialStatus {
   provider: 'cursor' | 'codex';
   configured: boolean;

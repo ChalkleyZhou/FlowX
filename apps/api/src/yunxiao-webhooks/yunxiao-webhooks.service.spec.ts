@@ -17,12 +17,14 @@ describe('YunxiaoWebhooksService', () => {
   const deliveryUpdate = vi.fn();
   const deliveryUpdateMany = vi.fn();
   const sendPersonalMarkdown = vi.fn();
+  const isYunxiaoEnabled = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     deliveryCreate.mockResolvedValue({ id: 'delivery-1' });
     deliveryUpdate.mockResolvedValue({ id: 'delivery-1' });
     sendPersonalMarkdown.mockResolvedValue({ errcode: 0, task_id: 123 });
+    isYunxiaoEnabled.mockResolvedValue(true);
   });
 
   function createService(secret = 'yunxiao-secret') {
@@ -40,6 +42,7 @@ describe('YunxiaoWebhooksService', () => {
         },
       } as never,
       { sendPersonalMarkdown } as never,
+      { isYunxiaoEnabled } as never,
     );
   }
 
@@ -203,6 +206,20 @@ describe('YunxiaoWebhooksService', () => {
         errorMessage: 'DingTalk message delivery failed.',
       },
     });
+  });
+
+  it('云效集成停用时接受请求但不发送通知', async () => {
+    membershipFindMany.mockResolvedValue([
+      member('user-1', '张三', 'org-1', 'corp-1'),
+    ]);
+    isYunxiaoEnabled.mockResolvedValue(false);
+
+    await expect(createService().receive('yunxiao-secret', payload)).resolves.toEqual({
+      accepted: true,
+      disabled: true,
+    });
+    expect(deliveryCreate).not.toHaveBeenCalled();
+    expect(sendPersonalMarkdown).not.toHaveBeenCalled();
   });
 });
 

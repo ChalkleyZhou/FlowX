@@ -438,11 +438,25 @@ model Organization {
   personalApiTokens      PersonalApiToken[]
   workspaces             Workspace[]
   executionSessions      ExecutionSession[]
+  externalIntegrations   ExternalIntegration[]
   yunxiaoWebhookDeliveries YunxiaoWebhookDelivery[]
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
 
   @@unique([provider, providerOrganizationId])
+}
+
+model ExternalIntegration {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider       String
+  enabled        Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, provider])
+  @@index([organizationId, enabled])
 }
 
 model YunxiaoWebhookDelivery {

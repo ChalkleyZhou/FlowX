@@ -11,6 +11,7 @@ import { Prisma } from '@prisma/client';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { DingTalkNotificationService } from '../notifications/dingtalk-notification.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ExternalIntegrationsService } from '../plugins/external-integrations.service';
 
 type YunxiaoPerson = {
   id: string | null;
@@ -59,12 +60,19 @@ export class YunxiaoWebhooksService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly dingTalkNotification: DingTalkNotificationService,
+    private readonly integrations: ExternalIntegrationsService,
   ) {}
 
   async receive(signature: string | undefined, payload: Record<string, unknown>) {
     this.verifySignature(signature);
     const workItem = this.normalizeWorkItem(payload);
     const matched = await this.resolveRecipient(workItem.assignedTo);
+    if (!(await this.integrations.isYunxiaoEnabled(matched.organizationId))) {
+      return {
+        accepted: true,
+        disabled: true,
+      };
+    }
     const markdown = this.buildMarkdown(workItem);
     const claim = await this.claimDelivery(matched, workItem, payload, markdown);
     if (claim.duplicate) {

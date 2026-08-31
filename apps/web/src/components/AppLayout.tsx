@@ -21,6 +21,7 @@ import {
   Settings2,
   Workflow,
   Newspaper,
+  PlugZap,
   RadioTower,
   Send,
   SquareTerminal,
@@ -58,6 +59,7 @@ const secondaryItems = [
   { key: '/settings/briefing-sources', label: '简报数据源', icon: RadioTower },
   { key: '/settings/code-review-sources', label: '代码审查数据源', icon: GitPullRequest },
   { key: '/settings/delivery-targets', label: '投递目标', icon: Send },
+  { key: '/settings/integrations/yunxiao', label: '云效集成', icon: PlugZap },
 ] satisfies Array<{ key: string; label: string; icon: LucideIcon }>;
 
 export function AppLayout(props: PropsWithChildren) {

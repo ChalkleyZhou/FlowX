@@ -12,6 +12,8 @@ YUNXIAO_WEBHOOK_SECRET="请使用随机且不可猜测的值"
 
 该 Secret 只用于验证云效 Webhook，不是个人 API Token，也不授予 FlowX 用户权限。
 
+配置完成后，组织管理员可以在 FlowX「设置」→「云效集成」中启用或停用云效通知。停用不会删除配置和历史投递记录，重新启用即可恢复。未配置 Secret 时不能启用集成。
+
 ## 云效配置
 
 在云效 Projex 自动化规则中选择 Webhook 动作并填写：
@@ -22,6 +24,8 @@ HTTP Method: POST
 Secret: 与 YUNXIAO_WEBHOOK_SECRET 相同
 Webhook Body: 工作项数据
 ```
+
+第一期继续使用固定 Webhook 地址；组织级开关由 FlowX 页面控制。
 
 设置 Secret 后，云效会自动增加请求头：
 
