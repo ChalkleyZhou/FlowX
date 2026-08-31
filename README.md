@@ -18,6 +18,10 @@ flowchart LR
 
 完整目标架构、同步协议、数据模型和 90 天实施路线见 [FlowX 端云协同 AI 产研平台目标架构](docs/architecture/edge-cloud-ai-rd-platform.md)。
 
+当前实现的高层架构图（Archify）：
+
+![FlowX 当前实现高层架构图](docs/architecture/assets/flowx-architecture-archify.png)
+
 ![FlowX 端云协同 AI 产研平台架构图](docs/architecture/assets/flowx-edge-cloud-ai-rd-platform.png)
 
 ### 当前已具备的基础
