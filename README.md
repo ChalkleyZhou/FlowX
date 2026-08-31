@@ -20,7 +20,7 @@ flowchart LR
 
 当前实现的高层架构图（Archify）：
 
-![FlowX 当前实现高层架构图](docs/architecture/assets/flowx-architecture-archify.svg)
+![FlowX 当前实现高层架构图](docs/architecture/assets/flowx-architecture-archify.png)
 
 ![FlowX 端云协同 AI 产研平台架构图](docs/architecture/assets/flowx-edge-cloud-ai-rd-platform.png)
 
