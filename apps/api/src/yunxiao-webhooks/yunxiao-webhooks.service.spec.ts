@@ -124,6 +124,46 @@ describe('YunxiaoWebhooksService', () => {
     );
   });
 
+  it('兼容云效真实工作项中的 identifier、realName 和数字字段', async () => {
+    membershipFindMany.mockResolvedValue([
+      member('user-1', '张三', 'org-1', 'corp-1'),
+    ]);
+
+    await expect(createService().receive('yunxiao-secret', {
+      identifier: 'workitem-42',
+      serialNumber: 2458,
+      subject: '支付回调异常处理',
+      gmtModified: 1788164768000,
+      assignedTo: {
+        identifier: 'yunxiao-user-1',
+        realName: '张三',
+        displayName: '张三',
+      },
+      status: { identifier: '28', name: '待确认', displayName: '待确认' },
+      space: { identifier: 'space-1', name: '支付平台' },
+    })).resolves.toEqual({
+      accepted: true,
+      duplicate: false,
+      deliveryId: 'delivery-1',
+      matchedBy: 'assignedTo.name',
+    });
+
+    expect(deliveryCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        eventId: 'workitem-42:1788164768000',
+        recipient: {
+          id: 'yunxiao-user-1',
+          name: '张三',
+        },
+      }),
+    });
+    expect(sendPersonalMarkdown).toHaveBeenCalledWith(
+      expect.objectContaining({
+        markdown: expect.stringContaining('- 编号：2458'),
+      }),
+    );
+  });
+
   it('工作项缺少负责人时拒绝处理', async () => {
     await expect(
       createService().receive('yunxiao-secret', { ...payload, assignedTo: null }),

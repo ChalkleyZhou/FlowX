@@ -127,18 +127,23 @@ export class YunxiaoWebhooksService {
 
   private normalizeWorkItem(payload: Record<string, unknown>): NormalizedWorkItem {
     const assignedTo = this.asRecord(payload.assignedTo);
-    const assignedToName = this.pickString(assignedTo?.name);
+    const assignedToName = this.pickString(
+      assignedTo?.name,
+      assignedTo?.realName,
+      assignedTo?.displayName,
+      assignedTo?.nickName,
+    );
     if (!assignedToName) {
       throw new BadRequestException('Yunxiao work item assignee is required.');
     }
 
-    const id = this.pickString(payload.id);
+    const id = this.pickString(payload.id, payload.identifier);
     const subject = this.pickString(payload.subject);
     if (!id || !subject) {
       throw new BadRequestException('Yunxiao work item id and subject are required.');
     }
 
-    const modifiedAt = this.pickString(payload.gmtModified, payload.updateStatusAt);
+    const modifiedAt = this.pickStringOrNumber(payload.gmtModified, payload.updateStatusAt);
     const payloadHash = createHash('sha256')
       .update(JSON.stringify(payload), 'utf8')
       .digest('hex')
@@ -150,10 +155,10 @@ export class YunxiaoWebhooksService {
     return {
       id,
       eventId: `${id}:${modifiedAt ?? payloadHash}`,
-      serialNumber: this.pickString(payload.serialNumber),
+      serialNumber: this.pickStringOrNumber(payload.serialNumber),
       subject,
       assignedTo: {
-        id: this.pickString(assignedTo?.id),
+        id: this.pickString(assignedTo?.id, assignedTo?.identifier),
         name: assignedToName,
       },
       statusName: this.pickString(status?.displayName, status?.name),
@@ -332,6 +337,18 @@ export class YunxiaoWebhooksService {
     for (const value of values) {
       if (typeof value === 'string' && value.trim()) {
         return value.trim();
+      }
+    }
+    return null;
+  }
+
+  private pickStringOrNumber(...values: unknown[]) {
+    for (const value of values) {
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return String(value);
       }
     }
     return null;

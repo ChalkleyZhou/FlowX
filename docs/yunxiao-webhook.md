@@ -39,8 +39,8 @@ FlowX 严格校验该请求头，无需在 URL、Body 或自定义 Header 中放
 
 FlowX 从工作项的 `assignedTo` 读取负责人：
 
-1. 优先尝试用 `assignedTo.id` 匹配 FlowX 用户账号。
-2. 再用 `assignedTo.name` 精确匹配 FlowX 用户姓名。
+1. 优先尝试用 `assignedTo.id` 或 `assignedTo.identifier` 匹配 FlowX 用户账号。
+2. 再用 `assignedTo.name`、`assignedTo.realName`、`assignedTo.displayName` 或 `assignedTo.nickName` 精确匹配 FlowX 用户姓名。
 3. 只考虑已加入钉钉组织且未停用的 FlowX 用户。
 4. 找不到用户或存在重名时返回 `422`，不会猜测接收人或误发消息。
 
