@@ -139,6 +139,8 @@ describe('YunxiaoWebhooksService', () => {
       serialNumber: 2458,
       subject: '支付回调异常处理',
       gmtModified: 1788164768000,
+      spaceIdentifier: '983799fb8586b44f19455511c8',
+      category: 'Bug',
       assignedTo: {
         identifier: 'yunxiao-user-1',
         realName: '张三',
@@ -167,9 +169,44 @@ describe('YunxiaoWebhooksService', () => {
     }));
     expect(sendPersonalMarkdown).toHaveBeenCalledWith(
       expect.objectContaining({
-        markdown: expect.stringContaining('- 编号：2458'),
+        markdown: expect.stringContaining(
+          '[查看工作项](https://devops.aliyun.com/projex/project/983799fb8586b44f19455511c8/bug#openWorkitemIdentifier=workitem-42)',
+        ),
       }),
     );
+  });
+
+  it('根据项目、类别、视图和工作项标识自动生成云效链接', async () => {
+    membershipFindMany.mockResolvedValue([
+      member('user-1', '张三', 'org-1', 'corp-1'),
+    ]);
+
+    await createService().receive('yunxiao-secret', {
+      ...payload,
+      id: undefined,
+      url: undefined,
+      projectId: '983799fb8586b44f19455511c8',
+      categoryId: 'bug',
+      identifier: '1dedc5afd44979211cad516f',
+      workItemIdentifier: '919c1dd6a2c6a722ace76842e9',
+    });
+
+    const expectedUrl = [
+      'https://devops.aliyun.com/projex/project/983799fb8586b44f19455511c8/bug',
+      '#viewIdentifier=1dedc5afd44979211cad516f',
+      '&openWorkitemIdentifier=919c1dd6a2c6a722ace76842e9',
+    ].join('');
+    expect(sendPersonalMarkdown).toHaveBeenCalledWith(
+      expect.objectContaining({
+        markdown: expect.stringContaining(`[查看工作项](${expectedUrl})`),
+      }),
+    );
+    expect(deliveryCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        eventId: '919c1dd6a2c6a722ace76842e9:2026-08-28T15:00:00+08:00',
+        linkUrl: expectedUrl,
+      }),
+    });
   });
 
   it('没有云效组织绑定时拒绝跨组织匹配', async () => {

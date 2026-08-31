@@ -186,7 +186,7 @@ Notes:
 - Web runs on `4173`
 - SQLite data is stored in `/data/dev.db`, so mounting `/data` is recommended
 - The container startup script will run `prisma db push` automatically before starting services
-- Before `db push`, it also applies idempotent SQLite pre-migrations (including assigning existing workspaces to an organization and dropping obsolete `Task`/`Plan` and deploy integration tables)
+- Before `db push`, it also applies idempotent SQLite pre-migrations (including assigning existing workspaces to an organization, adding the Yunxiao organization binding safely, and dropping obsolete `Task`/`Plan` and deploy integration tables)
 - The runtime image now installs both Codex CLI and Cursor CLI
 - Codex login state is stored under `/data/.codex` by default, so mounting `/data` will persist `codex login`
 - `AI_EXECUTOR_DEFAULT_PROVIDER` can be set to `codex` or `cursor` as the default provider for new workflows

@@ -8,6 +8,7 @@ DELIVERY_TARGET_MIGRATION_SQL="/app/prisma/migrations/20260604180000_delivery_ta
 CODE_REVIEW_CONFIG_MIGRATION_SQL="/app/prisma/migrations/20260717080000_add_project_code_review_config/migration.sql"
 CODE_REVIEW_SOURCE_MIGRATION_SQL="/app/prisma/migrations/20260717100000_add_code_review_source/migration.sql"
 WORKSPACE_ORGANIZATION_MIGRATION_SQL="/app/prisma/migrations/20260826160000_add_workspace_organization/migration.sql"
+YUNXIAO_ORGANIZATION_BINDING_MIGRATION_SQL="/app/prisma/migrations/20260831130000_add_yunxiao_organization_binding/migration.sql"
 
 resolve_db_path() {
   db_url="${DATABASE_URL:-file:/data/dev.db}"
@@ -39,6 +40,13 @@ column_exists() {
   column_name="$2"
   sqlite3 "$DB_PATH" \
     "SELECT COUNT(*) FROM pragma_table_info('${table_name}') WHERE name='${column_name}';" \
+    2>/dev/null || echo 0
+}
+
+index_exists() {
+  index_name="$1"
+  sqlite3 "$DB_PATH" \
+    "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='${index_name}';" \
     2>/dev/null || echo 0
 }
 
@@ -78,6 +86,19 @@ if [ "$(table_exists Workspace)" = "1" ] \
   && [ "$(column_exists Workspace organizationId)" = "0" ]; then
   echo "Adding organization ownership to existing workspaces in ${DB_PATH}..."
   sqlite3 "$DB_PATH" < "$WORKSPACE_ORGANIZATION_MIGRATION_SQL"
+fi
+
+# --- ExternalIntegration: bind a Yunxiao organization without db-push warnings ---
+# Existing rows receive NULL, and SQLite permits multiple NULL values in a unique index.
+if [ "$(table_exists ExternalIntegration)" = "1" ] \
+  && [ "$(column_exists ExternalIntegration yunxiaoOrganizationIdentifier)" = "0" ]; then
+  echo "Adding Yunxiao organization binding to ExternalIntegration in ${DB_PATH}..."
+  sqlite3 "$DB_PATH" < "$YUNXIAO_ORGANIZATION_BINDING_MIGRATION_SQL"
+elif [ "$(table_exists ExternalIntegration)" = "1" ] \
+  && [ "$(index_exists ExternalIntegration_yunxiaoOrganizationIdentifier_key)" = "0" ]; then
+  echo "Adding the Yunxiao organization binding unique index in ${DB_PATH}..."
+  sqlite3 "$DB_PATH" \
+    'CREATE UNIQUE INDEX "ExternalIntegration_yunxiaoOrganizationIdentifier_key" ON "ExternalIntegration"("yunxiaoOrganizationIdentifier");'
 fi
 
 # --- Spec & Plan redesign: drop obsolete Task/Plan tables before db push ---

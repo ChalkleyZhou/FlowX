@@ -55,7 +55,7 @@ FlowX 从工作项的 `assignedTo` 读取负责人：
 - 项目 `space.name`
 - 状态 `status.displayName` 或 `status.name`
 - 负责人 `assignedTo.name`
-- 工作项链接（请求中存在合法 `url` 或 `webUrl` 时）
+- 工作项链接：优先使用请求中的合法 `url` 或 `webUrl`；缺少时根据项目/空间 ID、工作项类别和工作项 ID 自动生成云效 Projex 地址
 
 FlowX 使用工作项 `id` 与 `gmtModified`（或 `updateStatusAt`）组成事件 ID。相同事件重试不会重复发送；钉钉发送失败时允许云效使用同一事件再次重试。
 

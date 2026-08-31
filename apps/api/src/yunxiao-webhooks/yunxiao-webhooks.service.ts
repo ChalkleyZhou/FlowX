@@ -146,7 +146,7 @@ export class YunxiaoWebhooksService {
       throw new BadRequestException('Yunxiao work item assignee is required.');
     }
 
-    const id = this.pickString(payload.id, payload.identifier);
+    const id = this.pickString(payload.workItemIdentifier, payload.id, payload.identifier);
     const subject = this.pickString(payload.subject);
     if (!id || !subject) {
       throw new BadRequestException('Yunxiao work item id and subject are required.');
@@ -159,7 +159,6 @@ export class YunxiaoWebhooksService {
       .slice(0, 24);
     const status = this.asRecord(payload.status);
     const space = this.asRecord(payload.space);
-    const candidateUrl = this.pickString(payload.url, payload.webUrl);
 
     return {
       id,
@@ -173,8 +172,50 @@ export class YunxiaoWebhooksService {
       },
       statusName: this.pickString(status?.displayName, status?.name),
       spaceName: this.pickString(space?.name),
-      url: candidateUrl && /^https?:\/\//i.test(candidateUrl) ? candidateUrl : null,
+      url: this.resolveWorkItemUrl(payload, id),
     };
+  }
+
+  private resolveWorkItemUrl(payload: Record<string, unknown>, workItemId: string) {
+    const candidateUrl = this.pickString(payload.url, payload.webUrl);
+    if (candidateUrl && /^https?:\/\//i.test(candidateUrl)) {
+      return candidateUrl;
+    }
+
+    const space = this.asRecord(payload.space);
+    const workitemType = this.asRecord(payload.workitemType);
+    const projectId = this.pickString(
+      payload.projectId,
+      payload.spaceIdentifier,
+      space?.identifier,
+      space?.id,
+    );
+    const categoryId = this.pickString(
+      payload.categoryId,
+      payload.category,
+      workitemType?.categoryIdentifier,
+      workitemType?.nameEn,
+    )?.toLocaleLowerCase();
+    if (!projectId || !categoryId) {
+      return null;
+    }
+
+    const fragment = new URLSearchParams();
+    const explicitWorkItemId = this.pickString(payload.workItemIdentifier);
+    const viewIdentifier = this.pickString(
+      payload.viewIdentifier,
+      explicitWorkItemId ? payload.identifier : null,
+    );
+    if (viewIdentifier) {
+      fragment.set('viewIdentifier', viewIdentifier);
+    }
+    fragment.set('openWorkitemIdentifier', explicitWorkItemId ?? workItemId);
+
+    return [
+      'https://devops.aliyun.com/projex/project',
+      encodeURIComponent(projectId),
+      encodeURIComponent(categoryId),
+    ].join('/') + `#${fragment.toString()}`;
   }
 
   private async resolveRecipient(
