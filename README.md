@@ -186,7 +186,7 @@ Notes:
 - Web runs on `4173`
 - SQLite data is stored in `/data/dev.db`, so mounting `/data` is recommended
 - The container startup script will run `prisma db push` automatically before starting services
-- Before `db push`, it also applies idempotent SQLite pre-migrations (including assigning existing workspaces to an organization, adding the Yunxiao organization binding safely, and dropping obsolete `Task`/`Plan` and deploy integration tables)
+- Before `db push`, it also applies idempotent SQLite pre-migrations (including assigning existing workspaces to an organization, adding Yunxiao integration indexes safely, and dropping obsolete `Task`/`Plan` and deploy integration tables)
 - The runtime image now installs both Codex CLI and Cursor CLI
 - Codex login state is stored under `/data/.codex` by default, so mounting `/data` will persist `codex login`
 - `AI_EXECUTOR_DEFAULT_PROVIDER` can be set to `codex` or `cursor` as the default provider for new workflows
@@ -276,7 +276,7 @@ codex login
 - For personal stage completion notifications, also set `DINGTALK_AGENT_ID`.
 - FlowX will try to notify only the current DingTalk login user who triggered the stage or confirmation, instead of broadcasting through a group robot.
 - 钉钉组织管理员可在“用户管理”中同步通讯录用户。同步仅新增或更新用户及组织成员关系，不保存部门结构，也不会自动移除现有成员；钉钉应用需具备通讯录部门和用户读取权限，包括 `qyapi_get_department_member`。
-- 支持通过固定地址 `/api/yunxiao-webhooks` 接收云效自动化规则的原生工作项数据，并根据负责人匹配 FlowX 用户后发送钉钉个人通知。云效 Secret 通过 `X-Projex-Signature` 校验，服务端配置 `YUNXIAO_WEBHOOK_SECRET`，组织管理员可在“云效集成”页面绑定 `organizationIdentifier` 并一键启用或停用，不使用个人 API Token。详见[云效 Webhook 钉钉通知接入](docs/yunxiao-webhook.md)。
+- 支持通过固定地址 `/api/yunxiao-webhooks` 接收云效自动化规则的原生工作项数据，并默认向负责人、参与者、验证者和创建者发送去重后的钉钉个人通知。云效 Secret 通过 `X-Projex-Signature` 校验，服务端配置 `YUNXIAO_WEBHOOK_SECRET`，组织管理员可在“云效集成”页面绑定 `organizationIdentifier` 并一键启用或停用，不使用个人 API Token。详见[云效 Webhook 钉钉通知接入](docs/yunxiao-webhook.md)。
 
 ## MVP flow
 

@@ -65,7 +65,7 @@ flowx-local serve
 
 钉钉组织的管理员可进入“用户管理”，点击“同步钉钉用户”批量导入通讯录成员。同步会递归读取钉钉部门中的用户并去重，但只保存用户资料和当前组织成员关系，不保存部门树或上下级关系。同步是增量操作：会新增或更新用户，不会自动删除、停用或降级 FlowX 中的现有成员。使用前需为钉钉应用开通通讯录部门和用户读取权限（至少包括 `qyapi_get_department_member`），并配置 `DINGTALK_APP_ID`、`DINGTALK_APP_SECRET`。
 
-云效自动化规则还可以调用固定地址 `/api/yunxiao-webhooks`，将原生“工作项数据”定向发送给负责人。云效配置的 Secret 会通过 `X-Projex-Signature` 请求头传递，FlowX 使用 `YUNXIAO_WEBHOOK_SECRET` 校验，不需要也不应向云效提供个人 API Token。接入前应先完成钉钉用户同步，并在“设置”→“云效集成”中填写云效 `organizationIdentifier`；负责人账号或姓名必须在绑定的 FlowX 组织成员中唯一匹配。通知会优先使用 Webhook 自带的工作项链接，缺少链接时根据项目、类别和工作项标识自动生成云效地址。组织管理员可以在该页面一键启用或停用通知，停用不会删除配置和历史记录。完整配置见仓库文档 `docs/yunxiao-webhook.md`。
+云效自动化规则还可以调用固定地址 `/api/yunxiao-webhooks`，将原生“工作项数据”定向发送给负责人、参与者、验证者和创建者，并按 FlowX 用户去重。云效配置的 Secret 会通过 `X-Projex-Signature` 请求头传递，FlowX 使用 `YUNXIAO_WEBHOOK_SECRET` 校验，不需要也不应向云效提供个人 API Token。接入前应先完成钉钉用户同步，并在“设置”→“云效集成”中填写云效 `organizationIdentifier`；人员账号或姓名必须在绑定的 FlowX 组织成员中唯一匹配。通知会优先使用 Webhook 自带的工作项链接，缺少链接时根据项目、类别和工作项标识自动生成云效地址。组织管理员可以在该页面一键启用或停用通知，停用不会删除配置和历史记录。完整配置见仓库文档 `docs/yunxiao-webhook.md`。
 
 ### 步骤 2：配置组织 AI 凭据（推荐）
 

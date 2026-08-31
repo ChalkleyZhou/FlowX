@@ -9,6 +9,7 @@ CODE_REVIEW_CONFIG_MIGRATION_SQL="/app/prisma/migrations/20260717080000_add_proj
 CODE_REVIEW_SOURCE_MIGRATION_SQL="/app/prisma/migrations/20260717100000_add_code_review_source/migration.sql"
 WORKSPACE_ORGANIZATION_MIGRATION_SQL="/app/prisma/migrations/20260826160000_add_workspace_organization/migration.sql"
 YUNXIAO_ORGANIZATION_BINDING_MIGRATION_SQL="/app/prisma/migrations/20260831130000_add_yunxiao_organization_binding/migration.sql"
+YUNXIAO_MULTI_RECIPIENT_MIGRATION_SQL="/app/prisma/migrations/20260831183000_expand_yunxiao_delivery_recipients/migration.sql"
 
 resolve_db_path() {
   db_url="${DATABASE_URL:-file:/data/dev.db}"
@@ -99,6 +100,14 @@ elif [ "$(table_exists ExternalIntegration)" = "1" ] \
   echo "Adding the Yunxiao organization binding unique index in ${DB_PATH}..."
   sqlite3 "$DB_PATH" \
     'CREATE UNIQUE INDEX "ExternalIntegration_yunxiaoOrganizationIdentifier_key" ON "ExternalIntegration"("yunxiaoOrganizationIdentifier");'
+fi
+
+# --- YunxiaoWebhookDelivery: allow one idempotent delivery per recipient ---
+if [ "$(table_exists YunxiaoWebhookDelivery)" = "1" ] \
+  && { [ "$(index_exists YunxiaoWebhookDelivery_organizationId_eventId_key)" = "1" ] \
+    || [ "$(index_exists YunxiaoWebhookDelivery_organizationId_eventId_matchedUserId_key)" = "0" ]; }; then
+  echo "Expanding Yunxiao webhook deliveries to multiple recipients in ${DB_PATH}..."
+  sqlite3 "$DB_PATH" < "$YUNXIAO_MULTI_RECIPIENT_MIGRATION_SQL"
 fi
 
 # --- Spec & Plan redesign: drop obsolete Task/Plan tables before db push ---

@@ -60,6 +60,15 @@ describe('YunxiaoWebhooksService', () => {
     space: { id: 'space-1', name: '支付平台' },
     url: 'https://devops.aliyun.com/workitem/workitem-42',
   };
+  const singleDeliveryResult = {
+    accepted: true,
+    duplicate: false,
+    deliveryIds: ['delivery-1'],
+    recipientCount: 1,
+    sentCount: 1,
+    duplicateCount: 0,
+    unmatchedCount: 0,
+  };
 
   it('按云效 X-Projex-Signature 校验 Secret', async () => {
     await expect(createService().receive('wrong-secret', payload)).rejects.toBeInstanceOf(
@@ -80,12 +89,9 @@ describe('YunxiaoWebhooksService', () => {
       member('user-2', '李四', 'org-1', 'corp-1'),
     ]);
 
-    await expect(createService().receive('yunxiao-secret', payload)).resolves.toEqual({
-      accepted: true,
-      duplicate: false,
-      deliveryId: 'delivery-1',
-      matchedBy: 'assignedTo.name',
-    });
+    await expect(createService().receive('yunxiao-secret', payload)).resolves.toEqual(
+      singleDeliveryResult,
+    );
 
     expect(sendPersonalMarkdown).toHaveBeenCalledWith({
       flowxUserId: 'user-1',
@@ -117,15 +123,74 @@ describe('YunxiaoWebhooksService', () => {
       member('user-2', '张三', 'org-1', 'corp-1'),
     ]);
 
-    await expect(createService().receive('yunxiao-secret', payload)).resolves.toEqual({
-      accepted: true,
-      duplicate: false,
-      deliveryId: 'delivery-1',
-      matchedBy: 'assignedTo.id',
-    });
+    await expect(createService().receive('yunxiao-secret', payload)).resolves.toEqual(
+      singleDeliveryResult,
+    );
     expect(sendPersonalMarkdown).toHaveBeenCalledWith(
       expect.objectContaining({ flowxUserId: 'user-1' }),
     );
+  });
+
+  it('默认通知负责人、参与者、验证者和创建者，并按 FlowX 用户去重', async () => {
+    membershipFindMany.mockResolvedValue([
+      member('user-1', '张三', 'org-1', 'corp-1'),
+      member('user-2', '李四', 'org-1', 'corp-1'),
+      member('user-3', '王五', 'org-1', 'corp-1'),
+    ]);
+    deliveryCreate
+      .mockResolvedValueOnce({ id: 'delivery-user-1' })
+      .mockResolvedValueOnce({ id: 'delivery-user-2' })
+      .mockResolvedValueOnce({ id: 'delivery-user-3' });
+
+    await expect(createService().receive('yunxiao-secret', {
+      ...payload,
+      participants: [
+        { identifier: 'yunxiao-user-2', realName: '李四' },
+        { identifier: 'yunxiao-user-1', realName: '张三' },
+      ],
+      verifier: { identifier: 'yunxiao-user-3', displayName: '王五' },
+      creator: { identifier: 'yunxiao-user-1', realName: '张三' },
+    })).resolves.toEqual({
+      accepted: true,
+      duplicate: false,
+      deliveryIds: ['delivery-user-1', 'delivery-user-2', 'delivery-user-3'],
+      recipientCount: 3,
+      sentCount: 3,
+      duplicateCount: 0,
+      unmatchedCount: 0,
+    });
+
+    expect(sendPersonalMarkdown.mock.calls.map(([request]) => request.flowxUserId)).toEqual([
+      'user-1',
+      'user-2',
+      'user-3',
+    ]);
+    expect(deliveryCreate).toHaveBeenNthCalledWith(1, {
+      data: expect.objectContaining({
+        matchedUserId: 'user-1',
+        matchedBy: 'assignedTo.name',
+        recipient: {
+          id: 'yunxiao-user-1',
+          name: '张三',
+          roles: ['assignedTo', 'participant', 'creator'],
+        },
+      }),
+    });
+  });
+
+  it('可选接收人未匹配时仍通知其他已匹配人员', async () => {
+    membershipFindMany.mockResolvedValue([
+      member('user-1', '张三', 'org-1', 'corp-1'),
+    ]);
+
+    await expect(createService().receive('yunxiao-secret', {
+      ...payload,
+      participants: [{ realName: '未同步用户' }],
+    })).resolves.toEqual({
+      ...singleDeliveryResult,
+      unmatchedCount: 1,
+    });
+    expect(sendPersonalMarkdown).toHaveBeenCalledOnce();
   });
 
   it('兼容云效真实工作项中的 identifier、realName 和数字字段', async () => {
@@ -148,12 +213,7 @@ describe('YunxiaoWebhooksService', () => {
       },
       status: { identifier: '28', name: '待确认', displayName: '待确认' },
       space: { identifier: 'space-1', name: '支付平台' },
-    })).resolves.toEqual({
-      accepted: true,
-      duplicate: false,
-      deliveryId: 'delivery-1',
-      matchedBy: 'assignedTo.name',
-    });
+    })).resolves.toEqual(singleDeliveryResult);
 
     expect(deliveryCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -161,6 +221,7 @@ describe('YunxiaoWebhooksService', () => {
         recipient: {
           id: 'yunxiao-user-1',
           name: '张三',
+          roles: ['assignedTo'],
         },
       }),
     });
@@ -252,8 +313,21 @@ describe('YunxiaoWebhooksService', () => {
     await expect(createService().receive('yunxiao-secret', payload)).resolves.toEqual({
       accepted: true,
       duplicate: true,
-      deliveryId: 'delivery-1',
-      status: 'SENT',
+      deliveryIds: ['delivery-1'],
+      recipientCount: 1,
+      sentCount: 0,
+      duplicateCount: 1,
+      unmatchedCount: 0,
+    });
+    expect(deliveryFindUnique).toHaveBeenCalledWith({
+      where: {
+        organizationId_eventId_matchedUserId: {
+          organizationId: 'org-1',
+          eventId: 'workitem-42:2026-08-28T15:00:00+08:00',
+          matchedUserId: 'user-1',
+        },
+      },
+      select: { id: true, status: true },
     });
     expect(sendPersonalMarkdown).not.toHaveBeenCalled();
   });
@@ -271,12 +345,9 @@ describe('YunxiaoWebhooksService', () => {
     deliveryFindUnique.mockResolvedValue({ id: 'delivery-1', status: 'FAILED' });
     deliveryUpdateMany.mockResolvedValue({ count: 1 });
 
-    await expect(createService().receive('yunxiao-secret', payload)).resolves.toEqual({
-      accepted: true,
-      duplicate: false,
-      deliveryId: 'delivery-1',
-      matchedBy: 'assignedTo.name',
-    });
+    await expect(createService().receive('yunxiao-secret', payload)).resolves.toEqual(
+      singleDeliveryResult,
+    );
     expect(deliveryUpdateMany).toHaveBeenCalledWith({
       where: { id: 'delivery-1', status: 'FAILED' },
       data: expect.objectContaining({ status: 'PROCESSING' }),
@@ -299,6 +370,43 @@ describe('YunxiaoWebhooksService', () => {
         status: 'FAILED',
         errorMessage: 'DingTalk message delivery failed.',
       },
+    });
+  });
+
+  it('多人通知中单个发送失败时继续发送其他接收人', async () => {
+    membershipFindMany.mockResolvedValue([
+      member('user-1', '张三', 'org-1', 'corp-1'),
+      member('user-2', '李四', 'org-1', 'corp-1'),
+    ]);
+    deliveryCreate
+      .mockResolvedValueOnce({ id: 'delivery-user-1' })
+      .mockResolvedValueOnce({ id: 'delivery-user-2' });
+    sendPersonalMarkdown
+      .mockRejectedValueOnce(new Error('provider failure'))
+      .mockResolvedValueOnce({ errcode: 0, task_id: 456 });
+
+    await expect(createService().receive('yunxiao-secret', {
+      ...payload,
+      participants: [{ realName: '李四' }],
+    })).rejects.toMatchObject({
+      status: 502,
+      response: expect.objectContaining({
+        recipientCount: 2,
+        sentCount: 1,
+        failedCount: 1,
+      }),
+    });
+    expect(sendPersonalMarkdown).toHaveBeenCalledTimes(2);
+    expect(deliveryUpdate).toHaveBeenCalledWith({
+      where: { id: 'delivery-user-1' },
+      data: {
+        status: 'FAILED',
+        errorMessage: 'DingTalk message delivery failed.',
+      },
+    });
+    expect(deliveryUpdate).toHaveBeenCalledWith({
+      where: { id: 'delivery-user-2' },
+      data: expect.objectContaining({ status: 'SENT' }),
     });
   });
 

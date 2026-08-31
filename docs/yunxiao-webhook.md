@@ -37,14 +37,16 @@ FlowX 严格校验该请求头，无需在 URL、Body 或自定义 Header 中放
 
 ## 用户匹配
 
-FlowX 从工作项的 `assignedTo` 读取负责人：
+FlowX 默认从工作项读取以下通知对象：
 
-1. 优先尝试用 `assignedTo.id` 或 `assignedTo.identifier` 匹配 FlowX 用户账号。
-2. 再用 `assignedTo.name`、`assignedTo.realName`、`assignedTo.displayName` 或 `assignedTo.nickName` 精确匹配 FlowX 用户姓名。
-3. 只考虑已加入钉钉组织且未停用的 FlowX 用户。
-4. 只在绑定的 FlowX 组织内匹配负责人；找不到组织绑定、找不到用户或存在重名时返回 `422`，不会猜测接收人或误发消息。
+- 负责人：`assignedTo`
+- 参与者：`participants`、`participantList` 或 `participant`
+- 验证者：`verifiers`、`verifier`、`verifyUsers`、`verifyUser`、`validators` 或 `validator`
+- 创建者：`creator`
 
-因此，接入前应先由管理员在 FlowX“用户管理”中完成钉钉用户同步。若云效负责人姓名和钉钉通讯录姓名不同，应统一姓名或将云效用户 ID 维护为对应 FlowX 账号。
+每个人员优先使用 `id`、`identifier` 或 `userId` 匹配 FlowX 用户账号，再使用 `name`、`realName`、`displayName`、`nickName` 或 `displayValue` 精确匹配姓名。匹配仅在绑定的 FlowX 钉钉组织内进行，且只考虑未停用成员；同一 FlowX 用户同时属于多个角色时只发送一次，投递记录会保留其全部角色。
+
+可选通知对象未同步到 FlowX 时会跳过，不影响其他已匹配人员；所有通知对象均无法匹配时返回 `422`。存在重名时不会猜测接收人或误发消息。因此，接入前应先由管理员在 FlowX“用户管理”中完成钉钉用户同步。
 
 ## 消息内容与重试
 
@@ -57,13 +59,13 @@ FlowX 从工作项的 `assignedTo` 读取负责人：
 - 负责人 `assignedTo.name`
 - 工作项链接：优先使用请求中的合法 `url` 或 `webUrl`；缺少时根据项目/空间 ID、工作项类别和工作项 ID 自动生成云效 Projex 地址
 
-FlowX 使用工作项 `id` 与 `gmtModified`（或 `updateStatusAt`）组成事件 ID。相同事件重试不会重复发送；钉钉发送失败时允许云效使用同一事件再次重试。
+FlowX 使用工作项 `id` 与 `gmtModified`（或 `updateStatusAt`）组成事件 ID，并按“组织 + 事件 + FlowX 接收人”记录幂等投递。相同事件重试不会重复通知已成功人员；多人通知中某个接收人发送失败时，其他人仍会继续发送，云效重试只会补发失败记录。
 
 常见响应：
 
 - `200`：发送成功，或相同事件已经处理。
-- `400`：缺少工作项 ID、标题或负责人。
+- `400`：缺少工作项 ID、标题，或没有任何可解析的通知对象。
 - `401`：`X-Projex-Signature` 缺失或不正确。
-- `422`：找不到负责人或匹配到多个 FlowX 用户。
+- `422`：所有通知对象均无法匹配，或某个人员匹配到多个 FlowX 用户。
 - `502`：钉钉发送失败，可重试。
 - `503`：FlowX 未配置 `YUNXIAO_WEBHOOK_SECRET`。

@@ -16,7 +16,10 @@ import { YunxiaoPlugin } from '../plugins/yunxiao.plugin';
 type YunxiaoPerson = {
   id: string | null;
   name: string;
+  roles: YunxiaoRecipientRole[];
 };
+
+type YunxiaoRecipientRole = 'assignedTo' | 'participant' | 'verifier' | 'creator';
 
 type NormalizedWorkItem = {
   id: string;
@@ -24,7 +27,8 @@ type NormalizedWorkItem = {
   eventId: string;
   serialNumber: string | null;
   subject: string;
-  assignedTo: YunxiaoPerson;
+  assignedTo: YunxiaoPerson | null;
+  recipients: YunxiaoPerson[];
   statusName: string | null;
   spaceName: string | null;
   url: string | null;
@@ -52,7 +56,8 @@ type MatchedMember = {
   userId: string;
   organizationId: string;
   corpId: string;
-  matchedBy: 'assignedTo.id' | 'assignedTo.name';
+  matchedBy: `${YunxiaoRecipientRole}.id` | `${YunxiaoRecipientRole}.name`;
+  recipient: YunxiaoPerson;
 };
 
 @Injectable()
@@ -67,55 +72,74 @@ export class YunxiaoWebhooksService {
   async receive(signature: string | undefined, payload: Record<string, unknown>) {
     this.verifySignature(signature);
     const workItem = this.normalizeWorkItem(payload);
-    const matched = await this.resolveRecipient(
-      workItem.assignedTo,
+    const resolved = await this.resolveRecipients(
+      workItem.recipients,
       workItem.yunxiaoOrganizationIdentifier,
     );
-    if (!(await this.yunxiaoPlugin.isEnabled(matched.organizationId))) {
+    if (!(await this.yunxiaoPlugin.isEnabled(resolved.organizationId))) {
       return {
         accepted: true,
         disabled: true,
       };
     }
     const markdown = this.buildMarkdown(workItem);
-    const claim = await this.claimDelivery(matched, workItem, payload, markdown);
-    if (claim.duplicate) {
-      return {
-        accepted: true,
-        duplicate: true,
-        deliveryId: claim.deliveryId,
-        status: claim.status,
-      };
-    }
+    const deliveryIds: string[] = [];
+    let sentCount = 0;
+    let duplicateCount = 0;
+    let failedCount = 0;
+    for (const matched of resolved.recipients) {
+      const claim = await this.claimDelivery(matched, workItem, payload, markdown);
+      deliveryIds.push(claim.deliveryId);
+      if (claim.duplicate) {
+        duplicateCount += 1;
+        continue;
+      }
 
-    let providerResponse: unknown;
-    try {
-      providerResponse = await this.dingTalkNotification.sendPersonalMarkdown({
-        flowxUserId: matched.userId,
-        corpId: matched.corpId,
-        title: `云效工作项：${workItem.subject}`,
-        markdown,
+      let providerResponse: unknown;
+      try {
+        providerResponse = await this.dingTalkNotification.sendPersonalMarkdown({
+          flowxUserId: matched.userId,
+          corpId: matched.corpId,
+          title: `云效工作项：${workItem.subject}`,
+          markdown,
+        });
+      } catch {
+        failedCount += 1;
+        await this.markFailed(claim.deliveryId, 'DingTalk message delivery failed.');
+        continue;
+      }
+
+      await this.prisma.yunxiaoWebhookDelivery.update({
+        where: { id: claim.deliveryId },
+        data: {
+          status: 'SENT',
+          providerResponse: this.toJson(providerResponse),
+          errorMessage: null,
+          sentAt: new Date(),
+        },
       });
-    } catch {
-      await this.markFailed(claim.deliveryId, 'DingTalk message delivery failed.');
-      throw new BadGatewayException('DingTalk message delivery failed.');
+      sentCount += 1;
     }
 
-    await this.prisma.yunxiaoWebhookDelivery.update({
-      where: { id: claim.deliveryId },
-      data: {
-        status: 'SENT',
-        providerResponse: this.toJson(providerResponse),
-        errorMessage: null,
-        sentAt: new Date(),
-      },
-    });
+    if (failedCount > 0) {
+      throw new BadGatewayException({
+        message: 'One or more DingTalk message deliveries failed.',
+        recipientCount: resolved.recipients.length,
+        sentCount,
+        duplicateCount,
+        failedCount,
+        unmatchedCount: resolved.unmatchedCount,
+      });
+    }
 
     return {
       accepted: true,
-      duplicate: false,
-      deliveryId: claim.deliveryId,
-      matchedBy: matched.matchedBy,
+      duplicate: sentCount === 0,
+      deliveryIds,
+      recipientCount: resolved.recipients.length,
+      sentCount,
+      duplicateCount,
+      unmatchedCount: resolved.unmatchedCount,
     };
   }
 
@@ -135,15 +159,28 @@ export class YunxiaoWebhooksService {
       throw new BadRequestException('Yunxiao organization identifier is required.');
     }
 
-    const assignedTo = this.asRecord(payload.assignedTo);
-    const assignedToName = this.pickString(
-      assignedTo?.name,
-      assignedTo?.realName,
-      assignedTo?.displayName,
-      assignedTo?.nickName,
-    );
-    if (!assignedToName) {
-      throw new BadRequestException('Yunxiao work item assignee is required.');
+    const assignedTo = this.parsePerson(payload.assignedTo, 'assignedTo');
+    const recipients = [
+      ...(assignedTo ? [assignedTo] : []),
+      ...this.parsePeople(
+        this.firstDefined(payload.participants, payload.participantList, payload.participant),
+        'participant',
+      ),
+      ...this.parsePeople(
+        this.firstDefined(
+          payload.verifiers,
+          payload.verifier,
+          payload.verifyUsers,
+          payload.verifyUser,
+          payload.validators,
+          payload.validator,
+        ),
+        'verifier',
+      ),
+      ...this.parsePeople(payload.creator, 'creator'),
+    ];
+    if (recipients.length === 0) {
+      throw new BadRequestException('Yunxiao work item notification recipients are required.');
     }
 
     const id = this.pickString(payload.workItemIdentifier, payload.id, payload.identifier);
@@ -166,10 +203,8 @@ export class YunxiaoWebhooksService {
       eventId: `${id}:${modifiedAt ?? payloadHash}`,
       serialNumber: this.pickStringOrNumber(payload.serialNumber),
       subject,
-      assignedTo: {
-        id: this.pickString(assignedTo?.id, assignedTo?.identifier),
-        name: assignedToName,
-      },
+      assignedTo,
+      recipients,
       statusName: this.pickString(status?.displayName, status?.name),
       spaceName: this.pickString(space?.name),
       url: this.resolveWorkItemUrl(payload, id),
@@ -218,10 +253,10 @@ export class YunxiaoWebhooksService {
     ].join('/') + `#${fragment.toString()}`;
   }
 
-  private async resolveRecipient(
-    assignedTo: YunxiaoPerson,
+  private async resolveRecipients(
+    recipients: YunxiaoPerson[],
     yunxiaoOrganizationIdentifier: string,
-  ): Promise<MatchedMember> {
+  ) {
     const integration = await this.prisma.externalIntegration.findFirst({
       where: {
         provider: 'YUNXIAO',
@@ -247,40 +282,74 @@ export class YunxiaoWebhooksService {
       },
     })) as Member[];
 
-    if (assignedTo.id) {
+    const matchedByUserId = new Map<string, MatchedMember>();
+    let unmatchedCount = 0;
+    for (const recipient of recipients) {
+      const matched = this.matchRecipient(memberships, recipient);
+      if (!matched) {
+        unmatchedCount += 1;
+        continue;
+      }
+      const existing = matchedByUserId.get(matched.userId);
+      if (existing) {
+        for (const role of matched.recipient.roles) {
+          if (!existing.recipient.roles.includes(role)) {
+            existing.recipient.roles.push(role);
+          }
+        }
+        continue;
+      }
+      matchedByUserId.set(matched.userId, matched);
+    }
+
+    const matchedRecipients = [...matchedByUserId.values()];
+    if (matchedRecipients.length === 0) {
+      throw new UnprocessableEntityException(
+        'No FlowX organization member matched the Yunxiao notification recipients.',
+      );
+    }
+    return {
+      organizationId: integration.organizationId,
+      recipients: matchedRecipients,
+      unmatchedCount,
+    };
+  }
+
+  private matchRecipient(memberships: Member[], recipient: YunxiaoPerson) {
+    const role = recipient.roles[0];
+    if (recipient.id) {
       const idMatches = memberships.filter((membership) =>
         [membership.user.account, membership.user.localCredential?.account].some((value) =>
-          this.same(value, assignedTo.id as string),
+          this.same(value, recipient.id as string),
         ),
       );
       if (idMatches.length === 1) {
-        return this.toMatchedMember(idMatches[0], 'assignedTo.id');
+        return this.toMatchedMember(idMatches[0], recipient, `${role}.id`);
       }
       if (idMatches.length > 1) {
         throw new UnprocessableEntityException(
-          'Yunxiao assignee matched multiple FlowX organization members.',
+          'A Yunxiao notification recipient matched multiple FlowX organization members.',
         );
       }
     }
 
     const nameMatches = memberships.filter((membership) =>
-      this.same(membership.user.displayName, assignedTo.name),
+      this.same(membership.user.displayName, recipient.name),
     );
     if (nameMatches.length === 1) {
-      return this.toMatchedMember(nameMatches[0], 'assignedTo.name');
+      return this.toMatchedMember(nameMatches[0], recipient, `${role}.name`);
     }
     if (nameMatches.length > 1) {
       throw new UnprocessableEntityException(
-        'Yunxiao assignee matched multiple FlowX organization members.',
+        'A Yunxiao notification recipient matched multiple FlowX organization members.',
       );
     }
-    throw new UnprocessableEntityException(
-      'No FlowX organization member matched the Yunxiao assignee.',
-    );
+    return null;
   }
 
   private toMatchedMember(
     membership: Member,
+    recipient: YunxiaoPerson,
     matchedBy: MatchedMember['matchedBy'],
   ): MatchedMember {
     return {
@@ -288,6 +357,7 @@ export class YunxiaoWebhooksService {
       organizationId: membership.organizationId,
       corpId: membership.organization.providerOrganizationId,
       matchedBy,
+      recipient: { ...recipient, roles: [...recipient.roles] },
     };
   }
 
@@ -306,7 +376,7 @@ export class YunxiaoWebhooksService {
           organizationId: matched.organizationId,
           eventId: workItem.eventId,
           status: 'PROCESSING',
-          recipient: this.toJson(workItem.assignedTo),
+          recipient: this.toJson(matched.recipient),
           matchedUserId: matched.userId,
           matchedBy: matched.matchedBy,
           title: `云效工作项：${workItem.subject}`,
@@ -324,9 +394,10 @@ export class YunxiaoWebhooksService {
 
     const existing = await this.prisma.yunxiaoWebhookDelivery.findUnique({
       where: {
-        organizationId_eventId: {
+        organizationId_eventId_matchedUserId: {
           organizationId: matched.organizationId,
           eventId: workItem.eventId,
+          matchedUserId: matched.userId,
         },
       },
       select: { id: true, status: true },
@@ -340,7 +411,7 @@ export class YunxiaoWebhooksService {
         where: { id: existing.id, status: 'FAILED' },
         data: {
           status: 'PROCESSING',
-          recipient: this.toJson(workItem.assignedTo),
+          recipient: this.toJson(matched.recipient),
           matchedUserId: matched.userId,
           matchedBy: matched.matchedBy,
           title: `云效工作项：${workItem.subject}`,
@@ -375,7 +446,9 @@ export class YunxiaoWebhooksService {
     if (workItem.statusName) {
       lines.push(`- 状态：${workItem.statusName}`);
     }
-    lines.push(`- 负责人：${workItem.assignedTo.name}`);
+    if (workItem.assignedTo) {
+      lines.push(`- 负责人：${workItem.assignedTo.name}`);
+    }
     if (workItem.url) {
       lines.push('', `[查看工作项](${workItem.url})`);
     }
@@ -399,6 +472,47 @@ export class YunxiaoWebhooksService {
   private same(actual: unknown, expected: string) {
     return typeof actual === 'string'
       && actual.trim().toLocaleLowerCase() === expected.trim().toLocaleLowerCase();
+  }
+
+  private parsePeople(value: unknown, role: YunxiaoRecipientRole): YunxiaoPerson[] {
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => this.parsePerson(item, role))
+        .filter((person): person is YunxiaoPerson => person !== null);
+    }
+    const record = this.asRecord(value);
+    if (Array.isArray(record?.valueList)) {
+      return this.parsePeople(record.valueList, role);
+    }
+    const person = this.parsePerson(value, role);
+    return person ? [person] : [];
+  }
+
+  private parsePerson(value: unknown, role: YunxiaoRecipientRole): YunxiaoPerson | null {
+    const person = this.asRecord(value);
+    if (!person) {
+      return null;
+    }
+    const id = this.pickString(person.id, person.identifier, person.userId);
+    const name = this.pickString(
+      person.name,
+      person.realName,
+      person.displayName,
+      person.nickName,
+      person.displayValue,
+    );
+    if (!id && !name) {
+      return null;
+    }
+    return {
+      id,
+      name: (name ?? id) as string,
+      roles: [role],
+    };
+  }
+
+  private firstDefined(...values: unknown[]) {
+    return values.find((value) => value !== undefined && value !== null);
   }
 
   private pickString(...values: unknown[]) {
