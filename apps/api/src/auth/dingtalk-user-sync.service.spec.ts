@@ -61,8 +61,11 @@ describe('DingTalkUserSyncService', () => {
       userOrganization: {
         findMany: vi.fn().mockResolvedValue([]),
         upsert: vi.fn().mockResolvedValue({}),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
-      $transaction: vi.fn().mockImplementation(async (callback: (tx: unknown) => unknown) => callback(prisma)),
+      userSession: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      personalApiToken: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      $transaction: transactionMock(() => prisma),
     };
     const service = buildService(prisma, {
       DINGTALK_APP_ID: 'app-id',
@@ -74,6 +77,7 @@ describe('DingTalkUserSyncService', () => {
       created: 2,
       updated: 0,
       addedToOrganization: 2,
+      removedFromOrganization: 0,
     });
     expect(prisma.user.create).toHaveBeenCalledTimes(2);
     expect(prisma.userOrganization.upsert).toHaveBeenCalledTimes(2);
@@ -98,9 +102,15 @@ describe('DingTalkUserSyncService', () => {
       },
       user: { update: vi.fn().mockResolvedValue({}) },
       userOrganization: {
-        findMany: vi.fn().mockResolvedValue([{ userId: 'user-1' }]),
+        findMany: vi.fn().mockResolvedValue([{
+          userId: 'user-1',
+          user: { identities: [{ provider: 'dingtalk' }] },
+        }]),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
-      $transaction: vi.fn().mockImplementation(async (callback: (tx: unknown) => unknown) => callback(prisma)),
+      userSession: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      personalApiToken: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      $transaction: transactionMock(() => prisma),
     };
     const service = buildService(prisma, {
       DINGTALK_APP_ID: 'app-id',
@@ -112,12 +122,66 @@ describe('DingTalkUserSyncService', () => {
       created: 0,
       updated: 1,
       addedToOrganization: 0,
+      removedFromOrganization: 0,
     });
     expect(prisma.user.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'user-1' },
       data: expect.objectContaining({ displayName: 'Alice Updated' }),
     }));
     expect(prisma.userOrganization).not.toHaveProperty('upsert');
+  });
+
+  it('removes missing DingTalk users from the organization without removing local members', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token', expires_in: 7200 })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        errcode: 0,
+        result: { list: [{ userid: 'staff-1', unionid: 'union-1', name: 'Alice' }], has_more: false },
+      })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ errcode: 0, result: { dept_id_list: [] } }))));
+
+    const prisma = {
+      authIdentity: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 'identity-1', userId: 'user-1', providerUserId: 'union-1', providerUnionId: 'union-1' },
+        ]),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      user: { update: vi.fn().mockResolvedValue({}) },
+      userOrganization: {
+        findMany: vi.fn().mockResolvedValue([
+          { userId: 'user-1', user: { identities: [{ provider: 'dingtalk' }] } },
+          { userId: 'user-2', user: { identities: [{ provider: 'dingtalk' }] } },
+          { userId: 'user-3', user: { identities: [] } },
+        ]),
+        deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      userSession: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      personalApiToken: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      $transaction: transactionMock(() => prisma),
+    };
+    const service = buildService(prisma, {
+      DINGTALK_APP_ID: 'app-id',
+      DINGTALK_APP_SECRET: 'app-secret',
+    });
+
+    await expect(service.syncOrganizationUsers('org-1', 'corp-1')).resolves.toEqual({
+      total: 1,
+      created: 0,
+      updated: 1,
+      addedToOrganization: 0,
+      removedFromOrganization: 1,
+    });
+    expect(prisma.userOrganization.deleteMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', userId: { in: ['user-2'] } },
+    });
+    expect(prisma.userSession.deleteMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', userId: { in: ['user-2'] } },
+    });
+    expect(prisma.personalApiToken.updateMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', userId: { in: ['user-2'] }, revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
   });
 
   it('rejects synchronization when DingTalk credentials are missing', async () => {
@@ -163,3 +227,12 @@ describe('DingTalkUserSyncService', () => {
     expect(error.message).not.toContain('dingo-secret');
   });
 });
+
+function transactionMock(getPrisma: () => Record<string, unknown>) {
+  return vi.fn().mockImplementation(async (input: unknown) => {
+    if (typeof input === 'function') {
+      return input(getPrisma());
+    }
+    return Promise.all(input as Promise<unknown>[]);
+  });
+}

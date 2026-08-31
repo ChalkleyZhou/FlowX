@@ -599,6 +599,7 @@ export interface DingTalkUserSyncResult {
   created: number;
   updated: number;
   addedToOrganization: number;
+  removedFromOrganization: number;
 }
 
 export interface AuthUser {

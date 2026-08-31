@@ -124,6 +124,7 @@ describe('OrganizationUsersPage', () => {
       created: 1,
       updated: 1,
       addedToOrganization: 1,
+      removedFromOrganization: 1,
     });
     await renderPage();
 
@@ -141,6 +142,7 @@ describe('OrganizationUsersPage', () => {
       (item) => item.textContent?.trim() === '确认',
     );
     expect(confirmButton).toBeTruthy();
+    expect(document.body.textContent).toContain('通讯录中不存在的钉钉成员会被移出当前组织');
 
     await act(async () => {
       confirmButton?.click();
@@ -150,5 +152,6 @@ describe('OrganizationUsersPage', () => {
     expect(api.syncDingTalkOrganizationUsers).toHaveBeenCalled();
     expect(api.getOrganizationMembers).toHaveBeenCalledTimes(2);
     expect(document.body.textContent).toContain('同步完成');
+    expect(document.body.textContent).toContain('移出组织成员 1 人');
   });
 });

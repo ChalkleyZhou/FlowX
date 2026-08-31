@@ -226,6 +226,7 @@ describe('AuthService.syncDingTalkOrganizationUsers', () => {
       created: 1,
       updated: 1,
       addedToOrganization: 1,
+      removedFromOrganization: 1,
     });
     const service = buildSyncService({
       userOrganization: {
@@ -244,6 +245,7 @@ describe('AuthService.syncDingTalkOrganizationUsers', () => {
       created: 1,
       updated: 1,
       addedToOrganization: 1,
+      removedFromOrganization: 1,
     });
     expect(syncOrganizationUsers).toHaveBeenCalledWith('org-1', 'corp-1');
   });

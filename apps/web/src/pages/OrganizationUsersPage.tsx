@@ -149,7 +149,7 @@ export function OrganizationUsersPage() {
 
   async function handleDingTalkSync() {
     const confirmed = await confirm({
-      description: '将从钉钉通讯录同步用户到当前组织。该操作只新增或更新用户，不会删除现有成员，是否继续？',
+      description: '将以钉钉通讯录为准同步当前组织。通讯录中不存在的钉钉成员会被移出当前组织，但不会删除用户及历史数据，是否继续？',
     });
     if (!confirmed) {
       return;
@@ -160,7 +160,7 @@ export function OrganizationUsersPage() {
       const result = await api.syncDingTalkOrganizationUsers();
       await refresh();
       toast.success(
-        `同步完成：读取 ${result.total} 人，新建 ${result.created} 人，更新 ${result.updated} 人，新增组织成员 ${result.addedToOrganization} 人`,
+        `同步完成：读取 ${result.total} 人，新建 ${result.created} 人，更新 ${result.updated} 人，新增组织成员 ${result.addedToOrganization} 人，移出组织成员 ${result.removedFromOrganization} 人`,
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '同步钉钉用户失败');

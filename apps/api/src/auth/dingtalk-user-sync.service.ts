@@ -21,6 +21,7 @@ export type DingTalkUserSyncResult = {
   created: number;
   updated: number;
   addedToOrganization: number;
+  removedFromOrganization: number;
 };
 
 @Injectable()
@@ -63,15 +64,27 @@ export class DingTalkUserSyncService {
 
     const existingMemberships = await this.prisma.userOrganization.findMany({
       where: { organizationId },
-      select: { userId: true },
+      select: {
+        userId: true,
+        user: {
+          select: {
+            identities: {
+              where: { provider: 'dingtalk' },
+              select: { id: true },
+            },
+          },
+        },
+      },
     });
     const memberUserIds = new Set(existingMemberships.map((membership) => membership.userId));
+    const synchronizedUserIds = new Set<string>();
 
     const result: DingTalkUserSyncResult = {
       total: directoryUsers.length,
       created: 0,
       updated: 0,
       addedToOrganization: 0,
+      removedFromOrganization: 0,
     };
 
     for (const directoryUser of directoryUsers) {
@@ -146,6 +159,40 @@ export class DingTalkUserSyncService {
           memberUserIds.add(userId);
           result.addedToOrganization += 1;
         }
+        synchronizedUserIds.add(userId);
+      });
+    }
+
+    const staleDingTalkUserIds = existingMemberships
+      .filter((membership) =>
+        membership.user.identities.length > 0
+        && !synchronizedUserIds.has(membership.userId),
+      )
+      .map((membership) => membership.userId);
+    if (staleDingTalkUserIds.length > 0) {
+      const revokedAt = new Date();
+      result.removedFromOrganization = await this.prisma.$transaction(async (tx) => {
+        const removed = await tx.userOrganization.deleteMany({
+          where: {
+            organizationId,
+            userId: { in: staleDingTalkUserIds },
+          },
+        });
+        await tx.userSession.deleteMany({
+          where: {
+            organizationId,
+            userId: { in: staleDingTalkUserIds },
+          },
+        });
+        await tx.personalApiToken.updateMany({
+          where: {
+            organizationId,
+            userId: { in: staleDingTalkUserIds },
+            revokedAt: null,
+          },
+          data: { revokedAt },
+        });
+        return removed.count;
       });
     }
 
