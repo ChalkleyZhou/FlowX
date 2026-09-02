@@ -259,6 +259,23 @@ describe('YunxiaoWebhooksService', () => {
     }));
   });
 
+  it('已有手动映射时不依赖项目成员接口再次返回该用户', async () => {
+    membershipFindMany.mockResolvedValue([
+      member('user-1', 'FlowX 张三', 'org-1', 'corp-1'),
+    ]);
+    listProjectMembers.mockResolvedValue([]);
+    mappingFindMany.mockResolvedValue([
+      { yunxiaoUserIdentifier: 'yunxiao-user-1', flowxUserId: 'user-1' },
+    ]);
+
+    await expect(createService().receive('yunxiao-secret', payload)).resolves.toEqual(
+      singleDeliveryResult,
+    );
+    expect(sendPersonalMarkdown).toHaveBeenCalledWith(
+      expect.objectContaining({ flowxUserId: 'user-1' }),
+    );
+  });
+
   it('兼容云效真实工作项中的 identifier、realName 和数字字段', async () => {
     membershipFindMany.mockResolvedValue([
       member('user-1', '张三', 'org-1', 'corp-1'),

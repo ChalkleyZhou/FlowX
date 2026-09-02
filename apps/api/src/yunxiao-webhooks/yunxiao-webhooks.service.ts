@@ -334,6 +334,9 @@ export class YunxiaoWebhooksService {
     }
     for (const recipient of normalizedRecipients) {
       const projectMember = projectMembers.find((member) => member.identifier === recipient.id);
+      const mappedFlowxUserId = recipient.id
+        ? mappingByYunxiaoId.get(recipient.id)
+        : undefined;
       let matched: MatchedMember | null = null;
       let reason: string | null = null;
       let dingTalkId: string | null = projectMember?.dingTalkId ?? null;
@@ -343,15 +346,14 @@ export class YunxiaoWebhooksService {
         reason = openApiError;
       } else if (!projectId) {
         reason = 'Yunxiao work item project identifier is missing.';
-      } else if (!projectMember) {
-        reason = 'Yunxiao recipient is not a member of the project.';
+      } else if (mappedFlowxUserId) {
+        matched = this.matchRecipientByFlowxUserId(memberships, recipient, mappedFlowxUserId);
+        if (!matched) {
+          reason = 'Mapped FlowX user is not an active member of the organization.';
+        }
       } else {
-        const mappedFlowxUserId = mappingByYunxiaoId.get(projectMember.identifier ?? '');
-        if (mappedFlowxUserId) {
-          matched = this.matchRecipientByFlowxUserId(memberships, recipient, mappedFlowxUserId);
-          if (!matched) {
-            reason = 'Mapped FlowX user is not an active member of the organization.';
-          }
+        if (!projectMember) {
+          reason = 'Yunxiao recipient is not a member of the project.';
         } else if (projectMember.dingTalkId) {
           matched = this.matchRecipientByDingTalkId(memberships, recipient, projectMember.dingTalkId);
         } else {
