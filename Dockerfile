@@ -71,6 +71,7 @@ COPY --from=build /app/tsconfig.base.json ./tsconfig.base.json
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/apps ./apps
 COPY --from=build /app/packages/flowx-protocol ./packages/flowx-protocol
+RUN pnpm prisma:generate
 COPY scripts/clean-db.ts scripts/clean-db.sh ./scripts/
 COPY scripts/backfill-organization-admins.ts scripts/backfill-organization-admins.sh ./scripts/
 COPY scripts/backfill-yunxiao-member-mappings.ts scripts/backfill-yunxiao-member-mappings.sh ./scripts/

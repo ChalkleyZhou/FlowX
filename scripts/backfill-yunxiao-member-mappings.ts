@@ -157,18 +157,42 @@ function findAliyunAccountId(value: unknown) {
   return pickString(bind?.bindId);
 }
 
+async function loadWebhookUserIds(prisma: PrismaClient, organizationId: string) {
+  const recipients = await prisma.yunxiaoWebhookRecipient.findMany({
+    where: {
+      organizationId,
+      yunxiaoUserIdentifier: { not: null },
+    },
+    select: {
+      yunxiaoDisplayName: true,
+      yunxiaoUserIdentifier: true,
+    },
+  });
+  const userIdsByDisplayName = new Map<string, Set<string>>();
+  for (const recipient of recipients) {
+    const displayName = normalize(recipient.yunxiaoDisplayName);
+    const userId = normalize(recipient.yunxiaoUserIdentifier);
+    if (!displayName || !userId) continue;
+    const userIds = userIdsByDisplayName.get(displayName) ?? new Set<string>();
+    userIds.add(userId);
+    userIdsByDisplayName.set(displayName, userIds);
+  }
+  return userIdsByDisplayName;
+}
+
 async function resolveIdentity(
   userIdValue: string | null,
+  webhookUserId: string | null,
   legacyIdentifier: string,
   organizationIdentifier: string,
   token: string,
   endpoint: string,
 ) {
-  const userId = normalize(userIdValue) ?? normalize(legacyIdentifier);
+  const userId = normalize(userIdValue) ?? normalize(webhookUserId);
   if (!userId) return { status: 'SKIP' as const, reason: '没有可用的云效 userId。' };
   const memberPath = `/oapi/v1/platform/organizations/${encodeURIComponent(organizationIdentifier)}/members:readByUser?userId=${encodeURIComponent(userId)}`;
   const memberResponse = await fetchJson(new URL(memberPath, endpoint), token);
-  const memberId = findMemberId(memberResponse);
+  const memberId = findMemberId(memberResponse) ?? normalize(legacyIdentifier);
   if (!memberId) return { status: 'SKIP' as const, reason: 'ReadMemberByUser 未返回组织成员 ID。', userId };
   const bindPath = `/oapi/v1/platform/organizations/${encodeURIComponent(organizationIdentifier)}/members/${encodeURIComponent(memberId)}/binds`;
   const bindResponse = await fetchJson(new URL(bindPath, endpoint), token);
@@ -197,6 +221,12 @@ async function planBackfill(prisma: PrismaClient, organizationId: string | null)
   const token = normalize(process.env.YUNXIAO_PERSONAL_ACCESS_TOKEN);
   if (!token) throw new Error('YUNXIAO_PERSONAL_ACCESS_TOKEN is not set.');
   const endpoint = getApiEndpoint();
+  const webhookUserIdsByOrganization = new Map<string, Map<string, Set<string>>>();
+  await Promise.all(
+    [...new Set(mappings.map((mapping) => mapping.organizationId))].map(async (id) => {
+      webhookUserIdsByOrganization.set(id, await loadWebhookUserIds(prisma, id));
+    }),
+  );
   const results: BackfillResult[] = [];
   for (const mapping of mappings) {
     const base = {
@@ -210,9 +240,22 @@ async function planBackfill(prisma: PrismaClient, organizationId: string | null)
       results.push({ ...base, status: 'SKIP', reason: '三种身份字段已完整。' });
       continue;
     }
+    const webhookUserIds = [...(
+      webhookUserIdsByOrganization.get(mapping.organizationId)?.get(mapping.yunxiaoDisplayName)
+      ?? new Set<string>()
+    )];
+    if (!mapping.yunxiaoUserId && webhookUserIds.length > 1) {
+      results.push({
+        ...base,
+        status: 'SKIP',
+        reason: `同名 webhook 用户超过一个，无法安全判断 userId：${webhookUserIds.join(', ')}`,
+      });
+      continue;
+    }
     try {
       const identity = await resolveIdentity(
         mapping.yunxiaoUserId,
+        webhookUserIds[0] ?? null,
         mapping.yunxiaoUserIdentifier,
         mapping.yunxiaoOrganizationIdentifier,
         token,
