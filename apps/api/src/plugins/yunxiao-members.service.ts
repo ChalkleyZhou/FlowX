@@ -73,6 +73,7 @@ export class YunxiaoMembersService {
       headers: {
         accept: 'application/json',
         authorization: `Bearer ${personalAccessToken}`,
+        'x-yunxiao-token': personalAccessToken,
       },
     });
     let responseBody: unknown = null;

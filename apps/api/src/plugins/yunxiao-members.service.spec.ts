@@ -67,6 +67,7 @@ describe('YunxiaoMembersService', () => {
       headers: {
         accept: 'application/json',
         authorization: 'Bearer personal-token',
+        'x-yunxiao-token': 'personal-token',
       },
     });
   });
@@ -90,6 +91,7 @@ describe('YunxiaoMembersService', () => {
     expect(options.headers).toEqual({
       accept: 'application/json',
       authorization: 'Bearer personal-token',
+      'x-yunxiao-token': 'personal-token',
     });
   });
 
