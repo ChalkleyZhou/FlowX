@@ -211,15 +211,27 @@ async function planBackfill(prisma: PrismaClient, organizationId: string | null)
       continue;
     }
     try {
+      const identity = await resolveIdentity(
+        mapping.yunxiaoUserId,
+        mapping.yunxiaoUserIdentifier,
+        mapping.yunxiaoOrganizationIdentifier,
+        token,
+        endpoint,
+      );
+      if (identity.status === 'READY') {
+        results.push({
+          ...base,
+          status: 'READY',
+          yunxiaoUserId: identity.userId,
+          yunxiaoMemberId: identity.memberId,
+          aliyunAccountId: identity.aliyunAccountId,
+        });
+        continue;
+      }
       results.push({
         ...base,
-        ...(await resolveIdentity(
-          mapping.yunxiaoUserId,
-          mapping.yunxiaoUserIdentifier,
-          mapping.yunxiaoOrganizationIdentifier,
-          token,
-          endpoint,
-        )),
+        status: 'SKIP',
+        reason: identity.reason,
       });
     } catch (error) {
       const reason = error instanceof YunxiaoApiError
