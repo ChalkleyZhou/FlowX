@@ -73,9 +73,10 @@ COPY --from=build /app/apps ./apps
 COPY --from=build /app/packages/flowx-protocol ./packages/flowx-protocol
 COPY scripts/clean-db.ts scripts/clean-db.sh ./scripts/
 COPY scripts/backfill-organization-admins.ts scripts/backfill-organization-admins.sh ./scripts/
+COPY scripts/backfill-yunxiao-member-mappings.ts scripts/backfill-yunxiao-member-mappings.sh ./scripts/
 COPY docker/start.sh /start.sh
 COPY docker/prisma-pre-db-push.sh /docker/prisma-pre-db-push.sh
-RUN chmod +x /start.sh /docker/prisma-pre-db-push.sh ./scripts/clean-db.sh ./scripts/backfill-organization-admins.sh
+RUN chmod +x /start.sh /docker/prisma-pre-db-push.sh ./scripts/clean-db.sh ./scripts/backfill-organization-admins.sh ./scripts/backfill-yunxiao-member-mappings.sh
 
 EXPOSE 3000 4173
 
