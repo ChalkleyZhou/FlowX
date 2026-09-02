@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { PlugZap, Save } from 'lucide-react';
+import { PlugZap, RefreshCw, Save } from 'lucide-react';
 import { useAuth } from '../auth';
 import { api } from '../api';
 import { PageHeader } from '../components/PageHeader';
@@ -7,24 +7,29 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { useToast } from '../components/ui/toast';
-import type { YunxiaoIntegrationStatus } from '../types';
+import type { YunxiaoIntegrationStatus, YunxiaoUnmatchedRecipient } from '../types';
 
 export function YunxiaoIntegrationPage() {
   const { session } = useAuth();
   const toast = useToast();
   const [status, setStatus] = useState<YunxiaoIntegrationStatus | null>(null);
   const [yunxiaoOrganizationIdentifier, setYunxiaoOrganizationIdentifier] = useState('');
+  const [unmatchedRecipients, setUnmatchedRecipients] = useState<YunxiaoUnmatchedRecipient[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const isAdmin = session?.organization?.role === 'admin';
 
   useEffect(() => {
     let cancelled = false;
-    api.getYunxiaoIntegration()
-      .then((result) => {
+    Promise.all([
+      api.getYunxiaoIntegration(),
+      api.getYunxiaoUnmatchedRecipients(),
+    ])
+      .then(([result, unmatched]) => {
         if (!cancelled) {
           setStatus(result);
           setYunxiaoOrganizationIdentifier(result.yunxiaoOrganizationIdentifier ?? '');
+          setUnmatchedRecipients(unmatched);
         }
       })
       .catch((error) => {
@@ -42,6 +47,14 @@ export function YunxiaoIntegrationPage() {
       cancelled = true;
     };
   }, [toast]);
+
+  async function refreshUnmatchedRecipients() {
+    try {
+      setUnmatchedRecipients(await api.getYunxiaoUnmatchedRecipients());
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '加载未匹配人员失败');
+    }
+  }
 
   async function toggleEnabled() {
     if (!status || !isAdmin) {
@@ -81,7 +94,7 @@ export function YunxiaoIntegrationPage() {
       <PageHeader
         eyebrow="Integration"
         title="云效集成"
-        description="接收云效工作项通知，并按负责人发送钉钉工作通知。"
+        description="接收云效工作项通知，并按云效成员 ID 发送钉钉工作通知。"
         icon={PlugZap}
       />
       <Card>
@@ -119,7 +132,12 @@ export function YunxiaoIntegrationPage() {
               <div className="grid gap-3 text-sm md:grid-cols-2">
                 <div className="rounded-md bg-muted p-3">
                   <div className="text-muted-foreground">服务配置</div>
-                  <div className="mt-1 font-medium">{status.configured ? '已配置 Secret' : '未配置 Secret'}</div>
+                  <div className="mt-1 font-medium">
+                    {status.configured ? 'Webhook Secret 已配置' : 'Webhook Secret 未配置'}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {status.openApiConfigured ? '云效 OpenAPI 已配置' : '云效 OpenAPI 未配置'}
+                  </div>
                 </div>
                 <div className="rounded-md bg-muted p-3">
                   <div className="text-muted-foreground">Webhook 地址</div>
@@ -151,6 +169,56 @@ export function YunxiaoIntegrationPage() {
                 <p className="text-sm text-muted-foreground">
                   填写云效 Webhook Body 中的 organizationIdentifier，只匹配当前 FlowX 组织的成员。
                 </p>
+              </div>
+              <div className="space-y-3 border-t border-border pt-5">
+                <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                  <div>
+                    <h3 className="text-sm font-semibold">未匹配人员</h3>
+                    <p className="text-sm text-muted-foreground">
+                      最近 100 条无法通过云效 ID 找到钉钉用户的记录。
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void refreshUnmatchedRecipients()}
+                  >
+                    <RefreshCw size={16} />
+                    刷新
+                  </Button>
+                </div>
+                {unmatchedRecipients.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">暂无未匹配人员。</p>
+                ) : (
+                  <div className="overflow-x-auto rounded-md border border-border">
+                    <table className="w-full min-w-[760px] text-left text-sm">
+                      <thead className="bg-muted text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">云效人员</th>
+                          <th className="px-3 py-2 font-medium">云效 ID</th>
+                          <th className="px-3 py-2 font-medium">角色</th>
+                          <th className="px-3 py-2 font-medium">项目</th>
+                          <th className="px-3 py-2 font-medium">原因</th>
+                          <th className="px-3 py-2 font-medium">最近发现</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {unmatchedRecipients.map((recipient) => (
+                          <tr key={recipient.id} className="border-t border-border align-top">
+                            <td className="px-3 py-2 font-medium">{recipient.yunxiaoDisplayName}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{recipient.yunxiaoUserIdentifier ?? '-'}</td>
+                            <td className="px-3 py-2">{recipient.roles.join('、')}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{recipient.projectId ?? '-'}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{recipient.reason ?? recipient.status}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">
+                              {new Date(recipient.lastSeenAt).toLocaleString('zh-CN')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </>
           ) : null}

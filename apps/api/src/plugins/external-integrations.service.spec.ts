@@ -32,6 +32,7 @@ describe('ExternalIntegrationsService', () => {
       provider: 'YUNXIAO',
       enabled: true,
       configured: true,
+      openApiConfigured: false,
       webhookPath: '/api/yunxiao-webhooks',
       yunxiaoOrganizationIdentifier: null,
     });

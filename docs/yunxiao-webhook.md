@@ -1,6 +1,6 @@
 # 云效 Webhook 钉钉通知接入
 
-FlowX 接收云效 Projex 自动化规则发送的原生“工作项数据”，根据负责人匹配 FlowX 中已同步的钉钉用户，并发送个人工作通知。
+FlowX 接收云效 Projex 自动化规则发送的原生“工作项数据”，通过云效项目成员 API 获取 `dingTalkId`，匹配 FlowX 中已同步的钉钉用户，并发送个人工作通知。
 
 ## FlowX 配置
 
@@ -8,11 +8,15 @@ API 服务配置一个专用 Webhook Secret：
 
 ```env
 YUNXIAO_WEBHOOK_SECRET="请使用随机且不可猜测的值"
+YUNXIAO_ACCESS_KEY_ID="云效 OpenAPI AccessKey ID"
+YUNXIAO_ACCESS_KEY_SECRET="云效 OpenAPI AccessKey Secret"
 ```
 
 该 Secret 只用于验证云效 Webhook，不是个人 API Token，也不授予 FlowX 用户权限。
 
 配置完成后，组织管理员需要在 FlowX「设置」→「云效集成」中填写云效 `organizationIdentifier` 并启用云效通知。停用不会删除配置和历史投递记录，重新启用即可恢复。未配置 Secret 或云效组织绑定时不能启用集成。
+
+云效 OpenAPI 凭据用于调用 `ListProjectMembers`，建议使用权限最小化的 RAM 身份。可选配置 `YUNXIAO_REGION_ID`（默认 `cn-hangzhou`）和 `YUNXIAO_API_ENDPOINT`。未配置 OpenAPI 凭据时，Webhook 仍会记录每个接收人的未匹配原因，但不会发送通知。
 
 ## 云效配置
 
@@ -44,9 +48,9 @@ FlowX 默认从工作项读取以下通知对象：
 - 验证者：`verifiers`、`verifier`、`verifyUsers`、`verifyUser`、`validators` 或 `validator`
 - 创建者：`creator`
 
-每个人员优先使用 `id`、`identifier` 或 `userId` 匹配 FlowX 用户账号，再使用 `name`、`realName`、`displayName`、`nickName` 或 `displayValue` 精确匹配姓名。匹配仅在绑定的 FlowX 钉钉组织内进行，且只考虑未停用成员；同一 FlowX 用户同时属于多个角色时只发送一次，投递记录会保留其全部角色。
+FlowX 使用工作项中的 `spaceIdentifier` 作为项目 ID，调用云效 `ListProjectMembers`（`targetType=Space`），先用通知对象的云效 `identifier` 匹配项目成员，再使用返回的 `dingTalkId` 匹配 FlowX 已同步的钉钉身份。不会使用姓名猜测接收人；同一 FlowX 用户同时属于多个角色时只发送一次，投递记录会保留其全部角色。
 
-可选通知对象未同步到 FlowX 时会跳过，不影响其他已匹配人员；所有通知对象均无法匹配时返回 `422`。存在重名时不会猜测接收人或误发消息。因此，接入前应先由管理员在 FlowX“用户管理”中完成钉钉用户同步。
+每个通知对象的匹配结果都会保存。设置页“未匹配人员”区域会展示最近记录、云效 ID、角色、项目和原因，包括项目成员不存在、云效成员没有 `dingTalkId`、FlowX 没有对应钉钉用户以及 OpenAPI 调用失败。可选通知对象未匹配时会跳过，不影响其他已匹配人员；所有通知对象均无法匹配时返回 `422`。因此，接入前应先由管理员在 FlowX“用户管理”中完成钉钉用户同步。
 
 ## 消息内容与重试
 

@@ -12,4 +12,5 @@ export interface BuiltInPlugin {
     enabled: boolean,
     options?: BuiltInPluginUpdateOptions,
   ): Promise<unknown>;
+  getUnmatchedRecipients(organizationId: string): Promise<unknown>;
 }

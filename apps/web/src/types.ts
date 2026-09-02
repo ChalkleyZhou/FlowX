@@ -620,8 +620,24 @@ export interface YunxiaoIntegrationStatus {
   provider: 'YUNXIAO';
   enabled: boolean;
   configured: boolean;
+  openApiConfigured: boolean;
   webhookPath: string;
   yunxiaoOrganizationIdentifier: string | null;
+}
+
+export interface YunxiaoUnmatchedRecipient {
+  id: string;
+  eventId: string;
+  workItemId: string;
+  projectId: string | null;
+  yunxiaoUserIdentifier: string | null;
+  yunxiaoDisplayName: string;
+  roles: string[];
+  status: string;
+  reason: string | null;
+  dingTalkId: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
 }
 
 export interface AiCredentialStatus {

@@ -78,6 +78,7 @@ const scopeFactories: Record<string, (organizationId: string) => Record<string, 
   Bug: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
   ExternalIntegration: (organizationId) => ({ organizationId }),
   YunxiaoWebhookDelivery: (organizationId) => ({ organizationId }),
+  YunxiaoWebhookRecipient: (organizationId) => ({ organizationId }),
 };
 
 export function isOrganizationScopedModel(model: string | undefined): boolean {

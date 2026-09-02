@@ -106,12 +106,38 @@ export class ExternalIntegrationsService {
     return integration?.enabled ?? this.hasWebhookSecret();
   }
 
+  async listYunxiaoUnmatchedRecipients(organizationId: string) {
+    return this.prisma.yunxiaoWebhookRecipient.findMany({
+      where: {
+        organizationId,
+        status: { not: 'MATCHED' },
+      },
+      orderBy: { lastSeenAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        eventId: true,
+        workItemId: true,
+        projectId: true,
+        yunxiaoUserIdentifier: true,
+        yunxiaoDisplayName: true,
+        roles: true,
+        status: true,
+        reason: true,
+        dingTalkId: true,
+        firstSeenAt: true,
+        lastSeenAt: true,
+      },
+    });
+  }
+
   private toStatus(enabled: boolean, yunxiaoOrganizationIdentifier: string | null) {
     const configured = this.hasWebhookSecret();
     return {
       provider: YUNXIAO_PROVIDER,
       enabled,
       configured,
+      openApiConfigured: this.hasYunxiaoOpenApiCredentials(),
       webhookPath: '/api/yunxiao-webhooks',
       yunxiaoOrganizationIdentifier,
     };
@@ -127,5 +153,12 @@ export class ExternalIntegrationsService {
 
   private hasWebhookSecret() {
     return Boolean(this.configService.get<string>('YUNXIAO_WEBHOOK_SECRET')?.trim());
+  }
+
+  private hasYunxiaoOpenApiCredentials() {
+    return Boolean(
+      this.configService.get<string>('YUNXIAO_ACCESS_KEY_ID')?.trim()
+      && this.configService.get<string>('YUNXIAO_ACCESS_KEY_SECRET')?.trim(),
+    );
   }
 }

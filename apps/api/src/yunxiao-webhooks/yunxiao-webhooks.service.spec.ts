@@ -17,8 +17,10 @@ describe('YunxiaoWebhooksService', () => {
   const deliveryFindUnique = vi.fn();
   const deliveryUpdate = vi.fn();
   const deliveryUpdateMany = vi.fn();
+  const recipientUpsert = vi.fn();
   const sendPersonalMarkdown = vi.fn();
   const isYunxiaoEnabled = vi.fn();
+  const listProjectMembers = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -27,6 +29,12 @@ describe('YunxiaoWebhooksService', () => {
     deliveryUpdate.mockResolvedValue({ id: 'delivery-1' });
     sendPersonalMarkdown.mockResolvedValue({ errcode: 0, task_id: 123 });
     isYunxiaoEnabled.mockResolvedValue(true);
+    recipientUpsert.mockResolvedValue({ id: 'recipient-audit-1' });
+    listProjectMembers.mockResolvedValue([
+      { identifier: 'yunxiao-user-1', dingTalkId: 'dingtalk-user-1', displayName: '张三', stamp: 'User' },
+      { identifier: 'yunxiao-user-2', dingTalkId: 'dingtalk-user-2', displayName: '李四', stamp: 'User' },
+      { identifier: 'yunxiao-user-3', dingTalkId: 'dingtalk-user-3', displayName: '王五', stamp: 'User' },
+    ]);
   });
 
   function createService(secret = 'yunxiao-secret') {
@@ -35,17 +43,19 @@ describe('YunxiaoWebhooksService', () => {
         get: (key: string) => key === 'YUNXIAO_WEBHOOK_SECRET' ? secret : undefined,
       } as ConfigService,
       {
-      userOrganization: { findMany: membershipFindMany },
-      externalIntegration: { findFirst: integrationFindFirst },
+        userOrganization: { findMany: membershipFindMany },
+        externalIntegration: { findFirst: integrationFindFirst },
         yunxiaoWebhookDelivery: {
           create: deliveryCreate,
           findUnique: deliveryFindUnique,
           update: deliveryUpdate,
           updateMany: deliveryUpdateMany,
         },
+        yunxiaoWebhookRecipient: { upsert: recipientUpsert },
       } as never,
       { sendPersonalMarkdown } as never,
       { isEnabled: isYunxiaoEnabled } as never,
+      { isConfigured: () => true, listProjectMembers } as never,
     );
   }
 
@@ -83,7 +93,7 @@ describe('YunxiaoWebhooksService', () => {
     );
   });
 
-  it('按负责人姓名匹配唯一的钉钉组织成员并发送个人消息', async () => {
+  it('通过云效成员 ID 和 dingTalkId 匹配唯一的钉钉组织成员并发送个人消息', async () => {
     membershipFindMany.mockResolvedValue([
       member('user-1', '张三', 'org-1', 'corp-1'),
       member('user-2', '李四', 'org-1', 'corp-1'),
@@ -115,9 +125,10 @@ describe('YunxiaoWebhooksService', () => {
         matchedUserId: 'user-1',
       }),
     });
+    expect(listProjectMembers).toHaveBeenCalledWith('yunxiao-org-1', 'space-1');
   });
 
-  it('优先按负责人 ID 匹配 FlowX 用户账号', async () => {
+  it('通过 dingTalkId 优先匹配 FlowX 用户账号而不使用姓名', async () => {
     membershipFindMany.mockResolvedValue([
       member('user-1', '钉钉张三', 'org-1', 'corp-1', 'yunxiao-user-1'),
       member('user-2', '张三', 'org-1', 'corp-1'),
@@ -168,7 +179,7 @@ describe('YunxiaoWebhooksService', () => {
     expect(deliveryCreate).toHaveBeenNthCalledWith(1, {
       data: expect.objectContaining({
         matchedUserId: 'user-1',
-        matchedBy: 'assignedTo.name',
+        matchedBy: 'assignedTo.id',
         recipient: {
           id: 'yunxiao-user-1',
           name: '张三',
@@ -191,6 +202,33 @@ describe('YunxiaoWebhooksService', () => {
       unmatchedCount: 1,
     });
     expect(sendPersonalMarkdown).toHaveBeenCalledOnce();
+    expect(recipientUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        yunxiaoDisplayName: '未同步用户',
+        status: 'UNMATCHED',
+        reason: 'Yunxiao recipient identifier is missing.',
+      }),
+    }));
+  });
+
+  it('云效成员没有 dingTalkId 时不猜测姓名并记录未匹配原因', async () => {
+    membershipFindMany.mockResolvedValue([
+      member('user-1', '张三', 'org-1', 'corp-1'),
+    ]);
+    listProjectMembers.mockResolvedValue([
+      { identifier: 'yunxiao-user-1', dingTalkId: null, displayName: '张三', stamp: 'User' },
+    ]);
+
+    await expect(createService().receive('yunxiao-secret', payload)).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    );
+    expect(sendPersonalMarkdown).not.toHaveBeenCalled();
+    expect(recipientUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        status: 'UNMATCHED',
+        reason: 'Yunxiao project member has no DingTalk id.',
+      }),
+    }));
   });
 
   it('兼容云效真实工作项中的 identifier、realName 和数字字段', async () => {
@@ -286,10 +324,10 @@ describe('YunxiaoWebhooksService', () => {
     expect(membershipFindMany).not.toHaveBeenCalled();
   });
 
-  it('负责人姓名在多个钉钉组织成员中重复时拒绝投递', async () => {
+  it('同一 dingTalkId 对应多个 FlowX 成员时拒绝投递', async () => {
     membershipFindMany.mockResolvedValue([
-      member('user-1', '张三', 'org-1', 'corp-1'),
-      member('user-2', '张三', 'org-2', 'corp-2'),
+      member('user-1', '张三', 'org-1', 'corp-1', null, 'dingtalk-user-1'),
+      member('user-2', '张三', 'org-2', 'corp-2', null, 'dingtalk-user-1'),
     ]);
 
     await expect(createService().receive('yunxiao-secret', payload)).rejects.toBeInstanceOf(
@@ -387,7 +425,7 @@ describe('YunxiaoWebhooksService', () => {
 
     await expect(createService().receive('yunxiao-secret', {
       ...payload,
-      participants: [{ realName: '李四' }],
+      participants: [{ identifier: 'yunxiao-user-2', realName: '李四' }],
     })).rejects.toMatchObject({
       status: 502,
       response: expect.objectContaining({
@@ -411,9 +449,6 @@ describe('YunxiaoWebhooksService', () => {
   });
 
   it('云效集成停用时接受请求但不发送通知', async () => {
-    membershipFindMany.mockResolvedValue([
-      member('user-1', '张三', 'org-1', 'corp-1'),
-    ]);
     isYunxiaoEnabled.mockResolvedValue(false);
 
     await expect(createService().receive('yunxiao-secret', payload)).resolves.toEqual({
@@ -422,6 +457,8 @@ describe('YunxiaoWebhooksService', () => {
     });
     expect(deliveryCreate).not.toHaveBeenCalled();
     expect(sendPersonalMarkdown).not.toHaveBeenCalled();
+    expect(membershipFindMany).not.toHaveBeenCalled();
+    expect(listProjectMembers).not.toHaveBeenCalled();
   });
 });
 
@@ -431,6 +468,7 @@ function member(
   organizationId: string,
   corpId: string,
   account: string | null = null,
+  dingTalkId = `dingtalk-${userId}`,
 ) {
   return {
     userId,
@@ -447,6 +485,11 @@ function member(
       email: null,
       status: 'ACTIVE',
       localCredential: null,
+      identities: [{
+        providerUserId: `staff:${corpId}:${dingTalkId}`,
+        providerUnionId: null,
+        providerRawProfile: { userid: dingTalkId },
+      }],
     },
   };
 }

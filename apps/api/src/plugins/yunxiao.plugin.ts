@@ -25,4 +25,8 @@ export class YunxiaoPlugin implements BuiltInPlugin {
   isEnabled(organizationId: string) {
     return this.integrations.isYunxiaoEnabled(organizationId);
   }
+
+  getUnmatchedRecipients(organizationId: string) {
+    return this.integrations.listYunxiaoUnmatchedRecipients(organizationId);
+  }
 }

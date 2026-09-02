@@ -10,6 +10,7 @@ CODE_REVIEW_SOURCE_MIGRATION_SQL="/app/prisma/migrations/20260717100000_add_code
 WORKSPACE_ORGANIZATION_MIGRATION_SQL="/app/prisma/migrations/20260826160000_add_workspace_organization/migration.sql"
 YUNXIAO_ORGANIZATION_BINDING_MIGRATION_SQL="/app/prisma/migrations/20260831130000_add_yunxiao_organization_binding/migration.sql"
 YUNXIAO_MULTI_RECIPIENT_MIGRATION_SQL="/app/prisma/migrations/20260831183000_expand_yunxiao_delivery_recipients/migration.sql"
+YUNXIAO_RECIPIENT_AUDIT_MIGRATION_SQL="/app/prisma/migrations/20260902090000_add_yunxiao_recipient_audit/migration.sql"
 
 resolve_db_path() {
   db_url="${DATABASE_URL:-file:/data/dev.db}"
@@ -108,6 +109,12 @@ if [ "$(table_exists YunxiaoWebhookDelivery)" = "1" ] \
     || [ "$(index_exists YunxiaoWebhookDelivery_organizationId_eventId_matchedUserId_key)" = "0" ]; }; then
   echo "Expanding Yunxiao webhook deliveries to multiple recipients in ${DB_PATH}..."
   sqlite3 "$DB_PATH" < "$YUNXIAO_MULTI_RECIPIENT_MIGRATION_SQL"
+fi
+
+# --- YunxiaoWebhookRecipient: persist every recipient matching result ---
+if [ "$(table_exists YunxiaoWebhookRecipient)" = "0" ]; then
+  echo "Creating YunxiaoWebhookRecipient audit table in ${DB_PATH}..."
+  sqlite3 "$DB_PATH" < "$YUNXIAO_RECIPIENT_AUDIT_MIGRATION_SQL"
 fi
 
 # --- Spec & Plan redesign: drop obsolete Task/Plan tables before db push ---

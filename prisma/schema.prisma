@@ -355,6 +355,7 @@ model User {
   assignedBugs    Bug[]                    @relation("BugAssignedTo")
   assignments     RequirementAssignment[]
   yunxiaoWebhookDeliveries YunxiaoWebhookDelivery[]
+  yunxiaoWebhookRecipients YunxiaoWebhookRecipient[] @relation("YunxiaoWebhookRecipientMatchedUser")
   claimedExecutionSessions ExecutionSession[]      @relation("ExecutionSessionClaimedBy")
   createdArtifacts         Artifact[]              @relation("ArtifactCreatedBy")
   createdAt       DateTime                 @default(now())
@@ -440,6 +441,7 @@ model Organization {
   executionSessions      ExecutionSession[]
   externalIntegrations   ExternalIntegration[]
   yunxiaoWebhookDeliveries YunxiaoWebhookDelivery[]
+  yunxiaoWebhookRecipients YunxiaoWebhookRecipient[]
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
 
@@ -484,6 +486,32 @@ model YunxiaoWebhookDelivery {
   @@index([organizationId, createdAt])
   @@index([matchedUserId, createdAt])
   @@index([status, createdAt])
+}
+
+model YunxiaoWebhookRecipient {
+  id                    String       @id @default(cuid())
+  organizationId        String
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  eventId               String
+  workItemId            String
+  projectId             String?
+  recipientKey          String
+  yunxiaoUserIdentifier String?
+  yunxiaoDisplayName    String
+  roles                 Json
+  status                String
+  reason                String?
+  dingTalkId            String?
+  matchedUserId         String?
+  matchedUser           User?        @relation("YunxiaoWebhookRecipientMatchedUser", fields: [matchedUserId], references: [id], onDelete: SetNull)
+  firstSeenAt           DateTime     @default(now())
+  lastSeenAt            DateTime     @default(now())
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  @@unique([organizationId, eventId, recipientKey])
+  @@index([organizationId, status, lastSeenAt])
+  @@index([organizationId, lastSeenAt])
 }
 
 model UserOrganization {

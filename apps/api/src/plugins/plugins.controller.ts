@@ -27,6 +27,12 @@ export class PluginsController {
     return this.registry.get('yunxiao').getStatus(organizationId);
   }
 
+  @Get('yunxiao/unmatched-recipients')
+  getYunxiaoUnmatchedRecipients(@Req() req: IntegrationRequest) {
+    const organizationId = this.requireOrganizationId(req);
+    return this.registry.get('yunxiao').getUnmatchedRecipients(organizationId);
+  }
+
   @Patch('yunxiao')
   updateYunxiao(
     @Body() dto: UpdateYunxiaoIntegrationDto,

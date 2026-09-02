@@ -79,6 +79,10 @@ DINGTALK_APP_ID=""
 DINGTALK_APP_SECRET=""
 DINGTALK_AGENT_ID=""
 YUNXIAO_WEBHOOK_SECRET=""
+YUNXIAO_ACCESS_KEY_ID=""
+YUNXIAO_ACCESS_KEY_SECRET=""
+YUNXIAO_REGION_ID="cn-hangzhou"
+YUNXIAO_API_ENDPOINT=""
 ```
 
 1. Install dependencies:
@@ -170,6 +174,9 @@ docker run -d \
   -e WEB_PORT=4173 \
   -e DATABASE_URL="file:/data/dev.db" \
   -e AI_EXECUTOR_PROVIDER="mock" \
+  -e YUNXIAO_WEBHOOK_SECRET="your_webhook_secret" \
+  -e YUNXIAO_ACCESS_KEY_ID="your_yunxiao_access_key_id" \
+  -e YUNXIAO_ACCESS_KEY_SECRET="your_yunxiao_access_key_secret" \
   -e OPENAI_API_KEY="your_openai_api_key" \
   -e CODEX_HOME="/data/.codex" \
   -e DINGTALK_APP_ID="your_app_id" \
@@ -276,7 +283,7 @@ codex login
 - For personal stage completion notifications, also set `DINGTALK_AGENT_ID`.
 - FlowX will try to notify only the current DingTalk login user who triggered the stage or confirmation, instead of broadcasting through a group robot.
 - 钉钉组织管理员可在“用户管理”中同步通讯录用户。同步会新增或更新用户，并将已不在钉钉通讯录中的钉钉成员移出当前组织；用户账号和历史数据不会删除，但该组织下的会话和 Personal API Token 会失效。FlowX 不保存部门结构；钉钉应用需具备通讯录部门和用户读取权限，包括 `qyapi_get_department_member`。
-- 支持通过固定地址 `/api/yunxiao-webhooks` 接收云效自动化规则的原生工作项数据，并默认向负责人、参与者、验证者和创建者发送去重后的钉钉个人通知。云效 Secret 通过 `X-Projex-Signature` 校验，服务端配置 `YUNXIAO_WEBHOOK_SECRET`，组织管理员可在“云效集成”页面绑定 `organizationIdentifier` 并一键启用或停用，不使用个人 API Token。详见[云效 Webhook 钉钉通知接入](docs/yunxiao-webhook.md)。
+- 支持通过固定地址 `/api/yunxiao-webhooks` 接收云效自动化规则的原生工作项数据，并通过云效项目成员 API 的 `dingTalkId` 向负责人、参与者、验证者和创建者发送去重后的钉钉个人通知。云效 Secret 通过 `X-Projex-Signature` 校验，服务端配置 `YUNXIAO_WEBHOOK_SECRET`、`YUNXIAO_ACCESS_KEY_ID` 和 `YUNXIAO_ACCESS_KEY_SECRET`，组织管理员可在“云效集成”页面绑定 `organizationIdentifier` 并一键启用或停用；未匹配人员会在页面保留记录。详见[云效 Webhook 钉钉通知接入](docs/yunxiao-webhook.md)。
 
 ## MVP flow
 

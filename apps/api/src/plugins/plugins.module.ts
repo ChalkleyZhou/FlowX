@@ -8,6 +8,7 @@ import { BuiltInPluginRegistry } from './plugin.registry';
 import { YunxiaoPlugin } from './yunxiao.plugin';
 import { ExternalIntegrationsService } from './external-integrations.service';
 import { PluginsController } from './plugins.controller';
+import { YunxiaoMembersService } from './yunxiao-members.service';
 
 @Module({
   imports: [ConfigModule, PrismaModule, NotificationsModule],
@@ -17,6 +18,7 @@ import { PluginsController } from './plugins.controller';
     ExternalIntegrationsService,
     YunxiaoPlugin,
     YunxiaoWebhooksService,
+    YunxiaoMembersService,
   ],
   exports: [ExternalIntegrationsService],
 })

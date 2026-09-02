@@ -13,6 +13,7 @@ describe('applyOrganizationScope', () => {
     ['Bug', { workspace: { organizationId } }],
     ['ExternalIntegration', { organizationId }],
     ['YunxiaoWebhookDelivery', { organizationId }],
+    ['YunxiaoWebhookRecipient', { organizationId }],
   ])('adds the organization boundary to %s reads', (model, expectedScope) => {
     const args = applyOrganizationScope(model, 'findMany', {
       where: { status: 'ACTIVE' },

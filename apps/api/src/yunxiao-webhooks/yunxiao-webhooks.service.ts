@@ -11,12 +11,21 @@ import { Prisma } from '@prisma/client';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { DingTalkNotificationService } from '../notifications/dingtalk-notification.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { YunxiaoMembersService, type YunxiaoProjectMember } from '../plugins/yunxiao-members.service';
 import { YunxiaoPlugin } from '../plugins/yunxiao.plugin';
 
 type YunxiaoPerson = {
   id: string | null;
   name: string;
   roles: YunxiaoRecipientRole[];
+};
+
+type RecipientAudit = {
+  recipient: YunxiaoPerson;
+  status: 'MATCHED' | 'UNMATCHED';
+  reason: string | null;
+  dingTalkId: string | null;
+  matchedUserId: string | null;
 };
 
 type YunxiaoRecipientRole = 'assignedTo' | 'participant' | 'verifier' | 'creator';
@@ -27,6 +36,7 @@ type NormalizedWorkItem = {
   eventId: string;
   serialNumber: string | null;
   subject: string;
+  projectId: string | null;
   assignedTo: YunxiaoPerson | null;
   recipients: YunxiaoPerson[];
   statusName: string | null;
@@ -44,6 +54,11 @@ type Member = {
     email: string | null;
     status: string;
     localCredential: { account: string } | null;
+    identities: Array<{
+      providerUserId: string;
+      providerUnionId: string | null;
+      providerRawProfile: unknown;
+    }>;
   };
   organization: {
     id: string;
@@ -56,7 +71,7 @@ type MatchedMember = {
   userId: string;
   organizationId: string;
   corpId: string;
-  matchedBy: `${YunxiaoRecipientRole}.id` | `${YunxiaoRecipientRole}.name`;
+  matchedBy: `${YunxiaoRecipientRole}.id`;
   recipient: YunxiaoPerson;
 };
 
@@ -67,20 +82,35 @@ export class YunxiaoWebhooksService {
     private readonly prisma: PrismaService,
     private readonly dingTalkNotification: DingTalkNotificationService,
     private readonly yunxiaoPlugin: YunxiaoPlugin,
+    private readonly yunxiaoMembers: YunxiaoMembersService,
   ) {}
 
   async receive(signature: string | undefined, payload: Record<string, unknown>) {
     this.verifySignature(signature);
     const workItem = this.normalizeWorkItem(payload);
-    const resolved = await this.resolveRecipients(
-      workItem.recipients,
+    const organizationId = await this.findBoundOrganizationId(
       workItem.yunxiaoOrganizationIdentifier,
     );
-    if (!(await this.yunxiaoPlugin.isEnabled(resolved.organizationId))) {
+    if (!(await this.yunxiaoPlugin.isEnabled(organizationId))) {
       return {
         accepted: true,
         disabled: true,
       };
+    }
+    const resolved = await this.resolveRecipients(
+      workItem.recipients,
+      workItem.yunxiaoOrganizationIdentifier,
+      workItem.projectId,
+      organizationId,
+    );
+    await this.recordRecipientAudits(resolved.audits, resolved.organizationId, workItem);
+    if (resolved.openApiError) {
+      throw new BadGatewayException(resolved.openApiError);
+    }
+    if (resolved.recipients.length === 0) {
+      throw new UnprocessableEntityException(
+        'No FlowX organization member matched the Yunxiao notification recipients.',
+      );
     }
     const markdown = this.buildMarkdown(workItem);
     const deliveryIds: string[] = [];
@@ -196,6 +226,12 @@ export class YunxiaoWebhooksService {
       .slice(0, 24);
     const status = this.asRecord(payload.status);
     const space = this.asRecord(payload.space);
+    const projectId = this.pickString(
+      payload.projectId,
+      payload.spaceIdentifier,
+      space?.identifier,
+      space?.id,
+    );
 
     return {
       id,
@@ -203,6 +239,7 @@ export class YunxiaoWebhooksService {
       eventId: `${id}:${modifiedAt ?? payloadHash}`,
       serialNumber: this.pickStringOrNumber(payload.serialNumber),
       subject,
+      projectId,
       assignedTo,
       recipients,
       statusName: this.pickString(status?.displayName, status?.name),
@@ -256,40 +293,64 @@ export class YunxiaoWebhooksService {
   private async resolveRecipients(
     recipients: YunxiaoPerson[],
     yunxiaoOrganizationIdentifier: string,
+    projectId: string | null,
+    organizationId: string,
   ) {
-    const integration = await this.prisma.externalIntegration.findFirst({
-      where: {
-        provider: 'YUNXIAO',
-        yunxiaoOrganizationIdentifier,
-      },
-      select: { organizationId: true },
-    });
-    if (!integration) {
-      throw new UnprocessableEntityException(
-        'No FlowX organization is mapped to the Yunxiao organization.',
-      );
-    }
-
     const memberships = (await this.prisma.userOrganization.findMany({
       where: {
-        organizationId: integration.organizationId,
+        organizationId,
         user: { status: { not: 'DISABLED' } },
         organization: { provider: 'dingtalk' },
       },
       include: {
-        user: { include: { localCredential: true } },
+        user: { include: { localCredential: true, identities: { where: { provider: 'dingtalk' } } } },
         organization: true,
       },
     })) as Member[];
 
+    const normalizedRecipients = this.mergeRecipients(recipients);
     const matchedByUserId = new Map<string, MatchedMember>();
-    let unmatchedCount = 0;
-    for (const recipient of recipients) {
-      const matched = this.matchRecipient(memberships, recipient);
+    const audits: RecipientAudit[] = [];
+    let openApiError: string | null = null;
+    let projectMembers: YunxiaoProjectMember[] = [];
+    if (!this.yunxiaoMembers.isConfigured()) {
+      openApiError = 'Yunxiao OpenAPI credentials are not configured.';
+    } else if (projectId) {
+      try {
+        projectMembers = await this.yunxiaoMembers.listProjectMembers(
+          yunxiaoOrganizationIdentifier,
+          projectId,
+        );
+      } catch {
+        openApiError = 'Yunxiao project member API request failed.';
+      }
+    }
+    for (const recipient of normalizedRecipients) {
+      const projectMember = projectMembers.find((member) => member.identifier === recipient.id);
+      let matched: MatchedMember | null = null;
+      let reason: string | null = null;
+      let dingTalkId: string | null = projectMember?.dingTalkId ?? null;
+      if (!recipient.id) {
+        reason = 'Yunxiao recipient identifier is missing.';
+      } else if (openApiError) {
+        reason = openApiError;
+      } else if (!projectId) {
+        reason = 'Yunxiao work item project identifier is missing.';
+      } else if (!projectMember) {
+        reason = 'Yunxiao recipient is not a member of the project.';
+      } else if (!projectMember.dingTalkId) {
+        reason = 'Yunxiao project member has no DingTalk id.';
+      } else {
+        matched = this.matchRecipient(memberships, recipient, projectMember.dingTalkId);
+        if (!matched) {
+          reason = 'No FlowX member has the Yunxiao member DingTalk id.';
+        }
+      }
       if (!matched) {
-        unmatchedCount += 1;
+        audits.push({ recipient, status: 'UNMATCHED', reason, dingTalkId, matchedUserId: null });
         continue;
       }
+      audits.push({ recipient, status: 'MATCHED', reason: null, dingTalkId, matchedUserId: matched.userId });
       const existing = matchedByUserId.get(matched.userId);
       if (existing) {
         for (const role of matched.recipient.roles) {
@@ -303,43 +364,95 @@ export class YunxiaoWebhooksService {
     }
 
     const matchedRecipients = [...matchedByUserId.values()];
-    if (matchedRecipients.length === 0) {
-      throw new UnprocessableEntityException(
-        'No FlowX organization member matched the Yunxiao notification recipients.',
-      );
-    }
     return {
-      organizationId: integration.organizationId,
+      organizationId,
       recipients: matchedRecipients,
-      unmatchedCount,
+      audits,
+      openApiError,
+      unmatchedCount: audits.filter((audit) => audit.status === 'UNMATCHED').length,
     };
   }
 
-  private matchRecipient(memberships: Member[], recipient: YunxiaoPerson) {
-    const role = recipient.roles[0];
-    if (recipient.id) {
-      const idMatches = memberships.filter((membership) =>
-        [membership.user.account, membership.user.localCredential?.account].some((value) =>
-          this.same(value, recipient.id as string),
-        ),
+  private async findBoundOrganizationId(yunxiaoOrganizationIdentifier: string) {
+    const integration = await this.prisma.externalIntegration.findFirst({
+      where: {
+        provider: 'YUNXIAO',
+        yunxiaoOrganizationIdentifier,
+      },
+      select: { organizationId: true },
+    });
+    if (!integration) {
+      throw new UnprocessableEntityException(
+        'No FlowX organization is mapped to the Yunxiao organization.',
       );
-      if (idMatches.length === 1) {
-        return this.toMatchedMember(idMatches[0], recipient, `${role}.id`);
-      }
-      if (idMatches.length > 1) {
-        throw new UnprocessableEntityException(
-          'A Yunxiao notification recipient matched multiple FlowX organization members.',
-        );
-      }
     }
+    return integration.organizationId;
+  }
 
-    const nameMatches = memberships.filter((membership) =>
-      this.same(membership.user.displayName, recipient.name),
-    );
-    if (nameMatches.length === 1) {
-      return this.toMatchedMember(nameMatches[0], recipient, `${role}.name`);
+  private async recordRecipientAudits(
+    audits: RecipientAudit[],
+    organizationId: string,
+    workItem: NormalizedWorkItem,
+  ) {
+    for (const audit of audits) {
+      const recipientKey = this.recipientKey(audit.recipient);
+      await this.prisma.yunxiaoWebhookRecipient.upsert({
+        where: {
+          organizationId_eventId_recipientKey: {
+            organizationId,
+            eventId: workItem.eventId,
+            recipientKey,
+          },
+        },
+        create: {
+          organizationId,
+          eventId: workItem.eventId,
+          workItemId: workItem.id,
+          projectId: workItem.projectId,
+          recipientKey,
+          yunxiaoUserIdentifier: audit.recipient.id,
+          yunxiaoDisplayName: audit.recipient.name,
+          roles: this.toJson(audit.recipient.roles),
+          status: audit.status,
+          reason: audit.reason,
+          dingTalkId: audit.dingTalkId,
+          matchedUserId: audit.matchedUserId,
+        },
+        update: {
+          workItemId: workItem.id,
+          projectId: workItem.projectId,
+          yunxiaoUserIdentifier: audit.recipient.id,
+          yunxiaoDisplayName: audit.recipient.name,
+          roles: this.toJson(audit.recipient.roles),
+          status: audit.status,
+          reason: audit.reason,
+          dingTalkId: audit.dingTalkId,
+          matchedUserId: audit.matchedUserId,
+          lastSeenAt: new Date(),
+        },
+      });
     }
-    if (nameMatches.length > 1) {
+  }
+
+  private matchRecipient(memberships: Member[], recipient: YunxiaoPerson, dingTalkId: string) {
+    const role = recipient.roles[0];
+    const idMatches = memberships.filter((membership) =>
+      membership.user.identities.some((identity) => {
+        const profile = this.asRecord(identity.providerRawProfile);
+        return [
+          identity.providerUserId,
+          identity.providerUnionId,
+          profile?.userid,
+          profile?.userId,
+          profile?.staffId,
+          profile?.staffid,
+        ].some((value) => this.same(value, dingTalkId));
+      }),
+    );
+    if (idMatches.length === 1) {
+      return this.toMatchedMember(idMatches[0], recipient, `${role}.id`);
+    }
+    if (idMatches.length > 1) {
       throw new UnprocessableEntityException(
         'A Yunxiao notification recipient matched multiple FlowX organization members.',
       );
@@ -472,6 +585,30 @@ export class YunxiaoWebhooksService {
   private same(actual: unknown, expected: string) {
     return typeof actual === 'string'
       && actual.trim().toLocaleLowerCase() === expected.trim().toLocaleLowerCase();
+  }
+
+  private mergeRecipients(recipients: YunxiaoPerson[]) {
+    const merged = new Map<string, YunxiaoPerson>();
+    for (const recipient of recipients) {
+      const key = this.recipientKey(recipient);
+      const existing = merged.get(key);
+      if (!existing) {
+        merged.set(key, { ...recipient, roles: [...recipient.roles] });
+        continue;
+      }
+      for (const role of recipient.roles) {
+        if (!existing.roles.includes(role)) {
+          existing.roles.push(role);
+        }
+      }
+    }
+    return [...merged.values()];
+  }
+
+  private recipientKey(recipient: YunxiaoPerson) {
+    return recipient.id
+      ? `id:${recipient.id}`
+      : `name:${recipient.name.trim().toLocaleLowerCase()}`;
   }
 
   private parsePeople(value: unknown, role: YunxiaoRecipientRole): YunxiaoPerson[] {

@@ -41,6 +41,7 @@ import type {
   WorkflowRun,
   Workspace,
   YunxiaoIntegrationStatus,
+  YunxiaoUnmatchedRecipient,
 } from './types';
 
 const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
@@ -526,6 +527,8 @@ export const api = {
   getCurrentSession: () => request<AuthSession>('/auth/session/me'),
   getYunxiaoIntegration: () =>
     request<YunxiaoIntegrationStatus>('/integrations/yunxiao'),
+  getYunxiaoUnmatchedRecipients: () =>
+    request<YunxiaoUnmatchedRecipient[]>('/integrations/yunxiao/unmatched-recipients'),
   updateYunxiaoIntegration: (payload: {
     enabled: boolean;
     yunxiaoOrganizationIdentifier?: string | null;
