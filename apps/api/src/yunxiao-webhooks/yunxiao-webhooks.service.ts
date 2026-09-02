@@ -1,6 +1,7 @@
 import {
   BadGatewayException,
   BadRequestException,
+  Logger,
   Injectable,
   ServiceUnavailableException,
   UnauthorizedException,
@@ -77,6 +78,8 @@ type MatchedMember = {
 
 @Injectable()
 export class YunxiaoWebhooksService {
+  private readonly logger = new Logger(YunxiaoWebhooksService.name);
+
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
@@ -86,8 +89,25 @@ export class YunxiaoWebhooksService {
   ) {}
 
   async receive(signature: string | undefined, payload: Record<string, unknown>) {
+    this.logger.log(JSON.stringify({
+      event: 'YUNXIAO_WEBHOOK_REQUEST',
+      signaturePresent: Boolean(signature?.trim()),
+      payloadKeys: Object.keys(payload).sort(),
+    }));
     this.verifySignature(signature);
     const workItem = this.normalizeWorkItem(payload);
+    this.logger.log(JSON.stringify({
+      event: 'YUNXIAO_WEBHOOK_RECEIVED',
+      organizationIdentifier: workItem.yunxiaoOrganizationIdentifier,
+      workItemId: workItem.id,
+      projectId: workItem.projectId,
+      payloadKeys: Object.keys(payload).sort(),
+      recipients: workItem.recipients.map((recipient) => ({
+        id: recipient.id,
+        name: recipient.name,
+        roles: recipient.roles,
+      })),
+    }));
     const organizationId = await this.findBoundOrganizationId(
       workItem.yunxiaoOrganizationIdentifier,
     );
