@@ -79,6 +79,7 @@ const scopeFactories: Record<string, (organizationId: string) => Record<string, 
   ExternalIntegration: (organizationId) => ({ organizationId }),
   YunxiaoWebhookDelivery: (organizationId) => ({ organizationId }),
   YunxiaoWebhookRecipient: (organizationId) => ({ organizationId }),
+  YunxiaoMemberMapping: (organizationId) => ({ organizationId }),
 };
 
 export function isOrganizationScopedModel(model: string | undefined): boolean {

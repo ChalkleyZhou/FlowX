@@ -13,4 +13,12 @@ export interface BuiltInPlugin {
     options?: BuiltInPluginUpdateOptions,
   ): Promise<unknown>;
   getUnmatchedRecipients(organizationId: string): Promise<unknown>;
+  getProjectMembers(organizationId: string, projectId: string): Promise<unknown>;
+  setMemberMapping(
+    organizationId: string,
+    actingUserId: string,
+    yunxiaoUserIdentifier: string,
+    yunxiaoDisplayName: string,
+    flowxUserId: string | null,
+  ): Promise<unknown>;
 }

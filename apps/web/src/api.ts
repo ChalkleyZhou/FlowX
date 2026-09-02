@@ -41,6 +41,7 @@ import type {
   WorkflowRun,
   Workspace,
   YunxiaoIntegrationStatus,
+  YunxiaoProjectMembersResponse,
   YunxiaoUnmatchedRecipient,
 } from './types';
 
@@ -529,6 +530,19 @@ export const api = {
     request<YunxiaoIntegrationStatus>('/integrations/yunxiao'),
   getYunxiaoUnmatchedRecipients: () =>
     request<YunxiaoUnmatchedRecipient[]>('/integrations/yunxiao/unmatched-recipients'),
+  getYunxiaoProjectMembers: (projectId: string) =>
+    request<YunxiaoProjectMembersResponse>(
+      `/integrations/yunxiao/members?projectId=${encodeURIComponent(projectId)}`,
+    ),
+  updateYunxiaoMemberMapping: (payload: {
+    yunxiaoUserIdentifier: string;
+    yunxiaoDisplayName?: string;
+    flowxUserId: string | null;
+  }) =>
+    request('/integrations/yunxiao/member-mapping', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
   updateYunxiaoIntegration: (payload: {
     enabled: boolean;
     yunxiaoOrganizationIdentifier?: string | null;

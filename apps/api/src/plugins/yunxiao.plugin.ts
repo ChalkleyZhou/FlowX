@@ -29,4 +29,24 @@ export class YunxiaoPlugin implements BuiltInPlugin {
   getUnmatchedRecipients(organizationId: string) {
     return this.integrations.listYunxiaoUnmatchedRecipients(organizationId);
   }
+
+  getProjectMembers(organizationId: string, projectId: string) {
+    return this.integrations.listYunxiaoProjectMembers(organizationId, projectId);
+  }
+
+  setMemberMapping(
+    organizationId: string,
+    actingUserId: string,
+    yunxiaoUserIdentifier: string,
+    yunxiaoDisplayName: string,
+    flowxUserId: string | null,
+  ) {
+    return this.integrations.setYunxiaoMemberMapping(
+      organizationId,
+      actingUserId,
+      yunxiaoUserIdentifier,
+      yunxiaoDisplayName,
+      flowxUserId,
+    );
+  }
 }

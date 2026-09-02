@@ -4,10 +4,12 @@ import {
   Controller,
   Get,
   Patch,
+  Query,
   Req,
   UnauthorizedException,
 } from '@nestjs/common';
 import { UpdateYunxiaoIntegrationDto } from './dto/update-yunxiao-integration.dto';
+import { UpdateYunxiaoMemberMappingDto } from './dto/update-yunxiao-member-mapping.dto';
 import { BuiltInPluginRegistry } from './plugin.registry';
 
 type IntegrationRequest = {
@@ -31,6 +33,31 @@ export class PluginsController {
   getYunxiaoUnmatchedRecipients(@Req() req: IntegrationRequest) {
     const organizationId = this.requireOrganizationId(req);
     return this.registry.get('yunxiao').getUnmatchedRecipients(organizationId);
+  }
+
+  @Get('yunxiao/members')
+  getYunxiaoProjectMembers(@Query('projectId') projectId: string, @Req() req: IntegrationRequest) {
+    const organizationId = this.requireOrganizationId(req);
+    return this.registry.get('yunxiao').getProjectMembers(organizationId, projectId ?? '');
+  }
+
+  @Patch('yunxiao/member-mapping')
+  updateYunxiaoMemberMapping(
+    @Body() dto: UpdateYunxiaoMemberMappingDto,
+    @Req() req: IntegrationRequest,
+  ) {
+    const organizationId = this.requireOrganizationId(req);
+    const userId = req.authSession?.user?.id?.trim();
+    if (!userId) {
+      throw new UnauthorizedException('Missing authenticated user.');
+    }
+    return this.registry.get('yunxiao').setMemberMapping(
+      organizationId,
+      userId,
+      dto.yunxiaoUserIdentifier,
+      dto.yunxiaoDisplayName ?? '',
+      dto.flowxUserId ?? null,
+    );
   }
 
   @Patch('yunxiao')

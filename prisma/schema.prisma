@@ -356,6 +356,7 @@ model User {
   assignments     RequirementAssignment[]
   yunxiaoWebhookDeliveries YunxiaoWebhookDelivery[]
   yunxiaoWebhookRecipients YunxiaoWebhookRecipient[] @relation("YunxiaoWebhookRecipientMatchedUser")
+  yunxiaoMemberMappings YunxiaoMemberMapping[] @relation("YunxiaoMemberMappingFlowXUser")
   claimedExecutionSessions ExecutionSession[]      @relation("ExecutionSessionClaimedBy")
   createdArtifacts         Artifact[]              @relation("ArtifactCreatedBy")
   createdAt       DateTime                 @default(now())
@@ -442,6 +443,7 @@ model Organization {
   externalIntegrations   ExternalIntegration[]
   yunxiaoWebhookDeliveries YunxiaoWebhookDelivery[]
   yunxiaoWebhookRecipients YunxiaoWebhookRecipient[]
+  yunxiaoMemberMappings   YunxiaoMemberMapping[]
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
 
@@ -512,6 +514,22 @@ model YunxiaoWebhookRecipient {
   @@unique([organizationId, eventId, recipientKey])
   @@index([organizationId, status, lastSeenAt])
   @@index([organizationId, lastSeenAt])
+}
+
+model YunxiaoMemberMapping {
+  id                            String       @id @default(cuid())
+  organizationId                String
+  organization                  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  yunxiaoOrganizationIdentifier String
+  yunxiaoUserIdentifier         String
+  yunxiaoDisplayName            String
+  flowxUserId                   String
+  flowxUser                     User         @relation("YunxiaoMemberMappingFlowXUser", fields: [flowxUserId], references: [id], onDelete: Cascade)
+  createdAt                     DateTime     @default(now())
+  updatedAt                     DateTime     @updatedAt
+
+  @@unique([organizationId, yunxiaoOrganizationIdentifier, yunxiaoUserIdentifier])
+  @@index([organizationId, flowxUserId])
 }
 
 model UserOrganization {

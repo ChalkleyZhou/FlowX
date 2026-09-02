@@ -11,6 +11,8 @@ export type YunxiaoProjectMember = {
   displayName: string;
   displayRealName: string | null;
   stamp: string | null;
+  roleName: string | null;
+  roleId: string | null;
 };
 
 @Injectable()
@@ -63,28 +65,38 @@ export class YunxiaoMembersService {
   ) {
     const endpoint = this.getApiEndpoint();
     const url = new URL(
-      `/organization/${encodeURIComponent(organizationId)}/projects/${encodeURIComponent(projectId)}/listMembers`,
+      `/oapi/v1/projex/organizations/${encodeURIComponent(organizationId)}/projects/${encodeURIComponent(projectId)}/members`,
       endpoint,
     );
-    url.searchParams.set('targetType', 'Space');
 
     const response = await fetch(url, {
       headers: {
         accept: 'application/json',
-        'x-yunxiao-token': personalAccessToken,
+        authorization: `Bearer ${personalAccessToken}`,
       },
     });
-    let body: Record<string, unknown> | null = null;
+    let responseBody: unknown = null;
     try {
-      body = this.asRecord(await response.json());
+      responseBody = await response.json();
     } catch {
-      body = null;
+      responseBody = null;
     }
-    if (!response.ok || body?.success !== true) {
+    if (!response.ok) {
       throw new Error(`Yunxiao project member API request failed (${response.status}).`);
     }
 
-    return this.normalizeMembers(Array.isArray(body.members) ? body.members : []);
+    const body = this.asRecord(responseBody);
+    const data = this.asRecord(body?.data);
+    const members = Array.isArray(responseBody)
+      ? responseBody
+      : Array.isArray(body?.members)
+        ? body.members
+        : Array.isArray(body?.data)
+          ? body.data
+          : Array.isArray(data?.members)
+            ? data.members
+            : [];
+    return this.normalizeMembers(members);
   }
 
   private normalizeMembers(members: unknown[]) {
@@ -95,9 +107,10 @@ export class YunxiaoMembersService {
           return null;
         }
         return {
-          identifier: this.pickString(member.identifier),
+          identifier: this.pickString(member.identifier, member.userId),
           dingTalkId: this.pickString(member.dingTalkId),
           displayName: this.pickString(
+            member.userName,
             member.displayName,
             member.displayRealName,
             member.realName,
@@ -107,6 +120,8 @@ export class YunxiaoMembersService {
           ) ?? '未知云效用户',
           displayRealName: this.pickString(member.displayRealName, member.realName),
           stamp: this.pickString(member.stamp),
+          roleName: this.pickString(member.roleName),
+          roleId: this.pickString(member.roleId),
         };
       })
       .filter((member): member is YunxiaoProjectMember =>
@@ -131,8 +146,7 @@ export class YunxiaoMembersService {
         ? configuredEndpoint
         : `https://${configuredEndpoint}`;
     }
-    const regionId = this.configService.get<string>('YUNXIAO_REGION_ID')?.trim() || 'cn-hangzhou';
-    return `https://devops.${regionId}.aliyuncs.com`;
+    return 'https://openapi-rdc.aliyuncs.com';
   }
 
   private asRecord(value: unknown) {

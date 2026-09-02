@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { YunxiaoMembersService } from './yunxiao-members.service';
 import type { BuiltInPluginUpdateOptions } from './plugin.types';
 
 const YUNXIAO_PROVIDER = 'YUNXIAO';
@@ -16,6 +17,7 @@ export class ExternalIntegrationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly yunxiaoMembers: YunxiaoMembersService,
   ) {}
 
   async getYunxiaoStatus(organizationId: string) {
@@ -127,6 +129,142 @@ export class ExternalIntegrationsService {
         dingTalkId: true,
         firstSeenAt: true,
         lastSeenAt: true,
+      },
+    });
+  }
+
+  async listYunxiaoProjectMembers(organizationId: string, projectId: string) {
+    const normalizedProjectId = projectId.trim();
+    if (!normalizedProjectId) {
+      throw new BadRequestException('Yunxiao project identifier is required.');
+    }
+    const integration = await this.prisma.externalIntegration.findFirst({
+      where: { organizationId, provider: YUNXIAO_PROVIDER },
+      select: { yunxiaoOrganizationIdentifier: true },
+    });
+    const yunxiaoOrganizationIdentifier = integration?.yunxiaoOrganizationIdentifier;
+    if (!yunxiaoOrganizationIdentifier) {
+      throw new BadRequestException(
+        'Please bind a Yunxiao organization before listing project members.',
+      );
+    }
+
+    const [members, mappings, organizationMembers] = await Promise.all([
+      this.yunxiaoMembers.listProjectMembers(yunxiaoOrganizationIdentifier, normalizedProjectId),
+      this.prisma.yunxiaoMemberMapping.findMany({
+        where: { organizationId, yunxiaoOrganizationIdentifier },
+        select: { yunxiaoUserIdentifier: true, flowxUserId: true },
+      }),
+      this.prisma.userOrganization.findMany({
+        where: {
+          organizationId,
+          user: { status: { not: 'DISABLED' } },
+        },
+        select: {
+          user: {
+            select: { id: true, displayName: true, account: true, email: true },
+          },
+        },
+      }),
+    ]);
+    const mappingByYunxiaoId = new Map(
+      mappings.map((mapping) => [mapping.yunxiaoUserIdentifier, mapping.flowxUserId]),
+    );
+
+    return {
+      projectId: normalizedProjectId,
+      yunxiaoOrganizationIdentifier,
+      members: members.map((member) => ({
+        ...member,
+        flowxUserId: member.identifier
+          ? mappingByYunxiaoId.get(member.identifier) ?? null
+          : null,
+      })),
+      flowxUsers: organizationMembers.map(({ user }) => user),
+    };
+  }
+
+  async setYunxiaoMemberMapping(
+    organizationId: string,
+    actingUserId: string,
+    yunxiaoUserIdentifier: string,
+    yunxiaoDisplayName: string | undefined,
+    flowxUserId: string | null,
+  ) {
+    const membership = await this.prisma.userOrganization.findUnique({
+      where: {
+        userId_organizationId: {
+          userId: actingUserId,
+          organizationId,
+        },
+      },
+    });
+    if (!membership || membership.role !== 'admin') {
+      throw new ForbiddenException('Organization admin permission required.');
+    }
+
+    const integration = await this.prisma.externalIntegration.findFirst({
+      where: { organizationId, provider: YUNXIAO_PROVIDER },
+      select: { yunxiaoOrganizationIdentifier: true },
+    });
+    const yunxiaoOrganizationIdentifier = integration?.yunxiaoOrganizationIdentifier;
+    if (!yunxiaoOrganizationIdentifier) {
+      throw new BadRequestException(
+        'Please bind a Yunxiao organization before saving member mappings.',
+      );
+    }
+
+    const normalizedYunxiaoUserIdentifier = yunxiaoUserIdentifier.trim();
+    if (!normalizedYunxiaoUserIdentifier) {
+      throw new BadRequestException('Yunxiao user identifier is required.');
+    }
+    const mappingUnique = {
+      organizationId_yunxiaoOrganizationIdentifier_yunxiaoUserIdentifier: {
+        organizationId,
+        yunxiaoOrganizationIdentifier,
+        yunxiaoUserIdentifier: normalizedYunxiaoUserIdentifier,
+      },
+    };
+    if (!flowxUserId) {
+      await this.prisma.yunxiaoMemberMapping.deleteMany({
+        where: {
+          organizationId,
+          yunxiaoOrganizationIdentifier,
+          yunxiaoUserIdentifier: normalizedYunxiaoUserIdentifier,
+        },
+      });
+      return { mapped: false };
+    }
+
+    const flowxMembership = await this.prisma.userOrganization.findUnique({
+      where: {
+        userId_organizationId: { userId: flowxUserId, organizationId },
+      },
+      include: {
+        user: { select: { id: true, displayName: true, account: true, email: true, status: true } },
+      },
+    });
+    if (!flowxMembership || flowxMembership.user.status === 'DISABLED') {
+      throw new BadRequestException('FlowX user must be an active member of the organization.');
+    }
+
+    return this.prisma.yunxiaoMemberMapping.upsert({
+      where: mappingUnique,
+      create: {
+        organizationId,
+        yunxiaoOrganizationIdentifier,
+        yunxiaoUserIdentifier: normalizedYunxiaoUserIdentifier,
+        yunxiaoDisplayName: yunxiaoDisplayName?.trim() || '未知云效用户',
+        flowxUserId,
+      },
+      update: {
+        yunxiaoDisplayName: yunxiaoDisplayName?.trim() || '未知云效用户',
+        flowxUserId,
+      },
+      select: {
+        yunxiaoUserIdentifier: true,
+        yunxiaoDisplayName: true,
+        flowxUserId: true,
       },
     });
   }

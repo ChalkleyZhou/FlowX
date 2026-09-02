@@ -14,6 +14,7 @@ describe('applyOrganizationScope', () => {
     ['ExternalIntegration', { organizationId }],
     ['YunxiaoWebhookDelivery', { organizationId }],
     ['YunxiaoWebhookRecipient', { organizationId }],
+    ['YunxiaoMemberMapping', { organizationId }],
   ])('adds the organization boundary to %s reads', (model, expectedScope) => {
     const args = applyOrganizationScope(model, 'findMany', {
       where: { status: 'ACTIVE' },

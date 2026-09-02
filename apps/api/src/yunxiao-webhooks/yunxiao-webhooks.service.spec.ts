@@ -21,6 +21,7 @@ describe('YunxiaoWebhooksService', () => {
   const sendPersonalMarkdown = vi.fn();
   const isYunxiaoEnabled = vi.fn();
   const listProjectMembers = vi.fn();
+  const mappingFindMany = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -30,6 +31,7 @@ describe('YunxiaoWebhooksService', () => {
     sendPersonalMarkdown.mockResolvedValue({ errcode: 0, task_id: 123 });
     isYunxiaoEnabled.mockResolvedValue(true);
     recipientUpsert.mockResolvedValue({ id: 'recipient-audit-1' });
+    mappingFindMany.mockResolvedValue([]);
     listProjectMembers.mockResolvedValue([
       { identifier: 'yunxiao-user-1', dingTalkId: 'dingtalk-user-1', displayName: '张三', stamp: 'User' },
       { identifier: 'yunxiao-user-2', dingTalkId: 'dingtalk-user-2', displayName: '李四', stamp: 'User' },
@@ -52,6 +54,7 @@ describe('YunxiaoWebhooksService', () => {
           updateMany: deliveryUpdateMany,
         },
         yunxiaoWebhookRecipient: { upsert: recipientUpsert },
+        yunxiaoMemberMapping: { findMany: mappingFindMany },
       } as never,
       { sendPersonalMarkdown } as never,
       { isEnabled: isYunxiaoEnabled } as never,
@@ -226,7 +229,32 @@ describe('YunxiaoWebhooksService', () => {
     expect(recipientUpsert).toHaveBeenCalledWith(expect.objectContaining({
       create: expect.objectContaining({
         status: 'UNMATCHED',
-        reason: 'Yunxiao project member has no DingTalk id.',
+        reason: 'No FlowX user is mapped to the Yunxiao member.',
+      }),
+    }));
+  });
+
+  it('个人 Token 返回的云效 userId 可以通过手动映射发送通知', async () => {
+    membershipFindMany.mockResolvedValue([
+      member('user-1', 'FlowX 张三', 'org-1', 'corp-1'),
+    ]);
+    listProjectMembers.mockResolvedValue([
+      { identifier: 'yunxiao-user-1', dingTalkId: null, displayName: '云效张三', stamp: 'User' },
+    ]);
+    mappingFindMany.mockResolvedValue([
+      { yunxiaoUserIdentifier: 'yunxiao-user-1', flowxUserId: 'user-1' },
+    ]);
+
+    await expect(createService().receive('yunxiao-secret', payload)).resolves.toEqual(
+      singleDeliveryResult,
+    );
+    expect(sendPersonalMarkdown).toHaveBeenCalledWith(
+      expect.objectContaining({ flowxUserId: 'user-1' }),
+    );
+    expect(recipientUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        status: 'MATCHED',
+        matchedUserId: 'user-1',
       }),
     }));
   });

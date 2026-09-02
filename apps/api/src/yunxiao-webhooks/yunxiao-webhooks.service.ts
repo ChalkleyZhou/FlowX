@@ -307,6 +307,13 @@ export class YunxiaoWebhooksService {
         organization: true,
       },
     })) as Member[];
+    const mappings = await this.prisma.yunxiaoMemberMapping.findMany({
+      where: { organizationId, yunxiaoOrganizationIdentifier },
+      select: { yunxiaoUserIdentifier: true, flowxUserId: true },
+    });
+    const mappingByYunxiaoId = new Map(
+      mappings.map((mapping) => [mapping.yunxiaoUserIdentifier, mapping.flowxUserId]),
+    );
 
     const normalizedRecipients = this.mergeRecipients(recipients);
     const matchedByUserId = new Map<string, MatchedMember>();
@@ -338,12 +345,20 @@ export class YunxiaoWebhooksService {
         reason = 'Yunxiao work item project identifier is missing.';
       } else if (!projectMember) {
         reason = 'Yunxiao recipient is not a member of the project.';
-      } else if (!projectMember.dingTalkId) {
-        reason = 'Yunxiao project member has no DingTalk id.';
       } else {
-        matched = this.matchRecipient(memberships, recipient, projectMember.dingTalkId);
+        const mappedFlowxUserId = mappingByYunxiaoId.get(projectMember.identifier ?? '');
+        if (mappedFlowxUserId) {
+          matched = this.matchRecipientByFlowxUserId(memberships, recipient, mappedFlowxUserId);
+          if (!matched) {
+            reason = 'Mapped FlowX user is not an active member of the organization.';
+          }
+        } else if (projectMember.dingTalkId) {
+          matched = this.matchRecipientByDingTalkId(memberships, recipient, projectMember.dingTalkId);
+        } else {
+          reason = 'No FlowX user is mapped to the Yunxiao member.';
+        }
         if (!matched) {
-          reason = 'No FlowX member has the Yunxiao member DingTalk id.';
+          reason ??= 'No FlowX member has the Yunxiao member DingTalk id.';
         }
       }
       if (!matched) {
@@ -434,7 +449,11 @@ export class YunxiaoWebhooksService {
     }
   }
 
-  private matchRecipient(memberships: Member[], recipient: YunxiaoPerson, dingTalkId: string) {
+  private matchRecipientByDingTalkId(
+    memberships: Member[],
+    recipient: YunxiaoPerson,
+    dingTalkId: string,
+  ) {
     const role = recipient.roles[0];
     const idMatches = memberships.filter((membership) =>
       membership.user.identities.some((identity) => {
@@ -458,6 +477,15 @@ export class YunxiaoWebhooksService {
       );
     }
     return null;
+  }
+
+  private matchRecipientByFlowxUserId(
+    memberships: Member[],
+    recipient: YunxiaoPerson,
+    flowxUserId: string,
+  ) {
+    const membership = memberships.find((item) => item.userId === flowxUserId);
+    return membership ? this.toMatchedMember(membership, recipient, `${recipient.roles[0]}.id`) : null;
   }
 
   private toMatchedMember(

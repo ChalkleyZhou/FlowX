@@ -71,10 +71,10 @@ FlowX 容器内部包含两个服务：
 | `DINGTALK_APP_SECRET`                  | 钉钉登录 App Secret                                                                  | 仅钉钉登录时必填       |
 | `DINGTALK_AGENT_ID`                    | 钉钉通知 Agent ID                                                                    | 仅钉钉通知时必填       |
 | `YUNXIAO_WEBHOOK_SECRET`               | 云效 Webhook 专用 Secret，用于校验 `X-Projex-Signature`，不是个人 API Token                       | 启用云效通知时必填      |
-| `YUNXIAO_PERSONAL_ACCESS_TOKEN`        | 云效个人访问令牌，通过 `x-yunxiao-token` 查询项目成员及其 `dingTalkId`                         | 启用云效通知时推荐      |
+| `YUNXIAO_PERSONAL_ACCESS_TOKEN`        | 云效个人访问令牌，通过 `Authorization: Bearer` 查询项目成员；需在页面手动关联 FlowX 用户       | 启用云效通知时推荐      |
 | `YUNXIAO_ACCESS_KEY_ID`                | 云效 OpenAPI AccessKey ID，个人 Token 不可用时的兼容认证方式                                   | 否                    |
 | `YUNXIAO_ACCESS_KEY_SECRET`            | 云效 OpenAPI AccessKey Secret                                                                  | 否                    |
-| `YUNXIAO_REGION_ID`                    | 云效 OpenAPI 区域                                                                                | 否，默认 `cn-hangzhou` |
+| `YUNXIAO_REGION_ID`                    | 云效 OpenAPI 区域（AccessKey 兼容路径使用）                                                       | 否，默认 `cn-hangzhou` |
 | `YUNXIAO_API_ENDPOINT`                 | 云效 OpenAPI 自定义 endpoint                                                                     | 否                      |
 | `GIT_AUTHOR_NAME`                      | Git 提交用户名                                                                        | 建议填写           |
 | `GIT_AUTHOR_EMAIL`                     | Git 提交邮箱                                                                         | 建议填写           |

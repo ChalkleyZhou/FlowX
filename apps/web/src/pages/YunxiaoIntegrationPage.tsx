@@ -1,13 +1,20 @@
 import { useEffect, useState } from 'react';
-import { PlugZap, RefreshCw, Save } from 'lucide-react';
+import { PlugZap, RefreshCw, Save, Users } from 'lucide-react';
 import { useAuth } from '../auth';
 import { api } from '../api';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { useToast } from '../components/ui/toast';
-import type { YunxiaoIntegrationStatus, YunxiaoUnmatchedRecipient } from '../types';
+import type {
+  YunxiaoIntegrationStatus,
+  YunxiaoProjectMember,
+  YunxiaoUnmatchedRecipient,
+} from '../types';
+
+const UNMAPPED_VALUE = '__unmapped__';
 
 export function YunxiaoIntegrationPage() {
   const { session } = useAuth();
@@ -15,6 +22,16 @@ export function YunxiaoIntegrationPage() {
   const [status, setStatus] = useState<YunxiaoIntegrationStatus | null>(null);
   const [yunxiaoOrganizationIdentifier, setYunxiaoOrganizationIdentifier] = useState('');
   const [unmatchedRecipients, setUnmatchedRecipients] = useState<YunxiaoUnmatchedRecipient[]>([]);
+  const [projectId, setProjectId] = useState('');
+  const [projectMembers, setProjectMembers] = useState<YunxiaoProjectMember[]>([]);
+  const [flowxUserOptions, setFlowxUserOptions] = useState<Array<{
+    id: string;
+    displayName: string;
+    account?: string | null;
+    email?: string | null;
+  }>>([]);
+  const [mappingDrafts, setMappingDrafts] = useState<Record<string, string>>({});
+  const [loadingMembers, setLoadingMembers] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const isAdmin = session?.organization?.role === 'admin';
@@ -53,6 +70,54 @@ export function YunxiaoIntegrationPage() {
       setUnmatchedRecipients(await api.getYunxiaoUnmatchedRecipients());
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '加载未匹配人员失败');
+    }
+  }
+
+  async function loadProjectMembers(nextProjectId = projectId) {
+    const normalizedProjectId = nextProjectId.trim();
+    if (!normalizedProjectId) {
+      toast.error('请填写云效项目 ID');
+      return;
+    }
+    setLoadingMembers(true);
+    try {
+      const result = await api.getYunxiaoProjectMembers(normalizedProjectId);
+      setProjectId(normalizedProjectId);
+      setProjectMembers(result.members);
+      setFlowxUserOptions(result.flowxUsers);
+      setMappingDrafts(Object.fromEntries(
+        result.members.map((member) => [member.identifier, member.flowxUserId ?? UNMAPPED_VALUE]),
+      ));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '加载云效项目成员失败');
+    } finally {
+      setLoadingMembers(false);
+    }
+  }
+
+  async function saveMemberMapping(member: YunxiaoProjectMember) {
+    if (!isAdmin) {
+      return;
+    }
+    setSaving(true);
+    try {
+      const flowxUserId = mappingDrafts[member.identifier] === UNMAPPED_VALUE
+        ? null
+        : mappingDrafts[member.identifier] ?? null;
+      await api.updateYunxiaoMemberMapping({
+        yunxiaoUserIdentifier: member.identifier,
+        yunxiaoDisplayName: member.displayName,
+        flowxUserId,
+      });
+      setProjectMembers((current) => current.map((item) => item.identifier === member.identifier
+        ? { ...item, flowxUserId }
+        : item));
+      await refreshUnmatchedRecipients();
+      toast.success(flowxUserId ? '云效成员关联已保存' : '云效成员关联已解除');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '保存云效成员关联失败');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -169,6 +234,91 @@ export function YunxiaoIntegrationPage() {
                 <p className="text-sm text-muted-foreground">
                   填写云效 Webhook Body 中的 organizationIdentifier，只匹配当前 FlowX 组织的成员。
                 </p>
+              </div>
+              <div className="space-y-3 border-t border-border pt-5">
+                <div>
+                  <h3 className="text-sm font-semibold">云效项目成员关联</h3>
+                  <p className="text-sm text-muted-foreground">
+                    使用个人 Token 只能拿到云效 userId，请先加载项目成员，再手动关联 FlowX 用户。
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    value={projectId}
+                    onChange={(event) => setProjectId(event.target.value)}
+                    placeholder="输入云效项目 ID，例如 spaceIdentifier"
+                    disabled={loadingMembers || saving}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void loadProjectMembers()}
+                    disabled={loadingMembers || saving}
+                  >
+                    <Users size={16} />
+                    {loadingMembers ? '加载中...' : '加载成员'}
+                  </Button>
+                </div>
+                {projectMembers.length > 0 ? (
+                  <div className="overflow-x-auto rounded-md border border-border">
+                    <table className="w-full min-w-[860px] text-left text-sm">
+                      <thead className="bg-muted text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">云效成员</th>
+                          <th className="px-3 py-2 font-medium">云效 userId</th>
+                          <th className="px-3 py-2 font-medium">角色</th>
+                          <th className="px-3 py-2 font-medium">FlowX 用户</th>
+                          <th className="px-3 py-2 font-medium">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {projectMembers.map((member) => (
+                          <tr key={member.identifier} className="border-t border-border align-top">
+                            <td className="px-3 py-2 font-medium">{member.displayName}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{member.identifier}</td>
+                            <td className="px-3 py-2">{member.roleName ?? '-'}</td>
+                            <td className="w-72 px-3 py-2">
+                              <Select
+                                value={mappingDrafts[member.identifier] ?? UNMAPPED_VALUE}
+                                onValueChange={(value) => setMappingDrafts((current) => ({
+                                  ...current,
+                                  [member.identifier]: value,
+                                }))}
+                                disabled={saving || !isAdmin}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="未关联" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value={UNMAPPED_VALUE}>未关联</SelectItem>
+                                  {flowxUserOptions.map((user) => (
+                                    <SelectItem key={user.id} value={user.id}>
+                                      {user.displayName}{user.account ? `（${user.account}）` : ''}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </td>
+                            <td className="px-3 py-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => void saveMemberMapping(member)}
+                                disabled={saving || !isAdmin}
+                                title="保存关联"
+                              >
+                                <Save size={16} />
+                                保存
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">输入项目 ID 后加载成员列表。</p>
+                )}
               </div>
               <div className="space-y-3 border-t border-border pt-5">
                 <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">

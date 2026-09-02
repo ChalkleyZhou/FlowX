@@ -8,22 +8,35 @@ describe('ExternalIntegrationsService', () => {
   const findUnique = vi.fn();
   const create = vi.fn();
   const update = vi.fn();
+  const mappingFindMany = vi.fn();
+  const mappingUpsert = vi.fn();
+  const mappingDeleteMany = vi.fn();
+  const organizationMemberFindMany = vi.fn();
+  const listProjectMembers = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mappingFindMany.mockResolvedValue([]);
+    mappingDeleteMany.mockResolvedValue({ count: 1 });
   });
 
   function createService(secret = 'yunxiao-secret', personalAccessToken?: string) {
     return new ExternalIntegrationsService(
       {
         externalIntegration: { findFirst, create, update },
-        userOrganization: { findUnique },
+        userOrganization: { findUnique, findMany: organizationMemberFindMany },
+        yunxiaoMemberMapping: {
+          findMany: mappingFindMany,
+          upsert: mappingUpsert,
+          deleteMany: mappingDeleteMany,
+        },
       } as never,
       {
         get: (key: string) => key === 'YUNXIAO_WEBHOOK_SECRET'
           ? secret
           : key === 'YUNXIAO_PERSONAL_ACCESS_TOKEN' ? personalAccessToken : undefined,
       } as never,
+      { listProjectMembers } as never,
     );
   }
 
@@ -136,5 +149,65 @@ describe('ExternalIntegrationsService', () => {
       status: 409,
       message: 'This Yunxiao organization is already bound to another FlowX organization.',
     });
+  });
+
+  it('返回云效项目成员和当前组织的 FlowX 用户', async () => {
+    findFirst.mockResolvedValue({ yunxiaoOrganizationIdentifier: 'yunxiao-org-1' });
+    listProjectMembers.mockResolvedValue([
+      {
+        identifier: 'yunxiao-user-1',
+        dingTalkId: null,
+        displayName: '云效张三',
+        displayRealName: null,
+        stamp: null,
+        roleName: '项目成员',
+        roleId: 'member',
+      },
+    ]);
+    mappingFindMany.mockResolvedValue([
+      { yunxiaoUserIdentifier: 'yunxiao-user-1', flowxUserId: 'flowx-user-1' },
+    ]);
+    organizationMemberFindMany.mockResolvedValue([
+      { user: { id: 'flowx-user-1', displayName: '张三', account: 'zhangsan', email: null } },
+    ]);
+
+    await expect(createService().listYunxiaoProjectMembers('org-1', 'project-1'))
+      .resolves.toMatchObject({
+        projectId: 'project-1',
+        yunxiaoOrganizationIdentifier: 'yunxiao-org-1',
+        members: [{ identifier: 'yunxiao-user-1', flowxUserId: 'flowx-user-1' }],
+        flowxUsers: [{ id: 'flowx-user-1', displayName: '张三' }],
+      });
+  });
+
+  it('管理员可以保存和解除云效成员映射', async () => {
+    findUnique
+      .mockResolvedValueOnce({ role: 'admin' })
+      .mockResolvedValueOnce({ user: { id: 'flowx-user-1', status: 'ACTIVE' } });
+    findFirst.mockResolvedValue({ yunxiaoOrganizationIdentifier: 'yunxiao-org-1' });
+    mappingUpsert.mockResolvedValue({
+      yunxiaoUserIdentifier: 'yunxiao-user-1',
+      yunxiaoDisplayName: '云效张三',
+      flowxUserId: 'flowx-user-1',
+    });
+
+    await expect(createService().setYunxiaoMemberMapping(
+      'org-1',
+      'admin-1',
+      'yunxiao-user-1',
+      '云效张三',
+      'flowx-user-1',
+    )).resolves.toMatchObject({ flowxUserId: 'flowx-user-1' });
+    expect(mappingUpsert).toHaveBeenCalled();
+
+    findUnique.mockResolvedValueOnce({ role: 'admin' });
+    await expect(createService().setYunxiaoMemberMapping(
+      'org-1',
+      'admin-1',
+      'yunxiao-user-1',
+      '云效张三',
+      null,
+    )).resolves.toEqual({ mapped: false });
+    expect(mappingDeleteMany).toHaveBeenCalled();
   });
 });

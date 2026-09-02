@@ -20,7 +20,7 @@ describe('YunxiaoMembersService', () => {
     } as ConfigService);
   }
 
-  it('使用个人 Token 通过 x-yunxiao-token 查询项目成员', async () => {
+  it('使用个人 Token 通过标准 OpenAPI 查询项目成员', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
@@ -28,10 +28,10 @@ describe('YunxiaoMembersService', () => {
         success: true,
         members: [
           {
-            identifier: 'yunxiao-user-1',
-            dingTalkId: 'dingtalk-user-1',
-            displayName: '张三',
-            stamp: 'User',
+            userId: 'yunxiao-user-1',
+            userName: '张三',
+            roleName: '项目成员',
+            roleId: 'member',
           },
           {
             identifier: 'group-1',
@@ -49,22 +49,24 @@ describe('YunxiaoMembersService', () => {
     await expect(service.listProjectMembers('org-1', 'project-1')).resolves.toEqual([
       {
         identifier: 'yunxiao-user-1',
-        dingTalkId: 'dingtalk-user-1',
+        dingTalkId: null,
         displayName: '张三',
         displayRealName: null,
-        stamp: 'User',
+        stamp: null,
+        roleName: '项目成员',
+        roleId: 'member',
       },
     ]);
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, options] = fetchMock.mock.calls[0] as [URL, RequestInit];
     expect(url.toString()).toBe(
-      'https://devops.cn-hangzhou.aliyuncs.com/organization/org-1/projects/project-1/listMembers?targetType=Space',
+      'https://openapi-rdc.aliyuncs.com/oapi/v1/projex/organizations/org-1/projects/project-1/members',
     );
     expect(options).toEqual({
       headers: {
         accept: 'application/json',
-        'x-yunxiao-token': 'personal-token',
+        authorization: 'Bearer personal-token',
       },
     });
   });
@@ -87,7 +89,7 @@ describe('YunxiaoMembersService', () => {
     const [, options] = fetchMock.mock.calls[0] as [URL, RequestInit];
     expect(options.headers).toEqual({
       accept: 'application/json',
-      'x-yunxiao-token': 'personal-token',
+      authorization: 'Bearer personal-token',
     });
   });
 

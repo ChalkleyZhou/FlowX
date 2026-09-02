@@ -640,6 +640,24 @@ export interface YunxiaoUnmatchedRecipient {
   lastSeenAt: string;
 }
 
+export interface YunxiaoProjectMember {
+  identifier: string;
+  dingTalkId: string | null;
+  displayName: string;
+  displayRealName: string | null;
+  stamp: string | null;
+  roleName: string | null;
+  roleId: string | null;
+  flowxUserId: string | null;
+}
+
+export interface YunxiaoProjectMembersResponse {
+  projectId: string;
+  yunxiaoOrganizationIdentifier: string;
+  members: YunxiaoProjectMember[];
+  flowxUsers: OrganizationMember[];
+}
+
 export interface AiCredentialStatus {
   provider: 'cursor' | 'codex';
   configured: boolean;
