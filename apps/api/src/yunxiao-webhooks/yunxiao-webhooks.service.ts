@@ -353,7 +353,7 @@ export class YunxiaoWebhooksService {
       }
     }
     for (const recipient of normalizedRecipients) {
-      const projectMember = projectMembers.find((member) => member.identifier === recipient.id);
+      const projectMember = projectMembers.find((member) => member.userId === recipient.id);
       const mappedFlowxUserId = recipient.id
         ? mappingByYunxiaoId.get(recipient.id)
         : undefined;

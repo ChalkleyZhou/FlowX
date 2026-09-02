@@ -6,7 +6,7 @@ import YunxiaoClient, {
 import { $OpenApiUtil } from '@alicloud/openapi-core';
 
 export type YunxiaoProjectMember = {
-  identifier: string | null;
+  userId: string | null;
   dingTalkId: string | null;
   displayName: string;
   displayRealName: string | null;
@@ -108,7 +108,8 @@ export class YunxiaoMembersService {
           return null;
         }
         return {
-          identifier: this.pickString(member.identifier, member.userId),
+          // 云效 Webhook 使用人员的 identifier，这里优先取成员接口对应的 userId。
+          userId: this.pickString(member.userId, member.identifier),
           dingTalkId: this.pickString(member.dingTalkId),
           displayName: this.pickString(
             member.userName,
@@ -117,7 +118,7 @@ export class YunxiaoMembersService {
             member.realName,
             member.nickName,
             member.account,
-            member.identifier,
+            member.userId,
           ) ?? '未知云效用户',
           displayRealName: this.pickString(member.displayRealName, member.realName),
           stamp: this.pickString(member.stamp),
@@ -126,7 +127,7 @@ export class YunxiaoMembersService {
         };
       })
       .filter((member): member is YunxiaoProjectMember =>
-        member !== null && Boolean(member.identifier));
+        member !== null && Boolean(member.userId));
   }
 
   private getPersonalAccessToken() {

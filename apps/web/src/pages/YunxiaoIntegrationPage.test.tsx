@@ -89,7 +89,7 @@ describe('YunxiaoIntegrationPage', () => {
       projectId: 'project-1',
       yunxiaoOrganizationIdentifier: 'yunxiao-org-1',
       members: [{
-        identifier: 'yunxiao-user-1',
+        userId: 'yunxiao-user-1',
         dingTalkId: null,
         displayName: '云效张三',
         displayRealName: null,

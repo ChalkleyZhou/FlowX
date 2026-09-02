@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
@@ -14,6 +15,8 @@ const YUNXIAO_PROVIDER = 'YUNXIAO';
 
 @Injectable()
 export class ExternalIntegrationsService {
+  private readonly logger = new Logger(ExternalIntegrationsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
@@ -176,8 +179,8 @@ export class ExternalIntegrationsService {
       yunxiaoOrganizationIdentifier,
       members: members.map((member) => ({
         ...member,
-        flowxUserId: member.identifier
-          ? mappingByYunxiaoId.get(member.identifier) ?? null
+        flowxUserId: member.userId
+          ? mappingByYunxiaoId.get(member.userId) ?? null
           : null,
       })),
       flowxUsers: organizationMembers.map(({ user }) => user),
@@ -233,6 +236,13 @@ export class ExternalIntegrationsService {
           yunxiaoUserIdentifier: normalizedYunxiaoUserIdentifier,
         },
       });
+      this.logger.log(JSON.stringify({
+        event: 'YUNXIAO_MEMBER_MAPPING_REMOVED',
+        organizationId,
+        actingUserId,
+        yunxiaoOrganizationIdentifier,
+        yunxiaoUserId: normalizedYunxiaoUserIdentifier,
+      }));
       return { mapped: false };
     }
 
@@ -248,7 +258,7 @@ export class ExternalIntegrationsService {
       throw new BadRequestException('FlowX user must be an active member of the organization.');
     }
 
-    return this.prisma.yunxiaoMemberMapping.upsert({
+    const mapping = await this.prisma.yunxiaoMemberMapping.upsert({
       where: mappingUnique,
       create: {
         organizationId,
@@ -267,6 +277,16 @@ export class ExternalIntegrationsService {
         flowxUserId: true,
       },
     });
+    this.logger.log(JSON.stringify({
+      event: 'YUNXIAO_MEMBER_MAPPING_SAVED',
+      organizationId,
+      actingUserId,
+      yunxiaoOrganizationIdentifier,
+      yunxiaoUserId: normalizedYunxiaoUserIdentifier,
+      yunxiaoDisplayName: yunxiaoDisplayName?.trim() || '未知云效用户',
+      flowxUserId,
+    }));
+    return mapping;
   }
 
   private toStatus(enabled: boolean, yunxiaoOrganizationIdentifier: string | null) {

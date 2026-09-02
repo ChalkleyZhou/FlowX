@@ -47,7 +47,7 @@ FlowX 默认从工作项读取以下通知对象：
 - 验证者：`verifiers`、`verifier`、`verifyUsers`、`verifyUser`、`validators` 或 `validator`
 - 创建者：`creator`
 
-FlowX 使用工作项中的 `spaceIdentifier` 作为项目 ID，调用云效项目成员接口，先用通知对象的云效 `identifier` 匹配项目成员，再使用“设置”→“云效集成”中保存的云效 `userId` 映射匹配 FlowX 用户。个人 Token 接口不返回钉钉 ID，因此需要管理员先输入项目 ID、加载成员并逐个选择 FlowX 用户；同一个云效用户跨项目可以复用映射。使用 AccessKey 时仍兼容通过 `dingTalkId` 匹配已同步的钉钉身份。不会使用姓名猜测接收人；同一 FlowX 用户同时属于多个角色时只发送一次，投递记录会保留其全部角色。
+FlowX 使用工作项中的 `spaceIdentifier` 作为项目 ID，调用云效项目成员接口，使用成员 `userId` 与通知对象中的云效 `identifier` 对接，再使用“设置”→“云效集成”中保存的云效 `userId` 映射匹配 FlowX 用户。个人 Token 接口不返回钉钉 ID，因此需要管理员先输入项目 ID、加载成员并逐个选择 FlowX 用户；同一个云效用户跨项目可以复用映射。使用 AccessKey 时仍兼容通过 `dingTalkId` 匹配已同步的钉钉身份。不会使用姓名猜测接收人；同一 FlowX 用户同时属于多个角色时只发送一次，投递记录会保留其全部角色。
 
 每个通知对象的匹配结果都会保存。设置页“未匹配人员”区域会展示最近记录、云效 ID、角色、项目和原因，包括项目成员不存在、云效成员尚未手动关联、FlowX 用户不在当前组织以及 OpenAPI 调用失败。可选通知对象未匹配时会跳过，不影响其他已匹配人员；所有通知对象均无法匹配时返回 `422`。管理员完成关联后，下一次 Webhook 重试或工作项更新即可发送通知。
 

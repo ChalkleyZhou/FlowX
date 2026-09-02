@@ -86,7 +86,7 @@ export function YunxiaoIntegrationPage() {
       setProjectMembers(result.members);
       setFlowxUserOptions(result.flowxUsers);
       setMappingDrafts(Object.fromEntries(
-        result.members.map((member) => [member.identifier, member.flowxUserId ?? UNMAPPED_VALUE]),
+        result.members.map((member) => [member.userId, member.flowxUserId ?? UNMAPPED_VALUE]),
       ));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '加载云效项目成员失败');
@@ -101,15 +101,15 @@ export function YunxiaoIntegrationPage() {
     }
     setSaving(true);
     try {
-      const flowxUserId = mappingDrafts[member.identifier] === UNMAPPED_VALUE
+      const flowxUserId = mappingDrafts[member.userId] === UNMAPPED_VALUE
         ? null
-        : mappingDrafts[member.identifier] ?? null;
+        : mappingDrafts[member.userId] ?? null;
       await api.updateYunxiaoMemberMapping({
-        yunxiaoUserIdentifier: member.identifier,
+        yunxiaoUserIdentifier: member.userId,
         yunxiaoDisplayName: member.displayName,
         flowxUserId,
       });
-      setProjectMembers((current) => current.map((item) => item.identifier === member.identifier
+      setProjectMembers((current) => current.map((item) => item.userId === member.userId
         ? { ...item, flowxUserId }
         : item));
       await refreshUnmatchedRecipients();
@@ -273,16 +273,16 @@ export function YunxiaoIntegrationPage() {
                       </thead>
                       <tbody>
                         {projectMembers.map((member) => (
-                          <tr key={member.identifier} className="border-t border-border align-top">
+                          <tr key={member.userId} className="border-t border-border align-top">
                             <td className="px-3 py-2 font-medium">{member.displayName}</td>
-                            <td className="px-3 py-2 font-mono text-xs">{member.identifier}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{member.userId}</td>
                             <td className="px-3 py-2">{member.roleName ?? '-'}</td>
                             <td className="w-72 px-3 py-2">
                               <Select
-                                value={mappingDrafts[member.identifier] ?? UNMAPPED_VALUE}
+                                value={mappingDrafts[member.userId] ?? UNMAPPED_VALUE}
                                 onValueChange={(value) => setMappingDrafts((current) => ({
                                   ...current,
-                                  [member.identifier]: value,
+                                  [member.userId]: value,
                                 }))}
                                 disabled={saving || !isAdmin}
                               >

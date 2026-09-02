@@ -29,6 +29,7 @@ describe('YunxiaoMembersService', () => {
         members: [
           {
             userId: 'yunxiao-user-1',
+            identifier: 'legacy-member-identifier',
             userName: '张三',
             roleName: '项目成员',
             roleId: 'member',
@@ -48,7 +49,7 @@ describe('YunxiaoMembersService', () => {
 
     await expect(service.listProjectMembers('org-1', 'project-1')).resolves.toEqual([
       {
-        identifier: 'yunxiao-user-1',
+        userId: 'yunxiao-user-1',
         dingTalkId: null,
         displayName: '张三',
         displayRealName: null,

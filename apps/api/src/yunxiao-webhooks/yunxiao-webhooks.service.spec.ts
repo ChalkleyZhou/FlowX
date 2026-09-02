@@ -33,9 +33,9 @@ describe('YunxiaoWebhooksService', () => {
     recipientUpsert.mockResolvedValue({ id: 'recipient-audit-1' });
     mappingFindMany.mockResolvedValue([]);
     listProjectMembers.mockResolvedValue([
-      { identifier: 'yunxiao-user-1', dingTalkId: 'dingtalk-user-1', displayName: '张三', stamp: 'User' },
-      { identifier: 'yunxiao-user-2', dingTalkId: 'dingtalk-user-2', displayName: '李四', stamp: 'User' },
-      { identifier: 'yunxiao-user-3', dingTalkId: 'dingtalk-user-3', displayName: '王五', stamp: 'User' },
+      { userId: 'yunxiao-user-1', dingTalkId: 'dingtalk-user-1', displayName: '张三', stamp: 'User' },
+      { userId: 'yunxiao-user-2', dingTalkId: 'dingtalk-user-2', displayName: '李四', stamp: 'User' },
+      { userId: 'yunxiao-user-3', dingTalkId: 'dingtalk-user-3', displayName: '王五', stamp: 'User' },
     ]);
   });
 
@@ -219,7 +219,7 @@ describe('YunxiaoWebhooksService', () => {
       member('user-1', '张三', 'org-1', 'corp-1'),
     ]);
     listProjectMembers.mockResolvedValue([
-      { identifier: 'yunxiao-user-1', dingTalkId: null, displayName: '张三', stamp: 'User' },
+      { userId: 'yunxiao-user-1', dingTalkId: null, displayName: '张三', stamp: 'User' },
     ]);
 
     await expect(createService().receive('yunxiao-secret', payload)).rejects.toBeInstanceOf(
@@ -239,7 +239,7 @@ describe('YunxiaoWebhooksService', () => {
       member('user-1', 'FlowX 张三', 'org-1', 'corp-1'),
     ]);
     listProjectMembers.mockResolvedValue([
-      { identifier: 'yunxiao-user-1', dingTalkId: null, displayName: '云效张三', stamp: 'User' },
+      { userId: 'yunxiao-user-1', dingTalkId: null, displayName: '云效张三', stamp: 'User' },
     ]);
     mappingFindMany.mockResolvedValue([
       { yunxiaoUserIdentifier: 'yunxiao-user-1', flowxUserId: 'user-1' },
