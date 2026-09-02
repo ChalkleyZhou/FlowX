@@ -13,14 +13,16 @@ describe('ExternalIntegrationsService', () => {
     vi.clearAllMocks();
   });
 
-  function createService(secret = 'yunxiao-secret') {
+  function createService(secret = 'yunxiao-secret', personalAccessToken?: string) {
     return new ExternalIntegrationsService(
       {
         externalIntegration: { findFirst, create, update },
         userOrganization: { findUnique },
       } as never,
       {
-        get: (key: string) => key === 'YUNXIAO_WEBHOOK_SECRET' ? secret : undefined,
+        get: (key: string) => key === 'YUNXIAO_WEBHOOK_SECRET'
+          ? secret
+          : key === 'YUNXIAO_PERSONAL_ACCESS_TOKEN' ? personalAccessToken : undefined,
       } as never,
     );
   }
@@ -70,6 +72,13 @@ describe('ExternalIntegrationsService', () => {
       enabled: false,
       configured: false,
     });
+  });
+
+  it('只有个人 Token 时报告云效 API 已配置', async () => {
+    findFirst.mockResolvedValue({ enabled: false });
+
+    await expect(createService('yunxiao-secret', 'personal-token').getYunxiaoStatus('org-1'))
+      .resolves.toMatchObject({ openApiConfigured: true });
   });
 
   it('没有配置 Secret 时不能启用云效', async () => {

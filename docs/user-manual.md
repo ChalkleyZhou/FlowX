@@ -65,7 +65,7 @@ flowx-local serve
 
 钉钉组织的管理员可进入“用户管理”，点击“同步钉钉用户”批量同步通讯录成员。同步会递归读取钉钉部门中的用户并去重，但只保存用户资料和当前组织成员关系，不保存部门树或上下级关系。同步会新增或更新用户，并将已不在钉钉通讯录中的钉钉成员移出当前组织；用户账号和历史数据不会删除，但该组织下的登录会话和 Personal API Token 会失效。本地创建且没有钉钉身份的成员不受影响。使用前需为钉钉应用开通通讯录部门和用户读取权限（至少包括 `qyapi_get_department_member`），并配置 `DINGTALK_APP_ID`、`DINGTALK_APP_SECRET`。
 
-云效自动化规则还可以调用固定地址 `/api/yunxiao-webhooks`，将原生“工作项数据”定向发送给负责人、参与者、验证者和创建者，并按 FlowX 用户去重。FlowX 会调用云效 `ListProjectMembers`，通过云效 `identifier` 获取对应的 `dingTalkId`，再匹配钉钉用户，不使用姓名猜测。服务端需要配置 `YUNXIAO_WEBHOOK_SECRET`、`YUNXIAO_ACCESS_KEY_ID` 和 `YUNXIAO_ACCESS_KEY_SECRET`；未匹配人员会在“设置”→“云效集成”的“未匹配人员”区域保留。接入前应先完成钉钉用户同步，并填写云效 `organizationIdentifier`。通知会优先使用 Webhook 自带的工作项链接，缺少链接时根据项目、类别和工作项标识自动生成云效地址。组织管理员可以在该页面一键启用或停用通知，停用不会删除配置和历史记录。完整配置见仓库文档 `docs/yunxiao-webhook.md`。
+云效自动化规则还可以调用固定地址 `/api/yunxiao-webhooks`，将原生“工作项数据”定向发送给负责人、参与者、验证者和创建者，并按 FlowX 用户去重。FlowX 会调用云效 `ListProjectMembers`，通过云效 `identifier` 获取对应的 `dingTalkId`，再匹配钉钉用户，不使用姓名猜测。服务端需要配置 `YUNXIAO_WEBHOOK_SECRET` 和 `YUNXIAO_PERSONAL_ACCESS_TOKEN`（也兼容 AccessKey）；未匹配人员会在“设置”→“云效集成”的“未匹配人员”区域保留。接入前应先完成钉钉用户同步，并填写云效 `organizationIdentifier`。通知会优先使用 Webhook 自带的工作项链接，缺少链接时根据项目、类别和工作项标识自动生成云效地址。组织管理员可以在该页面一键启用或停用通知，停用不会删除配置和历史记录。完整配置见仓库文档 `docs/yunxiao-webhook.md`。
 
 ### 步骤 2：配置组织 AI 凭据（推荐）
 

@@ -136,7 +136,7 @@ export function YunxiaoIntegrationPage() {
                     {status.configured ? 'Webhook Secret 已配置' : 'Webhook Secret 未配置'}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
-                    {status.openApiConfigured ? '云效 OpenAPI 已配置' : '云效 OpenAPI 未配置'}
+                    {status.openApiConfigured ? '云效 API 已配置' : '云效 API 未配置'}
                   </div>
                 </div>
                 <div className="rounded-md bg-muted p-3">

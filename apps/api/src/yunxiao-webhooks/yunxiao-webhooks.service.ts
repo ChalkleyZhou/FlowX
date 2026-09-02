@@ -314,7 +314,7 @@ export class YunxiaoWebhooksService {
     let openApiError: string | null = null;
     let projectMembers: YunxiaoProjectMember[] = [];
     if (!this.yunxiaoMembers.isConfigured()) {
-      openApiError = 'Yunxiao OpenAPI credentials are not configured.';
+      openApiError = 'Yunxiao API credentials are not configured.';
     } else if (projectId) {
       try {
         projectMembers = await this.yunxiaoMembers.listProjectMembers(

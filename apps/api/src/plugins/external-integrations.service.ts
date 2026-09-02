@@ -157,8 +157,11 @@ export class ExternalIntegrationsService {
 
   private hasYunxiaoOpenApiCredentials() {
     return Boolean(
-      this.configService.get<string>('YUNXIAO_ACCESS_KEY_ID')?.trim()
-      && this.configService.get<string>('YUNXIAO_ACCESS_KEY_SECRET')?.trim(),
+      this.configService.get<string>('YUNXIAO_PERSONAL_ACCESS_TOKEN')?.trim()
+      || (
+        this.configService.get<string>('YUNXIAO_ACCESS_KEY_ID')?.trim()
+        && this.configService.get<string>('YUNXIAO_ACCESS_KEY_SECRET')?.trim()
+      ),
     );
   }
 }
