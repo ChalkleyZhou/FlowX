@@ -16,6 +16,7 @@
     "prisma:migrate": "pnpm --filter flowx-api prisma:migrate",
     "db:clean": "pnpm --filter flowx-api exec tsx ../../scripts/clean-db.ts",
     "db:backfill-admins": "pnpm --filter flowx-api exec tsx ../../scripts/backfill-organization-admins.ts",
+    "db:backfill-yunxiao-mappings": "pnpm --filter flowx-api exec tsx ../../scripts/backfill-yunxiao-member-mappings.ts",
     "flowx-local": "pnpm --filter @flowx-ai/local exec node dist/index.js"
   },
   "devDependencies": {

@@ -16,6 +16,10 @@ import type {
 
 const UNMAPPED_VALUE = '__unmapped__';
 
+function getMemberKey(member: YunxiaoProjectMember) {
+  return member.aliyunAccountId ?? member.userId ?? member.memberId ?? member.displayName;
+}
+
 export function YunxiaoIntegrationPage() {
   const { session } = useAuth();
   const toast = useToast();
@@ -86,7 +90,7 @@ export function YunxiaoIntegrationPage() {
       setProjectMembers(result.members);
       setFlowxUserOptions(result.flowxUsers);
       setMappingDrafts(Object.fromEntries(
-        result.members.map((member) => [member.userId, member.flowxUserId ?? UNMAPPED_VALUE]),
+        result.members.map((member) => [getMemberKey(member), member.flowxUserId ?? UNMAPPED_VALUE]),
       ));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '加载云效项目成员失败');
@@ -101,15 +105,18 @@ export function YunxiaoIntegrationPage() {
     }
     setSaving(true);
     try {
-      const flowxUserId = mappingDrafts[member.userId] === UNMAPPED_VALUE
+      const memberKey = getMemberKey(member);
+      const flowxUserId = mappingDrafts[memberKey] === UNMAPPED_VALUE
         ? null
-        : mappingDrafts[member.userId] ?? null;
+        : mappingDrafts[memberKey] ?? null;
       await api.updateYunxiaoMemberMapping({
-        yunxiaoUserIdentifier: member.userId,
+        yunxiaoMemberId: member.memberId,
+        yunxiaoUserId: member.userId,
+        aliyunAccountId: member.aliyunAccountId,
         yunxiaoDisplayName: member.displayName,
         flowxUserId,
       });
-      setProjectMembers((current) => current.map((item) => item.userId === member.userId
+      setProjectMembers((current) => current.map((item) => getMemberKey(item) === memberKey
         ? { ...item, flowxUserId }
         : item));
       await refreshUnmatchedRecipients();
@@ -265,7 +272,9 @@ export function YunxiaoIntegrationPage() {
                       <thead className="bg-muted text-muted-foreground">
                         <tr>
                           <th className="px-3 py-2 font-medium">云效成员</th>
+                          <th className="px-3 py-2 font-medium">组织成员 ID</th>
                           <th className="px-3 py-2 font-medium">云效 userId</th>
+                          <th className="px-3 py-2 font-medium">阿里云 ID</th>
                           <th className="px-3 py-2 font-medium">角色</th>
                           <th className="px-3 py-2 font-medium">FlowX 用户</th>
                           <th className="px-3 py-2 font-medium">操作</th>
@@ -273,16 +282,18 @@ export function YunxiaoIntegrationPage() {
                       </thead>
                       <tbody>
                         {projectMembers.map((member) => (
-                          <tr key={member.userId} className="border-t border-border align-top">
+                          <tr key={getMemberKey(member)} className="border-t border-border align-top">
                             <td className="px-3 py-2 font-medium">{member.displayName}</td>
-                            <td className="px-3 py-2 font-mono text-xs">{member.userId}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{member.memberId ?? '-'}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{member.userId ?? '-'}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{member.aliyunAccountId ?? '-'}</td>
                             <td className="px-3 py-2">{member.roleName ?? '-'}</td>
                             <td className="w-72 px-3 py-2">
                               <Select
-                                value={mappingDrafts[member.userId] ?? UNMAPPED_VALUE}
+                                value={mappingDrafts[getMemberKey(member)] ?? UNMAPPED_VALUE}
                                 onValueChange={(value) => setMappingDrafts((current) => ({
                                   ...current,
-                                  [member.userId]: value,
+                                  [getMemberKey(member)]: value,
                                 }))}
                                 disabled={saving || !isAdmin}
                               >

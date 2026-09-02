@@ -259,6 +259,39 @@ describe('YunxiaoWebhooksService', () => {
     }));
   });
 
+  it('使用映射中的 aliyunAccountId 匹配 webhook identifier', async () => {
+    membershipFindMany.mockResolvedValue([
+      member('user-1', 'FlowX 张三', 'org-1', 'corp-1'),
+    ]);
+    listProjectMembers.mockResolvedValue([
+      {
+        memberId: 'yunxiao-member-1',
+        userId: 'yunxiao-user-1',
+        aliyunAccountId: 'aliyun-account-1',
+        dingTalkId: null,
+        displayName: '云效张三',
+        stamp: 'User',
+      },
+    ]);
+    mappingFindMany.mockResolvedValue([
+      {
+        yunxiaoMemberId: 'yunxiao-member-1',
+        yunxiaoUserId: 'yunxiao-user-1',
+        aliyunAccountId: 'aliyun-account-1',
+        yunxiaoUserIdentifier: 'aliyun-account-1',
+        flowxUserId: 'user-1',
+      },
+    ]);
+
+    await expect(createService().receive('yunxiao-secret', {
+      ...payload,
+      assignedTo: { id: 'aliyun-account-1', name: '张三' },
+    })).resolves.toEqual(singleDeliveryResult);
+    expect(sendPersonalMarkdown).toHaveBeenCalledWith(
+      expect.objectContaining({ flowxUserId: 'user-1' }),
+    );
+  });
+
   it('已有手动映射时不依赖项目成员接口再次返回该用户', async () => {
     membershipFindMany.mockResolvedValue([
       member('user-1', 'FlowX 张三', 'org-1', 'corp-1'),

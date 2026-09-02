@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ExternalIntegrationsService } from './external-integrations.service';
-import type { BuiltInPlugin, BuiltInPluginUpdateOptions } from './plugin.types';
+import type {
+  BuiltInPlugin,
+  BuiltInPluginUpdateOptions,
+  YunxiaoMemberMappingInput,
+} from './plugin.types';
 
 @Injectable()
 export class YunxiaoPlugin implements BuiltInPlugin {
@@ -37,16 +41,12 @@ export class YunxiaoPlugin implements BuiltInPlugin {
   setMemberMapping(
     organizationId: string,
     actingUserId: string,
-    yunxiaoUserIdentifier: string,
-    yunxiaoDisplayName: string,
-    flowxUserId: string | null,
+    input: YunxiaoMemberMappingInput,
   ) {
     return this.integrations.setYunxiaoMemberMapping(
       organizationId,
       actingUserId,
-      yunxiaoUserIdentifier,
-      yunxiaoDisplayName,
-      flowxUserId,
+      input,
     );
   }
 }

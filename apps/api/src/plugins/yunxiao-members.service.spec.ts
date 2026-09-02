@@ -21,7 +21,8 @@ describe('YunxiaoMembersService', () => {
   }
 
   it('使用个人 Token 通过标准 OpenAPI 查询项目成员', async () => {
-    fetchMock.mockResolvedValue({
+    fetchMock
+      .mockResolvedValueOnce({
       ok: true,
       status: 200,
       json: async () => ({
@@ -41,7 +42,21 @@ describe('YunxiaoMembersService', () => {
           },
         ],
       }),
-    });
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ id: 'yunxiao-member-1', userId: 'yunxiao-user-1' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          memberId: 'yunxiao-member-1',
+          userId: 'yunxiao-user-1',
+          binds: [{ bindType: 'aliyunAccount', bindId: 'aliyun-account-1' }],
+        }),
+      });
     const service = createService({
       YUNXIAO_PERSONAL_ACCESS_TOKEN: 'personal-token',
       YUNXIAO_REGION_ID: 'cn-hangzhou',
@@ -49,7 +64,9 @@ describe('YunxiaoMembersService', () => {
 
     await expect(service.listProjectMembers('org-1', 'project-1')).resolves.toEqual([
       {
+        memberId: 'yunxiao-member-1',
         userId: 'yunxiao-user-1',
+        aliyunAccountId: 'aliyun-account-1',
         dingTalkId: null,
         displayName: '张三',
         displayRealName: null,
@@ -59,7 +76,7 @@ describe('YunxiaoMembersService', () => {
       },
     ]);
 
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     const [url, options] = fetchMock.mock.calls[0] as [URL, RequestInit];
     expect(url.toString()).toBe(
       'https://openapi-rdc.aliyuncs.com/oapi/v1/projex/organizations/org-1/projects/project-1/members',
@@ -71,6 +88,12 @@ describe('YunxiaoMembersService', () => {
         'x-yunxiao-token': 'personal-token',
       },
     });
+    expect((fetchMock.mock.calls[1] as [URL, RequestInit])[0].toString()).toBe(
+      'https://openapi-rdc.aliyuncs.com/oapi/v1/platform/organizations/org-1/members:readByUser?userId=yunxiao-user-1',
+    );
+    expect((fetchMock.mock.calls[2] as [URL, RequestInit])[0].toString()).toBe(
+      'https://openapi-rdc.aliyuncs.com/oapi/v1/platform/organizations/org-1/members/yunxiao-member-1/binds',
+    );
   });
 
   it('个人 Token 和 AccessKey 同时配置时优先使用个人 Token', async () => {

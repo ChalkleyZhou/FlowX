@@ -2,6 +2,15 @@ export interface BuiltInPluginUpdateOptions {
   yunxiaoOrganizationIdentifier?: string | null;
 }
 
+export interface YunxiaoMemberMappingInput {
+  yunxiaoMemberId?: string | null;
+  yunxiaoUserId?: string | null;
+  aliyunAccountId?: string | null;
+  yunxiaoUserIdentifier?: string | null;
+  yunxiaoDisplayName?: string;
+  flowxUserId: string | null;
+}
+
 export interface BuiltInPlugin {
   id: string;
   name: string;
@@ -17,8 +26,6 @@ export interface BuiltInPlugin {
   setMemberMapping(
     organizationId: string,
     actingUserId: string,
-    yunxiaoUserIdentifier: string,
-    yunxiaoDisplayName: string,
-    flowxUserId: string | null,
+    input: YunxiaoMemberMappingInput,
   ): Promise<unknown>;
 }

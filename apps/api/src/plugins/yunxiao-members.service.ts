@@ -6,7 +6,9 @@ import YunxiaoClient, {
 import { $OpenApiUtil } from '@alicloud/openapi-core';
 
 export type YunxiaoProjectMember = {
+  memberId: string | null;
   userId: string | null;
+  aliyunAccountId: string | null;
   dingTalkId: string | null;
   displayName: string;
   displayRealName: string | null;
@@ -97,19 +99,102 @@ export class YunxiaoMembersService {
           : Array.isArray(data?.members)
             ? data.members
             : [];
-    return this.normalizeMembers(members);
+    const normalizedMembers = this.normalizeMembers(members);
+    return Promise.all(
+      normalizedMembers.map((member) => this.enrichMemberIdentity(
+        organizationId,
+        member,
+        personalAccessToken,
+      )),
+    );
   }
 
-  private normalizeMembers(members: unknown[]) {
+  private async enrichMemberIdentity(
+    organizationId: string,
+    member: YunxiaoProjectMember,
+    personalAccessToken: string,
+  ) {
+    if (!member.userId) {
+      return member;
+    }
+
+    try {
+      const organizationMember = await this.fetchJson(
+        new URL(
+          `/oapi/v1/platform/organizations/${encodeURIComponent(organizationId)}/members:readByUser?userId=${encodeURIComponent(member.userId)}`,
+          this.getApiEndpoint(),
+        ),
+        personalAccessToken,
+      );
+      const organizationMemberRecord = this.asRecord(organizationMember);
+      const organizationMemberData = this.asRecord(organizationMemberRecord?.data);
+      const memberId = this.pickString(
+        organizationMemberRecord?.id,
+        organizationMemberRecord?.memberId,
+        organizationMemberData?.id,
+        organizationMemberData?.memberId,
+      );
+      if (!memberId) {
+        return member;
+      }
+
+      const bindInfo = await this.fetchJson(
+        new URL(
+          `/oapi/v1/platform/organizations/${encodeURIComponent(organizationId)}/members/${encodeURIComponent(memberId)}/binds`,
+          this.getApiEndpoint(),
+        ),
+        personalAccessToken,
+      );
+      const bindInfoRecord = this.asRecord(bindInfo);
+      const bindInfoData = this.asRecord(bindInfoRecord?.data);
+      const binds = bindInfoRecord && Array.isArray(bindInfoRecord.binds)
+        ? bindInfoRecord.binds
+        : bindInfoData && Array.isArray(bindInfoData.binds)
+          ? bindInfoData.binds
+          : [];
+      const aliyunAccountBind = binds
+        .map((bind) => this.asRecord(bind))
+        .find((bind) => bind?.bindType === 'aliyunAccount');
+
+      return {
+        ...member,
+        memberId,
+        aliyunAccountId: this.pickString(aliyunAccountBind?.bindId),
+      };
+    } catch {
+      return member;
+    }
+  }
+
+  private async fetchJson(url: URL, personalAccessToken: string) {
+    const response = await fetch(url, {
+      headers: {
+        accept: 'application/json',
+        authorization: `Bearer ${personalAccessToken}`,
+        'x-yunxiao-token': personalAccessToken,
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`Yunxiao identity API request failed (${response.status}).`);
+    }
+    try {
+      return await response.json() as unknown;
+    } catch {
+      return null;
+    }
+  }
+
+  private normalizeMembers(members: unknown[]): YunxiaoProjectMember[] {
     return members
-      .map((value) => {
+      .map((value): YunxiaoProjectMember | null => {
         const member = this.asRecord(value);
         if (!member || member.stamp === 'UserGroup') {
           return null;
         }
         return {
-          // 云效 Webhook 使用人员的 identifier，这里优先取成员接口对应的 userId。
+          memberId: null,
           userId: this.pickString(member.userId, member.identifier),
+          aliyunAccountId: null,
           dingTalkId: this.pickString(member.dingTalkId),
           displayName: this.pickString(
             member.userName,

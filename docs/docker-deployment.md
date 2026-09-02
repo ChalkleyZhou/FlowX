@@ -71,7 +71,7 @@ FlowX 容器内部包含两个服务：
 | `DINGTALK_APP_SECRET`                  | 钉钉登录 App Secret                                                                  | 仅钉钉登录时必填       |
 | `DINGTALK_AGENT_ID`                    | 钉钉通知 Agent ID                                                                    | 仅钉钉通知时必填       |
 | `YUNXIAO_WEBHOOK_SECRET`               | 云效 Webhook 专用 Secret，用于校验 `X-Projex-Signature`，不是个人 API Token                       | 启用云效通知时必填      |
-| `YUNXIAO_PERSONAL_ACCESS_TOKEN`        | 云效个人访问令牌，通过 `Authorization: Bearer` / `X-Yunxiao-Token` 查询项目成员；需手动关联 FlowX 用户 | 启用云效通知时推荐      |
+| `YUNXIAO_PERSONAL_ACCESS_TOKEN`        | 云效个人访问令牌，通过 `Authorization: Bearer` / `X-Yunxiao-Token` 查询项目成员、组织成员和绑定信息；需手动关联 FlowX 用户 | 启用云效通知时推荐      |
 | `YUNXIAO_ACCESS_KEY_ID`                | 云效 OpenAPI AccessKey ID，个人 Token 不可用时的兼容认证方式                                   | 否                    |
 | `YUNXIAO_ACCESS_KEY_SECRET`            | 云效 OpenAPI AccessKey Secret                                                                  | 否                    |
 | `YUNXIAO_REGION_ID`                    | 云效 OpenAPI 区域（AccessKey 兼容路径使用）                                                       | 否，默认 `cn-hangzhou` |
@@ -446,6 +446,27 @@ pnpm db:backfill-admins --yes
 - 已有 `admin` 的组织会跳过
 - 无成员的组织会跳过
 - 可重复执行（幂等）
+
+### 7.3 回填云效成员绑定 ID（老数据）
+
+如果此前已经手动关联过云效成员，新增身份字段后可以使用个人 Token 回填组织成员 ID、云效 `userId` 和阿里云账号绑定 ID：
+
+```bash
+# 先查询并预览，不写数据库
+sh scripts/backfill-yunxiao-member-mappings.sh --dry-run
+
+# 确认结果后执行回填
+sh scripts/backfill-yunxiao-member-mappings.sh --yes
+```
+
+等价于：
+
+```bash
+docker exec flowx pnpm db:backfill-yunxiao-mappings --dry-run
+docker exec flowx pnpm db:backfill-yunxiao-mappings --yes
+```
+
+脚本只更新已有绑定，不创建或删除绑定。无法通过 `ReadMemberByUser` 或 `GetBindInfo` 查到完整身份的记录会跳过并打印原因；也可以使用 `--organization=<organizationId>` 只处理一个 FlowX 组织。
 
 ## 8. Git 与仓库操作要求
 

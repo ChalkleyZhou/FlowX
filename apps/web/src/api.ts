@@ -535,7 +535,10 @@ export const api = {
       `/integrations/yunxiao/members?projectId=${encodeURIComponent(projectId)}`,
     ),
   updateYunxiaoMemberMapping: (payload: {
-    yunxiaoUserIdentifier: string;
+    yunxiaoMemberId: string | null;
+    yunxiaoUserId: string | null;
+    aliyunAccountId: string | null;
+    yunxiaoUserIdentifier?: string;
     yunxiaoDisplayName?: string;
     flowxUserId: string | null;
   }) =>

@@ -54,9 +54,14 @@ export class PluginsController {
     return this.registry.get('yunxiao').setMemberMapping(
       organizationId,
       userId,
-      dto.yunxiaoUserIdentifier,
-      dto.yunxiaoDisplayName ?? '',
-      dto.flowxUserId ?? null,
+      {
+        yunxiaoMemberId: dto.yunxiaoMemberId,
+        yunxiaoUserId: dto.yunxiaoUserId,
+        aliyunAccountId: dto.aliyunAccountId,
+        yunxiaoUserIdentifier: dto.yunxiaoUserIdentifier,
+        yunxiaoDisplayName: dto.yunxiaoDisplayName,
+        flowxUserId: dto.flowxUserId ?? null,
+      },
     );
   }
 

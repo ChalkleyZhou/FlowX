@@ -9,7 +9,10 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { YunxiaoMembersService } from './yunxiao-members.service';
-import type { BuiltInPluginUpdateOptions } from './plugin.types';
+import type {
+  BuiltInPluginUpdateOptions,
+  YunxiaoMemberMappingInput,
+} from './plugin.types';
 
 const YUNXIAO_PROVIDER = 'YUNXIAO';
 
@@ -156,7 +159,13 @@ export class ExternalIntegrationsService {
       this.yunxiaoMembers.listProjectMembers(yunxiaoOrganizationIdentifier, normalizedProjectId),
       this.prisma.yunxiaoMemberMapping.findMany({
         where: { organizationId, yunxiaoOrganizationIdentifier },
-        select: { yunxiaoUserIdentifier: true, flowxUserId: true },
+        select: {
+          yunxiaoMemberId: true,
+          yunxiaoUserId: true,
+          aliyunAccountId: true,
+          yunxiaoUserIdentifier: true,
+          flowxUserId: true,
+        },
       }),
       this.prisma.userOrganization.findMany({
         where: {
@@ -170,18 +179,29 @@ export class ExternalIntegrationsService {
         },
       }),
     ]);
-    const mappingByYunxiaoId = new Map(
-      mappings.map((mapping) => [mapping.yunxiaoUserIdentifier, mapping.flowxUserId]),
-    );
+    const mappingByYunxiaoId = new Map<string, string>();
+    for (const mapping of mappings) {
+      for (const identifier of [
+        mapping.aliyunAccountId,
+        mapping.yunxiaoMemberId,
+        mapping.yunxiaoUserId,
+        mapping.yunxiaoUserIdentifier,
+      ]) {
+        if (identifier) {
+          mappingByYunxiaoId.set(identifier, mapping.flowxUserId);
+        }
+      }
+    }
 
     return {
       projectId: normalizedProjectId,
       yunxiaoOrganizationIdentifier,
       members: members.map((member) => ({
         ...member,
-        flowxUserId: member.userId
-          ? mappingByYunxiaoId.get(member.userId) ?? null
-          : null,
+        flowxUserId: [member.aliyunAccountId, member.userId, member.memberId]
+          .filter((identifier): identifier is string => Boolean(identifier))
+          .map((identifier) => mappingByYunxiaoId.get(identifier))
+          .find((flowxUserId): flowxUserId is string => Boolean(flowxUserId)) ?? null,
       })),
       flowxUsers: organizationMembers.map(({ user }) => user),
     };
@@ -190,9 +210,7 @@ export class ExternalIntegrationsService {
   async setYunxiaoMemberMapping(
     organizationId: string,
     actingUserId: string,
-    yunxiaoUserIdentifier: string,
-    yunxiaoDisplayName: string | undefined,
-    flowxUserId: string | null,
+    input: YunxiaoMemberMappingInput,
   ) {
     const membership = await this.prisma.userOrganization.findUnique({
       where: {
@@ -217,10 +235,27 @@ export class ExternalIntegrationsService {
       );
     }
 
-    const normalizedYunxiaoUserIdentifier = yunxiaoUserIdentifier.trim();
+    const yunxiaoMemberId = this.normalizeIdentifier(input.yunxiaoMemberId);
+    const yunxiaoUserId = this.normalizeIdentifier(input.yunxiaoUserId);
+    const aliyunAccountId = this.normalizeIdentifier(input.aliyunAccountId);
+    const legacyYunxiaoUserIdentifier = this.normalizeIdentifier(input.yunxiaoUserIdentifier);
+    const normalizedYunxiaoUserIdentifier =
+      aliyunAccountId ?? yunxiaoUserId ?? yunxiaoMemberId ?? legacyYunxiaoUserIdentifier;
     if (!normalizedYunxiaoUserIdentifier) {
-      throw new BadRequestException('Yunxiao user identifier is required.');
+      throw new BadRequestException('At least one Yunxiao member identifier is required.');
     }
+    const identityWhere: Prisma.YunxiaoMemberMappingWhereInput = {
+      organizationId,
+      yunxiaoOrganizationIdentifier,
+      OR: [
+        ...(yunxiaoMemberId ? [{ yunxiaoMemberId }] : []),
+        ...(yunxiaoUserId ? [{ yunxiaoUserId }] : []),
+        ...(aliyunAccountId ? [{ aliyunAccountId }] : []),
+        ...(legacyYunxiaoUserIdentifier
+          ? [{ yunxiaoUserIdentifier: legacyYunxiaoUserIdentifier }]
+          : []),
+      ],
+    };
     const mappingUnique = {
       organizationId_yunxiaoOrganizationIdentifier_yunxiaoUserIdentifier: {
         organizationId,
@@ -228,27 +263,23 @@ export class ExternalIntegrationsService {
         yunxiaoUserIdentifier: normalizedYunxiaoUserIdentifier,
       },
     };
-    if (!flowxUserId) {
-      await this.prisma.yunxiaoMemberMapping.deleteMany({
-        where: {
-          organizationId,
-          yunxiaoOrganizationIdentifier,
-          yunxiaoUserIdentifier: normalizedYunxiaoUserIdentifier,
-        },
-      });
+    if (!input.flowxUserId) {
+      await this.prisma.yunxiaoMemberMapping.deleteMany({ where: identityWhere });
       this.logger.log(JSON.stringify({
         event: 'YUNXIAO_MEMBER_MAPPING_REMOVED',
         organizationId,
         actingUserId,
         yunxiaoOrganizationIdentifier,
-        yunxiaoUserId: normalizedYunxiaoUserIdentifier,
+        yunxiaoMemberId,
+        yunxiaoUserId,
+        aliyunAccountId,
       }));
       return { mapped: false };
     }
 
     const flowxMembership = await this.prisma.userOrganization.findUnique({
       where: {
-        userId_organizationId: { userId: flowxUserId, organizationId },
+        userId_organizationId: { userId: input.flowxUserId, organizationId },
       },
       include: {
         user: { select: { id: true, displayName: true, account: true, email: true, status: true } },
@@ -258,20 +289,31 @@ export class ExternalIntegrationsService {
       throw new BadRequestException('FlowX user must be an active member of the organization.');
     }
 
+    // 同一云效人员可能已经有旧版本的映射，先按三种身份合并，避免留下旧 ID 记录。
+    await this.prisma.yunxiaoMemberMapping.deleteMany({ where: identityWhere });
     const mapping = await this.prisma.yunxiaoMemberMapping.upsert({
       where: mappingUnique,
       create: {
         organizationId,
         yunxiaoOrganizationIdentifier,
         yunxiaoUserIdentifier: normalizedYunxiaoUserIdentifier,
-        yunxiaoDisplayName: yunxiaoDisplayName?.trim() || '未知云效用户',
-        flowxUserId,
+        yunxiaoMemberId,
+        yunxiaoUserId,
+        aliyunAccountId,
+        yunxiaoDisplayName: input.yunxiaoDisplayName?.trim() || '未知云效用户',
+        flowxUserId: input.flowxUserId,
       },
       update: {
-        yunxiaoDisplayName: yunxiaoDisplayName?.trim() || '未知云效用户',
-        flowxUserId,
+        yunxiaoMemberId,
+        yunxiaoUserId,
+        aliyunAccountId,
+        yunxiaoDisplayName: input.yunxiaoDisplayName?.trim() || '未知云效用户',
+        flowxUserId: input.flowxUserId,
       },
       select: {
+        yunxiaoMemberId: true,
+        yunxiaoUserId: true,
+        aliyunAccountId: true,
         yunxiaoUserIdentifier: true,
         yunxiaoDisplayName: true,
         flowxUserId: true,
@@ -282,9 +324,12 @@ export class ExternalIntegrationsService {
       organizationId,
       actingUserId,
       yunxiaoOrganizationIdentifier,
-      yunxiaoUserId: normalizedYunxiaoUserIdentifier,
-      yunxiaoDisplayName: yunxiaoDisplayName?.trim() || '未知云效用户',
-      flowxUserId,
+      yunxiaoMemberId,
+      yunxiaoUserId,
+      aliyunAccountId,
+      yunxiaoUserIdentifier: normalizedYunxiaoUserIdentifier,
+      yunxiaoDisplayName: input.yunxiaoDisplayName?.trim() || '未知云效用户',
+      flowxUserId: input.flowxUserId,
     }));
     return mapping;
   }
@@ -302,6 +347,14 @@ export class ExternalIntegrationsService {
   }
 
   private normalizeOrganizationIdentifier(value: string | null | undefined) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    const normalized = value.trim();
+    return normalized || null;
+  }
+
+  private normalizeIdentifier(value: string | null | undefined) {
     if (value === null || value === undefined) {
       return null;
     }

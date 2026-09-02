@@ -641,7 +641,9 @@ export interface YunxiaoUnmatchedRecipient {
 }
 
 export interface YunxiaoProjectMember {
-  userId: string;
+  memberId: string | null;
+  userId: string | null;
+  aliyunAccountId: string | null;
   dingTalkId: string | null;
   displayName: string;
   displayRealName: string | null;

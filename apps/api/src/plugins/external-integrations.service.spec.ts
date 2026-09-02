@@ -155,7 +155,9 @@ describe('ExternalIntegrationsService', () => {
     findFirst.mockResolvedValue({ yunxiaoOrganizationIdentifier: 'yunxiao-org-1' });
     listProjectMembers.mockResolvedValue([
       {
+        memberId: 'yunxiao-member-1',
         userId: 'yunxiao-user-1',
+        aliyunAccountId: 'aliyun-account-1',
         dingTalkId: null,
         displayName: '云效张三',
         displayRealName: null,
@@ -165,7 +167,13 @@ describe('ExternalIntegrationsService', () => {
       },
     ]);
     mappingFindMany.mockResolvedValue([
-      { yunxiaoUserIdentifier: 'yunxiao-user-1', flowxUserId: 'flowx-user-1' },
+      {
+        yunxiaoMemberId: 'yunxiao-member-1',
+        yunxiaoUserId: 'yunxiao-user-1',
+        aliyunAccountId: 'aliyun-account-1',
+        yunxiaoUserIdentifier: 'aliyun-account-1',
+        flowxUserId: 'flowx-user-1',
+      },
     ]);
     organizationMemberFindMany.mockResolvedValue([
       { user: { id: 'flowx-user-1', displayName: '张三', account: 'zhangsan', email: null } },
@@ -175,7 +183,12 @@ describe('ExternalIntegrationsService', () => {
       .resolves.toMatchObject({
         projectId: 'project-1',
         yunxiaoOrganizationIdentifier: 'yunxiao-org-1',
-        members: [{ userId: 'yunxiao-user-1', flowxUserId: 'flowx-user-1' }],
+        members: [{
+          memberId: 'yunxiao-member-1',
+          userId: 'yunxiao-user-1',
+          aliyunAccountId: 'aliyun-account-1',
+          flowxUserId: 'flowx-user-1',
+        }],
         flowxUsers: [{ id: 'flowx-user-1', displayName: '张三' }],
       });
   });
@@ -194,9 +207,13 @@ describe('ExternalIntegrationsService', () => {
     await expect(createService().setYunxiaoMemberMapping(
       'org-1',
       'admin-1',
-      'yunxiao-user-1',
-      '云效张三',
-      'flowx-user-1',
+      {
+        yunxiaoMemberId: 'yunxiao-member-1',
+        yunxiaoUserId: 'yunxiao-user-1',
+        aliyunAccountId: 'aliyun-account-1',
+        yunxiaoDisplayName: '云效张三',
+        flowxUserId: 'flowx-user-1',
+      },
     )).resolves.toMatchObject({ flowxUserId: 'flowx-user-1' });
     expect(mappingUpsert).toHaveBeenCalled();
 
@@ -204,9 +221,13 @@ describe('ExternalIntegrationsService', () => {
     await expect(createService().setYunxiaoMemberMapping(
       'org-1',
       'admin-1',
-      'yunxiao-user-1',
-      '云效张三',
-      null,
+      {
+        yunxiaoMemberId: 'yunxiao-member-1',
+        yunxiaoUserId: 'yunxiao-user-1',
+        aliyunAccountId: 'aliyun-account-1',
+        yunxiaoDisplayName: '云效张三',
+        flowxUserId: null,
+      },
     )).resolves.toEqual({ mapped: false });
     expect(mappingDeleteMany).toHaveBeenCalled();
   });

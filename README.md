@@ -285,7 +285,8 @@ codex login
 - For personal stage completion notifications, also set `DINGTALK_AGENT_ID`.
 - FlowX will try to notify only the current DingTalk login user who triggered the stage or confirmation, instead of broadcasting through a group robot.
 - 钉钉组织管理员可在“用户管理”中同步通讯录用户。同步会新增或更新用户，并将已不在钉钉通讯录中的钉钉成员移出当前组织；用户账号和历史数据不会删除，但该组织下的会话和 Personal API Token 会失效。FlowX 不保存部门结构；钉钉应用需具备通讯录部门和用户读取权限，包括 `qyapi_get_department_member`。
-- 支持通过固定地址 `/api/yunxiao-webhooks` 接收云效自动化规则的原生工作项数据，并通过云效项目成员 `userId` 与管理员手动关联的 FlowX 用户，向负责人、参与者、验证者和创建者发送去重后的钉钉个人通知。云效 Secret 通过 `X-Projex-Signature` 校验，服务端配置 `YUNXIAO_WEBHOOK_SECRET` 和 `YUNXIAO_PERSONAL_ACCESS_TOKEN`（也兼容 AccessKey），组织管理员可在“云效集成”页面绑定 `organizationIdentifier`、加载项目成员并一键启用或停用；未匹配人员会在页面保留记录。详见[云效 Webhook 钉钉通知接入](docs/yunxiao-webhook.md)。
+- 支持通过固定地址 `/api/yunxiao-webhooks` 接收云效自动化规则的原生工作项数据，并通过云效项目成员的 `memberId`、`userId` 和阿里云账号绑定 ID 与管理员手动关联的 FlowX 用户，向负责人、参与者、验证者和创建者发送去重后的钉钉个人通知。云效 Secret 通过 `X-Projex-Signature` 校验，服务端配置 `YUNXIAO_WEBHOOK_SECRET` 和 `YUNXIAO_PERSONAL_ACCESS_TOKEN`（也兼容 AccessKey），组织管理员可在“云效集成”页面绑定 `organizationIdentifier`、加载项目成员并一键启用或停用；未匹配人员会在页面保留记录。详见[云效 Webhook 钉钉通知接入](docs/yunxiao-webhook.md)。
+- 若升级前已有云效成员绑定，可执行 `pnpm db:backfill-yunxiao-mappings --dry-run` 预览并使用 `--yes` 回填三种云效身份 ID；脚本只更新已有绑定，不创建或删除绑定。
 
 ## MVP flow
 

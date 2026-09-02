@@ -89,7 +89,9 @@ describe('YunxiaoIntegrationPage', () => {
       projectId: 'project-1',
       yunxiaoOrganizationIdentifier: 'yunxiao-org-1',
       members: [{
+        memberId: 'yunxiao-member-1',
         userId: 'yunxiao-user-1',
+        aliyunAccountId: 'aliyun-account-1',
         dingTalkId: null,
         displayName: '云效张三',
         displayRealName: null,
@@ -121,6 +123,7 @@ describe('YunxiaoIntegrationPage', () => {
     expect(api.getYunxiaoProjectMembers).toHaveBeenCalledWith('project-1');
     expect(container.textContent).toContain('云效张三');
     expect(container.textContent).toContain('yunxiao-user-1');
+    expect(container.textContent).toContain('aliyun-account-1');
     expect(container.textContent).toContain('未关联');
   });
 });

@@ -330,11 +330,23 @@ export class YunxiaoWebhooksService {
     })) as Member[];
     const mappings = await this.prisma.yunxiaoMemberMapping.findMany({
       where: { organizationId, yunxiaoOrganizationIdentifier },
-      select: { yunxiaoUserIdentifier: true, flowxUserId: true },
+      select: {
+        yunxiaoMemberId: true,
+        yunxiaoUserId: true,
+        aliyunAccountId: true,
+        yunxiaoUserIdentifier: true,
+        flowxUserId: true,
+      },
     });
-    const mappingByYunxiaoId = new Map(
-      mappings.map((mapping) => [mapping.yunxiaoUserIdentifier, mapping.flowxUserId]),
-    );
+    const mappingByYunxiaoId = new Map<string, string>();
+    for (const mapping of mappings) {
+      // Webhook 的 recipient.identifier 对应阿里云账号绑定 ID；旧记录继续使用兼容字段。
+      for (const identifier of [mapping.aliyunAccountId, mapping.yunxiaoUserIdentifier]) {
+        if (identifier) {
+          mappingByYunxiaoId.set(identifier, mapping.flowxUserId);
+        }
+      }
+    }
 
     const normalizedRecipients = this.mergeRecipients(recipients);
     const matchedByUserId = new Map<string, MatchedMember>();
@@ -354,7 +366,10 @@ export class YunxiaoWebhooksService {
       }
     }
     for (const recipient of normalizedRecipients) {
-      const projectMember = projectMembers.find((member) => member.userId === recipient.id);
+      const projectMember = projectMembers.find((member) =>
+        member.aliyunAccountId === recipient.id
+        || member.userId === recipient.id,
+      );
       const mappedFlowxUserId = recipient.id
         ? mappingByYunxiaoId.get(recipient.id)
         : undefined;
