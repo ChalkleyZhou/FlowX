@@ -93,6 +93,7 @@ export class YunxiaoWebhooksService {
       event: 'YUNXIAO_WEBHOOK_REQUEST',
       signaturePresent: Boolean(signature?.trim()),
       payloadKeys: Object.keys(payload).sort(),
+      payload,
     }));
     this.verifySignature(signature);
     const workItem = this.normalizeWorkItem(payload);
