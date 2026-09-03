@@ -93,7 +93,7 @@ if [ "\${node_major}" -lt 20 ]; then
   exit 1
 fi
 
-npm install -g @flowx-ai/local --registry https://registry.npmjs.org
+npm install -g @flowx-ai/local@0.4.9 --registry https://registry.npmjs.org
 
 flowx-local setup --api-base-url ${apiBaseUrl} --no-ide
 

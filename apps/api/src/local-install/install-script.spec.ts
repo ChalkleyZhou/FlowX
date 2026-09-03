@@ -25,9 +25,9 @@ describe('buildInstallScript', () => {
     expect(script).toMatch(/node -v/);
   });
 
-  it('installs @flowx-ai/local from the public npm registry', () => {
+  it('installs a pinned @flowx-ai/local that supports --api-base-url', () => {
     expect(script).toContain(
-      'npm install -g @flowx-ai/local --registry https://registry.npmjs.org',
+      'npm install -g @flowx-ai/local@0.4.9 --registry https://registry.npmjs.org',
     );
   });
 
