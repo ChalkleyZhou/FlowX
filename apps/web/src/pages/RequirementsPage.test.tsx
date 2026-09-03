@@ -116,13 +116,12 @@ describe('RequirementsPage', () => {
     expect(container.textContent).toContain('启动工作流');
   });
 
-  it('uses web create as the primary CTA and keeps local intake as secondary', async () => {
+  it('keeps only web create as the requirements page CTA', async () => {
     await act(async () => {
       root?.render(
         <MemoryRouter initialEntries={['/requirements']}>
           <Routes>
             <Route path="/requirements" element={<RequirementsPage />} />
-            <Route path="/local-agent" element={<div>本地 Agent 指南</div>} />
           </Routes>
         </MemoryRouter>,
       );
@@ -131,14 +130,9 @@ describe('RequirementsPage', () => {
     });
 
     expect(container.textContent).toContain('创建需求');
-    expect(container.textContent).toContain('用 Cursor / Codex 发起');
+    expect(container.textContent).not.toContain('用 Cursor / Codex 发起');
     expect(container.textContent).toContain('2.6.0');
     expect(container.textContent).toContain('本页可直接创建需求');
-
-    const localLink = Array.from(container.querySelectorAll('a')).find(
-      (element) => element.textContent?.trim() === '用 Cursor / Codex 发起',
-    );
-    expect(localLink?.getAttribute('href')).toBe('/local-agent');
 
     const webCreate = Array.from(container.querySelectorAll('button')).find(
       (element) => element.textContent?.trim() === '创建需求',

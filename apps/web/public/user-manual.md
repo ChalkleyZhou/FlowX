@@ -112,7 +112,7 @@ flowx-local serve
 - 验收标准
 - 影响仓库范围（可留空，留空表示继承工作区默认仓库）
 
-已安装 [本地 Agent](/local-agent) 时，也可在 Cursor / Codex 明确说明要新建 FlowX 需求。需求页次要入口「用 Cursor / Codex 发起」会打开该指南。普通的当前项目开发请求不会创建 FlowX 数据；意图不明确时，Agent 会先询问是否登记到 FlowX。确认后再按 `flowx-intake-requirement` Skill：列出项目 → **确认发布版本（用当前 / 新建）** → 创建需求 → **经你确认后**启动工作流 → 可选进入产品构思。
+已安装 [本地 Agent](/local-agent) 时，也可在 Cursor / Codex 明确说明要新建 FlowX 需求。普通的当前项目开发请求不会创建 FlowX 数据；意图不明确时，Agent 会先询问是否登记到 FlowX。确认后再按 `flowx-intake-requirement` Skill：列出项目 → **确认发布版本（用当前 / 新建）** → 创建需求 → **经你确认后**启动工作流 → 可选进入产品构思。
 
 ## 从需求到交付
 
