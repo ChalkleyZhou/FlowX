@@ -27,6 +27,7 @@ model Requirement {
   ideationSessions        IdeationSession[]
   ideationArtifacts       IdeationArtifact[]
   workflowRuns            WorkflowRun[]
+  testRequestLinks        TestRequestRequirement[]
   issues                  Issue[]
   bugs                    Bug[]                   @relation("BugSourceRequirement")
   fixingBugs              Bug[]                   @relation("BugFixRequirement")
@@ -76,6 +77,8 @@ model Workspace {
   dailyCodeReviews DailyCodeReview[]
   executionSessions ExecutionSession[]
   artifacts         Artifact[]
+  testCaseLibraries TestCaseLibrary[]
+  testRequests      TestRequest[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -102,6 +105,8 @@ model Project {
   deliveryTargets DeliveryTarget[]
   executionSessions  ExecutionSession[]
   artifacts          Artifact[]
+  testCaseLibraries TestCaseLibrary[]
+  testRequests      TestRequest[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -115,6 +120,7 @@ model ProjectVersion {
   name               String
   currentForProjects Project[]     @relation("ProjectCurrentVersion")
   requirements       Requirement[]
+  testRequests       TestRequest[]
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
@@ -359,6 +365,13 @@ model User {
   yunxiaoMemberMappings YunxiaoMemberMapping[] @relation("YunxiaoMemberMappingFlowXUser")
   claimedExecutionSessions ExecutionSession[]      @relation("ExecutionSessionClaimedBy")
   createdArtifacts         Artifact[]              @relation("ArtifactCreatedBy")
+  createdTestCaseLibraries TestCaseLibrary[]         @relation("TestCaseLibraryCreatedBy")
+  createdTestCases         TestCaseDefinition[]      @relation("TestCaseDefinitionCreatedBy")
+  createdTestRequests      TestRequest[]             @relation("TestRequestCreatedBy")
+  createdTestPlans         TestPlan[]                @relation("TestPlanCreatedBy")
+  createdTestRuns          TestRun[]                 @relation("TestRunCreatedBy")
+  assignedTestRunCases     TestRunCase[]             @relation("TestRunCaseAssignee")
+  executedTestResults      TestResult[]              @relation("TestResultExecutedBy")
   createdAt       DateTime                 @default(now())
   updatedAt       DateTime                 @updatedAt
 }
@@ -618,6 +631,7 @@ model WorkflowRun {
   bugs                 Bug[]                @relation("BugSourceWorkflow")
   executionSessions    ExecutionSession[]
   artifacts            Artifact[]
+  testRequestLinks     TestRequestWorkflowRun[]
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 }
@@ -766,6 +780,7 @@ model Artifact {
   createdByUserId    String?
   createdByUser      User?             @relation("ArtifactCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   evidence           Evidence[]
+  testRequestLinks   TestRequestArtifact[]
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
@@ -962,9 +977,249 @@ model Bug {
   assigneeUser      User?          @relation("BugAssignedTo", fields: [assigneeUserId], references: [id])
   reportedByUserId  String?
   reportedByUser    User?          @relation("BugReportedBy", fields: [reportedByUserId], references: [id])
+  verificationTestRuns TestRun[]      @relation("BugVerificationRuns")
+  testResults          TestResult[]   @relation("TestResultBug")
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
   @@index([workspaceId, status, severity, priority])
   @@index([workflowRunId, createdAt])
+}
+
+model TestCaseLibrary {
+  id              String               @id @default(cuid())
+  workspaceId     String
+  workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  projectId       String?
+  project         Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scope           String
+  name            String
+  status          String               @default("ACTIVE")
+  createdByUserId String?
+  createdByUser   User?                @relation("TestCaseLibraryCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  modules         TestCaseModule[]
+  definitions     TestCaseDefinition[]
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([workspaceId, scope, status])
+  @@index([projectId, status])
+}
+
+model TestCaseModule {
+  id        String               @id @default(cuid())
+  libraryId String
+  library   TestCaseLibrary      @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  parentId  String?
+  parent    TestCaseModule?      @relation("TestCaseModuleTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  TestCaseModule[]     @relation("TestCaseModuleTree")
+  name      String
+  sortOrder Int                  @default(0)
+  cases     TestCaseDefinition[]
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  @@unique([libraryId, parentId, name])
+  @@index([libraryId, sortOrder])
+  @@index([parentId])
+}
+
+model TestCaseDefinition {
+  id              String                 @id @default(cuid())
+  libraryId       String
+  library         TestCaseLibrary        @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  moduleId        String?
+  module          TestCaseModule?        @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  externalId      String?
+  status          String                 @default("ACTIVE")
+  version         Int                    @default(1)
+  title           String
+  priority        String                 @default("P2")
+  precondition    String?
+  steps           Json
+  expected        String
+  tags            Json?
+  metadata        Json?
+  createdByUserId String?
+  createdByUser   User?                  @relation("TestCaseDefinitionCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  coverageLinks   TestCaseCoverageLink[]
+  snapshots       TestCaseSnapshot[]
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@index([libraryId, status, updatedAt])
+  @@index([moduleId, status])
+  @@index([externalId])
+}
+
+model TestCaseCoverageLink {
+  id                   String             @id @default(cuid())
+  testCaseDefinitionId String
+  testCaseDefinition   TestCaseDefinition @relation(fields: [testCaseDefinitionId], references: [id], onDelete: Cascade)
+  targetType           String
+  targetKey            String
+  source               String             @default("MANUAL")
+  confidence           Float?
+  evidence             Json?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@unique([testCaseDefinitionId, targetType, targetKey])
+  @@index([targetType, targetKey])
+}
+
+model TestRequest {
+  id                    String                   @id @default(cuid())
+  workspaceId           String
+  workspace             Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  projectId             String
+  project               Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectVersionId      String
+  projectVersion        ProjectVersion           @relation(fields: [projectVersionId], references: [id], onDelete: Restrict)
+  title                 String
+  description           String?
+  status                String                   @default("DRAFT")
+  scopeGenerationStatus String                   @default("NOT_STARTED")
+  scopeSummary          String?
+  scopeRevision         Int                      @default(0)
+  scopeChecks           Json?
+  excludedScopes        Json?
+  traceId               String                   @unique
+  createdByUserId       String?
+  createdByUser         User?                    @relation("TestRequestCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  requirementLinks      TestRequestRequirement[]
+  workflowLinks         TestRequestWorkflowRun[]
+  artifactLinks         TestRequestArtifact[]
+  testPlan              TestPlan?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  @@index([workspaceId, status, createdAt])
+  @@index([projectId, projectVersionId, createdAt])
+}
+
+model TestRequestRequirement {
+  testRequestId String
+  testRequest   TestRequest @relation(fields: [testRequestId], references: [id], onDelete: Cascade)
+  requirementId String
+  requirement   Requirement @relation(fields: [requirementId], references: [id], onDelete: Restrict)
+  createdAt     DateTime    @default(now())
+
+  @@id([testRequestId, requirementId])
+  @@index([requirementId, createdAt])
+}
+
+model TestRequestWorkflowRun {
+  testRequestId String
+  testRequest   TestRequest @relation(fields: [testRequestId], references: [id], onDelete: Cascade)
+  workflowRunId String
+  workflowRun   WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Restrict)
+  createdAt     DateTime    @default(now())
+
+  @@id([testRequestId, workflowRunId])
+  @@index([workflowRunId, createdAt])
+}
+
+model TestRequestArtifact {
+  testRequestId String
+  testRequest   TestRequest @relation(fields: [testRequestId], references: [id], onDelete: Cascade)
+  artifactId    String
+  artifact      Artifact    @relation(fields: [artifactId], references: [id], onDelete: Restrict)
+  createdAt     DateTime    @default(now())
+
+  @@id([testRequestId, artifactId])
+  @@index([artifactId, createdAt])
+}
+
+model TestPlan {
+  id              String             @id @default(cuid())
+  testRequestId   String             @unique
+  testRequest     TestRequest        @relation(fields: [testRequestId], references: [id], onDelete: Cascade)
+  status          String             @default("DRAFT")
+  createdByUserId String?
+  createdByUser   User?              @relation("TestPlanCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  snapshots       TestCaseSnapshot[]
+  runs            TestRun[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+}
+
+model TestCaseSnapshot {
+  id                 String              @id @default(cuid())
+  testPlanId         String
+  testPlan           TestPlan            @relation(fields: [testPlanId], references: [id], onDelete: Cascade)
+  sourceDefinitionId String?
+  sourceDefinition   TestCaseDefinition? @relation(fields: [sourceDefinitionId], references: [id], onDelete: SetNull)
+  sourceVersion      Int?
+  title              String
+  priority           String
+  precondition       String?
+  steps              Json
+  expected           String
+  metadata           Json?
+  selectedBy         String              @default("AI")
+  selectionReason    String?
+  impactLevel        String?
+  runCases           TestRunCase[]
+  createdAt          DateTime            @default(now())
+
+  @@unique([testPlanId, sourceDefinitionId, sourceVersion])
+  @@index([testPlanId, createdAt])
+}
+
+model TestRun {
+  id              String        @id @default(cuid())
+  testPlanId      String
+  testPlan        TestPlan      @relation(fields: [testPlanId], references: [id], onDelete: Cascade)
+  name            String
+  runType         String        @default("INITIAL")
+  status          String        @default("ACTIVE")
+  sourceBugId     String?
+  sourceBug       Bug?          @relation("BugVerificationRuns", fields: [sourceBugId], references: [id], onDelete: SetNull)
+  createdByUserId String?
+  createdByUser   User?         @relation("TestRunCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  cases           TestRunCase[]
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([testPlanId, createdAt])
+  @@index([sourceBugId, createdAt])
+}
+
+model TestRunCase {
+  id               String           @id @default(cuid())
+  testRunId        String
+  testRun          TestRun          @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+  snapshotId       String
+  snapshot         TestCaseSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+  assignedToUserId String?
+  assignedToUser   User?            @relation("TestRunCaseAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  result           TestResult?
+  sortOrder        Int              @default(0)
+  createdAt        DateTime         @default(now())
+
+  @@unique([testRunId, snapshotId])
+  @@index([assignedToUserId, createdAt])
+}
+
+model TestResult {
+  id               String      @id @default(cuid())
+  testRunCaseId    String      @unique
+  testRunCase      TestRunCase @relation(fields: [testRunCaseId], references: [id], onDelete: Cascade)
+  result           String
+  actualResult     String?
+  remark           String?
+  evidence         Json?
+  bugId            String?
+  bug              Bug?        @relation("TestResultBug", fields: [bugId], references: [id], onDelete: SetNull)
+  executedByUserId String?
+  executedByUser   User?       @relation("TestResultExecutedBy", fields: [executedByUserId], references: [id], onDelete: SetNull)
+  executedAt       DateTime    @default(now())
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([result, executedAt])
+  @@index([bugId, createdAt])
 }

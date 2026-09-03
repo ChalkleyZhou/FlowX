@@ -76,6 +76,41 @@ const scopeFactories: Record<string, (organizationId: string) => Record<string, 
   }),
   IdeationArtifact: (organizationId) => ({ requirement: requirementScope(organizationId) }),
   Bug: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
+  TestCaseLibrary: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
+  TestCaseModule: (organizationId) => ({ library: { workspace: workspaceScope(organizationId) } }),
+  TestCaseDefinition: (organizationId) => ({
+    library: { workspace: workspaceScope(organizationId) },
+  }),
+  TestCaseCoverageLink: (organizationId) => ({
+    testCaseDefinition: { library: { workspace: workspaceScope(organizationId) } },
+  }),
+  TestRequest: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
+  TestRequestRequirement: (organizationId) => ({
+    testRequest: { workspace: workspaceScope(organizationId) },
+  }),
+  TestRequestWorkflowRun: (organizationId) => ({
+    testRequest: { workspace: workspaceScope(organizationId) },
+  }),
+  TestRequestArtifact: (organizationId) => ({
+    testRequest: { workspace: workspaceScope(organizationId) },
+  }),
+  TestPlan: (organizationId) => ({
+    testRequest: { workspace: workspaceScope(organizationId) },
+  }),
+  TestCaseSnapshot: (organizationId) => ({
+    testPlan: { testRequest: { workspace: workspaceScope(organizationId) } },
+  }),
+  TestRun: (organizationId) => ({
+    testPlan: { testRequest: { workspace: workspaceScope(organizationId) } },
+  }),
+  TestRunCase: (organizationId) => ({
+    testRun: { testPlan: { testRequest: { workspace: workspaceScope(organizationId) } } },
+  }),
+  TestResult: (organizationId) => ({
+    testRunCase: {
+      testRun: { testPlan: { testRequest: { workspace: workspaceScope(organizationId) } } },
+    },
+  }),
   ExternalIntegration: (organizationId) => ({ organizationId }),
   YunxiaoWebhookDelivery: (organizationId) => ({ organizationId }),
   YunxiaoWebhookRecipient: (organizationId) => ({ organizationId }),

@@ -15,6 +15,7 @@ import { SessionAuthGuard } from './auth/session-auth.guard';
 import { PrismaModule } from './prisma/prisma.module';
 import { OrganizationScopeInterceptor } from './prisma/organization-scope.interceptor';
 import { ProjectsModule } from './projects/projects.module';
+import { QualityModule } from './quality/quality.module';
 import { ScheduleModule } from './schedule/schedule.module';
 import { ReviewArtifactsModule } from './review-artifacts/review-artifacts.module';
 import { RequirementsModule } from './requirements/requirements.module';
@@ -40,6 +41,7 @@ import { PluginsModule } from './plugins/plugins.module';
     EdgeModule,
     LocalInstallModule,
     ProjectsModule,
+    QualityModule,
     ScheduleModule,
     ReviewArtifactsModule,
     WorkspacesModule,

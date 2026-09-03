@@ -11,6 +11,16 @@ describe('applyOrganizationScope', () => {
     ['WorkflowRun', { requirement: { project: { workspace: { organizationId } } } }],
     ['Issue', { workspace: { organizationId } }],
     ['Bug', { workspace: { organizationId } }],
+    ['TestCaseLibrary', { workspace: { organizationId } }],
+    ['TestRequest', { workspace: { organizationId } }],
+    [
+      'TestResult',
+      {
+        testRunCase: {
+          testRun: { testPlan: { testRequest: { workspace: { organizationId } } } },
+        },
+      },
+    ],
     ['ExternalIntegration', { organizationId }],
     ['YunxiaoWebhookDelivery', { organizationId }],
     ['YunxiaoWebhookRecipient', { organizationId }],

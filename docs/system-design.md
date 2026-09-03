@@ -67,6 +67,7 @@ flowchart LR
 | `briefings` | 项目事件、简报、投递目标 | 项目管理中心 / 治理与度量中心 |
 | `daily-code-review` | 独立 Code Review 调度和报告 | 测试与质量中心 |
 | `review-artifacts` | Finding、Issue、Bug 转换和维护 | 测试与质量中心 |
+| `quality` | Workspace/项目用例库、AI 提测范围、用例快照、Test Run 与 Bug 回归基础闭环 | 测试与质量中心 |
 | `dev-preview` | 本地预览命令和生命周期 | 发布与运维中心 |
 | `auth` | 用户、组织、会话、凭据，以及钉钉通讯录用户增量同步（不持久化部门结构） | 治理与度量中心 |
 | `plugins` | 内置外部集成注册、组织级启停和第三方系统适配 | 治理与度量中心 / 企业集成中心 |
@@ -111,7 +112,7 @@ Workspace
   -> Issue / Bug
 ```
 
-该链路已经具备研发流程基础，但 Artifact、Evidence、TestRun、ExecutionSession、Release 和 RuntimeFeedback 仍需成为独立领域对象，不能长期依赖 `StageExecution.input/output` 或零散 JSON 承载。
+该链路已经具备研发流程基础；Artifact、Evidence、ExecutionSession 以及 TestRequest/TestPlan/TestRun 的最小独立模型已经落地。Release、RuntimeFeedback 和自动化测试结果导入仍需继续建设，不能长期依赖 `StageExecution.input/output` 或零散 JSON 承载。
 
 ## 5. 工作流设计原则
 
@@ -174,7 +175,7 @@ FlowX 端侧执行平面
 1. 抽取通用 Edge Agent、ExecutionSession 和同步协议。
 2. 建立 Artifact/Evidence Center 和数字主线关联。
 3. 接入 Cursor、Codex、OpenDesign Adapter。
-4. 建设 Test Plan、Test Case、Test Run 和质量门禁。
+4. 在现有 TestRequest、Test Plan、Test Case、Test Run 基础上接入 AI 影响分析、自动化结果和质量门禁。
 5. 串联 Release、Environment 和运行反馈。
 6. 再推进 PostgreSQL、多实例、企业权限、审计和成本治理。
 
