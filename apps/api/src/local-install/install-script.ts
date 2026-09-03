@@ -7,7 +7,11 @@ export type InstallScriptInput = {
   apiBaseUrl: string;
   webOrigin: string;
   installUrl: string;
+  installPs1Url?: string;
 };
+
+/** 安装脚本钉死的 @flowx-ai/local 版本；发布新包后同步更新。 */
+export const FLOWX_LOCAL_INSTALL_VERSION = '0.4.10';
 
 export type InstallRequestLike = {
   protocol?: string;
@@ -40,6 +44,17 @@ function firstCommaPart(value: string): string {
 
 function bashSingleQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function powershellSingleQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function resolveInstallPs1Url(input: InstallScriptInput): string {
+  if (input.installPs1Url?.trim()) {
+    return input.installPs1Url.trim();
+  }
+  return `${input.webOrigin.replace(/\/+$/, '')}/install.ps1`;
 }
 
 function parseUrl(raw: string): URL | null {
@@ -130,13 +145,16 @@ export function buildInstallScript(input: InstallScriptInput): string {
   const apiBaseUrl = bashSingleQuote(input.apiBaseUrl);
   const webOrigin = input.webOrigin.replace(/\/+$/, '');
   const installUrl = input.installUrl;
+  const installPs1Url = resolveInstallPs1Url(input);
   const tokenSettingsUrl = `${webOrigin}/settings/api-tokens`;
+  const pinnedPackage = `@flowx-ai/local@${FLOWX_LOCAL_INSTALL_VERSION}`;
 
   return `#!/usr/bin/env bash
 set -euo pipefail
 
 if [[ "$(uname -s 2>/dev/null || true)" =~ (MINGW|MSYS|CYGWIN|Windows_NT) ]] || [[ "\${OSTYPE:-}" =~ (MINGW|MSYS|CYGWIN|Windows_NT) ]]; then
-  echo "FlowX 本地安装脚本暂不支持 Windows。请在 macOS 或 Linux 上运行。" >&2
+  echo "Windows 请在 PowerShell 中运行：" >&2
+  echo "  irm ${installPs1Url} | iex" >&2
   exit 1
 fi
 
@@ -153,7 +171,7 @@ if [ "\${node_major}" -lt 20 ]; then
   exit 1
 fi
 
-npm install -g @flowx-ai/local@0.4.9 --registry https://registry.npmjs.org
+npm install -g ${pinnedPackage} --registry https://registry.npmjs.org
 
 flowx-local setup --api-base-url ${apiBaseUrl} --no-ide
 
@@ -194,5 +212,105 @@ fi
 
 echo "请打开 ${tokenSettingsUrl} 生成 Personal API Token，然后执行："
 echo "  flowx-local login"
+`;
+}
+
+export function buildInstallPs1Script(input: InstallScriptInput): string {
+  const apiBaseUrl = powershellSingleQuote(input.apiBaseUrl);
+  const webOrigin = input.webOrigin.replace(/\/+$/, '');
+  const installPs1Url = resolveInstallPs1Url(input);
+  const tokenSettingsUrl = `${webOrigin}/settings/api-tokens`;
+  const pinnedPackage = `@flowx-ai/local@${FLOWX_LOCAL_INSTALL_VERSION}`;
+
+  return `$ErrorActionPreference = 'Stop'
+
+function Test-FlowXCanPrompt {
+  try {
+    return [Environment]::UserInteractive -and ([Console]::WindowHandle -ne [IntPtr]::Zero)
+  } catch {
+    return $false
+  }
+}
+
+function Invoke-FlowXLocal {
+  param([Parameter(Mandatory = $true)][string[]]$FlowXArgs)
+  $cmd = Get-Command flowx-local -ErrorAction SilentlyContinue
+  if (-not $cmd) {
+    throw '找不到 flowx-local。请把 npm 全局 bin 加入 PATH 后重试。'
+  }
+  & $cmd.Source @FlowXArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw ("flowx-local " + ($FlowXArgs -join ' ') + " failed")
+  }
+}
+
+$node = Get-Command node -ErrorAction SilentlyContinue
+if (-not $node) {
+  Write-Host "需要 Node.js 20 或更高版本。请从 https://nodejs.org/ 安装后，重新运行："
+  Write-Host "  irm ${installPs1Url} | iex"
+  exit 1
+}
+
+$nodeVersion = node -v
+if ($nodeVersion -notmatch '^v(\\d+)') {
+  Write-Host "无法解析 Node 版本（当前: $nodeVersion）。请从 https://nodejs.org/ 安装 Node.js 20+ 后重试。"
+  exit 1
+}
+$nodeMajor = [int]$Matches[1]
+if ($nodeMajor -lt 20) {
+  Write-Host "需要 Node.js 20 或更高版本（当前: $nodeVersion）。请从 https://nodejs.org/ 安装后，重新运行："
+  Write-Host "  irm ${installPs1Url} | iex"
+  exit 1
+}
+
+npm install -g ${pinnedPackage} --registry https://registry.npmjs.org
+$npmPrefix = (npm prefix -g).Trim()
+if ($npmPrefix) {
+  $env:Path = "$npmPrefix;$env:Path"
+}
+
+Invoke-FlowXLocal @('setup', '--api-base-url', ${apiBaseUrl}, '--no-ide')
+
+$cursorFound = $false
+$cursorCandidates = @(
+  (Join-Path $env:LOCALAPPDATA 'Programs\\cursor\\Cursor.exe'),
+  (Join-Path $env:LOCALAPPDATA 'Programs\\Cursor\\Cursor.exe')
+)
+foreach ($candidate in $cursorCandidates) {
+  if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+    $cursorFound = $true
+  }
+}
+if (Get-Command cursor -ErrorAction SilentlyContinue) {
+  $cursorFound = $true
+}
+
+$codexFound = [bool](Get-Command codex -ErrorAction SilentlyContinue)
+
+if (Test-FlowXCanPrompt) {
+  if ($cursorFound) {
+    $reply = Read-Host '检测到 Cursor，要安装 FlowX Skill 和 MCP 吗？[Y/n]'
+    if ([string]::IsNullOrWhiteSpace($reply) -or $reply -match '^[Yy]') {
+      Invoke-FlowXLocal @('setup', 'cursor')
+    }
+  } else {
+    Write-Host '未找到 Cursor'
+  }
+  if ($codexFound) {
+    $reply = Read-Host '检测到 Codex，要安装 FlowX Skill 和 MCP 吗？[Y/n]'
+    if ([string]::IsNullOrWhiteSpace($reply) -or $reply -match '^[Yy]') {
+      Invoke-FlowXLocal @('setup', 'codex')
+    }
+  } else {
+    Write-Host '未找到 Codex'
+  }
+} else {
+  Write-Host '非交互环境，已跳过 IDE 集成。稍后可执行：'
+  Write-Host '  flowx-local setup cursor'
+  Write-Host '  flowx-local setup codex'
+}
+
+Write-Host "请打开 ${tokenSettingsUrl} 生成 Personal API Token，然后执行："
+Write-Host '  flowx-local login'
 `;
 }

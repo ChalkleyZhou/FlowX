@@ -3,6 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { BrainstormCompletionReport, DesignCompletionReport } from '@flowx-ai/protocol';
 import { z } from 'zod';
 import { readActiveDesignSession } from './active-design-session.js';
+import { PACKAGE_VERSION } from './config.js';
 import { resolveApiAuth } from './credentials.js';
 import { collectGitReport } from './git-report.js';
 import {
@@ -248,7 +249,7 @@ async function runRequest(request: () => Promise<unknown>) {
 }
 
 export function createLocalMcpServer(options: LocalMcpOptions = {}) {
-  const server = new McpServer({ name: 'flowx-local', version: '0.4.9' });
+  const server = new McpServer({ name: 'flowx-local', version: PACKAGE_VERSION });
 
   server.registerTool(
     'flowx_get_active_design_session',

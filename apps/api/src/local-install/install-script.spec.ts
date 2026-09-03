@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildInstallPs1Script,
   buildInstallScript,
+  FLOWX_LOCAL_INSTALL_VERSION,
   requestPublicOrigin,
   resolveInstallApiBaseUrl,
 } from './install-script';
@@ -27,7 +29,7 @@ describe('buildInstallScript', () => {
 
   it('installs a pinned @flowx-ai/local that supports --api-base-url', () => {
     expect(script).toContain(
-      'npm install -g @flowx-ai/local@0.4.9 --registry https://registry.npmjs.org',
+      `npm install -g @flowx-ai/local@${FLOWX_LOCAL_INSTALL_VERSION} --registry https://registry.npmjs.org`,
     );
   });
 
@@ -65,10 +67,9 @@ describe('buildInstallScript', () => {
     expect(script).not.toContain('fxpat_');
   });
 
-  it('exits on Windows via uname/OSTYPE', () => {
+  it('redirects Windows Git Bash users to the PowerShell installer', () => {
     expect(script).toMatch(/MINGW|MSYS|CYGWIN|Windows_NT/);
-    expect(script).toMatch(/uname|OSTYPE/);
-    expect(script.toLowerCase()).toMatch(/不支持|unsupported/);
+    expect(script).toContain('irm https://flowx.example.com/install.ps1 | iex');
   });
 
   it('does not embed loopback 3000 as a default', () => {
@@ -163,5 +164,47 @@ describe('requestPublicOrigin', () => {
         },
       }),
     ).toBe('http://flowx.example.com');
+  });
+});
+
+describe('buildInstallPs1Script', () => {
+  const script = buildInstallPs1Script(PRODUCTION);
+
+  it('pins the same @flowx-ai/local version as the bash installer', () => {
+    expect(script).toContain(
+      `npm install -g @flowx-ai/local@${FLOWX_LOCAL_INSTALL_VERSION} --registry https://registry.npmjs.org`,
+    );
+  });
+
+  it('embeds the site API URL into setup --no-ide', () => {
+    expect(script).toContain("'https://flowx.example.com/api'");
+    expect(script).toContain('--api-base-url');
+    expect(script).toContain('--no-ide');
+  });
+
+  it('detects Cursor under LocalAppData and Codex on PATH', () => {
+    expect(script).toContain('LOCALAPPDATA');
+    expect(script).toContain('Cursor.exe');
+    expect(script).toContain('Get-Command cursor');
+    expect(script).toContain('Get-Command codex');
+    expect(script).toContain('检测到 Cursor，要安装 FlowX Skill 和 MCP 吗？[Y/n]');
+    expect(script).toContain('检测到 Codex，要安装 FlowX Skill 和 MCP 吗？[Y/n]');
+  });
+
+  it('prompts via Read-Host so irm | iex stays interactive', () => {
+    expect(script).toContain('Read-Host');
+    expect(script).toContain('Test-FlowXCanPrompt');
+    expect(script).toContain('WindowHandle');
+  });
+
+  it('prints token settings URL and flowx-local login without prompting for a token', () => {
+    expect(script).toContain(`${PRODUCTION.webOrigin}/settings/api-tokens`);
+    expect(script).toContain('flowx-local login');
+    expect(script).not.toContain('--token');
+    expect(script).not.toContain('fxpat_');
+  });
+
+  it('does not embed loopback 3000 as a default', () => {
+    expect(script).not.toContain('127.0.0.1:3000');
   });
 });

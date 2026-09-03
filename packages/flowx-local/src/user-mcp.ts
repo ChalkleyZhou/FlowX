@@ -10,6 +10,7 @@ export type UpsertUserMcpInput = {
   homeDir: string;
   targets: UserMcpTarget[];
   flowxBin: string;
+  nodeExecPath?: string;
 };
 
 export type UpsertUserMcpResult = {
@@ -24,24 +25,29 @@ type McpServer = {
 
 export function upsertUserMcp(input: UpsertUserMcpInput): UpsertUserMcpResult {
   const written: string[] = [];
+  const nodeExecPath = input.nodeExecPath ?? process.execPath;
   for (const target of input.targets) {
     if (target === 'cursor') {
-      written.push(upsertCursorMcp(input.homeDir, input.flowxBin));
+      written.push(upsertCursorMcp(input.homeDir, input.flowxBin, nodeExecPath));
     } else if (target === 'codex') {
-      written.push(upsertCodexMcp(input.homeDir, input.flowxBin));
+      written.push(upsertCodexMcp(input.homeDir, input.flowxBin, nodeExecPath));
     }
   }
   return { written };
 }
 
-function upsertCursorMcp(homeDir: string, flowxBin: string): string {
+function isJsCliEntry(flowxBin: string): boolean {
+  return /\.(cjs|mjs|js)$/i.test(flowxBin);
+}
+
+function upsertCursorMcp(homeDir: string, flowxBin: string, nodeExecPath: string): string {
   const mcpPath = join(homeDir, '.cursor', 'mcp.json');
   const existing = existsSync(mcpPath) ? parseCursorMcp(mcpPath) : {};
   const mcpServers =
     isPlainObject(existing.mcpServers) && existing.mcpServers
       ? { ...existing.mcpServers }
       : {};
-  mcpServers.flowx = buildFlowxServer(mcpServers.flowx, flowxBin);
+  mcpServers.flowx = buildFlowxServer(mcpServers.flowx, flowxBin, nodeExecPath);
   const updated = { ...existing, mcpServers };
   mkdirSync(dirname(mcpPath), { recursive: true });
   writeFileSync(mcpPath, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
@@ -62,11 +68,10 @@ function parseCursorMcp(mcpPath: string): Record<string, unknown> {
   return parsed;
 }
 
-function buildFlowxServer(existing: unknown, flowxBin: string): McpServer {
-  const server: McpServer = {
-    command: flowxBin,
-    args: ['mcp'],
-  };
+function buildFlowxServer(existing: unknown, flowxBin: string, nodeExecPath: string): McpServer {
+  const server: McpServer = isJsCliEntry(flowxBin)
+    ? { command: nodeExecPath, args: [flowxBin, 'mcp'] }
+    : { command: flowxBin, args: ['mcp'] };
   const env = retainedEnv(existing);
   if (env) {
     server.env = env;
@@ -88,11 +93,11 @@ function retainedEnv(existing: unknown): Record<string, string> | undefined {
   return Object.keys(env).length > 0 ? env : undefined;
 }
 
-function upsertCodexMcp(homeDir: string, flowxBin: string): string {
+function upsertCodexMcp(homeDir: string, flowxBin: string, nodeExecPath: string): string {
   const tomlPath = join(homeDir, '.codex', 'config.toml');
   const doc = existsSync(tomlPath) ? parseCodexToml(tomlPath) : {};
   const mcpServers = isPlainObject(doc.mcp_servers) ? { ...doc.mcp_servers } : {};
-  mcpServers.flowx = { command: flowxBin, args: ['mcp'] };
+  mcpServers.flowx = buildFlowxServer(mcpServers.flowx, flowxBin, nodeExecPath);
   doc.mcp_servers = mcpServers;
   mkdirSync(dirname(tomlPath), { recursive: true });
   writeFileSync(tomlPath, stringify(doc), 'utf8');

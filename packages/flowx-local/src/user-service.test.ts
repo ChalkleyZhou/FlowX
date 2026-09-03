@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -6,7 +6,9 @@ import {
   installUserService,
   isServiceInstalled,
   renderLaunchAgentPlist,
+  renderScheduledTaskXml,
   renderSystemdUserUnit,
+  resolveNodeServeEntry,
 } from './user-service.js';
 
 const homes: string[] = [];
@@ -66,6 +68,58 @@ describe('renderSystemdUserUnit', () => {
   });
 });
 
+describe('resolveNodeServeEntry', () => {
+  it('keeps a JS CLI entry as-is', () => {
+    const home = makeHome();
+    const js = join(home, 'dist', 'index.js');
+    mkdirSync(join(home, 'dist'), { recursive: true });
+    writeFileSync(js, 'export {};\n');
+    expect(resolveNodeServeEntry(js)).toBe(js);
+  });
+
+  it('resolves an npm .cmd shim to the package dist entry', () => {
+    const home = makeHome();
+    const npmRoot = join(home, 'npm');
+    const js = join(npmRoot, 'node_modules', '@flowx-ai', 'local', 'dist', 'index.js');
+    mkdirSync(join(npmRoot, 'node_modules', '@flowx-ai', 'local', 'dist'), { recursive: true });
+    writeFileSync(js, 'export {};\n');
+    const cmd = join(npmRoot, 'flowx-local.cmd');
+    writeFileSync(cmd, '@echo off\n');
+    expect(resolveNodeServeEntry(cmd)).toBe(js);
+  });
+});
+
+describe('renderScheduledTaskXml', () => {
+  it('starts node by absolute execPath then JS entry serve, with logon and restart', () => {
+    const xml = renderScheduledTaskXml({
+      nodeExecPath: 'C:\\Program Files\\nodejs\\node.exe',
+      flowxBin: 'C:\\Users\\a\\.flowx\\index.js',
+      logPath: 'C:\\Users\\a\\.flowx\\logs\\serve.log',
+      userId: 'alice',
+    });
+    expect(xml).toContain('ai.flowx.local');
+    expect(xml).toContain('<LogonTrigger>');
+    expect(xml).toContain('<RestartOnFailure>');
+    expect(xml).toContain('<UserId>alice</UserId>');
+    expect(xml).toContain('<Command>C:\\Program Files\\nodejs\\node.exe</Command>');
+    expect(xml).toContain('<Arguments>"C:\\Users\\a\\.flowx\\index.js" serve</Arguments>');
+    expect(xml).toContain('ExecutionTimeLimit>PT0S');
+  });
+
+  it('escapes XML special characters in Windows paths', () => {
+    const xml = renderScheduledTaskXml({
+      nodeExecPath: 'C:\\a&b\\node.exe',
+      flowxBin: 'C:\\a&b\\index.js',
+      logPath: 'C:\\<log>.log',
+      userId: 'a&b',
+    });
+    expect(xml).toContain('C:\\a&amp;b\\node.exe');
+    expect(xml).toContain('C:\\a&amp;b\\index.js');
+    expect(xml).toContain('a&amp;b');
+    expect(xml).not.toContain('<Command>C:\\a&b\\');
+  });
+});
+
 describe('installUserService', () => {
   it('writes a darwin LaunchAgent plist and bootstraps after ignored bootout', async () => {
     const home = makeHome();
@@ -98,19 +152,33 @@ describe('installUserService', () => {
     expect(run.mock.calls[1]).toEqual(['launchctl', ['bootstrap', `gui/${uid}`, plistPath]]);
   });
 
-  it('skips Windows without writing files', async () => {
+  it('writes a Windows scheduled task XML and registers it', async () => {
     const home = makeHome();
-    writeFileSync(join(home, 'marker'), 'keep');
+    const npmRoot = join(home, 'npm');
+    const js = join(npmRoot, 'node_modules', '@flowx-ai', 'local', 'dist', 'index.js');
+    mkdirSync(join(npmRoot, 'node_modules', '@flowx-ai', 'local', 'dist'), { recursive: true });
+    writeFileSync(js, 'export {};\n');
+    const cmd = join(npmRoot, 'flowx-local.cmd');
+    writeFileSync(cmd, '@echo off\n');
     const run = vi.fn();
     const result = await installUserService({
       platform: 'win32',
       homeDir: home,
-      flowxBin: 'C:\\flowx-local',
+      flowxBin: cmd,
+      nodeExecPath: 'C:\\Program Files\\nodejs\\node.exe',
+      windowsUser: 'alice',
       run,
     });
-    expect(result).toEqual({ skipped: 'win32' });
-    expect(run).not.toHaveBeenCalled();
-    expect(readdirSync(home)).toEqual(['marker']);
+    const taskXmlPath = join(home, '.flowx', 'ai.flowx.local.xml');
+    expect(result).toEqual({ taskXmlPath });
+    const xml = readFileSync(taskXmlPath).toString('utf16le').replace(/^\uFEFF/, '');
+    expect(xml).toContain('ai.flowx.local');
+    expect(xml).toContain('<Command>C:\\Program Files\\nodejs\\node.exe</Command>');
+    expect(xml).toContain(`<Arguments>"${js}" serve</Arguments>`);
+    expect(run.mock.calls).toEqual([
+      ['schtasks', ['/Create', '/TN', 'ai.flowx.local', '/XML', taskXmlPath, '/F']],
+      ['schtasks', ['/Run', '/TN', 'ai.flowx.local']],
+    ]);
   });
 
   it('throws when launchctl bootstrap fails', async () => {
@@ -172,7 +240,16 @@ describe('isServiceInstalled', () => {
     expect(isServiceInstalled(home, 'darwin')).toBe(false);
   });
 
-  it('is false when no unit file exists, including win32', () => {
+  it('is true when the Windows scheduled task XML exists', () => {
+    const home = makeHome();
+    const taskXmlPath = join(home, '.flowx', 'ai.flowx.local.xml');
+    mkdirSync(join(home, '.flowx'), { recursive: true });
+    writeFileSync(taskXmlPath, '<Task/>');
+    expect(isServiceInstalled(home, 'win32')).toBe(true);
+    expect(isServiceInstalled(home, 'darwin')).toBe(false);
+  });
+
+  it('is false when no unit file exists', () => {
     const home = makeHome();
     expect(isServiceInstalled(home, 'darwin')).toBe(false);
     expect(isServiceInstalled(home, 'linux')).toBe(false);

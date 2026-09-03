@@ -98,7 +98,7 @@ describe('MarkdownDocPage', () => {
       ok: true,
       arrayBuffer: async () =>
         new TextEncoder().encode(
-          '# 指南\n\n```bash\ncurl -fsSL https://<当前站点>/install | bash\n```\n',
+          '# 指南\n\n```bash\ncurl -fsSL https://<当前站点>/install | bash\n```\n\n```powershell\nirm https://<当前站点>/install.ps1 | iex\n```\n',
         ).buffer,
     });
 
@@ -122,6 +122,7 @@ describe('MarkdownDocPage', () => {
     });
 
     expect(container.textContent).toContain(`curl -fsSL ${window.location.origin}/install | bash`);
+    expect(container.textContent).toContain(`irm ${window.location.origin}/install.ps1 | iex`);
     expect(container.textContent).not.toContain('<当前站点>');
   });
 });

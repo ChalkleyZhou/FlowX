@@ -4,14 +4,21 @@
 
 ## 安装
 
-在本机终端执行：
+macOS / Linux：
 
 ```bash
 curl -fsSL https://<当前站点>/install | bash
 flowx-local login
 ```
 
-需要 Node.js 20+（没有则到 https://nodejs.org/ 安装后重跑）。脚本会装包、注册后台服务，检测到 Cursor / Codex 时询问是否写入 Skill 和 MCP。`login` 只粘贴设置页生成的 `fxpat_…`。暂不支持 Windows。
+Windows（PowerShell）：
+
+```powershell
+irm https://<当前站点>/install.ps1 | iex
+flowx-local login
+```
+
+需要 Node.js 20+（没有则到 https://nodejs.org/ 安装后重跑）。脚本会装包、注册后台服务（macOS LaunchAgent / Linux systemd --user / Windows 计划任务），检测到 Cursor / Codex 时询问是否写入 Skill 和 MCP。`login` 只粘贴设置页生成的 `fxpat_…`。
 
 ## 怎么用
 
@@ -38,6 +45,7 @@ flowx-local login
 | --- | --- |
 | 网页提示未检测到 | `flowx-local status`，或 `curl http://127.0.0.1:3920/health` |
 | 找不到命令 | 把 npm 全局 bin 加入 `PATH`；或 `npm install -g @flowx-ai/local --registry https://registry.npmjs.org` 后 `flowx-local setup --api-base-url https://你的站点/api` |
+| `irm` 被策略拦截 | `powershell -ExecutionPolicy Bypass -c "irm https://你的站点/install.ps1 | iex"` |
 | `login` 询问地址 / 连错环境 | `flowx-local login --api-base-url https://你的站点/api --token fxpat_…` |
 | 完成结果进了 Outbox | `flowx-local sync` |
 | 命令与文档不一致 | `flowx-local version`，再重跑当前站点的 `/install` |

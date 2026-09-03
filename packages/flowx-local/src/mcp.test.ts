@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writeActiveDesignSession } from './active-design-session.js';
+import { PACKAGE_VERSION } from './config.js';
 import { writeCredentials } from './credentials.js';
 import { createLocalMcpServer } from './mcp.js';
 import { readWorkflowBinding, writeWorkflowBinding } from './workflow-binding.js';
@@ -49,7 +50,7 @@ describe('flowx-local MCP server', () => {
   it('identifies as flowx-local and registers the user-facing tools', async () => {
     const { client, server } = await connectClient(makeHome());
 
-    expect(client.getServerVersion()).toMatchObject({ name: 'flowx-local', version: '0.4.9' });
+    expect(client.getServerVersion()).toMatchObject({ name: 'flowx-local', version: PACKAGE_VERSION });
     const result = await client.listTools();
     expect(result.tools.map((tool) => tool.name)).toEqual([
       'flowx_get_active_design_session',

@@ -1473,6 +1473,8 @@ describe('WorkflowRunDetailPage', () => {
     expect(text).toContain('本地执行指引');
     expect(text).toContain('curl -fsSL');
     expect(text).toContain('/install');
+    expect(text).toContain('irm');
+    expect(text).toContain('/install.ps1');
     expect(text).toContain('flowx-local login');
     expect(text).not.toContain('pnpm --filter flowx-local');
   });

@@ -504,6 +504,7 @@ export function WorkflowRunDetailPage() {
   );
   const stageActionsLocked = busyStage !== null || hasRunningStage;
   const localInstallCurl = `curl -fsSL ${window.location.origin}/install | bash`;
+  const localInstallPs1 = `irm ${window.location.origin}/install.ps1 | iex`;
   const latestExecutionStage = workflowRun ? getStage(workflowRun, 'EXECUTION') : undefined;
   const latestReviewStage = workflowRun ? getStage(workflowRun, 'AI_REVIEW') : undefined;
   const hasStaleReviewResults =
@@ -2090,8 +2091,10 @@ export function WorkflowRunDetailPage() {
                     <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
                       <li>点击「本地启动」并选择 Cursor 或 Codex</li>
                       <li>
-                        若尚未安装 flowx-local，先执行{' '}
+                        若尚未安装 flowx-local，macOS / Linux 执行{' '}
                         <code className="text-foreground">{localInstallCurl}</code>
+                        ，Windows PowerShell 执行{' '}
+                        <code className="text-foreground">{localInstallPs1}</code>
                         ，然后{' '}
                         <code className="text-foreground">flowx-local login</code>
                       </li>
@@ -2104,8 +2107,10 @@ export function WorkflowRunDetailPage() {
                       <div className="rounded-md border border-warning/40 bg-muted/30 p-3 text-sm text-foreground">
                         <div className="font-semibold">未检测到本机 flowx-local</div>
                         <div className="mt-1 text-muted-foreground">
-                          请先执行{' '}
+                          macOS / Linux 执行{' '}
                           <code className="text-foreground">{localInstallCurl}</code>
+                          ，Windows PowerShell 执行{' '}
+                          <code className="text-foreground">{localInstallPs1}</code>
                           ，然后{' '}
                           <code className="text-foreground">flowx-local login</code>
                         </div>

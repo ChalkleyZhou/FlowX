@@ -127,6 +127,23 @@ describe('flowx-local setup', () => {
     expect(result.written).toContain(plistPath);
   });
 
+  it('with noIde records the Windows scheduled task XML path', async () => {
+    const home = makeHome();
+    const taskXmlPath = join(home, '.flowx', 'ai.flowx.local.xml');
+    const installService = vi.fn().mockResolvedValue({ taskXmlPath });
+
+    const result = await runSetup({
+      homeDir: home,
+      noIde: true,
+      apiBaseUrl: 'https://flowx.example/api',
+      flowxBin: 'C:\\npm\\flowx-local.cmd',
+      installService,
+    });
+
+    expect(result.written).toContain(getConfigPath({ homeDir: home }));
+    expect(result.written).toContain(taskXmlPath);
+  });
+
   it('writes Cursor Skill and user MCP, then installs the service', async () => {
     const home = makeHome();
     const installService = vi.fn();

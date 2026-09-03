@@ -3,6 +3,7 @@ import type { Server } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PACKAGE_VERSION } from './config.js';
 import { createLocalServer, startServer } from './server.js';
 import { writeActiveDesignSession } from './active-design-session.js';
 
@@ -39,7 +40,7 @@ describe('flowx-local server', () => {
     expect(response.headers.get('access-control-allow-origin')).toBe('*');
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
-      version: '0.4.9',
+      version: PACKAGE_VERSION,
       protocolVersion: '1.0',
       outboxPending: 0,
     });

@@ -288,14 +288,20 @@ docker-compose -f docker-compose.nginx.yml up -d
 
 Nginx 规则现在是：
 
-- `/install` 精确匹配，原样转发到 API（不做 `/api` 前缀 rewrite）
+- `/install`、`/install.ps1` 精确匹配，原样转发到 API（不做 `/api` 前缀 rewrite）
 - `/api/*` 全部转发到 API
 - 其他请求全部转发到前端页面服务
 
-本地 Agent 一键安装脚本由 API 提供，Nginx 必须保留上述 `location = /install` 规则。用户在本机执行：
+本地 Agent 一键安装脚本由 API 提供，Nginx 必须保留上述 `location = /install` 与 `location = /install.ps1` 规则。用户在本机执行：
 
 ```bash
 curl -fsSL http://<host>/install | bash
+```
+
+Windows PowerShell：
+
+```powershell
+irm http://<host>/install.ps1 | iex
 ```
 
 脚本会优先使用公网 `PUBLIC_API_BASE_URL`；若写成内网 IP / `127.0.0.1` 则忽略，改用当前请求的站点 origin + `/api`。Nginx 部署时请在 `.env.docker` 中设置与对外访问一致的地址，例如 `PUBLIC_API_BASE_URL=https://flowx.example.com/api`（见 §4.2）。

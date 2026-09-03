@@ -19,6 +19,21 @@ describe('resolveFlowxLocalBin', () => {
     expect(resolveFlowxLocalBin({ pathEnv: dir, argv1: '/unrelated/node' })).toBe(bin);
   });
 
+  it('finds flowx-local.cmd on Windows PATH', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'flowx-bin-'));
+    dirs.push(dir);
+    const cmd = join(dir, 'flowx-local.cmd');
+    writeFileSync(cmd, '@echo off\n');
+    chmodSync(cmd, 0o755);
+    expect(
+      resolveFlowxLocalBin({
+        pathEnv: dir,
+        argv1: '/unrelated/node',
+        platform: 'win32',
+      }),
+    ).toBe(cmd);
+  });
+
   it('falls back to argv1 when PATH has no flowx-local', () => {
     const dir = mkdtempSync(join(tmpdir(), 'flowx-bin-'));
     dirs.push(dir);

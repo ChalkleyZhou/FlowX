@@ -12,14 +12,16 @@ function isExecutable(filePath: string): boolean {
   }
 }
 
-function findInPath(pathEnv: string): string | null {
+function findInPath(pathEnv: string, names: string[]): string | null {
   for (const dir of pathEnv.split(delimiter)) {
     if (!dir) {
       continue;
     }
-    const candidate = join(dir, BIN_NAME);
-    if (isExecutable(candidate)) {
-      return candidate;
+    for (const name of names) {
+      const candidate = join(dir, name);
+      if (isExecutable(candidate)) {
+        return candidate;
+      }
     }
   }
   return null;
@@ -37,11 +39,16 @@ function argv1Exists(argv1: string | undefined): string | null {
   }
 }
 
-export function resolveFlowxLocalBin(input: { pathEnv?: string; argv1?: string } = {}): string {
+export function resolveFlowxLocalBin(
+  input: { pathEnv?: string; argv1?: string; platform?: NodeJS.Platform } = {},
+): string {
   const pathEnv = input.pathEnv ?? process.env.PATH ?? '';
   const argv1 = input.argv1 ?? process.argv[1];
+  const platform = input.platform ?? process.platform;
+  const names =
+    platform === 'win32' ? [`${BIN_NAME}.cmd`, `${BIN_NAME}.exe`, BIN_NAME] : [BIN_NAME];
 
-  const fromPath = findInPath(pathEnv);
+  const fromPath = findInPath(pathEnv, names);
   if (fromPath) {
     return fromPath;
   }

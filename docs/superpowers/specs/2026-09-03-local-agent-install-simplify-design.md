@@ -23,14 +23,13 @@ Skill 与 MCP **不冲突**：Skill 是流程说明书，MCP 是 `flowx_*` 工�
 | `setup --no-ide` | 只写 API 地址 + 后台服务；curl 第一步使用 |
 | Cursor / Codex | curl 向导：**检测到才问**是否写 Skill + MCP |
 | OpenDesign | curl 向导不检测；MCP 走 Cursor Agent |
-| Windows | 本变更不做 |
+| Windows | `irm https://<这台FlowX>/install.ps1 \| iex`，然后 `flowx-local login`；后台用当前用户计划任务 |
 | 独立二进制 / 代装 Node | 不做 |
 
 ## 不在本变更
 
-- Windows 服务与 PowerShell 安装器
 - 把 `@flowx-ai/local` 打成 Cursor 式独立二进制
-- curl 脚本代装 Node
+- curl / irm 脚本代装 Node
 - 自定义协议 `flowx://` 替代 loopback daemon
 - 修改网页「本地启动」写入项目级 `.cursor/mcp.json` 的兼容路径（credentials 仍优先）
 - OpenDesign 应用内 MCP 配置
@@ -160,7 +159,7 @@ curl 主路径始终带 `--api-base-url`，不会走到询问。
 | --- | --- |
 | macOS | `~/Library/LaunchAgents/ai.flowx.local.plist` |
 | Linux | systemd user unit（如 `~/.config/systemd/user/flowx-local.service`） |
-| Windows | 不做；`/install` 说明不支持 |
+| Windows | `%USERPROFILE%\.flowx\ai.flowx.local.xml` + 当前用户计划任务 `ai.flowx.local`（登录触发、失败重启） |
 
 日志：`~/.flowx/logs/serve.log`。  
 `flowx-local update`：重写服务定义（路径可能变化）并重启。  
@@ -188,7 +187,7 @@ Token 校验失败（含连错地址）：**不写** `credentials.json`。废除
 | 单个 IDE 配置文件损坏 | 该 target 失败；已装的后台服务不回滚 |
 | 非 TTY | 跳过 IDE 询问；地址+后台仍装 |
 | login 地址未确认或校验失败 | 不写 credentials |
-| Windows 跑 `/install` | 明确不支持并退出 |
+| Windows 跑 bash `/install` | 提示改用 `irm …/install.ps1 \| iex` 并退出 |
 
 ## 文档
 

@@ -44,6 +44,27 @@ describe('upsertUserMcp', () => {
     expect(result.written).toContain(mcpPath);
   });
 
+  it('uses node plus a JS entry so Windows MCP can launch without a .cmd shim', () => {
+    const home = mkdtempSync(join(tmpdir(), 'flowx-mcp-'));
+    homes.push(home);
+    const js = join(home, 'dist', 'index.js');
+    mkdirSync(join(home, 'dist'), { recursive: true });
+    writeFileSync(js, 'export {};\n');
+    upsertUserMcp({
+      homeDir: home,
+      targets: ['cursor'],
+      flowxBin: js,
+      nodeExecPath: 'C:\\Program Files\\nodejs\\node.exe',
+    });
+    const parsed = JSON.parse(readFileSync(join(home, '.cursor', 'mcp.json'), 'utf8')) as {
+      mcpServers: { flowx: { command: string; args: string[] } };
+    };
+    expect(parsed.mcpServers.flowx).toEqual({
+      command: 'C:\\Program Files\\nodejs\\node.exe',
+      args: [js, 'mcp'],
+    });
+  });
+
   it('upserts Codex [mcp_servers.flowx] and leaves other tables', () => {
     const home = mkdtempSync(join(tmpdir(), 'flowx-mcp-'));
     homes.push(home);

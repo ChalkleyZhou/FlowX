@@ -17,6 +17,9 @@ export default defineConfig(({ mode }) => {
           target: 'http://127.0.0.1:3000',
           rewrite: (path) => path.replace(/^\/api/, ''),
         },
+        '/install.ps1': {
+          target: 'http://127.0.0.1:3000',
+        },
         '/install': {
           target: 'http://127.0.0.1:3000',
         },

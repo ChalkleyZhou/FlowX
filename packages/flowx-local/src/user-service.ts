@@ -1,9 +1,11 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 
 const LAUNCH_AGENT_LABEL = 'ai.flowx.local';
 const SYSTEMD_UNIT_NAME = 'flowx-local.service';
+const WINDOWS_TASK_NAME = 'ai.flowx.local';
 const SERVE_LOG_RELATIVE = join('.flowx', 'logs', 'serve.log');
 
 export type RunCommand = (command: string, args: string[]) => void | Promise<void>;
@@ -15,6 +17,7 @@ export type InstallUserServiceOptions = {
   nodeExecPath?: string;
   run?: RunCommand;
   uid?: number;
+  windowsUser?: string;
 };
 
 export type RenderUserServiceInput = {
@@ -24,9 +27,9 @@ export type RenderUserServiceInput = {
 };
 
 export type InstallUserServiceResult =
-  | { skipped: 'win32' }
   | { plistPath: string }
-  | { unitPath: string };
+  | { unitPath: string }
+  | { taskXmlPath: string };
 
 function escapeXml(value: string): string {
   return value
@@ -94,6 +97,71 @@ export function renderLaunchAgentPlist(input: RenderUserServiceInput): string {
 `;
 }
 
+export function resolveNodeServeEntry(flowxBin: string): string {
+  if (/\.(cjs|mjs|js)$/i.test(flowxBin)) {
+    return flowxBin;
+  }
+  const sibling = join(dirname(flowxBin), 'node_modules', '@flowx-ai', 'local', 'dist', 'index.js');
+  if (existsSync(sibling)) {
+    return sibling;
+  }
+  throw new Error(
+    `Could not resolve flowx-local JS entry from ${flowxBin}. Re-run npm install -g @flowx-ai/local.`,
+  );
+}
+
+export function renderScheduledTaskXml(input: RenderUserServiceInput & { userId: string }): string {
+  const serveEntry = resolveNodeServeEntry(input.flowxBin);
+  return `<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <URI>\\${escapeXml(WINDOWS_TASK_NAME)}</URI>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>${escapeXml(input.userId)}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>7</Priority>
+    <RestartOnFailure>
+      <Interval>PT1M</Interval>
+      <Count>999</Count>
+    </RestartOnFailure>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>${escapeXml(input.nodeExecPath)}</Command>
+      <Arguments>"${escapeXml(serveEntry)}" serve</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+`;
+}
+
 export function renderSystemdUserUnit(input: {
   nodeExecPath: string;
   flowxBin: string;
@@ -129,12 +197,19 @@ function systemdUserUnitPath(homeDir: string): string {
   return join(homeDir, '.config', 'systemd', 'user', SYSTEMD_UNIT_NAME);
 }
 
+function scheduledTaskXmlPath(homeDir: string): string {
+  return join(homeDir, '.flowx', `${WINDOWS_TASK_NAME}.xml`);
+}
+
 export function isServiceInstalled(homeDir: string, platform: NodeJS.Platform): boolean {
   if (platform === 'darwin') {
     return existsSync(launchAgentPlistPath(homeDir));
   }
   if (platform === 'linux') {
     return existsSync(systemdUserUnitPath(homeDir));
+  }
+  if (platform === 'win32') {
+    return existsSync(scheduledTaskXmlPath(homeDir));
   }
   return false;
 }
@@ -153,13 +228,32 @@ export async function installUserService(
   options: InstallUserServiceOptions,
 ): Promise<InstallUserServiceResult> {
   const platform = options.platform ?? process.platform;
-  if (platform === 'win32') {
-    return { skipped: 'win32' };
-  }
-
   const run = options.run ?? defaultRun;
   const logPath = ensureLogDir(options.homeDir);
   const nodeExecPath = options.nodeExecPath ?? process.execPath;
+
+  if (platform === 'win32') {
+    const serveEntry = resolveNodeServeEntry(options.flowxBin);
+    const taskXmlPath = scheduledTaskXmlPath(options.homeDir);
+    mkdirSync(dirname(taskXmlPath), { recursive: true });
+    const xml = renderScheduledTaskXml({
+      nodeExecPath,
+      flowxBin: serveEntry,
+      logPath,
+      userId: options.windowsUser ?? userInfo().username,
+    });
+    writeFileSync(taskXmlPath, `\uFEFF${xml}`, { encoding: 'utf16le' });
+    await runOrThrow(run, 'schtasks', [
+      '/Create',
+      '/TN',
+      WINDOWS_TASK_NAME,
+      '/XML',
+      taskXmlPath,
+      '/F',
+    ]);
+    await runOrThrow(run, 'schtasks', ['/Run', '/TN', WINDOWS_TASK_NAME]);
+    return { taskXmlPath };
+  }
 
   if (platform === 'darwin') {
     const plistPath = launchAgentPlistPath(options.homeDir);

@@ -129,6 +129,8 @@ export async function runSetup(options: SetupOptions = {}): Promise<SetupResult>
       written.push(installResult.plistPath);
     } else if ('unitPath' in installResult) {
       written.push(installResult.unitPath);
+    } else if ('taskXmlPath' in installResult) {
+      written.push(installResult.taskXmlPath);
     }
     return { written, skipped };
   }
