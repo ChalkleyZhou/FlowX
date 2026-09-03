@@ -2,6 +2,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { normalizeApiBaseUrl, resolveApiBaseUrl } from './api-base-url.js';
+import { loadConfig, saveConfig, getConfigPath } from './config.js';
+import { resolveFlowxLocalBin } from './flowx-bin.js';
+import { promptApiBaseUrl as defaultPromptApiBaseUrl } from './login.js';
+import { upsertUserMcp } from './user-mcp.js';
+import { installUserService } from './user-service.js';
 
 export type SetupTarget = 'cursor' | 'codex' | 'od';
 
@@ -9,6 +15,13 @@ export type SetupOptions = {
   homeDir?: string;
   targets?: string;
   force?: boolean;
+  noIde?: boolean;
+  apiBaseUrl?: string;
+  envApiBaseUrl?: string;
+  flowxBin?: string;
+  promptApiBaseUrl?: () => Promise<string>;
+  installService?: typeof installUserService;
+  resolveBin?: typeof resolveFlowxLocalBin;
 };
 
 export type SetupResult = {
@@ -76,12 +89,52 @@ function writeSkill(path: string, content: string, force: boolean): 'written' | 
   return 'written';
 }
 
-export function runSetup(options: SetupOptions = {}): SetupResult {
+export async function runSetup(options: SetupOptions = {}): Promise<SetupResult> {
   const homeDir = options.homeDir ?? homedir();
-  const force = options.force === true;
-  const targets = parseSetupTargets(options.targets);
+  const configOptions = { homeDir };
+  const resolved = resolveApiBaseUrl({
+    flag: options.apiBaseUrl,
+    env: options.envApiBaseUrl ?? process.env.FLOWX_API_BASE_URL,
+    config: loadConfig(configOptions).apiBaseUrl,
+  });
+
+  let apiBaseUrl: string;
+  if (resolved.source === 'missing') {
+    // 交互确认的地址视为已确认，即使是 loopback 占位值
+    apiBaseUrl = normalizeApiBaseUrl(
+      await (options.promptApiBaseUrl ?? defaultPromptApiBaseUrl)(),
+    );
+    if (!apiBaseUrl) {
+      throw new Error(
+        'apiBaseUrl is required. Pass --api-base-url, set FLOWX_API_BASE_URL, or enter an API URL when prompted.',
+      );
+    }
+  } else {
+    apiBaseUrl = resolved.url;
+  }
+
+  saveConfig({ ...loadConfig(configOptions), apiBaseUrl }, configOptions);
+
+  const bin = options.flowxBin ?? (options.resolveBin ?? resolveFlowxLocalBin)();
+  const installResult = await (options.installService ?? installUserService)({
+    homeDir,
+    flowxBin: bin,
+  });
+
   const written: string[] = [];
   const skipped: string[] = [];
+  if (options.noIde) {
+    written.push(getConfigPath(configOptions));
+    if ('plistPath' in installResult) {
+      written.push(installResult.plistPath);
+    } else if ('unitPath' in installResult) {
+      written.push(installResult.unitPath);
+    }
+    return { written, skipped };
+  }
+
+  const force = options.force === true;
+  const targets = parseSetupTargets(options.targets);
   const seen = new Set<string>();
 
   for (const skillName of SETUP_SKILL_NAMES) {
@@ -101,6 +154,14 @@ export function runSetup(options: SetupOptions = {}): SetupResult {
       }
     }
   }
+
+  upsertUserMcp({
+    homeDir,
+    targets: targets.filter((target): target is 'cursor' | 'codex' =>
+      target === 'cursor' || target === 'codex',
+    ),
+    flowxBin: bin,
+  });
 
   return { written, skipped };
 }

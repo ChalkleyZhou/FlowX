@@ -1,101 +1,20 @@
 #!/usr/bin/env node
 
-import { createInterface } from 'node:readline/promises';
-import { stdin as input, stdout as output } from 'node:process';
 import { startServer } from './server.js';
-import { DEFAULT_LOCAL_CONFIG, loadConfig, normalizeRepoUrl, saveConfig } from './config.js';
+import { loadConfig, normalizeRepoUrl, saveConfig } from './config.js';
 import {
   clearCredentials,
   getCredentialsPath,
-  writeCredentials,
 } from './credentials.js';
-import { ensureDeviceIdentity } from './device.js';
-import { Outbox } from './outbox.js';
+import { runLogin } from './login.js';
 import { submitOpenDesignResult, syncOpenDesignOutbox } from './open-design.js';
 import { runLocalMcp } from './mcp.js';
 import { runSetup } from './setup.js';
+import { parseSetupArgs } from './setup-cli.js';
+import { buildStatusPayload } from './status.js';
 import { checkPackageVersion, formatVersionCheck } from './version.js';
 import { detectGlobalInstaller, pickUpdateTargets } from './update.js';
 import { execSync, spawnSync } from 'node:child_process';
-
-function readFlagValue(args: string[], name: string): string | undefined {
-  const index = args.indexOf(name);
-  if (index < 0) {
-    return undefined;
-  }
-  const value = args[index + 1];
-  if (!value || value.startsWith('--')) {
-    throw new Error(`Missing value for ${name}`);
-  }
-  return value;
-}
-
-async function promptToken(): Promise<string> {
-  const rl = createInterface({ input, output });
-  try {
-    const token = (await rl.question('Paste FlowX Personal API Token: ')).trim();
-    if (!token) {
-      throw new Error('Token is required.');
-    }
-    return token;
-  } finally {
-    rl.close();
-  }
-}
-
-async function validateApiToken(apiBaseUrl: string, apiToken: string): Promise<void> {
-  const response = await fetch(`${apiBaseUrl}/auth/session/me`, {
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-      Accept: 'application/json',
-    },
-  });
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(
-      `Token validation failed (${response.status}): ${message || response.statusText}`,
-    );
-  }
-}
-
-async function runLogin(argv: string[]): Promise<void> {
-  const apiBaseUrl = (
-    readFlagValue(argv, '--api-base-url') ??
-    process.env.FLOWX_API_BASE_URL ??
-    loadConfig().apiBaseUrl ??
-    DEFAULT_LOCAL_CONFIG.apiBaseUrl
-  )
-    .trim()
-    .replace(/\/+$/, '');
-  const tokenFromFlag = readFlagValue(argv, '--token');
-  const apiToken = (tokenFromFlag ?? (await promptToken())).trim();
-  if (!apiBaseUrl) {
-    throw new Error('apiBaseUrl is required. Pass --api-base-url or configure local.json.');
-  }
-  if (!apiToken) {
-    throw new Error('Token is required. Pass --token or paste when prompted.');
-  }
-
-  try {
-    await validateApiToken(apiBaseUrl, apiToken);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes('fetch failed') || message.includes('ECONNREFUSED')) {
-      console.warn(`Warning: could not reach ${apiBaseUrl}/auth/session/me (${message}). Saving token anyway.`);
-      if (/127\.0\.0\.1|localhost/.test(apiBaseUrl)) {
-        console.warn(
-          'Hint: login defaults to http://127.0.0.1:3000. For a deployed FlowX, re-run with --api-base-url https://your-flowx-host/api',
-        );
-      }
-    } else {
-      throw error;
-    }
-  }
-
-  const path = await writeCredentials({ apiBaseUrl, apiToken });
-  console.log(`Saved credentials to ${path}`);
-  console.log(`apiBaseUrl=${apiBaseUrl}`);
-}
 
 async function runLogout(): Promise<void> {
   const path = getCredentialsPath();
@@ -136,10 +55,9 @@ async function main(argv: string[]): Promise<void> {
   }
   if (command === 'setup') {
     const args = argv.slice(1);
-    const force = args.includes('--force');
-    const targets = args.find((arg) => arg !== '--force');
+    const { targets, force, noIde, apiBaseUrl } = parseSetupArgs(args);
     try {
-      const result = runSetup({ targets, force });
+      const result = await runSetup({ targets, force, noIde, apiBaseUrl });
       for (const path of result.written) {
         console.log(`Wrote ${path}`);
       }
@@ -184,6 +102,7 @@ async function main(argv: string[]): Promise<void> {
       console.warn(`Package update failed: ${message}`);
     }
 
+    // 升级后刷新 MCP command 与后台服务路径，不要默认带 --no-ide
     const setupArgs: string[] = ['setup', pickedTargets.join(',')];
     if (force) setupArgs.push('--force');
 
@@ -212,20 +131,7 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
   if (command === 'status') {
-    const config = ensureDeviceIdentity();
-    console.log(
-      JSON.stringify(
-        {
-          deviceId: config.deviceId,
-          installationId: config.installationId,
-          protocolVersion: config.protocolVersion,
-          apiBaseUrl: config.apiBaseUrl,
-          outboxPending: await new Outbox().pendingCount(),
-        },
-        null,
-        2,
-      ),
-    );
+    console.log(JSON.stringify(await buildStatusPayload(), null, 2));
     return;
   }
   if (command === 'sync') {
@@ -249,7 +155,7 @@ async function main(argv: string[]): Promise<void> {
   if (command !== 'serve') {
     console.error(`Unknown command: ${command}`);
     console.error(
-      'Usage: flowx-local [serve] | version | login [--api-base-url URL] [--token TOKEN] | logout | setup [cursor|codex|od,...] [--force] | update [cursor|codex|od,...] [--no-force] | mcp | map <repoUrl> <path> | status | sync | design-submit <executionSessionId>',
+      'Usage: flowx-local [serve] | version | login [--api-base-url URL] [--token TOKEN] | logout | setup [cursor|codex|od,...] [--force] [--no-ide] [--api-base-url URL] | update [cursor|codex|od,...] [--no-force] | mcp | map <repoUrl> <path> | status | sync | design-submit <executionSessionId>',
     );
     process.exitCode = 1;
     return;

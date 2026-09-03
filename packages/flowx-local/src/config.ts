@@ -25,7 +25,7 @@ export const DEFAULT_LOCAL_CONFIG: LocalConfig = {
   defaultIde: 'cursor',
   installationId: '',
   deviceId: '',
-  apiBaseUrl: 'http://127.0.0.1:3000',
+  apiBaseUrl: '',
   protocolVersion: FLOWX_PROTOCOL_VERSION,
   openDesignCommand: '',
 };
@@ -99,9 +99,9 @@ function normalizeConfig(raw: Partial<LocalConfig> | null | undefined): LocalCon
     installationId: typeof raw?.installationId === 'string' ? raw.installationId.trim() : '',
     deviceId: typeof raw?.deviceId === 'string' ? raw.deviceId.trim() : '',
     apiBaseUrl:
-      typeof raw?.apiBaseUrl === 'string' && raw.apiBaseUrl.trim()
+      typeof raw?.apiBaseUrl === 'string'
         ? raw.apiBaseUrl.trim().replace(/\/+$/, '')
-        : DEFAULT_LOCAL_CONFIG.apiBaseUrl,
+        : '',
     protocolVersion:
       typeof raw?.protocolVersion === 'string' && raw.protocolVersion.trim()
         ? raw.protocolVersion.trim()

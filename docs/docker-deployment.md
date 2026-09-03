@@ -288,8 +288,17 @@ docker-compose -f docker-compose.nginx.yml up -d
 
 Nginx 规则现在是：
 
+- `/install` 精确匹配，原样转发到 API（不做 `/api` 前缀 rewrite）
 - `/api/*` 全部转发到 API
 - 其他请求全部转发到前端页面服务
+
+本地 Agent 一键安装脚本由 API 提供，Nginx 必须保留上述 `location = /install` 规则。用户在本机执行：
+
+```bash
+curl -fsSL http://<host>/install | bash
+```
+
+脚本会从 `PUBLIC_API_BASE_URL`（或当前站点 origin）解析 API 地址；Nginx 部署时请在 `.env.docker` 中设置与对外访问一致的公网地址，例如 `PUBLIC_API_BASE_URL=https://flowx.example.com/api`（见 §4.2）。
 
 ### 6.3 配置 Codex 登录
 

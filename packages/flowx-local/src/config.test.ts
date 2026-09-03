@@ -62,6 +62,19 @@ describe('loadConfig / saveConfig', () => {
   it('returns defaults when config file is missing', () => {
     const homeDir = makeHome();
     expect(loadConfig({ homeDir })).toEqual(DEFAULT_LOCAL_CONFIG);
+    expect(loadConfig({ homeDir }).apiBaseUrl).toBe('');
+  });
+
+  it('leaves apiBaseUrl empty when config file omits it', () => {
+    const homeDir = makeHome();
+    mkdirSync(join(homeDir, '.flowx'), { recursive: true });
+    writeFileSync(
+      join(homeDir, '.flowx', 'local.json'),
+      JSON.stringify({ port: 3920, repositories: {}, defaultIde: 'cursor' }),
+      'utf8',
+    );
+
+    expect(loadConfig({ homeDir }).apiBaseUrl).toBe('');
   });
 
   it('saves and loads config under ~/.flowx/local.json', () => {

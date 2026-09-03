@@ -16,16 +16,21 @@ Web 在 `VITE_API_BASE_URL=/api` 时会把相对路径解析为当前页面的 `
 
 ### 终端用户
 
+在日常使用的同一 FlowX 站点安装：
+
 ```bash
-npm install -g @flowx-ai/local
-flowx-local serve
+curl -fsSL https://<当前站点>/install | bash
+flowx-local login
+```
+
+脚本会注册本机后台服务。之后可用：
+
+```bash
 flowx-local status
 flowx-local sync
 flowx-local mcp
 flowx-local design-submit <executionSessionId>
 ```
-
-不想全局安装时，可用 `npx @flowx-ai/local serve` 启动本地 Agent。
 
 ### 仓库贡献者
 
@@ -80,8 +85,8 @@ Review。`POST /workflow-runs/:id/execution/complete-local` 仍保留给旧 Web�
 
 ### FlowX 提示未检测到 flowx-local
 
-确认 `serve` 进程正在运行，且 `~/.flowx/local.json` 中的 `port` 与页面拿到的 loopback port 一致。
-本地服务只监听 `127.0.0.1`，不应暴露到局域网或公网。
+确认安装脚本注册的后台服务在运行（`flowx-local status`），且 `~/.flowx/local.json` 中的 `port` 与页面拿到的 loopback port 一致。
+本地服务只监听 `127.0.0.1`，不应暴露到局域网或公网。贡献者或排障可临时执行 `flowx-local serve`。
 
 ### 点击 OpenDesign 后只打开 App、没有挂载目录
 

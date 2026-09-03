@@ -10,27 +10,22 @@ This path reuses the same `claim-local` / handoff contract as [local-execution-h
 
 ## Prerequisites
 
-终端用户只需要安装并启动 `@flowx-ai/local`；`flowx-local` 自带 MCP command，不需要单独安装或构建 `flowx-mcp`：
+终端用户在日常使用的同一 FlowX 站点安装；`flowx-local` 自带 MCP command，不需要单独安装或构建 `flowx-mcp`：
 
 ```bash
-npm install -g @flowx-ai/local --registry https://registry.npmjs.org
-flowx-local serve
+curl -fsSL https://<当前站点>/install | bash
+flowx-local login
 ```
+
+脚本会检查 Node.js 20+、安装 `@flowx-ai/local`、注册本机后台服务，并在检测到 Cursor / Codex 时询问是否写入 Skill 和 MCP。
 
 Keep the FlowX API and Web apps running as usual (`pnpm dev` or equivalent).
 
-## Start the local daemon
+## Confirm the local daemon
 
-`flowx-local` must be listening on loopback before Web can launch an IDE.
+`flowx-local` must be listening on loopback before Web can launch an IDE. The installer registers a background service; end users should not start with `flowx-local serve`.
 
-**End users:**
-
-```bash
-npm install -g @flowx-ai/local
-flowx-local serve
-```
-
-Or without a global install: `npx @flowx-ai/local serve`.
+Web probes the daemon’s `/health` endpoint. If it is not reachable, the UI shows start instructions instead of claiming success.
 
 **Contributors** (FlowX monorepo):
 
@@ -38,8 +33,6 @@ Or without a global install: `npx @flowx-ai/local serve`.
 pnpm --filter @flowx-ai/local build
 pnpm flowx-local serve
 ```
-
-Web probes the daemon’s `/health` endpoint. If it is not reachable, the UI shows start instructions instead of claiming success.
 
 ## Optional: map a repository URL to a local path
 

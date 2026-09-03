@@ -1,10 +1,22 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getConfigPath, loadConfig, saveConfig } from './config.js';
 import { parseSetupTargets, resolveSkillInstallPaths, runSetup } from './setup.js';
 
 const homes: string[] = [];
+const originalApiBaseUrl = process.env.FLOWX_API_BASE_URL;
+
+function makeHome(): string {
+  const home = mkdtempSync(join(tmpdir(), 'flowx-setup-'));
+  homes.push(home);
+  return home;
+}
+
+beforeEach(() => {
+  delete process.env.FLOWX_API_BASE_URL;
+});
 
 afterEach(() => {
   while (homes.length > 0) {
@@ -12,6 +24,11 @@ afterEach(() => {
     if (home) {
       rmSync(home, { recursive: true, force: true });
     }
+  }
+  if (originalApiBaseUrl === undefined) {
+    delete process.env.FLOWX_API_BASE_URL;
+  } else {
+    process.env.FLOWX_API_BASE_URL = originalApiBaseUrl;
   }
 });
 
@@ -41,11 +58,15 @@ describe('flowx-local setup', () => {
     ]);
   });
 
-  it('writes missing skills and skips existing ones unless force', () => {
-    const home = mkdtempSync(join(tmpdir(), 'flowx-setup-'));
-    homes.push(home);
+  it('writes missing skills and skips existing ones unless force', async () => {
+    const home = makeHome();
+    const extras = {
+      apiBaseUrl: 'https://flowx.example/api',
+      flowxBin: '/bin/flowx-local',
+      installService: vi.fn(),
+    };
 
-    const first = runSetup({ homeDir: home, targets: 'cursor,codex,od' });
+    const first = await runSetup({ homeDir: home, targets: 'cursor,codex,od', ...extras });
     // 2 skills × (cursor + agents) = 4 paths; codex/od share agents roots per skill.
     expect(first.written).toHaveLength(4);
     expect(first.skipped).toEqual([]);
@@ -72,14 +93,107 @@ describe('flowx-local setup', () => {
     expect(readFileSync(cursorIntake, 'utf8')).not.toContain('创建前不强制二次确认');
 
     writeFileSync(cursorPrd, '# custom\n', 'utf8');
-    const second = runSetup({ homeDir: home, targets: 'cursor' });
+    const second = await runSetup({ homeDir: home, targets: 'cursor', ...extras });
     expect(second.written).toEqual([]);
     expect(second.skipped).toEqual([cursorPrd, cursorIntake]);
     expect(readFileSync(cursorPrd, 'utf8')).toBe('# custom\n');
 
-    const forced = runSetup({ homeDir: home, targets: 'cursor', force: true });
+    const forced = await runSetup({ homeDir: home, targets: 'cursor', force: true, ...extras });
     expect(forced.written).toEqual([cursorPrd, cursorIntake]);
     expect(readFileSync(cursorPrd, 'utf8')).toContain('flowx_submit_brainstorm');
     expect(readFileSync(cursorIntake, 'utf8')).toContain('flowx_create_requirement');
+  });
+
+  it('with noIde writes API config and installs service without Skill or MCP', async () => {
+    const home = makeHome();
+    const plistPath = join(home, 'Library/LaunchAgents/ai.flowx.local.plist');
+    const installService = vi.fn().mockResolvedValue({ plistPath });
+
+    const result = await runSetup({
+      homeDir: home,
+      noIde: true,
+      apiBaseUrl: 'https://flowx.example/api',
+      flowxBin: '/bin/flowx-local',
+      installService,
+    });
+
+    expect(existsSync(join(home, '.cursor', 'skills'))).toBe(false);
+    expect(existsSync(join(home, '.agents', 'skills'))).toBe(false);
+    expect(existsSync(join(home, '.cursor', 'mcp.json'))).toBe(false);
+    expect(loadConfig({ homeDir: home }).apiBaseUrl).toBe('https://flowx.example/api');
+    expect(installService).toHaveBeenCalledWith({ homeDir: home, flowxBin: '/bin/flowx-local' });
+    expect(result.written.length).toBeGreaterThan(0);
+    expect(result.written).toContain(getConfigPath({ homeDir: home }));
+    expect(result.written).toContain(plistPath);
+  });
+
+  it('writes Cursor Skill and user MCP, then installs the service', async () => {
+    const home = makeHome();
+    const installService = vi.fn();
+
+    await runSetup({
+      homeDir: home,
+      targets: 'cursor',
+      apiBaseUrl: 'https://flowx.example/api',
+      flowxBin: '/bin/flowx-local',
+      installService,
+    });
+
+    const cursorPrd = join(home, '.cursor', 'skills', 'flowx-product-prd', 'SKILL.md');
+    const cursorIntake = join(home, '.cursor', 'skills', 'flowx-intake-requirement', 'SKILL.md');
+    expect(existsSync(cursorPrd) || existsSync(cursorIntake)).toBe(true);
+
+    const mcpPath = join(home, '.cursor', 'mcp.json');
+    expect(existsSync(mcpPath)).toBe(true);
+    const mcp = JSON.parse(readFileSync(mcpPath, 'utf8')) as {
+      mcpServers?: { flowx?: { command?: string; env?: Record<string, string> } };
+    };
+    expect(mcp.mcpServers?.flowx?.command).toBe('/bin/flowx-local');
+    expect(mcp.mcpServers?.flowx?.env?.FLOWX_API_TOKEN).toBeUndefined();
+    expect(JSON.stringify(mcp)).not.toContain('FLOWX_API_TOKEN');
+    expect(installService).toHaveBeenCalledWith({ homeDir: home, flowxBin: '/bin/flowx-local' });
+  });
+
+  it('rejects when API URL is a placeholder and prompt returns empty', async () => {
+    const home = makeHome();
+    saveConfig(
+      {
+        port: 3920,
+        repositories: {},
+        defaultIde: 'cursor',
+        installationId: 'i',
+        deviceId: 'd',
+        apiBaseUrl: 'http://127.0.0.1:3000',
+        protocolVersion: '1',
+        openDesignCommand: '',
+      },
+      { homeDir: home },
+    );
+
+    await expect(
+      runSetup({
+        homeDir: home,
+        promptApiBaseUrl: async () => '',
+        flowxBin: '/bin/flowx-local',
+        installService: vi.fn(),
+      }),
+    ).rejects.toThrow(/apiBaseUrl/i);
+  });
+
+  it('rejects when resolveBin throws and does not write mcp.json', async () => {
+    const home = makeHome();
+
+    await expect(
+      runSetup({
+        homeDir: home,
+        apiBaseUrl: 'https://flowx.example/api',
+        resolveBin: () => {
+          throw new Error('Could not resolve flowx-local executable on PATH or from CLI entry');
+        },
+        installService: vi.fn(),
+      }),
+    ).rejects.toThrow(/flowx-local/);
+
+    expect(existsSync(join(home, '.cursor', 'mcp.json'))).toBe(false);
   });
 });

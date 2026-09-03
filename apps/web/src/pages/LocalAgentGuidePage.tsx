@@ -7,7 +7,7 @@ export function LocalAgentGuidePage() {
       markdownUrl="/local-agent-guide.md"
       eyebrow="Local Agent"
       title="本地 Agent"
-      description="安装并启动 @flowx-ai/local，在本机连接 FlowX 与 IDE / OpenDesign。"
+      description="在本机终端执行 curl 安装脚本，再 login，即可连接 Cursor / Codex。"
       icon={SquareTerminal}
       loadErrorFallback="加载本地 Agent 指南失败"
     />

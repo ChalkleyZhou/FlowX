@@ -10,6 +10,7 @@ import { DailyCodeReviewModule } from './daily-code-review/daily-code-review.mod
 import { DevPreviewModule } from './dev-preview/dev-preview.module';
 import { ExecutionSessionsModule } from './execution-sessions/execution-sessions.module';
 import { EdgeModule } from './edge/edge.module';
+import { LocalInstallModule } from './local-install/local-install.module';
 import { SessionAuthGuard } from './auth/session-auth.guard';
 import { PrismaModule } from './prisma/prisma.module';
 import { OrganizationScopeInterceptor } from './prisma/organization-scope.interceptor';
@@ -37,6 +38,7 @@ import { PluginsModule } from './plugins/plugins.module';
     DevPreviewModule,
     ExecutionSessionsModule,
     EdgeModule,
+    LocalInstallModule,
     ProjectsModule,
     ScheduleModule,
     ReviewArtifactsModule,

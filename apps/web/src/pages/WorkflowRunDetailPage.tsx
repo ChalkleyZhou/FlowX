@@ -503,6 +503,7 @@ export function WorkflowRunDetailPage() {
       workflowRun.status !== 'REPOSITORY_GROUNDING_PENDING',
   );
   const stageActionsLocked = busyStage !== null || hasRunningStage;
+  const localInstallCurl = `curl -fsSL ${window.location.origin}/install | bash`;
   const latestExecutionStage = workflowRun ? getStage(workflowRun, 'EXECUTION') : undefined;
   const latestReviewStage = workflowRun ? getStage(workflowRun, 'AI_REVIEW') : undefined;
   const hasStaleReviewResults =
@@ -855,7 +856,7 @@ export function WorkflowRunDetailPage() {
         setLocalLaunchSetupRequired(true);
         setLocalLaunchOpen(false);
         await refresh({ silent: true });
-        toast.error('未检测到本机 flowx-local，请先启动服务后重试');
+        toast.error('未检测到本机 flowx-local，请先完成本地安装（设置 → 本地 Agent）');
         return;
       }
 
@@ -883,7 +884,7 @@ export function WorkflowRunDetailPage() {
     try {
       const started = await api.retryOpenDesignHandoff(workflowRun.id);
       if (!(await probeFlowxLocal(started.loopbackPort))) {
-        toast.error('未检测到本机 flowx-local，请先启动服务后重试');
+        toast.error('未检测到本机 flowx-local，请先完成本地安装（设置 → 本地 Agent）');
         return;
       }
       const local = await launchOpenDesignLocal(
@@ -909,7 +910,7 @@ export function WorkflowRunDetailPage() {
     try {
       const started = await api.retryOpenDesignBrainstormHandoff(workflowRun.id);
       if (!(await probeFlowxLocal(started.loopbackPort))) {
-        toast.error('未检测到本机 flowx-local，请先启动服务后重试');
+        toast.error('未检测到本机 flowx-local，请先完成本地安装（设置 → 本地 Agent）');
         return;
       }
       const local = await launchOpenDesignLocal(
@@ -934,7 +935,7 @@ export function WorkflowRunDetailPage() {
     setOpenDesignBusy(true);
     try {
       if (!(await probeFlowxLocal())) {
-        toast.error('未检测到本机 flowx-local，请先启动服务后重试');
+        toast.error('未检测到本机 flowx-local，请先完成本地安装（设置 → 本地 Agent）');
         return;
       }
       const handoff = await api.getOpenDesignHandoff(workflowRun.id);
@@ -957,7 +958,7 @@ export function WorkflowRunDetailPage() {
     setOpenDesignBusy(true);
     try {
       if (!(await probeFlowxLocal())) {
-        toast.error('未检测到本机 flowx-local，请先启动服务后重试');
+        toast.error('未检测到本机 flowx-local，请先完成本地安装（设置 → 本地 Agent）');
         return;
       }
       const handoff = await api.getOpenDesignBrainstormHandoff(workflowRun.id);
@@ -2089,10 +2090,10 @@ export function WorkflowRunDetailPage() {
                     <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
                       <li>点击「本地启动」并选择 Cursor 或 Codex</li>
                       <li>
-                        若未启动 flowx-local，先安装并启动：
-                        <code className="text-foreground">npm install -g @flowx-ai/local</code>
-                        ，然后运行
-                        <code className="text-foreground">flowx-local serve</code>
+                        若尚未安装 flowx-local，先执行{' '}
+                        <code className="text-foreground">{localInstallCurl}</code>
+                        ，然后{' '}
+                        <code className="text-foreground">flowx-local login</code>
                       </li>
                       <li>拉取远程并切换到工作分支</li>
                       <li>按技术方案完成开发</li>
@@ -2103,10 +2104,10 @@ export function WorkflowRunDetailPage() {
                       <div className="rounded-md border border-warning/40 bg-muted/30 p-3 text-sm text-foreground">
                         <div className="font-semibold">未检测到本机 flowx-local</div>
                         <div className="mt-1 text-muted-foreground">
-                          请先安装并启动：
-                          <code className="ml-1 text-foreground">npm install -g @flowx-ai/local</code>
-                          ，然后运行
-                          <code className="ml-1 text-foreground">flowx-local serve</code>
+                          请先执行{' '}
+                          <code className="text-foreground">{localInstallCurl}</code>
+                          ，然后{' '}
+                          <code className="text-foreground">flowx-local login</code>
                         </div>
                       </div>
                     ) : null}

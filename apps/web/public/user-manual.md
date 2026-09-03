@@ -33,23 +33,17 @@ FlowX 把研发流程拆成可中断、可确认的阶段，核心目标是：
 
 若要在本机用 Cursor / Codex「本地启动」，或通过 OpenDesign 做本地构思与设计，需要安装 FlowX 本地 Agent，并配置 MCP。
 
-**推荐**：在「设置」→ [API Token](/settings/api-tokens) 生成 Personal API Token，执行 `flowx-local login` 写入 `~/.flowx/credentials.json`。`login` **默认 API 为** `http://127.0.0.1:3000`；连远程部署时请加 `--api-base-url https://你的-flowx-域名`。再用 MCP `flowx_list_tasks` → `flowx_bind_workflow` 领取任务；构思提交后可在**同一会话**继续设计 handoff，无需再点 Web「打开本地 OpenDesign」。
+**推荐**：在日常使用的同一 FlowX 站点执行安装脚本，再 `login` 粘贴设置页生成的 token。API 地址由脚本写入，不必手填 `--api-base-url`。再用 MCP `flowx_list_tasks` → `flowx_bind_workflow` 领取任务；构思提交后可在**同一会话**继续设计 handoff，无需再点 Web「打开本地 OpenDesign」。
 
 Web 页面上的 `打开本地构思` / `打开本地 OpenDesign` / `回传本地设计` 仍可作为未配置长期 token 时的可选兜底。
 
-平台内完整说明见侧栏「设置」→ **[本地 Agent](/local-agent)**（或直接打开 `/local-agent`）。
+平台内完整说明见侧栏「设置」→ **[本地 Agent](/local-agent)**（或直接打开 `/local-agent`）。也可在该页复制当前站点的 curl。
 
-快速安装启动：
+快速安装：
 
 ```bash
-npm install -g @flowx-ai/local --registry https://registry.npmjs.org
-flowx-local version   # 确认本机版本，并对照 npm latest
-flowx-local setup
-# 本机 API（需已启动 3000 端口）：
-flowx-local login --token fxpat_…
-# 远程部署（更常见）：
-# flowx-local login --api-base-url https://你的-flowx-域名 --token fxpat_…
-flowx-local serve
+curl -fsSL https://<当前站点>/install | bash
+flowx-local login
 ```
 
 ## 快速上手
@@ -129,8 +123,8 @@ flowx-local serve
 
 如果当前工作流需要在本地 OpenDesign 完成产品构思与 UI/交互设计：
 
-1. 安装本地 Agent，并执行 `flowx-local setup` 安装 `flowx-intake-requirement` 与 `flowx-product-prd` Skill（详见 [本地 Agent](/local-agent)）。若本机仍保留旧版 `flowx-brainstorm-spec`，请执行 `flowx-local setup --force` 迁移。
-2. 在「设置」→ [API Token](/settings/api-tokens) 生成 Personal API Token（`fxpat_…`），再执行 `flowx-local login`（默认连本机 `http://127.0.0.1:3000`；远程请用 `flowx-local login --api-base-url https://你的-flowx-域名 --token …`，或设置 `FLOWX_API_TOKEN` + `FLOWX_API_BASE_URL`）。
+1. 按上文 curl 安装本地 Agent（脚本会写入 `flowx-intake-requirement`、`flowx-product-prd` 与用户级 MCP）。详见 [本地 Agent](/local-agent)。若本机仍保留旧版 `flowx-brainstorm-spec`，请执行 `flowx-local setup --force` 迁移。
+2. 在「设置」→ [API Token](/settings/api-tokens) 生成 Personal API Token（`fxpat_…`），再执行 `flowx-local login`（只粘贴 token；地址已由安装脚本写入）。也可设置 `FLOWX_API_TOKEN` + `FLOWX_API_BASE_URL`。
 3. 在 Cursor / Codex 启用 `flowx-local mcp`：`flowx_list_tasks` → 确认工作流 → `flowx_bind_workflow`。
 4. **产品构思**（面向产品经理 / 设计师，不写实现细节）：`flowx_get_brainstorm_handoff` → 多轮头脑风暴澄清需求 → 写 `prd.md` → 用户确认 → `flowx_submit_brainstorm`（响应会提示进入 design）。旧版 `spec.md` 仍可作为兼容文件名回传，但新流程以 `prd.md` 为准。
 5. **同一会话**立刻 `flowx_get_design_handoff` → 完成 `design.md` 与 HTML 原型 → 向用户确认 `design.md` 全文后 `flowx_submit_design({ markdown, output })`（也可在工作流详情点击 `回传本地设计`）。
@@ -166,16 +160,7 @@ MCP 要配置在实际运行 Agent 的工具里，不是配置在 OpenDesign 应
 }
 ```
 
-先安装并配置本机 Agent 与 Personal API Token：
-
-```bash
-npm install -g @flowx-ai/local --registry https://registry.npmjs.org
-flowx-local setup
-flowx-local login --token fxpat_…
-flowx-local serve
-```
-
-Cursor 会按需启动 `flowx-local mcp`。配置 PAT 后，它通过 `~/.flowx/credentials.json` 与 `current-workflow.json` 鉴权并绑定任务；也可兼容读取 Web 写入的短期 `active-design` 会话。通过 FlowX Web 的「本地启动」打开 Cursor 时，`flowx-local` 还可能写入项目级 `.cursor/mcp.json`。手工配置时不要把 `FLOWX_API_BASE_URL` 写死为 `127.0.0.1`，也不要把 `~/.flowx` 下的凭据、会话文件或 token 提交到 Git。
+先按上文完成 curl 安装与 `flowx-local login`。安装脚本会写入用户级 MCP；Cursor 会按需启动 `flowx-local mcp`。配置 PAT 后，它通过 `~/.flowx/credentials.json` 与 `current-workflow.json` 鉴权并绑定任务；也可兼容读取 Web 写入的短期 `active-design` 会话。通过 FlowX Web 的「本地启动」打开 Cursor 时，`flowx-local` 还可能写入项目级 `.cursor/mcp.json`。手工配置时不要把 `FLOWX_API_BASE_URL` 写死为 `127.0.0.1`，也不要把 `~/.flowx` 下的凭据、会话文件或 token 提交到 Git。
 
 ### 启动研发工作流
 
