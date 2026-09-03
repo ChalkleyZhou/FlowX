@@ -11,7 +11,7 @@ export type InstallScriptInput = {
 };
 
 /** 安装脚本钉死的 @flowx-ai/local 版本；发布新包后同步更新。 */
-export const FLOWX_LOCAL_INSTALL_VERSION = '0.4.10';
+export const FLOWX_LOCAL_INSTALL_VERSION = '0.5.0';
 
 export type InstallRequestLike = {
   protocol?: string;
