@@ -141,14 +141,15 @@ docker run -d \
   -e WEB_PORT=4173 \
   -e DATABASE_URL="file:/data/dev.db" \
   -e AI_EXECUTOR_PROVIDER="mock" \
-  -e YUNXIAO_PERSONAL_ACCESS_TOKEN="your_yunxiao_personal_access_token" \
-  -e YUNXIAO_WEBHOOK_SECRET="your_webhook_secret" \
-  -e YUNXIAO_ACCESS_KEY_ID="your_yunxiao_access_key_id" \
-  -e YUNXIAO_ACCESS_KEY_SECRET="your_yunxiao_access_key_secret" \
   -e OPENAI_API_KEY="your_openai_api_key" \
   -e CODEX_HOME="/data/.codex" \
   -e DINGTALK_APP_ID="your_app_id" \
   -e DINGTALK_APP_SECRET="your_app_secret" \
+  -e DINGTALK_AGENT_ID="your_agent_id" \
+  -e YUNXIAO_WEBHOOK_SECRET="your_webhook_secret" \
+  -e YUNXIAO_PERSONAL_ACCESS_TOKEN="your_yunxiao_personal_access_token" \
+  -e YUNXIAO_ACCESS_KEY_ID="your_yunxiao_access_key_id" \
+  -e YUNXIAO_ACCESS_KEY_SECRET="your_yunxiao_access_key_secret" \
   -e GIT_AUTHOR_NAME="FlowX Bot" \
   -e GIT_AUTHOR_EMAIL="flowx@example.com" \
   -v flowx-data:/data \
@@ -253,6 +254,7 @@ codex login
 - 钉钉组织管理员可在“用户管理”中同步通讯录用户。同步会新增或更新用户，并将已不在钉钉通讯录中的钉钉成员移出当前组织；用户账号和历史数据不会删除，但该组织下的会话和 Personal API Token 会失效。FlowX 不保存部门结构；钉钉应用需具备通讯录部门和用户读取权限，包括 `qyapi_get_department_member`。
 - 每个组织保留一名主管理员；主管理员可以给多个成员分配或收回“子管理员”角色。子管理员可以执行组织内普通管理操作，但不能编辑、移除主管理员，也不能转让主管理员权限；只有主管理员可以分配子管理员和转让权限。
 - 支持通过固定地址 `/api/yunxiao-webhooks` 接收云效自动化规则的原生工作项数据，并通过云效项目成员的 `memberId`、`userId` 和阿里云账号绑定 ID 与管理员手动关联的 FlowX 用户，向负责人、参与者、验证者和创建者发送去重后的钉钉个人通知。云效 Secret 通过 `X-Projex-Signature` 校验，服务端配置 `YUNXIAO_WEBHOOK_SECRET` 和 `YUNXIAO_PERSONAL_ACCESS_TOKEN`（也兼容 AccessKey），组织管理员可在“云效集成”页面绑定 `organizationIdentifier`、加载项目成员并一键启用或停用；未匹配人员会在页面保留记录。详见[云效 Webhook 钉钉通知接入](docs/yunxiao-webhook.md)。
+- 组织管理员可以在“云效集成”页面清空当前组织的未匹配人员记录；该操作不会影响成员映射、已匹配投递记录或 Webhook 原始数据。
 - 若升级前已有云效成员绑定，可执行 `pnpm db:backfill-yunxiao-mappings --dry-run` 预览并使用 `--yes` 回填三种云效身份 ID；脚本只更新已有绑定，不创建或删除绑定。
 
 ## MVP flow
