@@ -42,6 +42,63 @@ function bashSingleQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
+function parseUrl(raw: string): URL | null {
+  try {
+    return new URL(raw);
+  } catch {
+    return null;
+  }
+}
+
+function ipv4Octets(hostname: string): [number, number, number, number] | null {
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(hostname);
+  if (!match) {
+    return null;
+  }
+  const octets = match.slice(1, 5).map(Number) as [number, number, number, number];
+  if (octets.some((part) => part > 255)) {
+    return null;
+  }
+  return octets;
+}
+
+/** 内网 / loopback 地址不能写进用户本机的 apiBaseUrl。 */
+export function isPrivateOrLocalHostname(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase().replace(/^\[|\]$/g, '');
+  if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) {
+    return true;
+  }
+  const ipv4 = ipv4Octets(host);
+  if (ipv4) {
+    const [a, b] = ipv4;
+    return (
+      a === 10 ||
+      a === 127 ||
+      a === 0 ||
+      (a === 192 && b === 168) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 169 && b === 254)
+    );
+  }
+  return host === '::1' || host.startsWith('fe80:') || host.startsWith('fc') || host.startsWith('fd');
+}
+
+export function isPubliclyRoutableApiBaseUrl(raw: string): boolean {
+  const parsed = parseUrl(raw);
+  if (!parsed?.hostname) {
+    return false;
+  }
+  return !isPrivateOrLocalHostname(parsed.hostname);
+}
+
+function fromRequestOrigin(requestOrigin: string): string {
+  const origin = requestOrigin.replace(/\/+$/, '');
+  if (!origin) {
+    return '';
+  }
+  return `${origin}/api`;
+}
+
 export function requestPublicOrigin(req: InstallRequestLike): string {
   const protoHeader = headerValue(req.headers, 'x-forwarded-proto');
   const proto = firstCommaPart(protoHeader) || req.protocol?.trim() || 'http';
@@ -59,11 +116,14 @@ export function resolveInstallApiBaseUrl(input: {
     input.env.PUBLIC_API_BASE_URL?.trim() ||
     input.env.FLOWX_PUBLIC_API_BASE_URL?.trim() ||
     '';
-  if (configured) {
+  if (configured && isPubliclyRoutableApiBaseUrl(configured)) {
     return configured.replace(/\/+$/, '');
   }
-  const origin = input.requestOrigin.replace(/\/+$/, '');
-  return `${origin}/api`;
+  const fromRequest = fromRequestOrigin(input.requestOrigin);
+  if (fromRequest) {
+    return fromRequest;
+  }
+  return configured.replace(/\/+$/, '');
 }
 
 export function buildInstallScript(input: InstallScriptInput): string {

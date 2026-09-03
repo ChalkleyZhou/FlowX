@@ -123,7 +123,7 @@ docker build \
   -t flowx:latest .
 ```
 
-容器运行时还需设置 **API 对端侧可达的公网地址**（本机 `flowx-local` / MCP 回连用，不要用 `127.0.0.1`）：
+容器运行时还需设置 **API 对端侧可达的公网地址**（本机 `flowx-local` / MCP 回连用，必须是用户浏览器能打开的域名，不要写 `127.0.0.1` 或内网 IP）：
 
 ```bash
 -e PUBLIC_API_BASE_URL="https://flowx.example.com/api"
@@ -298,7 +298,7 @@ Nginx 规则现在是：
 curl -fsSL http://<host>/install | bash
 ```
 
-脚本会从 `PUBLIC_API_BASE_URL`（或当前站点 origin）解析 API 地址；Nginx 部署时请在 `.env.docker` 中设置与对外访问一致的公网地址，例如 `PUBLIC_API_BASE_URL=https://flowx.example.com/api`（见 §4.2）。
+脚本会优先使用公网 `PUBLIC_API_BASE_URL`；若写成内网 IP / `127.0.0.1` 则忽略，改用当前请求的站点 origin + `/api`。Nginx 部署时请在 `.env.docker` 中设置与对外访问一致的地址，例如 `PUBLIC_API_BASE_URL=https://flowx.example.com/api`（见 §4.2）。
 
 ### 6.3 配置 Codex 登录
 

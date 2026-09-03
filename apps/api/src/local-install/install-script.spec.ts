@@ -121,6 +121,24 @@ describe('resolveInstallApiBaseUrl', () => {
       }),
     ).not.toContain('127.0.0.1:3000');
   });
+
+  it('ignores a private PUBLIC_API_BASE_URL and uses the request origin', () => {
+    expect(
+      resolveInstallApiBaseUrl({
+        env: { PUBLIC_API_BASE_URL: 'http://10.81.3.119' },
+        requestOrigin: 'https://flowx.example.com',
+      }),
+    ).toBe('https://flowx.example.com/api');
+  });
+
+  it('ignores loopback PUBLIC_API_BASE_URL when the request origin is public', () => {
+    expect(
+      resolveInstallApiBaseUrl({
+        env: { PUBLIC_API_BASE_URL: 'http://127.0.0.1:3000' },
+        requestOrigin: 'https://flowx.example.com',
+      }),
+    ).toBe('https://flowx.example.com/api');
+  });
 });
 
 describe('requestPublicOrigin', () => {
