@@ -530,6 +530,10 @@ export const api = {
     request<YunxiaoIntegrationStatus>('/integrations/yunxiao'),
   getYunxiaoUnmatchedRecipients: () =>
     request<YunxiaoUnmatchedRecipient[]>('/integrations/yunxiao/unmatched-recipients'),
+  clearYunxiaoUnmatchedRecipients: () =>
+    request<{ deletedCount: number }>('/integrations/yunxiao/unmatched-recipients', {
+      method: 'DELETE',
+    }),
   getYunxiaoProjectMembers: (projectId: string) =>
     request<YunxiaoProjectMembersResponse>(
       `/integrations/yunxiao/members?projectId=${encodeURIComponent(projectId)}`,

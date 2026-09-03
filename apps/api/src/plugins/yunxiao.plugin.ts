@@ -34,6 +34,10 @@ export class YunxiaoPlugin implements BuiltInPlugin {
     return this.integrations.listYunxiaoUnmatchedRecipients(organizationId);
   }
 
+  clearUnmatchedRecipients(organizationId: string, actingUserId: string) {
+    return this.integrations.clearYunxiaoUnmatchedRecipients(organizationId, actingUserId);
+  }
+
   getProjectMembers(organizationId: string, projectId: string) {
     return this.integrations.listYunxiaoProjectMembers(organizationId, projectId);
   }

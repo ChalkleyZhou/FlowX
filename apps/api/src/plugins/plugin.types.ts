@@ -22,6 +22,7 @@ export interface BuiltInPlugin {
     options?: BuiltInPluginUpdateOptions,
   ): Promise<unknown>;
   getUnmatchedRecipients(organizationId: string): Promise<unknown>;
+  clearUnmatchedRecipients(organizationId: string, actingUserId: string): Promise<unknown>;
   getProjectMembers(organizationId: string, projectId: string): Promise<unknown>;
   setMemberMapping(
     organizationId: string,

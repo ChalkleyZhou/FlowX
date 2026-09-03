@@ -7,11 +7,13 @@ import { YunxiaoIntegrationPage } from './YunxiaoIntegrationPage';
 import { api } from '../api';
 import { ThemeProvider } from '../components/theme-provider';
 import { ToastProvider } from '../components/ui/toast';
+import { ConfirmProvider } from '../components/ConfirmDialog';
 
 vi.mock('../api', () => ({
   api: {
     getYunxiaoIntegration: vi.fn(),
     getYunxiaoUnmatchedRecipients: vi.fn(),
+    clearYunxiaoUnmatchedRecipients: vi.fn(),
     getYunxiaoProjectMembers: vi.fn(),
     updateYunxiaoMemberMapping: vi.fn(),
     updateYunxiaoIntegration: vi.fn(),
@@ -60,6 +62,7 @@ describe('YunxiaoIntegrationPage', () => {
       yunxiaoOrganizationIdentifier: 'yunxiao-org-1',
     });
     vi.mocked(api.getYunxiaoUnmatchedRecipients).mockResolvedValue([]);
+    vi.mocked(api.clearYunxiaoUnmatchedRecipients).mockResolvedValue({ deletedCount: 1 });
     vi.mocked(api.updateYunxiaoMemberMapping).mockResolvedValue({});
   });
 
@@ -73,10 +76,12 @@ describe('YunxiaoIntegrationPage', () => {
     await act(async () => {
       root?.render(
         <MemoryRouter>
-          <ThemeProvider>
-            <ToastProvider>
-              <YunxiaoIntegrationPage />
-            </ToastProvider>
+            <ThemeProvider>
+              <ConfirmProvider>
+                <ToastProvider>
+                  <YunxiaoIntegrationPage />
+                </ToastProvider>
+              </ConfirmProvider>
           </ThemeProvider>
         </MemoryRouter>,
       );
@@ -125,5 +130,43 @@ describe('YunxiaoIntegrationPage', () => {
     expect(container.textContent).toContain('yunxiao-user-1');
     expect(container.textContent).toContain('aliyun-account-1');
     expect(container.textContent).toContain('未关联');
+  });
+
+  it('管理员可以确认清空未匹配人员记录', async () => {
+    vi.mocked(api.getYunxiaoUnmatchedRecipients).mockResolvedValue([{
+      id: 'recipient-1',
+      eventId: 'event-1',
+      workItemId: 'work-item-1',
+      projectId: 'project-1',
+      yunxiaoUserIdentifier: 'yunxiao-user-1',
+      yunxiaoDisplayName: '云效张三',
+      roles: ['assignedTo'],
+      status: 'UNMATCHED',
+      reason: 'No FlowX user is mapped to the Yunxiao member.',
+      dingTalkId: null,
+      firstSeenAt: '2026-09-03T08:00:00.000Z',
+      lastSeenAt: '2026-09-03T08:00:00.000Z',
+    }]);
+    await renderPage();
+
+    const clearButton = Array.from(container.querySelectorAll('button'))
+      .find((item) => item.textContent?.includes('清空记录'));
+    expect(clearButton).toBeTruthy();
+    await act(async () => {
+      clearButton?.click();
+      await Promise.resolve();
+    });
+    expect(document.body.textContent).toContain('确认清空当前组织全部未匹配人员记录吗？');
+
+    const confirmButton = Array.from(document.body.querySelectorAll('button'))
+      .filter((item) => item.textContent === '清空记录')
+      .at(-1);
+    await act(async () => {
+      confirmButton?.click();
+      await Promise.resolve();
+    });
+
+    expect(api.clearYunxiaoUnmatchedRecipients).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('暂无未匹配人员');
   });
 });

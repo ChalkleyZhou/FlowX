@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Patch,
   Query,
@@ -33,6 +34,16 @@ export class PluginsController {
   getYunxiaoUnmatchedRecipients(@Req() req: IntegrationRequest) {
     const organizationId = this.requireOrganizationId(req);
     return this.registry.get('yunxiao').getUnmatchedRecipients(organizationId);
+  }
+
+  @Delete('yunxiao/unmatched-recipients')
+  clearYunxiaoUnmatchedRecipients(@Req() req: IntegrationRequest) {
+    const organizationId = this.requireOrganizationId(req);
+    const userId = req.authSession?.user?.id?.trim();
+    if (!userId) {
+      throw new UnauthorizedException('Missing authenticated user.');
+    }
+    return this.registry.get('yunxiao').clearUnmatchedRecipients(organizationId, userId);
   }
 
   @Get('yunxiao/members')

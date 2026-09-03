@@ -11,6 +11,7 @@ describe('ExternalIntegrationsService', () => {
   const mappingFindMany = vi.fn();
   const mappingUpsert = vi.fn();
   const mappingDeleteMany = vi.fn();
+  const recipientDeleteMany = vi.fn();
   const organizationMemberFindMany = vi.fn();
   const listProjectMembers = vi.fn();
 
@@ -18,6 +19,7 @@ describe('ExternalIntegrationsService', () => {
     vi.clearAllMocks();
     mappingFindMany.mockResolvedValue([]);
     mappingDeleteMany.mockResolvedValue({ count: 1 });
+    recipientDeleteMany.mockResolvedValue({ count: 2 });
   });
 
   function createService(secret = 'yunxiao-secret', personalAccessToken?: string) {
@@ -30,6 +32,7 @@ describe('ExternalIntegrationsService', () => {
           upsert: mappingUpsert,
           deleteMany: mappingDeleteMany,
         },
+        yunxiaoWebhookRecipient: { deleteMany: recipientDeleteMany },
       } as never,
       {
         get: (key: string) => key === 'YUNXIAO_WEBHOOK_SECRET'
@@ -230,5 +233,26 @@ describe('ExternalIntegrationsService', () => {
       },
     )).resolves.toEqual({ mapped: false });
     expect(mappingDeleteMany).toHaveBeenCalled();
+  });
+
+  it('管理员可以清空当前组织的未匹配人员记录', async () => {
+    findUnique.mockResolvedValue({ role: 'admin' });
+
+    await expect(createService().clearYunxiaoUnmatchedRecipients('org-1', 'admin-1'))
+      .resolves.toEqual({ deletedCount: 2 });
+    expect(recipientDeleteMany).toHaveBeenCalledWith({
+      where: {
+        organizationId: 'org-1',
+        status: { not: 'MATCHED' },
+      },
+    });
+  });
+
+  it('非管理员不能清空未匹配人员记录', async () => {
+    findUnique.mockResolvedValue({ role: 'member' });
+
+    await expect(createService().clearYunxiaoUnmatchedRecipients('org-1', 'user-1'))
+      .rejects.toBeInstanceOf(ForbiddenException);
+    expect(recipientDeleteMany).not.toHaveBeenCalled();
   });
 });

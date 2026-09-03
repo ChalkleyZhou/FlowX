@@ -67,6 +67,8 @@ flowx-local serve
 
 云效自动化规则还可以调用固定地址 `/api/yunxiao-webhooks`，将原生“工作项数据”定向发送给负责人、参与者、验证者和创建者，并按 FlowX 用户去重。FlowX 会调用云效项目成员接口获取组织成员 `memberId`、云效 `userId` 和阿里云账号绑定 ID；使用个人 Token 时，管理员需要在“设置”→“云效集成”输入项目 ID、加载成员并手动关联 FlowX 用户，不使用姓名猜测。服务端需要配置 `YUNXIAO_WEBHOOK_SECRET` 和 `YUNXIAO_PERSONAL_ACCESS_TOKEN`（也兼容 AccessKey）；未匹配人员会在“未匹配人员”区域保留。接入前应填写云效 `organizationIdentifier`。通知会优先使用 Webhook 自带的工作项链接，缺少链接时根据项目、类别和工作项标识自动生成云效地址。组织管理员可以在该页面一键启用或停用通知，停用不会删除配置和历史记录。完整配置见仓库文档 `docs/yunxiao-webhook.md`。
 
+组织管理员可以在云效集成页面清空当前组织的未匹配人员记录；该操作不会影响成员映射、已匹配投递记录或 Webhook 原始数据。
+
 ### 步骤 2：配置组织 AI 凭据（推荐）
 
 进入 `AI 凭据` 页面，按需配置：

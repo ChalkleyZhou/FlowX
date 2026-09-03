@@ -44,4 +44,16 @@ describe('PluginsController', () => {
       { yunxiaoOrganizationIdentifier: 'yunxiao-org-1' },
     );
   });
+
+  it('管理员请求清空未匹配人员记录', async () => {
+    const clearUnmatchedRecipients = vi.fn().mockResolvedValue({ deletedCount: 2 });
+    const controller = new PluginsController({
+      get: vi.fn().mockReturnValue({ clearUnmatchedRecipients }),
+    } as never);
+
+    await expect(controller.clearYunxiaoUnmatchedRecipients({
+      authSession: { user: { id: 'user-1' }, organization: { id: 'org-1' } },
+    })).resolves.toEqual({ deletedCount: 2 });
+    expect(clearUnmatchedRecipients).toHaveBeenCalledWith('org-1', 'user-1');
+  });
 });

@@ -139,6 +139,34 @@ export class ExternalIntegrationsService {
     });
   }
 
+  async clearYunxiaoUnmatchedRecipients(organizationId: string, actingUserId: string) {
+    const membership = await this.prisma.userOrganization.findUnique({
+      where: {
+        userId_organizationId: {
+          userId: actingUserId,
+          organizationId,
+        },
+      },
+    });
+    if (!membership || membership.role !== 'admin') {
+      throw new ForbiddenException('Organization admin permission required.');
+    }
+
+    const result = await this.prisma.yunxiaoWebhookRecipient.deleteMany({
+      where: {
+        organizationId,
+        status: { not: 'MATCHED' },
+      },
+    });
+    this.logger.log(JSON.stringify({
+      event: 'YUNXIAO_UNMATCHED_RECIPIENTS_CLEARED',
+      organizationId,
+      actingUserId,
+      deletedCount: result.count,
+    }));
+    return { deletedCount: result.count };
+  }
+
   async listYunxiaoProjectMembers(organizationId: string, projectId: string) {
     const normalizedProjectId = projectId.trim();
     if (!normalizedProjectId) {

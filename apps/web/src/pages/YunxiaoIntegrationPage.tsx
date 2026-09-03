@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { PlugZap, RefreshCw, Save, Users } from 'lucide-react';
+import { PlugZap, RefreshCw, Save, Trash2, Users } from 'lucide-react';
 import { useAuth } from '../auth';
 import { api } from '../api';
 import { PageHeader } from '../components/PageHeader';
@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { useToast } from '../components/ui/toast';
+import { useConfirm } from '../components/ConfirmDialog';
 import type {
   YunxiaoIntegrationStatus,
   YunxiaoProjectMember,
@@ -23,6 +24,7 @@ function getMemberKey(member: YunxiaoProjectMember) {
 export function YunxiaoIntegrationPage() {
   const { session } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
   const [status, setStatus] = useState<YunxiaoIntegrationStatus | null>(null);
   const [yunxiaoOrganizationIdentifier, setYunxiaoOrganizationIdentifier] = useState('');
   const [unmatchedRecipients, setUnmatchedRecipients] = useState<YunxiaoUnmatchedRecipient[]>([]);
@@ -38,6 +40,7 @@ export function YunxiaoIntegrationPage() {
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [clearingUnmatched, setClearingUnmatched] = useState(false);
   const isAdmin = session?.organization?.role === 'admin';
 
   useEffect(() => {
@@ -74,6 +77,30 @@ export function YunxiaoIntegrationPage() {
       setUnmatchedRecipients(await api.getYunxiaoUnmatchedRecipients());
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '加载未匹配人员失败');
+    }
+  }
+
+  async function clearUnmatchedRecipients() {
+    if (!isAdmin || unmatchedRecipients.length === 0) {
+      return;
+    }
+    const confirmed = await confirm({
+      description: '确认清空当前组织全部未匹配人员记录吗？清空后不可恢复。',
+      confirmLabel: '清空记录',
+      destructive: true,
+    });
+    if (!confirmed) {
+      return;
+    }
+    setClearingUnmatched(true);
+    try {
+      const result = await api.clearYunxiaoUnmatchedRecipients();
+      setUnmatchedRecipients([]);
+      toast.success(`已清空 ${result.deletedCount} 条未匹配人员记录`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '清空未匹配人员记录失败');
+    } finally {
+      setClearingUnmatched(false);
     }
   }
 
@@ -339,14 +366,28 @@ export function YunxiaoIntegrationPage() {
                       最近 100 条无法通过云效 ID 找到钉钉用户的记录。
                     </p>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => void refreshUnmatchedRecipients()}
-                  >
-                    <RefreshCw size={16} />
-                    刷新
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void refreshUnmatchedRecipients()}
+                    >
+                      <RefreshCw size={16} />
+                      刷新
+                    </Button>
+                    {isAdmin ? (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={() => void clearUnmatchedRecipients()}
+                        disabled={clearingUnmatched || unmatchedRecipients.length === 0}
+                        title="清空未匹配记录"
+                      >
+                        <Trash2 size={16} />
+                        清空记录
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
                 {unmatchedRecipients.length === 0 ? (
                   <p className="text-sm text-muted-foreground">暂无未匹配人员。</p>
