@@ -71,6 +71,17 @@ describe('ExternalIntegrationsService', () => {
     });
   });
 
+  it('子管理员可以持久化停用状态', async () => {
+    findUnique.mockResolvedValue({ role: 'sub_admin' });
+    findFirst.mockResolvedValue({ id: 'integration-1', enabled: true });
+    update.mockResolvedValue({ enabled: false });
+
+    await expect(createService().updateYunxiaoStatus('org-1', 'user-1', false)).resolves.toMatchObject({
+      provider: 'YUNXIAO',
+      enabled: false,
+    });
+  });
+
   it('非管理员不能切换云效开关', async () => {
     findUnique.mockResolvedValue({ role: 'member' });
 

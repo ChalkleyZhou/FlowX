@@ -10,4 +10,9 @@ export class UpdateOrganizationMemberDto {
   @IsOptional()
   @IsIn(['ACTIVE', 'DISABLED'])
   status?: 'ACTIVE' | 'DISABLED';
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['member', 'sub_admin'])
+  role?: 'member' | 'sub_admin';
 }

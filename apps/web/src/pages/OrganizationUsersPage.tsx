@@ -36,16 +36,24 @@ type MemberDraft = {
   account: string;
   password: string;
   displayName: string;
+  role: 'member' | 'sub_admin';
 };
 
 const emptyDraft: MemberDraft = {
   account: '',
   password: '',
   displayName: '',
+  role: 'member',
 };
 
 function roleLabel(role?: string) {
-  return role === 'admin' ? '管理员' : '成员';
+  if (role === 'admin') {
+    return '主管理员';
+  }
+  if (role === 'sub_admin') {
+    return '子管理员';
+  }
+  return '成员';
 }
 
 function statusLabel(status?: string) {
@@ -65,12 +73,14 @@ export function OrganizationUsersPage() {
   const [editDraft, setEditDraft] = useState({
     displayName: '',
     status: 'ACTIVE' as 'ACTIVE' | 'DISABLED',
+    role: 'member' as 'member' | 'sub_admin',
   });
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
   const organizationName = session?.organization?.name ?? '当前组织';
-  const isAdmin = session?.organization?.role === 'admin';
+  const isPrimaryAdmin = session?.organization?.role === 'admin';
+  const canManageMembers = isPrimaryAdmin || session?.organization?.role === 'sub_admin';
   const isDingTalkOrganization = session?.organization?.provider === 'dingtalk';
 
   const filteredMembers = useMemo(() => {
@@ -84,6 +94,7 @@ export function OrganizationUsersPage() {
         member.account,
         member.email,
         member.role,
+        roleLabel(member.role),
       ]
         .filter(Boolean)
         .join(' ')
@@ -135,6 +146,7 @@ export function OrganizationUsersPage() {
         account: createDraft.account.trim(),
         password: createDraft.password.trim() || undefined,
         displayName: createDraft.displayName.trim() || undefined,
+        ...(isPrimaryAdmin ? { role: createDraft.role } : {}),
       });
       setCreateOpen(false);
       setCreateDraft(emptyDraft);
@@ -174,6 +186,7 @@ export function OrganizationUsersPage() {
     setEditDraft({
       displayName: member.displayName,
       status: member.status === 'DISABLED' ? 'DISABLED' : 'ACTIVE',
+      role: member.role === 'sub_admin' ? 'sub_admin' : 'member',
     });
   }
 
@@ -188,6 +201,7 @@ export function OrganizationUsersPage() {
       await api.updateOrganizationMember(editMember.id, {
         displayName: editDraft.displayName.trim() || undefined,
         status: editDraft.status,
+        ...(isPrimaryAdmin && editMember.role !== 'admin' ? { role: editDraft.role } : {}),
       });
       setEditMember(null);
       await refresh();
@@ -268,16 +282,17 @@ export function OrganizationUsersPage() {
         eyebrow="Settings"
         title="用户管理"
         description={
-          isAdmin
-            ? `管理组织「${organizationName}」成员。首个加入组织的用户会自动成为管理员，管理员可转让权限。`
+          canManageMembers
+            ? `管理组织「${organizationName}」成员。主管理员可分配子管理员，只有主管理员可以转让组织管理员。`
             : `查看组织「${organizationName}」成员。成员管理需由管理员操作。`
         }
       />
 
-      <div className="grid gap-5 md:grid-cols-4">
+      <div className="grid gap-5 md:grid-cols-5">
         <MetricCard label="成员总数" value={summary.total} />
         <MetricCard label="当前筛选结果" value={summary.visible} />
-        <MetricCard label="管理员" value={summary.adminCount} />
+        <MetricCard label="主管理员" value={summary.adminCount} />
+        <MetricCard label="子管理员" value={members.filter((member) => member.role === 'sub_admin').length} />
         <MetricCard label="正常账号" value={summary.activeCount} />
       </div>
 
@@ -288,7 +303,7 @@ export function OrganizationUsersPage() {
             title="成员列表"
             description={`仅展示组织「${organizationName}」内的成员，数据与其他组织隔离。`}
             extra={
-              isAdmin ? (
+              canManageMembers ? (
                 <div className="flex flex-wrap items-center gap-2">
                   {isDingTalkOrganization ? (
                     <Button
@@ -330,7 +345,8 @@ export function OrganizationUsersPage() {
               {filteredMembers.map((member) => {
                 const isSelf = member.id === session.user.id;
                 const canTransfer =
-                  isAdmin && !isSelf && member.role !== 'admin' && member.status !== 'DISABLED';
+                  isPrimaryAdmin && !isSelf && member.role !== 'admin' && member.status !== 'DISABLED';
+                const canOperateMember = canManageMembers && (isPrimaryAdmin || member.role !== 'admin');
 
                 return (
                   <RecordListItem
@@ -343,7 +359,7 @@ export function OrganizationUsersPage() {
                     )}
                     badges={(
                       <>
-                        <Badge variant={member.role === 'admin' ? 'default' : 'outline'}>
+                        <Badge variant={member.role === 'admin' ? 'default' : member.role === 'sub_admin' ? 'secondary' : 'outline'}>
                           {roleLabel(member.role)}
                         </Badge>
                         <Badge variant={member.status === 'DISABLED' ? 'destructive' : 'secondary'}>
@@ -369,7 +385,7 @@ export function OrganizationUsersPage() {
                       ) : null
                     }
                     actions={
-                      isAdmin ? (
+                      canOperateMember ? (
                         <>
                           <Button type="button" variant="outline" size="sm" onClick={() => openEdit(member)}>
                             编辑
@@ -413,14 +429,14 @@ export function OrganizationUsersPage() {
         </CardContent>
       </Card>
 
-      {isAdmin ? (
+      {canManageMembers ? (
         <>
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle>添加组织成员</DialogTitle>
                 <DialogDescription>
-                  新建账号会自动加入「{organizationName}」并成为普通成员。若账号已存在，将直接加入当前组织。
+                  新建账号会自动加入「{organizationName}」。主管理员可以在这里直接指定为子管理员；子管理员创建的账号默认为普通成员。
                 </DialogDescription>
               </DialogHeader>
               <form className="flex flex-col gap-4" onSubmit={handleCreate}>
@@ -437,6 +453,27 @@ export function OrganizationUsersPage() {
                     required
                   />
                 </div>
+                {isPrimaryAdmin ? (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-semibold text-foreground" htmlFor="member-role">
+                      组织角色
+                    </label>
+                    <Select
+                      value={createDraft.role}
+                      onValueChange={(value: 'member' | 'sub_admin') =>
+                        setCreateDraft((draft) => ({ ...draft, role: value }))
+                      }
+                    >
+                      <SelectTrigger id="member-role">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="member">成员</SelectItem>
+                        <SelectItem value="sub_admin">子管理员</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-semibold text-foreground" htmlFor="member-password">
                     初始密码
@@ -480,7 +517,7 @@ export function OrganizationUsersPage() {
               <DialogHeader>
                 <DialogTitle>编辑成员</DialogTitle>
                 <DialogDescription>
-                  调整成员在「{organizationName}」内的显示名称与账号状态。管理员权限请使用「转让管理员」。
+                  调整成员在「{organizationName}」内的显示名称、账号状态和组织角色。主管理员不能在这里被降级，组织管理员转让请使用列表中的「转让管理员」。
                 </DialogDescription>
               </DialogHeader>
               <form className="flex flex-col gap-4" onSubmit={handleUpdate}>
@@ -495,6 +532,27 @@ export function OrganizationUsersPage() {
                     required
                   />
                 </div>
+                {isPrimaryAdmin && editMember?.role !== 'admin' ? (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-semibold text-foreground" htmlFor="edit-role">
+                      组织角色
+                    </label>
+                    <Select
+                      value={editDraft.role}
+                      onValueChange={(value: 'member' | 'sub_admin') =>
+                        setEditDraft((draft) => ({ ...draft, role: value }))
+                      }
+                    >
+                      <SelectTrigger id="edit-role">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="member">成员</SelectItem>
+                        <SelectItem value="sub_admin">子管理员</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-semibold text-foreground" htmlFor="edit-status">
                     账号状态

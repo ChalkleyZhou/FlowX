@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OrganizationUsersPage } from './OrganizationUsersPage';
 import { api } from '../api';
+import { useAuth } from '../auth';
 import { ThemeProvider } from '../components/theme-provider';
 import { ToastProvider } from '../components/ui/toast';
 import { ConfirmProvider } from '../components/ConfirmDialog';
@@ -153,5 +154,25 @@ describe('OrganizationUsersPage', () => {
     expect(api.getOrganizationMembers).toHaveBeenCalledTimes(2);
     expect(document.body.textContent).toContain('同步完成');
     expect(document.body.textContent).toContain('移出组织成员 1 人');
+  });
+
+  it('lets a sub-admin manage ordinary members without actions on the primary admin', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      session: {
+        ...sessionWithOrg,
+        organization: { ...sessionWithOrg.organization, role: 'sub_admin', provider: 'local' },
+      },
+      loading: false,
+      applySession: vi.fn(),
+      logout: vi.fn(),
+      refreshSession: vi.fn().mockResolvedValue(null),
+    });
+
+    await renderPage();
+
+    expect(document.body.textContent).toContain('子管理员');
+    expect(document.body.textContent).not.toContain('转让管理员');
+    expect(Array.from(document.querySelectorAll('button')).filter((button) => button.textContent?.trim() === '编辑')).toHaveLength(1);
+    expect(Array.from(document.querySelectorAll('button')).filter((button) => button.textContent?.trim() === '移出组织')).toHaveLength(1);
   });
 });

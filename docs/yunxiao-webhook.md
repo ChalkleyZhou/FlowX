@@ -13,7 +13,7 @@ YUNXIAO_PERSONAL_ACCESS_TOKEN="云效个人访问令牌"
 
 `YUNXIAO_WEBHOOK_SECRET` 只用于验证云效 Webhook；`YUNXIAO_PERSONAL_ACCESS_TOKEN` 用于调用云效成员 API，两者用途不同。
 
-配置完成后，组织管理员需要在 FlowX「设置」→「云效集成」中填写云效 `organizationIdentifier` 并启用云效通知。停用不会删除配置和历史投递记录，重新启用即可恢复。未配置 Secret 或云效组织绑定时不能启用集成。
+配置完成后，组织管理员需要在 FlowX「设置」→「云效集成」中填写云效 `organizationIdentifier` 并启用云效通知。主管理员和子管理员均可维护该配置。停用不会删除配置和历史投递记录，重新启用即可恢复。未配置 Secret 或云效组织绑定时不能启用集成。
 
 云效个人访问令牌通过 `Authorization: Bearer <TOKEN>` 和 `X-Yunxiao-Token: <TOKEN>` 调用标准项目成员接口 `GET /oapi/v1/projex/organizations/{organizationId}/projects/{projectId}/members`，FlowX 会同时发送这两个认证头以兼容不同云效网关。个人 Token 继承创建人的云效权限，并受 Token 权限点和有效期限制。也兼容 `YUNXIAO_ACCESS_KEY_ID` 与 `YUNXIAO_ACCESS_KEY_SECRET`；两者同时配置时优先使用个人 Token。可选配置 `YUNXIAO_API_ENDPOINT`。未配置任何云效 API 凭据时，Webhook 仍会记录每个接收人的未匹配原因，但不会发送通知。
 

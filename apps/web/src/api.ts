@@ -295,6 +295,7 @@ export const api = {
     account: string;
     password?: string;
     displayName?: string;
+    role?: 'member' | 'sub_admin';
   }) =>
     request<OrganizationMember>('/auth/organization/members', {
       method: 'POST',
@@ -305,6 +306,7 @@ export const api = {
     payload: {
       displayName?: string;
       status?: 'ACTIVE' | 'DISABLED';
+      role?: 'member' | 'sub_admin';
     },
   ) =>
     request<OrganizationMember>(`/auth/organization/members/${userId}`, {

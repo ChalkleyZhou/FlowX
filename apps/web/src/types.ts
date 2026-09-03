@@ -23,13 +23,15 @@ export interface RequirementAssignment {
   };
 }
 
+export type OrganizationRole = 'admin' | 'sub_admin' | 'member';
+
 export interface OrganizationMember {
   id: string;
   displayName: string;
   avatarUrl?: string | null;
   account?: string | null;
   email?: string | null;
-  role?: string;
+  role?: OrganizationRole;
   status?: string;
   joinedAt?: string;
 }
@@ -591,7 +593,7 @@ export interface AuthOrganization {
   provider?: string;
   providerOrganizationId?: string;
   logoUrl?: string;
-  role?: string | null;
+  role?: OrganizationRole | null;
 }
 
 export interface DingTalkUserSyncResult {

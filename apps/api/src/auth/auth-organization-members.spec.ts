@@ -133,6 +133,142 @@ describe('AuthService.createOrganizationMember', () => {
     expect(prisma.user.create).toHaveBeenCalled();
     expect(result.id).toBe('u-new');
   });
+
+  it('allows the primary admin to create a sub-admin', async () => {
+    const prisma = {
+      userOrganization: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValueOnce({ role: 'admin' })
+          .mockResolvedValueOnce({
+            role: 'sub_admin',
+            createdAt: joinedAt,
+            user: {
+              id: 'u-new',
+              displayName: 'Bob',
+              avatarUrl: null,
+              account: 'bob',
+              email: null,
+              status: 'ACTIVE',
+              localCredential: { account: 'bob' },
+            },
+          }),
+        create: vi.fn(),
+      },
+      localCredential: { findUnique: vi.fn().mockResolvedValue(null) },
+      user: { create: vi.fn().mockResolvedValue({ id: 'u-new' }) },
+    };
+
+    const service = buildService(prisma);
+    await expect(service.createOrganizationMember('org1', 'admin-1', {
+      account: 'bob',
+      password: 'password123',
+      role: 'sub_admin',
+    })).resolves.toMatchObject({ id: 'u-new', role: 'sub_admin' });
+
+    expect(prisma.user.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        memberships: { create: { organizationId: 'org1', role: 'sub_admin' } },
+      }),
+    }));
+  });
+});
+
+describe('AuthService.updateOrganizationMember', () => {
+  it('allows a sub-admin to update an ordinary member', async () => {
+    const prisma = {
+      userOrganization: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValueOnce({ role: 'sub_admin' })
+          .mockResolvedValueOnce({ id: 'membership-1', role: 'member' })
+          .mockResolvedValueOnce({
+            role: 'member',
+            createdAt: joinedAt,
+            user: {
+              id: 'u-target',
+              displayName: 'Updated',
+              avatarUrl: null,
+              account: 'target',
+              email: null,
+              status: 'ACTIVE',
+              localCredential: { account: 'target' },
+            },
+          }),
+      },
+      user: { update: vi.fn() },
+    };
+
+    const service = buildService(prisma);
+    await expect(service.updateOrganizationMember('org1', 'sub-admin-1', 'u-target', {
+      displayName: 'Updated',
+    })).resolves.toMatchObject({ displayName: 'Updated' });
+    expect(prisma.user.update).toHaveBeenCalled();
+  });
+
+  it('prevents a sub-admin from modifying the primary admin', async () => {
+    const service = buildService({
+      userOrganization: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValueOnce({ role: 'sub_admin' })
+          .mockResolvedValueOnce({ id: 'primary-membership', role: 'admin' }),
+      },
+    });
+
+    await expect(service.updateOrganizationMember('org1', 'sub-admin-1', 'admin-1', {
+      displayName: 'Not allowed',
+    })).rejects.toThrow('Sub-admin cannot modify the primary organization admin.');
+  });
+
+  it('allows only the primary admin to assign a sub-admin role', async () => {
+    const service = buildService({
+      userOrganization: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValueOnce({ role: 'sub_admin' })
+          .mockResolvedValueOnce({ id: 'member-membership', role: 'member' }),
+      },
+    });
+
+    await expect(service.updateOrganizationMember('org1', 'sub-admin-1', 'member-1', {
+      role: 'sub_admin',
+    })).rejects.toThrow('Only the primary organization admin can assign sub-admins.');
+  });
+
+  it('allows the primary admin to change a member role', async () => {
+    const prisma = {
+      userOrganization: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValueOnce({ role: 'admin' })
+          .mockResolvedValueOnce({ id: 'membership-1', role: 'member' })
+          .mockResolvedValueOnce({
+            role: 'sub_admin',
+            createdAt: joinedAt,
+            user: {
+              id: 'member-1',
+              displayName: 'Member',
+              avatarUrl: null,
+              account: 'member',
+              email: null,
+              status: 'ACTIVE',
+              localCredential: { account: 'member' },
+            },
+          }),
+        update: vi.fn(),
+      },
+    };
+
+    const service = buildService(prisma);
+    await expect(service.updateOrganizationMember('org1', 'admin-1', 'member-1', {
+      role: 'sub_admin',
+    })).resolves.toMatchObject({ role: 'sub_admin' });
+    expect(prisma.userOrganization.update).toHaveBeenCalledWith({
+      where: { id: 'membership-1' },
+      data: { role: 'sub_admin' },
+    });
+  });
 });
 
 describe('AuthService.transferOrganizationAdmin', () => {
@@ -169,6 +305,17 @@ describe('AuthService.transferOrganizationAdmin', () => {
     expect(prisma.$transaction).toHaveBeenCalled();
     expect(result.id).toBe('u-target');
     expect(result.role).toBe('admin');
+  });
+
+  it('prevents a sub-admin from transferring the primary admin role', async () => {
+    const service = buildService({
+      userOrganization: {
+        findUnique: vi.fn().mockResolvedValue({ role: 'sub_admin' }),
+      },
+    });
+
+    await expect(service.transferOrganizationAdmin('org1', 'sub-admin-1', 'member-1'))
+      .rejects.toThrow('Primary organization admin permission required.');
   });
 });
 
@@ -216,6 +363,20 @@ describe('AuthService.removeOrganizationMember', () => {
       where: { userId: 'member-1', organizationId: 'org1', revokedAt: null },
       data: { revokedAt: expect.any(Date) },
     });
+  });
+
+  it('prevents a sub-admin from removing the primary admin', async () => {
+    const service = buildService({
+      userOrganization: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValueOnce({ role: 'sub_admin' })
+          .mockResolvedValueOnce({ id: 'primary-membership', role: 'admin' }),
+      },
+    });
+
+    await expect(service.removeOrganizationMember('org1', 'admin-1', 'sub-admin-1'))
+      .rejects.toThrow('Sub-admin cannot modify the primary organization admin.');
   });
 });
 

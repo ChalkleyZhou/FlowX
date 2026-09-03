@@ -1,4 +1,5 @@
 import {
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -23,4 +24,8 @@ export class CreateOrganizationMemberDto {
   @IsOptional()
   @MaxLength(64)
   displayName?: string;
+
+  @IsIn(['member', 'sub_admin'])
+  @IsOptional()
+  role?: 'member' | 'sub_admin';
 }

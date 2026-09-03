@@ -15,6 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PasswordService } from './password.service';
 import { PersonalApiTokenService } from './personal-api-token.service';
 import { DingTalkUserSyncService } from './dingtalk-user-sync.service';
+import { isOrganizationAdminRole, isPrimaryOrganizationAdmin } from './organization-role';
 import { ProviderRegistryService } from './providers/provider-registry.service';
 
 @Injectable()
@@ -495,12 +496,16 @@ export class AuthService {
       account: string;
       password?: string;
       displayName?: string;
+      role?: 'member' | 'sub_admin';
     },
   ) {
-    await this.requireOrganizationAdmin(organizationId, actingUserId);
+    const actingMembership = await this.requireOrganizationAdmin(organizationId, actingUserId);
 
     const account = input.account.trim().toLowerCase();
-    const role = 'member';
+    const role = input.role ?? 'member';
+    if (role === 'sub_admin' && !isPrimaryOrganizationAdmin(actingMembership.role)) {
+      throw new ForbiddenException('Only the primary organization admin can assign sub-admins.');
+    }
     const existingCredential = await this.prisma.localCredential.findUnique({
       where: { account },
       include: { user: true },
@@ -564,9 +569,10 @@ export class AuthService {
     input: {
       displayName?: string;
       status?: 'ACTIVE' | 'DISABLED';
+      role?: 'member' | 'sub_admin';
     },
   ) {
-    await this.requireOrganizationAdmin(organizationId, actingUserId);
+    const actingMembership = await this.requireOrganizationAdmin(organizationId, actingUserId);
 
     const membership = await this.prisma.userOrganization.findUnique({
       where: {
@@ -578,6 +584,17 @@ export class AuthService {
     });
     if (!membership) {
       throw new NotFoundException('Organization member not found.');
+    }
+    if (membership.role === 'admin' && !isPrimaryOrganizationAdmin(actingMembership.role)) {
+      throw new ForbiddenException('Sub-admin cannot modify the primary organization admin.');
+    }
+    if (input.role !== undefined) {
+      if (!isPrimaryOrganizationAdmin(actingMembership.role)) {
+        throw new ForbiddenException('Only the primary organization admin can assign sub-admins.');
+      }
+      if (membership.role === 'admin') {
+        throw new BadRequestException('The primary organization admin role cannot be changed here.');
+      }
     }
 
     const userUpdates: Prisma.UserUpdateInput = {};
@@ -595,6 +612,13 @@ export class AuthService {
       });
     }
 
+    if (input.role !== undefined) {
+      await this.prisma.userOrganization.update({
+        where: { id: membership.id },
+        data: { role: input.role },
+      });
+    }
+
     return this.getOrganizationMember(organizationId, userId);
   }
 
@@ -607,7 +631,7 @@ export class AuthService {
       throw new BadRequestException('Cannot transfer admin role to yourself.');
     }
 
-    const actingMembership = await this.requireOrganizationAdmin(organizationId, actingUserId);
+    const actingMembership = await this.requirePrimaryOrganizationAdmin(organizationId, actingUserId);
 
     const targetMembership = await this.prisma.userOrganization.findUnique({
       where: {
@@ -643,7 +667,7 @@ export class AuthService {
     userId: string,
     actingUserId: string,
   ) {
-    await this.requireOrganizationAdmin(organizationId, actingUserId);
+    const actingMembership = await this.requireOrganizationAdmin(organizationId, actingUserId);
 
     if (userId === actingUserId) {
       throw new BadRequestException('You cannot remove yourself from the organization.');
@@ -659,6 +683,9 @@ export class AuthService {
     });
     if (!membership) {
       throw new NotFoundException('Organization member not found.');
+    }
+    if (membership.role === 'admin' && !isPrimaryOrganizationAdmin(actingMembership.role)) {
+      throw new ForbiddenException('Sub-admin cannot modify the primary organization admin.');
     }
     if (membership.role === 'admin') {
       const adminCount = await this.countOrganizationAdmins(organizationId);
@@ -714,8 +741,23 @@ export class AuthService {
         },
       },
     });
-    if (!membership || membership.role !== 'admin') {
+    if (!membership || !isOrganizationAdminRole(membership.role)) {
       throw new ForbiddenException('Organization admin permission required.');
+    }
+    return membership;
+  }
+
+  private async requirePrimaryOrganizationAdmin(organizationId: string, actingUserId: string) {
+    const membership = await this.prisma.userOrganization.findUnique({
+      where: {
+        userId_organizationId: {
+          userId: actingUserId,
+          organizationId,
+        },
+      },
+    });
+    if (!membership || !isPrimaryOrganizationAdmin(membership.role)) {
+      throw new ForbiddenException('Primary organization admin permission required.');
     }
     return membership;
   }

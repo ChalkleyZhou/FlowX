@@ -41,7 +41,7 @@ export function YunxiaoIntegrationPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [clearingUnmatched, setClearingUnmatched] = useState(false);
-  const isAdmin = session?.organization?.role === 'admin';
+  const isAdmin = session?.organization?.role === 'admin' || session?.organization?.role === 'sub_admin';
 
   useEffect(() => {
     let cancelled = false;

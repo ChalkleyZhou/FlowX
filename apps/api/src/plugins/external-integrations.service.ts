@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { isOrganizationAdminRole } from '../auth/organization-role';
 import { YunxiaoMembersService } from './yunxiao-members.service';
 import type {
   BuiltInPluginUpdateOptions,
@@ -55,7 +56,7 @@ export class ExternalIntegrationsService {
         },
       },
     });
-    if (!membership || membership.role !== 'admin') {
+    if (!membership || !isOrganizationAdminRole(membership.role)) {
       throw new ForbiddenException('Organization admin permission required.');
     }
 
@@ -148,7 +149,7 @@ export class ExternalIntegrationsService {
         },
       },
     });
-    if (!membership || membership.role !== 'admin') {
+    if (!membership || !isOrganizationAdminRole(membership.role)) {
       throw new ForbiddenException('Organization admin permission required.');
     }
 
@@ -248,7 +249,7 @@ export class ExternalIntegrationsService {
         },
       },
     });
-    if (!membership || membership.role !== 'admin') {
+    if (!membership || !isOrganizationAdminRole(membership.role)) {
       throw new ForbiddenException('Organization admin permission required.');
     }
 
