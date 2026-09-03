@@ -62,6 +62,11 @@ function headingId(title: string, index: number) {
   return normalized || `section-${index + 1}`;
 }
 
+export function bindInstallOrigin(markdown: string, origin = window.location.origin): string {
+  const normalized = origin.replace(/\/+$/, '');
+  return markdown.replaceAll('https://<当前站点>', normalized).replaceAll('http://<当前站点>', normalized);
+}
+
 function extractHeadings(markdown: string): DocumentHeading[] {
   const headings: DocumentHeading[] = [];
   let inCodeBlock = false;
@@ -118,7 +123,9 @@ export function MarkdownDocPage({
           throw new Error(`加载失败（HTTP ${response.status}）`);
         }
         const rawBuffer = await response.arrayBuffer();
-        const content = new TextDecoder('utf-8').decode(rawBuffer).replace(/^\uFEFF/, '');
+        const content = bindInstallOrigin(
+          new TextDecoder('utf-8').decode(rawBuffer).replace(/^\uFEFF/, ''),
+        );
         if (!cancelled) {
           setMarkdown(content);
         }

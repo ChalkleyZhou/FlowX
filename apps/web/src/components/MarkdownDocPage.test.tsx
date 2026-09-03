@@ -92,4 +92,36 @@ describe('MarkdownDocPage', () => {
     expect(internalLink).toBeTruthy();
     expect(internalLink?.getAttribute('target')).toBeNull();
   });
+
+  it('replaces the current-site install placeholder with window.location.origin', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () =>
+        new TextEncoder().encode(
+          '# 指南\n\n```bash\ncurl -fsSL https://<当前站点>/install | bash\n```\n',
+        ).buffer,
+    });
+
+    await act(async () => {
+      root?.render(
+        <MemoryRouter>
+          <ThemeProvider>
+            <MarkdownDocPage
+              markdownUrl="/local-agent-guide.md"
+              eyebrow="Local Agent"
+              title="本地 Agent"
+              description="guide"
+            />
+          </ThemeProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain(`curl -fsSL ${window.location.origin}/install | bash`);
+    expect(container.textContent).not.toContain('<当前站点>');
+  });
 });

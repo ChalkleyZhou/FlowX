@@ -107,14 +107,7 @@ pnpm dev
 
 ### 本地 OpenDesign 设计
 
-OpenDesign 跑在设计师本机，不必装到 API 主机：
-
-```bash
-curl -fsSL https://<当前站点>/install | bash
-flowx-local login
-```
-
-安装后用 MCP 领取任务并提交构思 / 设计。详见 [本地 Agent 使用指南](docs/local-agent-guide.md)。贡献者可用 `pnpm --filter @flowx-ai/local build && pnpm flowx-local serve`。
+OpenDesign 跑在设计师本机。打开正在使用的 FlowX，进入「本地 Agent」复制安装命令，再执行 `flowx-local login`。详见 [本地 Agent 使用指南](docs/local-agent-guide.md)。贡献者可用 `pnpm --filter @flowx-ai/local build && pnpm flowx-local serve`。
 
 ## Docker deployment
 

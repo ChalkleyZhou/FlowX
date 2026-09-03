@@ -16,14 +16,7 @@ Web 在 `VITE_API_BASE_URL=/api` 时会把相对路径解析为当前页面的 `
 
 ### 终端用户
 
-在日常使用的同一 FlowX 站点安装：
-
-```bash
-curl -fsSL https://<当前站点>/install | bash
-flowx-local login
-```
-
-之后：`flowx-local status` / `sync` / `mcp`。
+打开正在使用的 FlowX「本地 Agent」页，复制安装命令后再 `login`。之后：`flowx-local status` / `sync` / `mcp`。
 
 ### 仓库贡献者
 

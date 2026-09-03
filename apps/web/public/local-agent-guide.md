@@ -4,7 +4,7 @@
 
 ## 安装
 
-在日常使用的同一 FlowX 站点执行：
+在本机终端执行：
 
 ```bash
 curl -fsSL https://<当前站点>/install | bash

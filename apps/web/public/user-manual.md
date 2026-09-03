@@ -31,7 +31,7 @@ FlowX 把研发流程拆成可中断、可确认的阶段，核心目标是：
 
 ## 本地 Agent 与 OpenDesign
 
-本机用 Cursor / Codex 或 OpenDesign 时，在同一站点安装后 `login`：
+本机用 Cursor / Codex 或 OpenDesign 时，先安装再 `login`：
 
 ```bash
 curl -fsSL https://<当前站点>/install | bash
