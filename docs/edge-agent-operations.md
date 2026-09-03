@@ -23,14 +23,7 @@ curl -fsSL https://<当前站点>/install | bash
 flowx-local login
 ```
 
-脚本会注册本机后台服务。之后可用：
-
-```bash
-flowx-local status
-flowx-local sync
-flowx-local mcp
-flowx-local design-submit <executionSessionId>
-```
+之后：`flowx-local status` / `sync` / `mcp`。
 
 ### 仓库贡献者
 
@@ -100,7 +93,7 @@ Review。`POST /workflow-runs/:id/execution/complete-local` 仍保留给旧 Web�
 也可把可执行文件绝对路径写入 `~/.flowx/local.json` 的 `openDesignCommand`。
 不要把 macOS 系统的 `/usr/bin/od` 误认为 OpenDesign CLI。
 
-首次本地发起需求或做产品构思前运行 `flowx-local setup`，安装用户级 `flowx-intake-requirement` 与 `flowx-product-prd` Skill（已装旧 Skill 时用 `flowx-local update` 或 `flowx-local setup --force` 迁移）。只有用户明确要求在 FlowX 新建 / 登记需求时才进入 intake；普通当前项目开发请求不触发，意图不明确时先询问且不调用 FlowX 工具。发起路径：`flowx_list_projects` → 确认发布版本（用当前 / 新建，必要时 `flowx_create_project_version`）→ `flowx_create_requirement`（必须带确认后的 `versionId`）→ 用户确认后 `flowx_start_workflow`（`userConfirmedStart=true`）→ 可选进入构思。构思期望流程：头脑风暴 → 确认后的 `prd.md` → `flowx_submit_brainstorm`；不是对话原文。旧 `spec.md` 文件名仍兼容。
+安装脚本会写入 Skill 与用户级 MCP。旧 Skill 用 `flowx-local update`。intake / 构思细节见用户指南。
 
 ### 回传进入 Outbox
 

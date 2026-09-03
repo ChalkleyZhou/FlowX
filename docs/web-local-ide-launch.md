@@ -10,14 +10,12 @@ This path reuses the same `claim-local` / handoff contract as [local-execution-h
 
 ## Prerequisites
 
-终端用户在日常使用的同一 FlowX 站点安装；`flowx-local` 自带 MCP command，不需要单独安装或构建 `flowx-mcp`：
+终端用户在同一 FlowX 站点安装（不必再单独装 `flowx-mcp`）：
 
 ```bash
 curl -fsSL https://<当前站点>/install | bash
 flowx-local login
 ```
-
-脚本会检查 Node.js 20+、安装 `@flowx-ai/local`、注册本机后台服务，并在检测到 Cursor / Codex 时询问是否写入 Skill 和 MCP。
 
 Keep the FlowX API and Web apps running as usual (`pnpm dev` or equivalent).
 

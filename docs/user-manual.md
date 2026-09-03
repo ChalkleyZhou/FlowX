@@ -31,20 +31,14 @@ FlowX 把研发流程拆成可中断、可确认的阶段，核心目标是：
 
 ## 本地 Agent 与 OpenDesign
 
-若要在本机用 Cursor / Codex「本地启动」，或通过 OpenDesign 做本地构思与设计，需要安装 FlowX 本地 Agent，并配置 MCP。
-
-**推荐**：在日常使用的同一 FlowX 站点执行安装脚本，再 `login` 粘贴设置页生成的 token。API 地址由脚本写入，不必手填 `--api-base-url`。再用 MCP `flowx_list_tasks` → `flowx_bind_workflow` 领取任务；构思提交后可在**同一会话**继续设计 handoff，无需再点 Web「打开本地 OpenDesign」。
-
-Web 页面上的 `打开本地构思` / `打开本地 OpenDesign` / `回传本地设计` 仍可作为未配置长期 token 时的可选兜底。
-
-平台内完整说明见侧栏「设置」→ **[本地 Agent](/local-agent)**（或直接打开 `/local-agent`）。也可在该页复制当前站点的 curl。
-
-快速安装：
+本机用 Cursor / Codex 或 OpenDesign 时，在同一站点安装后 `login`：
 
 ```bash
 curl -fsSL https://<当前站点>/install | bash
 flowx-local login
 ```
+
+完整说明见 **[本地 Agent](/local-agent)**。
 
 ## 快速上手
 
@@ -106,7 +100,7 @@ flowx-local login
 - 验收标准
 - 影响仓库范围（可留空，留空表示继承工作区默认仓库）
 
-已安装 [本地 Agent](/local-agent) 时，也可在 Cursor / Codex 明确说明要新建 FlowX 需求。普通的当前项目开发请求不会创建 FlowX 数据；意图不明确时，Agent 会先询问是否登记到 FlowX。确认后再按 `flowx-intake-requirement` Skill：列出项目 → **确认发布版本（用当前 / 新建）** → 创建需求 → **经你确认后**启动工作流 → 可选进入产品构思。
+也可在 Cursor / Codex 明确说要新建 FlowX 需求（见 [本地 Agent](/local-agent)）。普通写代码不会登记。
 
 ## 从需求到交付
 
@@ -117,23 +111,15 @@ flowx-local login
 3. 在启动窗口选择 AI 执行器和本次工作流的仓库范围；不选择时使用需求默认范围。
 4. 启动后进入工作流详情页。仓库准备完成后，按阶段推进产品构思、设计方案、Spec & Plan、执行开发、AI 审查和人工确认。
 
-一次研发过程对应一条工作流；如需重新发起，系统会保留历史记录，并检查同一仓库范围是否已有进行中的工作流。日常操作以当前工作流详情页为准。平台侧以查看进度与人工确认门禁为主。也可以用本地 AI 一次完成创建与启动（见 [本地 Agent](/local-agent)「本地发起需求」）。
+一次研发过程对应一条工作流；如需重新发起，系统会保留历史记录，并检查同一仓库范围是否已有进行中的工作流。日常操作以当前工作流详情页为准。也可以用本地 AI 一次完成创建与启动（见 [本地 Agent](/local-agent)）。
 
 ### 使用本地 OpenDesign 构思与设计
 
-如果当前工作流需要在本地 OpenDesign 完成产品构思与 UI/交互设计：
+1. 按上文安装并 `login`。
+2. MCP：`flowx_list_tasks` → bind → 提交 `prd.md` → 同一会话提交设计。
+3. 网页确认设计方案后进入 Spec & Plan。
 
-1. 按上文 curl 安装本地 Agent（脚本会写入 `flowx-intake-requirement`、`flowx-product-prd` 与用户级 MCP）。详见 [本地 Agent](/local-agent)。若本机仍保留旧版 `flowx-brainstorm-spec`，请执行 `flowx-local setup --force` 迁移。
-2. 在「设置」→ [API Token](/settings/api-tokens) 生成 Personal API Token（`fxpat_…`），再执行 `flowx-local login`（只粘贴 token；地址已由安装脚本写入）。也可设置 `FLOWX_API_TOKEN` + `FLOWX_API_BASE_URL`。
-3. 在 Cursor / Codex 启用 `flowx-local mcp`：`flowx_list_tasks` → 确认工作流 → `flowx_bind_workflow`。
-4. **产品构思**（面向产品经理 / 设计师，不写实现细节）：`flowx_get_brainstorm_handoff` → 多轮头脑风暴澄清需求 → 写 `prd.md` → 用户确认 → `flowx_submit_brainstorm`（响应会提示进入 design）。旧版 `spec.md` 仍可作为兼容文件名回传，但新流程以 `prd.md` 为准。
-5. **同一会话**立刻 `flowx_get_design_handoff` → 完成 `design.md` 与 HTML 原型 → 向用户确认 `design.md` 全文后 `flowx_submit_design({ markdown, output })`（也可在工作流详情点击 `回传本地设计`）。
-6. 平台进入 `待确认设计方案`：工作流详情展示 **设计文档（Markdown）** 与 **HTML 预览** 两个模块，由人工确认、驳回或跳过后继续下一阶段。旧 run 无 `markdown` 时，「设计文档」显示「尚未提交设计文档」。
-
-**可选兜底**：未配置长期 token 时，可在工作流详情点击 `打开本地构思` / `打开本地 OpenDesign` 写入短期会话；金路径下不需要第二次点击「打开本地 OpenDesign」。点击「打开本地构思」或「打开本地 OpenDesign」时，平台会先弹出两步操作引导（选择项目目录、输入「获取FlowX任务」），确认后再打开应用。
-
-网络中断时完成报告会进入本地 Outbox，可通过 `flowx-local sync` 重试。详细配置和结果格式见
-[OpenDesign 本地设计阶段](opendesign-design-stage.md)。
+未 login 时可用网页「打开本地构思 / OpenDesign」作兜底。详见 [本地 Agent](/local-agent) 与 [OpenDesign 本地设计阶段](opendesign-design-stage.md)。
 
 ### 确认 Spec & Plan 并进入开发
 
@@ -143,24 +129,7 @@ flowx-local login
 2. 生成完成后进入 **待确认 Spec & Plan**，可查看结构化文档、人工修改、确认或带意见驳回修订。
 3. 确认后进入 **待执行开发**，可按需选择云端执行或本地启动（Cursor / Codex）。
 
-Spec & Plan 当前在 Web 端生成与确认；本地 MCP 暂不提供独立 handoff，开发执行仍通过 `flowx-local` 与 Cursor Extension 领取任务。
-
-### 在 Cursor Agent 中启用 FlowX MCP
-
-MCP 要配置在实际运行 Agent 的工具里，不是配置在 OpenDesign 应用里。如果你使用 Cursor Agent，请在 Cursor 的 MCP 配置中登记 `flowx-local`：
-
-```json
-{
-  "mcpServers": {
-    "flowx": {
-      "command": "flowx-local",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-先按上文完成 curl 安装与 `flowx-local login`。安装脚本会写入用户级 MCP；Cursor 会按需启动 `flowx-local mcp`。配置 PAT 后，它通过 `~/.flowx/credentials.json` 与 `current-workflow.json` 鉴权并绑定任务；也可兼容读取 Web 写入的短期 `active-design` 会话。通过 FlowX Web 的「本地启动」打开 Cursor 时，`flowx-local` 还可能写入项目级 `.cursor/mcp.json`。手工配置时不要把 `FLOWX_API_BASE_URL` 写死为 `127.0.0.1`，也不要把 `~/.flowx` 下的凭据、会话文件或 token 提交到 Git。
+Spec & Plan 当前在 Web 端生成与确认；本地 MCP 暂不提供独立 handoff。安装脚本会写入用户级 MCP，一般不必手改。
 
 ### 启动研发工作流
 
@@ -174,8 +143,8 @@ MCP 要配置在实际运行 Agent 的工具里，不是配置在 OpenDesign 应
 工作流阶段按实际配置和是否跳过可选阶段推进，通常是：
 
 1. 仓库准备：同步仓库并生成代码上下文
-2. 产品构思：本地头脑风暴并产出产品需求（PRD），或 AI 生成产品简报，可跳过；若已进入设计阶段，可在「产品构思」面板点击「重新构思」回到构思（设计产物保留对照），再用 MCP 或（可选）打开本地构思重写 `prd.md`
-3. 设计方案：本地 OpenDesign 回传或生成设计稿，可确认、驳回或跳过；平台展示 **设计文档（design.md / Markdown）** 与 **HTML 预览** 两个模块（不再展示结构化字段树）；HTML Artifact 即给人看的交互预览，不再单独生成仓库 Demo 页；推荐构思提交后同一会话继续设计，Web「打开本地 OpenDesign」为可选兜底
+2. 产品构思：本地产出 PRD，可跳过；设计阶段可点「重新构思」
+3. 设计方案：确认设计文档与 HTML 预览，可跳过
 4. Spec & Plan：AI 生成实现边界（spec）与实现路径（plan），需人工确认或驳回修订；**不可跳过**
 5. 执行开发（Execution）
 6. AI 审查（AI Review）
