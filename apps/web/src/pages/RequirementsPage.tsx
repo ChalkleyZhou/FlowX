@@ -492,7 +492,7 @@ export function RequirementsPage() {
       <PageHeader
         eyebrow="Requirements"
         title="需求"
-        description="查看需求、确认门禁并启动工作流。本页可直接创建需求；已安装本地 Agent 时，也可用 Cursor / Codex 发起。"
+        description="查看需求、确认门禁并启动工作流。本页可直接创建需求。"
       />
       <div className="grid gap-5 md:grid-cols-4">
         <MetricCard label="需求总数" value={requirementSummary.requirementCount} />
@@ -509,9 +509,6 @@ export function RequirementsPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <UiButton onClick={() => setCreateModalOpen(true)}>
                   创建需求
-                </UiButton>
-                <UiButton variant="outline" asChild>
-                  <Link to="/local-agent">用 Cursor / Codex 发起</Link>
                 </UiButton>
               </div>
             )}

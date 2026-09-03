@@ -43,7 +43,7 @@ MCP 鉴权顺序：
 
 ### 本地发起需求（推荐主路径）
 
-平台需求页主按钮是「创建需求」。已安装本地 Agent 时，**新建需求并启动工作流**也可以在 Cursor / Codex 用本地 AI 完成；需求页次要入口「用 Cursor / Codex 发起」会打开本指南。
+平台需求页主按钮是「创建需求」。已安装本地 Agent 时，**新建需求并启动工作流**也可以在 Cursor / Codex 用本地 AI 完成。
 
 前置：已完成安装与 `flowx-local login`（含 `flowx-intake-requirement` Skill）。
 
