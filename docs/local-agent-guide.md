@@ -68,7 +68,7 @@ flowx-local setup cursor,codex,od --force
 
 不覆盖已有文件，除非加 `--force`。`serve` **不会**静默安装 Skill。
 
-若本机仍保留旧版 `flowx-brainstorm-spec`，请执行 `flowx-local setup --force` 切换到新 Skill。
+若本机仍保留旧版 `flowx-brainstorm-spec`，或 `flowx-intake-requirement` 仍会把普通开发请求直接创建为 FlowX 需求，请执行 `flowx-local update`（默认更新已安装 Skill）或 `flowx-local setup --force` 切换到新 Skill。
 
 产品构思期望流程（读者：产品经理 / 设计师；**不写** API、框架、数据库等实现细节）：
 
@@ -121,6 +121,8 @@ MCP 鉴权顺序：
 平台需求页主按钮是「创建需求」。已安装本地 Agent 时，**新建需求并启动工作流**也可以在 Cursor / Codex 用本地 AI 完成；需求页次要入口「用 Cursor / Codex 发起」会打开本指南。
 
 前置：已 `flowx-local login`，并执行 `flowx-local setup`（含 `flowx-intake-requirement`）。
+
+只有明确说“在 FlowX 新建 / 登记 / 发起需求”时才进入该流程。普通的功能实现、代码修改、问题修复或需求讨论继续在当前项目处理，不会创建 FlowX 数据。若是否要登记到 FlowX 不明确，Agent 必须先询问“直接在当前项目处理，还是登记到 FlowX？”，得到明确答复前不调用 FlowX 工具。
 
 1. 在 IDE 中说明要「新建 / 发起 FlowX 需求」（触发 `flowx-intake-requirement` Skill）
 2. Agent 调用 `flowx_list_projects`，由你选定项目（不要用本地仓库路径猜测）

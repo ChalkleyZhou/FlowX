@@ -66,6 +66,10 @@ describe('flowx-local setup', () => {
     expect(readFileSync(cursorIntake, 'utf8')).toContain('用当前版本');
     expect(readFileSync(cursorIntake, 'utf8')).toContain('flowx_create_project_version');
     expect(readFileSync(cursorIntake, 'utf8')).toContain('禁止省略');
+    expect(readFileSync(cursorIntake, 'utf8')).toContain('普通代码修改');
+    expect(readFileSync(cursorIntake, 'utf8')).toContain('意图不明确时先询问');
+    expect(readFileSync(cursorIntake, 'utf8')).toContain('不得调用任何 `flowx_*` 工具');
+    expect(readFileSync(cursorIntake, 'utf8')).not.toContain('创建前不强制二次确认');
 
     writeFileSync(cursorPrd, '# custom\n', 'utf8');
     const second = runSetup({ homeDir: home, targets: 'cursor' });

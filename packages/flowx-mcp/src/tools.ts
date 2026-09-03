@@ -460,7 +460,7 @@ export function registerFlowXTools(
     {
       title: 'List FlowX Projects',
       description:
-        'List workspaces/projects visible to the current token for local requirement intake. Ask the user to pick a projectId; do not infer from local repo paths.',
+        'List workspaces/projects for FlowX requirement intake only after the user explicitly asked to create/register the item in FlowX or confirmed that choice. Do not use for ordinary code changes, current-project feature work, or requirement discussion. If intent is unclear, ask whether to handle it in the current project or register it in FlowX before calling any FlowX tool. Ask the user to pick a projectId; do not infer from local repo paths.',
       inputSchema: z.object({}),
     },
     handlers.flowx_list_projects,
@@ -484,7 +484,7 @@ export function registerFlowXTools(
     {
       title: 'Create FlowX Requirement',
       description:
-        'Create a requirement on FlowX (local intake). Requires projectId, title, description, acceptanceCriteria. Confirm the release version with the user first and always pass versionId (id or null); do not omit it to rely on server default.',
+        'Create a requirement on FlowX only after the user explicitly asked to create/register the item in FlowX or confirmed that choice. Never interpret ordinary code changes, current-project feature work, or requirement discussion as authorization to create FlowX data. Requires projectId, title, description, acceptanceCriteria. Confirm the release version with the user first and always pass versionId (id or null); do not omit it to rely on server default.',
       inputSchema: z.object({
         projectId: z.string().min(1),
         title: z.string().min(1),

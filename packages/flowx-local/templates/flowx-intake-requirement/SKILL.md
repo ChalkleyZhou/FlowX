@@ -1,6 +1,6 @@
 ---
 name: flowx-intake-requirement
-description: FlowX 本地需求发起：列出项目、确认发布版本、创建需求、确认后启动工作流，并可选择进入产品构思。Use when the user wants to create a new FlowX requirement or start a requirement from local AI tools.
+description: 仅在用户明确要求把事项新建、登记或发起到 FlowX 时，创建 FlowX 需求并在确认后启动工作流。普通代码修改、当前项目功能请求和需求讨论不适用；意图不明确时先询问，不调用 FlowX 工具。
 ---
 
 # FlowX 本地需求发起
@@ -9,10 +9,21 @@ description: FlowX 本地需求发起：列出项目、确认发布版本、创�
 
 ## 何时使用
 
-- 用户要新建 / 发起 FlowX 需求，且还没有应优先 bind 的既有工作流
+- 用户明确要求把事项新建、登记或发起到 FlowX，且还没有应优先 bind 的既有工作流
+- 用户显式调用本 Skill（例如 `$flowx-intake-requirement`）
 - 若已有候选工作流：先 `flowx_list_tasks`，确认后 `flowx_bind_workflow`，不要重复创建
 
+## 意图边界（硬门禁）
+
+- 用户只是在当前项目要求实现功能、修改代码、修复问题、补充 TODO 或讨论需求时，**不要使用本 Skill**，直接在当前项目处理。
+- 仅出现“需求”“新增功能”等普通措辞，或只是在别的语境提到 FlowX，不代表用户要创建 FlowX 需求。
+- 若用户确实在讨论需求发起或管理，但没有明确要不要登记到 FlowX，先询问：**“这个事项要直接在当前项目处理，还是登记到 FlowX？”**
+- 在用户明确选择“登记到 FlowX”之前，不得调用任何 `flowx_*` 工具，不得创建项目版本、需求或工作流。
+- 用户最初明确要求在 FlowX 创建，或对上述询问明确回答“登记到 FlowX”，即满足本门禁；后续无需重复询问同一个范围问题。
+
 ## 必须流程
+
+只有通过“意图边界”后，才进入以下流程。
 
 1. **选项目**
    调用 `flowx_list_projects`，向用户展示工作区/项目列表（可附一句推荐），**必须等用户选定** `projectId`。
@@ -34,7 +45,7 @@ description: FlowX 本地需求发起：列出项目、确认发布版本、创�
 4. **创建**
    调用 `flowx_create_requirement`，**必须传入**用户确认的 `versionId`（具体 id 或 `null`）。
    成功后回显 `requirementId`、标题、项目、版本名（未挂则说明未挂版本）。
-   标题/描述含糊时先问清再调用。
+   标题/描述含糊时先问清再调用；未通过“意图边界”不得调用。
 
 5. **启动确认（硬门禁）**
    创建成功后立刻进入启动，但先展示摘要再调工具：
@@ -52,6 +63,8 @@ description: FlowX 本地需求发起：列出项目、确认发布版本、创�
 
 ## 禁止
 
+- 把普通的当前项目开发请求解释为 FlowX 需求创建请求
+- 意图不明确且未经询问就调用任何 `flowx_*` 工具
 - 未展示并确认发布版本即 `flowx_create_requirement`
 - 省略 `versionId` 靠服务端默认当前版本
 - 未确认即 `flowx_start_workflow`
