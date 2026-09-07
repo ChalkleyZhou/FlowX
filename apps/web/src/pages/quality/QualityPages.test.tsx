@@ -16,6 +16,12 @@ const { errorToast, successToast } = vi.hoisted(() => ({
   successToast: vi.fn(),
 }));
 
+function setInputValue(element: HTMLInputElement, value: string) {
+  const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  valueSetter?.call(element, value);
+  element.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 vi.mock('../../api', () => ({
   api: {
     getWorkspaces: vi.fn(),
@@ -28,6 +34,9 @@ vi.mock('../../api', () => ({
     getTestCasesPage: vi.fn(),
     createTestRequest: vi.fn(),
     createTestCaseLibrary: vi.fn(),
+    createTestCaseModule: vi.fn(),
+    updateTestCaseModule: vi.fn(),
+    deleteTestCaseModule: vi.fn(),
     createTestCase: vi.fn(),
     importTestCases: vi.fn(),
     updateTestCase: vi.fn(),
@@ -142,6 +151,7 @@ describe('Quality pages', () => {
       parentId: null,
       name: '认证',
       sortOrder: 0,
+      _count: { cases: 1, children: 0 },
     }]);
     vi.mocked(api.getTestCases).mockResolvedValue([testCase]);
     vi.mocked(api.getTestCasesPage).mockResolvedValue({
@@ -152,6 +162,21 @@ describe('Quality pages', () => {
       summary: { p0Count: 1, linkedCount: 1 },
     });
     vi.mocked(api.deleteTestCase).mockResolvedValue({ success: true });
+    vi.mocked(api.createTestCaseModule).mockResolvedValue({
+      id: 'module-2',
+      libraryId: library.id,
+      parentId: null,
+      name: '支付',
+      sortOrder: 0,
+    });
+    vi.mocked(api.updateTestCaseModule).mockResolvedValue({
+      id: 'module-1',
+      libraryId: library.id,
+      parentId: null,
+      name: '账号认证',
+      sortOrder: 0,
+    });
+    vi.mocked(api.deleteTestCaseModule).mockResolvedValue({ success: true, affectedCases: 1 });
     vi.mocked(api.importTestCases).mockResolvedValue({ imported: 1 });
     vi.mocked(api.updateTestCase).mockResolvedValue({ ...testCase, version: 4, title: '登录后返回原页面' });
   });
@@ -298,6 +323,81 @@ describe('Quality pages', () => {
     expect(document.body.textContent).toContain('选择目标用例库并上传填写完成的 CSV 模板');
     expect(document.body.textContent).toContain('下载模板');
     expect(document.body.querySelector('input[type="file"]')?.getAttribute('accept')).toBe('.csv,text/csv');
+  });
+
+  it('creates, edits and deletes modules from the module management dialog', async () => {
+    await renderPage('/quality/test-cases?workspaceId=workspace-1', <QualityCasesPage />);
+
+    const manageButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '模块管理',
+    );
+    await act(async () => {
+      manageButton?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(document.body.textContent).toContain('按用例库维护模块层级');
+    expect(document.body.textContent).toContain('认证');
+
+    const nameInput = document.body.querySelector('input[aria-label="模块名称"]') as HTMLInputElement;
+    await act(async () => {
+      setInputValue(nameInput, '支付');
+    });
+    const addButton = Array.from(document.body.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '添加模块',
+    );
+    await act(async () => {
+      addButton?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.createTestCaseModule).toHaveBeenCalledWith('library-1', {
+      name: '支付',
+      parentId: undefined,
+    });
+
+    const editButton = document.body.querySelector(
+      'button[aria-label="编辑模块：认证"]',
+    ) as HTMLButtonElement;
+    await act(async () => editButton.click());
+    await act(async () => {
+      setInputValue(nameInput, '账号认证');
+    });
+    const saveButton = Array.from(document.body.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '保存修改',
+    );
+    await act(async () => {
+      saveButton?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.updateTestCaseModule).toHaveBeenCalledWith('module-1', {
+      name: '账号认证',
+      parentId: null,
+    });
+
+    const deleteButton = document.body.querySelector(
+      'button[aria-label="删除模块：认证"]',
+    ) as HTMLButtonElement;
+    await act(async () => {
+      deleteButton.click();
+      await Promise.resolve();
+    });
+    expect(document.body.textContent).toContain('1 条有效用例将转为“未分模块”');
+    const confirmButton = Array.from(document.body.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '删除模块' && button.className.includes('bg-destructive'),
+    );
+    await act(async () => {
+      confirmButton?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.deleteTestCaseModule).toHaveBeenCalledWith('module-1');
+    expect(successToast).toHaveBeenCalledWith('模块已删除，1 条用例已转为未分模块');
   });
 
   it('maps test plan runs into the execution history page', async () => {

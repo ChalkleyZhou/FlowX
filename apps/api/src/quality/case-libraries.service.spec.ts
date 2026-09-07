@@ -4,10 +4,18 @@ import { CaseLibrariesService } from './case-libraries.service';
 
 function createService() {
   const prisma = {
+    $transaction: vi.fn((operations: Promise<unknown>[]) => Promise.all(operations)),
     workspace: { findUnique: vi.fn() },
     project: { findFirst: vi.fn() },
     testCaseLibrary: { create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
-    testCaseModule: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
+    testCaseModule: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    },
     testCaseDefinition: {
       create: vi.fn(),
       createMany: vi.fn(),
@@ -67,6 +75,86 @@ describe('CaseLibrariesService', () => {
         'user-1',
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('creates a unique module under a parent from the same library', async () => {
+    const { service, prisma } = createService();
+    prisma.testCaseLibrary.findUnique.mockResolvedValue({ id: 'library-1', status: 'ACTIVE' });
+    prisma.testCaseModule.findMany.mockResolvedValue([{ id: 'parent-1', name: '认证' }]);
+    prisma.testCaseModule.create.mockResolvedValue({ id: 'module-1', name: '登录' });
+
+    await expect(service.createModule('library-1', {
+      parentId: 'parent-1',
+      name: ' 登录 ',
+    })).resolves.toEqual({ id: 'module-1', name: '登录' });
+    expect(prisma.testCaseModule.create).toHaveBeenCalledWith({
+      data: { libraryId: 'library-1', parentId: 'parent-1', name: '登录', sortOrder: 0 },
+    });
+  });
+
+  it('rejects a duplicate module name in the same library', async () => {
+    const { service, prisma } = createService();
+    prisma.testCaseLibrary.findUnique.mockResolvedValue({ id: 'library-1', status: 'ACTIVE' });
+    prisma.testCaseModule.findMany.mockResolvedValue([{ id: 'module-1', name: '登录' }]);
+
+    await expect(service.createModule('library-1', { name: '登录' }))
+      .rejects.toThrow('Module name “登录” already exists in this library.');
+    expect(prisma.testCaseModule.create).not.toHaveBeenCalled();
+  });
+
+  it('renames a module and prevents circular parent relationships', async () => {
+    const { service, prisma } = createService();
+    prisma.testCaseModule.findUnique.mockResolvedValue({
+      id: 'module-1',
+      libraryId: 'library-1',
+      parentId: null,
+      name: '认证',
+    });
+    prisma.testCaseModule.findMany.mockResolvedValue([
+      { id: 'module-1', name: '认证', parentId: null },
+      { id: 'module-2', name: '登录', parentId: 'module-1' },
+    ]);
+
+    await expect(service.updateModule('module-1', { parentId: 'module-2' }))
+      .rejects.toThrow('A module cannot be moved below itself or one of its children.');
+
+    prisma.testCaseModule.update.mockResolvedValue({ id: 'module-1', name: '账号认证' });
+    await expect(service.updateModule('module-1', { name: ' 账号认证 ' }))
+      .resolves.toEqual({ id: 'module-1', name: '账号认证' });
+    expect(prisma.testCaseModule.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'module-1' },
+      data: { name: '账号认证' },
+    }));
+  });
+
+  it('deletes a leaf module and moves its active cases to the unassigned group', async () => {
+    const { service, prisma } = createService();
+    prisma.testCaseModule.findUnique.mockResolvedValue({
+      id: 'module-1',
+      _count: { children: 0 },
+    });
+    prisma.testCaseDefinition.updateMany.mockResolvedValue({ count: 2 });
+    prisma.testCaseModule.delete.mockResolvedValue({ id: 'module-1' });
+
+    await expect(service.deleteModule('module-1'))
+      .resolves.toEqual({ success: true, affectedCases: 2 });
+    expect(prisma.testCaseDefinition.updateMany).toHaveBeenCalledWith({
+      where: { moduleId: 'module-1', status: 'ACTIVE' },
+      data: { moduleId: null, version: { increment: 1 } },
+    });
+    expect(prisma.testCaseModule.delete).toHaveBeenCalledWith({ where: { id: 'module-1' } });
+  });
+
+  it('rejects deleting a module that still contains child modules', async () => {
+    const { service, prisma } = createService();
+    prisma.testCaseModule.findUnique.mockResolvedValue({
+      id: 'module-1',
+      _count: { children: 1 },
+    });
+
+    await expect(service.deleteModule('module-1'))
+      .rejects.toThrow('Delete child modules before deleting this module.');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('updates an active test case and increments its definition version', async () => {

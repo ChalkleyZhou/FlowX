@@ -612,6 +612,7 @@ export interface TestCaseModule {
   parentId?: string | null;
   name: string;
   sortOrder: number;
+  _count?: { cases: number; children: number };
 }
 
 export interface TestCaseDefinition {

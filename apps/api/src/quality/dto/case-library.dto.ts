@@ -82,7 +82,26 @@ export class CreateTestCaseModuleDto {
 
   @IsString()
   @MinLength(1)
+  @MaxLength(200)
   name!: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+}
+
+export class UpdateTestCaseModuleDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  parentId?: string | null;
 
   @IsOptional()
   @IsInt()

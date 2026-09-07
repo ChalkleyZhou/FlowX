@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Eye, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { Eye, FolderTree, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api';
 import { useConfirm } from '../../components/ConfirmDialog';
@@ -31,6 +31,7 @@ import type { Project, TestCaseDefinition, TestCaseLibrary, Workspace } from '..
 import { CreateCaseDialog, CreateLibraryDialog } from './QualityDialogs';
 import { QualityCaseImportDialog } from './QualityCaseImportDialog';
 import { QualityCaseEditDialog } from './QualityCaseEditDialog';
+import { QualityModuleManagementDialog } from './QualityModuleManagementDialog';
 import { LoadingState, Pagination, RefreshButton } from './quality-ui';
 
 const ALL = '__all__';
@@ -54,6 +55,7 @@ export function QualityCasesPage() {
   const [libraryDialogOpen, setLibraryDialogOpen] = useState(false);
   const [caseDialogOpen, setCaseDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [moduleDialogOpen, setModuleDialogOpen] = useState(false);
   const [selectedCase, setSelectedCase] = useState<TestCaseDefinition | null>(null);
   const [editingCase, setEditingCase] = useState<TestCaseDefinition | null>(null);
   const [deletingCaseId, setDeletingCaseId] = useState<string | null>(null);
@@ -234,6 +236,9 @@ export function QualityCasesPage() {
                   <RefreshButton loading={refreshing} onClick={() => void refreshList(true)} />
                   <Button variant="outline" disabled={!workspaceId} onClick={() => setLibraryDialogOpen(true)}>
                     <Plus aria-hidden="true" className="h-4 w-4" />新建用例库
+                  </Button>
+                  <Button variant="outline" disabled={!libraries.length} onClick={() => setModuleDialogOpen(true)}>
+                    <FolderTree aria-hidden="true" className="h-4 w-4" />模块管理
                   </Button>
                   <Button variant="outline" disabled={!libraries.length} onClick={() => setImportDialogOpen(true)}>
                     <Upload aria-hidden="true" className="h-4 w-4" />批量导入
@@ -455,6 +460,13 @@ export function QualityCasesPage() {
           setSelectedCase((current) => current?.id === updated.id ? updated : current);
           await refreshList(true);
         }}
+      />
+      <QualityModuleManagementDialog
+        open={moduleDialogOpen}
+        onOpenChange={setModuleDialogOpen}
+        libraries={libraries}
+        defaultLibraryId={libraryId === ALL ? undefined : libraryId}
+        onChanged={() => refreshList(true)}
       />
     </>
   );

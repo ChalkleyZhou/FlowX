@@ -1008,6 +1008,26 @@ export const api = {
     request<TestCaseLibrary[]>(`/quality/case-libraries${queryString(params)}`),
   getTestCaseModules: (libraryId: string) =>
     request<TestCaseModule[]>(`/quality/case-libraries/${libraryId}/modules`),
+  createTestCaseModule: (
+    libraryId: string,
+    payload: { name: string; parentId?: string; sortOrder?: number },
+  ) =>
+    request<TestCaseModule>(`/quality/case-libraries/${libraryId}/modules`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateTestCaseModule: (
+    id: string,
+    payload: { name?: string; parentId?: string | null; sortOrder?: number },
+  ) =>
+    request<TestCaseModule>(`/quality/test-case-modules/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteTestCaseModule: (id: string) =>
+    request<{ success: true; affectedCases: number }>(`/quality/test-case-modules/${id}`, {
+      method: 'DELETE',
+    }),
   createTestCaseLibrary: (payload: { workspaceId: string; projectId?: string; name: string }) =>
     request<TestCaseLibrary>('/quality/case-libraries', {
       method: 'POST',

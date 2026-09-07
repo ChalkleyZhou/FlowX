@@ -7,6 +7,7 @@ import type {
   CreateTestCaseModuleDto,
   ImportTestCasesDto,
   UpdateTestCaseDefinitionDto,
+  UpdateTestCaseModuleDto,
 } from './dto/case-library.dto';
 
 @Injectable()
@@ -51,19 +52,23 @@ export class CaseLibrariesService {
 
   async createModule(libraryId: string, dto: CreateTestCaseModuleDto) {
     await this.requireLibrary(libraryId);
-    if (dto.parentId) {
-      const parent = await this.prisma.testCaseModule.findFirst({
-        where: { id: dto.parentId, libraryId },
-      });
-      if (!parent) {
-        throw new BadRequestException('Parent module does not belong to the selected library.');
-      }
+    const name = dto.name.trim();
+    if (!name) throw new BadRequestException('Module name is required.');
+    const modules = await this.prisma.testCaseModule.findMany({
+      where: { libraryId },
+      select: { id: true, name: true },
+    });
+    if (modules.some((module) => module.name === name)) {
+      throw new BadRequestException(`Module name “${name}” already exists in this library.`);
+    }
+    if (dto.parentId && !modules.some((module) => module.id === dto.parentId)) {
+      throw new BadRequestException('Parent module does not belong to the selected library.');
     }
     return this.prisma.testCaseModule.create({
       data: {
         libraryId,
         parentId: dto.parentId ?? null,
-        name: dto.name.trim(),
+        name,
         sortOrder: dto.sortOrder ?? 0,
       },
     });
@@ -73,8 +78,85 @@ export class CaseLibrariesService {
     await this.requireLibrary(libraryId);
     return this.prisma.testCaseModule.findMany({
       where: { libraryId },
+      include: {
+        _count: {
+          select: {
+            cases: { where: { status: 'ACTIVE' } },
+            children: true,
+          },
+        },
+      },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
+  }
+
+  async updateModule(id: string, dto: UpdateTestCaseModuleDto) {
+    if (!Object.values(dto).some((value) => value !== undefined)) {
+      throw new BadRequestException('At least one module field is required.');
+    }
+    const current = await this.prisma.testCaseModule.findUnique({ where: { id } });
+    if (!current) throw new NotFoundException('Test case module not found.');
+
+    const modules = await this.prisma.testCaseModule.findMany({
+      where: { libraryId: current.libraryId },
+      select: { id: true, name: true, parentId: true },
+    });
+    const name = dto.name?.trim();
+    if (dto.name !== undefined && !name) throw new BadRequestException('Module name is required.');
+    if (name && modules.some((module) => module.id !== id && module.name === name)) {
+      throw new BadRequestException(`Module name “${name}” already exists in this library.`);
+    }
+
+    if (dto.parentId) {
+      const modulesById = new Map(modules.map((module) => [module.id, module]));
+      if (!modulesById.has(dto.parentId)) {
+        throw new BadRequestException('Parent module does not belong to the selected library.');
+      }
+      let ancestorId: string | null = dto.parentId;
+      while (ancestorId) {
+        if (ancestorId === id) {
+          throw new BadRequestException('A module cannot be moved below itself or one of its children.');
+        }
+        ancestorId = modulesById.get(ancestorId)?.parentId ?? null;
+      }
+    }
+
+    return this.prisma.testCaseModule.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name } : {}),
+        ...(dto.parentId !== undefined ? { parentId: dto.parentId } : {}),
+        ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
+      },
+      include: {
+        _count: {
+          select: {
+            cases: { where: { status: 'ACTIVE' } },
+            children: true,
+          },
+        },
+      },
+    });
+  }
+
+  async deleteModule(id: string) {
+    const module = await this.prisma.testCaseModule.findUnique({
+      where: { id },
+      include: { _count: { select: { children: true } } },
+    });
+    if (!module) throw new NotFoundException('Test case module not found.');
+    if (module._count.children > 0) {
+      throw new BadRequestException('Delete child modules before deleting this module.');
+    }
+
+    const [affectedCases] = await this.prisma.$transaction([
+      this.prisma.testCaseDefinition.updateMany({
+        where: { moduleId: id, status: 'ACTIVE' },
+        data: { moduleId: null, version: { increment: 1 } },
+      }),
+      this.prisma.testCaseModule.delete({ where: { id } }),
+    ]);
+    return { success: true as const, affectedCases: affectedCases.count };
   }
 
   async createCase(libraryId: string, dto: CreateTestCaseDefinitionDto, userId?: string) {

@@ -249,7 +249,7 @@ describe('api helpers', () => {
     );
   });
 
-  it('loads modules and updates a test case through quality endpoints', async () => {
+  it('manages modules and updates a test case through quality endpoints', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({}),
@@ -257,6 +257,9 @@ describe('api helpers', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await api.getTestCaseModules('library-1');
+    await api.createTestCaseModule('library-1', { name: '登录', parentId: 'module-parent' });
+    await api.updateTestCaseModule('module-1', { name: '账号登录', parentId: null });
+    await api.deleteTestCaseModule('module-1');
     await api.updateTestCase('case-1', {
       libraryId: 'library-1',
       moduleId: 'module-1',
@@ -276,6 +279,27 @@ describe('api helpers', () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
+      'http://localhost:3000/quality/case-libraries/library-1/modules',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ name: '登录', parentId: 'module-parent' }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      'http://localhost:3000/quality/test-case-modules/module-1',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ name: '账号登录', parentId: null }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      'http://localhost:3000/quality/test-case-modules/module-1',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
       'http://localhost:3000/quality/test-cases/case-1',
       expect.objectContaining({ method: 'PATCH' }),
     );

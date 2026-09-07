@@ -7,6 +7,7 @@ import {
   ImportTestCasesDto,
   ListTestCasesQueryDto,
   UpdateTestCaseDefinitionDto,
+  UpdateTestCaseModuleDto,
 } from './dto/case-library.dto';
 
 @Controller('quality')
@@ -31,6 +32,16 @@ export class CaseLibrariesController {
   @Get('case-libraries/:libraryId/modules')
   listModules(@Param('libraryId') libraryId: string) {
     return this.libraries.listModules(libraryId);
+  }
+
+  @Patch('test-case-modules/:id')
+  updateModule(@Param('id') id: string, @Body() dto: UpdateTestCaseModuleDto) {
+    return this.libraries.updateModule(id, dto);
+  }
+
+  @Delete('test-case-modules/:id')
+  deleteModule(@Param('id') id: string) {
+    return this.libraries.deleteModule(id);
   }
 
   @Post('case-libraries/:libraryId/cases')
