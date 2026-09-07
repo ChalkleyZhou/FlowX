@@ -28,6 +28,49 @@ export class CreateCaseLibraryDto {
   name!: string;
 }
 
+export class ListTestCasesQueryDto {
+  @IsString()
+  @MinLength(1)
+  workspaceId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  projectId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  libraryId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  moduleId?: string;
+
+  @IsOptional()
+  @IsString()
+  q?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['P0', 'P1', 'P2', 'P3'])
+  priority?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(10)
+  @Max(100)
+  pageSize?: number;
+}
+
 export class CreateTestCaseModuleDto {
   @IsOptional()
   @IsString()

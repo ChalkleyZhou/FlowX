@@ -111,25 +111,84 @@ export class CaseLibrariesService {
     projectId?: string;
     libraryId?: string;
     moduleId?: string;
+    q?: string;
+    priority?: string;
+    page?: number;
+    pageSize?: number;
   }) {
     if (filters.projectId) {
       await this.requireProjectInWorkspace(filters.projectId, filters.workspaceId);
     }
-    return this.prisma.testCaseDefinition.findMany({
-      where: {
-        status: 'ACTIVE',
-        library: {
-          workspaceId: filters.workspaceId,
-          ...(filters.projectId
-            ? { OR: [{ projectId: null }, { projectId: filters.projectId }] }
-            : { projectId: null }),
-        },
-        ...(filters.libraryId ? { libraryId: filters.libraryId } : {}),
-        ...(filters.moduleId ? { moduleId: filters.moduleId } : {}),
+    const keyword = filters.q?.trim();
+    const scopeWhere: Prisma.TestCaseDefinitionWhereInput = {
+      status: 'ACTIVE',
+      library: {
+        workspaceId: filters.workspaceId,
+        ...(filters.projectId
+          ? { OR: [{ projectId: null }, { projectId: filters.projectId }] }
+          : { projectId: null }),
       },
+      ...(filters.libraryId ? { libraryId: filters.libraryId } : {}),
+      ...(filters.moduleId ? { moduleId: filters.moduleId } : {}),
+      ...(keyword
+        ? {
+            OR: [
+              { title: { contains: keyword } },
+              { externalId: { contains: keyword } },
+              { expected: { contains: keyword } },
+              { library: { name: { contains: keyword } } },
+              { module: { name: { contains: keyword } } },
+            ],
+          }
+        : {}),
+    };
+    const where: Prisma.TestCaseDefinitionWhereInput = {
+      ...scopeWhere,
+      ...(filters.priority ? { priority: filters.priority } : {}),
+    };
+    const query = {
+      where,
       include: { library: true, module: true, coverageLinks: true },
       orderBy: [{ priority: 'asc' }, { updatedAt: 'desc' }],
+    } satisfies Prisma.TestCaseDefinitionFindManyArgs;
+
+    if (filters.page === undefined && filters.pageSize === undefined) {
+      return this.prisma.testCaseDefinition.findMany(query);
+    }
+
+    const page = filters.page ?? 1;
+    const pageSize = filters.pageSize ?? 20;
+    const [items, total, p0Count, linkedCount] = await Promise.all([
+      this.prisma.testCaseDefinition.findMany({
+        ...query,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.testCaseDefinition.count({ where }),
+      this.prisma.testCaseDefinition.count({ where: { ...scopeWhere, priority: 'P0' } }),
+      this.prisma.testCaseDefinition.count({
+        where: { ...scopeWhere, coverageLinks: { some: {} } },
+      }),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      summary: { p0Count, linkedCount },
+    };
+  }
+
+  async deleteCase(id: string) {
+    const result = await this.prisma.testCaseDefinition.updateMany({
+      where: { id, status: 'ACTIVE' },
+      data: { status: 'ARCHIVED' },
     });
+    if (result.count === 0) {
+      throw new NotFoundException('Test case not found.');
+    }
+    return { success: true };
   }
 
   private async requireLibrary(id: string) {

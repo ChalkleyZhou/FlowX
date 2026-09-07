@@ -630,6 +630,17 @@ export interface TestCaseDefinition {
   }>;
 }
 
+export interface TestCasePage {
+  items: TestCaseDefinition[];
+  total: number;
+  page: number;
+  pageSize: number;
+  summary: {
+    p0Count: number;
+    linkedCount: number;
+  };
+}
+
 export interface TestCaseSnapshot {
   id: string;
   sourceDefinitionId?: string | null;

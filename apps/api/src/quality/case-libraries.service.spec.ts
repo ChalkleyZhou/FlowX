@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { CaseLibrariesService } from './case-libraries.service';
 
@@ -8,7 +8,12 @@ function createService() {
     project: { findFirst: vi.fn() },
     testCaseLibrary: { create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
     testCaseModule: { findFirst: vi.fn(), create: vi.fn() },
-    testCaseDefinition: { create: vi.fn(), findMany: vi.fn() },
+    testCaseDefinition: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
+      updateMany: vi.fn(),
+    },
   };
   return { service: new CaseLibrariesService(prisma as never), prisma };
 }
@@ -59,5 +64,64 @@ describe('CaseLibrariesService', () => {
         'user-1',
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('paginates and summarizes test cases on the server', async () => {
+    const { service, prisma } = createService();
+    prisma.project.findFirst.mockResolvedValue({ id: 'project-1' });
+    prisma.testCaseDefinition.findMany.mockResolvedValue([{ id: 'case-21' }]);
+    prisma.testCaseDefinition.count
+      .mockResolvedValueOnce(43)
+      .mockResolvedValueOnce(8)
+      .mockResolvedValueOnce(31);
+
+    await expect(
+      service.listCases({
+        workspaceId: 'workspace-1',
+        projectId: 'project-1',
+        q: '登录',
+        priority: 'P0',
+        page: 2,
+        pageSize: 20,
+      }),
+    ).resolves.toEqual({
+      items: [{ id: 'case-21' }],
+      total: 43,
+      page: 2,
+      pageSize: 20,
+      summary: { p0Count: 8, linkedCount: 31 },
+    });
+
+    expect(prisma.testCaseDefinition.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 20,
+        take: 20,
+        where: expect.objectContaining({
+          priority: 'P0',
+          OR: expect.arrayContaining([
+            { title: { contains: '登录' } },
+            { externalId: { contains: '登录' } },
+          ]),
+        }),
+      }),
+    );
+  });
+
+  it('archives a test case instead of deleting its historical references', async () => {
+    const { service, prisma } = createService();
+    prisma.testCaseDefinition.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(service.deleteCase('case-1')).resolves.toEqual({ success: true });
+    expect(prisma.testCaseDefinition.updateMany).toHaveBeenCalledWith({
+      where: { id: 'case-1', status: 'ACTIVE' },
+      data: { status: 'ARCHIVED' },
+    });
+  });
+
+  it('rejects deleting a missing or archived test case', async () => {
+    const { service, prisma } = createService();
+    prisma.testCaseDefinition.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(service.deleteCase('missing')).rejects.toBeInstanceOf(NotFoundException);
   });
 });

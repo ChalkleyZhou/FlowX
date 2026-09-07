@@ -38,6 +38,7 @@ import type {
   SpecPlanOutput,
   TestCaseDefinition,
   TestCaseLibrary,
+  TestCasePage,
   TestRequest,
   TestRun,
   WorkflowDesignArtifactPage,
@@ -81,11 +82,11 @@ interface RequirementPayload {
   versionId?: string | null;
 }
 
-function queryString(params?: Record<string, string | undefined>) {
+function queryString(params?: Record<string, string | number | undefined>) {
   const search = new URLSearchParams(
     Object.entries(params ?? {}).reduce<Record<string, string>>((acc, [key, value]) => {
       if (value) {
-        acc[key] = value;
+        acc[key] = String(value);
       }
       return acc;
     }, {}),
@@ -1014,6 +1015,16 @@ export const api = {
     libraryId?: string;
     moduleId?: string;
   }) => request<TestCaseDefinition[]>(`/quality/test-cases${queryString(params)}`),
+  getTestCasesPage: (params: {
+    workspaceId: string;
+    projectId?: string;
+    libraryId?: string;
+    moduleId?: string;
+    q?: string;
+    priority?: string;
+    page: number;
+    pageSize: number;
+  }) => request<TestCasePage>(`/quality/test-cases${queryString(params)}`),
   createTestCase: (
     libraryId: string,
     payload: {
@@ -1029,6 +1040,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  deleteTestCase: (id: string) =>
+    request<{ success: true }>(`/quality/test-cases/${id}`, { method: 'DELETE' }),
   getTestRequests: (params?: { projectId?: string; projectVersionId?: string; status?: string }) =>
     request<TestRequest[]>(`/quality/test-requests${queryString(params)}`),
   createTestRequest: (payload: {

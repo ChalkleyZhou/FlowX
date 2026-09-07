@@ -62,7 +62,8 @@ AI 负责生成和解释测试范围，确定性规则负责从 `DRAFT` 进入 `
 | `GET` | `/quality/case-libraries` | 查询共享库和指定项目库 |
 | `POST` | `/quality/case-libraries/:libraryId/modules` | 创建用例模块 |
 | `POST` | `/quality/case-libraries/:libraryId/cases` | 创建用例及覆盖关系 |
-| `GET` | `/quality/test-cases` | 查询当前项目可用的共享/项目用例 |
+| `GET` | `/quality/test-cases` | 查询当前项目可用的共享/项目用例；传入 `page`、`pageSize` 后返回服务端分页结果，可使用 `q`、`priority`、`libraryId` 筛选 |
+| `DELETE` | `/quality/test-cases/:id` | 逻辑删除用例，不影响已经冻结的提测快照和历史执行结果 |
 | `POST` | `/quality/test-requests` | 从项目版本、需求和已完成工作流创建提测草稿 |
 | `GET` | `/quality/test-requests` | 查询提测记录 |
 | `GET` | `/quality/test-requests/:id` | 查询提测、范围快照和执行轮次 |
@@ -76,4 +77,4 @@ AI 负责生成和解释测试范围，确定性规则负责从 `DRAFT` 进入 `
 
 ## Web 入口
 
-一级导航 `测试与质量` 对应 `/quality`，展开三个独立子菜单：提测管理 `/quality/test-requests`、用例库 `/quality/test-cases`、执行记录 `/quality/test-runs`。提测创建只允许选择项目版本下已完成的研发工作流；AI 选例、覆盖检查和快照冻结仍由质量域 API 契约控制。
+一级导航 `测试与质量` 对应 `/quality`，展开三个独立子菜单：提测管理 `/quality/test-requests`、用例库 `/quality/test-cases`、执行记录 `/quality/test-runs`。用例库采用高密度列表和服务端分页，完整步骤与预期结果按需查看；删除用例只会将定义归档并退出后续 AI 选例范围，不修改历史快照。提测创建只允许选择项目版本下已完成的研发工作流；AI 选例、覆盖检查和快照冻结仍由质量域 API 契约控制。

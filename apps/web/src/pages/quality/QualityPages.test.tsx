@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../../api';
+import { ConfirmProvider } from '../../components/ConfirmDialog';
 import type { Project, TestCaseDefinition, TestCaseLibrary, TestRequest, Workspace } from '../../types';
 import { QualityCasesPage } from './QualityCasesPage';
 import { QualityRequestsPage } from './QualityRequestsPage';
@@ -23,9 +24,11 @@ vi.mock('../../api', () => ({
     getTestRequests: vi.fn(),
     getTestCaseLibraries: vi.fn(),
     getTestCases: vi.fn(),
+    getTestCasesPage: vi.fn(),
     createTestRequest: vi.fn(),
     createTestCaseLibrary: vi.fn(),
     createTestCase: vi.fn(),
+    deleteTestCase: vi.fn(),
   },
 }));
 
@@ -128,6 +131,14 @@ describe('Quality pages', () => {
     vi.mocked(api.getTestRequests).mockResolvedValue([testRequest]);
     vi.mocked(api.getTestCaseLibraries).mockResolvedValue([library]);
     vi.mocked(api.getTestCases).mockResolvedValue([testCase]);
+    vi.mocked(api.getTestCasesPage).mockResolvedValue({
+      items: [testCase],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      summary: { p0Count: 1, linkedCount: 1 },
+    });
+    vi.mocked(api.deleteTestCase).mockResolvedValue({ success: true });
   });
 
   afterEach(() => {
@@ -140,9 +151,11 @@ describe('Quality pages', () => {
     await act(async () => {
       root?.render(
         <MemoryRouter initialEntries={[path]}>
-          <Routes>
-            <Route path="/quality/:section" element={element} />
-          </Routes>
+          <ConfirmProvider>
+            <Routes>
+              <Route path="/quality/:section" element={element} />
+            </Routes>
+          </ConfirmProvider>
         </MemoryRouter>,
       );
       await Promise.resolve();
@@ -167,14 +180,52 @@ describe('Quality pages', () => {
       workspaceId: 'workspace-1',
       projectId: undefined,
     });
-    expect(api.getTestCases).toHaveBeenCalledWith({
+    expect(api.getTestCasesPage).toHaveBeenCalledWith({
       workspaceId: 'workspace-1',
       projectId: undefined,
+      libraryId: undefined,
+      priority: undefined,
+      q: undefined,
+      page: 1,
+      pageSize: 20,
     });
     expect(container.textContent).toContain('登录后恢复原访问页面');
-    expect(container.textContent).toContain('自动返回登录前页面');
+    expect(container.textContent).not.toContain('自动返回登录前页面');
+    expect(container.querySelector('table')).toBeTruthy();
+    expect(container.textContent).toContain('归属');
     expect(container.querySelector('section[aria-label="测试用例"] > .bg-card')).toBeTruthy();
     expect(container.querySelector('[role="tablist"]')).toBeNull();
+
+    const viewButton = container.querySelector(
+      'button[aria-label="查看用例：登录后恢复原访问页面"]',
+    ) as HTMLButtonElement | null;
+    await act(async () => viewButton?.click());
+    expect(document.body.textContent).toContain('自动返回登录前页面');
+  });
+
+  it('confirms before deleting a test case and refreshes the server page', async () => {
+    await renderPage('/quality/test-cases?workspaceId=workspace-1', <QualityCasesPage />);
+
+    const deleteButton = container.querySelector(
+      'button[aria-label="删除用例：登录后恢复原访问页面"]',
+    ) as HTMLButtonElement | null;
+    await act(async () => {
+      deleteButton?.click();
+      await Promise.resolve();
+    });
+
+    const confirmButton = Array.from(document.body.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '删除用例',
+    );
+    await act(async () => {
+      confirmButton?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.deleteTestCase).toHaveBeenCalledWith('case-1');
+    expect(api.getTestCasesPage).toHaveBeenCalledTimes(2);
+    expect(successToast).toHaveBeenCalledWith('测试用例已删除');
   });
 
   it('maps test plan runs into the execution history page', async () => {

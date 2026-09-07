@@ -187,6 +187,36 @@ describe('api helpers', () => {
     );
   });
 
+  it('paginates and deletes test cases through quality endpoints', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [], total: 0, page: 2, pageSize: 20 }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.getTestCasesPage({
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      libraryId: 'library-1',
+      priority: 'P0',
+      q: '登录',
+      page: 2,
+      pageSize: 20,
+    });
+    await api.deleteTestCase('case-1');
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:3000/quality/test-cases?workspaceId=workspace-1&projectId=project-1&libraryId=library-1&priority=P0&q=%E7%99%BB%E5%BD%95&page=2&pageSize=20',
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:3000/quality/test-cases/case-1',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+  });
+
   it('starts an OpenDesign handoff through the generic Edge API', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
