@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Eye, Plus, Trash2, Upload } from 'lucide-react';
+import { Eye, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api';
 import { useConfirm } from '../../components/ConfirmDialog';
@@ -30,6 +30,7 @@ import { useToast } from '../../components/ui/toast';
 import type { Project, TestCaseDefinition, TestCaseLibrary, Workspace } from '../../types';
 import { CreateCaseDialog, CreateLibraryDialog } from './QualityDialogs';
 import { QualityCaseImportDialog } from './QualityCaseImportDialog';
+import { QualityCaseEditDialog } from './QualityCaseEditDialog';
 import { LoadingState, Pagination, RefreshButton } from './quality-ui';
 
 const ALL = '__all__';
@@ -54,6 +55,7 @@ export function QualityCasesPage() {
   const [caseDialogOpen, setCaseDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [selectedCase, setSelectedCase] = useState<TestCaseDefinition | null>(null);
+  const [editingCase, setEditingCase] = useState<TestCaseDefinition | null>(null);
   const [deletingCaseId, setDeletingCaseId] = useState<string | null>(null);
 
   const workspaceId = searchParams.get('workspaceId') ?? '';
@@ -173,6 +175,16 @@ export function QualityCasesPage() {
           type="button"
           variant="ghost"
           size="icon"
+          title="编辑用例"
+          aria-label={`编辑用例：${testCase.title}`}
+          onClick={() => setEditingCase(testCase)}
+        >
+          <Pencil aria-hidden="true" className="h-4 w-4" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
           title="查看用例"
           aria-label={`查看用例：${testCase.title}`}
           onClick={() => setSelectedCase(testCase)}
@@ -201,20 +213,6 @@ export function QualityCasesPage() {
         eyebrow="测试与质量"
         title="用例库"
         description="统一维护 Workspace 共享用例与项目专属用例。"
-        actions={(
-          <>
-            <RefreshButton loading={refreshing} onClick={() => void refreshList(true)} />
-            <Button variant="outline" disabled={!workspaceId} onClick={() => setLibraryDialogOpen(true)}>
-              <Plus aria-hidden="true" className="h-4 w-4" />新建用例库
-            </Button>
-            <Button variant="outline" disabled={!libraries.length} onClick={() => setImportDialogOpen(true)}>
-              <Upload aria-hidden="true" className="h-4 w-4" />批量导入
-            </Button>
-            <Button disabled={!libraries.length} onClick={() => setCaseDialogOpen(true)}>
-              <Plus aria-hidden="true" className="h-4 w-4" />新建用例
-            </Button>
-          </>
-        )}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -231,6 +229,20 @@ export function QualityCasesPage() {
               eyebrow="Test Cases"
               title="测试用例"
               description={`共 ${total} 条用例，每页显示 ${PAGE_SIZE} 条`}
+              extra={(
+                <>
+                  <RefreshButton loading={refreshing} onClick={() => void refreshList(true)} />
+                  <Button variant="outline" disabled={!workspaceId} onClick={() => setLibraryDialogOpen(true)}>
+                    <Plus aria-hidden="true" className="h-4 w-4" />新建用例库
+                  </Button>
+                  <Button variant="outline" disabled={!libraries.length} onClick={() => setImportDialogOpen(true)}>
+                    <Upload aria-hidden="true" className="h-4 w-4" />批量导入
+                  </Button>
+                  <Button disabled={!libraries.length} onClick={() => setCaseDialogOpen(true)}>
+                    <Plus aria-hidden="true" className="h-4 w-4" />新建用例
+                  </Button>
+                </>
+              )}
             />
           </CardHeader>
           <CardContent className="p-5 pt-0">
@@ -298,7 +310,7 @@ export function QualityCasesPage() {
                         <th scope="col" className="w-56 px-4 py-3 font-medium">归属</th>
                         <th scope="col" className="w-24 px-4 py-3 font-medium">优先级</th>
                         <th scope="col" className="w-24 px-4 py-3 font-medium">覆盖</th>
-                        <th scope="col" className="w-28 px-4 py-3 text-right font-medium">操作</th>
+                        <th scope="col" className="w-36 px-4 py-3 text-right font-medium">操作</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
@@ -430,6 +442,17 @@ export function QualityCasesPage() {
         defaultLibraryId={libraryId === ALL ? undefined : libraryId}
         onImported={async () => {
           setImportDialogOpen(false);
+          await refreshList(true);
+        }}
+      />
+      <QualityCaseEditDialog
+        open={Boolean(editingCase)}
+        onOpenChange={(open) => !open && setEditingCase(null)}
+        testCase={editingCase}
+        libraries={libraries}
+        onUpdated={async (updated) => {
+          setEditingCase(null);
+          setSelectedCase((current) => current?.id === updated.id ? updated : current);
           await refreshList(true);
         }}
       />

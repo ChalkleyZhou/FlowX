@@ -6,6 +6,7 @@ import type {
   CreateTestCaseDefinitionDto,
   CreateTestCaseModuleDto,
   ImportTestCasesDto,
+  UpdateTestCaseDefinitionDto,
 } from './dto/case-library.dto';
 
 @Injectable()
@@ -65,6 +66,14 @@ export class CaseLibrariesService {
         name: dto.name.trim(),
         sortOrder: dto.sortOrder ?? 0,
       },
+    });
+  }
+
+  async listModules(libraryId: string) {
+    await this.requireLibrary(libraryId);
+    return this.prisma.testCaseModule.findMany({
+      where: { libraryId },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
   }
 
@@ -200,6 +209,78 @@ export class CaseLibrariesService {
     });
 
     return { imported: result.count };
+  }
+
+  async updateCase(id: string, dto: UpdateTestCaseDefinitionDto) {
+    if (!Object.values(dto).some((value) => value !== undefined)) {
+      throw new BadRequestException('At least one test case field is required.');
+    }
+    const current = await this.prisma.testCaseDefinition.findFirst({
+      where: { id, status: 'ACTIVE' },
+    });
+    if (!current) throw new NotFoundException('Test case not found.');
+
+    const targetLibraryId = dto.libraryId ?? current.libraryId;
+    if (targetLibraryId !== current.libraryId) await this.requireLibrary(targetLibraryId);
+
+    let moduleId: string | null | undefined;
+    if (dto.moduleId !== undefined) {
+      moduleId = dto.moduleId;
+      if (moduleId) {
+        const module = await this.prisma.testCaseModule.findFirst({
+          where: { id: moduleId, libraryId: targetLibraryId },
+        });
+        if (!module) {
+          throw new BadRequestException('Module does not belong to the selected library.');
+        }
+      }
+    } else if (targetLibraryId !== current.libraryId) {
+      moduleId = null;
+    }
+
+    const externalId = dto.externalId !== undefined
+      ? dto.externalId?.trim() || null
+      : current.externalId;
+    if (externalId) {
+      const duplicate = await this.prisma.testCaseDefinition.findFirst({
+        where: {
+          id: { not: id },
+          libraryId: targetLibraryId,
+          externalId,
+          status: 'ACTIVE',
+        },
+        select: { id: true },
+      });
+      if (duplicate) {
+        throw new BadRequestException(`Test case external ID “${externalId}” already exists.`);
+      }
+    }
+
+    const title = dto.title?.trim();
+    const steps = dto.steps?.map((step) => step.trim()).filter(Boolean);
+    const expected = dto.expected?.trim();
+    if (dto.title !== undefined && !title) throw new BadRequestException('Test case title is required.');
+    if (dto.steps !== undefined && !steps?.length) throw new BadRequestException('At least one test step is required.');
+    if (dto.expected !== undefined && !expected) throw new BadRequestException('Expected result is required.');
+
+    return this.prisma.testCaseDefinition.update({
+      where: { id },
+      data: {
+        ...(dto.libraryId !== undefined ? { libraryId: targetLibraryId } : {}),
+        ...(moduleId !== undefined ? { moduleId } : {}),
+        ...(dto.externalId !== undefined ? { externalId } : {}),
+        ...(dto.title !== undefined ? { title } : {}),
+        ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
+        ...(dto.precondition !== undefined ? { precondition: dto.precondition?.trim() || null } : {}),
+        ...(dto.steps !== undefined ? { steps: steps as Prisma.InputJsonValue } : {}),
+        ...(dto.expected !== undefined ? { expected } : {}),
+        ...(dto.tags !== undefined
+          ? { tags: dto.tags.map((tag) => tag.trim()).filter(Boolean) as Prisma.InputJsonValue }
+          : {}),
+        version: { increment: 1 },
+      },
+      include: { library: true, module: true, coverageLinks: true },
+    });
   }
 
   async listCases(filters: {

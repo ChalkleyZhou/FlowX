@@ -11,8 +11,10 @@ function createService() {
     testCaseDefinition: {
       create: vi.fn(),
       createMany: vi.fn(),
+      findFirst: vi.fn(),
       findMany: vi.fn(),
       count: vi.fn(),
+      update: vi.fn(),
       updateMany: vi.fn(),
     },
   };
@@ -65,6 +67,68 @@ describe('CaseLibrariesService', () => {
         'user-1',
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('updates an active test case and increments its definition version', async () => {
+    const { service, prisma } = createService();
+    prisma.testCaseDefinition.findFirst
+      .mockResolvedValueOnce({
+        id: 'case-1',
+        libraryId: 'library-1',
+        moduleId: null,
+        externalId: 'LOGIN-001',
+        status: 'ACTIVE',
+      })
+      .mockResolvedValueOnce(null);
+    prisma.testCaseModule.findFirst.mockResolvedValue({ id: 'module-1', libraryId: 'library-1' });
+    prisma.testCaseDefinition.update.mockResolvedValue({ id: 'case-1', version: 4 });
+
+    await expect(service.updateCase('case-1', {
+      libraryId: 'library-1',
+      moduleId: 'module-1',
+      externalId: 'LOGIN-002',
+      title: ' 更新后的登录用例 ',
+      priority: 'P1',
+      precondition: '',
+      steps: [' 输入账号 ', ' ', '点击登录'],
+      expected: ' 进入首页 ',
+      tags: [' 回归 ', ' '],
+    })).resolves.toEqual({ id: 'case-1', version: 4 });
+
+    expect(prisma.testCaseDefinition.update).toHaveBeenCalledWith({
+      where: { id: 'case-1' },
+      data: expect.objectContaining({
+        libraryId: 'library-1',
+        moduleId: 'module-1',
+        externalId: 'LOGIN-002',
+        title: '更新后的登录用例',
+        priority: 'P1',
+        precondition: null,
+        steps: ['输入账号', '点击登录'],
+        expected: '进入首页',
+        tags: ['回归'],
+        version: { increment: 1 },
+      }),
+      include: { library: true, module: true, coverageLinks: true },
+    });
+  });
+
+  it('rejects updating a missing or archived test case', async () => {
+    const { service, prisma } = createService();
+    prisma.testCaseDefinition.findFirst.mockResolvedValue(null);
+
+    await expect(service.updateCase('missing', { title: '更新' }))
+      .rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.testCaseDefinition.update).not.toHaveBeenCalled();
+  });
+
+  it('does not increment the version for an empty update', async () => {
+    const { service, prisma } = createService();
+
+    await expect(service.updateCase('case-1', {}))
+      .rejects.toThrow('At least one test case field is required.');
+    expect(prisma.testCaseDefinition.findFirst).not.toHaveBeenCalled();
+    expect(prisma.testCaseDefinition.update).not.toHaveBeenCalled();
   });
 
   it('imports validated test cases in one batch and resolves modules by name', async () => {

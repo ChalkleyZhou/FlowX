@@ -162,6 +162,60 @@ export class CreateTestCaseDefinitionDto {
   coverageLinks?: TestCaseCoverageDto[];
 }
 
+export class UpdateTestCaseDefinitionDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  libraryId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  moduleId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  externalId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['P0', 'P1', 'P2', 'P3'])
+  priority?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  precondition?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(2000, { each: true })
+  steps?: string[];
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(5000)
+  expected?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(100, { each: true })
+  tags?: string[];
+}
+
 export class ImportTestCaseRowDto {
   @IsOptional()
   @IsString()

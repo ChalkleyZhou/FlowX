@@ -606,6 +606,14 @@ export interface TestCaseLibrary {
   _count?: { definitions: number; modules: number };
 }
 
+export interface TestCaseModule {
+  id: string;
+  libraryId: string;
+  parentId?: string | null;
+  name: string;
+  sortOrder: number;
+}
+
 export interface TestCaseDefinition {
   id: string;
   libraryId: string;

@@ -39,6 +39,7 @@ import type {
   TestCaseDefinition,
   TestCaseImportRow,
   TestCaseLibrary,
+  TestCaseModule,
   TestCasePage,
   TestRequest,
   TestRun,
@@ -1005,6 +1006,8 @@ export const api = {
     ),
   getTestCaseLibraries: (params: { workspaceId: string; projectId?: string }) =>
     request<TestCaseLibrary[]>(`/quality/case-libraries${queryString(params)}`),
+  getTestCaseModules: (libraryId: string) =>
+    request<TestCaseModule[]>(`/quality/case-libraries/${libraryId}/modules`),
   createTestCaseLibrary: (payload: { workspaceId: string; projectId?: string; name: string }) =>
     request<TestCaseLibrary>('/quality/case-libraries', {
       method: 'POST',
@@ -1029,6 +1032,8 @@ export const api = {
   createTestCase: (
     libraryId: string,
     payload: {
+      moduleId?: string;
+      externalId?: string;
       title: string;
       priority?: string;
       precondition?: string;
@@ -1039,6 +1044,24 @@ export const api = {
   ) =>
     request<TestCaseDefinition>(`/quality/case-libraries/${libraryId}/cases`, {
       method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateTestCase: (
+    id: string,
+    payload: {
+      libraryId?: string;
+      moduleId?: string | null;
+      externalId?: string | null;
+      title?: string;
+      priority?: string;
+      precondition?: string | null;
+      steps?: string[];
+      expected?: string;
+      tags?: string[];
+    },
+  ) =>
+    request<TestCaseDefinition>(`/quality/test-cases/${id}`, {
+      method: 'PATCH',
       body: JSON.stringify(payload),
     }),
   importTestCases: (libraryId: string, cases: TestCaseImportRow[]) =>

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { CaseLibrariesService } from './case-libraries.service';
 import {
   CreateCaseLibraryDto,
@@ -6,6 +6,7 @@ import {
   CreateTestCaseModuleDto,
   ImportTestCasesDto,
   ListTestCasesQueryDto,
+  UpdateTestCaseDefinitionDto,
 } from './dto/case-library.dto';
 
 @Controller('quality')
@@ -25,6 +26,11 @@ export class CaseLibrariesController {
   @Post('case-libraries/:libraryId/modules')
   createModule(@Param('libraryId') libraryId: string, @Body() dto: CreateTestCaseModuleDto) {
     return this.libraries.createModule(libraryId, dto);
+  }
+
+  @Get('case-libraries/:libraryId/modules')
+  listModules(@Param('libraryId') libraryId: string) {
+    return this.libraries.listModules(libraryId);
   }
 
   @Post('case-libraries/:libraryId/cases')
@@ -48,6 +54,11 @@ export class CaseLibrariesController {
   @Get('test-cases')
   listCases(@Query() query: ListTestCasesQueryDto) {
     return this.libraries.listCases(query);
+  }
+
+  @Patch('test-cases/:id')
+  updateCase(@Param('id') id: string, @Body() dto: UpdateTestCaseDefinitionDto) {
+    return this.libraries.updateCase(id, dto);
   }
 
   @Delete('test-cases/:id')

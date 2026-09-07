@@ -19,8 +19,10 @@ import {
 } from '../../components/ui/select';
 import { Textarea } from '../../components/ui/textarea';
 import { useToast } from '../../components/ui/toast';
-import type { Project, TestCaseLibrary, WorkflowRun } from '../../types';
+import type { Project, TestCaseLibrary, TestCaseModule, WorkflowRun } from '../../types';
 import { Field } from './quality-ui';
+
+const NO_MODULE = '__none__';
 
 export function CreateRequestDialog({
   open,
@@ -226,6 +228,9 @@ export function CreateCaseDialog({
 }) {
   const toast = useToast();
   const [libraryId, setLibraryId] = useState('');
+  const [modules, setModules] = useState<TestCaseModule[]>([]);
+  const [moduleId, setModuleId] = useState(NO_MODULE);
+  const [externalId, setExternalId] = useState('');
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState('P2');
   const [precondition, setPrecondition] = useState('');
@@ -240,6 +245,24 @@ export function CreateCaseDialog({
     }
   }, [libraries, libraryId, open]);
 
+  useEffect(() => {
+    if (!open || !libraryId) {
+      setModules([]);
+      return;
+    }
+    let active = true;
+    void api.getTestCaseModules(libraryId)
+      .then((items) => {
+        if (!active) return;
+        setModules(items);
+        setModuleId((current) => items.some((item) => item.id === current) ? current : NO_MODULE);
+      })
+      .catch((error) => {
+        if (active) toast.error(error instanceof Error ? error.message : '加载用例模块失败');
+      });
+    return () => { active = false; };
+  }, [libraryId, open]);
+
   async function submit() {
     const stepList = steps.split('\n').map((item) => item.trim()).filter(Boolean);
     if (!libraryId || !title.trim() || !stepList.length || !expected.trim()) {
@@ -249,6 +272,8 @@ export function CreateCaseDialog({
     setSaving(true);
     try {
       await api.createTestCase(libraryId, {
+        moduleId: moduleId === NO_MODULE ? undefined : moduleId,
+        externalId: externalId.trim() || undefined,
         title: title.trim(),
         priority,
         precondition: precondition.trim() || undefined,
@@ -256,6 +281,7 @@ export function CreateCaseDialog({
         expected: expected.trim(),
         tags: tags.split(',').map((item) => item.trim()).filter(Boolean),
       });
+      setExternalId('');
       setTitle('');
       setPrecondition('');
       setSteps('');
@@ -278,14 +304,31 @@ export function CreateCaseDialog({
           <DialogDescription>用例进入提测范围后将冻结为版本快照。</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
-          <div className="grid gap-4 sm:grid-cols-[1fr_120px]">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="用例库">
-              <Select value={libraryId} onValueChange={setLibraryId}>
+              <Select value={libraryId} onValueChange={(value) => {
+                setLibraryId(value);
+                setModuleId(NO_MODULE);
+              }}>
                 <SelectTrigger aria-label="用例库"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {libraries.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
                 </SelectContent>
               </Select>
+            </Field>
+            <Field label="模块（可选）">
+              <Select value={moduleId} onValueChange={setModuleId}>
+                <SelectTrigger aria-label="模块"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_MODULE}>未分模块</SelectItem>
+                  {modules.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-[1fr_120px]">
+            <Field label="用例编号（可选）">
+              <Input value={externalId} onChange={(event) => setExternalId(event.target.value)} />
             </Field>
             <Field label="优先级">
               <Select value={priority} onValueChange={setPriority}>

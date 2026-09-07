@@ -23,12 +23,14 @@ vi.mock('../../api', () => ({
     getWorkflowRuns: vi.fn(),
     getTestRequests: vi.fn(),
     getTestCaseLibraries: vi.fn(),
+    getTestCaseModules: vi.fn(),
     getTestCases: vi.fn(),
     getTestCasesPage: vi.fn(),
     createTestRequest: vi.fn(),
     createTestCaseLibrary: vi.fn(),
     createTestCase: vi.fn(),
     importTestCases: vi.fn(),
+    updateTestCase: vi.fn(),
     deleteTestCase: vi.fn(),
   },
 }));
@@ -63,10 +65,13 @@ const library: TestCaseLibrary = {
 const testCase: TestCaseDefinition = {
   id: 'case-1',
   libraryId: library.id,
+  moduleId: 'module-1',
+  externalId: 'LOGIN-001',
   status: 'ACTIVE',
   version: 3,
   title: '登录后恢复原访问页面',
   priority: 'P0',
+  precondition: '用户已完成注册',
   steps: ['打开受保护页面', '完成登录'],
   expected: '自动返回登录前页面',
   tags: ['登录', '回归'],
@@ -131,6 +136,13 @@ describe('Quality pages', () => {
     vi.mocked(api.getWorkflowRuns).mockResolvedValue([]);
     vi.mocked(api.getTestRequests).mockResolvedValue([testRequest]);
     vi.mocked(api.getTestCaseLibraries).mockResolvedValue([library]);
+    vi.mocked(api.getTestCaseModules).mockResolvedValue([{
+      id: 'module-1',
+      libraryId: library.id,
+      parentId: null,
+      name: '认证',
+      sortOrder: 0,
+    }]);
     vi.mocked(api.getTestCases).mockResolvedValue([testCase]);
     vi.mocked(api.getTestCasesPage).mockResolvedValue({
       items: [testCase],
@@ -141,6 +153,7 @@ describe('Quality pages', () => {
     });
     vi.mocked(api.deleteTestCase).mockResolvedValue({ success: true });
     vi.mocked(api.importTestCases).mockResolvedValue({ imported: 1 });
+    vi.mocked(api.updateTestCase).mockResolvedValue({ ...testCase, version: 4, title: '登录后返回原页面' });
   });
 
   afterEach(() => {
@@ -195,9 +208,15 @@ describe('Quality pages', () => {
     expect(container.textContent).not.toContain('自动返回登录前页面');
     expect(container.querySelector('table')).toBeTruthy();
     expect(container.textContent).toContain('归属');
-    expect(container.querySelector('section[aria-label="测试用例"] > .bg-card')).toBeTruthy();
+    const caseSection = container.querySelector('section[aria-label="测试用例"]');
+    expect(caseSection?.querySelector(':scope > .bg-card')).toBeTruthy();
+    expect(Array.from(caseSection?.querySelectorAll('button') ?? []).some(
+      (button) => button.textContent?.trim() === '新建用例',
+    )).toBe(true);
+    expect(Array.from(caseSection?.querySelectorAll('button') ?? []).some(
+      (button) => button.textContent?.includes('批量导入'),
+    )).toBe(true);
     expect(container.querySelector('[role="tablist"]')).toBeNull();
-    expect(Array.from(container.querySelectorAll('button')).some((button) => button.textContent?.includes('批量导入'))).toBe(true);
 
     const viewButton = container.querySelector(
       'button[aria-label="查看用例：登录后恢复原访问页面"]',
@@ -229,6 +248,43 @@ describe('Quality pages', () => {
     expect(api.deleteTestCase).toHaveBeenCalledWith('case-1');
     expect(api.getTestCasesPage).toHaveBeenCalledTimes(2);
     expect(successToast).toHaveBeenCalledWith('测试用例已删除');
+  });
+
+  it('edits a test case and refreshes the current page', async () => {
+    await renderPage('/quality/test-cases?workspaceId=workspace-1', <QualityCasesPage />);
+
+    const editButton = container.querySelector(
+      'button[aria-label="编辑用例：登录后恢复原访问页面"]',
+    ) as HTMLButtonElement | null;
+    await act(async () => {
+      editButton?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(document.body.textContent).toContain('编辑测试用例');
+    expect((document.body.querySelector('input[aria-label="编辑标题"]') as HTMLInputElement).value)
+      .toBe('登录后恢复原访问页面');
+
+    const saveButton = Array.from(document.body.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '保存修改',
+    );
+    await act(async () => {
+      saveButton?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.updateTestCase).toHaveBeenCalledWith('case-1', expect.objectContaining({
+      libraryId: 'library-1',
+      moduleId: 'module-1',
+      externalId: 'LOGIN-001',
+      title: '登录后恢复原访问页面',
+      steps: ['打开受保护页面', '完成登录'],
+      expected: '自动返回登录前页面',
+    }));
+    expect(successToast).toHaveBeenCalledWith('测试用例已更新至 v4');
+    expect(api.getTestCasesPage).toHaveBeenCalledTimes(2);
   });
 
   it('opens the batch import dialog with a CSV template action', async () => {
