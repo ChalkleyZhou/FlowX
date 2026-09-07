@@ -138,10 +138,10 @@ describe('AppLayout', () => {
     expect(navigateSpy).not.toHaveBeenCalled();
   });
 
-  it('shows the test and quality center in primary navigation', async () => {
+  it('shows the test and quality center with three submenus', async () => {
     await act(async () => {
       root?.render(
-        <MemoryRouter initialEntries={['/quality']}>
+        <MemoryRouter initialEntries={['/quality/test-cases']}>
           <ThemeProvider>
             <AppLayout>
               <div>content</div>
@@ -156,6 +156,15 @@ describe('AppLayout', () => {
     );
     expect(qualityLink?.getAttribute('href')).toBe('/quality');
     expect(qualityLink?.className).toContain('bg-nav-active');
+    const submenuLinks = Array.from(container.querySelectorAll('a')).filter((link) =>
+      link.getAttribute('href')?.startsWith('/quality/test-'),
+    );
+    expect(submenuLinks.map((link) => link.textContent?.trim())).toEqual([
+      '提测管理',
+      '用例库',
+      '执行记录',
+    ]);
+    expect(submenuLinks[1]?.getAttribute('aria-current')).toBe('page');
   });
 
   it('logs out and navigates when user confirms', async () => {

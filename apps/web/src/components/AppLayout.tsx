@@ -45,12 +45,26 @@ const primaryItems = [
   { key: '/projects', label: '项目', icon: FolderKanban },
   { key: '/briefings', label: '简报', icon: Newspaper },
   { key: '/code-reviews', label: '代码审查', icon: GitPullRequest },
-  { key: '/quality', label: '测试与质量', icon: ShieldCheck },
+  {
+    key: '/quality',
+    label: '测试与质量',
+    icon: ShieldCheck,
+    children: [
+      { key: '/quality/test-requests', label: '提测管理' },
+      { key: '/quality/test-cases', label: '用例库' },
+      { key: '/quality/test-runs', label: '执行记录' },
+    ],
+  },
   { key: '/schedule', label: '排期', icon: CalendarRange },
   { key: '/bugs', label: '缺陷', icon: Bug },
   { key: '/issues', label: '问题项', icon: CircleAlert },
   { key: '/workspaces', label: '工作区', icon: Boxes },
-] satisfies Array<{ key: string; label: string; icon: LucideIcon }>;
+] satisfies Array<{
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  children?: Array<{ key: string; label: string }>;
+}>;
 
 const secondaryItems = [
   { key: '/local-agent', label: '本地 Agent', icon: SquareTerminal },
@@ -85,7 +99,12 @@ function AppLayoutContent({ children }: PropsWithChildren) {
   const [showSecondaryMenu, setShowSecondaryMenu] = useState(false);
 
   const selectedKey =
-    [...primaryItems, ...secondaryItems].find((item) => location.pathname.startsWith(item.key))?.key ?? '/requirements';
+    [
+      ...primaryItems.flatMap((item) => [item, ...(item.children ?? [])]),
+      ...secondaryItems,
+    ]
+      .sort((left, right) => right.key.length - left.key.length)
+      .find((item) => isPathActive(location.pathname, item.key))?.key ?? '/requirements';
 
   async function handleLogout() {
     const confirmed = await confirm({
@@ -148,20 +167,41 @@ function AppLayoutContent({ children }: PropsWithChildren) {
           </div>
           <nav aria-label="主导航" className="flex flex-col gap-1 pt-0.5 max-xl:w-full max-xl:flex-row max-xl:flex-nowrap max-xl:overflow-x-auto max-xl:pb-1">
             {primaryItems.map((item) => {
-              const active = selectedKey === item.key;
+              const active = isPathActive(location.pathname, item.key);
               const Icon = item.icon;
               return (
-                <Link
-                  key={item.key}
-                  to={item.key}
-                  className={[
-                    'flex min-h-10 items-center gap-3 rounded-md border border-transparent px-3 py-2 text-sm text-nav-text no-underline transition-colors hover:bg-nav-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 max-xl:shrink-0',
-                    active ? 'border-nav-border bg-nav-active font-medium text-foreground' : '',
-                  ].filter(Boolean).join(' ')}
-                >
-                  <Icon aria-hidden="true" className={active ? 'h-4 w-4 text-nav-accent' : 'h-4 w-4'} />
-                  <span className="truncate">{item.label}</span>
-                </Link>
+                <div key={item.key} className="flex flex-col gap-1 max-xl:flex-row max-xl:items-center">
+                  <Link
+                    to={item.key}
+                    className={[
+                      'flex min-h-10 items-center gap-3 rounded-md border border-transparent px-3 py-2 text-sm text-nav-text no-underline transition-colors hover:bg-nav-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 max-xl:shrink-0',
+                      active ? 'border-nav-border bg-nav-active font-medium text-foreground' : '',
+                    ].filter(Boolean).join(' ')}
+                  >
+                    <Icon aria-hidden="true" className={active ? 'h-4 w-4 text-nav-accent' : 'h-4 w-4'} />
+                    <span className="truncate">{item.label}</span>
+                  </Link>
+                  {item.children && active ? (
+                    <div className="ml-7 flex flex-col gap-1 border-l border-nav-border pl-2 max-xl:ml-0 max-xl:flex-row max-xl:border-l-0 max-xl:pl-0">
+                      {item.children.map((child) => {
+                        const childActive = selectedKey === child.key;
+                        return (
+                          <Link
+                            key={child.key}
+                            to={child.key}
+                            aria-current={childActive ? 'page' : undefined}
+                            className={[
+                              'flex min-h-9 items-center rounded-md border border-transparent px-3 py-1.5 text-[13px] text-nav-text no-underline transition-colors hover:bg-nav-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 max-xl:min-h-10 max-xl:shrink-0',
+                              childActive ? 'border-nav-border bg-nav-hover font-medium text-foreground' : '',
+                            ].filter(Boolean).join(' ')}
+                          >
+                            <span className="truncate">{child.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
               );
             })}
           </nav>
@@ -280,4 +320,8 @@ function AppLayoutContent({ children }: PropsWithChildren) {
       </Dialog>
     </>
   );
+}
+
+function isPathActive(pathname: string, key: string) {
+  return pathname === key || pathname.startsWith(`${key}/`);
 }

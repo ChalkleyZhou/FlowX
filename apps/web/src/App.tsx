@@ -10,7 +10,9 @@ import { CodeReviewSourcesPage } from './pages/CodeReviewSourcesPage';
 import { CodeReviewsPage } from './pages/CodeReviewsPage';
 import { DeliveryTargetsPage } from './pages/DeliveryTargetsPage';
 import { IssuesPage } from './pages/IssuesPage';
-import { QualityPage } from './pages/QualityPage';
+import { QualityCasesPage } from './pages/quality/QualityCasesPage';
+import { QualityRequestsPage } from './pages/quality/QualityRequestsPage';
+import { QualityRunsPage } from './pages/quality/QualityRunsPage';
 import { IssueDetailPage } from './pages/IssueDetailPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
 import { ProjectsPage } from './pages/ProjectsPage';
@@ -63,7 +65,10 @@ export default function App() {
             <Route path="/workflow-runs/:workflowRunId" element={<WorkflowRunDetailPage />} />
             <Route path="/issues" element={<IssuesPage />} />
             <Route path="/issues/:issueId" element={<IssueDetailPage />} />
-            <Route path="/quality" element={<QualityPage />} />
+            <Route path="/quality" element={<Navigate to="/quality/test-requests" replace />} />
+            <Route path="/quality/test-requests" element={<QualityRequestsPage />} />
+            <Route path="/quality/test-cases" element={<QualityCasesPage />} />
+            <Route path="/quality/test-runs" element={<QualityRunsPage />} />
             <Route path="/bugs" element={<BugsPage />} />
             <Route path="/bugs/:bugId" element={<BugDetailPage />} />
             <Route path="/user-manual" element={<UserManualPage />} />
