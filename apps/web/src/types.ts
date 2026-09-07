@@ -641,6 +641,17 @@ export interface TestCasePage {
   };
 }
 
+export interface TestCaseImportRow {
+  externalId?: string;
+  title: string;
+  priority?: 'P0' | 'P1' | 'P2' | 'P3';
+  moduleName?: string;
+  precondition?: string;
+  steps: string[];
+  expected: string;
+  tags?: string[];
+}
+
 export interface TestCaseSnapshot {
   id: string;
   sourceDefinitionId?: string | null;

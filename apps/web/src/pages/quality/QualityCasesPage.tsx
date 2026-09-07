@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Eye, Plus, Trash2 } from 'lucide-react';
+import { Eye, Plus, Trash2, Upload } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api';
 import { useConfirm } from '../../components/ConfirmDialog';
@@ -29,6 +29,7 @@ import {
 import { useToast } from '../../components/ui/toast';
 import type { Project, TestCaseDefinition, TestCaseLibrary, Workspace } from '../../types';
 import { CreateCaseDialog, CreateLibraryDialog } from './QualityDialogs';
+import { QualityCaseImportDialog } from './QualityCaseImportDialog';
 import { LoadingState, Pagination, RefreshButton } from './quality-ui';
 
 const ALL = '__all__';
@@ -51,6 +52,7 @@ export function QualityCasesPage() {
   const [linkedCount, setLinkedCount] = useState(0);
   const [libraryDialogOpen, setLibraryDialogOpen] = useState(false);
   const [caseDialogOpen, setCaseDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [selectedCase, setSelectedCase] = useState<TestCaseDefinition | null>(null);
   const [deletingCaseId, setDeletingCaseId] = useState<string | null>(null);
 
@@ -204,6 +206,9 @@ export function QualityCasesPage() {
             <RefreshButton loading={refreshing} onClick={() => void refreshList(true)} />
             <Button variant="outline" disabled={!workspaceId} onClick={() => setLibraryDialogOpen(true)}>
               <Plus aria-hidden="true" className="h-4 w-4" />新建用例库
+            </Button>
+            <Button variant="outline" disabled={!libraries.length} onClick={() => setImportDialogOpen(true)}>
+              <Upload aria-hidden="true" className="h-4 w-4" />批量导入
             </Button>
             <Button disabled={!libraries.length} onClick={() => setCaseDialogOpen(true)}>
               <Plus aria-hidden="true" className="h-4 w-4" />新建用例
@@ -415,6 +420,16 @@ export function QualityCasesPage() {
         libraries={libraries}
         onCreated={async () => {
           setCaseDialogOpen(false);
+          await refreshList(true);
+        }}
+      />
+      <QualityCaseImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        libraries={libraries}
+        defaultLibraryId={libraryId === ALL ? undefined : libraryId}
+        onImported={async () => {
+          setImportDialogOpen(false);
           await refreshList(true);
         }}
       />

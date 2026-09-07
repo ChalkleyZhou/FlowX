@@ -7,9 +7,10 @@ function createService() {
     workspace: { findUnique: vi.fn() },
     project: { findFirst: vi.fn() },
     testCaseLibrary: { create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
-    testCaseModule: { findFirst: vi.fn(), create: vi.fn() },
+    testCaseModule: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
     testCaseDefinition: {
       create: vi.fn(),
+      createMany: vi.fn(),
       findMany: vi.fn(),
       count: vi.fn(),
       updateMany: vi.fn(),
@@ -64,6 +65,88 @@ describe('CaseLibrariesService', () => {
         'user-1',
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('imports validated test cases in one batch and resolves modules by name', async () => {
+    const { service, prisma } = createService();
+    prisma.testCaseLibrary.findUnique.mockResolvedValue({ id: 'library-1', status: 'ACTIVE' });
+    prisma.testCaseModule.findMany.mockResolvedValue([{ id: 'module-1', name: '登录' }]);
+    prisma.testCaseDefinition.findMany.mockResolvedValue([]);
+    prisma.testCaseDefinition.createMany.mockResolvedValue({ count: 2 });
+
+    await expect(
+      service.importCases(
+        'library-1',
+        {
+          cases: [
+            {
+              externalId: 'LOGIN-001',
+              title: '账号密码登录成功',
+              priority: 'P0',
+              moduleName: '登录',
+              steps: ['输入账号', '点击登录'],
+              expected: '进入首页',
+              tags: ['冒烟'],
+            },
+            { title: '登录失败', steps: ['输入错误密码'], expected: '提示密码错误' },
+          ],
+        },
+        'user-1',
+      ),
+    ).resolves.toEqual({ imported: 2 });
+
+    expect(prisma.testCaseDefinition.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          libraryId: 'library-1',
+          moduleId: 'module-1',
+          externalId: 'LOGIN-001',
+          priority: 'P0',
+          createdByUserId: 'user-1',
+        }),
+        expect.objectContaining({ moduleId: null, priority: 'P2' }),
+      ],
+    });
+  });
+
+  it('rejects the whole import when a referenced module is missing', async () => {
+    const { service, prisma } = createService();
+    prisma.testCaseLibrary.findUnique.mockResolvedValue({ id: 'library-1', status: 'ACTIVE' });
+    prisma.testCaseModule.findMany.mockResolvedValue([]);
+
+    await expect(
+      service.importCases('library-1', {
+        cases: [{ title: '登录成功', moduleName: '不存在模块', steps: ['登录'], expected: '成功' }],
+      }),
+    ).rejects.toThrow('第 2 行：模块“不存在模块”不存在于目标用例库。');
+    expect(prisma.testCaseDefinition.createMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate external IDs in the same import', async () => {
+    const { service, prisma } = createService();
+    prisma.testCaseLibrary.findUnique.mockResolvedValue({ id: 'library-1', status: 'ACTIVE' });
+
+    await expect(
+      service.importCases('library-1', {
+        cases: [
+          { externalId: 'CASE-1', title: '用例 1', steps: ['步骤'], expected: '成功' },
+          { externalId: 'CASE-1', title: '用例 2', steps: ['步骤'], expected: '成功' },
+        ],
+      }),
+    ).rejects.toThrow('第 3 行：用例编号“CASE-1”与第 2 行重复。');
+    expect(prisma.testCaseDefinition.createMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects whitespace-only required fields before writing', async () => {
+    const { service, prisma } = createService();
+    prisma.testCaseLibrary.findUnique.mockResolvedValue({ id: 'library-1', status: 'ACTIVE' });
+
+    await expect(
+      service.importCases('library-1', {
+        cases: [{ title: '   ', steps: ['   '], expected: '   ' }],
+      }),
+    ).rejects.toThrow('第 2 行：标题不能为空。');
+    expect(prisma.testCaseDefinition.createMany).not.toHaveBeenCalled();
   });
 
   it('paginates and summarizes test cases on the server', async () => {

@@ -217,6 +217,38 @@ describe('api helpers', () => {
     );
   });
 
+  it('imports test cases into the selected library', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ imported: 1 }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.importTestCases('library-1', [{
+      externalId: 'CASE-1',
+      title: '登录成功',
+      priority: 'P0',
+      steps: ['输入账号', '点击登录'],
+      expected: '进入首页',
+    }]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3000/quality/case-libraries/library-1/cases/import',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          cases: [{
+            externalId: 'CASE-1',
+            title: '登录成功',
+            priority: 'P0',
+            steps: ['输入账号', '点击登录'],
+            expected: '进入首页',
+          }],
+        }),
+      }),
+    );
+  });
+
   it('starts an OpenDesign handoff through the generic Edge API', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

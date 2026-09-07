@@ -28,6 +28,7 @@ vi.mock('../../api', () => ({
     createTestRequest: vi.fn(),
     createTestCaseLibrary: vi.fn(),
     createTestCase: vi.fn(),
+    importTestCases: vi.fn(),
     deleteTestCase: vi.fn(),
   },
 }));
@@ -139,6 +140,7 @@ describe('Quality pages', () => {
       summary: { p0Count: 1, linkedCount: 1 },
     });
     vi.mocked(api.deleteTestCase).mockResolvedValue({ success: true });
+    vi.mocked(api.importTestCases).mockResolvedValue({ imported: 1 });
   });
 
   afterEach(() => {
@@ -195,6 +197,7 @@ describe('Quality pages', () => {
     expect(container.textContent).toContain('归属');
     expect(container.querySelector('section[aria-label="测试用例"] > .bg-card')).toBeTruthy();
     expect(container.querySelector('[role="tablist"]')).toBeNull();
+    expect(Array.from(container.querySelectorAll('button')).some((button) => button.textContent?.includes('批量导入'))).toBe(true);
 
     const viewButton = container.querySelector(
       'button[aria-label="查看用例：登录后恢复原访问页面"]',
@@ -226,6 +229,19 @@ describe('Quality pages', () => {
     expect(api.deleteTestCase).toHaveBeenCalledWith('case-1');
     expect(api.getTestCasesPage).toHaveBeenCalledTimes(2);
     expect(successToast).toHaveBeenCalledWith('测试用例已删除');
+  });
+
+  it('opens the batch import dialog with a CSV template action', async () => {
+    await renderPage('/quality/test-cases?workspaceId=workspace-1', <QualityCasesPage />);
+
+    const importButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('批量导入'),
+    );
+    await act(async () => importButton?.click());
+
+    expect(document.body.textContent).toContain('选择目标用例库并上传填写完成的 CSV 模板');
+    expect(document.body.textContent).toContain('下载模板');
+    expect(document.body.querySelector('input[type="file"]')?.getAttribute('accept')).toBe('.csv,text/csv');
   });
 
   it('maps test plan runs into the execution history page', async () => {

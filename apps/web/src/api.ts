@@ -37,6 +37,7 @@ import type {
   ReviewFinding,
   SpecPlanOutput,
   TestCaseDefinition,
+  TestCaseImportRow,
   TestCaseLibrary,
   TestCasePage,
   TestRequest,
@@ -1039,6 +1040,11 @@ export const api = {
     request<TestCaseDefinition>(`/quality/case-libraries/${libraryId}/cases`, {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+  importTestCases: (libraryId: string, cases: TestCaseImportRow[]) =>
+    request<{ imported: number }>(`/quality/case-libraries/${libraryId}/cases/import`, {
+      method: 'POST',
+      body: JSON.stringify({ cases }),
     }),
   deleteTestCase: (id: string) =>
     request<{ success: true }>(`/quality/test-cases/${id}`, { method: 'DELETE' }),

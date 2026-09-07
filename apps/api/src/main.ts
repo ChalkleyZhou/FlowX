@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { Logger, LogLevel, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 
 function resolveLogLevels(): LogLevel[] {
@@ -17,10 +18,11 @@ function resolveLogLevels(): LogLevel[] {
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: resolveLogLevels(),
     rawBody: true,
   });
+  app.useBodyParser('json', { limit: '6mb' });
   app.enableCors();
   app.useGlobalPipes(
     new ValidationPipe({

@@ -5,6 +5,7 @@ import type {
   CreateCaseLibraryDto,
   CreateTestCaseDefinitionDto,
   CreateTestCaseModuleDto,
+  ImportTestCasesDto,
 } from './dto/case-library.dto';
 
 @Injectable()
@@ -104,6 +105,101 @@ export class CaseLibrariesService {
       },
       include: { module: true, coverageLinks: true },
     });
+  }
+
+  async importCases(libraryId: string, dto: ImportTestCasesDto, userId?: string) {
+    await this.requireLibrary(libraryId);
+
+    const cases = dto.cases.map((item, index) => {
+      const title = item.title.trim();
+      const steps = item.steps.map((step) => step.trim()).filter(Boolean);
+      const expected = item.expected.trim();
+      if (!title) throw new BadRequestException(`第 ${index + 2} 行：标题不能为空。`);
+      if (!steps.length) throw new BadRequestException(`第 ${index + 2} 行：至少填写一个执行步骤。`);
+      if (!expected) throw new BadRequestException(`第 ${index + 2} 行：预期结果不能为空。`);
+      return {
+        ...item,
+        externalId: item.externalId?.trim() || undefined,
+        title,
+        moduleName: item.moduleName?.trim() || undefined,
+        precondition: item.precondition?.trim() || undefined,
+        steps,
+        expected,
+        tags: item.tags?.map((tag) => tag.trim()).filter(Boolean),
+      };
+    });
+
+    const moduleNames = [...new Set(cases.map((item) => item.moduleName).filter(Boolean))] as string[];
+    const modules = moduleNames.length
+      ? await this.prisma.testCaseModule.findMany({
+          where: { libraryId, name: { in: moduleNames } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const modulesByName = new Map<string, string[]>();
+    for (const module of modules) {
+      modulesByName.set(module.name, [...(modulesByName.get(module.name) ?? []), module.id]);
+    }
+
+    for (const [index, item] of cases.entries()) {
+      const moduleName = item.moduleName;
+      if (!moduleName) continue;
+      const matchingModules = modulesByName.get(moduleName) ?? [];
+      if (matchingModules.length === 0) {
+        throw new BadRequestException(`第 ${index + 2} 行：模块“${moduleName}”不存在于目标用例库。`);
+      }
+      if (matchingModules.length > 1) {
+        throw new BadRequestException(`第 ${index + 2} 行：模块“${moduleName}”存在重名，请先调整模块名称。`);
+      }
+    }
+
+    const externalIdRows = new Map<string, number>();
+    for (const [index, item] of cases.entries()) {
+      const externalId = item.externalId;
+      if (!externalId) continue;
+      const previousRow = externalIdRows.get(externalId);
+      if (previousRow) {
+        throw new BadRequestException(`第 ${index + 2} 行：用例编号“${externalId}”与第 ${previousRow} 行重复。`);
+      }
+      externalIdRows.set(externalId, index + 2);
+    }
+
+    if (externalIdRows.size) {
+      const existingCases = await this.prisma.testCaseDefinition.findMany({
+        where: {
+          libraryId,
+          status: 'ACTIVE',
+          externalId: { in: [...externalIdRows.keys()] },
+        },
+        select: { externalId: true },
+      });
+      const existingId = existingCases.find((item) => item.externalId)?.externalId;
+      if (existingId) {
+        throw new BadRequestException(`用例编号“${existingId}”已存在于目标用例库。`);
+      }
+    }
+
+    const result = await this.prisma.testCaseDefinition.createMany({
+      data: cases.map((item) => {
+        const moduleName = item.moduleName;
+        return {
+          libraryId,
+          moduleId: moduleName ? modulesByName.get(moduleName)?.[0] : null,
+          externalId: item.externalId ?? null,
+          title: item.title,
+          priority: item.priority ?? 'P2',
+          precondition: item.precondition ?? null,
+          steps: item.steps as Prisma.InputJsonValue,
+          expected: item.expected,
+          tags: item.tags?.length
+            ? (item.tags as Prisma.InputJsonValue)
+            : undefined,
+          createdByUserId: userId ?? null,
+        };
+      }),
+    });
+
+    return { imported: result.count };
   }
 
   async listCases(filters: {

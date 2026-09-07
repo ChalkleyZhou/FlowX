@@ -1,6 +1,8 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  ArrayMaxSize,
+  ArrayMinSize,
   IsIn,
   IsInt,
   IsNumber,
@@ -8,6 +10,7 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
   MinLength,
   ValidateNested,
@@ -157,4 +160,59 @@ export class CreateTestCaseDefinitionDto {
   @ValidateNested({ each: true })
   @Type(() => TestCaseCoverageDto)
   coverageLinks?: TestCaseCoverageDto[];
+}
+
+export class ImportTestCaseRowDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  externalId?: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['P0', 'P1', 'P2', 'P3'])
+  priority?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  moduleName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  precondition?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(2000, { each: true })
+  steps!: string[];
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(5000)
+  expected!: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(100, { each: true })
+  tags?: string[];
+}
+
+export class ImportTestCasesDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(1000)
+  @ValidateNested({ each: true })
+  @Type(() => ImportTestCaseRowDto)
+  cases!: ImportTestCaseRowDto[];
 }

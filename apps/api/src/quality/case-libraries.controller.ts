@@ -4,6 +4,7 @@ import {
   CreateCaseLibraryDto,
   CreateTestCaseDefinitionDto,
   CreateTestCaseModuleDto,
+  ImportTestCasesDto,
   ListTestCasesQueryDto,
 } from './dto/case-library.dto';
 
@@ -33,6 +34,15 @@ export class CaseLibrariesController {
     @Req() req: QualityRequest,
   ) {
     return this.libraries.createCase(libraryId, dto, req.authSession?.user.id);
+  }
+
+  @Post('case-libraries/:libraryId/cases/import')
+  importCases(
+    @Param('libraryId') libraryId: string,
+    @Body() dto: ImportTestCasesDto,
+    @Req() req: QualityRequest,
+  ) {
+    return this.libraries.importCases(libraryId, dto, req.authSession?.user.id);
   }
 
   @Get('test-cases')
