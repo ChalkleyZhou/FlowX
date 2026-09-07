@@ -26,7 +26,7 @@ components:
     borderRadius: "{rounded.md}"
     shadow: "none"
   list-page:
-    structure: "PageHeader + ListToolbar + RecordList + Pagination"
+    structure: "Text-only PageHeader + optional Metrics + card surface containing SectionHeader, ListToolbar, RecordList, and Pagination"
   workflow-page:
     structure: "DetailHeader + ActionBar + StageRail + current-stage workspace"
   domain-navigation:
@@ -43,9 +43,9 @@ FlowX 使用 `Control Room` 设计语言。它服务于反复扫描、比较、�
 
 ## Layout
 
-列表页统一使用 `PageHeader + ListToolbar + RecordList + Pagination`。详情页突出当前任务和主操作，长流程使用阶段导航与渐进式展开，避免把所有阶段堆在同一长页面。
+列表页统一使用无装饰图标的 `PageHeader`；可选指标之后，将 `SectionHeader + ListToolbar + RecordList + Pagination` 放入一个 `bg-card` 白色工作区。详情页突出当前任务和主操作，长流程使用阶段导航与渐进式展开，避免把所有阶段堆在同一长页面。
 
-一个一级业务域存在三个及以上稳定工作区时，使用侧栏二级菜单和独立 URL；内容区 Tabs 只用于同一对象内的轻量视图切换。
+一个一级业务域存在三个及以上稳定工作区时，使用侧栏二级菜单和独立 URL；内容区 Tabs 只用于同一对象内的轻量视图切换。父菜单只表达分组上下文，块状选中态只落在当前二级菜单，避免父子两层同时高亮。
 
 ## Components
 

@@ -155,7 +155,8 @@ describe('AppLayout', () => {
       (link) => link.textContent?.trim() === '测试与质量',
     );
     expect(qualityLink?.getAttribute('href')).toBe('/quality');
-    expect(qualityLink?.className).toContain('bg-nav-active');
+    expect(qualityLink?.getAttribute('aria-expanded')).toBe('true');
+    expect(qualityLink?.className).not.toContain('bg-nav-active');
     const submenuLinks = Array.from(container.querySelectorAll('a')).filter((link) =>
       link.getAttribute('href')?.startsWith('/quality/test-'),
     );
@@ -165,6 +166,8 @@ describe('AppLayout', () => {
       '执行记录',
     ]);
     expect(submenuLinks[1]?.getAttribute('aria-current')).toBe('page');
+    expect(submenuLinks[1]?.className).toContain('bg-nav-active');
+    expect(submenuLinks[1]?.className).toContain('border-nav-accent');
   });
 
   it('logs out and navigates when user confirms', async () => {

@@ -168,31 +168,34 @@ function AppLayoutContent({ children }: PropsWithChildren) {
           <nav aria-label="主导航" className="flex flex-col gap-1 pt-0.5 max-xl:w-full max-xl:flex-row max-xl:flex-nowrap max-xl:overflow-x-auto max-xl:pb-1">
             {primaryItems.map((item) => {
               const active = isPathActive(location.pathname, item.key);
+              const childActive = item.children?.some((child) => selectedKey === child.key) ?? false;
               const Icon = item.icon;
               return (
                 <div key={item.key} className="flex flex-col gap-1 max-xl:flex-row max-xl:items-center">
                   <Link
                     to={item.key}
+                    aria-expanded={item.children ? active : undefined}
                     className={[
                       'flex min-h-10 items-center gap-3 rounded-md border border-transparent px-3 py-2 text-sm text-nav-text no-underline transition-colors hover:bg-nav-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 max-xl:shrink-0',
-                      active ? 'border-nav-border bg-nav-active font-medium text-foreground' : '',
+                      active ? 'font-medium text-foreground' : '',
+                      active && !childActive ? 'border-nav-border bg-nav-active' : '',
                     ].filter(Boolean).join(' ')}
                   >
                     <Icon aria-hidden="true" className={active ? 'h-4 w-4 text-nav-accent' : 'h-4 w-4'} />
                     <span className="truncate">{item.label}</span>
                   </Link>
                   {item.children && active ? (
-                    <div className="ml-7 flex flex-col gap-1 border-l border-nav-border pl-2 max-xl:ml-0 max-xl:flex-row max-xl:border-l-0 max-xl:pl-0">
+                    <div className="ml-5 flex flex-col gap-0.5 border-l border-nav-border max-xl:ml-0 max-xl:flex-row max-xl:border-l-0">
                       {item.children.map((child) => {
-                        const childActive = selectedKey === child.key;
+                        const selected = selectedKey === child.key;
                         return (
                           <Link
                             key={child.key}
                             to={child.key}
-                            aria-current={childActive ? 'page' : undefined}
+                            aria-current={selected ? 'page' : undefined}
                             className={[
-                              'flex min-h-9 items-center rounded-md border border-transparent px-3 py-1.5 text-[13px] text-nav-text no-underline transition-colors hover:bg-nav-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 max-xl:min-h-10 max-xl:shrink-0',
-                              childActive ? 'border-nav-border bg-nav-hover font-medium text-foreground' : '',
+                              '-ml-px flex min-h-9 items-center rounded-r-md border-l-2 border-transparent py-1.5 pl-5 pr-3 text-[13px] text-nav-text no-underline transition-colors hover:bg-nav-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 max-xl:ml-0 max-xl:min-h-10 max-xl:shrink-0 max-xl:rounded-md max-xl:border-b-2 max-xl:border-l-0 max-xl:px-3',
+                              selected ? 'border-nav-accent bg-nav-active font-medium text-foreground max-xl:border-nav-accent' : '',
                             ].filter(Boolean).join(' ')}
                           >
                             <span className="truncate">{child.label}</span>

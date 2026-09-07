@@ -22,7 +22,7 @@ Gaps：标题、表格正文、辅助文本的实际采用度没有自动检查�
 
 Evidence：token 使用 4px 到 64px 的间距；`AppLayout` 使用固定侧栏和受限主内容宽度；`apps/web/docs/design-system.md` 定义列表页、详情页和工作流页模板。
 
-Findings：布局基础稳定，页面已有 `PageHeader`、`ListToolbar`、`Card` 等复用能力。
+Findings：布局基础稳定，页面已有 `PageHeader`、`ListToolbar`、`Card` 等复用能力。成熟列表页使用无装饰图标的文字型 `PageHeader`，并以白色 `Card` surface 承载区块标题、筛选、记录和分页。
 
 Gaps：工作流详情内容过长；列表筛选、分页和结果状态没有形成统一布局组件；窄屏导航改为顶部横向滚动，复杂页面仍需实际浏览器验证。
 

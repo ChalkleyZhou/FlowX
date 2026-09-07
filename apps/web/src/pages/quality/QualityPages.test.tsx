@@ -156,6 +156,7 @@ describe('Quality pages', () => {
     expect(api.getTestRequests).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain('2.6.0 登录能力提测');
     expect(container.textContent).toContain('覆盖认证主链路和历史缺陷回归');
+    expect(container.querySelector('section[aria-label="提测记录"] > .bg-card')).toBeTruthy();
     expect(container.querySelector('[role="tablist"]')).toBeNull();
   });
 
@@ -172,6 +173,7 @@ describe('Quality pages', () => {
     });
     expect(container.textContent).toContain('登录后恢复原访问页面');
     expect(container.textContent).toContain('自动返回登录前页面');
+    expect(container.querySelector('section[aria-label="测试用例"] > .bg-card')).toBeTruthy();
     expect(container.querySelector('[role="tablist"]')).toBeNull();
   });
 
@@ -181,6 +183,7 @@ describe('Quality pages', () => {
     expect(container.textContent).toContain('缺陷修复回归 #2');
     expect(container.textContent).toContain('登录跳转丢失目标地址');
     expect(container.textContent).toContain('Bug 回归');
+    expect(container.querySelector('section[aria-label="执行历史"] > .bg-card')).toBeTruthy();
     expect(container.querySelector('[role="tablist"]')).toBeNull();
   });
 });

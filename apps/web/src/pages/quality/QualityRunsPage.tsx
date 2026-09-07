@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PlayCircle } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api';
 import { EmptyState } from '../../components/EmptyState';
@@ -9,6 +8,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { RecordListItem } from '../../components/RecordListItem';
 import { SectionHeader } from '../../components/SectionHeader';
 import { Badge } from '../../components/ui/badge';
+import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import {
   Select,
@@ -108,7 +108,6 @@ export function QualityRunsPage() {
         eyebrow="测试与质量"
         title="执行记录"
         description="查看初测、Bug 回归及每轮测试结论。"
-        icon={PlayCircle}
         actions={<RefreshButton loading={refreshing} onClick={() => void refresh(true)} />}
       />
 
@@ -119,94 +118,99 @@ export function QualityRunsPage() {
         <MetricCard label="异常结论" value={exceptionCount} />
       </div>
 
-      <section className="space-y-4">
-        <SectionHeader
-          eyebrow="Test Runs"
-          title="执行历史"
-          description={`当前显示 ${filteredRows.length} 个轮次`}
-          className="border-b border-border pb-4"
-        />
-        <ListToolbar
-          search={(
-            <Input
-              aria-label="搜索执行记录"
-              placeholder="搜索轮次、提测、项目或版本"
-              value={keyword}
-              onChange={(event) => updateQuery({ q: event.target.value || null, page: null })}
+      <section aria-label="执行历史">
+        <Card className="rounded-md border border-border bg-card">
+          <CardHeader className="pb-4">
+            <SectionHeader
+              eyebrow="Test Runs"
+              title="执行历史"
+              description={`当前显示 ${filteredRows.length} 个轮次`}
             />
-          )}
-          filters={(
-            <>
-              <Select value={projectId} onValueChange={(value) => updateQuery({ projectId: value, page: null })}>
-                <SelectTrigger className="w-full sm:w-[180px]" aria-label="按项目筛选">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>全部项目</SelectItem>
-                  {projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={runType} onValueChange={(value) => updateQuery({ runType: value, page: null })}>
-                <SelectTrigger className="w-full sm:w-[140px]" aria-label="按轮次类型筛选">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>全部类型</SelectItem>
-                  <SelectItem value="INITIAL">初测</SelectItem>
-                  <SelectItem value="REGRESSION">Bug 回归</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={status} onValueChange={(value) => updateQuery({ status: value, page: null })}>
-                <SelectTrigger className="w-full sm:w-[140px]" aria-label="按执行状态筛选">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>全部状态</SelectItem>
-                  {Object.entries(runStatusLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </>
-          )}
-        />
+          </CardHeader>
+          <CardContent className="p-5 pt-0">
+            <ListToolbar
+              search={(
+                <Input
+                  aria-label="搜索执行记录"
+                  placeholder="搜索轮次、提测、项目或版本"
+                  value={keyword}
+                  onChange={(event) => updateQuery({ q: event.target.value || null, page: null })}
+                />
+              )}
+              filters={(
+                <>
+                  <Select value={projectId} onValueChange={(value) => updateQuery({ projectId: value, page: null })}>
+                    <SelectTrigger className="w-full sm:w-[180px]" aria-label="按项目筛选">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>全部项目</SelectItem>
+                      {projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={runType} onValueChange={(value) => updateQuery({ runType: value, page: null })}>
+                    <SelectTrigger className="w-full sm:w-[140px]" aria-label="按轮次类型筛选">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>全部类型</SelectItem>
+                      <SelectItem value="INITIAL">初测</SelectItem>
+                      <SelectItem value="REGRESSION">Bug 回归</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={status} onValueChange={(value) => updateQuery({ status: value, page: null })}>
+                    <SelectTrigger className="w-full sm:w-[140px]" aria-label="按执行状态筛选">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>全部状态</SelectItem>
+                      {Object.entries(runStatusLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+            />
 
-        {loading ? <LoadingState /> : pageRows.length ? (
-          <div className="space-y-3">
-            {pageRows.map(({ request, run }) => (
-              <RecordListItem
-                key={run.id}
-                title={run.name}
-                badges={(
-                  <>
-                    <Badge variant={run.runType === 'REGRESSION' ? 'warning' : 'outline'}>
-                      {run.runType === 'REGRESSION' ? 'Bug 回归' : '初测'}
-                    </Badge>
-                    <Badge variant={statusBadgeVariant(run.status)}>{runStatusLabels[run.status] ?? run.status}</Badge>
-                  </>
-                )}
-                description={(
-                  <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    <span>{request.project.name}</span>
-                    <span>{request.projectVersion.name}</span>
-                    <span>{request.title}</span>
-                  </div>
-                )}
-                details={run.sourceBug ? <span>来源缺陷：{run.sourceBug.title}</span> : <span>常规提测执行</span>}
-                actions={<span className="text-sm text-muted-foreground">{formatDate(run.startedAt)}</span>}
+            {loading ? <LoadingState /> : pageRows.length ? (
+              <div className="space-y-3">
+                {pageRows.map(({ request, run }) => (
+                  <RecordListItem
+                    key={run.id}
+                    title={run.name}
+                    badges={(
+                      <>
+                        <Badge variant={run.runType === 'REGRESSION' ? 'warning' : 'outline'}>
+                          {run.runType === 'REGRESSION' ? 'Bug 回归' : '初测'}
+                        </Badge>
+                        <Badge variant={statusBadgeVariant(run.status)}>{runStatusLabels[run.status] ?? run.status}</Badge>
+                      </>
+                    )}
+                    description={(
+                      <div className="flex flex-wrap gap-x-4 gap-y-1">
+                        <span>{request.project.name}</span>
+                        <span>{request.projectVersion.name}</span>
+                        <span>{request.title}</span>
+                      </div>
+                    )}
+                    details={run.sourceBug ? <span>来源缺陷：{run.sourceBug.title}</span> : <span>常规提测执行</span>}
+                    actions={<span className="text-sm text-muted-foreground">{formatDate(run.startedAt)}</span>}
+                  />
+                ))}
+                <Pagination
+                  page={currentPage}
+                  total={filteredRows.length}
+                  pageSize={PAGE_SIZE}
+                  onChange={(nextPage) => updateQuery({ page: String(nextPage) })}
+                />
+              </div>
+            ) : (
+              <EmptyState
+                title={rows.length ? '没有匹配的执行记录' : '暂无执行记录'}
+                description={rows.length ? '调整搜索或筛选条件后重试。' : '提测范围就绪并开始执行后，轮次会显示在这里。'}
               />
-            ))}
-            <Pagination
-              page={currentPage}
-              total={filteredRows.length}
-              pageSize={PAGE_SIZE}
-              onChange={(nextPage) => updateQuery({ page: String(nextPage) })}
-            />
-          </div>
-        ) : (
-          <EmptyState
-            title={rows.length ? '没有匹配的执行记录' : '暂无执行记录'}
-            description={rows.length ? '调整搜索或筛选条件后重试。' : '提测范围就绪并开始执行后，轮次会显示在这里。'}
-          />
-        )}
+            )}
+          </CardContent>
+        </Card>
       </section>
     </>
   );

@@ -43,19 +43,21 @@ FlowX 是 AI 研发流程管理控制台，不是营销站点。界面需要让�
 
 `AppLayout` 负责左侧导航、主内容区和响应式壳层。页面最大宽度为 1440px，桌面内边距 32px，移动端 16px；窄屏导航可切换为顶部横向布局，复杂表格和 Diff 使用分层视图而不是强行压缩桌面布局。
 
-一级业务域包含三个及以上稳定工作区时，使用侧栏二级导航和独立 URL，不在内容区重复使用大尺寸 Tabs。二级导航在所属一级菜单激活时展开；窄屏下与一级菜单一起进入横向滚动，并保留 `aria-current="page"`。
+一级业务域包含三个及以上稳定工作区时，使用侧栏二级导航和独立 URL，不在内容区重复使用大尺寸 Tabs。二级导航在所属一级菜单激活时展开；父菜单只通过文字和图标强调表达分组上下文，块状背景和强调边只用于当前二级菜单，避免父子双重高亮。窄屏下与一级菜单一起进入横向滚动，并保留 `aria-current="page"`。
 
 ### 列表页
 
 ```text
-PageHeader（标题 + 唯一主 CTA）
+PageHeader（纯文本标题 + 唯一主 CTA，不使用装饰图标）
 Metrics（可选）
-ListToolbar（search + filters）
-RecordList
-Pagination（需要分页时）
+Card / Surface
+  SectionHeader
+  ListToolbar（search + filters）
+  RecordList
+  Pagination（需要分页时）
 ```
 
-搜索、筛选、排序和分页进入 URL。筛选控件使用稳定宽度，空间不足时自然换行；新增按钮放在 `PageHeader` 或 `SectionHeader.extra`，不与筛选条混在一起。列表必须覆盖加载、空数据、无匹配、错误和权限不足状态。
+标准列表页标题不放置装饰性图标；图标只用于工具按钮、状态反馈或确有识别价值的详情对象。`SectionHeader`、筛选、列表和分页必须放入同一个 `bg-card` 工作区，使其与中性页面画布形成清晰层级。搜索、筛选、排序和分页进入 URL。筛选控件使用稳定宽度，空间不足时自然换行；新增按钮放在 `PageHeader` 或 `SectionHeader.extra`，不与筛选条混在一起。列表必须覆盖加载、空数据、无匹配、错误和权限不足状态。
 
 ### 详情页与工作流页
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ClipboardCheck, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api';
 import { EmptyState } from '../../components/EmptyState';
@@ -10,6 +10,7 @@ import { RecordListItem } from '../../components/RecordListItem';
 import { SectionHeader } from '../../components/SectionHeader';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
+import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import {
   Select,
@@ -109,7 +110,6 @@ export function QualityRequestsPage() {
         eyebrow="测试与质量"
         title="提测管理"
         description="按项目版本追踪测试范围、执行进度和最终结论。"
-        icon={ClipboardCheck}
         actions={(
           <>
             <RefreshButton loading={refreshing} onClick={() => void refresh(true)} />
@@ -125,85 +125,90 @@ export function QualityRequestsPage() {
         <MetricCard label="已通过" value={passedCount} />
       </div>
 
-      <section className="space-y-4" aria-labelledby="test-request-list-title">
-        <SectionHeader
-          eyebrow="Test Requests"
-          title="提测记录"
-          description={`当前显示 ${filteredRequests.length} 条记录`}
-          className="border-b border-border pb-4"
-        />
-        <ListToolbar
-          search={(
-            <Input
-              aria-label="搜索提测记录"
-              placeholder="搜索标题、项目、版本或需求"
-              value={keyword}
-              onChange={(event) => updateQuery({ q: event.target.value || null, page: null })}
+      <section aria-label="提测记录">
+        <Card className="rounded-md border border-border bg-card">
+          <CardHeader className="pb-4">
+            <SectionHeader
+              eyebrow="Test Requests"
+              title="提测记录"
+              description={`当前显示 ${filteredRequests.length} 条记录`}
             />
-          )}
-          filters={(
-            <>
-              <Select value={projectId} onValueChange={(value) => updateQuery({ projectId: value, page: null })}>
-                <SelectTrigger className="w-full sm:w-[190px]" aria-label="按项目筛选">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>全部项目</SelectItem>
-                  {projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={status} onValueChange={(value) => updateQuery({ status: value, page: null })}>
-                <SelectTrigger className="w-full sm:w-[150px]" aria-label="按状态筛选">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>全部状态</SelectItem>
-                  {Object.entries(requestStatusLabels).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </>
-          )}
-        />
+          </CardHeader>
+          <CardContent className="p-5 pt-0">
+            <ListToolbar
+              search={(
+                <Input
+                  aria-label="搜索提测记录"
+                  placeholder="搜索标题、项目、版本或需求"
+                  value={keyword}
+                  onChange={(event) => updateQuery({ q: event.target.value || null, page: null })}
+                />
+              )}
+              filters={(
+                <>
+                  <Select value={projectId} onValueChange={(value) => updateQuery({ projectId: value, page: null })}>
+                    <SelectTrigger className="w-full sm:w-[190px]" aria-label="按项目筛选">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>全部项目</SelectItem>
+                      {projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={status} onValueChange={(value) => updateQuery({ status: value, page: null })}>
+                    <SelectTrigger className="w-full sm:w-[150px]" aria-label="按状态筛选">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>全部状态</SelectItem>
+                      {Object.entries(requestStatusLabels).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+            />
 
-        {loading ? <LoadingState /> : pageRows.length ? (
-          <div className="space-y-3">
-            {pageRows.map((request) => (
-              <RecordListItem
-                key={request.id}
-                title={request.title}
-                badges={(
-                  <>
-                    <Badge variant={statusBadgeVariant(request.status)}>{requestStatusLabels[request.status] ?? request.status}</Badge>
-                    <Badge variant="outline">{request.projectVersion.name}</Badge>
-                  </>
-                )}
-                description={(
-                  <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    <span>{request.project.name}</span>
-                    <span>{request.requirementLinks.length} 个需求</span>
-                    <span>{request.testPlan?.snapshots.length ?? 0} 个范围用例</span>
-                    <span>{request.testPlan?.runs.length ?? 0} 个执行轮次</span>
-                  </div>
-                )}
-                details={request.scopeSummary ? <span>{request.scopeSummary}</span> : <span>测试范围尚未生成完成</span>}
-                actions={<span className="text-sm text-muted-foreground">{formatDate(request.createdAt)}</span>}
+            {loading ? <LoadingState /> : pageRows.length ? (
+              <div className="space-y-3">
+                {pageRows.map((request) => (
+                  <RecordListItem
+                    key={request.id}
+                    title={request.title}
+                    badges={(
+                      <>
+                        <Badge variant={statusBadgeVariant(request.status)}>{requestStatusLabels[request.status] ?? request.status}</Badge>
+                        <Badge variant="outline">{request.projectVersion.name}</Badge>
+                      </>
+                    )}
+                    description={(
+                      <div className="flex flex-wrap gap-x-4 gap-y-1">
+                        <span>{request.project.name}</span>
+                        <span>{request.requirementLinks.length} 个需求</span>
+                        <span>{request.testPlan?.snapshots.length ?? 0} 个范围用例</span>
+                        <span>{request.testPlan?.runs.length ?? 0} 个执行轮次</span>
+                      </div>
+                    )}
+                    details={request.scopeSummary ? <span>{request.scopeSummary}</span> : <span>测试范围尚未生成完成</span>}
+                    actions={<span className="text-sm text-muted-foreground">{formatDate(request.createdAt)}</span>}
+                  />
+                ))}
+                <Pagination
+                  page={currentPage}
+                  total={filteredRequests.length}
+                  pageSize={PAGE_SIZE}
+                  onChange={(nextPage) => updateQuery({ page: String(nextPage) })}
+                />
+              </div>
+            ) : (
+              <EmptyState
+                title={requests.length ? '没有匹配的提测记录' : '暂无提测记录'}
+                description={requests.length ? '调整搜索或筛选条件后重试。' : '发起提测后，记录会显示在这里。'}
               />
-            ))}
-            <Pagination
-              page={currentPage}
-              total={filteredRequests.length}
-              pageSize={PAGE_SIZE}
-              onChange={(nextPage) => updateQuery({ page: String(nextPage) })}
-            />
-          </div>
-        ) : (
-          <EmptyState
-            title={requests.length ? '没有匹配的提测记录' : '暂无提测记录'}
-            description={requests.length ? '调整搜索或筛选条件后重试。' : '发起提测后，记录会显示在这里。'}
-          />
-        )}
+            )}
+          </CardContent>
+        </Card>
       </section>
 
       <CreateRequestDialog

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Library, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api';
 import { EmptyState } from '../../components/EmptyState';
@@ -10,6 +10,7 @@ import { RecordListItem } from '../../components/RecordListItem';
 import { SectionHeader } from '../../components/SectionHeader';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
+import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import {
   Select,
@@ -126,7 +127,6 @@ export function QualityCasesPage() {
         eyebrow="测试与质量"
         title="用例库"
         description="统一维护 Workspace 共享用例与项目专属用例。"
-        icon={Library}
         actions={(
           <>
             <RefreshButton loading={refreshing} onClick={() => void refreshList(true)} />
@@ -147,100 +147,105 @@ export function QualityCasesPage() {
         <MetricCard label="已关联覆盖对象" value={linkedCount} />
       </div>
 
-      <section className="space-y-4">
-        <SectionHeader
-          eyebrow="Test Cases"
-          title="测试用例"
-          description={`当前显示 ${filteredCases.length} 条用例`}
-          className="border-b border-border pb-4"
-        />
-        <ListToolbar
-          search={(
-            <Input
-              aria-label="搜索测试用例"
-              placeholder="搜索标题、预期结果、模块或标签"
-              value={keyword}
-              onChange={(event) => updateQuery({ q: event.target.value || null, page: null })}
+      <section aria-label="测试用例">
+        <Card className="rounded-md border border-border bg-card">
+          <CardHeader className="pb-4">
+            <SectionHeader
+              eyebrow="Test Cases"
+              title="测试用例"
+              description={`当前显示 ${filteredCases.length} 条用例`}
             />
-          )}
-          filters={(
-            <>
-              <Select
-                value={workspaceId || undefined}
-                onValueChange={(value) => updateQuery({ workspaceId: value, projectId: null, libraryId: null, page: null })}
-                disabled={metaLoading}
-              >
-                <SelectTrigger className="w-full sm:w-[180px]" aria-label="按工作区筛选">
-                  <SelectValue placeholder="选择工作区" />
-                </SelectTrigger>
-                <SelectContent>
-                  {workspaces.map((workspace) => <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={projectId} onValueChange={(value) => updateQuery({ projectId: value, libraryId: null, page: null })}>
-                <SelectTrigger className="w-full sm:w-[190px]" aria-label="按项目范围筛选">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={SHARED}>Workspace 共享库</SelectItem>
-                  {projectsInWorkspace.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={libraryId} onValueChange={(value) => updateQuery({ libraryId: value, page: null })}>
-                <SelectTrigger className="w-full sm:w-[180px]" aria-label="按用例库筛选">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>全部用例库</SelectItem>
-                  {libraries.map((library) => <SelectItem key={library.id} value={library.id}>{library.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </>
-          )}
-        />
+          </CardHeader>
+          <CardContent className="p-5 pt-0">
+            <ListToolbar
+              search={(
+                <Input
+                  aria-label="搜索测试用例"
+                  placeholder="搜索标题、预期结果、模块或标签"
+                  value={keyword}
+                  onChange={(event) => updateQuery({ q: event.target.value || null, page: null })}
+                />
+              )}
+              filters={(
+                <>
+                  <Select
+                    value={workspaceId || undefined}
+                    onValueChange={(value) => updateQuery({ workspaceId: value, projectId: null, libraryId: null, page: null })}
+                    disabled={metaLoading}
+                  >
+                    <SelectTrigger className="w-full sm:w-[180px]" aria-label="按工作区筛选">
+                      <SelectValue placeholder="选择工作区" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {workspaces.map((workspace) => <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={projectId} onValueChange={(value) => updateQuery({ projectId: value, libraryId: null, page: null })}>
+                    <SelectTrigger className="w-full sm:w-[190px]" aria-label="按项目范围筛选">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={SHARED}>Workspace 共享库</SelectItem>
+                      {projectsInWorkspace.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={libraryId} onValueChange={(value) => updateQuery({ libraryId: value, page: null })}>
+                    <SelectTrigger className="w-full sm:w-[180px]" aria-label="按用例库筛选">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>全部用例库</SelectItem>
+                      {libraries.map((library) => <SelectItem key={library.id} value={library.id}>{library.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+            />
 
-        {listLoading ? <LoadingState /> : pageRows.length ? (
-          <div className="space-y-3">
-            {pageRows.map((testCase) => (
-              <RecordListItem
-                key={testCase.id}
-                title={testCase.title}
-                badges={(
-                  <>
-                    <Badge variant={testCase.priority === 'P0' ? 'destructive' : 'outline'}>{testCase.priority}</Badge>
-                    <Badge variant="secondary">v{testCase.version}</Badge>
-                    <Badge variant="outline">{testCase.library?.scope === 'PROJECT' ? '项目用例' : '共享用例'}</Badge>
-                  </>
-                )}
-                description={(
-                  <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    <span>{testCase.library?.name ?? '用例库'}</span>
-                    {testCase.module?.name ? <span>模块：{testCase.module.name}</span> : null}
-                    <span>{testCase.steps.length} 个步骤</span>
-                    <span>{testCase.coverageLinks?.length ?? 0} 个覆盖关联</span>
-                  </div>
-                )}
-                details={<span><span className="text-foreground">预期：</span>{testCase.expected}</span>}
-                actions={testCase.tags?.length ? (
-                  <div className="flex max-w-72 flex-wrap justify-end gap-1.5 max-[1180px]:justify-start">
-                    {testCase.tags.slice(0, 3).map((tag) => <Badge key={tag} variant="secondary">{tag}</Badge>)}
-                  </div>
-                ) : null}
+            {listLoading ? <LoadingState /> : pageRows.length ? (
+              <div className="space-y-3">
+                {pageRows.map((testCase) => (
+                  <RecordListItem
+                    key={testCase.id}
+                    title={testCase.title}
+                    badges={(
+                      <>
+                        <Badge variant={testCase.priority === 'P0' ? 'destructive' : 'outline'}>{testCase.priority}</Badge>
+                        <Badge variant="secondary">v{testCase.version}</Badge>
+                        <Badge variant="outline">{testCase.library?.scope === 'PROJECT' ? '项目用例' : '共享用例'}</Badge>
+                      </>
+                    )}
+                    description={(
+                      <div className="flex flex-wrap gap-x-4 gap-y-1">
+                        <span>{testCase.library?.name ?? '用例库'}</span>
+                        {testCase.module?.name ? <span>模块：{testCase.module.name}</span> : null}
+                        <span>{testCase.steps.length} 个步骤</span>
+                        <span>{testCase.coverageLinks?.length ?? 0} 个覆盖关联</span>
+                      </div>
+                    )}
+                    details={<span><span className="text-foreground">预期：</span>{testCase.expected}</span>}
+                    actions={testCase.tags?.length ? (
+                      <div className="flex max-w-72 flex-wrap justify-end gap-1.5 max-[1180px]:justify-start">
+                        {testCase.tags.slice(0, 3).map((tag) => <Badge key={tag} variant="secondary">{tag}</Badge>)}
+                      </div>
+                    ) : null}
+                  />
+                ))}
+                <Pagination
+                  page={currentPage}
+                  total={filteredCases.length}
+                  pageSize={PAGE_SIZE}
+                  onChange={(nextPage) => updateQuery({ page: String(nextPage) })}
+                />
+              </div>
+            ) : (
+              <EmptyState
+                title={cases.length ? '没有匹配的测试用例' : '暂无测试用例'}
+                description={cases.length ? '调整搜索或筛选条件后重试。' : '先创建用例库，再录入测试用例。'}
               />
-            ))}
-            <Pagination
-              page={currentPage}
-              total={filteredCases.length}
-              pageSize={PAGE_SIZE}
-              onChange={(nextPage) => updateQuery({ page: String(nextPage) })}
-            />
-          </div>
-        ) : (
-          <EmptyState
-            title={cases.length ? '没有匹配的测试用例' : '暂无测试用例'}
-            description={cases.length ? '调整搜索或筛选条件后重试。' : '先创建用例库，再录入测试用例。'}
-          />
-        )}
+            )}
+          </CardContent>
+        </Card>
       </section>
 
       <CreateLibraryDialog

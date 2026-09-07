@@ -6,14 +6,14 @@
 | --- | --- | --- | --- |
 | App shell / sidebar | `apps/web/src/components/AppLayout.tsx` | 固定侧栏，窄屏横向导航，设置入口弹窗 | 缺少工作队列入口和任务计数；业务分组较弱 |
 | FlowXLogo | `apps/web/src/components/FlowXLogo.tsx` | 有品牌 lockup 和 icon 资源 | 品牌渐变属于例外，需要单独记录品牌规范 |
-| PageHeader | `apps/web/src/components/PageHeader.tsx` | 标题、说明、图标、操作 | 可继续作为统一页面头 |
+| PageHeader | `apps/web/src/components/PageHeader.tsx` | 标题、说明、可选图标、操作；标准列表页不传装饰图标 | 可继续作为统一页面头，详情对象是否使用图标需按语义判断 |
 | DetailHeader | `apps/web/src/components/DetailHeader.tsx` | 详情标题和操作 | 工作流需要扩展为 sticky ActionBar |
 
 ## Data display
 
 | 组件 | 路径 | 现状 | 缺口 |
 | --- | --- | --- | --- |
-| RecordListItem | `apps/web/src/components/RecordListItem.tsx` | 适合简单业务列表项 | 缺少列配置、密度、选择和分页配套 |
+| RecordListItem | `apps/web/src/components/RecordListItem.tsx` | 适合简单业务列表项；列表页由白色 `Card` surface 统一承载标题、筛选、记录和分页 | 缺少列配置、密度、选择和分页配套 |
 | MetricCard | `apps/web/src/components/MetricCard.tsx` | 展示少量统计 | 不应承担列表查询反馈 |
 | StatPill / Badge | `apps/web/src/components/StatPill.tsx`, `components/ui/badge.tsx` | 状态和统计表达 | 需要统一业务状态文案、颜色和 aria label |
 | EmptyState | `apps/web/src/components/EmptyState.tsx` | 空数据占位 | 需区分无数据、无匹配、错误和权限 |
