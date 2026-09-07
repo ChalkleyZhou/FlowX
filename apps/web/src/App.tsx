@@ -10,6 +10,7 @@ import { CodeReviewSourcesPage } from './pages/CodeReviewSourcesPage';
 import { CodeReviewsPage } from './pages/CodeReviewsPage';
 import { DeliveryTargetsPage } from './pages/DeliveryTargetsPage';
 import { IssuesPage } from './pages/IssuesPage';
+import { QualityPage } from './pages/QualityPage';
 import { IssueDetailPage } from './pages/IssueDetailPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
 import { ProjectsPage } from './pages/ProjectsPage';
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="/workflow-runs/:workflowRunId" element={<WorkflowRunDetailPage />} />
             <Route path="/issues" element={<IssuesPage />} />
             <Route path="/issues/:issueId" element={<IssueDetailPage />} />
+            <Route path="/quality" element={<QualityPage />} />
             <Route path="/bugs" element={<BugsPage />} />
             <Route path="/bugs/:bugId" element={<BugDetailPage />} />
             <Route path="/user-manual" element={<UserManualPage />} />

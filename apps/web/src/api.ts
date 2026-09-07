@@ -36,6 +36,10 @@ import type {
   Requirement,
   ReviewFinding,
   SpecPlanOutput,
+  TestCaseDefinition,
+  TestCaseLibrary,
+  TestRequest,
+  TestRun,
   WorkflowDesignArtifactPage,
   WorkflowDesignArtifactsList,
   WorkflowRun,
@@ -997,6 +1001,53 @@ export const api = {
         }, {}),
       ).toString()}`,
     ),
+  getTestCaseLibraries: (params: { workspaceId: string; projectId?: string }) =>
+    request<TestCaseLibrary[]>(`/quality/case-libraries${queryString(params)}`),
+  createTestCaseLibrary: (payload: { workspaceId: string; projectId?: string; name: string }) =>
+    request<TestCaseLibrary>('/quality/case-libraries', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  getTestCases: (params: {
+    workspaceId: string;
+    projectId?: string;
+    libraryId?: string;
+    moduleId?: string;
+  }) => request<TestCaseDefinition[]>(`/quality/test-cases${queryString(params)}`),
+  createTestCase: (
+    libraryId: string,
+    payload: {
+      title: string;
+      priority?: string;
+      precondition?: string;
+      steps: string[];
+      expected: string;
+      tags?: string[];
+    },
+  ) =>
+    request<TestCaseDefinition>(`/quality/case-libraries/${libraryId}/cases`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  getTestRequests: (params?: { projectId?: string; projectVersionId?: string; status?: string }) =>
+    request<TestRequest[]>(`/quality/test-requests${queryString(params)}`),
+  createTestRequest: (payload: {
+    workspaceId: string;
+    projectId: string;
+    projectVersionId: string;
+    title: string;
+    description?: string;
+    requirementIds: string[];
+    workflowRunIds: string[];
+    artifactIds?: string[];
+  }) =>
+    request<TestRequest>('/quality/test-requests', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  getTestRequest: (id: string) => request<TestRequest>(`/quality/test-requests/${id}`),
+  getTestRuns: (testRequestId: string) =>
+    request<TestRun[]>(`/quality/test-requests/${testRequestId}/runs`),
   createBug: (payload: {
     workspaceId: string;
     projectId?: string;

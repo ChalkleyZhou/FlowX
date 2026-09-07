@@ -138,6 +138,26 @@ describe('AppLayout', () => {
     expect(navigateSpy).not.toHaveBeenCalled();
   });
 
+  it('shows the test and quality center in primary navigation', async () => {
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/quality']}>
+          <ThemeProvider>
+            <AppLayout>
+              <div>content</div>
+            </AppLayout>
+          </ThemeProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    const qualityLink = Array.from(container.querySelectorAll('a')).find(
+      (link) => link.textContent?.trim() === '测试与质量',
+    );
+    expect(qualityLink?.getAttribute('href')).toBe('/quality');
+    expect(qualityLink?.className).toContain('bg-nav-active');
+  });
+
   it('logs out and navigates when user confirms', async () => {
     await act(async () => {
       root?.render(

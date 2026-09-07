@@ -587,6 +587,104 @@ export interface Bug {
   } | null;
 }
 
+export type TestRequestStatus =
+  | 'DRAFT'
+  | 'READY'
+  | 'IN_TEST'
+  | 'PASSED'
+  | 'FAILED'
+  | 'BLOCKED'
+  | 'CANCELLED';
+
+export interface TestCaseLibrary {
+  id: string;
+  workspaceId: string;
+  projectId?: string | null;
+  scope: 'WORKSPACE' | 'PROJECT';
+  name: string;
+  status: string;
+  _count?: { definitions: number; modules: number };
+}
+
+export interface TestCaseDefinition {
+  id: string;
+  libraryId: string;
+  moduleId?: string | null;
+  externalId?: string | null;
+  status: string;
+  version: number;
+  title: string;
+  priority: 'P0' | 'P1' | 'P2' | 'P3';
+  precondition?: string | null;
+  steps: string[];
+  expected: string;
+  tags?: string[] | null;
+  library?: TestCaseLibrary;
+  module?: { id: string; name: string } | null;
+  coverageLinks?: Array<{
+    id: string;
+    targetType: string;
+    targetKey: string;
+    source: string;
+    confidence?: number | null;
+  }>;
+}
+
+export interface TestCaseSnapshot {
+  id: string;
+  sourceDefinitionId?: string | null;
+  sourceVersion?: number | null;
+  title: string;
+  priority: string;
+  steps: string[];
+  expected: string;
+  selectedBy: string;
+  selectionReason?: string | null;
+  impactLevel?: string | null;
+}
+
+export interface TestRun {
+  id: string;
+  name: string;
+  runType: 'INITIAL' | 'REGRESSION';
+  status: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  sourceBug?: { id: string; title: string } | null;
+  cases?: Array<{
+    id: string;
+    snapshot: TestCaseSnapshot;
+    assignedToUser?: { id: string; displayName: string } | null;
+    result?: { id: string; result: string; actualResult?: string | null } | null;
+  }>;
+}
+
+export interface TestRequest {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  projectVersionId: string;
+  title: string;
+  description?: string | null;
+  status: TestRequestStatus;
+  scopeGenerationStatus: string;
+  scopeSummary?: string | null;
+  scopeRevision: number;
+  traceId: string;
+  createdAt: string;
+  project: { id: string; name: string };
+  projectVersion: { id: string; name: string };
+  requirementLinks: Array<{ requirement: { id: string; title: string } }>;
+  workflowLinks: Array<{ workflowRun: { id: string; status: string } }>;
+  artifactLinks: Array<{ artifact: { id: string; name?: string; type?: string } }>;
+  testPlan?: {
+    id: string;
+    status: string;
+    snapshots: TestCaseSnapshot[];
+    runs: TestRun[];
+  } | null;
+}
+
 export interface AuthOrganization {
   id: string;
   name: string;

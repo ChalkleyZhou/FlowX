@@ -148,6 +148,45 @@ describe('api helpers', () => {
     );
   });
 
+  it('calls quality endpoints with scoped query parameters and payloads', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.getTestCases({ workspaceId: 'workspace-1', projectId: 'project-1' });
+    await api.createTestRequest({
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      projectVersionId: 'version-1',
+      title: '2.6.0 提测',
+      requirementIds: ['requirement-1'],
+      workflowRunIds: ['workflow-1'],
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:3000/quality/test-cases?workspaceId=workspace-1&projectId=project-1',
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:3000/quality/test-requests',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          workspaceId: 'workspace-1',
+          projectId: 'project-1',
+          projectVersionId: 'version-1',
+          title: '2.6.0 提测',
+          requirementIds: ['requirement-1'],
+          workflowRunIds: ['workflow-1'],
+        }),
+      }),
+    );
+  });
+
   it('starts an OpenDesign handoff through the generic Edge API', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
