@@ -50,6 +50,54 @@ describe('CodexAiExecutor', () => {
     expect(out.brief.userStories).toHaveLength(3);
   });
 
+  it('includes PRD, design, Spec & Plan, existing cases and actual changes in test design prompts', async () => {
+    const executor = new CodexAiExecutor();
+    const runJsonStage = vi
+      .spyOn(executor as unknown as { runJsonStage: (...args: unknown[]) => Promise<unknown> }, 'runJsonStage')
+      .mockResolvedValue({
+        sourceSummary: {},
+        coverageSummary: {},
+        candidates: [],
+        smokeCases: [],
+        uncoveredItems: [],
+      });
+
+    await executor.generateTestDesign({
+      requirement: {
+        id: 'requirement-1',
+        title: '登录改造',
+        description: '支持新的登录流程',
+        acceptanceCriteria: '登录成功后进入首页',
+      },
+      brainstormContext: { marker: 'prd-context' },
+      designContext: { marker: 'design-context' },
+      specPlan: {
+        spec: { goal: 'spec-context', scope: [], nonGoals: [], acceptanceCriteria: [], constraints: [] },
+        plan: { approach: 'plan-context', touchpoints: [], sequence: [], risks: [], verification: [] },
+        notes: { checklist: [], openQuestions: [] },
+      },
+      existingCases: [{
+        id: 'case-1',
+        version: 1,
+        title: 'existing-case-context',
+        priority: 'P1',
+        steps: ['登录'],
+        expected: '成功',
+        libraryScope: 'PROJECT',
+        libraryProjectId: 'project-1',
+        libraryName: '项目回归库',
+      }],
+      changeSummary: 'actual-change-context',
+    });
+
+    const [, prompt] = runJsonStage.mock.calls[0]!;
+    expect(prompt).toEqual(expect.stringContaining('prd-context'));
+    expect(prompt).toEqual(expect.stringContaining('design-context'));
+    expect(prompt).toEqual(expect.stringContaining('spec-context'));
+    expect(prompt).toEqual(expect.stringContaining('existing-case-context'));
+    expect(prompt).toEqual(expect.stringContaining('actual-change-context'));
+  });
+
   const tempDirs: string[] = [];
 
   afterEach(async () => {

@@ -6,11 +6,14 @@ import { TestRequestsController } from './test-requests.controller';
 import { TestRequestsService } from './test-requests.service';
 import { TestRunsController } from './test-runs.controller';
 import { TestRunsService } from './test-runs.service';
+import { TestDesignsController } from './test-designs.controller';
+import { TestDesignsService } from './test-designs.service';
+import { AiModule } from '../ai/ai.module';
 
 @Module({
-  imports: [PrismaModule],
-  controllers: [CaseLibrariesController, TestRequestsController, TestRunsController],
-  providers: [CaseLibrariesService, TestRequestsService, TestRunsService],
-  exports: [CaseLibrariesService, TestRequestsService, TestRunsService],
+  imports: [PrismaModule, AiModule],
+  controllers: [CaseLibrariesController, TestRequestsController, TestRunsController, TestDesignsController],
+  providers: [CaseLibrariesService, TestRequestsService, TestRunsService, TestDesignsService],
+  exports: [CaseLibrariesService, TestRequestsService, TestRunsService, TestDesignsService],
 })
 export class QualityModule {}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api';
 import {
   Dialog,
@@ -19,7 +19,7 @@ import {
 } from '../../components/ui/select';
 import { Textarea } from '../../components/ui/textarea';
 import { useToast } from '../../components/ui/toast';
-import type { Project, TestCaseLibrary, TestCaseModule, WorkflowRun } from '../../types';
+import type { Project, TestCaseLibrary, TestCaseModule, TestDesign, WorkflowRun } from '../../types';
 import { Field } from './quality-ui';
 
 const NO_MODULE = '__none__';
@@ -43,6 +43,8 @@ export function CreateRequestDialog({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
+  const [testDesigns, setTestDesigns] = useState<TestDesign[]>([]);
+  const [testDesignId, setTestDesignId] = useState('');
   const [saving, setSaving] = useState(false);
   const project = projects.find((item) => item.id === projectId);
   const eligibleRuns = workflowRuns.filter(
@@ -51,10 +53,38 @@ export function CreateRequestDialog({
       run.requirement.project.id === projectId &&
       run.requirement.versionId === versionId,
   );
+  const compatibleTestDesigns = useMemo(
+    () => testDesigns.filter((design) => (
+      !design.testRequest
+      && selectedRunIds.every((runId) => design.workflowRuns?.some((link) => link.workflowRun.id === runId))
+    )),
+    [testDesigns, selectedRunIds],
+  );
+
+  useEffect(() => {
+    if (!open || !projectId || !versionId) {
+      setTestDesigns([]);
+      setTestDesignId('');
+      return;
+    }
+    void api.getTestDesigns({ projectId, projectVersionId: versionId, status: 'CONFIRMED' })
+      .then((items) => {
+        setTestDesigns(items);
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : '加载测试设计失败'));
+  }, [open, projectId, versionId]);
+
+  useEffect(() => {
+    setTestDesignId((current) => (
+      compatibleTestDesigns.some((item) => item.id === current)
+        ? current
+        : compatibleTestDesigns[0]?.id ?? ''
+    ));
+  }, [compatibleTestDesigns]);
 
   async function submit() {
-    if (!project || !versionId || !title.trim() || !selectedRunIds.length) {
-      toast.error('请选择项目版本、提测工作流并填写标题');
+    if (!project || !versionId || !title.trim() || !selectedRunIds.length || !testDesignId) {
+      toast.error('请选择项目版本、已确认测试设计、提测工作流并填写标题');
       return;
     }
     const selectedRuns = eligibleRuns.filter((run) => selectedRunIds.includes(run.id));
@@ -69,6 +99,7 @@ export function CreateRequestDialog({
         description: description.trim() || undefined,
         requirementIds,
         workflowRunIds: selectedRunIds,
+        testDesignId,
       });
       setTitle('');
       setDescription('');
@@ -98,6 +129,7 @@ export function CreateRequestDialog({
                   setProjectId(value);
                   setVersionId('');
                   setSelectedRunIds([]);
+                  setTestDesignId('');
                 }}
               >
                 <SelectTrigger aria-label="项目"><SelectValue placeholder="选择项目" /></SelectTrigger>
@@ -112,6 +144,7 @@ export function CreateRequestDialog({
                 onValueChange={(value) => {
                   setVersionId(value);
                   setSelectedRunIds([]);
+                  setTestDesignId('');
                 }}
                 disabled={!project}
               >
@@ -124,6 +157,15 @@ export function CreateRequestDialog({
           </div>
           <Field label="提测标题">
             <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：2.6.0 登录能力提测" />
+          </Field>
+          <Field label="已确认测试设计">
+            <Select value={testDesignId} onValueChange={setTestDesignId} disabled={!versionId || !compatibleTestDesigns.length}>
+              <SelectTrigger aria-label="已确认测试设计"><SelectValue placeholder="选择测试设计" /></SelectTrigger>
+              <SelectContent>
+                {compatibleTestDesigns.map((item) => <SelectItem key={item.id} value={item.id}>第 {item.revision} 版 · {item.candidates.length} 条功能用例 / {item.smokeCases.length} 条冒烟</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {versionId && !compatibleTestDesigns.length ? <p className="mt-1 text-xs text-muted-foreground">当前所选工作流暂无可用的已确认测试设计，请先从工作流详情创建并确认。</p> : null}
           </Field>
           <Field label="说明（可选）">
             <Textarea rows={2} value={description} onChange={(event) => setDescription(event.target.value)} />

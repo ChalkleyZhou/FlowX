@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AddTestScopeCasesDto, CompleteTestScopeDto, CreateTestRequestDto } from './dto/test-request.dto';
 import { TestRequestStatus, assertTestRequestTransition } from './quality-status';
+import { TestDesignsService } from './test-designs.service';
 
 const requestInclude = {
   project: true,
@@ -21,7 +22,10 @@ const requestInclude = {
 
 @Injectable()
 export class TestRequestsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly testDesigns: TestDesignsService,
+  ) {}
 
   async createRequest(dto: CreateTestRequestDto, userId?: string) {
     const requirementIds = unique(dto.requirementIds);
@@ -74,6 +78,17 @@ export class TestRequestsService {
       throw new BadRequestException('All linked development workflows must be completed before testing.');
     }
 
+    if (!dto.testDesignId) {
+      throw new BadRequestException({ code: 'TEST_REQUEST_DESIGN_REQUIRED', message: 'A confirmed test design is required before submitting for test.' });
+    }
+    const testDesign = await this.testDesigns.assertReadyForRequest(dto.testDesignId);
+    if (testDesign.workspaceId !== dto.workspaceId || testDesign.projectId !== dto.projectId || testDesign.projectVersionId !== dto.projectVersionId) {
+      throw new BadRequestException({ code: 'TEST_REQUEST_DESIGN_REQUIRED', message: 'Test design does not belong to the selected project scope.' });
+    }
+    if (requirementIds.some((id) => !testDesign.requirements.some((link) => link.requirementId === id)) || workflowRunIds.some((id) => !testDesign.workflowRuns.some((link) => link.workflowRunId === id))) {
+      throw new BadRequestException({ code: 'TEST_REQUEST_DESIGN_REQUIRED', message: 'Test design does not cover all selected requirements and workflows.' });
+    }
+
     if (artifactIds.length) {
       const artifacts = await this.prisma.artifact.findMany({
         where: {
@@ -89,23 +104,75 @@ export class TestRequestsService {
       }
     }
 
-    return this.prisma.testRequest.create({
-      data: {
-        workspaceId: dto.workspaceId,
-        projectId: dto.projectId,
-        projectVersionId: dto.projectVersionId,
-        title: dto.title.trim(),
-        description: dto.description?.trim() || null,
-        traceId: randomUUID(),
-        createdByUserId: userId ?? null,
-        requirementLinks: { create: requirementIds.map((requirementId) => ({ requirementId })) },
-        workflowLinks: { create: workflowRunIds.map((workflowRunId) => ({ workflowRunId })) },
-        artifactLinks: artifactIds.length
-          ? { create: artifactIds.map((artifactId) => ({ artifactId })) }
-          : undefined,
-      },
-      include: requestInclude,
+    const requestId = await this.prisma.$transaction(async (tx) => {
+      const createdRequest = await tx.testRequest.create({
+        data: {
+          workspaceId: dto.workspaceId,
+          projectId: dto.projectId,
+          projectVersionId: dto.projectVersionId,
+          testDesignId: testDesign.id,
+          title: dto.title.trim(),
+          description: dto.description?.trim() || null,
+          traceId: randomUUID(),
+          createdByUserId: userId ?? null,
+          requirementLinks: { create: requirementIds.map((requirementId) => ({ requirementId })) },
+          workflowLinks: { create: workflowRunIds.map((workflowRunId) => ({ workflowRunId })) },
+          artifactLinks: artifactIds.length
+            ? { create: artifactIds.map((artifactId) => ({ artifactId })) }
+            : undefined,
+        },
+        select: { id: true },
+      });
+      const plan = await tx.testPlan.create({
+        data: {
+          testRequestId: createdRequest.id,
+          testDesignId: testDesign.id,
+          snapshots: {
+            create: [
+              ...testDesign.candidates
+                .filter((candidate) => candidate.resolution === 'ACCEPTED' && candidate.action !== 'EXCLUDE')
+                .map((candidate) => {
+                  const proposed = asCaseRecord(candidate.proposedCase);
+                  return {
+                    sourceDefinitionId: candidate.sourceDefinitionId,
+                    sourceVersion: candidate.sourceVersion,
+                    title: proposed.title,
+                    priority: proposed.priority,
+                    precondition: proposed.precondition,
+                    steps: proposed.steps as Prisma.InputJsonValue,
+                    expected: proposed.expected,
+                    metadata: { kind: 'FUNCTIONAL', origin: candidate.action === 'CREATE' ? 'GENERATED' : 'LIBRARY', selectionReason: candidate.matchReason },
+                    selectedBy: 'AI',
+                    selectionReason: candidate.matchReason,
+                    impactLevel: 'HIGH',
+                    kind: 'FUNCTIONAL',
+                    origin: candidate.action === 'CREATE' ? 'GENERATED' : 'LIBRARY',
+                  };
+                }),
+              ...testDesign.smokeCases
+                .filter((smoke) => smoke.resolution === 'ACCEPTED')
+                .map((smoke) => ({
+                  sourceDefinitionId: null,
+                  sourceVersion: null,
+                  title: smoke.title,
+                  priority: smoke.priority,
+                  precondition: smoke.precondition,
+                  steps: smoke.steps as Prisma.InputJsonValue,
+                  expected: smoke.expected,
+                  metadata: { coverageKeys: smoke.coverageKeys },
+                  selectedBy: 'AI',
+                  selectionReason: '本次改动动态生成的冒烟用例',
+                  impactLevel: 'CRITICAL',
+                  kind: 'SMOKE',
+                  origin: 'GENERATED',
+                })),
+            ],
+          },
+        },
+      });
+      return createdRequest.id;
     });
+    return this.getRequest(requestId);
   }
 
   listRequests(filters: { projectId?: string; projectVersionId?: string; status?: string }) {
@@ -163,7 +230,7 @@ export class TestRequestsService {
       const plan = await tx.testPlan.upsert({
         where: { testRequestId: id },
         update: {},
-        create: { testRequestId: id, createdByUserId: userId ?? null },
+        create: { testRequestId: id, testDesignId: request.testDesignId ?? null, createdByUserId: userId ?? null },
       });
       const selectionByCase = new Map(selections.map((selection) => [selection.caseId, selection]));
       await Promise.all(
@@ -261,4 +328,21 @@ function dedupeSelections<T extends { caseId: string }>(selections: T[]): T[] {
     byCaseId.set(selection.caseId, selection);
   }
   return [...byCaseId.values()];
+}
+
+function asCaseRecord(value: Prisma.JsonValue): {
+  title: string;
+  priority: string;
+  precondition: string | null;
+  steps: string[];
+  expected: string;
+} {
+  const item = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, Prisma.JsonValue> : {};
+  return {
+    title: typeof item.title === 'string' ? item.title : '未命名测试用例',
+    priority: typeof item.priority === 'string' ? item.priority : 'P2',
+    precondition: typeof item.precondition === 'string' ? item.precondition : null,
+    steps: Array.isArray(item.steps) ? item.steps.filter((step): step is string => typeof step === 'string') : [],
+    expected: typeof item.expected === 'string' ? item.expected : '结果符合预期',
+  };
 }

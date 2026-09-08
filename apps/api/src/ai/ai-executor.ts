@@ -7,11 +7,13 @@ import {
   GenerateDesignOptions,
   GenerateDesignOutput,
   GenerateSpecPlanInput,
+  GenerateTestDesignInput,
   ReviewCodeInput,
   ReviewCodeOutput,
   ReviewDailyChangesInput,
   DailyCodeReviewUnitOutput,
   SpecPlanOutput,
+  TestDesignGenerationOutput,
 } from '../common/types';
 
 export const AI_EXECUTOR = Symbol('AI_EXECUTOR');
@@ -41,6 +43,10 @@ export interface AIExecutor {
     input: GenerateSpecPlanInput,
     context?: AIInvocationContext,
   ): Promise<SpecPlanOutput>;
+  generateTestDesign(
+    input: GenerateTestDesignInput,
+    context?: AIInvocationContext,
+  ): Promise<TestDesignGenerationOutput>;
   executeTask(input: ExecuteTaskInput, context?: AIInvocationContext): Promise<ExecuteTaskOutput>;
   reviewCode(input: ReviewCodeInput, context?: AIInvocationContext): Promise<ReviewCodeOutput>;
   reviewDailyChanges(

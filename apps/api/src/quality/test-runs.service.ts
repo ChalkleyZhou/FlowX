@@ -22,9 +22,10 @@ export class TestRunsService {
     }
 
     const cases = dedupeRunCases(dto.cases);
+    const runType = dto.runType ?? (dto.sourceBugId ? 'REGRESSION' : 'INITIAL');
     const snapshots = await this.prisma.testCaseSnapshot.findMany({
       where: { id: { in: cases.map((item) => item.snapshotId) }, testPlanId: request.testPlan.id },
-      select: { id: true },
+      select: { id: true, kind: true },
     });
     if (snapshots.length !== cases.length) {
       throw new BadRequestException('Some snapshots do not belong to the selected test plan.');
@@ -46,7 +47,9 @@ export class TestRunsService {
       }
     }
 
-    const runType = dto.runType ?? (dto.sourceBugId ? 'REGRESSION' : 'INITIAL');
+    if (runType === 'SMOKE' && snapshots.some((snapshot) => snapshot.kind !== 'SMOKE')) {
+      throw new BadRequestException('Smoke runs can only include smoke snapshots.');
+    }
     if (runType === 'REGRESSION' && !dto.sourceBugId) {
       throw new BadRequestException('Regression runs require sourceBugId.');
     }

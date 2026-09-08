@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sourceSummary", "coverageSummary", "candidates", "smokeCases", "uncoveredItems"],
+  "properties": {
+    "sourceSummary": { "type": "object" },
+    "coverageSummary": { "type": "object" },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["action", "coverageKeys", "proposedCase"],
+        "properties": {
+          "action": { "enum": ["REUSE", "OPTIMIZE", "CREATE", "EXCLUDE"] },
+          "sourceDefinitionId": { "type": ["string", "null"] },
+          "sourceVersion": { "type": ["integer", "null"] },
+          "matchScore": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+          "matchReason": { "type": ["string", "null"] },
+          "coverageKeys": { "type": "array", "items": { "type": "string" } },
+          "proposedCase": { "$ref": "#/definitions/case" }
+        }
+      }
+    },
+    "smokeCases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "priority", "steps", "expected", "blocking", "coverageKeys"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1 },
+          "priority": { "type": "string" },
+          "precondition": { "type": ["string", "null"] },
+          "steps": { "type": "array", "items": { "type": "string" } },
+          "expected": { "type": "string", "minLength": 1 },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "blocking": { "type": "boolean" },
+          "coverageKeys": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "uncoveredItems": { "type": "array", "items": { "type": "string" } }
+  },
+  "definitions": {
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "priority", "steps", "expected"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "priority": { "type": "string" },
+        "precondition": { "type": ["string", "null"] },
+        "steps": { "type": "array", "items": { "type": "string" } },
+        "expected": { "type": "string", "minLength": 1 },
+        "tags": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

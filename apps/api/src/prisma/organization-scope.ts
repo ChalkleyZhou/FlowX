@@ -84,6 +84,19 @@ const scopeFactories: Record<string, (organizationId: string) => Record<string, 
   TestCaseCoverageLink: (organizationId) => ({
     testCaseDefinition: { library: { workspace: workspaceScope(organizationId) } },
   }),
+  TestDesign: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
+  TestDesignRequirement: (organizationId) => ({
+    testDesign: { workspace: workspaceScope(organizationId) },
+  }),
+  TestDesignWorkflowRun: (organizationId) => ({
+    testDesign: { workspace: workspaceScope(organizationId) },
+  }),
+  TestDesignCandidate: (organizationId) => ({
+    testDesign: { workspace: workspaceScope(organizationId) },
+  }),
+  TestDesignSmokeCase: (organizationId) => ({
+    testDesign: { workspace: workspaceScope(organizationId) },
+  }),
   TestRequest: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
   TestRequestRequirement: (organizationId) => ({
     testRequest: { workspace: workspaceScope(organizationId) },

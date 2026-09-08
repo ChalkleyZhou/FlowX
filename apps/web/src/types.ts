@@ -672,12 +672,14 @@ export interface TestCaseSnapshot {
   selectedBy: string;
   selectionReason?: string | null;
   impactLevel?: string | null;
+  kind?: 'FUNCTIONAL' | 'SMOKE';
+  origin?: 'LIBRARY' | 'GENERATED';
 }
 
 export interface TestRun {
   id: string;
   name: string;
-  runType: 'INITIAL' | 'REGRESSION';
+  runType: 'INITIAL' | 'SMOKE' | 'REGRESSION';
   status: string;
   startedAt?: string | null;
   completedAt?: string | null;
@@ -697,6 +699,7 @@ export interface TestRequest {
   projectVersionId: string;
   title: string;
   description?: string | null;
+  testDesignId?: string | null;
   status: TestRequestStatus;
   scopeGenerationStatus: string;
   scopeSummary?: string | null;
@@ -714,6 +717,72 @@ export interface TestRequest {
     snapshots: TestCaseSnapshot[];
     runs: TestRun[];
   } | null;
+}
+
+export type TestDesignStatus =
+  | 'NOT_STARTED'
+  | 'GENERATING'
+  | 'WAITING_REVIEW'
+  | 'WAITING_CONFIRMATION'
+  | 'CONFIRMED'
+  | 'STALE'
+  | 'GENERATION_FAILED';
+
+export interface TestDesignCandidate {
+  id: string;
+  action: 'REUSE' | 'OPTIMIZE' | 'CREATE' | 'EXCLUDE';
+  resolution: 'PENDING' | 'ACCEPTED' | 'REJECTED';
+  sourceDefinitionId?: string | null;
+  sourceVersion?: number | null;
+  matchScore?: number | null;
+  matchReason?: string | null;
+  coverageKeys: string[];
+  proposedCase: {
+    title: string;
+    priority: string;
+    precondition?: string | null;
+    steps: string[];
+    expected: string;
+    tags?: string[];
+  };
+  sourceDefinition?: (TestCaseDefinition & { library: TestCaseLibrary }) | null;
+  decisionNote?: string | null;
+}
+
+export interface TestDesignSmokeCase {
+  id: string;
+  title: string;
+  priority: string;
+  precondition?: string | null;
+  steps: string[];
+  expected: string;
+  blocking: boolean;
+  coverageKeys: string[];
+  resolution: 'PENDING' | 'ACCEPTED' | 'REJECTED';
+}
+
+export interface TestDesign {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  projectVersionId: string;
+  status: TestDesignStatus;
+  revision: number;
+  sourceFingerprint: string;
+  sourceSummary: Record<string, unknown>;
+  coverageSummary?: Record<string, unknown> | null;
+  coverageChecks?: Array<{ key: string; passed: boolean; detail?: string }> | null;
+  uncoveredItems?: string[] | null;
+  noCaseReason?: string | null;
+  noSmokeReason?: string | null;
+  staleReason?: string | null;
+  confirmedByUserId?: string | null;
+  confirmedAt?: string | null;
+  candidates: TestDesignCandidate[];
+  smokeCases: TestDesignSmokeCase[];
+  testRequest?: { id: string; title: string } | null;
+  requirements?: Array<{ requirement: { id: string; title: string } }>;
+  workflowRuns?: Array<{ workflowRun: { id: string; status: string } }>;
 }
 
 export interface AuthOrganization {

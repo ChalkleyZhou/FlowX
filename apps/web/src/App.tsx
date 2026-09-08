@@ -13,6 +13,7 @@ import { IssuesPage } from './pages/IssuesPage';
 import { QualityCasesPage } from './pages/quality/QualityCasesPage';
 import { QualityRequestsPage } from './pages/quality/QualityRequestsPage';
 import { QualityRunsPage } from './pages/quality/QualityRunsPage';
+import { QualityTestDesignPage } from './pages/quality/QualityTestDesignPage';
 import { IssueDetailPage } from './pages/IssueDetailPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
 import { ProjectsPage } from './pages/ProjectsPage';
@@ -67,6 +68,7 @@ export default function App() {
             <Route path="/issues/:issueId" element={<IssueDetailPage />} />
             <Route path="/quality" element={<Navigate to="/quality/test-requests" replace />} />
             <Route path="/quality/test-requests" element={<QualityRequestsPage />} />
+            <Route path="/quality/test-designs/:id" element={<QualityTestDesignPage />} />
             <Route path="/quality/test-cases" element={<QualityCasesPage />} />
             <Route path="/quality/test-runs" element={<QualityRunsPage />} />
             <Route path="/bugs" element={<BugsPage />} />

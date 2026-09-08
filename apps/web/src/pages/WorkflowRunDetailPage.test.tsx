@@ -48,6 +48,7 @@ vi.mock('../api', () => ({
     getOpenDesignHandoff: vi.fn(),
     getOpenDesignBrainstormHandoff: vi.fn(),
     rollbackWorkflowToPreviousStage: vi.fn(),
+    createTestDesign: vi.fn(),
   },
   getFlowxApiBaseUrl: () => 'http://127.0.0.1:3000',
 }));
@@ -106,6 +107,7 @@ describe('WorkflowRunDetailPage', () => {
       aiProvider: 'codex',
       requirement: {
         id: 'req-1',
+        versionId: 'version-1',
         title: '修复登录流程',
         description: '用户登录偶发失败，需要补齐错误提示与重试能力。',
         acceptanceCriteria: '登录失败时展示明确原因，并记录审计日志。',
@@ -160,6 +162,7 @@ describe('WorkflowRunDetailPage', () => {
           <ConfirmProvider>
             <Routes>
               <Route path="/workflow-runs/:workflowRunId" element={<WorkflowRunDetailPage />} />
+              <Route path="/quality/test-designs/:id" element={<div>测试设计详情</div>} />
             </Routes>
           </ConfirmProvider>
         </MemoryRouter>,
@@ -794,6 +797,75 @@ describe('WorkflowRunDetailPage', () => {
     });
 
     expect(api.manualEditSpecPlan).toHaveBeenCalledWith('workflow-1', editedOutput);
+  });
+
+  it('creates a test design after Spec & Plan is completed', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({
+      status: 'EXECUTION_PENDING',
+      stageExecutions: [
+        {
+          id: 'stage-brainstorm',
+          stage: 'BRAINSTORM',
+          status: 'COMPLETED',
+          statusMessage: null,
+          attempt: 1,
+          output: { brief: {} },
+        },
+        {
+          id: 'stage-design',
+          stage: 'DESIGN',
+          status: 'COMPLETED',
+          statusMessage: null,
+          attempt: 1,
+          output: { design: {} },
+        },
+        {
+          id: 'stage-1',
+          stage: 'SPEC_PLAN',
+          status: 'COMPLETED',
+          statusMessage: null,
+          attempt: 1,
+          output: sampleSpecPlanOutput,
+        },
+        {
+          id: 'stage-2',
+          stage: 'EXECUTION',
+          status: 'PENDING',
+          statusMessage: null,
+          attempt: 1,
+          output: null,
+        },
+      ],
+    }));
+    vi.mocked(api.createTestDesign).mockResolvedValue({ id: 'test-design-1' } as never);
+
+    await renderPage();
+
+    const specPlanStep = Array.from(container.querySelectorAll('.workflow-steps button')).find((button) =>
+      button.textContent?.includes('Spec & Plan'),
+    );
+    await act(async () => {
+      specPlanStep?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+    const testDesignButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.trim() === '测试设计',
+    );
+    expect(testDesignButton).toBeTruthy();
+    expect(testDesignButton?.disabled).toBe(false);
+
+    await act(async () => {
+      testDesignButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(api.createTestDesign).toHaveBeenCalledWith({
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      projectVersionId: 'version-1',
+      requirementIds: ['req-1'],
+      workflowRunIds: ['workflow-1'],
+    });
   });
 
   it('confirms Spec & Plan and unlocks execution actions', async () => {

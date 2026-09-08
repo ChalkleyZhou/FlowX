@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../api';
 import { EmptyState } from '../../components/EmptyState';
 import { ListToolbar } from '../../components/ListToolbar';
@@ -191,7 +191,12 @@ export function QualityRequestsPage() {
                       </div>
                     )}
                     details={request.scopeSummary ? <span>{request.scopeSummary}</span> : <span>测试范围尚未生成完成</span>}
-                    actions={<span className="text-sm text-muted-foreground">{formatDate(request.createdAt)}</span>}
+                    actions={(
+                      <div className="flex items-center gap-3 text-sm">
+                        {request.testDesignId ? <Link className="text-primary hover:underline" to={`/quality/test-designs/${request.testDesignId}`}>测试设计</Link> : null}
+                        <span className="text-muted-foreground">{formatDate(request.createdAt)}</span>
+                      </div>
+                    )}
                   />
                 ))}
                 <Pagination

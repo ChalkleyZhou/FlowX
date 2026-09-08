@@ -28,7 +28,7 @@ export class CreateTestRunDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(['INITIAL', 'REGRESSION'])
+  @IsIn(['INITIAL', 'SMOKE', 'REGRESSION'])
   runType?: string;
 
   @IsOptional()

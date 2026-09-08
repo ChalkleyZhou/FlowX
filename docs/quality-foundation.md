@@ -52,7 +52,7 @@ AI 负责生成和解释测试范围，确定性规则负责从 `DRAFT` 进入 `
 
 创建 `REGRESSION` 类型的 `TestRun` 时必须关联 `sourceBugId`。Bug 必须属于当前项目，且对应的 `fixWorkflowRun` 已完成。每次修复生成新的执行轮次，不覆盖之前结果。
 
-首版仍由上游 AI 分析服务提交选中的用例、选择理由和影响等级；后续在此契约上接入 Diff、覆盖关系和历史失败数据分析。
+测试设计在 Spec & Plan 确认后可与开发执行并行生成。AI 会同时比对项目库和 Workspace 共享库，输出复用、优化、新增和不纳入候选；测试人员确认后才更新正式用例。冒烟用例按本次改动动态生成，只写入当前测试计划快照，不进入长期用例库。提测前必须存在已确认且未过期的测试设计，历史快照保持不变。
 
 ## API
 
@@ -77,6 +77,12 @@ AI 负责生成和解释测试范围，确定性规则负责从 `DRAFT` 进入 `
 | `GET` | `/quality/test-requests/:id/runs` | 查询执行轮次和逐例结果 |
 | `POST` | `/quality/test-requests/:id/runs` | 创建初测或 Bug 回归轮次 |
 | `POST` | `/quality/test-run-cases/:id/result` | 写入单条用例结果并聚合轮次状态 |
+| `POST` | `/quality/test-designs` | 创建测试设计草稿 |
+| `GET` | `/quality/test-designs/:id` | 查询测试设计、候选和冒烟项 |
+| `POST` | `/quality/test-designs/:id/generate` | 生成或重新生成候选 |
+| `PATCH` | `/quality/test-designs/:id/candidates/:candidateId` | 处理功能用例候选 |
+| `PATCH` | `/quality/test-designs/:id/smoke` | 编辑和确认冒烟候选 |
+| `POST` | `/quality/test-designs/:id/confirm` | 确认测试设计 |
 
 所有对象沿 Workspace 继承当前组织边界。API 不允许跨 Workspace 关联项目，也不允许从其他项目用例库选择用例。
 

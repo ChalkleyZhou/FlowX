@@ -5,7 +5,7 @@ import { TestRequestsService } from './test-requests.service';
 function createService() {
   const transaction = {
     testRequest: { create: vi.fn(), update: vi.fn() },
-    testPlan: { upsert: vi.fn(), update: vi.fn() },
+    testPlan: { upsert: vi.fn(), update: vi.fn(), create: vi.fn() },
     testCaseSnapshot: { upsert: vi.fn() },
   };
   const prisma = {
@@ -14,12 +14,14 @@ function createService() {
     requirement: { findMany: vi.fn() },
     workflowRun: { findMany: vi.fn() },
     artifact: { findMany: vi.fn() },
-    testRequest: { findUnique: vi.fn(), update: vi.fn() },
+    testRequest: { findUnique: vi.fn(), update: vi.fn(), create: vi.fn() },
     testCaseDefinition: { findMany: vi.fn() },
+    testDesign: { findUnique: vi.fn() },
     testPlan: { update: vi.fn() },
     $transaction: vi.fn(async (callback: (tx: typeof transaction) => unknown) => callback(transaction)),
   };
-  return { service: new TestRequestsService(prisma as never), prisma, transaction };
+  const testDesigns = { assertReadyForRequest: vi.fn() };
+  return { service: new TestRequestsService(prisma as never, testDesigns as never), prisma, transaction, testDesigns };
 }
 
 const requestInput = {
@@ -56,6 +58,68 @@ describe('TestRequestsService', () => {
     await expect(service.createRequest(requestInput, 'user-1')).rejects.toBeInstanceOf(
       BadRequestException,
     );
+  });
+
+  it('requires a confirmed test design before creating a request', async () => {
+    const { service, prisma } = createService();
+    prisma.project.findFirst.mockResolvedValue({ id: 'project-1' });
+    prisma.projectVersion.findFirst.mockResolvedValue({ id: 'version-1' });
+    prisma.requirement.findMany.mockResolvedValue([{ id: 'requirement-1' }]);
+    prisma.workflowRun.findMany.mockResolvedValue([{ id: 'workflow-1', status: 'DONE', requirementId: 'requirement-1' }]);
+
+    await expect(service.createRequest(requestInput, 'user-1')).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('freezes confirmed functional and smoke design cases when creating a request', async () => {
+    const { service, prisma, transaction, testDesigns } = createService();
+    prisma.project.findFirst.mockResolvedValue({ id: 'project-1' });
+    prisma.projectVersion.findFirst.mockResolvedValue({ id: 'version-1' });
+    prisma.requirement.findMany.mockResolvedValue([{ id: 'requirement-1' }]);
+    prisma.workflowRun.findMany.mockResolvedValue([{ id: 'workflow-1', status: 'DONE', requirementId: 'requirement-1' }]);
+    transaction.testRequest.create.mockResolvedValue({ id: 'request-1' });
+    prisma.testRequest.findUnique.mockResolvedValue({ id: 'request-1', testPlan: { id: 'plan-1' } });
+    testDesigns.assertReadyForRequest.mockResolvedValue({
+      id: 'design-1',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      projectVersionId: 'version-1',
+      requirements: [{ requirementId: 'requirement-1' }],
+      workflowRuns: [{ workflowRunId: 'workflow-1' }],
+      candidates: [{
+        action: 'REUSE',
+        resolution: 'ACCEPTED',
+        sourceDefinitionId: 'case-1',
+        sourceVersion: 2,
+        matchReason: '覆盖主流程',
+        proposedCase: { title: '登录成功', priority: 'P1', steps: ['登录'], expected: '进入首页' },
+      }],
+      smokeCases: [{
+        resolution: 'ACCEPTED',
+        title: '登录冒烟',
+        priority: 'P0',
+        precondition: null,
+        steps: ['登录'],
+        expected: '进入首页',
+        coverageKeys: ['smoke'],
+      }],
+    });
+
+    await service.createRequest({ ...requestInput, testDesignId: 'design-1' }, 'user-1');
+
+    expect(transaction.testRequest.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ testDesignId: 'design-1' }),
+      select: { id: true },
+    }));
+    expect(prisma.testRequest.create).not.toHaveBeenCalled();
+    expect(transaction.testPlan.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        testDesignId: 'design-1',
+        snapshots: { create: expect.arrayContaining([
+          expect.objectContaining({ title: '登录成功', kind: 'FUNCTIONAL' }),
+          expect.objectContaining({ title: '登录冒烟', kind: 'SMOKE' }),
+        ]) },
+      }),
+    }));
   });
 
   it('copies only shared or current-project cases into immutable plan snapshots', async () => {

@@ -41,6 +41,8 @@ import type {
   TestCaseLibrary,
   TestCaseModule,
   TestCasePage,
+  TestDesign,
+  TestDesignCandidate,
   TestRequest,
   TestRun,
   WorkflowDesignArtifactPage,
@@ -1102,12 +1104,31 @@ export const api = {
     requirementIds: string[];
     workflowRunIds: string[];
     artifactIds?: string[];
+    testDesignId?: string;
   }) =>
     request<TestRequest>('/quality/test-requests', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
   getTestRequest: (id: string) => request<TestRequest>(`/quality/test-requests/${id}`),
+  createTestDesign: (payload: {
+    workspaceId: string;
+    projectId: string;
+    projectVersionId: string;
+    requirementIds: string[];
+    workflowRunIds: string[];
+    changeSummary?: string;
+  }) => request<TestDesign>('/quality/test-designs', { method: 'POST', body: JSON.stringify(payload) }),
+  getTestDesigns: (params?: { projectId?: string; projectVersionId?: string; status?: string }) =>
+    request<TestDesign[]>(`/quality/test-designs${queryString(params)}`),
+  getTestDesign: (id: string) => request<TestDesign>(`/quality/test-designs/${id}`),
+  generateTestDesign: (id: string) => request<TestDesign>(`/quality/test-designs/${id}/generate`, { method: 'POST' }),
+  updateTestDesignCandidate: (id: string, candidateId: string, payload: Record<string, unknown>) =>
+    request<TestDesignCandidate>(`/quality/test-designs/${id}/candidates/${candidateId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  updateTestDesignSmoke: (id: string, payload: Record<string, unknown>) =>
+    request<TestDesign>(`/quality/test-designs/${id}/smoke`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  confirmTestDesign: (id: string, payload: Record<string, unknown>) =>
+    request<TestDesign>(`/quality/test-designs/${id}/confirm`, { method: 'POST', body: JSON.stringify(payload) }),
   getTestRuns: (testRequestId: string) =>
     request<TestRun[]>(`/quality/test-requests/${testRequestId}/runs`),
   createBug: (payload: {

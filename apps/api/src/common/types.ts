@@ -70,6 +70,61 @@ export interface GenerateSpecPlanInput {
   designContext?: unknown | null;
 }
 
+export type TestDesignCandidateAction = 'REUSE' | 'OPTIMIZE' | 'CREATE' | 'EXCLUDE';
+
+export interface TestDesignCaseDraft {
+  title: string;
+  priority: string;
+  precondition?: string | null;
+  steps: string[];
+  expected: string;
+  tags?: string[];
+}
+
+export interface TestDesignCandidateOutput {
+  action: TestDesignCandidateAction;
+  sourceDefinitionId?: string | null;
+  sourceVersion?: number | null;
+  matchScore?: number | null;
+  matchReason?: string | null;
+  coverageKeys: string[];
+  proposedCase: TestDesignCaseDraft;
+}
+
+export interface TestDesignSmokeCaseOutput extends TestDesignCaseDraft {
+  blocking: boolean;
+  coverageKeys: string[];
+}
+
+export interface TestDesignGenerationOutput {
+  sourceSummary: Record<string, unknown>;
+  coverageSummary: Record<string, unknown>;
+  candidates: TestDesignCandidateOutput[];
+  smokeCases: TestDesignSmokeCaseOutput[];
+  uncoveredItems: string[];
+}
+
+export interface GenerateTestDesignInput {
+  requirement: RequirementRecord;
+  brainstormContext?: unknown | null;
+  designContext?: unknown | null;
+  specPlan: SpecPlanOutput;
+  existingCases: Array<{
+    id: string;
+    version: number;
+    title: string;
+    priority: string;
+    precondition?: string | null;
+    steps: string[];
+    expected: string;
+    tags?: string[] | null;
+    libraryScope: string;
+    libraryProjectId?: string | null;
+    libraryName: string;
+  }>;
+  changeSummary?: string | null;
+}
+
 export interface ExecuteTaskInput {
   requirement: RequirementRecord;
   specPlan: SpecPlanOutput;

@@ -8,6 +8,7 @@ import {
   GenerateDesignOptions,
   GenerateDesignOutput,
   GenerateSpecPlanInput,
+  GenerateTestDesignInput,
   RepositoryComponentContext,
   RepositoryContext,
   ReviewCodeInput,
@@ -15,6 +16,7 @@ import {
   ReviewDailyChangesInput,
   DailyCodeReviewUnitOutput,
   SpecPlanOutput,
+  TestDesignGenerationOutput,
 } from '../common/types';
 import { AIExecutor, type AIInvocationContext } from './ai-executor';
 import { CodexAiExecutor } from './codex-ai.executor';
@@ -237,6 +239,57 @@ footer { padding: 20px 40px 40px; color: #64748b; font-size: 13px; }
         verification: ['对照 acceptanceCriteria 自检'],
       },
       notes: { checklist: [], openQuestions: [] },
+    };
+  }
+
+  async generateTestDesign(
+    input: GenerateTestDesignInput,
+    _context?: AIInvocationContext,
+  ): Promise<TestDesignGenerationOutput> {
+    const existing = input.existingCases[0];
+    const functional = existing
+      ? [{
+          action: 'REUSE' as const,
+          sourceDefinitionId: existing.id,
+          sourceVersion: existing.version,
+          matchScore: 0.92,
+          matchReason: '现有用例覆盖本次需求的主流程。',
+          coverageKeys: ['main-flow'],
+          proposedCase: {
+            title: existing.title,
+            priority: existing.priority,
+            precondition: existing.precondition,
+            steps: existing.steps,
+            expected: existing.expected,
+            tags: existing.tags ?? [],
+          },
+        }]
+      : [{
+          action: 'CREATE' as const,
+          coverageKeys: ['acceptance'],
+          proposedCase: {
+            title: `${input.requirement.title} 主流程`,
+            priority: 'P1',
+            precondition: '测试环境可用',
+            steps: ['准备需求所需数据', '执行主流程操作'],
+            expected: '主流程完成且结果符合验收标准。',
+            tags: ['generated'],
+          },
+        }];
+    return {
+      sourceSummary: { generatedBy: 'mock', requirementId: input.requirement.id },
+      coverageSummary: { mainFlow: 1, acceptance: 1 },
+      candidates: functional,
+      smokeCases: [{
+        title: `${input.requirement.title} 冒烟验证`,
+        priority: 'P0',
+        precondition: '测试环境可用',
+        steps: ['进入改动涉及的入口', '执行最短关键路径'],
+        expected: '入口可用且关键路径成功。',
+        blocking: true,
+        coverageKeys: ['smoke'],
+      }],
+      uncoveredItems: [],
     };
   }
 

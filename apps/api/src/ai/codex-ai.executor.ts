@@ -14,6 +14,7 @@ import {
   GenerateDesignOptions,
   GenerateDesignOutput,
   GenerateSpecPlanInput,
+  GenerateTestDesignInput,
   RepositoryComponentContext,
   RepositoryContext,
   ReviewCodeInput,
@@ -21,6 +22,7 @@ import {
   ReviewDailyChangesInput,
   DailyCodeReviewUnitOutput,
   SpecPlanOutput,
+  TestDesignGenerationOutput,
 } from '../common/types';
 import { assertDesignSpecOutput, assertStrictGenerateDesignOutput } from './design-output-validate';
 import { brainstormPrompt } from '../prompts/brainstorm.prompt';
@@ -41,6 +43,7 @@ import { executionPrompt } from '../prompts/execution.prompt';
 import { reviewPrompt } from '../prompts/review.prompt';
 import { dailyCodeReviewPrompt } from '../prompts/daily-code-review.prompt';
 import { specPlanPrompt } from '../prompts/spec-plan.prompt';
+import { testDesignPrompt } from '../prompts/test-design.prompt';
 import { BRAINSTORM_MIN_EDGE_CASES, BRAINSTORM_MIN_USER_STORIES } from './brainstorm-schema-limits';
 import { AIExecutor, type AIInvocationContext } from './ai-executor';
 import { applyDemoNavAgentPatches } from '../common/apply-demo-nav-agent-patches';
@@ -226,6 +229,22 @@ ${body}
       context,
     );
     this.assertSpecPlanOutput(parsed);
+    return parsed;
+  }
+
+  async generateTestDesign(
+    input: GenerateTestDesignInput,
+    context?: AIInvocationContext,
+  ): Promise<TestDesignGenerationOutput> {
+    const prompt = `${testDesignPrompt.system}\n${testDesignPrompt.user}\n\n需求:\n${JSON.stringify(input.requirement, null, 2)}\n\nPRD / 产品构思:\n${JSON.stringify(input.brainstormContext ?? null, null, 2)}\n\n设计方案:\n${JSON.stringify(input.designContext ?? null, null, 2)}\n\nSpec & Plan:\n${JSON.stringify(input.specPlan, null, 2)}\n\n已有用例:\n${JSON.stringify(input.existingCases, null, 2)}\n\n变更摘要:\n${input.changeSummary ?? '暂无'}`;
+    const parsed = await this.runJsonStage<TestDesignGenerationOutput>(
+      'test-design.output.schema.json',
+      prompt,
+      'test design',
+      [],
+      context,
+    );
+    this.assertTestDesignOutput(parsed);
     return parsed;
   }
 
@@ -1184,6 +1203,28 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
   protected assertSpecPlanOutput(output: SpecPlanOutput) {
     if (!output?.spec?.goal || !output?.plan?.approach) {
       throw new Error(`${this.providerLabel} output shape is invalid.`);
+    }
+  }
+
+  protected assertTestDesignOutput(output: TestDesignGenerationOutput) {
+    if (!output || !Array.isArray(output.candidates) || !Array.isArray(output.smokeCases)) {
+      throw new Error('TEST_DESIGN_OUTPUT_INVALID: candidates and smokeCases are required.');
+    }
+    for (const candidate of output.candidates) {
+      if (!candidate.proposedCase?.title || !candidate.proposedCase?.steps?.length || !candidate.proposedCase.expected) {
+        throw new Error('TEST_DESIGN_OUTPUT_INVALID: every candidate requires a complete case.');
+      }
+      if ((candidate.action === 'REUSE' || candidate.action === 'OPTIMIZE') && !candidate.sourceDefinitionId) {
+        throw new Error('TEST_DESIGN_OUTPUT_INVALID: reuse and optimize candidates require a source case.');
+      }
+      if (candidate.action === 'CREATE' && candidate.sourceDefinitionId) {
+        throw new Error('TEST_DESIGN_OUTPUT_INVALID: create candidates cannot reference a source case.');
+      }
+    }
+    for (const smokeCase of output.smokeCases) {
+      if (!smokeCase.title || !smokeCase.steps?.length || !smokeCase.expected) {
+        throw new Error('TEST_DESIGN_OUTPUT_INVALID: every smoke case requires a complete case.');
+      }
     }
   }
 

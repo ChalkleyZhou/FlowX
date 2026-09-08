@@ -45,6 +45,10 @@ export class CreateTestRequestDto {
   @IsArray()
   @IsString({ each: true })
   artifactIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  testDesignId?: string;
 }
 
 export class TestCaseSelectionDto {

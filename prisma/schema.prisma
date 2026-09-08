@@ -28,6 +28,7 @@ model Requirement {
   ideationArtifacts       IdeationArtifact[]
   workflowRuns            WorkflowRun[]
   testRequestLinks        TestRequestRequirement[]
+  testDesignLinks         TestDesignRequirement[]
   issues                  Issue[]
   bugs                    Bug[]                   @relation("BugSourceRequirement")
   fixingBugs              Bug[]                   @relation("BugFixRequirement")
@@ -78,6 +79,7 @@ model Workspace {
   executionSessions ExecutionSession[]
   artifacts         Artifact[]
   testCaseLibraries TestCaseLibrary[]
+  testDesigns       TestDesign[]
   testRequests      TestRequest[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -106,6 +108,7 @@ model Project {
   executionSessions  ExecutionSession[]
   artifacts          Artifact[]
   testCaseLibraries TestCaseLibrary[]
+  testDesigns       TestDesign[]
   testRequests      TestRequest[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -121,6 +124,7 @@ model ProjectVersion {
   currentForProjects Project[]     @relation("ProjectCurrentVersion")
   requirements       Requirement[]
   testRequests       TestRequest[]
+  testDesigns        TestDesign[]
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
@@ -368,6 +372,7 @@ model User {
   createdTestCaseLibraries TestCaseLibrary[]         @relation("TestCaseLibraryCreatedBy")
   createdTestCases         TestCaseDefinition[]      @relation("TestCaseDefinitionCreatedBy")
   createdTestRequests      TestRequest[]             @relation("TestRequestCreatedBy")
+  confirmedTestDesigns    TestDesign[]               @relation("TestDesignConfirmedBy")
   createdTestPlans         TestPlan[]                @relation("TestPlanCreatedBy")
   createdTestRuns          TestRun[]                 @relation("TestRunCreatedBy")
   assignedTestRunCases     TestRunCase[]             @relation("TestRunCaseAssignee")
@@ -632,6 +637,7 @@ model WorkflowRun {
   executionSessions    ExecutionSession[]
   artifacts            Artifact[]
   testRequestLinks     TestRequestWorkflowRun[]
+  testDesignLinks      TestDesignWorkflowRun[]
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 }
@@ -1043,6 +1049,7 @@ model TestCaseDefinition {
   createdByUserId String?
   createdByUser   User?                  @relation("TestCaseDefinitionCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   coverageLinks   TestCaseCoverageLink[]
+  designCandidates TestDesignCandidate[]
   snapshots       TestCaseSnapshot[]
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
@@ -1068,6 +1075,104 @@ model TestCaseCoverageLink {
   @@index([targetType, targetKey])
 }
 
+model TestDesign {
+  id                String       @id @default(cuid())
+  workspaceId       String
+  workspace         Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  projectId         String
+  project           Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectVersionId  String
+  projectVersion    ProjectVersion @relation(fields: [projectVersionId], references: [id], onDelete: Restrict)
+  status            String       @default("NOT_STARTED")
+  revision          Int          @default(1)
+  sourceFingerprint String
+  sourceSummary     Json
+  coverageSummary   Json?
+  coverageChecks    Json?
+  uncoveredItems    Json?
+  noCaseReason      String?
+  noSmokeReason     String?
+  staleReason       String?
+  confirmedByUserId String?
+  confirmedByUser   User?        @relation("TestDesignConfirmedBy", fields: [confirmedByUserId], references: [id], onDelete: SetNull)
+  confirmedAt       DateTime?
+  requirements      TestDesignRequirement[]
+  workflowRuns      TestDesignWorkflowRun[]
+  candidates        TestDesignCandidate[]
+  smokeCases        TestDesignSmokeCase[]
+  testRequest       TestRequest?
+  testPlan          TestPlan?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([workspaceId, status, updatedAt])
+  @@index([projectId, projectVersionId, createdAt])
+  @@unique([projectId, projectVersionId, revision])
+}
+
+model TestDesignRequirement {
+  testDesignId String
+  testDesign   TestDesign  @relation(fields: [testDesignId], references: [id], onDelete: Cascade)
+  requirementId String
+  requirement   Requirement @relation(fields: [requirementId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+
+  @@id([testDesignId, requirementId])
+  @@index([requirementId, createdAt])
+}
+
+model TestDesignWorkflowRun {
+  testDesignId String
+  testDesign   TestDesign  @relation(fields: [testDesignId], references: [id], onDelete: Cascade)
+  workflowRunId String
+  workflowRun   WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+
+  @@id([testDesignId, workflowRunId])
+  @@index([workflowRunId, createdAt])
+}
+
+model TestDesignCandidate {
+  id                 String       @id @default(cuid())
+  testDesignId       String
+  testDesign         TestDesign   @relation(fields: [testDesignId], references: [id], onDelete: Cascade)
+  action             String
+  resolution         String       @default("PENDING")
+  sourceDefinitionId String?
+  sourceDefinition   TestCaseDefinition? @relation(fields: [sourceDefinitionId], references: [id], onDelete: SetNull)
+  sourceVersion      Int?
+  matchScore         Float?
+  matchReason        String?
+  coverageKeys       Json
+  proposedCase       Json
+  decisionNote       String?
+  sortOrder          Int          @default(0)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([testDesignId, resolution, sortOrder])
+  @@index([sourceDefinitionId])
+}
+
+model TestDesignSmokeCase {
+  id           String     @id @default(cuid())
+  testDesignId String
+  testDesign   TestDesign @relation(fields: [testDesignId], references: [id], onDelete: Cascade)
+  title        String
+  priority     String     @default("P1")
+  precondition String?
+  steps        Json
+  expected     String
+  blocking     Boolean    @default(true)
+  coverageKeys Json
+  resolution   String     @default("PENDING")
+  sortOrder    Int        @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([testDesignId, resolution, sortOrder])
+}
+
 model TestRequest {
   id                    String                   @id @default(cuid())
   workspaceId           String
@@ -1078,6 +1183,8 @@ model TestRequest {
   projectVersion        ProjectVersion           @relation(fields: [projectVersionId], references: [id], onDelete: Restrict)
   title                 String
   description           String?
+  testDesignId          String?                  @unique
+  testDesign            TestDesign?              @relation(fields: [testDesignId], references: [id], onDelete: Restrict)
   status                String                   @default("DRAFT")
   scopeGenerationStatus String                   @default("NOT_STARTED")
   scopeSummary          String?
@@ -1135,6 +1242,8 @@ model TestPlan {
   id              String             @id @default(cuid())
   testRequestId   String             @unique
   testRequest     TestRequest        @relation(fields: [testRequestId], references: [id], onDelete: Cascade)
+  testDesignId    String?            @unique
+  testDesign      TestDesign?        @relation(fields: [testDesignId], references: [id], onDelete: Restrict)
   status          String             @default("DRAFT")
   createdByUserId String?
   createdByUser   User?              @relation("TestPlanCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
@@ -1160,6 +1269,8 @@ model TestCaseSnapshot {
   selectedBy         String              @default("AI")
   selectionReason    String?
   impactLevel        String?
+  kind               String              @default("FUNCTIONAL")
+  origin             String              @default("LIBRARY")
   runCases           TestRunCase[]
   createdAt          DateTime            @default(now())
 

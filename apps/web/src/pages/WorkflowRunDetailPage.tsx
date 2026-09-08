@@ -1193,6 +1193,31 @@ export function WorkflowRunDetailPage() {
     }
   }
 
+  async function openTestDesign() {
+    if (!workflowRun) return;
+    const versionId = workflowRun.requirement.versionId;
+    const project = workflowRun.requirement.project;
+    if (!versionId || !project.workspace?.id) {
+      toast.error('当前需求缺少项目版本或 Workspace，无法创建测试设计');
+      return;
+    }
+    setBusyStage('SPEC_PLAN');
+    try {
+      const testDesign = await api.createTestDesign({
+        workspaceId: project.workspace.id,
+        projectId: project.id,
+        projectVersionId: versionId,
+        requirementIds: [workflowRun.requirement.id],
+        workflowRunIds: [workflowRun.id],
+      });
+      navigate(`/quality/test-designs/${testDesign.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '创建测试设计失败');
+    } finally {
+      setBusyStage(null);
+    }
+  }
+
   const stageContent = useMemo<Record<WorkflowStageKey, StageDetailView> | null>(() => {
     if (!workflowRun) {
       return null;
@@ -1411,6 +1436,16 @@ export function WorkflowRunDetailPage() {
             onClick: (): void => openWorkspaceEditMode('spec-plan'),
             disabled: workflowRun.status !== 'SPEC_PLAN_WAITING_CONFIRMATION' || stageActionsLocked,
           },
+          {
+            key: 'test-design',
+            label: '测试设计',
+            onClick: () => void openTestDesign(),
+            disabled:
+              designStage?.status !== 'COMPLETED'
+              || specPlanStage?.status !== 'COMPLETED'
+              || stageActionsLocked,
+            loading: busyStage === 'SPEC_PLAN',
+          },
         ],
       },
       EXECUTION: {
@@ -1592,6 +1627,7 @@ export function WorkflowRunDetailPage() {
     const rejectAction = actionsByKey.get('reject');
     const acceptAction = actionsByKey.get('accept');
     const editAction = actionsByKey.get('edit');
+    const testDesignAction = actionsByKey.get('test-design');
 
     const canSendFeedback = Boolean(actionsByKey.get('feedback')) && selectedStageContent.actions.some((action) => action.key === 'feedback' && !action.disabled);
     const isManualEditMode = sidebarMode === 'manual-edit' && editableStage === 'spec-plan';
@@ -1656,6 +1692,7 @@ export function WorkflowRunDetailPage() {
       !isManualEditMode ? confirmAction : undefined,
       !isManualEditMode ? rejectAction : undefined,
       !isManualEditMode ? acceptAction : undefined,
+      !isManualEditMode ? testDesignAction : undefined,
     ]
       .filter((action): action is StageActionView => Boolean(action))
       .forEach((action) => {
