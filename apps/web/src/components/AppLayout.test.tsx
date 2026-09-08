@@ -104,6 +104,25 @@ describe('AppLayout', () => {
     vi.clearAllMocks();
   });
 
+  it('allows main content to use the full available width', async () => {
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/workspaces']}>
+          <ThemeProvider>
+            <AppLayout>
+              <div>content</div>
+            </AppLayout>
+          </ThemeProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    const main = container.querySelector('main');
+    expect(main).toBeTruthy();
+    expect(main?.className).toContain('w-full');
+    expect(main?.className).not.toMatch(/(?:^|\s)max-w-/);
+  });
+
   it('does not logout when user cancels confirmation', async () => {
     await act(async () => {
       root?.render(

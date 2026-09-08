@@ -266,7 +266,7 @@ function AppLayoutContent({ children }: PropsWithChildren) {
           </nav>
           </aside>
         <div className="flex min-w-0 flex-1 flex-col">
-          <main className="mx-auto flex w-full max-w-[1440px] flex-col gap-6 px-8 pb-10 pt-8 max-[1440px]:px-6 max-[960px]:gap-5 max-[960px]:px-5 max-[780px]:gap-4 max-[780px]:px-4 max-[780px]:pb-7">{children}</main>
+          <main className="flex w-full flex-col gap-6 px-8 pb-10 pt-8 max-[1440px]:px-6 max-[960px]:gap-5 max-[960px]:px-5 max-[780px]:gap-4 max-[780px]:px-4 max-[780px]:pb-7">{children}</main>
         </div>
       </div>
       <Dialog open={showAiCredentialReminder} onOpenChange={setShowAiCredentialReminder}>
