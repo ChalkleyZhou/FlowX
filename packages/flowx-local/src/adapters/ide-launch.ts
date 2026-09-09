@@ -17,6 +17,7 @@ export type IdeLaunchResult = {
   ok: true;
   gitRoot: string;
   ide: Ide;
+  opened: boolean;
   prefilled: boolean;
   promptPath: string;
   executionSessionId: string;
@@ -46,6 +47,7 @@ export async function launchIde(
     apiBaseUrl: input.apiBaseUrl,
     mcpToken: input.mcpToken,
     mcpEntryPath: input.mcpEntryPath,
+    ide: input.ide,
   });
   const promptPath = (deps.writePromptFile ?? writePromptFile)(
     input.gitRoot,
@@ -58,6 +60,7 @@ export async function launchIde(
     ok: true,
     gitRoot: input.gitRoot,
     ide: input.ide,
+    opened: opened.opened,
     prefilled: opened.prefilled,
     promptPath,
     executionSessionId: input.executionSessionId,

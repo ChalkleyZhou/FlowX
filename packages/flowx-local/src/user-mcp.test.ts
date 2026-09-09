@@ -152,4 +152,49 @@ describe('upsertUserMcp', () => {
     expect(parsed.mcpServers.flowx).toEqual({ command: '/bin/flowx-local', args: ['mcp'] });
     expect(result.written).toContain(mcpPath);
   });
+
+  it('merges WorkBuddy mcp.json without tokens and preserves other servers', () => {
+    const home = mkdtempSync(join(tmpdir(), 'flowx-mcp-'));
+    homes.push(home);
+    const mcpPath = join(home, '.workbuddy', 'mcp.json');
+    mkdirSync(join(home, '.workbuddy'), { recursive: true });
+    writeFileSync(
+      mcpPath,
+      JSON.stringify({
+        mcpServers: {
+          other: { command: 'other' },
+          flowx: {
+            command: 'old',
+            args: ['mcp'],
+            env: { FLOWX_API_TOKEN: 'fxpat_old', FLOWX_API_BASE_URL: 'http://127.0.0.1:3000', KEEP: 'x' },
+          },
+        },
+      }),
+    );
+    const result = upsertUserMcp({
+      homeDir: home,
+      targets: ['workbuddy'],
+      flowxBin: '/usr/local/bin/flowx-local',
+    });
+    const parsed = JSON.parse(readFileSync(mcpPath, 'utf8'));
+    expect(parsed.mcpServers.other).toEqual({ command: 'other' });
+    expect(parsed.mcpServers.flowx).toEqual({
+      command: '/usr/local/bin/flowx-local',
+      args: ['mcp'],
+      env: { KEEP: 'x' },
+    });
+    expect(result.written).toContain(mcpPath);
+  });
+
+  it('throws on invalid WorkBuddy JSON without overwriting', () => {
+    const home = mkdtempSync(join(tmpdir(), 'flowx-mcp-'));
+    homes.push(home);
+    const mcpPath = join(home, '.workbuddy', 'mcp.json');
+    mkdirSync(join(home, '.workbuddy'), { recursive: true });
+    writeFileSync(mcpPath, '{not json');
+    expect(() =>
+      upsertUserMcp({ homeDir: home, targets: ['workbuddy'], flowxBin: '/bin/flowx-local' }),
+    ).toThrow(/mcp.json/);
+    expect(readFileSync(mcpPath, 'utf8')).toBe('{not json');
+  });
 });

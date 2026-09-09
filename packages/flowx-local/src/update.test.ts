@@ -24,7 +24,7 @@ describe('flowx-local update helpers', () => {
   it('auto-picks all default targets when none exist', () => {
     const homeDir = join(tmpdir(), `flowx-update-${Date.now()}`);
     const picked = pickUpdateTargets(homeDir);
-    expect(picked).toEqual(['cursor', 'codex', 'od']);
+    expect(picked).toEqual(['cursor', 'codex', 'od', 'workbuddy']);
   });
 
   it('respects explicit targetsRaw even if other skills exist', () => {

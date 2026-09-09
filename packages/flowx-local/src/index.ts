@@ -155,7 +155,7 @@ async function main(argv: string[]): Promise<void> {
   if (command !== 'serve') {
     console.error(`Unknown command: ${command}`);
     console.error(
-      'Usage: flowx-local [serve] | version | login [--api-base-url URL] [--token TOKEN] | logout | setup [cursor|codex|od,...] [--force] [--no-ide] [--api-base-url URL] | update [cursor|codex|od,...] [--no-force] | mcp | map <repoUrl> <path> | status | sync | design-submit <executionSessionId>',
+      'Usage: flowx-local [serve] | version | login [--api-base-url URL] [--token TOKEN] | logout | setup [cursor|codex|od|workbuddy,...] [--force] [--no-ide] [--api-base-url URL] | update [cursor|codex|od|workbuddy,...] [--no-force] | mcp | map <repoUrl> <path> | status | sync | design-submit <executionSessionId>',
     );
     process.exitCode = 1;
     return;

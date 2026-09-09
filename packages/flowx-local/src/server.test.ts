@@ -75,12 +75,13 @@ describe('flowx-local server', () => {
   it('accepts CORS preflight and launches with the web supplied API base', async () => {
     const runLaunch = async (input: {
       ticket: string;
-      ide: 'cursor' | 'codex';
+      ide: 'cursor' | 'codex' | 'workbuddy';
       apiBaseUrl: string;
     }) => ({
       ok: true as const,
       gitRoot: '/work/repo',
       ide: input.ide,
+      opened: false,
       prefilled: false,
       promptPath: '/work/repo/.flowx/tasks/workflow-1.md',
     });
@@ -110,6 +111,38 @@ describe('flowx-local server', () => {
       gitRoot: '/work/repo',
       ide: 'cursor',
     });
+  });
+
+  it('accepts workbuddy launch requests', async () => {
+    const runLaunch = async (input: {
+      ticket: string;
+      ide: 'cursor' | 'codex' | 'workbuddy';
+      apiBaseUrl: string;
+    }) => ({
+      ok: true as const,
+      gitRoot: '/work/repo',
+      ide: input.ide,
+      opened: false,
+      prefilled: false,
+      promptPath: '/work/repo/.flowx/tasks/workflow-1.md',
+    });
+    const server = createLocalServer({ runLaunch, homeDir: makeHome() });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    servers.push(server);
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('No test address');
+
+    const response = await fetch(`http://127.0.0.1:${address.port}/launch`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ticket: 'ticket-1',
+        ide: 'workbuddy',
+        apiBaseUrl: 'https://flowx.example',
+      }),
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ ok: true, ide: 'workbuddy' });
   });
 
   it('accepts OpenDesign launch and submit requests', async () => {

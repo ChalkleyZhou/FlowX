@@ -4,7 +4,7 @@ import { parse, stringify } from 'smol-toml';
 
 const STRIP_ENV_KEYS = new Set(['FLOWX_API_TOKEN', 'FLOWX_API_BASE_URL']);
 
-export type UserMcpTarget = 'cursor' | 'codex' | 'od';
+export type UserMcpTarget = 'cursor' | 'codex' | 'od' | 'workbuddy';
 
 export type UpsertUserMcpInput = {
   homeDir: string;
@@ -28,7 +28,13 @@ export function upsertUserMcp(input: UpsertUserMcpInput): UpsertUserMcpResult {
   const nodeExecPath = input.nodeExecPath ?? process.execPath;
   for (const target of input.targets) {
     if (target === 'cursor') {
-      written.push(upsertCursorMcp(input.homeDir, input.flowxBin, nodeExecPath));
+      written.push(
+        upsertJsonMcp(join(input.homeDir, '.cursor', 'mcp.json'), input.flowxBin, nodeExecPath),
+      );
+    } else if (target === 'workbuddy') {
+      written.push(
+        upsertJsonMcp(join(input.homeDir, '.workbuddy', 'mcp.json'), input.flowxBin, nodeExecPath),
+      );
     } else if (target === 'codex') {
       written.push(upsertCodexMcp(input.homeDir, input.flowxBin, nodeExecPath));
     }
@@ -40,9 +46,8 @@ function isJsCliEntry(flowxBin: string): boolean {
   return /\.(cjs|mjs|js)$/i.test(flowxBin);
 }
 
-function upsertCursorMcp(homeDir: string, flowxBin: string, nodeExecPath: string): string {
-  const mcpPath = join(homeDir, '.cursor', 'mcp.json');
-  const existing = existsSync(mcpPath) ? parseCursorMcp(mcpPath) : {};
+function upsertJsonMcp(mcpPath: string, flowxBin: string, nodeExecPath: string): string {
+  const existing = existsSync(mcpPath) ? parseJsonMcp(mcpPath) : {};
   const mcpServers =
     isPlainObject(existing.mcpServers) && existing.mcpServers
       ? { ...existing.mcpServers }
@@ -54,7 +59,7 @@ function upsertCursorMcp(homeDir: string, flowxBin: string, nodeExecPath: string
   return mcpPath;
 }
 
-function parseCursorMcp(mcpPath: string): Record<string, unknown> {
+function parseJsonMcp(mcpPath: string): Record<string, unknown> {
   const raw = readFileSync(mcpPath, 'utf8');
   let parsed: unknown;
   try {

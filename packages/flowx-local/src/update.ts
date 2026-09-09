@@ -21,7 +21,7 @@ export function pickUpdateTargets(
     return parseSetupTargets(targetsRaw);
   }
 
-  const candidates: SetupTarget[] = ['cursor', 'codex', 'od'];
+  const candidates: SetupTarget[] = ['cursor', 'codex', 'od', 'workbuddy'];
   const existing: SetupTarget[] = [];
 
   for (const target of candidates) {

@@ -1,11 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { Ide } from './open-ide.js';
 
 export type EnsureProjectOptions = {
   apiBaseUrl: string;
   mcpToken: string;
   mcpEntryPath?: string;
+  ide?: Ide;
 };
 
 function templatePath(): string {
@@ -49,18 +51,7 @@ export function resolveMcpEntryPath(
   return entry;
 }
 
-export function ensureProject(gitRoot: string, options: EnsureProjectOptions): void {
-  const skill = readFileSync(templatePath(), 'utf8');
-  writeIfMissing(
-    join(gitRoot, '.cursor', 'skills', 'flowx-local-execution', 'SKILL.md'),
-    skill,
-  );
-  writeIfMissing(
-    join(gitRoot, '.agents', 'skills', 'flowx-local-execution', 'SKILL.md'),
-    skill,
-  );
-
-  const mcpPath = join(gitRoot, '.cursor', 'mcp.json');
+function mergeFlowxMcp(mcpPath: string, options: EnsureProjectOptions): void {
   mkdirSync(dirname(mcpPath), { recursive: true });
   let existing: { mcpServers?: Record<string, unknown> } = {};
   if (existsSync(mcpPath)) {
@@ -90,6 +81,28 @@ export function ensureProject(gitRoot: string, options: EnsureProjectOptions): v
     },
   };
   writeFileSync(mcpPath, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
+}
+
+export function ensureProject(gitRoot: string, options: EnsureProjectOptions): void {
+  const skill = readFileSync(templatePath(), 'utf8');
+  if (options.ide === 'workbuddy') {
+    writeIfMissing(
+      join(gitRoot, '.workbuddy', 'skills', 'flowx-local-execution', 'SKILL.md'),
+      skill,
+    );
+    mergeFlowxMcp(join(gitRoot, '.workbuddy', 'mcp.json'), options);
+    return;
+  }
+
+  writeIfMissing(
+    join(gitRoot, '.cursor', 'skills', 'flowx-local-execution', 'SKILL.md'),
+    skill,
+  );
+  writeIfMissing(
+    join(gitRoot, '.agents', 'skills', 'flowx-local-execution', 'SKILL.md'),
+    skill,
+  );
+  mergeFlowxMcp(join(gitRoot, '.cursor', 'mcp.json'), options);
 }
 
 export function writePromptFile(

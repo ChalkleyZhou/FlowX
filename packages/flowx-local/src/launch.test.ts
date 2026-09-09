@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { runLaunch } from './launch.js';
+import { defaultIdeRegistry, runLaunch } from './launch.js';
+
+describe('defaultIdeRegistry', () => {
+  it('registers cursor, codex and workbuddy', () => {
+    expect(defaultIdeRegistry().list()).toEqual(expect.arrayContaining(['cursor', 'codex', 'workbuddy']));
+    expect(defaultIdeRegistry().resolve('workbuddy').name).toBe('workbuddy');
+  });
+});
 
 describe('runLaunch', () => {
   it('redeems with the supplied API base then prepares and opens the first repository', async () => {

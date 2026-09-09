@@ -3,6 +3,7 @@ import { DEFAULT_PORT, PACKAGE_VERSION, loadConfig, type ConfigOptions } from '.
 import { ensureDeviceIdentity } from './device.js';
 import { readActiveDesignSession } from './active-design-session.js';
 import { runLaunch, type LaunchRequest } from './launch.js';
+import { isLocalIde } from './open-ide.js';
 import { Outbox } from './outbox.js';
 import {
   runOpenDesignLaunch,
@@ -110,7 +111,8 @@ export function createLocalServer(options: StartServerOptions = {}): Server {
         if (
           !body ||
           typeof body.ticket !== 'string' ||
-          (body.ide !== 'cursor' && body.ide !== 'codex') ||
+          typeof body.ide !== 'string' ||
+          !isLocalIde(body.ide) ||
           typeof body.apiBaseUrl !== 'string'
         ) {
           sendJson(res, 400, { ok: false, error: 'ticket, ide, and apiBaseUrl are required' }, true);

@@ -1,6 +1,7 @@
 import { ensureProject, writePromptFile } from './ensure-project.js';
 import { CodexAdapter } from './adapters/codex-adapter.js';
 import { CursorAdapter } from './adapters/cursor-adapter.js';
+import { WorkBuddyAdapter } from './adapters/workbuddy-adapter.js';
 import { AdapterRegistry } from './adapters/adapter-registry.js';
 import type { IdeAdapterDeps, IdeAdapterLaunchInput, IdeLaunchResult } from './adapters/ide-launch.js';
 import type { ToolAdapter } from './adapters/tool-adapter.js';
@@ -57,7 +58,11 @@ function normalizeApiBaseUrl(apiBaseUrl: string): string {
 }
 
 export function defaultIdeRegistry(deps: IdeAdapterDeps = {}) {
-  return new AdapterRegistry([new CursorAdapter(deps), new CodexAdapter(deps)]);
+  return new AdapterRegistry([
+    new CursorAdapter(deps),
+    new CodexAdapter(deps),
+    new WorkBuddyAdapter(deps),
+  ]);
 }
 
 export async function runLaunch(

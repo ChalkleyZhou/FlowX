@@ -1,6 +1,6 @@
 # FlowX 本地 Agent 使用指南
 
-把 FlowX 接到本机 Cursor / Codex。Skill 是流程说明，MCP 是工具，安装脚本会一起写入。
+把 FlowX 接到本机 Cursor / Codex / WorkBuddy。Skill 是流程说明，MCP 是工具，安装脚本会一起写入。
 
 ## 安装
 
@@ -18,15 +18,15 @@ irm https://<当前站点>/install.ps1 | iex
 flowx-local login
 ```
 
-需要 Node.js 20+（没有则到 https://nodejs.org/ 安装后重跑）。脚本会装包、注册后台服务（macOS LaunchAgent / Linux systemd --user / Windows 计划任务），检测到 Cursor / Codex 时询问是否写入 Skill 和 MCP。`login` 只粘贴设置页生成的 `fxpat_…`。
+需要 Node.js 20+（没有则到 https://nodejs.org/ 安装后重跑）。脚本会装包、注册后台服务（macOS LaunchAgent / Linux systemd --user / Windows 计划任务），检测到 Cursor / Codex 时询问是否写入 Skill 和 MCP。WorkBuddy 请再执行 `flowx-local setup workbuddy`。`login` 只粘贴设置页生成的 `fxpat_…`。
 
 ## 怎么用
 
 - **新建需求**：在 IDE 里明确说要「在 FlowX 新建需求」。普通写代码不会登记；说不清时 Agent 会先问。流程：选项目 → 确认版本 → 创建需求 → **你确认后再启动工作流**。
-- **本地开发**：工作流进入待执行后，网页点「本地启动」，选 Cursor / Codex。
+- **本地开发**：工作流进入待执行后，网页点「本地启动」，选 Cursor / Codex / WorkBuddy。
 - **构思 / 设计**：`flowx_list_tasks` → bind → 提交 `prd.md` → 同一会话拉设计 handoff → 提交 `design.md` 与 HTML。Spec & Plan 仍在网页确认。
 
-旧 Skill 名 `flowx-brainstorm-spec` 请执行 `flowx-local update`。更细的设计回传格式见仓库 `docs/opendesign-design-stage.md`。
+旧 Skill 名 `flowx-brainstorm-spec` 请执行 `flowx-local update`。无参数的 `flowx-local update` 只刷新本机已有 Skill 的目标；已在用 Cursor / Codex、尚未装 WorkBuddy 的用户，请执行 `flowx-local setup workbuddy` 或 `flowx-local update workbuddy`。更细的设计回传格式见仓库 `docs/opendesign-design-stage.md`。
 
 ## 常用命令
 

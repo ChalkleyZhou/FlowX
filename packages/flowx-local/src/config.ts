@@ -2,11 +2,12 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { FLOWX_PROTOCOL_VERSION } from '@flowx-ai/protocol';
+import { isLocalIde, type Ide } from './open-ide.js';
 
 export const DEFAULT_PORT = 3920;
 export const PACKAGE_VERSION = '0.5.0';
 
-export type DefaultIde = 'cursor' | 'codex';
+export type DefaultIde = Ide;
 
 export type LocalConfig = {
   port: number;
@@ -88,7 +89,7 @@ function normalizeConfig(raw: Partial<LocalConfig> | null | undefined): LocalCon
       : DEFAULT_LOCAL_CONFIG.port;
 
   const defaultIde =
-    raw?.defaultIde === 'codex' || raw?.defaultIde === 'cursor'
+    raw?.defaultIde && isLocalIde(raw.defaultIde)
       ? raw.defaultIde
       : DEFAULT_LOCAL_CONFIG.defaultIde;
 

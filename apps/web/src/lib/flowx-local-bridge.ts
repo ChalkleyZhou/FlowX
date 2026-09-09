@@ -29,7 +29,7 @@ export async function probeFlowxLocal(port?: number): Promise<boolean> {
 
 export type FlowxLocalLaunchBody = {
   ticket: string;
-  ide: 'cursor' | 'codex';
+  ide: 'cursor' | 'codex' | 'workbuddy';
   apiBaseUrl: string;
 };
 
@@ -39,6 +39,7 @@ export type FlowxLocalLaunchResult = {
   ide: string;
   prefilled: boolean;
   promptPath: string;
+  opened?: boolean;
 };
 
 export async function launchFlowxLocal(

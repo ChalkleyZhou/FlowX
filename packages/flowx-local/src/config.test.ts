@@ -114,6 +114,19 @@ describe('loadConfig / saveConfig', () => {
     });
   });
 
+  it('persists defaultIde workbuddy', () => {
+    const homeDir = makeHome();
+    saveConfig(
+      {
+        ...DEFAULT_LOCAL_CONFIG,
+        defaultIde: 'workbuddy',
+      },
+      { homeDir },
+    );
+
+    expect(loadConfig({ homeDir }).defaultIde).toBe('workbuddy');
+  });
+
   it('normalizes repository keys when loading existing file', () => {
     const homeDir = makeHome();
     mkdirSync(join(homeDir, '.flowx'), { recursive: true });

@@ -38,6 +38,7 @@ import {
   probeFlowxLocal,
   submitOpenDesignLocal,
   type FlowxLocalLaunchBody,
+  type FlowxLocalLaunchResult,
 } from '../lib/flowx-local-bridge';
 import type {
   ExecutionSessionDetail,
@@ -125,6 +126,26 @@ interface PublishRepositorySummary {
   pushed: boolean;
   verified: boolean;
   remoteUrl: string;
+}
+
+function localIdeLabel(ide: FlowxLocalLaunchBody['ide']): string {
+  if (ide === 'cursor') return 'Cursor';
+  if (ide === 'workbuddy') return 'WorkBuddy';
+  return 'Codex';
+}
+
+function localLaunchSuccessMessage(
+  ide: FlowxLocalLaunchBody['ide'],
+  result: FlowxLocalLaunchResult,
+): string {
+  const label = localIdeLabel(ide);
+  if (result.prefilled) {
+    return `已打开 ${label} 并预填执行上下文`;
+  }
+  if (result.opened === false) {
+    return `提示词已生成，但未打开 ${label}`;
+  }
+  return `已打开 ${label}；提示词文件已生成，内容已复制到剪贴板`;
 }
 
 function isLocalExecutionActive(workflowRun: WorkflowRun): boolean {
@@ -867,11 +888,7 @@ export function WorkflowRunDetailPage() {
       );
       setLocalLaunchOpen(false);
       await refresh({ silent: true });
-      toast.success(
-        result.prefilled
-          ? `已打开 ${ide === 'cursor' ? 'Cursor' : 'Codex'} 并预填执行上下文`
-          : `已打开 ${ide === 'cursor' ? 'Cursor' : 'Codex'}；提示词文件已生成，内容已复制到剪贴板`,
-      );
+      toast.success(localLaunchSuccessMessage(ide, result));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '本地启动失败');
     } finally {
@@ -1773,6 +1790,15 @@ export function WorkflowRunDetailPage() {
             >
               Codex
             </UiButton>
+            <UiButton
+              type="button"
+              variant="outline"
+              className="flex-1"
+              disabled={localLaunchBusy}
+              onClick={() => void launchLocalExecution('workbuddy')}
+            >
+              WorkBuddy
+            </UiButton>
           </div>
         </DialogContent>
       </Dialog>
@@ -2126,7 +2152,7 @@ export function WorkflowRunDetailPage() {
                   </CardHeader>
                   <CardContent className="flex flex-col gap-5 p-5 pt-4">
                     <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-                      <li>点击「本地启动」并选择 Cursor 或 Codex</li>
+                      <li>点击「本地启动」并选择 Cursor、Codex 或 WorkBuddy</li>
                       <li>
                         若尚未安装 flowx-local，macOS / Linux 执行{' '}
                         <code className="text-foreground">{localInstallCurl}</code>

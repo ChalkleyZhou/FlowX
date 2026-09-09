@@ -32,7 +32,7 @@ FlowX 把研发流程拆成可中断、可确认的阶段，核心目标是：
 
 ## 本地 Agent 与 OpenDesign
 
-本机用 Cursor / Codex 或 OpenDesign 时，先安装再 `login`：
+本机用 Cursor / Codex / WorkBuddy 或 OpenDesign 时，先安装再 `login`：
 
 macOS / Linux：
 
@@ -137,7 +137,7 @@ flowx-local login
 
 1. 在工作流详情点击 **生成 Spec & Plan**，AI 会结合仓库上下文、PRD 与设计 Artifact 产出实现边界（spec）与实现路径（plan）。
 2. 生成完成后进入 **待确认 Spec & Plan**，可查看结构化文档、人工修改、确认或带意见驳回修订。
-3. 确认后进入 **待执行开发**，可按需选择云端执行或本地启动（Cursor / Codex）。
+3. 确认后进入 **待执行开发**，可按需选择云端执行或本地启动（Cursor / Codex / WorkBuddy）。
 
 Spec & Plan 当前在 Web 端生成与确认；本地 MCP 暂不提供独立 handoff。安装脚本会写入用户级 MCP，一般不必手改。
 

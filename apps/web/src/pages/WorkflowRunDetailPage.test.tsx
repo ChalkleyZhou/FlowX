@@ -53,12 +53,13 @@ vi.mock('../api', () => ({
   getFlowxApiBaseUrl: () => 'http://127.0.0.1:3000',
 }));
 
-const { probeFlowxLocal, launchFlowxLocal, launchOpenDesignLocal, submitOpenDesignLocal } =
+const { probeFlowxLocal, launchFlowxLocal, launchOpenDesignLocal, submitOpenDesignLocal, toastSuccess } =
   vi.hoisted(() => ({
     probeFlowxLocal: vi.fn(),
     launchFlowxLocal: vi.fn(),
     launchOpenDesignLocal: vi.fn(),
     submitOpenDesignLocal: vi.fn(),
+    toastSuccess: vi.fn(),
   }));
 
 vi.mock('../lib/flowx-local-bridge', () => ({
@@ -70,7 +71,7 @@ vi.mock('../lib/flowx-local-bridge', () => ({
 
 vi.mock('../components/ui/toast', () => ({
   useToast: () => ({
-    success: vi.fn(),
+    success: toastSuccess,
     error: vi.fn(),
   }),
 }));
@@ -1491,6 +1492,95 @@ describe('WorkflowRunDetailPage', () => {
       { ticket: 'ticket-1', ide: 'cursor', apiBaseUrl: 'http://127.0.0.1:3000' },
       3920,
     );
+  });
+
+  it('launches WorkBuddy through flowx-local', async () => {
+    const localExecution = createWorkflowRun({
+      status: 'EXECUTION_RUNNING',
+      stageExecutions: [
+        {
+          id: 'execution-1',
+          stage: 'EXECUTION',
+          status: 'RUNNING',
+          statusMessage: null,
+          attempt: 1,
+          input: { executor: 'LOCAL' },
+          output: null,
+        },
+      ],
+    });
+    vi.mocked(api.getWorkflowRun)
+      .mockResolvedValueOnce(
+        createWorkflowRun({
+          status: 'EXECUTION_PENDING',
+          stageExecutions: [
+            {
+              id: 'execution-1',
+              stage: 'EXECUTION',
+              status: 'PENDING',
+              statusMessage: null,
+              attempt: 0,
+              output: null,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValue(localExecution);
+    vi.mocked(api.claimLocalExecution).mockResolvedValue({
+      workflow: localExecution,
+      handoff: { repositories: [] },
+    } as never);
+    vi.mocked(api.issueLocalLaunchTicket).mockResolvedValue({
+      ticket: 'ticket-1',
+      expiresAt: '2026-07-16T12:00:00.000Z',
+      loopbackPort: 3920,
+    });
+    vi.mocked(api.getLocalHandoff).mockResolvedValue({ repositories: [] } as never);
+    probeFlowxLocal.mockResolvedValue(true);
+    launchFlowxLocal.mockResolvedValue({
+      ok: true,
+      gitRoot: '/tmp/flowx',
+      ide: 'workbuddy',
+      opened: false,
+      prefilled: false,
+      promptPath: '/tmp/flowx/.flowx/prompt.md',
+    });
+
+    await renderPage();
+
+    const executionStep = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('开发执行'),
+    );
+    await act(async () => {
+      executionStep?.click();
+      await Promise.resolve();
+    });
+
+    const launchButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '本地启动',
+    );
+    expect(launchButton).toBeTruthy();
+
+    await act(async () => {
+      launchButton?.click();
+      await Promise.resolve();
+    });
+
+    const workbuddyButton = Array.from(document.body.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'WorkBuddy',
+    );
+    expect(workbuddyButton).toBeTruthy();
+
+    await act(async () => {
+      workbuddyButton?.click();
+      await Promise.resolve();
+    });
+
+    expect(launchFlowxLocal).toHaveBeenCalledWith(
+      { ticket: 'ticket-1', ide: 'workbuddy', apiBaseUrl: 'http://127.0.0.1:3000' },
+      3920,
+    );
+    expect(toastSuccess).toHaveBeenCalledWith('提示词已生成，但未打开 WorkBuddy');
   });
 
   it('shows curl install instructions for local agent setup', async () => {

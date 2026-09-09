@@ -61,6 +61,52 @@ describe('ensureProject', () => {
 
     expect(readFileSync(skillPath, 'utf8')).toBe('custom instructions');
   });
+
+  it('writes WorkBuddy project skill and mcp when ide is workbuddy', () => {
+    const gitRoot = makeProject();
+    const mcpPath = join(gitRoot, '.workbuddy', 'mcp.json');
+    mkdirSync(join(gitRoot, '.workbuddy'), { recursive: true });
+    writeFileSync(mcpPath, JSON.stringify({ mcpServers: { existing: { command: 'test' } } }));
+
+    ensureProject(gitRoot, {
+      apiBaseUrl: 'https://flowx.example',
+      mcpToken: 'token-1',
+      ide: 'workbuddy',
+    });
+
+    expect(existsSync(join(gitRoot, '.workbuddy', 'skills', 'flowx-local-execution', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(gitRoot, '.cursor', 'mcp.json'))).toBe(false);
+    expect(existsSync(join(gitRoot, '.cursor', 'skills', 'flowx-local-execution', 'SKILL.md'))).toBe(false);
+    expect(existsSync(join(gitRoot, '.agents', 'skills', 'flowx-local-execution', 'SKILL.md'))).toBe(false);
+    expect(JSON.parse(readFileSync(mcpPath, 'utf8'))).toEqual({
+      mcpServers: {
+        existing: { command: 'test' },
+        flowx: {
+          command: 'flowx-local',
+          args: ['mcp'],
+          env: {
+            FLOWX_API_BASE_URL: 'https://flowx.example',
+            FLOWX_API_TOKEN: 'token-1',
+          },
+        },
+      },
+    });
+  });
+
+  it('does not overwrite an existing WorkBuddy skill', () => {
+    const gitRoot = makeProject();
+    const skillPath = join(gitRoot, '.workbuddy', 'skills', 'flowx-local-execution', 'SKILL.md');
+    mkdirSync(join(gitRoot, '.workbuddy', 'skills', 'flowx-local-execution'), { recursive: true });
+    writeFileSync(skillPath, 'custom instructions');
+
+    ensureProject(gitRoot, {
+      apiBaseUrl: 'https://flowx.example',
+      mcpToken: 'token-1',
+      ide: 'workbuddy',
+    });
+
+    expect(readFileSync(skillPath, 'utf8')).toBe('custom instructions');
+  });
 });
 
 describe('writePromptFile', () => {

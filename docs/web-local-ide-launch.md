@@ -1,9 +1,9 @@
 # Web Local IDE Launch
 
-Preferred Web entry for local execution: start from FlowX Web, open Cursor or Codex on your machine via the `flowx-local` bridge, then finish with MCP or the Web UI.
+Preferred Web entry for local execution: start from FlowX Web, open Cursor, Codex, or WorkBuddy on your machine via the `flowx-local` bridge, then finish with MCP or the Web UI.
 
 ```text
-FlowX Web「本地启动」 → flowx-local (loopback) → Cursor / Codex (+ Skill + MCP)
+FlowX Web「本地启动」 → flowx-local (loopback) → Cursor / Codex / WorkBuddy (+ Skill + MCP)
 ```
 
 This path reuses the same `claim-local` / handoff contract as [local-execution-handoff.md](./local-execution-handoff.md). Prefer completing through the session API returned as `executionSessionId`; `complete-local` remains a compatibility wrapper. The Cursor extension remains an optional fallback; see [cursor-plugin-local-chat.md](./cursor-plugin-local-chat.md).
@@ -49,9 +49,11 @@ Unmapped repos prompt for a local directory on first launch (when a picker is av
 
 1. Open a workflow run that is ready for execution (`EXECUTION_PENDING`, or already in local execution).
 2. On the Workflow detail page, click **本地启动**.
-3. Choose **Cursor** or **Codex**.
+3. Choose **Cursor**, **Codex**, or **WorkBuddy**.
 
 Web claims local execution when needed, issues a short-lived launch ticket, and calls `flowx-local` `/launch`. The daemon resolves repo paths, ensures FlowX Skill + MCP config in the project, opens the IDE, and delivers the task prompt (Chat/Agent prefill when possible; otherwise a file under `.flowx/tasks/` plus clipboard).
+
+WorkBuddy launch: macOS runs `open -a WorkBuddy <repo>`; Windows uses `%LOCALAPPDATA%\Programs\WorkBuddy\WorkBuddy.exe` or `WORKBUDDY_PATH`; Linux writes project files but does not open the desktop app.
 
 ## MCP configuration
 
@@ -68,7 +70,7 @@ Cursor / Codex should register the local agent as the MCP command:
 }
 ```
 
-When launching from FlowX Web, `flowx-local` writes or merges this project-level `.cursor/mcp.json` automatically and adds the deployment API URL plus short-lived token for that launch. Cursor starts `flowx-local mcp` on demand; the MCP process reads the active short-lived session from the local agent. For manual configuration, keep the minimal config above and do not hard-code `127.0.0.1`.
+When launching from FlowX Web, `flowx-local` writes or merges this project-level config automatically and adds the deployment API URL plus short-lived token for that launch. Cursor writes `.cursor/mcp.json`; WorkBuddy writes `.workbuddy/mcp.json`; the JSON shape is the same. Cursor starts `flowx-local mcp` on demand; the MCP process reads the active short-lived session from the local agent. For manual configuration, keep the minimal config above and do not hard-code `127.0.0.1`.
 
 ## Completing local work
 

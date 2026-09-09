@@ -94,6 +94,39 @@ describe('flowx-local-bridge', () => {
     });
   });
 
+  it('launchFlowxLocal accepts workbuddy and returns opened', async () => {
+    const body = {
+      ticket: 'ticket-1',
+      ide: 'workbuddy' as const,
+      apiBaseUrl: 'http://127.0.0.1:3000',
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        gitRoot: '/tmp/repo',
+        ide: 'workbuddy',
+        opened: false,
+        prefilled: false,
+        promptPath: '/tmp/repo/.flowx/tasks/w.md',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(launchFlowxLocal(body, 3922)).resolves.toEqual({
+      ok: true,
+      gitRoot: '/tmp/repo',
+      ide: 'workbuddy',
+      opened: false,
+      prefilled: false,
+      promptPath: '/tmp/repo/.flowx/tasks/w.md',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3922/launch',
+      expect.objectContaining({ body: JSON.stringify(body) }),
+    );
+  });
+
   it('launchFlowxLocal throws Error from { ok:false, error }', async () => {
     vi.stubGlobal(
       'fetch',

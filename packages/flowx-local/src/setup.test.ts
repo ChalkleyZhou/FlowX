@@ -33,13 +33,13 @@ afterEach(() => {
 });
 
 describe('flowx-local setup', () => {
-  it('defaults targets to cursor,codex,od', () => {
-    expect(parseSetupTargets()).toEqual(['cursor', 'codex', 'od']);
-    expect(parseSetupTargets('')).toEqual(['cursor', 'codex', 'od']);
+  it('defaults targets to cursor,codex,od,workbuddy', () => {
+    expect(parseSetupTargets()).toEqual(['cursor', 'codex', 'od', 'workbuddy']);
+    expect(parseSetupTargets('')).toEqual(['cursor', 'codex', 'od', 'workbuddy']);
   });
 
   it('parses comma-separated targets and rejects unknown ones', () => {
-    expect(parseSetupTargets('cursor,codex')).toEqual(['cursor', 'codex']);
+    expect(parseSetupTargets('cursor,workbuddy')).toEqual(['cursor', 'workbuddy']);
     expect(() => parseSetupTargets('vscode')).toThrow(/Unknown setup target/);
   });
 
@@ -55,6 +55,12 @@ describe('flowx-local setup', () => {
     ]);
     expect(resolveSkillInstallPaths('cursor', '/tmp/home', 'flowx-intake-requirement')).toEqual([
       '/tmp/home/.cursor/skills/flowx-intake-requirement/SKILL.md',
+    ]);
+    expect(resolveSkillInstallPaths('workbuddy', '/tmp/home')).toEqual([
+      '/tmp/home/.workbuddy/skills/flowx-product-prd/SKILL.md',
+    ]);
+    expect(resolveSkillInstallPaths('workbuddy', '/tmp/home', 'flowx-intake-requirement')).toEqual([
+      '/tmp/home/.workbuddy/skills/flowx-intake-requirement/SKILL.md',
     ]);
   });
 
@@ -142,6 +148,27 @@ describe('flowx-local setup', () => {
 
     expect(result.written).toContain(getConfigPath({ homeDir: home }));
     expect(result.written).toContain(taskXmlPath);
+  });
+
+  it('writes WorkBuddy skills and user MCP', async () => {
+    const home = makeHome();
+    await runSetup({
+      homeDir: home,
+      targets: 'workbuddy',
+      apiBaseUrl: 'https://flowx.example/api',
+      flowxBin: '/bin/flowx-local',
+      installService: vi.fn(),
+    });
+    const prd = join(home, '.workbuddy', 'skills', 'flowx-product-prd', 'SKILL.md');
+    const intake = join(home, '.workbuddy', 'skills', 'flowx-intake-requirement', 'SKILL.md');
+    const mcpPath = join(home, '.workbuddy', 'mcp.json');
+    expect(existsSync(prd)).toBe(true);
+    expect(existsSync(intake)).toBe(true);
+    const mcp = JSON.parse(readFileSync(mcpPath, 'utf8')) as {
+      mcpServers?: { flowx?: { command?: string; env?: Record<string, string> } };
+    };
+    expect(mcp.mcpServers?.flowx?.command).toBe('/bin/flowx-local');
+    expect(mcp.mcpServers?.flowx?.env?.FLOWX_API_TOKEN).toBeUndefined();
   });
 
   it('writes Cursor Skill and user MCP, then installs the service', async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CodexAdapter } from './codex-adapter.js';
 import { CursorAdapter } from './cursor-adapter.js';
+import { WorkBuddyAdapter } from './workbuddy-adapter.js';
 
 const baseInput = {
   gitRoot: '/repo',
@@ -23,6 +24,7 @@ describe('CursorAdapter', () => {
       ok: true,
       gitRoot: '/repo',
       ide: 'cursor',
+      opened: true,
       prefilled: false,
       promptPath: '/repo/.flowx/tasks/workflow-1.md',
       executionSessionId: 'session-1',
@@ -33,6 +35,7 @@ describe('CursorAdapter', () => {
       apiBaseUrl: 'https://flowx.example',
       mcpToken: 'token-1',
       mcpEntryPath: '/tools/flowx-mcp/dist/index.js',
+      ide: 'cursor',
     });
     expect(writePromptFile).toHaveBeenCalledWith('/repo', 'workflow-1', 'Do work');
     expect(openIde).toHaveBeenCalledWith('cursor', '/repo', 'Do work');
@@ -63,11 +66,40 @@ describe('CodexAdapter', () => {
         ok: true,
         gitRoot: '/repo',
         ide: 'codex',
+        opened: true,
         executionSessionId: 'session-1',
         workflowRunId: 'workflow-1',
       }),
     );
 
     expect(openIde).toHaveBeenCalledWith('codex', '/repo', 'Do work');
+  });
+});
+
+describe('WorkBuddyAdapter', () => {
+  it('ensures project with workbuddy ide and opens workbuddy', async () => {
+    const ensureProject = vi.fn();
+    const writePromptFile = vi.fn(() => '/repo/.flowx/tasks/workflow-1.md');
+    const openIde = vi.fn(async () => ({ opened: false, prefilled: false }));
+    const adapter = new WorkBuddyAdapter({ ensureProject, writePromptFile, openIde });
+
+    await expect(adapter.launch(baseInput)).resolves.toEqual({
+      ok: true,
+      gitRoot: '/repo',
+      ide: 'workbuddy',
+      opened: false,
+      prefilled: false,
+      promptPath: '/repo/.flowx/tasks/workflow-1.md',
+      executionSessionId: 'session-1',
+      workflowRunId: 'workflow-1',
+    });
+
+    expect(ensureProject).toHaveBeenCalledWith('/repo', {
+      apiBaseUrl: 'https://flowx.example',
+      mcpToken: 'token-1',
+      mcpEntryPath: '/tools/flowx-mcp/dist/index.js',
+      ide: 'workbuddy',
+    });
+    expect(openIde).toHaveBeenCalledWith('workbuddy', '/repo', 'Do work');
   });
 });

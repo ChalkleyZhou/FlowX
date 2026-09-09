@@ -9,7 +9,7 @@ import { promptApiBaseUrl as defaultPromptApiBaseUrl } from './login.js';
 import { upsertUserMcp } from './user-mcp.js';
 import { installUserService } from './user-service.js';
 
-export type SetupTarget = 'cursor' | 'codex' | 'od';
+export type SetupTarget = 'cursor' | 'codex' | 'od' | 'workbuddy';
 
 export type SetupOptions = {
   homeDir?: string;
@@ -32,7 +32,7 @@ export type SetupResult = {
 export const SETUP_SKILL_NAMES = ['flowx-product-prd', 'flowx-intake-requirement'] as const;
 export type SetupSkillName = (typeof SETUP_SKILL_NAMES)[number];
 
-const DEFAULT_TARGETS: SetupTarget[] = ['cursor', 'codex', 'od'];
+const DEFAULT_TARGETS: SetupTarget[] = ['cursor', 'codex', 'od', 'workbuddy'];
 
 export function parseSetupTargets(raw?: string): SetupTarget[] {
   const text = raw?.trim();
@@ -46,11 +46,11 @@ export function parseSetupTargets(raw?: string): SetupTarget[] {
   if (parts.length === 0) {
     return [...DEFAULT_TARGETS];
   }
-  const allowed: SetupTarget[] = ['cursor', 'codex', 'od'];
+  const allowed: SetupTarget[] = ['cursor', 'codex', 'od', 'workbuddy'];
   const targets: SetupTarget[] = [];
   for (const part of parts) {
     if (!allowed.includes(part as SetupTarget)) {
-      throw new Error(`Unknown setup target: ${part}. Use cursor, codex, and/or od.`);
+      throw new Error(`Unknown setup target: ${part}. Use cursor, codex, od, and/or workbuddy.`);
     }
     if (!targets.includes(part as SetupTarget)) {
       targets.push(part as SetupTarget);
@@ -76,6 +76,9 @@ export function resolveSkillInstallPaths(
 ): string[] {
   if (target === 'cursor') {
     return [join(homeDir, '.cursor', 'skills', skillName, 'SKILL.md')];
+  }
+  if (target === 'workbuddy') {
+    return [join(homeDir, '.workbuddy', 'skills', skillName, 'SKILL.md')];
   }
   return [join(homeDir, '.agents', 'skills', skillName, 'SKILL.md')];
 }
@@ -159,8 +162,8 @@ export async function runSetup(options: SetupOptions = {}): Promise<SetupResult>
 
   upsertUserMcp({
     homeDir,
-    targets: targets.filter((target): target is 'cursor' | 'codex' =>
-      target === 'cursor' || target === 'codex',
+    targets: targets.filter((target): target is 'cursor' | 'codex' | 'workbuddy' =>
+      target === 'cursor' || target === 'codex' || target === 'workbuddy',
     ),
     flowxBin: bin,
   });
