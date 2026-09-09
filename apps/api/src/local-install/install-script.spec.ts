@@ -3,6 +3,7 @@ import {
   buildInstallPs1Script,
   buildInstallScript,
   FLOWX_LOCAL_INSTALL_VERSION,
+  FLOWX_NODE_RUNTIME_VERSION,
   requestPublicOrigin,
   resolveInstallApiBaseUrl,
 } from './install-script';
@@ -21,21 +22,22 @@ describe('buildInstallScript', () => {
     expect(script).toContain('set -euo pipefail');
   });
 
-  it('points missing Node at nodejs.org and the same install URL', () => {
-    expect(script).toContain('https://nodejs.org/');
-    expect(script).toContain(PRODUCTION.installUrl);
-    expect(script).toMatch(/node -v/);
+  it('bootstraps a private Node runtime when the system has no usable Node', () => {
+    expect(script).toContain(`nodejs.org/dist/${FLOWX_NODE_RUNTIME_VERSION}`);
+    expect(script).toContain(`node-${FLOWX_NODE_RUNTIME_VERSION}-\${flowx_platform}-\${flowx_arch}.tar.gz`);
+    expect(script).toContain('flowx_home="${FLOWX_HOME:-$HOME/.flowx}"');
+    expect(script).not.toContain('请从 https://nodejs.org/ 安装后');
   });
 
   it('installs a pinned @flowx-ai/local that supports --api-base-url', () => {
     expect(script).toContain(
-      `npm install -g @flowx-ai/local@${FLOWX_LOCAL_INSTALL_VERSION} --registry https://registry.npmjs.org`,
+      `install -g --prefix "$flowx_prefix" @flowx-ai/local@${FLOWX_LOCAL_INSTALL_VERSION} --registry https://registry.npmjs.org`,
     );
   });
 
   it('embeds the site API URL into setup --no-ide', () => {
     expect(script).toContain(
-      `flowx-local setup --api-base-url '${PRODUCTION.apiBaseUrl}' --no-ide`,
+      `setup --api-base-url '${PRODUCTION.apiBaseUrl}' --no-ide`,
     );
   });
 
@@ -62,7 +64,7 @@ describe('buildInstallScript', () => {
 
   it('prints token settings URL and flowx-local login without prompting for a token', () => {
     expect(script).toContain(`${PRODUCTION.webOrigin}/settings/api-tokens`);
-    expect(script).toContain('flowx-local login');
+    expect(script).toContain('$flowx_bin_dir/flowx-local login');
     expect(script).not.toContain('--token');
     expect(script).not.toContain('fxpat_');
   });
@@ -82,7 +84,7 @@ describe('buildInstallScript', () => {
       webOrigin: 'http://127.0.0.1:4173',
       installUrl: 'http://127.0.0.1:4173/install',
     });
-    expect(loopback).toContain("flowx-local setup --api-base-url 'http://127.0.0.1:3000' --no-ide");
+    expect(loopback).toContain("setup --api-base-url 'http://127.0.0.1:3000' --no-ide");
   });
 });
 
@@ -172,7 +174,7 @@ describe('buildInstallPs1Script', () => {
 
   it('pins the same @flowx-ai/local version as the bash installer', () => {
     expect(script).toContain(
-      `npm install -g @flowx-ai/local@${FLOWX_LOCAL_INSTALL_VERSION} --registry https://registry.npmjs.org`,
+      `install -g --prefix $flowxPrefix @flowx-ai/local@${FLOWX_LOCAL_INSTALL_VERSION} --registry https://registry.npmjs.org`,
     );
   });
 
@@ -199,7 +201,7 @@ describe('buildInstallPs1Script', () => {
 
   it('prints token settings URL and flowx-local login without prompting for a token', () => {
     expect(script).toContain(`${PRODUCTION.webOrigin}/settings/api-tokens`);
-    expect(script).toContain('flowx-local login');
+    expect(script).toContain('$script:flowxLauncher login');
     expect(script).not.toContain('--token');
     expect(script).not.toContain('fxpat_');
   });

@@ -50,7 +50,7 @@ describe('LocalInstallController', () => {
 
     expect(body).toContain('$ErrorActionPreference');
     expect(body).toContain('https://flowx.example.com/api');
-    expect(body).toContain('irm https://flowx.example.com/install.ps1 | iex');
+    expect(body).toContain('nodejs.org/dist/v22.14.0');
   });
 
   it('declares Content-Disposition inline on GET /install', () => {

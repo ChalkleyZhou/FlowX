@@ -14,7 +14,7 @@ import { parseSetupArgs } from './setup-cli.js';
 import { buildStatusPayload } from './status.js';
 import { checkPackageVersion, formatVersionCheck } from './version.js';
 import { detectGlobalInstaller, pickUpdateTargets } from './update.js';
-import { execSync, spawnSync } from 'node:child_process';
+import { execFileSync, execSync, spawnSync } from 'node:child_process';
 
 async function runLogout(): Promise<void> {
   const path = getCredentialsPath();
@@ -88,7 +88,16 @@ async function main(argv: string[]): Promise<void> {
 
     // Ensure the newly installed package's templates are used by re-running `setup` in a fresh process.
     try {
-      if (installer === 'pnpm') {
+      const privatePrefix = process.env.FLOWX_LOCAL_PREFIX?.trim();
+      const privateNpm = process.env.FLOWX_LOCAL_NPM?.trim();
+      if (privatePrefix) {
+        const npmCommand = privateNpm || 'npm';
+        execFileSync(
+          npmCommand,
+          ['install', '-g', '--prefix', privatePrefix, '@flowx-ai/local@latest'],
+          { stdio: 'inherit' },
+        );
+      } else if (installer === 'pnpm') {
         execSync('pnpm add -g @flowx-ai/local@latest', { stdio: 'inherit' });
       } else {
         if (installer === 'unknown') {

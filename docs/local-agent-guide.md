@@ -18,7 +18,7 @@ irm https://<当前站点>/install.ps1 | iex
 flowx-local login
 ```
 
-需要 Node.js 20+（没有则到 https://nodejs.org/ 安装后重跑）。脚本会装包、注册后台服务（macOS LaunchAgent / Linux systemd --user / Windows 计划任务），检测到 Cursor / Codex 时询问是否写入需求登记、产品构思、Spec & Plan、本地冒烟四个 FlowX Skill 和 MCP。WorkBuddy 请再执行 `flowx-local setup workbuddy`。`login` 只粘贴设置页生成的 `fxpat_…`。
+不需要预先安装 Node.js。脚本会优先复用已有的 Node.js 20+；没有可用版本时，会把固定版本的 FlowX 私有 runtime 安装到 `~/.flowx/runtime`，再把包和启动器安装到 `~/.flowx`。之后注册后台服务（macOS LaunchAgent / Linux systemd --user / Windows 计划任务），检测到 Cursor / Codex 时询问是否写入需求登记、产品构思、Spec & Plan、本地冒烟四个 FlowX Skill 和 MCP。WorkBuddy 请再执行 `flowx-local setup workbuddy`。`login` 只粘贴设置页生成的 `fxpat_…`。
 
 ## 怎么用
 
@@ -46,7 +46,7 @@ flowx-local login
 | 情况 | 处理 |
 | --- | --- |
 | 网页提示未检测到 | `flowx-local status`，或 `curl http://127.0.0.1:3920/health` |
-| 找不到命令 | 把 npm 全局 bin 加入 `PATH`；或 `npm install -g @flowx-ai/local --registry https://registry.npmjs.org` 后 `flowx-local setup --api-base-url https://你的站点/api` |
+| 找不到命令 | 新开终端使 `~/.flowx/bin` 的 PATH 配置生效；或直接执行 `~/.flowx/bin/flowx-local login` |
 | `irm` 被策略拦截 | `powershell -ExecutionPolicy Bypass -c "irm https://你的站点/install.ps1 | iex"` |
 | `login` 询问地址 / 连错环境 | `flowx-local login --api-base-url https://你的站点/api --token fxpat_…` |
 | 完成结果进了 Outbox | `flowx-local sync` |
