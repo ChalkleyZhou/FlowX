@@ -245,13 +245,26 @@ export FLOWX_LOCAL_NPM="\$flowx_npm"
 exec "\$flowx_node" "\$flowx_entry" "\\$@"
 EOF
 chmod 755 "\$flowx_bin_dir/flowx-local"
+flowx_path_bin=""
+while IFS= read -r flowx_candidate; do
+  if [ -d "\$flowx_candidate" ] && [ -w "\$flowx_candidate" ]; then
+    flowx_path_bin="\$flowx_candidate"
+    break
+  fi
+done < <(printf '%s' "\$PATH" | tr ':' '\\n')
+if [ -n "\$flowx_path_bin" ] && [ "\$flowx_path_bin" != "\$flowx_bin_dir" ]; then
+  ln -sf "\$flowx_bin_dir/flowx-local" "\$flowx_path_bin/flowx-local" 2>/dev/null || true
+fi
 export PATH="\$flowx_bin_dir:\$flowx_runtime_bin:\$PATH"
 flowx_path_line='export PATH="\$HOME/.flowx/bin:\$PATH"'
-for flowx_profile in "\$HOME/.zshrc" "\$HOME/.bashrc"; do
-  if [ -f "\$flowx_profile" ] && ! grep -Fq '# FlowX local agent' "\$flowx_profile"; then
-    printf '\\n# FlowX local agent\\n%s\\n' "\$flowx_path_line" >> "\$flowx_profile"
-  fi
-done
+case "\${SHELL##*/}" in
+  zsh) flowx_profile="\$HOME/.zshrc" ;;
+  bash) flowx_profile="\$HOME/.bashrc" ;;
+  *) flowx_profile="\$HOME/.profile" ;;
+esac
+if touch "\$flowx_profile" 2>/dev/null && ! grep -Fq '# FlowX local agent' "\$flowx_profile"; then
+  printf '\\n# FlowX local agent\\n%s\\n' "\$flowx_path_line" >> "\$flowx_profile"
+fi
 
 "\$flowx_node" "\$flowx_entry" setup --api-base-url ${apiBaseUrl} --no-ide
 
@@ -292,7 +305,11 @@ fi
 
 echo "请打开 ${tokenSettingsUrl} 生成 Personal API Token，然后执行："
 echo "  \$flowx_bin_dir/flowx-local login"
-echo "如需直接使用 flowx-local，请将 \$flowx_bin_dir 加入 PATH。"
+if [ -n "\$flowx_path_bin" ]; then
+  echo "已将 flowx-local 放入 PATH：\$flowx_path_bin"
+else
+  echo "请重新打开终端使 PATH 配置生效，或直接执行 \$flowx_bin_dir/flowx-local。"
+fi
 `;
 }
 
