@@ -62,6 +62,12 @@ describe('flowx-local setup', () => {
     expect(resolveSkillInstallPaths('workbuddy', '/tmp/home', 'flowx-intake-requirement')).toEqual([
       '/tmp/home/.workbuddy/skills/flowx-intake-requirement/SKILL.md',
     ]);
+    expect(resolveSkillInstallPaths('codex', '/tmp/home', 'flowx-spec-plan')).toEqual([
+      '/tmp/home/.agents/skills/flowx-spec-plan/SKILL.md',
+    ]);
+    expect(resolveSkillInstallPaths('cursor', '/tmp/home', 'flowx-local-smoke')).toEqual([
+      '/tmp/home/.cursor/skills/flowx-local-smoke/SKILL.md',
+    ]);
   });
 
   it('writes missing skills and skips existing ones unless force', async () => {
@@ -73,17 +79,25 @@ describe('flowx-local setup', () => {
     };
 
     const first = await runSetup({ homeDir: home, targets: 'cursor,codex,od', ...extras });
-    // 2 skills × (cursor + agents) = 4 paths; codex/od share agents roots per skill.
-    expect(first.written).toHaveLength(4);
+    // 4 skills × (cursor + agents) = 8 paths; codex/od share agents roots per skill.
+    expect(first.written).toHaveLength(8);
     expect(first.skipped).toEqual([]);
     const cursorPrd = join(home, '.cursor', 'skills', 'flowx-product-prd', 'SKILL.md');
     const agentsPrd = join(home, '.agents', 'skills', 'flowx-product-prd', 'SKILL.md');
     const cursorIntake = join(home, '.cursor', 'skills', 'flowx-intake-requirement', 'SKILL.md');
     const agentsIntake = join(home, '.agents', 'skills', 'flowx-intake-requirement', 'SKILL.md');
+    const cursorSpecPlan = join(home, '.cursor', 'skills', 'flowx-spec-plan', 'SKILL.md');
+    const agentsSpecPlan = join(home, '.agents', 'skills', 'flowx-spec-plan', 'SKILL.md');
+    const cursorSmoke = join(home, '.cursor', 'skills', 'flowx-local-smoke', 'SKILL.md');
+    const agentsSmoke = join(home, '.agents', 'skills', 'flowx-local-smoke', 'SKILL.md');
     expect(existsSync(cursorPrd)).toBe(true);
     expect(existsSync(agentsPrd)).toBe(true);
     expect(existsSync(cursorIntake)).toBe(true);
     expect(existsSync(agentsIntake)).toBe(true);
+    expect(existsSync(cursorSpecPlan)).toBe(true);
+    expect(existsSync(agentsSpecPlan)).toBe(true);
+    expect(existsSync(cursorSmoke)).toBe(true);
+    expect(existsSync(agentsSmoke)).toBe(true);
     expect(readFileSync(cursorPrd, 'utf8')).toContain('prd.md');
     expect(readFileSync(cursorPrd, 'utf8')).toContain('头脑风暴');
     expect(readFileSync(cursorPrd, 'utf8')).not.toContain('Superpowers');
@@ -97,17 +111,23 @@ describe('flowx-local setup', () => {
     expect(readFileSync(cursorIntake, 'utf8')).toContain('意图不明确时先询问');
     expect(readFileSync(cursorIntake, 'utf8')).toContain('不得调用任何 `flowx_*` 工具');
     expect(readFileSync(cursorIntake, 'utf8')).not.toContain('创建前不强制二次确认');
+    expect(readFileSync(cursorSpecPlan, 'utf8')).toContain('flowx_submit_spec_plan');
+    expect(readFileSync(cursorSpecPlan, 'utf8')).toContain('PLAN_MARKDOWN');
+    expect(readFileSync(cursorSmoke, 'utf8')).toContain('flowx_claim_smoke_task');
+    expect(readFileSync(cursorSmoke, 'utf8')).toContain('testedRevisions');
 
     writeFileSync(cursorPrd, '# custom\n', 'utf8');
     const second = await runSetup({ homeDir: home, targets: 'cursor', ...extras });
     expect(second.written).toEqual([]);
-    expect(second.skipped).toEqual([cursorPrd, cursorIntake]);
+    expect(second.skipped).toEqual([cursorPrd, cursorIntake, cursorSpecPlan, cursorSmoke]);
     expect(readFileSync(cursorPrd, 'utf8')).toBe('# custom\n');
 
     const forced = await runSetup({ homeDir: home, targets: 'cursor', force: true, ...extras });
-    expect(forced.written).toEqual([cursorPrd, cursorIntake]);
+    expect(forced.written).toEqual([cursorPrd, cursorIntake, cursorSpecPlan, cursorSmoke]);
     expect(readFileSync(cursorPrd, 'utf8')).toContain('flowx_submit_brainstorm');
     expect(readFileSync(cursorIntake, 'utf8')).toContain('flowx_create_requirement');
+    expect(readFileSync(cursorSpecPlan, 'utf8')).toContain('flowx_get_spec_plan_handoff');
+    expect(readFileSync(cursorSmoke, 'utf8')).toContain('flowx_submit_smoke_report');
   });
 
   it('with noIde writes API config and installs service without Skill or MCP', async () => {

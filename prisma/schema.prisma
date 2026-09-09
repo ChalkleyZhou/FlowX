@@ -377,6 +377,7 @@ model User {
   createdTestRuns          TestRun[]                 @relation("TestRunCreatedBy")
   assignedTestRunCases     TestRunCase[]             @relation("TestRunCaseAssignee")
   executedTestResults      TestResult[]              @relation("TestResultExecutedBy")
+  claimedTestExecutions    TestExecution[]           @relation("TestExecutionClaimedBy")
   createdAt       DateTime                 @default(now())
   updatedAt       DateTime                 @updatedAt
 }
@@ -700,8 +701,10 @@ model StageExecution {
 
 model ExecutionSession {
   id               String          @id @default(cuid())
-  workflowRunId    String
-  workflowRun      WorkflowRun     @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  workflowRunId    String?
+  workflowRun      WorkflowRun?    @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  testRunId        String?
+  testRun          TestRun?        @relation(fields: [testRunId], references: [id], onDelete: Cascade)
   stageExecutionId String?
   stageExecution   StageExecution? @relation(fields: [stageExecutionId], references: [id], onDelete: SetNull)
   organizationId   String?
@@ -729,10 +732,12 @@ model ExecutionSession {
   syncEvents       SyncEvent[]
   artifacts        Artifact[]
   evidence         Evidence[]
+  testExecution    TestExecution?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
   @@index([workflowRunId, status, createdAt])
+  @@index([testRunId, status, createdAt])
   @@index([stageExecutionId, status])
   @@index([organizationId, status, createdAt])
   @@index([workspaceId, status, createdAt])
@@ -1285,11 +1290,16 @@ model TestRun {
   name            String
   runType         String        @default("INITIAL")
   status          String        @default("ACTIVE")
+  sourceFingerprint String?
+  reportRevision  Int           @default(0)
   sourceBugId     String?
   sourceBug       Bug?          @relation("BugVerificationRuns", fields: [sourceBugId], references: [id], onDelete: SetNull)
   createdByUserId String?
   createdByUser   User?         @relation("TestRunCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   cases           TestRunCase[]
+  targets         TestRunTarget[]
+  executions      TestExecution[]
+  executionSessions ExecutionSession[]
   startedAt       DateTime?
   completedAt     DateTime?
   createdAt       DateTime      @default(now())
@@ -1299,20 +1309,105 @@ model TestRun {
   @@index([sourceBugId, createdAt])
 }
 
+model TestRunTarget {
+  id                String          @id @default(cuid())
+  testRunId         String
+  testRun           TestRun         @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+  key               String
+  name              String
+  required          Boolean         @default(true)
+  expectedRevisions Json
+  status            String          @default("PENDING")
+  cases             TestRunCase[]
+  executions        TestExecution[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([testRunId, key])
+  @@index([testRunId, status])
+}
+
 model TestRunCase {
   id               String           @id @default(cuid())
   testRunId        String
   testRun          TestRun          @relation(fields: [testRunId], references: [id], onDelete: Cascade)
   snapshotId       String
   snapshot         TestCaseSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+  targetId         String?
+  target           TestRunTarget?   @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  required         Boolean          @default(true)
+  blocking         Boolean          @default(true)
   assignedToUserId String?
   assignedToUser   User?            @relation("TestRunCaseAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   result           TestResult?
   sortOrder        Int              @default(0)
   createdAt        DateTime         @default(now())
 
-  @@unique([testRunId, snapshotId])
+  executionResults TestExecutionCaseResult[]
+  activeLease      TestRunCaseLease?
+
+  @@unique([testRunId, snapshotId, targetId])
+  @@index([targetId, sortOrder])
   @@index([assignedToUserId, createdAt])
+}
+
+model TestExecution {
+  id                 String                    @id @default(cuid())
+  testRunId          String
+  testRun            TestRun                   @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+  targetId           String
+  target             TestRunTarget             @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  executionSessionId String                    @unique
+  executionSession   ExecutionSession          @relation(fields: [executionSessionId], references: [id], onDelete: Cascade)
+  status             String                    @default("RUNNING")
+  claimedCaseIds     Json
+  claimedByUserId    String?
+  claimedByUser      User?                     @relation("TestExecutionClaimedBy", fields: [claimedByUserId], references: [id], onDelete: SetNull)
+  deviceId           String?
+  sourceFingerprint  String
+  testedRevisions    Json?
+  environment        Json?
+  summary            String?
+  leaseExpiresAt     DateTime
+  startedAt          DateTime                  @default(now())
+  completedAt        DateTime?
+  results            TestExecutionCaseResult[]
+  caseLeases         TestRunCaseLease[]
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  @@index([testRunId, status, createdAt])
+  @@index([targetId, status, leaseExpiresAt])
+  @@index([claimedByUserId, status, createdAt])
+}
+
+model TestRunCaseLease {
+  testRunCaseId   String        @id
+  testRunCase     TestRunCase   @relation(fields: [testRunCaseId], references: [id], onDelete: Cascade)
+  testExecutionId String
+  testExecution   TestExecution @relation(fields: [testExecutionId], references: [id], onDelete: Cascade)
+  leaseExpiresAt  DateTime
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([testExecutionId, leaseExpiresAt])
+}
+
+model TestExecutionCaseResult {
+  id              String        @id @default(cuid())
+  testExecutionId String
+  testExecution   TestExecution @relation(fields: [testExecutionId], references: [id], onDelete: Cascade)
+  testRunCaseId   String
+  testRunCase     TestRunCase   @relation(fields: [testRunCaseId], references: [id], onDelete: Cascade)
+  result          String
+  durationMs      Int?
+  actualResult    String?
+  remark          String?
+  artifactIds     Json?
+  createdAt       DateTime      @default(now())
+
+  @@unique([testExecutionId, testRunCaseId])
+  @@index([testRunCaseId, result, createdAt])
 }
 
 model TestResult {

@@ -21,6 +21,9 @@ import {
   type OpenDesignBrainstormHandoff,
   type OpenDesignContextPackage,
   type OpenDesignHandoff,
+  type LocalSpecPlanContextPackage,
+  type LocalSpecPlanHandoff,
+  type SpecPlanCompletionReport,
   type SourceTool,
 } from '@flowx-ai/protocol';
 import {
@@ -797,6 +800,9 @@ export class WorkflowService {
       throw new ConflictException('Execution session belongs to another organization.');
     }
 
+    if (!session.workflowRunId) {
+      throw new NotFoundException('Local execution session is not linked to a workflow.');
+    }
     const workflow = await this.getWorkflowOrThrow(session.workflowRunId);
     const handoff = await this.buildLocalHandoffForWorkflow(workflow, workflow.status, session);
     const completionReport = this.buildCompletionReport(session.id, handoff, dto);
@@ -1430,6 +1436,221 @@ export class WorkflowService {
     return this.buildOpenDesignBrainstormHandoff(workflow, session);
   }
 
+  async claimLocalSpecPlan(
+    id: string,
+    notifyRecipient?: WorkflowNotificationSession,
+  ): Promise<{ workflow: WorkflowPayload; handoff: LocalSpecPlanHandoff }> {
+    const workflow = await this.getWorkflowOrThrow(id);
+    if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.SPEC_PLAN_PENDING) {
+      throw new BadRequestException(
+        'Local Spec & Plan can only be claimed while Spec & Plan is pending.',
+      );
+    }
+    const existing = await this.findActiveLocalSpecPlanSession(id);
+    if (existing) {
+      return { workflow, handoff: this.buildLocalSpecPlanHandoff(workflow, existing) };
+    }
+
+    const recipient = this.toNotificationRecipient(notifyRecipient);
+    const sessionRef = {
+      id: randomUUID(),
+      traceId: randomUUID(),
+      protocolVersion: FLOWX_PROTOCOL_VERSION,
+      sourceFingerprint: this.buildLocalSpecPlanSourceFingerprint(workflow),
+    };
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const stage = await this.getOrCreateRunnableSkippableStageExecution(
+        tx,
+        id,
+        StageType.SPEC_PLAN,
+      );
+      await this.updateStageExecution(tx, stage.id, StageExecutionStatus.RUNNING, {
+        input: {
+          source: 'LOCAL_SPEC_PLAN',
+          sourceFingerprint: sessionRef.sourceFingerprint,
+          claimedByUserId: recipient?.flowxUserId ?? null,
+          claimedAt: new Date().toISOString(),
+        },
+        statusMessage: '本地 Agent 正在生成 Spec & Plan',
+        startedAt: new Date(),
+      });
+      await tx.executionSession.create({
+        data: {
+          id: sessionRef.id,
+          workflowRunId: id,
+          stageExecutionId: stage.id,
+          organizationId: recipient?.flowxOrganizationId ?? null,
+          workspaceId:
+            workflow.requirement.workspaceId ?? workflow.requirement.project.workspaceId,
+          projectId: workflow.requirement.projectId,
+          status: 'RUNNING',
+          executorType: 'LOCAL',
+          sourceTool: 'flowx-local',
+          protocolVersion: sessionRef.protocolVersion,
+          traceId: sessionRef.traceId,
+          idempotencyKey: `local-spec-plan:${id}:${stage.id}`,
+          claimedByUserId: recipient?.flowxUserId ?? null,
+          startedAt: new Date(),
+          lastHeartbeatAt: new Date(),
+          metadata: {
+            stage: 'SPEC_PLAN',
+            purpose: 'SPEC_PLAN',
+            sourceFingerprint: sessionRef.sourceFingerprint,
+            outputFormat: 'flowx-spec-plan-v1',
+          },
+        },
+      });
+      return tx.workflowRun.findUniqueOrThrow({
+        where: { id },
+        include: this.workflowInclude(),
+      });
+    });
+
+    return {
+      workflow: updated,
+      handoff: this.buildLocalSpecPlanHandoff(updated, sessionRef),
+    };
+  }
+
+  async getLocalSpecPlanHandoff(
+    id: string,
+    notifyRecipient?: WorkflowNotificationSession,
+  ): Promise<LocalSpecPlanHandoff> {
+    const workflow = await this.getWorkflowOrThrow(id);
+    const session = await this.findActiveLocalSpecPlanSession(id);
+    if (!session) {
+      if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.SPEC_PLAN_PENDING) {
+        throw new BadRequestException(
+          `Workflow status ${workflow.status} does not allow Spec & Plan handoff.`,
+        );
+      }
+      return (await this.claimLocalSpecPlan(id, notifyRecipient)).handoff;
+    }
+    return this.buildLocalSpecPlanHandoff(workflow, session);
+  }
+
+  async completeLocalSpecPlanSession(
+    executionSessionId: string,
+    report: SpecPlanCompletionReport,
+    scope: { organizationId?: string | null } = {},
+  ) {
+    const session = await this.prisma.executionSession.findUnique({
+      where: { id: executionSessionId },
+    });
+    if (!session || session.sourceTool !== 'flowx-local' || !this.isLocalSpecPlanSession(session)) {
+      throw new NotFoundException('Local Spec & Plan execution session not found.');
+    }
+    if (session.organizationId && session.organizationId !== scope.organizationId?.trim()) {
+      throw new ConflictException('Local Spec & Plan session belongs to another organization.');
+    }
+    if (!session.workflowRunId || !session.stageExecutionId) {
+      throw new BadRequestException('Local Spec & Plan session is missing its workflow stage.');
+    }
+    const workflow = await this.getWorkflowOrThrow(session.workflowRunId);
+    const existingKey = this.readCompletionIdempotencyKey(session.metadata);
+    if (session.status === 'COMPLETED') {
+      if (existingKey === report.idempotencyKey) {
+        return this.toLocalSpecPlanCompletionResult(workflow);
+      }
+      throw new ConflictException({
+        code: 'EXECUTION_SESSION_TERMINAL',
+        message: 'Local Spec & Plan session was already completed with another report.',
+      });
+    }
+    if (!ACTIVE_EXECUTION_SESSION_STATUSES.includes(session.status as never)) {
+      throw new ConflictException({
+        code: 'EXECUTION_SESSION_TERMINAL',
+        message: `Local Spec & Plan session is already ${session.status}.`,
+      });
+    }
+    if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.SPEC_PLAN_PENDING) {
+      throw new BadRequestException('Workflow is no longer waiting for local Spec & Plan.');
+    }
+    const sourceFingerprint = this.readMetadataString(session.metadata, 'sourceFingerprint');
+    if (!sourceFingerprint || sourceFingerprint !== report.sourceFingerprint) {
+      throw new ConflictException({
+        code: 'SOURCE_FINGERPRINT_MISMATCH',
+        message: 'Spec & Plan source changed after this session was claimed.',
+      });
+    }
+    const output = this.requireSpecPlanOutput(
+      report.output,
+      () => new BadRequestException('Invalid Spec & Plan output.'),
+    );
+    const artifactIds = [...new Set(report.artifactIds ?? [])];
+    const artifacts = await this.prisma.artifact.findMany({
+      where: {
+        id: { in: artifactIds },
+        executionSessionId,
+        status: 'AVAILABLE',
+      },
+      select: { id: true, artifactType: true, status: true },
+    });
+    const types = new Set(artifacts.map((artifact) => artifact.artifactType));
+    if (!types.has('SPEC_MARKDOWN') || !types.has('PLAN_MARKDOWN')) {
+      throw new BadRequestException(
+        'Available SPEC_MARKDOWN and PLAN_MARKDOWN artifacts are required before completion.',
+      );
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await this.updateStageExecution(
+        tx,
+        session.stageExecutionId!,
+        StageExecutionStatus.WAITING_CONFIRMATION,
+        {
+          output,
+          statusMessage: '本地 Spec & Plan 已回传，请确认后继续开发',
+          finishedAt: new Date(),
+        },
+      );
+      await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.SPEC_PLAN_PENDING, {
+        to: WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION,
+        stage: StageType.SPEC_PLAN,
+      });
+      const transition = await tx.executionSession.updateMany({
+        where: { id: executionSessionId, status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] } },
+        data: {
+          status: 'COMPLETED',
+          completedAt: new Date(),
+          summary: report.summary?.trim() || 'Local Spec & Plan completed.',
+          metadata: JSON.parse(
+            JSON.stringify({
+              ...(session.metadata && typeof session.metadata === 'object' && !Array.isArray(session.metadata)
+                ? session.metadata
+                : {}),
+              completionIdempotencyKey: report.idempotencyKey,
+              completionMetadata: report.metadata ?? {},
+              artifactIds,
+            }),
+          ) as Prisma.InputJsonObject,
+        },
+      });
+      if (transition.count !== 1) {
+        throw new ConflictException('Local Spec & Plan session changed during completion.');
+      }
+      await tx.evidence.create({
+        data: {
+          executionSessionId,
+          artifactId: artifacts.find((artifact) => artifact.artifactType === 'SPEC_MARKDOWN')?.id,
+          evidenceType: 'AGENT_SUMMARY',
+          sourceTool: 'flowx-local',
+          title: 'Local Spec & Plan submission',
+          summary: report.summary?.trim() || output.spec.goal,
+          status: 'REPORTED',
+          occurredAt: new Date(),
+          metadata: { artifactIds },
+        },
+      });
+      return tx.workflowRun.findUniqueOrThrow({
+        where: { id: workflow.id },
+        include: this.workflowInclude(),
+      });
+    });
+
+    return this.toLocalSpecPlanCompletionResult(updated);
+  }
+
   async completeLocalDesignSession(
     executionSessionId: string,
     report: DesignCompletionReport,
@@ -1446,6 +1667,9 @@ export class WorkflowService {
     }
     if (session.organizationId && session.organizationId !== scope.organizationId?.trim()) {
       throw new ConflictException('OpenDesign execution session belongs to another organization.');
+    }
+    if (!session.workflowRunId) {
+      throw new NotFoundException('OpenDesign execution session is not linked to a workflow.');
     }
     const workflow = await this.getWorkflowOrThrow(session.workflowRunId);
     const existingKey = this.readCompletionIdempotencyKey(session.metadata);
@@ -1584,6 +1808,9 @@ export class WorkflowService {
     }
     if (session.organizationId && session.organizationId !== scope.organizationId?.trim()) {
       throw new ConflictException('OpenDesign brainstorm session belongs to another organization.');
+    }
+    if (!session.workflowRunId) {
+      throw new NotFoundException('OpenDesign brainstorm session is not linked to a workflow.');
     }
     const workflow = await this.getWorkflowOrThrow(session.workflowRunId);
     const existingKey = this.readCompletionIdempotencyKey(session.metadata);
@@ -2890,6 +3117,119 @@ export class WorkflowService {
       traceId: session.traceId,
       contextPackage,
       completionEndpoint: `/execution-sessions/${session.id}/design/complete`,
+    };
+  }
+
+  private buildLocalSpecPlanHandoff(
+    workflow: WorkflowPayload,
+    session: {
+      id: string;
+      traceId: string;
+      protocolVersion: string;
+      metadata?: unknown;
+      sourceFingerprint?: string;
+    },
+  ): LocalSpecPlanHandoff {
+    const sourceFingerprint =
+      session.sourceFingerprint ??
+      this.readMetadataString(session.metadata, 'sourceFingerprint') ??
+      this.buildLocalSpecPlanSourceFingerprint(workflow);
+    const contextPackage: LocalSpecPlanContextPackage = {
+      protocolVersion: session.protocolVersion,
+      generatedAt: new Date().toISOString(),
+      sourceTool: workflow.aiProvider === 'cursor' ? 'cursor' : 'codex',
+      stage: 'SPEC_PLAN',
+      workflowRunId: workflow.id,
+      executionSessionId: session.id,
+      traceId: session.traceId,
+      sourceFingerprint,
+      requirement: {
+        id: workflow.requirement.id,
+        title: workflow.requirement.title,
+        description: workflow.requirement.description,
+        acceptanceCriteria: workflow.requirement.acceptanceCriteria,
+      },
+      repositories: workflow.workflowRepositories.map((repository) => ({
+        repositoryId: repository.repositoryId ?? repository.id,
+        workflowRepositoryId: repository.id,
+        name: repository.name,
+        url: repository.url || null,
+        baseBranch: repository.baseBranch,
+        workingBranch: repository.workingBranch,
+      })),
+      brainstormContext: this.getWorkflowBriefContext(workflow),
+      designContext: this.getWorkflowDesignContext(workflow),
+      outputContract: {
+        resultFileName: 'spec-plan.json',
+        specFileName: 'spec.md',
+        planFileName: 'plan.md',
+        format: 'flowx-spec-plan-v1',
+      },
+    };
+    return {
+      protocolVersion: session.protocolVersion,
+      workflowRunId: workflow.id,
+      executionSessionId: session.id,
+      traceId: session.traceId,
+      contextPackage,
+      completionEndpoint: `/execution-sessions/${session.id}/spec-plan/complete`,
+    };
+  }
+
+  private buildLocalSpecPlanSourceFingerprint(workflow: WorkflowPayload) {
+    return createHash('sha256')
+      .update(
+        JSON.stringify({
+          requirement: {
+            id: workflow.requirement.id,
+            title: workflow.requirement.title,
+            description: workflow.requirement.description,
+            acceptanceCriteria: workflow.requirement.acceptanceCriteria,
+          },
+          repositories: workflow.workflowRepositories.map((repository) => ({
+            id: repository.id,
+            repositoryId: repository.repositoryId,
+            baseBranch: repository.baseBranch,
+            workingBranch: repository.workingBranch,
+          })),
+          brainstormContext: this.getWorkflowBriefContext(workflow),
+          designContext: this.getWorkflowDesignContext(workflow),
+        }),
+      )
+      .digest('hex');
+  }
+
+  private async findActiveLocalSpecPlanSession(workflowRunId: string) {
+    const sessions = await this.prisma.executionSession.findMany({
+      where: {
+        workflowRunId,
+        sourceTool: 'flowx-local',
+        status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return sessions.find((session) => this.isLocalSpecPlanSession(session)) ?? null;
+  }
+
+  private isLocalSpecPlanSession(session: { metadata: unknown }) {
+    return this.readMetadataString(session.metadata, 'stage') === 'SPEC_PLAN';
+  }
+
+  private readMetadataString(metadata: unknown, key: string) {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+    const value = (metadata as Record<string, unknown>)[key];
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+  }
+
+  private toLocalSpecPlanCompletionResult(workflow: WorkflowPayload) {
+    return {
+      workflow,
+      workflowRunId: workflow.id,
+      workflowStatus: workflow.status,
+      next: {
+        stage: 'spec-plan-confirmation' as const,
+        hint: 'Review and confirm Spec & Plan in FlowX.',
+      },
     };
   }
 

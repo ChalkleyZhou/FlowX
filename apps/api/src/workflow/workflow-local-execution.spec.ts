@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { FLOWX_PROTOCOL_VERSION } from '@flowx-ai/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import type { SpecPlanOutput } from '../common/types';
 import { WorkflowArtifactService } from './workflow-artifact.service';
@@ -166,7 +167,7 @@ describe('WorkflowService local execution', () => {
     );
     expect(result.handoff.executor).toBe('LOCAL');
     expect(result.handoff.executionSessionId).toEqual(expect.any(String));
-    expect(result.handoff.protocolVersion).toBe('1.0');
+    expect(result.handoff.protocolVersion).toBe(FLOWX_PROTOCOL_VERSION);
   });
 
   it('completeLocalExecution rejects when remote verify fails', async () => {

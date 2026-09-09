@@ -9,6 +9,7 @@ import { ConfirmProvider } from '../../components/ConfirmDialog';
 import type { Project, TestCaseDefinition, TestCaseLibrary, TestRequest, Workspace } from '../../types';
 import { QualityCasesPage } from './QualityCasesPage';
 import { QualityRequestsPage } from './QualityRequestsPage';
+import { QualityRequestDetailPage } from './QualityRequestDetailPage';
 import { QualityRunsPage } from './QualityRunsPage';
 
 const { errorToast, successToast } = vi.hoisted(() => ({
@@ -41,6 +42,12 @@ vi.mock('../../api', () => ({
     importTestCases: vi.fn(),
     updateTestCase: vi.fn(),
     deleteTestCase: vi.fn(),
+    getTestRequest: vi.fn(),
+    getLocalSmokeRuns: vi.fn(),
+    getSubmissionReport: vi.fn(),
+    createLocalSmokeRun: vi.fn(),
+    finalizeLocalSmokeRun: vi.fn(),
+    fetchArtifactContent: vi.fn(),
   },
 }));
 
@@ -144,6 +151,9 @@ describe('Quality pages', () => {
     vi.mocked(api.getProjects).mockResolvedValue([project]);
     vi.mocked(api.getWorkflowRuns).mockResolvedValue([]);
     vi.mocked(api.getTestRequests).mockResolvedValue([testRequest]);
+    vi.mocked(api.getTestRequest).mockResolvedValue(testRequest);
+    vi.mocked(api.getLocalSmokeRuns).mockResolvedValue([]);
+    vi.mocked(api.getSubmissionReport).mockResolvedValue(null);
     vi.mocked(api.getTestCaseLibraries).mockResolvedValue([library]);
     vi.mocked(api.getTestCaseModules).mockResolvedValue([{
       id: 'module-1',
@@ -408,5 +418,81 @@ describe('Quality pages', () => {
     expect(container.textContent).toContain('Bug 回归');
     expect(container.querySelector('section[aria-label="执行历史"] > .bg-card')).toBeTruthy();
     expect(container.querySelector('[role="tablist"]')).toBeNull();
+  });
+
+  it('shows the multi-target local smoke matrix and report entry', async () => {
+    vi.mocked(api.getLocalSmokeRuns).mockResolvedValue([
+      {
+        id: 'local-smoke-1',
+        name: '本地冒烟 #1',
+        runType: 'LOCAL_SMOKE',
+        status: 'PASSED',
+        reportRevision: 1,
+        targets: [
+          {
+            id: 'target-web',
+            key: 'web',
+            name: 'Web',
+            required: true,
+            expectedRevisions: [],
+            status: 'PASSED',
+          },
+        ],
+        cases: [
+          {
+            id: 'run-case-1',
+            targetId: 'target-web',
+            required: true,
+            blocking: true,
+            snapshot: {
+              id: 'snapshot-1',
+              title: '登录主链路',
+              priority: 'P0',
+              steps: ['登录'],
+              expected: '进入首页',
+              selectedBy: 'AI',
+            },
+            result: { id: 'result-1', result: 'PASSED', actualResult: '进入首页' },
+          },
+        ],
+        executions: [
+          {
+            id: 'execution-1',
+            targetId: 'target-web',
+            status: 'COMPLETED',
+            deviceId: 'mac-1',
+            claimedByUser: { displayName: '张三' },
+            startedAt: '2026-09-09T01:00:00Z',
+          },
+        ],
+      },
+    ]);
+    vi.mocked(api.getSubmissionReport).mockResolvedValue({
+      id: 'report-1',
+      name: 'submission-report.html',
+      artifactType: 'TEST_REPORT',
+      version: '1',
+      createdAt: '2026-09-09T02:00:00Z',
+    });
+
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/quality/test-requests/request-1']}>
+          <ConfirmProvider>
+            <Routes>
+              <Route path="/quality/test-requests/:id" element={<QualityRequestDetailPage />} />
+            </Routes>
+          </ConfirmProvider>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('本地冒烟 #1');
+    expect(container.textContent).toContain('登录主链路');
+    expect(container.textContent).toContain('张三');
+    expect(container.textContent).toContain('下载报告');
   });
 });

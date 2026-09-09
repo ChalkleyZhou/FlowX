@@ -5,12 +5,16 @@ import { join } from 'node:path';
 
 export type OutboxItem = {
   eventId: string;
-  kind: 'design-completion' | 'brainstorm-completion';
+  kind: 'design-completion' | 'brainstorm-completion' | 'artifact-upload';
   credentialRef: string;
   apiBaseUrl: string;
   path: string;
-  method: 'POST';
+  method: 'POST' | 'ARTIFACT_UPLOAD';
   body: unknown;
+  filePath?: string;
+  uploadPath?: string;
+  contentType?: string;
+  sha256?: string;
   attempt: number;
   nextRetryAt: string;
   lastError: string | null;
@@ -56,6 +60,23 @@ export class Outbox {
     }
   }
 
+  async enqueueArtifactContent(
+    input: Omit<
+      OutboxItem,
+      'eventId' | 'attempt' | 'nextRetryAt' | 'lastError' | 'createdAt' | 'filePath'
+    > & { eventId?: string },
+    content: Buffer,
+  ) {
+    const eventId = input.eventId ?? randomUUID();
+    const filesRoot = join(this.root, 'files');
+    await mkdir(filesRoot, { recursive: true });
+    const filePath = join(filesRoot, `${eventId.replace(/[^a-zA-Z0-9._-]/g, '-')}.bin`);
+    const temporary = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+    await writeFile(temporary, content, { mode: 0o600 });
+    await rename(temporary, filePath);
+    return this.enqueue({ ...input, eventId, filePath });
+  }
+
   async pendingCount() {
     return (await this.list()).length;
   }
@@ -70,6 +91,7 @@ export class Outbox {
       try {
         await send(item);
         await rm(this.path(item.eventId), { force: true });
+        if (item.filePath) await rm(item.filePath, { force: true });
         sent += 1;
       } catch (error) {
         const attempt = item.attempt + 1;

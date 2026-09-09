@@ -7,7 +7,9 @@ import {
   isSupportedProtocolVersion,
   validateSyncEvent,
   type DesignCompletionReport,
+  type LocalSmokeCompletionReport,
   type OpenDesignContextPackage,
+  type SpecPlanCompletionReport,
   type FlowXSyncEvent,
 } from './index.js';
 import {
@@ -35,7 +37,42 @@ function createEvent(overrides: Partial<FlowXSyncEvent> = {}): FlowXSyncEvent {
 describe('flowx protocol', () => {
   it('accepts the current protocol version and rejects unknown versions', () => {
     expect(isSupportedProtocolVersion(FLOWX_PROTOCOL_VERSION)).toBe(true);
+    expect(isSupportedProtocolVersion('1.0')).toBe(true);
     expect(isSupportedProtocolVersion('2.0')).toBe(false);
+  });
+
+  it('shares local Spec & Plan and multi-target smoke contracts', () => {
+    const specPlan: SpecPlanCompletionReport = {
+      idempotencyKey: 'spec-plan:session-1:v1',
+      sourceFingerprint: 'source-1',
+      output: {
+        spec: {
+          goal: '支持本地提测',
+          scope: ['本地冒烟'],
+          nonGoals: [],
+          acceptanceCriteria: ['可汇总多人结果'],
+          constraints: [],
+        },
+        plan: {
+          approach: '复用 ExecutionSession',
+          touchpoints: ['apps/api'],
+          sequence: ['实现', '验证'],
+          risks: [],
+          verification: ['pnpm test'],
+        },
+      },
+      artifactIds: ['artifact-spec'],
+    };
+    const smoke: LocalSmokeCompletionReport = {
+      idempotencyKey: 'smoke:session-2:v1',
+      sourceFingerprint: 'revision-1',
+      environment: { os: 'darwin' },
+      testedRevisions: [{ workflowRepositoryId: 'wr-1', branch: 'feature/a', headSha: 'abc' }],
+      caseResults: [{ testRunCaseId: 'case-1', result: 'PASSED', durationMs: 1200 }],
+    };
+
+    expect(specPlan.artifactIds?.[0]).toBe('artifact-spec');
+    expect(smoke.caseResults[0].result).toBe('PASSED');
   });
 
   it('enforces execution session terminal states', () => {

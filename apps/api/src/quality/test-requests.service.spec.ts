@@ -101,6 +101,7 @@ describe('TestRequestsService', () => {
         steps: ['登录'],
         expected: '进入首页',
         coverageKeys: ['smoke'],
+        blocking: false,
       }],
     });
 
@@ -116,7 +117,11 @@ describe('TestRequestsService', () => {
         testDesignId: 'design-1',
         snapshots: { create: expect.arrayContaining([
           expect.objectContaining({ title: '登录成功', kind: 'FUNCTIONAL' }),
-          expect.objectContaining({ title: '登录冒烟', kind: 'SMOKE' }),
+          expect.objectContaining({
+            title: '登录冒烟',
+            kind: 'SMOKE',
+            metadata: { coverageKeys: ['smoke'], blocking: false },
+          }),
         ]) },
       }),
     }));
@@ -228,6 +233,33 @@ describe('TestRequestsService', () => {
       expect.objectContaining({
         where: { id: 'request-1' },
         data: expect.objectContaining({ status: 'READY', scopeGenerationStatus: 'COMPLETED' }),
+      }),
+    );
+  });
+
+  it('keeps the request in draft until an existing local smoke run is finalized', async () => {
+    const { service, prisma, transaction } = createService();
+    prisma.testRequest.findUnique.mockResolvedValue({
+      id: 'request-1',
+      status: 'DRAFT',
+      testPlan: {
+        id: 'plan-1',
+        _count: { snapshots: 2 },
+        runs: [{ id: 'smoke-run-1', status: 'ACTIVE' }],
+      },
+      workflowLinks: [{ workflowRun: { status: 'DONE' } }],
+    });
+    transaction.testRequest.update.mockResolvedValue({ id: 'request-1', status: 'DRAFT' });
+
+    await service.completeScope('request-1', {
+      summary: '登录模块回归',
+      coverageChecks: [{ key: 'acceptance-criteria', passed: true }],
+      excludedScopes: [],
+    });
+
+    expect(transaction.testRequest.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'DRAFT', scopeGenerationStatus: 'COMPLETED' }),
       }),
     );
   });

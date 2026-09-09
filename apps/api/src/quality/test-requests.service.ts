@@ -159,7 +159,10 @@ export class TestRequestsService {
                   precondition: smoke.precondition,
                   steps: smoke.steps as Prisma.InputJsonValue,
                   expected: smoke.expected,
-                  metadata: { coverageKeys: smoke.coverageKeys },
+                  metadata: {
+                    coverageKeys: smoke.coverageKeys,
+                    blocking: smoke.blocking,
+                  },
                   selectedBy: 'AI',
                   selectionReason: '本次改动动态生成的冒烟用例',
                   impactLevel: 'CRITICAL',
@@ -274,7 +277,16 @@ export class TestRequestsService {
     const request = await this.prisma.testRequest.findUnique({
       where: { id },
       include: {
-        testPlan: { include: { _count: { select: { snapshots: true } } } },
+        testPlan: {
+          include: {
+            _count: { select: { snapshots: true } },
+            runs: {
+              where: { runType: 'LOCAL_SMOKE' },
+              select: { id: true, status: true },
+              orderBy: { createdAt: 'desc' },
+            },
+          },
+        },
         workflowLinks: { include: { workflowRun: { select: { status: true } } } },
       },
     });
@@ -297,6 +309,10 @@ export class TestRequestsService {
       });
     }
 
+    const localSmokeRuns = request.testPlan.runs ?? [];
+    const waitsForLocalSmoke =
+      localSmokeRuns.length > 0 && !localSmokeRuns.some((run) => run.status === 'PASSED');
+
     return this.prisma.$transaction(async (tx) => {
       await tx.testPlan.update({
         where: { id: request.testPlan!.id },
@@ -305,7 +321,7 @@ export class TestRequestsService {
       return tx.testRequest.update({
         where: { id },
         data: {
-          status: TestRequestStatus.READY,
+          status: waitsForLocalSmoke ? TestRequestStatus.DRAFT : TestRequestStatus.READY,
           scopeGenerationStatus: 'COMPLETED',
           scopeSummary: dto.summary.trim(),
           scopeRevision: { increment: 1 },

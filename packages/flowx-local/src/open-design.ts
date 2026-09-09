@@ -3,6 +3,7 @@ import { OpenDesignAdapter } from './adapters/open-design-adapter.js';
 import { ensureDeviceIdentity } from './device.js';
 import { EdgeClient } from './edge-client.js';
 import { Outbox } from './outbox.js';
+import { resolveApiAuth } from './credentials.js';
 
 export type OpenDesignLaunchRequest = { ticket: string; apiBaseUrl: string };
 
@@ -37,5 +38,10 @@ export async function syncOpenDesignOutbox(
   const outbox = new Outbox({ homeDir });
   const client = new EdgeClient(outbox, options.fetch);
   const adapter = new OpenDesignAdapter(config, client, homeDir);
-  return client.flush((credentialRef) => adapter.loadAccessToken(credentialRef));
+  return client.flush(async (credentialRef) => {
+    if (credentialRef.startsWith('api-auth:')) {
+      return (await resolveApiAuth(homeDir)).apiToken;
+    }
+    return adapter.loadAccessToken(credentialRef);
+  });
 }

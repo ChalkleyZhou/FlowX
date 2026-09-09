@@ -45,6 +45,8 @@ import type {
   TestDesignCandidate,
   TestRequest,
   TestRun,
+  ArtifactSummary,
+  TestedRepositoryRevision,
   WorkflowDesignArtifactPage,
   WorkflowDesignArtifactsList,
   WorkflowRun,
@@ -1131,6 +1133,42 @@ export const api = {
     request<TestDesign>(`/quality/test-designs/${id}/confirm`, { method: 'POST', body: JSON.stringify(payload) }),
   getTestRuns: (testRequestId: string) =>
     request<TestRun[]>(`/quality/test-requests/${testRequestId}/runs`),
+  getLocalSmokeRuns: (testRequestId: string) =>
+    request<TestRun[]>(`/quality/test-requests/${testRequestId}/local-smoke-runs`),
+  getLocalSmokeTasks: (testRunId: string) =>
+    request<TestRun>(`/quality/local-smoke-runs/${testRunId}/tasks`),
+  createLocalSmokeRun: (
+    testRequestId: string,
+    payload: {
+      name: string;
+      targets: Array<{
+        key: string;
+        name: string;
+        required?: boolean;
+        expectedRevisions: TestedRepositoryRevision[];
+      }>;
+      snapshotIds?: string[];
+    },
+  ) =>
+    request<TestRun>(`/quality/test-requests/${testRequestId}/local-smoke-runs`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  finalizeLocalSmokeRun: (testRunId: string) =>
+    request<{ testRunId: string; status: string; reportRevision: number; artifact: ArtifactSummary }>(
+      `/quality/local-smoke-runs/${testRunId}/finalize`,
+      { method: 'POST' },
+    ),
+  getSubmissionReport: (testRequestId: string) =>
+    request<ArtifactSummary | null>(`/quality/test-requests/${testRequestId}/submission-report`),
+  fetchArtifactContent: async (artifactId: string) => {
+    const token = getAuthToken();
+    const response = await fetch(buildApiUrl(`/artifacts/${encodeURIComponent(artifactId)}/content`), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error('资料下载失败');
+    return response.blob();
+  },
   createBug: (payload: {
     workspaceId: string;
     projectId?: string;

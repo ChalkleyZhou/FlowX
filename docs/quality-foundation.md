@@ -73,10 +73,16 @@ AI 负责生成和解释测试范围，确定性规则负责从 `DRAFT` 进入 `
 | `GET` | `/quality/test-requests` | 查询提测记录 |
 | `GET` | `/quality/test-requests/:id` | 查询提测、范围快照和执行轮次 |
 | `POST` | `/quality/test-requests/:id/scope/cases` | 写入 AI 选用用例及选择依据 |
-| `POST` | `/quality/test-requests/:id/scope/complete` | 完成规则校验并进入 `READY` |
+| `POST` | `/quality/test-requests/:id/scope/complete` | 完成规则校验；存在本地冒烟轮次时保持 `DRAFT` 等待冒烟门禁，否则进入 `READY` |
 | `GET` | `/quality/test-requests/:id/runs` | 查询执行轮次和逐例结果 |
 | `POST` | `/quality/test-requests/:id/runs` | 创建初测或 Bug 回归轮次 |
 | `POST` | `/quality/test-run-cases/:id/result` | 写入单条用例结果并聚合轮次状态 |
+| `POST` | `/quality/test-requests/:id/local-smoke-runs` | 创建多目标端本地冒烟轮次 |
+| `GET` | `/quality/local-smoke-runs/:id/tasks` | 查询目标端、覆盖矩阵、租约和聚合结果 |
+| `POST` | `/quality/local-smoke-runs/:id/claim` | 按目标端认领未占用用例 |
+| `POST` | `/execution-sessions/:id/local-smoke/complete` | 批量回传一次本地冒烟执行结果 |
+| `POST` | `/quality/local-smoke-runs/:id/finalize` | 校验门禁并生成版本化提测报告 |
+| `GET` | `/quality/test-requests/:id/submission-report` | 查询最新服务端提测报告 |
 | `POST` | `/quality/test-designs` | 创建测试设计草稿 |
 | `GET` | `/quality/test-designs/:id` | 查询测试设计、候选和冒烟项 |
 | `POST` | `/quality/test-designs/:id/generate` | 生成或重新生成候选 |

@@ -4,6 +4,7 @@ import type {
   OpenDesignBrainstormHandoff,
   OpenDesignHandoff,
 } from '@flowx-ai/protocol';
+import { readFile } from 'node:fs/promises';
 import { Outbox, type OutboxItem } from './outbox.js';
 
 export type RedeemedOpenDesignLaunch = {
@@ -105,6 +106,41 @@ export class EdgeClient {
     item: Pick<OutboxItem, 'apiBaseUrl' | 'path' | 'method' | 'body'>,
     accessToken: string,
   ) {
+    if (item.method === 'ARTIFACT_UPLOAD') {
+      const uploadItem = item as OutboxItem;
+      if (!uploadItem.filePath || !uploadItem.uploadPath) {
+        throw new Error('Queued artifact upload is missing its stable file or upload path.');
+      }
+      const createResponse = await this.send(`${normalizeBase(item.apiBaseUrl)}${item.path}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(item.body),
+      });
+      if (!createResponse.ok) {
+        throw new Error((await createResponse.text()) || `FlowX API returned ${createResponse.status}.`);
+      }
+      const content = await readFile(uploadItem.filePath);
+      const uploadBody = new Uint8Array(content.byteLength);
+      uploadBody.set(content);
+      const uploadResponse = await this.send(
+        `${normalizeBase(item.apiBaseUrl)}${uploadItem.uploadPath}`,
+        {
+          method: 'PUT',
+          headers: {
+            'content-type': uploadItem.contentType || 'application/octet-stream',
+            authorization: `Bearer ${accessToken}`,
+          },
+          body: uploadBody,
+        },
+      );
+      if (!uploadResponse.ok) {
+        throw new Error((await uploadResponse.text()) || `FlowX API returned ${uploadResponse.status}.`);
+      }
+      return;
+    }
     const response = await this.send(`${normalizeBase(item.apiBaseUrl)}${item.path}`, {
       method: item.method,
       headers: {

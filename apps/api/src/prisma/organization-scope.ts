@@ -36,6 +36,15 @@ function workflowScope(organizationId: string) {
   return { requirement: requirementScope(organizationId) };
 }
 
+function executionSessionScope(organizationId: string) {
+  return {
+    OR: [
+      { workspace: workspaceScope(organizationId) },
+      { workflowRun: workflowScope(organizationId) },
+    ],
+  };
+}
+
 const scopeFactories: Record<string, (organizationId: string) => Record<string, unknown>> = {
   Workspace: workspaceScope,
   Project: projectScope,
@@ -58,13 +67,13 @@ const scopeFactories: Record<string, (organizationId: string) => Record<string, 
   WorkflowRun: workflowScope,
   WorkflowRepository: (organizationId) => ({ workflowRun: workflowScope(organizationId) }),
   StageExecution: (organizationId) => ({ workflowRun: workflowScope(organizationId) }),
-  ExecutionSession: (organizationId) => ({ workflowRun: workflowScope(organizationId) }),
+  ExecutionSession: executionSessionScope,
   SyncEvent: (organizationId) => ({
-    executionSession: { workflowRun: workflowScope(organizationId) },
+    executionSession: executionSessionScope(organizationId),
   }),
   Artifact: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
   Evidence: (organizationId) => ({
-    executionSession: { workflowRun: workflowScope(organizationId) },
+    executionSession: executionSessionScope(organizationId),
   }),
   CodeExecution: (organizationId) => ({ workflowRun: workflowScope(organizationId) }),
   ReviewReport: (organizationId) => ({ workflowRun: workflowScope(organizationId) }),
@@ -118,6 +127,22 @@ const scopeFactories: Record<string, (organizationId: string) => Record<string, 
   }),
   TestRunCase: (organizationId) => ({
     testRun: { testPlan: { testRequest: { workspace: workspaceScope(organizationId) } } },
+  }),
+  TestRunTarget: (organizationId) => ({
+    testRun: { testPlan: { testRequest: { workspace: workspaceScope(organizationId) } } },
+  }),
+  TestExecution: (organizationId) => ({
+    testRun: { testPlan: { testRequest: { workspace: workspaceScope(organizationId) } } },
+  }),
+  TestExecutionCaseResult: (organizationId) => ({
+    testExecution: {
+      testRun: { testPlan: { testRequest: { workspace: workspaceScope(organizationId) } } },
+    },
+  }),
+  TestRunCaseLease: (organizationId) => ({
+    testRunCase: {
+      testRun: { testPlan: { testRequest: { workspace: workspaceScope(organizationId) } } },
+    },
   }),
   TestResult: (organizationId) => ({
     testRunCase: {

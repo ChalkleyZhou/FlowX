@@ -42,7 +42,8 @@ export type ExecutionSessionScope = {
 };
 
 export type CreateExecutionSessionInput = {
-  workflowRunId: string;
+  workflowRunId?: string | null;
+  testRunId?: string | null;
   stageExecutionId?: string | null;
   organizationId?: string | null;
   workspaceId?: string | null;
@@ -76,6 +77,9 @@ export class ExecutionSessionsService {
   ) {}
 
   async createOrReuseSession(input: CreateExecutionSessionInput) {
+    if (!input.workflowRunId && !input.testRunId) {
+      throw new BadRequestException('Execution session requires workflowRunId or testRunId.');
+    }
     const idempotencyKey = input.idempotencyKey?.trim() || null;
     if (idempotencyKey) {
       const existing = await this.prisma.executionSession.findUnique({
@@ -107,7 +111,8 @@ export class ExecutionSessionsService {
     const status = input.status ?? 'CREATED';
     return this.prisma.executionSession.create({
       data: {
-        workflowRunId: input.workflowRunId,
+        workflowRunId: input.workflowRunId ?? null,
+        testRunId: input.testRunId ?? null,
         stageExecutionId: input.stageExecutionId ?? null,
         organizationId: input.organizationId ?? null,
         workspaceId: input.workspaceId ?? null,
@@ -256,7 +261,8 @@ export class ExecutionSessionsService {
 
   private assertMatchingCreateRequest(
     existing: {
-      workflowRunId: string;
+      workflowRunId: string | null;
+      testRunId?: string | null;
       stageExecutionId: string | null;
       executorType: string;
       sourceTool: string;
@@ -264,7 +270,8 @@ export class ExecutionSessionsService {
     input: CreateExecutionSessionInput,
   ) {
     if (
-      existing.workflowRunId !== input.workflowRunId ||
+      existing.workflowRunId !== (input.workflowRunId ?? null) ||
+      (existing.testRunId ?? null) !== (input.testRunId ?? null) ||
       existing.stageExecutionId !== (input.stageExecutionId ?? null) ||
       existing.executorType !== input.executorType ||
       existing.sourceTool !== input.sourceTool

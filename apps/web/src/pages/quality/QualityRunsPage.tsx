@@ -155,6 +155,7 @@ export function QualityRunsPage() {
                     <SelectContent>
                       <SelectItem value={ALL}>全部类型</SelectItem>
                       <SelectItem value="INITIAL">初测</SelectItem>
+                      <SelectItem value="LOCAL_SMOKE">本地冒烟</SelectItem>
                       <SelectItem value="REGRESSION">Bug 回归</SelectItem>
                     </SelectContent>
                   </Select>
@@ -180,7 +181,7 @@ export function QualityRunsPage() {
                     badges={(
                       <>
                         <Badge variant={run.runType === 'REGRESSION' ? 'warning' : 'outline'}>
-                          {run.runType === 'REGRESSION' ? 'Bug 回归' : '初测'}
+                          {run.runType === 'REGRESSION' ? 'Bug 回归' : run.runType === 'LOCAL_SMOKE' ? '本地冒烟' : '初测'}
                         </Badge>
                         <Badge variant={statusBadgeVariant(run.status)}>{runStatusLabels[run.status] ?? run.status}</Badge>
                       </>

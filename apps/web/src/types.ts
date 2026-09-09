@@ -679,17 +679,60 @@ export interface TestCaseSnapshot {
 export interface TestRun {
   id: string;
   name: string;
-  runType: 'INITIAL' | 'SMOKE' | 'REGRESSION';
+  runType: 'INITIAL' | 'SMOKE' | 'REGRESSION' | 'LOCAL_SMOKE';
   status: string;
+  sourceFingerprint?: string | null;
+  reportRevision?: number;
   startedAt?: string | null;
   completedAt?: string | null;
   sourceBug?: { id: string; title: string } | null;
   cases?: Array<{
     id: string;
+    targetId?: string | null;
+    required?: boolean;
+    blocking?: boolean;
     snapshot: TestCaseSnapshot;
     assignedToUser?: { id: string; displayName: string } | null;
     result?: { id: string; result: string; actualResult?: string | null } | null;
   }>;
+  targets?: TestRunTarget[];
+  executions?: TestExecution[];
+}
+
+export interface TestedRepositoryRevision {
+  workflowRepositoryId: string;
+  branch: string;
+  headSha: string;
+}
+
+export interface TestRunTarget {
+  id: string;
+  key: string;
+  name: string;
+  required: boolean;
+  expectedRevisions: TestedRepositoryRevision[];
+  status: string;
+}
+
+export interface TestExecution {
+  id: string;
+  status: string;
+  targetId: string;
+  deviceId?: string | null;
+  claimedByUser?: { id?: string; displayName: string } | null;
+  summary?: string | null;
+  startedAt: string;
+  completedAt?: string | null;
+}
+
+export interface ArtifactSummary {
+  id: string;
+  name: string;
+  artifactType: string;
+  version: string;
+  mimeType?: string | null;
+  byteSize?: number | null;
+  createdAt: string;
 }
 
 export interface TestRequest {
@@ -710,7 +753,7 @@ export interface TestRequest {
   projectVersion: { id: string; name: string };
   requirementLinks: Array<{ requirement: { id: string; title: string } }>;
   workflowLinks: Array<{ workflowRun: { id: string; status: string } }>;
-  artifactLinks: Array<{ artifact: { id: string; name?: string; type?: string } }>;
+  artifactLinks: Array<{ artifact: { id: string; name?: string; artifactType?: string } }>;
   testPlan?: {
     id: string;
     status: string;

@@ -175,7 +175,7 @@ export function QualityRequestsPage() {
                 {pageRows.map((request) => (
                   <RecordListItem
                     key={request.id}
-                    title={request.title}
+                    title={<Link className="hover:text-primary hover:underline" to={`/quality/test-requests/${request.id}`}>{request.title}</Link>}
                     badges={(
                       <>
                         <Badge variant={statusBadgeVariant(request.status)}>{requestStatusLabels[request.status] ?? request.status}</Badge>
@@ -194,6 +194,7 @@ export function QualityRequestsPage() {
                     actions={(
                       <div className="flex items-center gap-3 text-sm">
                         {request.testDesignId ? <Link className="text-primary hover:underline" to={`/quality/test-designs/${request.testDesignId}`}>测试设计</Link> : null}
+                        <Link className="text-primary hover:underline" to={`/quality/test-requests/${request.id}`}>冒烟与报告</Link>
                         <span className="text-muted-foreground">{formatDate(request.createdAt)}</span>
                       </div>
                     )}

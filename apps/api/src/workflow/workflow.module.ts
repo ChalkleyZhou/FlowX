@@ -8,6 +8,7 @@ import { WorkspacesModule } from '../workspaces/workspaces.module';
 import { LocalLaunchController } from './local-launch.controller';
 import { LocalLaunchService } from './local-launch.service';
 import { LocalLaunchTicketStore } from './local-launch-ticket.store';
+import { LocalSpecPlanController } from './local-spec-plan.controller';
 import { WorkflowArtifactService } from './workflow-artifact.service';
 import { WorkflowController } from './workflow.controller';
 import { WorkflowGitRemoteService } from './workflow-git-remote.service';
@@ -19,7 +20,7 @@ import { WorkflowStatusMigrationService } from './workflow-status-migration.serv
   // WorkflowService.completeLocalExecutionBySession) — keep this edge lazy via forwardRef so the
   // three modules don't deadlock on a synchronous circular require at bootstrap.
   imports: [AiModule, forwardRef(() => ArtifactsModule), AuthModule, WorkspacesModule, NotificationsModule],
-  controllers: [WorkflowController, LocalLaunchController],
+  controllers: [WorkflowController, LocalLaunchController, LocalSpecPlanController],
   providers: [
     WorkflowService,
     WorkflowStateMachine,

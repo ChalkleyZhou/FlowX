@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { FLOWX_PROTOCOL_VERSION } from '@flowx-ai/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import { ExecutionSessionsService } from './execution-sessions.service';
 
@@ -114,7 +115,7 @@ describe('ExecutionSessionsService', () => {
     expect(result).toEqual(
       expect.objectContaining({
         status: 'CLAIMED',
-        protocolVersion: '1.0',
+        protocolVersion: FLOWX_PROTOCOL_VERSION,
         idempotencyKey: 'claim:workflow-1:stage-1',
         traceId: expect.any(String),
       }),

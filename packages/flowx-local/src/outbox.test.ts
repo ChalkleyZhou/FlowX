@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -59,5 +59,29 @@ describe('Outbox', () => {
       failed: 0,
       pending: 0,
     });
+  });
+
+  it('keeps a stable artifact copy until upload succeeds', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'flowx-outbox-'));
+    homes.push(homeDir);
+    const outbox = new Outbox({ homeDir });
+    const item = await outbox.enqueueArtifactContent(
+      {
+        eventId: 'artifact-1',
+        kind: 'artifact-upload',
+        credentialRef: 'api-auth:session-1',
+        apiBaseUrl: 'http://127.0.0.1:3000',
+        path: '/execution-sessions/session-1/artifact-uploads',
+        uploadPath: '/artifacts/artifact-1/content',
+        method: 'ARTIFACT_UPLOAD',
+        body: { sha256: 'abc' },
+        sha256: 'abc',
+      },
+      Buffer.from('stable content'),
+    );
+
+    expect(item.filePath && readFileSync(item.filePath, 'utf8')).toBe('stable content');
+    await outbox.flush(vi.fn().mockResolvedValue(undefined));
+    expect(item.filePath && existsSync(item.filePath)).toBe(false);
   });
 });

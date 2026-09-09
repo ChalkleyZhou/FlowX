@@ -2,7 +2,7 @@ import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-export type WorkflowBindingStage = 'brainstorm' | 'design';
+export type WorkflowBindingStage = 'brainstorm' | 'design' | 'spec-plan';
 
 export type WorkflowBinding = {
   workflowRunId: string;
@@ -19,7 +19,10 @@ export function getWorkflowBindingPath(homeDir = homedir()): string {
 
 function asWorkflowBinding(parsed: Partial<WorkflowBinding>): WorkflowBinding | null {
   const workflowRunId = typeof parsed.workflowRunId === 'string' ? parsed.workflowRunId.trim() : '';
-  const stage = parsed.stage === 'brainstorm' || parsed.stage === 'design' ? parsed.stage : null;
+  const stage =
+    parsed.stage === 'brainstorm' || parsed.stage === 'design' || parsed.stage === 'spec-plan'
+      ? parsed.stage
+      : null;
   if (!workflowRunId || !stage) {
     return null;
   }
@@ -68,8 +71,8 @@ export async function writeWorkflowBinding(
   if (!workflowRunId) {
     throw new Error('workflowRunId is required.');
   }
-  if (input.stage !== 'brainstorm' && input.stage !== 'design') {
-    throw new Error('stage must be brainstorm or design.');
+  if (input.stage !== 'brainstorm' && input.stage !== 'design' && input.stage !== 'spec-plan') {
+    throw new Error('stage must be brainstorm, design, or spec-plan.');
   }
   const path = getWorkflowBindingPath(homeDir);
   await mkdir(dirname(path), { recursive: true });

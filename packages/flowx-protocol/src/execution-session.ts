@@ -59,7 +59,8 @@ export function canTransitionExecutionSession(
 
 export interface ExecutionSessionRef {
   id: string;
-  workflowRunId: string;
+  workflowRunId?: string | null;
+  testRunId?: string | null;
   stageExecutionId?: string | null;
   status: ExecutionSessionStatus;
   executorType: ExecutorType;

@@ -113,4 +113,86 @@ describe('ArtifactsService', () => {
 
     expect(storage.resolvePath).toHaveBeenCalledWith('managed/session-1/execution.log');
   });
+
+  it('creates a pending managed upload and verifies uploaded content', async () => {
+    const { service, prisma, executionSessions, storage } = createService();
+    const expectedSha256 = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08';
+    executionSessions.requireAccessibleSession.mockResolvedValue(runningSession);
+    prisma.artifact.create.mockImplementation(({ data }: { data: unknown }) => ({ id: 'artifact-1', ...data as object }));
+    prisma.artifact.findUnique.mockResolvedValue({
+      id: 'artifact-1',
+      executionSessionId: 'session-1',
+      storageProvider: 'local',
+      storageKey: 'managed/session-1/artifact-1/execution.log',
+      status: 'PENDING',
+      sha256: expectedSha256,
+      byteSize: 4,
+      executionSession: { organizationId: 'org-1' },
+    });
+    storage.write.mockResolvedValue({
+      storageKey: 'managed/session-1/artifact-1/execution.log',
+      byteSize: 4,
+      sha256: expectedSha256,
+    });
+    prisma.artifact.update.mockImplementation(({ data }: { data: unknown }) => ({ id: 'artifact-1', ...data as object }));
+
+    const pending = await service.createManagedUpload('session-1', {
+      artifactType: 'LOG',
+      name: 'execution.log',
+      mimeType: 'text/plain',
+      byteSize: 4,
+      sha256: expectedSha256,
+    }, { organizationId: 'org-1' });
+    const completed = await service.writeManagedContent('artifact-1', Buffer.from('test'), {
+      organizationId: 'org-1',
+    });
+
+    expect(pending).toEqual(expect.objectContaining({ artifact: expect.objectContaining({ status: 'PENDING' }) }));
+    expect(completed).toEqual(expect.objectContaining({ status: 'AVAILABLE' }));
+  });
+
+  it('accepts an identical content retry after the artifact became available', async () => {
+    const { service, prisma, storage } = createService();
+    const expectedSha256 = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08';
+    const artifact = {
+      id: 'artifact-1',
+      executionSessionId: 'session-1',
+      storageProvider: 'local',
+      storageKey: 'managed/session-1/artifact-1/execution.log',
+      status: 'AVAILABLE',
+      sha256: expectedSha256,
+      byteSize: 4,
+      executionSession: { organizationId: 'org-1' },
+    };
+    prisma.artifact.findUnique.mockResolvedValue(artifact);
+
+    await expect(
+      service.writeManagedContent('artifact-1', Buffer.from('test'), { organizationId: 'org-1' }),
+    ).resolves.toBe(artifact);
+    expect(storage.write).not.toHaveBeenCalled();
+  });
+
+  it('rejects uploaded content when its digest does not match the declaration', async () => {
+    const { service, prisma, storage } = createService();
+    prisma.artifact.findUnique.mockResolvedValue({
+      id: 'artifact-1',
+      executionSessionId: 'session-1',
+      storageProvider: 'local',
+      storageKey: 'managed/session-1/artifact-1/execution.log',
+      status: 'PENDING',
+      sha256: 'a'.repeat(64),
+      byteSize: 4,
+      executionSession: { organizationId: 'org-1' },
+    });
+    storage.write.mockResolvedValue({
+      storageKey: 'managed/session-1/artifact-1/execution.log',
+      byteSize: 4,
+      sha256: 'b'.repeat(64),
+    });
+
+    await expect(
+      service.writeManagedContent('artifact-1', Buffer.from('test'), { organizationId: 'org-1' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(storage.write).not.toHaveBeenCalled();
+  });
 });

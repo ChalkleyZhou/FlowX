@@ -9,6 +9,15 @@ describe('applyOrganizationScope', () => {
     ['Project', { workspace: { organizationId } }],
     ['Requirement', { project: { workspace: { organizationId } } }],
     ['WorkflowRun', { requirement: { project: { workspace: { organizationId } } } }],
+    [
+      'ExecutionSession',
+      {
+        OR: [
+          { workspace: { organizationId } },
+          { workflowRun: { requirement: { project: { workspace: { organizationId } } } } },
+        ],
+      },
+    ],
     ['Issue', { workspace: { organizationId } }],
     ['Bug', { workspace: { organizationId } }],
     ['TestCaseLibrary', { workspace: { organizationId } }],

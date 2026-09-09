@@ -1,11 +1,22 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import type { BrainstormCompletionReport, DesignCompletionReport } from '@flowx-ai/protocol';
+import {
+  ARTIFACT_TYPES,
+  type ArtifactType,
+  type BrainstormCompletionReport,
+  type DesignCompletionReport,
+  type LocalSmokeCompletionReport,
+  type SpecPlanCompletionReport,
+} from '@flowx-ai/protocol';
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { basename, resolve } from 'node:path';
 import { z } from 'zod';
 import { readActiveDesignSession } from './active-design-session.js';
 import { PACKAGE_VERSION } from './config.js';
 import { resolveApiAuth } from './credentials.js';
 import { collectGitReport } from './git-report.js';
+import { Outbox } from './outbox.js';
 import {
   missingExecutionSessionError,
   missingWorkflowBindingError,
@@ -41,6 +52,16 @@ class LocalFlowXApiClient {
       throw new Error(`FlowX API request failed (${response.status}): ${message || response.statusText}`);
     }
     return response.json();
+  }
+
+  async upload(path: string, content: Buffer, contentType = 'application/octet-stream') {
+    const body = new Uint8Array(content.byteLength);
+    body.set(content);
+    return this.request(path, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body,
+    });
   }
 }
 
@@ -78,6 +99,72 @@ const brainstormReportSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
+const specPlanOutputSchema = z.object({
+  spec: z.object({
+    goal: z.string().min(1),
+    scope: z.array(z.string()),
+    nonGoals: z.array(z.string()),
+    acceptanceCriteria: z.array(z.string()),
+    constraints: z.array(z.string()),
+  }),
+  plan: z.object({
+    approach: z.string().min(1),
+    touchpoints: z.array(z.string()),
+    sequence: z.array(z.string()),
+    risks: z.array(z.string()),
+    verification: z.array(z.string()),
+  }),
+  notes: z
+    .object({
+      checklist: z.array(z.string()).optional(),
+      openQuestions: z.array(z.string()).optional(),
+    })
+    .optional(),
+});
+
+const specPlanReportSchema = z.object({
+  idempotencyKey: z.string().min(1),
+  sourceFingerprint: z.string().min(1),
+  output: specPlanOutputSchema,
+  artifactIds: z.array(z.string().min(1)).min(2),
+  summary: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+const repositoryRevisionSchema = z.object({
+  workflowRepositoryId: z.string().min(1),
+  branch: z.string(),
+  headSha: z.string().min(1),
+});
+
+const smokeTargetSchema = z.object({
+  key: z.string().min(1),
+  name: z.string().min(1),
+  required: z.boolean().optional(),
+  expectedRevisions: z.array(repositoryRevisionSchema).optional(),
+});
+
+const smokeReportSchema = z.object({
+  idempotencyKey: z.string().min(1),
+  sourceFingerprint: z.string().min(1),
+  environment: z.record(z.string(), z.unknown()).optional(),
+  testedRevisions: z.array(repositoryRevisionSchema),
+  caseResults: z
+    .array(
+      z.object({
+        testRunCaseId: z.string().min(1),
+        result: z.enum(['PASSED', 'FAILED', 'BLOCKED', 'SKIPPED']),
+        durationMs: z.number().int().nonnegative().optional(),
+        actualResult: z.string().optional(),
+        remark: z.string().optional(),
+        artifactIds: z.array(z.string().min(1)).optional(),
+      }),
+    )
+    .min(1),
+  summary: z.string().optional(),
+  artifactIds: z.array(z.string().min(1)).optional(),
+});
+
 function textResult(value: unknown, isError = false): ToolResult {
   return {
     ...(isError ? { isError: true } : {}),
@@ -110,19 +197,31 @@ function readStringField(value: unknown, key: string): string {
   return typeof field === 'string' ? field.trim() : '';
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 function inferBindingStage(response: unknown, fallback?: WorkflowBindingStage): WorkflowBindingStage | undefined {
   const explicit = readStringField(response, 'stage');
-  if (explicit === 'brainstorm' || explicit === 'design') return explicit;
+  if (explicit === 'brainstorm' || explicit === 'design' || explicit === 'spec-plan') return explicit;
   const nextStage = readStringField(
     valueHasNext(response) ? (response as { next: { stage?: unknown } }).next : null,
     'stage',
   );
-  if (nextStage === 'brainstorm' || nextStage === 'design') return nextStage;
+  if (nextStage === 'brainstorm' || nextStage === 'design' || nextStage === 'spec-plan') return nextStage;
   const workflowStatus = readStringField(response, 'workflowStatus');
   if (workflowStatus === 'DESIGN_PENDING' || workflowStatus === 'DESIGN_WAITING_CONFIRMATION') {
     return 'design';
   }
   if (workflowStatus === 'BRAINSTORM_PENDING') return 'brainstorm';
+  if (
+    workflowStatus === 'SPEC_PLAN_PENDING' ||
+    workflowStatus === 'SPEC_PLAN_WAITING_CONFIRMATION'
+  ) {
+    return 'spec-plan';
+  }
   return fallback;
 }
 
@@ -322,7 +421,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
         'Persist the current workflowRunId and stage to ~/.flowx/current-workflow.json after the user confirms a task from flowx_list_tasks.',
       inputSchema: z.object({
         workflowRunId: z.string().min(1),
-        stage: z.enum(['brainstorm', 'design']),
+        stage: z.enum(['brainstorm', 'design', 'spec-plan']),
         requirementTitle: z.string().optional(),
       }),
     },
@@ -383,6 +482,232 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
         await refreshBindingFromHandoff(options.homeDir, response, binding, id, 'brainstorm');
         return response;
       });
+    },
+  );
+
+  server.registerTool(
+    'flowx_get_spec_plan_handoff',
+    {
+      title: 'Get Local Spec & Plan Handoff',
+      description: 'Fetch the versioned context for a locally generated FlowX Spec & Plan.',
+      inputSchema: z.object({ workflowRunId: z.string().optional() }),
+    },
+    async ({ workflowRunId }) => {
+      const { active, client, binding } = await resolveSession(options.homeDir);
+      const id = resolveWorkflowRunId(workflowRunId, binding, active?.workflowRunId);
+      if (!id) return textResult(missingWorkflowBindingError(), true);
+      return runRequest(async () => {
+        const response = await client.request(
+          `/workflow-runs/${encodeURIComponent(id)}/spec-plan/local-handoff`,
+        );
+        await refreshBindingFromHandoff(options.homeDir, response, binding, id, 'spec-plan');
+        return response;
+      });
+    },
+  );
+
+  server.registerTool(
+    'flowx_upload_artifact',
+    {
+      title: 'Upload FlowX Artifact',
+      description:
+        'Upload a local log, screenshot, report, Spec, Plan, manifest, or coverage file to the active FlowX execution session.',
+      inputSchema: z.object({
+        executionSessionId: z.string().optional(),
+        filePath: z.string().min(1),
+        artifactType: z.enum(ARTIFACT_TYPES),
+        name: z.string().min(1).optional(),
+        version: z.string().min(1).optional(),
+        mimeType: z.string().min(1).optional(),
+      }),
+    },
+    async ({ executionSessionId, filePath, artifactType, name, version, mimeType }) => {
+      const { active, client, binding, auth } = await resolveSession(options.homeDir);
+      const id = resolveExecutionSessionId(executionSessionId, binding, active?.executionSessionId);
+      if (!id) return textResult(missingExecutionSessionError(), true);
+      return runRequest(async () => {
+        const resolvedPath = resolve(filePath);
+        const content = await readFile(resolvedPath);
+        const sha256 = createHash('sha256').update(content).digest('hex');
+        const createPath = `/execution-sessions/${encodeURIComponent(id)}/artifact-uploads`;
+        const createBody = {
+          artifactType: artifactType satisfies ArtifactType,
+          name: name?.trim() || basename(resolvedPath),
+          ...(version?.trim() ? { version: version.trim() } : {}),
+          ...(mimeType?.trim() ? { mimeType: mimeType.trim() } : {}),
+          byteSize: content.byteLength,
+          sha256,
+        };
+        const artifactId = createHash('sha256')
+          .update(`${id}:${artifactType}:${sha256}`)
+          .digest('hex')
+          .slice(0, 32);
+        const uploadPath = `/artifacts/${artifactId}/content`;
+        try {
+          const created = (await client.request(createPath, {
+            method: 'POST',
+            body: JSON.stringify(createBody),
+          })) as {
+            artifact?: { id?: string };
+            upload?: { path?: string; contentType?: string };
+          };
+          const uploadedArtifactId = created.artifact?.id?.trim() || artifactId;
+          const uploaded = await client.upload(
+            created.upload?.path?.trim() || uploadPath,
+            content,
+            created.upload?.contentType || mimeType || 'application/octet-stream',
+          );
+          return {
+            artifactId: uploadedArtifactId,
+            sha256,
+            byteSize: content.byteLength,
+            ...asRecord(uploaded),
+          };
+        } catch (error) {
+          const outbox = new Outbox({ homeDir: options.homeDir });
+          await outbox.enqueueArtifactContent(
+            {
+              eventId: `artifact-${artifactId}`,
+              kind: 'artifact-upload',
+              credentialRef: `api-auth:${id}`,
+              apiBaseUrl: auth.apiBaseUrl,
+              path: createPath,
+              uploadPath,
+              method: 'ARTIFACT_UPLOAD',
+              body: createBody,
+              contentType: mimeType || 'application/octet-stream',
+              sha256,
+            },
+            content,
+          );
+          return {
+            artifactId,
+            sha256,
+            byteSize: content.byteLength,
+            queued: true,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      });
+    },
+  );
+
+  server.registerTool(
+    'flowx_submit_spec_plan',
+    {
+      title: 'Submit Local Spec & Plan',
+      description:
+        'Submit structured Spec & Plan after uploading both SPEC_MARKDOWN and PLAN_MARKDOWN artifacts.',
+      inputSchema: z.object({
+        executionSessionId: z.string().optional(),
+        report: specPlanReportSchema,
+      }),
+    },
+    async ({ executionSessionId, report }) => {
+      const { active, client, binding } = await resolveSession(options.homeDir);
+      const id = resolveExecutionSessionId(executionSessionId, binding, active?.executionSessionId);
+      if (!id) return textResult(missingExecutionSessionError(), true);
+      const parsed = specPlanReportSchema.safeParse(report);
+      if (!parsed.success) {
+        return textResult(`Invalid Spec & Plan report: ${parsed.error.message}`, true);
+      }
+      return runRequest(() =>
+        client.request(`/execution-sessions/${encodeURIComponent(id)}/spec-plan/complete`, {
+          method: 'POST',
+          body: JSON.stringify(parsed.data satisfies SpecPlanCompletionReport),
+        }),
+      );
+    },
+  );
+
+  server.registerTool(
+    'flowx_create_smoke_run',
+    {
+      title: 'Create Local Smoke Run',
+      description: 'Create a multi-target local smoke run from a FlowX test request snapshot.',
+      inputSchema: z.object({
+        testRequestId: z.string().min(1),
+        name: z.string().min(1),
+        targets: z.array(smokeTargetSchema).min(1),
+        snapshotIds: z.array(z.string().min(1)).optional(),
+      }),
+    },
+    async ({ testRequestId, ...body }) => {
+      const { client } = await resolveSession(options.homeDir);
+      return runRequest(() =>
+        client.request(
+          `/quality/test-requests/${encodeURIComponent(testRequestId)}/local-smoke-runs`,
+          { method: 'POST', body: JSON.stringify(body) },
+        ),
+      );
+    },
+  );
+
+  server.registerTool(
+    'flowx_list_smoke_tasks',
+    {
+      title: 'List Local Smoke Tasks',
+      description: 'List target, case, claim, and aggregate status for a local smoke run.',
+      inputSchema: z.object({ testRunId: z.string().min(1) }),
+    },
+    async ({ testRunId }) => {
+      const { client } = await resolveSession(options.homeDir);
+      return runRequest(() =>
+        client.request(`/quality/local-smoke-runs/${encodeURIComponent(testRunId)}/tasks`),
+      );
+    },
+  );
+
+  server.registerTool(
+    'flowx_claim_smoke_task',
+    {
+      title: 'Claim Local Smoke Task',
+      description: 'Claim available smoke cases for one target with a server-managed lease.',
+      inputSchema: z.object({
+        testRunId: z.string().min(1),
+        targetId: z.string().min(1),
+        caseIds: z.array(z.string().min(1)).optional(),
+        deviceId: z.string().min(1).optional(),
+        leaseSeconds: z.number().int().min(60).max(86400).optional(),
+      }),
+    },
+    async ({ testRunId, ...body }) => {
+      const { client } = await resolveSession(options.homeDir);
+      return runRequest(() =>
+        client.request(`/quality/local-smoke-runs/${encodeURIComponent(testRunId)}/claim`, {
+          method: 'POST',
+          body: JSON.stringify(body),
+        }),
+      );
+    },
+  );
+
+  server.registerTool(
+    'flowx_submit_smoke_report',
+    {
+      title: 'Submit Local Smoke Report',
+      description:
+        'Submit case results and uploaded artifact ids for one claimed local smoke execution.',
+      inputSchema: z.object({
+        executionSessionId: z.string().min(1),
+        report: smokeReportSchema,
+      }),
+    },
+    async ({ executionSessionId, report }) => {
+      const { client } = await resolveSession(options.homeDir);
+      const parsed = smokeReportSchema.safeParse(report);
+      if (!parsed.success) {
+        return textResult(`Invalid smoke report: ${parsed.error.message}`, true);
+      }
+      return runRequest(() =>
+        client.request(
+          `/execution-sessions/${encodeURIComponent(executionSessionId)}/local-smoke/complete`,
+          {
+            method: 'POST',
+            body: JSON.stringify(parsed.data satisfies LocalSmokeCompletionReport),
+          },
+        ),
+      );
     },
   );
 

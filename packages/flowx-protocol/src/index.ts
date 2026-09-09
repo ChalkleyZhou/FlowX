@@ -5,5 +5,7 @@ export * from './design.js';
 export * from './errors.js';
 export * from './execution-session.js';
 export * from './local-completion.js';
+export * from './local-smoke.js';
+export * from './spec-plan.js';
 export * from './sync-event.js';
 export * from './version.js';

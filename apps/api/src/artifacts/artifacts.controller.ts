@@ -1,8 +1,9 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, Req, Res } from '@nestjs/common';
 import type { ArtifactType } from '@flowx-ai/protocol';
 import { ArtifactsService } from './artifacts.service';
 import { RegisterArtifactDto } from './dto/register-artifact.dto';
 import { RegisterEvidenceDto } from './dto/register-evidence.dto';
+import { CreateArtifactUploadDto } from './dto/create-artifact-upload.dto';
 import { EvidenceService } from './evidence.service';
 
 @Controller()
@@ -19,6 +20,27 @@ export class ArtifactsController {
     @Req() req: ArtifactRequest,
   ) {
     return this.artifactsService.registerForSession(id, dto, toScope(req));
+  }
+
+  @Post('execution-sessions/:id/artifact-uploads')
+  createArtifactUpload(
+    @Param('id') id: string,
+    @Body() dto: CreateArtifactUploadDto,
+    @Req() req: ArtifactRequest,
+  ) {
+    return this.artifactsService.createManagedUpload(id, dto, toScope(req));
+  }
+
+  @Put('artifacts/:id/content')
+  uploadArtifactContent(
+    @Param('id') id: string,
+    @Req() req: ArtifactRequest & { rawBody?: Buffer },
+  ) {
+    const content = req.rawBody;
+    if (!Buffer.isBuffer(content)) {
+      throw new BadRequestException('Artifact content must use application/octet-stream.');
+    }
+    return this.artifactsService.writeManagedContent(id, content, toScope(req));
   }
 
   @Get('execution-sessions/:id/artifacts')
@@ -65,6 +87,19 @@ export class ArtifactsController {
     return this.artifactsService.findOne(id, toScope(req));
   }
 
+  @Get('artifacts/:id/content')
+  async readArtifactContent(
+    @Param('id') id: string,
+    @Req() req: ArtifactRequest,
+    @Res() res: ArtifactResponse,
+  ) {
+    const { artifact, content } = await this.artifactsService.readLocalContent(id, toScope(req));
+    res.type(artifact.mimeType || 'application/octet-stream');
+    res.setHeader('content-length', String(content.byteLength));
+    res.setHeader('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(artifact.name)}`);
+    res.send(content);
+  }
+
   @Delete('artifacts/:id')
   deleteArtifact(@Param('id') id: string, @Req() req: ArtifactRequest) {
     return this.artifactsService.markDeleted(id, toScope(req));
@@ -76,6 +111,12 @@ type ArtifactRequest = {
     user?: { id?: string | null } | null;
     organization?: { id?: string | null } | null;
   };
+};
+
+type ArtifactResponse = {
+  type(contentType: string): ArtifactResponse;
+  setHeader(name: string, value: string): void;
+  send(content: Buffer): void;
 };
 
 function toScope(req: ArtifactRequest) {

@@ -1,6 +1,6 @@
-export const FLOWX_PROTOCOL_VERSION = '1.0' as const;
+export const FLOWX_PROTOCOL_VERSION = '1.1' as const;
 
-export const SUPPORTED_FLOWX_PROTOCOL_VERSIONS = [FLOWX_PROTOCOL_VERSION] as const;
+export const SUPPORTED_FLOWX_PROTOCOL_VERSIONS = ['1.0', FLOWX_PROTOCOL_VERSION] as const;
 
 export type FlowXProtocolVersion = (typeof SUPPORTED_FLOWX_PROTOCOL_VERSIONS)[number];
 

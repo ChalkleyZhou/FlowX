@@ -1,3 +1,4 @@
+import { FLOWX_PROTOCOL_VERSION } from '@flowx-ai/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import { ContextPackageService } from './context-package.service';
 
@@ -29,7 +30,7 @@ describe('ContextPackageService', () => {
     const cursor = await service.getContextPackage('requirement', 'req-1', 'cursor');
     const codex = await service.getContextPackage('requirement', 'req-1', 'codex');
 
-    expect(cursor.protocolVersion).toBe('1.0');
+    expect(cursor.protocolVersion).toBe(FLOWX_PROTOCOL_VERSION);
     expect(cursor.task).toEqual(codex.task);
     expect(cursor.repositories).toEqual(codex.repositories);
     expect(cursor.sourceTool).toBe('cursor');

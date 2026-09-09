@@ -3,6 +3,8 @@ import type { SourceTool } from './execution-session.js';
 export const ARTIFACT_TYPES = [
   'DESIGN_HTML',
   'PLAN_HTML',
+  'SPEC_MARKDOWN',
+  'PLAN_MARKDOWN',
   'EXECUTION_REPORT',
   'DIFF_SUMMARY',
   'TEST_REPORT',
@@ -10,6 +12,7 @@ export const ARTIFACT_TYPES = [
   'VIDEO',
   'LOG',
   'COVERAGE',
+  'TEST_MANIFEST',
   'GIT_REFERENCE',
 ] as const;
 

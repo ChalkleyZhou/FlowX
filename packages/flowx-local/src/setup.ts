@@ -29,7 +29,12 @@ export type SetupResult = {
   skipped: string[];
 };
 
-export const SETUP_SKILL_NAMES = ['flowx-product-prd', 'flowx-intake-requirement'] as const;
+export const SETUP_SKILL_NAMES = [
+  'flowx-product-prd',
+  'flowx-intake-requirement',
+  'flowx-spec-plan',
+  'flowx-local-smoke',
+] as const;
 export type SetupSkillName = (typeof SETUP_SKILL_NAMES)[number];
 
 const DEFAULT_TARGETS: SetupTarget[] = ['cursor', 'codex', 'od', 'workbuddy'];

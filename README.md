@@ -261,3 +261,7 @@ codex login
 7. Run execution
 8. Run AI review
 9. Human review and inspect full stage history
+
+本地 Agent 还可以领取 `SPEC_PLAN_PENDING` 工作流，通过 `flowx_get_spec_plan_handoff` 获取上下文，使用 `flowx_upload_artifact` 上传 `spec.md`、`plan.md`、日志、截图、JUnit 或 coverage，再用 `flowx_submit_spec_plan` 回传结构化结果。资料上传失败时会进入本机 Outbox，`flowx-local sync` 使用稳定副本重传。
+
+提测草稿支持创建 `LOCAL_SMOKE` 轮次并按 Web、API、iOS、Android 等目标端展开用例矩阵。多个开发者可分别使用 `flowx_list_smoke_tasks`、`flowx_claim_smoke_task` 和 `flowx_submit_smoke_report` 认领及回传；服务端保留每次执行明细，按 `FAILED > BLOCKED > SKIPPED > PASSED` 聚合。所有必测阻断项通过且没有有效执行租约后，服务端生成版本化 HTML 提测报告并将草稿推进到 `READY`。

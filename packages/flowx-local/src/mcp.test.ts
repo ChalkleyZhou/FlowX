@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writeActiveDesignSession } from './active-design-session.js';
@@ -14,6 +14,23 @@ const homes: string[] = [];
 const originalEnv = {
   FLOWX_API_TOKEN: process.env.FLOWX_API_TOKEN,
   FLOWX_API_BASE_URL: process.env.FLOWX_API_BASE_URL,
+};
+
+const output = {
+  spec: {
+    goal: '支持本地 Spec & Plan',
+    scope: ['本地回传'],
+    nonGoals: [],
+    acceptanceCriteria: ['进入人工确认'],
+    constraints: [],
+  },
+  plan: {
+    approach: '复用本地 MCP',
+    touchpoints: ['workflow'],
+    sequence: ['上传', '提交'],
+    risks: [],
+    verification: ['MCP test'],
+  },
 };
 
 function makeHome() {
@@ -57,6 +74,13 @@ describe('flowx-local MCP server', () => {
       'flowx_bind_workflow',
       'flowx_get_design_handoff',
       'flowx_get_brainstorm_handoff',
+      'flowx_get_spec_plan_handoff',
+      'flowx_upload_artifact',
+      'flowx_submit_spec_plan',
+      'flowx_create_smoke_run',
+      'flowx_list_smoke_tasks',
+      'flowx_claim_smoke_task',
+      'flowx_submit_smoke_report',
       'flowx_submit_design',
       'flowx_submit_brainstorm',
       'flowx_list_projects',
@@ -214,6 +238,167 @@ describe('flowx-local MCP server', () => {
     expect(String((result.content as Array<{ text: string }>)[0].text)).toMatch(
       /flowx_list_tasks.*flowx_bind_workflow/,
     );
+
+    await client.close();
+    await server.close();
+  });
+
+  it('uploads Spec Markdown and submits a local Spec & Plan report', async () => {
+    const homeDir = makeHome();
+    const specPath = join(homeDir, 'spec.md');
+    writeFileSync(specPath, '# Spec\n');
+    delete process.env.FLOWX_API_TOKEN;
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
+    await writeWorkflowBinding({ workflowRunId: 'workflow-spec', stage: 'spec-plan' }, homeDir);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/workflow-runs/workflow-spec/spec-plan/local-handoff')) {
+        return new Response(
+          JSON.stringify({
+            workflowRunId: 'workflow-spec',
+            executionSessionId: 'session-spec',
+            contextPackage: { sourceFingerprint: 'fingerprint-1' },
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith('/execution-sessions/session-spec/artifact-uploads')) {
+        expect(init?.method).toBe('POST');
+        const body = JSON.parse(String(init?.body));
+        expect(body).toMatchObject({
+          artifactType: 'SPEC_MARKDOWN',
+          name: 'spec.md',
+          byteSize: 7,
+        });
+        expect(body.sha256).toMatch(/^[a-f0-9]{64}$/);
+        return new Response(
+          JSON.stringify({ artifact: { id: 'artifact-spec' }, upload: { path: '/artifacts/artifact-spec/content' } }),
+          { status: 201 },
+        );
+      }
+      if (url.endsWith('/artifacts/artifact-spec/content')) {
+        expect(init?.method).toBe('PUT');
+        expect(Buffer.from(init?.body as Uint8Array)).toEqual(Buffer.from('# Spec\n'));
+        return new Response(JSON.stringify({ id: 'artifact-spec', status: 'AVAILABLE' }), {
+          status: 200,
+        });
+      }
+      if (url.endsWith('/execution-sessions/session-spec/spec-plan/complete')) {
+        expect(init?.method).toBe('POST');
+        const body = JSON.parse(String(init?.body));
+        expect(body).toMatchObject({
+          idempotencyKey: 'spec-plan-1',
+          sourceFingerprint: 'fingerprint-1',
+          artifactIds: ['artifact-spec', 'artifact-plan'],
+        });
+        return new Response(
+          JSON.stringify({ workflowStatus: 'SPEC_PLAN_WAITING_CONFIRMATION' }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { client, server } = await connectClient(homeDir);
+
+    const handoff = await client.callTool({ name: 'flowx_get_spec_plan_handoff', arguments: {} });
+    expect(handoff.isError).toBeUndefined();
+    expect(await readWorkflowBinding(homeDir)).toMatchObject({
+      workflowRunId: 'workflow-spec',
+      stage: 'spec-plan',
+      executionSessionId: 'session-spec',
+    });
+
+    const uploaded = await client.callTool({
+      name: 'flowx_upload_artifact',
+      arguments: { filePath: specPath, artifactType: 'SPEC_MARKDOWN', mimeType: 'text/markdown' },
+    });
+    expect(uploaded.isError).toBeUndefined();
+    expect(JSON.parse(String((uploaded.content as Array<{ text: string }>)[0].text))).toMatchObject({
+      artifactId: 'artifact-spec',
+      status: 'AVAILABLE',
+    });
+
+    const submitted = await client.callTool({
+      name: 'flowx_submit_spec_plan',
+      arguments: {
+        report: {
+          idempotencyKey: 'spec-plan-1',
+          sourceFingerprint: 'fingerprint-1',
+          artifactIds: ['artifact-spec', 'artifact-plan'],
+          output,
+        },
+      },
+    });
+    expect(submitted.isError).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+
+    await client.close();
+    await server.close();
+  });
+
+  it('creates, lists, claims, and submits a local smoke task', async () => {
+    const homeDir = makeHome();
+    delete process.env.FLOWX_API_TOKEN;
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/quality/test-requests/request-1/local-smoke-runs')) {
+        expect(init?.method).toBe('POST');
+        return new Response(JSON.stringify({ id: 'run-1', sourceFingerprint: 'fp-1' }), { status: 201 });
+      }
+      if (url.endsWith('/quality/local-smoke-runs/run-1/tasks')) {
+        return new Response(JSON.stringify({ id: 'run-1', targets: [{ id: 'target-web' }] }), { status: 200 });
+      }
+      if (url.endsWith('/quality/local-smoke-runs/run-1/claim')) {
+        expect(init?.method).toBe('POST');
+        return new Response(
+          JSON.stringify({ executionSessionId: 'session-smoke', sourceFingerprint: 'fp-1' }),
+          { status: 201 },
+        );
+      }
+      if (url.endsWith('/execution-sessions/session-smoke/local-smoke/complete')) {
+        expect(init?.method).toBe('POST');
+        return new Response(JSON.stringify({ id: 'run-1', status: 'ACTIVE' }), { status: 200 });
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { client, server } = await connectClient(homeDir);
+
+    const created = await client.callTool({
+      name: 'flowx_create_smoke_run',
+      arguments: {
+        testRequestId: 'request-1',
+        name: '本地冒烟',
+        targets: [{ key: 'web', name: 'Web', expectedRevisions: [] }],
+      },
+    });
+    expect(created.isError).toBeUndefined();
+    const listed = await client.callTool({
+      name: 'flowx_list_smoke_tasks',
+      arguments: { testRunId: 'run-1' },
+    });
+    expect(listed.isError).toBeUndefined();
+    const claimed = await client.callTool({
+      name: 'flowx_claim_smoke_task',
+      arguments: { testRunId: 'run-1', targetId: 'target-web', deviceId: 'mac-1' },
+    });
+    expect(claimed.isError).toBeUndefined();
+    const submitted = await client.callTool({
+      name: 'flowx_submit_smoke_report',
+      arguments: {
+        executionSessionId: 'session-smoke',
+        report: {
+          idempotencyKey: 'smoke-1',
+          sourceFingerprint: 'fp-1',
+          testedRevisions: [],
+          caseResults: [{ testRunCaseId: 'case-1', result: 'PASSED' }],
+        },
+      },
+    });
+    expect(submitted.isError).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
 
     await client.close();
     await server.close();

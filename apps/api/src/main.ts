@@ -23,6 +23,7 @@ async function bootstrap() {
     rawBody: true,
   });
   app.useBodyParser('json', { limit: '6mb' });
+  app.useBodyParser('raw', { type: 'application/octet-stream', limit: '100mb' });
   app.enableCors();
   app.useGlobalPipes(
     new ValidationPipe({

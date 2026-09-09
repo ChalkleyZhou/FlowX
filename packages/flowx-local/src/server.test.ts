@@ -1,3 +1,4 @@
+import { FLOWX_PROTOCOL_VERSION } from '@flowx-ai/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Server } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -41,7 +42,7 @@ describe('flowx-local server', () => {
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
       version: PACKAGE_VERSION,
-      protocolVersion: '1.0',
+      protocolVersion: FLOWX_PROTOCOL_VERSION,
       outboxPending: 0,
     });
   });
