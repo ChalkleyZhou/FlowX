@@ -1,12 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Ide } from './open-ide.js';
 
 export type EnsureProjectOptions = {
   apiBaseUrl: string;
   mcpToken: string;
-  mcpEntryPath?: string;
   ide?: Ide;
 };
 
@@ -28,29 +27,6 @@ function writeIfMissing(path: string, content: string): void {
   writeFileSync(path, content, 'utf8');
 }
 
-export function resolveMcpEntryPath(
-  environment: NodeJS.ProcessEnv = process.env,
-  cwd = process.cwd(),
-): string {
-  const configured = environment.FLOWX_MCP_ENTRY;
-  if (configured) {
-    return resolve(configured);
-  }
-
-  const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-  const candidates = [
-    join(cwd, 'packages', 'flowx-mcp', 'dist', 'index.js'),
-    join(packageRoot, '..', 'flowx-mcp', 'dist', 'index.js'),
-  ];
-  const entry = candidates.find(existsSync);
-  if (!entry) {
-    throw new Error(
-      'Unable to locate flowx-mcp. Set FLOWX_MCP_ENTRY to its absolute dist/index.js path.',
-    );
-  }
-  return entry;
-}
-
 function mergeFlowxMcp(mcpPath: string, options: EnsureProjectOptions): void {
   mkdirSync(dirname(mcpPath), { recursive: true });
   let existing: { mcpServers?: Record<string, unknown> } = {};
@@ -59,20 +35,13 @@ function mergeFlowxMcp(mcpPath: string, options: EnsureProjectOptions): void {
       mcpServers?: Record<string, unknown>;
     };
   }
-  const mcpServer = options.mcpEntryPath
-    ? (() => {
-        if (!isAbsolute(options.mcpEntryPath)) {
-          throw new Error('FlowX MCP entry path must be absolute.');
-        }
-        return { command: 'node', args: [options.mcpEntryPath] };
-      })()
-    : { command: 'flowx-local', args: ['mcp'] };
   const updated = {
     ...existing,
     mcpServers: {
       ...existing.mcpServers,
       flowx: {
-        ...mcpServer,
+        command: 'flowx-local',
+        args: ['mcp'],
         env: {
           FLOWX_API_BASE_URL: options.apiBaseUrl,
           FLOWX_API_TOKEN: options.mcpToken,

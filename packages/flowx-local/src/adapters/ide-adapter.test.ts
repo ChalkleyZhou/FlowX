@@ -10,7 +10,6 @@ const baseInput = {
   chatPrompt: 'Do work',
   apiBaseUrl: 'https://flowx.example',
   mcpToken: 'token-1',
-  mcpEntryPath: '/tools/flowx-mcp/dist/index.js',
 };
 
 describe('CursorAdapter', () => {
@@ -34,7 +33,6 @@ describe('CursorAdapter', () => {
     expect(ensureProject).toHaveBeenCalledWith('/repo', {
       apiBaseUrl: 'https://flowx.example',
       mcpToken: 'token-1',
-      mcpEntryPath: '/tools/flowx-mcp/dist/index.js',
       ide: 'cursor',
     });
     expect(writePromptFile).toHaveBeenCalledWith('/repo', 'workflow-1', 'Do work');
@@ -97,7 +95,6 @@ describe('WorkBuddyAdapter', () => {
     expect(ensureProject).toHaveBeenCalledWith('/repo', {
       apiBaseUrl: 'https://flowx.example',
       mcpToken: 'token-1',
-      mcpEntryPath: '/tools/flowx-mcp/dist/index.js',
       ide: 'workbuddy',
     });
     expect(openIde).toHaveBeenCalledWith('workbuddy', '/repo', 'Do work');

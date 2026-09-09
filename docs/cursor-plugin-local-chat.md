@@ -147,7 +147,7 @@ For normal local execution and OpenDesign use, configure the public local agent 
 }
 ```
 
-The FlowX Web local-launch flow writes this configuration automatically. The legacy `flowx-mcp` package remains for monorepo contributors and server-side compatibility only; it is not part of the end-user installation path. New Cursor configurations should always use the `flowx-local` command above.
+The FlowX Web local-launch flow writes this configuration automatically. `flowx-local mcp` is the single FlowX MCP implementation for end users and monorepo contributors.
 
 ## First-version boundaries
 

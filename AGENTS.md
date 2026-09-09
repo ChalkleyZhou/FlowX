@@ -24,7 +24,7 @@ FlowX 是一个 AI 研发流程编排 MVP，正在演进为端云协同 AI 产�
 - 后端：`apps/api`，NestJS + TypeScript + Prisma + SQLite。
 - 前端：`apps/web`，React + Vite + Tailwind + Radix/shadcn 风格组件。
 - 数据层：`prisma/schema.prisma` 和 `prisma/migrations`。
-- 本地端侧包：`packages/flowx-local`（`@flowx-ai/local`）、`packages/flowx-mcp` 和 `packages/flowx-protocol`。
+- 本地端侧包：`packages/flowx-local`（`@flowx-ai/local`，内置唯一的 FlowX MCP server）和 `packages/flowx-protocol`。
 - AI 集成：`apps/api/src/ai` 中的 Codex、Cursor、Mock executor，以及本地 MCP/Edge Agent。
 
 ## 目录与边界
@@ -40,7 +40,6 @@ FlowX 是一个 AI 研发流程编排 MVP，正在演进为端云协同 AI 产�
 - `apps/web/src/pages`、`apps/web/src/components`：页面和业务组件。
 - `apps/web/src/components/ui`：基础 UI 组件；优先复用，不重复实现。
 - `packages/flowx-local`：本地 loopback daemon、CLI、IDE 启动、Skill/MCP 配置和本地回传。
-- `packages/flowx-mcp`：兼容的独立 MCP server。
 - `packages/flowx-protocol`：端云共享协议类型、常量和 schema。
 - `docs`：系统设计、架构、部署、运维和用户文档。
 - `docs/user-manual.md`：用户手册源文件。
@@ -75,8 +74,6 @@ pnpm --filter flowx-web build
 pnpm --filter flowx-web test
 pnpm --filter @flowx-ai/local build
 pnpm --filter @flowx-ai/local test
-pnpm --filter flowx-mcp build
-pnpm --filter flowx-mcp test
 pnpm --filter @flowx-ai/protocol build
 pnpm --filter @flowx-ai/protocol test
 ```
@@ -132,7 +129,7 @@ cmp -s docs/local-agent-guide.md apps/web/public/local-agent-guide.md
 - 全仓代码改动：`pnpm check`。
 - API 改动：`pnpm --filter flowx-api test`；修改 `prisma/schema.prisma` 时先运行 `pnpm prisma:generate`，必要时更新 migration。
 - Web API 边界、页面数据加载、路由、认证或关键交互改动：`pnpm --filter flowx-web test`，必要时运行 Web build 和浏览器检查。
-- `packages/flowx-local`、`packages/flowx-mcp` 或 `packages/flowx-protocol` 改动：运行对应 package 的 test；修改构建入口、依赖或协议时运行对应 build。
+- `packages/flowx-local` 或 `packages/flowx-protocol` 改动：运行对应 package 的 test；修改构建入口、依赖或协议时运行对应 build。
 - 工作流、状态机、需求 ideation、认证凭据、AI executor、简报、每日 Code Review、投递、排期或 API 边界改动：优先更新相关测试，再运行受影响子项目测试。
 - 纯文档或规则改动：至少运行 `git diff --check`；若涉及手册镜像，运行上面的 `cmp` 命令。
 - 无法运行必要检查时，在交付说明中写明原因和剩余风险。

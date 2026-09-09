@@ -38,8 +38,6 @@ export type LaunchDependencies = {
   ensureProject?: typeof ensureProject;
   writePromptFile?: typeof writePromptFile;
   openIde?: typeof openIde;
-  /** Optional absolute MCP entry; when omitted, ensureProject defaults to `flowx-local mcp`. */
-  mcpEntryPath?: string;
   registry?: {
     resolve(name: Ide): ToolAdapter<IdeAdapterLaunchInput, IdeLaunchResult>;
   };
@@ -118,6 +116,5 @@ export async function runLaunch(
     chatPrompt: redeemed.chatPrompt,
     apiBaseUrl: apiBaseUrl,
     mcpToken: redeemed.mcpToken,
-    mcpEntryPath: dependencies.mcpEntryPath,
   });
 }

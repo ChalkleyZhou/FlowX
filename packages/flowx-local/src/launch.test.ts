@@ -76,7 +76,6 @@ describe('runLaunch', () => {
       chatPrompt: 'Implement this task.',
       apiBaseUrl: 'https://flowx.example',
       mcpToken: 'token-1',
-      mcpEntryPath: undefined,
     });
     expect(adapterLaunch.mock.calls[0]?.[0]).not.toHaveProperty('ide');
   });

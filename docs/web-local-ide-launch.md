@@ -10,7 +10,7 @@ This path reuses the same `claim-local` / handoff contract as [local-execution-h
 
 ## Prerequisites
 
-终端用户在同一 FlowX 站点打开「本地 Agent」复制安装命令（页面会填入当前地址），不必再单独装 `flowx-mcp`。
+终端用户在同一 FlowX 站点打开「本地 Agent」复制安装命令（页面会填入当前地址）；MCP 已内置在 `@flowx-ai/local` 中。
 
 Keep the FlowX API and Web apps running as usual (`pnpm dev` or equivalent).
 

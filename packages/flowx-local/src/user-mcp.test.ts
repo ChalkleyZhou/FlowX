@@ -12,7 +12,7 @@ afterEach(() => {
 
 describe('upsertUserMcp', () => {
   it('merges Cursor mcp.json without tokens and preserves other servers', () => {
-    const home = mkdtempSync(join(tmpdir(), 'flowx-mcp-'));
+    const home = mkdtempSync(join(tmpdir(), 'flowx-local-mcp-'));
     homes.push(home);
     const mcpPath = join(home, '.cursor', 'mcp.json');
     mkdirSync(join(home, '.cursor'), { recursive: true });
@@ -45,7 +45,7 @@ describe('upsertUserMcp', () => {
   });
 
   it('uses node plus a JS entry so Windows MCP can launch without a .cmd shim', () => {
-    const home = mkdtempSync(join(tmpdir(), 'flowx-mcp-'));
+    const home = mkdtempSync(join(tmpdir(), 'flowx-local-mcp-'));
     homes.push(home);
     const js = join(home, 'dist', 'index.js');
     mkdirSync(join(home, 'dist'), { recursive: true });
@@ -66,7 +66,7 @@ describe('upsertUserMcp', () => {
   });
 
   it('upserts Codex [mcp_servers.flowx] and leaves other tables', () => {
-    const home = mkdtempSync(join(tmpdir(), 'flowx-mcp-'));
+    const home = mkdtempSync(join(tmpdir(), 'flowx-local-mcp-'));
     homes.push(home);
     const tomlPath = join(home, '.codex', 'config.toml');
     mkdirSync(join(home, '.codex'), { recursive: true });
@@ -82,7 +82,7 @@ describe('upsertUserMcp', () => {
   });
 
   it('throws on invalid Cursor JSON without overwriting', () => {
-    const home = mkdtempSync(join(tmpdir(), 'flowx-mcp-'));
+    const home = mkdtempSync(join(tmpdir(), 'flowx-local-mcp-'));
     homes.push(home);
     const mcpPath = join(home, '.cursor', 'mcp.json');
     mkdirSync(join(home, '.cursor'), { recursive: true });
@@ -94,14 +94,14 @@ describe('upsertUserMcp', () => {
   });
 
   it('does not write MCP for od', () => {
-    const home = mkdtempSync(join(tmpdir(), 'flowx-mcp-'));
+    const home = mkdtempSync(join(tmpdir(), 'flowx-local-mcp-'));
     homes.push(home);
     upsertUserMcp({ homeDir: home, targets: ['od'], flowxBin: '/bin/flowx-local' });
     expect(() => readFileSync(join(home, '.cursor', 'mcp.json'))).toThrow();
   });
 
   it('throws on invalid Codex TOML without overwriting', () => {
-    const home = mkdtempSync(join(tmpdir(), 'flowx-mcp-'));
+    const home = mkdtempSync(join(tmpdir(), 'flowx-local-mcp-'));
     homes.push(home);
     const tomlPath = join(home, '.codex', 'config.toml');
     mkdirSync(join(home, '.codex'), { recursive: true });
@@ -113,7 +113,7 @@ describe('upsertUserMcp', () => {
   });
 
   it('omits Cursor flowx.env when only token keys remain', () => {
-    const home = mkdtempSync(join(tmpdir(), 'flowx-mcp-'));
+    const home = mkdtempSync(join(tmpdir(), 'flowx-local-mcp-'));
     homes.push(home);
     const mcpPath = join(home, '.cursor', 'mcp.json');
     mkdirSync(join(home, '.cursor'), { recursive: true });
@@ -138,7 +138,7 @@ describe('upsertUserMcp', () => {
   });
 
   it('creates Cursor mcp.json when missing', () => {
-    const home = mkdtempSync(join(tmpdir(), 'flowx-mcp-'));
+    const home = mkdtempSync(join(tmpdir(), 'flowx-local-mcp-'));
     homes.push(home);
     const mcpPath = join(home, '.cursor', 'mcp.json');
     const result = upsertUserMcp({
@@ -154,7 +154,7 @@ describe('upsertUserMcp', () => {
   });
 
   it('merges WorkBuddy mcp.json without tokens and preserves other servers', () => {
-    const home = mkdtempSync(join(tmpdir(), 'flowx-mcp-'));
+    const home = mkdtempSync(join(tmpdir(), 'flowx-local-mcp-'));
     homes.push(home);
     const mcpPath = join(home, '.workbuddy', 'mcp.json');
     mkdirSync(join(home, '.workbuddy'), { recursive: true });
@@ -187,7 +187,7 @@ describe('upsertUserMcp', () => {
   });
 
   it('throws on invalid WorkBuddy JSON without overwriting', () => {
-    const home = mkdtempSync(join(tmpdir(), 'flowx-mcp-'));
+    const home = mkdtempSync(join(tmpdir(), 'flowx-local-mcp-'));
     homes.push(home);
     const mcpPath = join(home, '.workbuddy', 'mcp.json');
     mkdirSync(join(home, '.workbuddy'), { recursive: true });

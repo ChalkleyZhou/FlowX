@@ -27,7 +27,7 @@ pnpm --filter @flowx-ai/protocol test
 
 ## 契约变更规范
 
-- 修改公开类型、字段、枚举、错误码或协议版本时，先检查所有消费者：`apps/api`、`packages/flowx-local`、`packages/flowx-mcp` 和 `apps/web`。
+- 修改公开类型、字段、枚举、错误码或协议版本时，先检查所有消费者：`apps/api`、`packages/flowx-local` 和 `apps/web`。
 - 优先采用向后兼容的增量字段；删除、改名、改变必填性或改变枚举语义前，必须明确处理旧消费者和迁移路径。
 - 类型定义、运行时校验、API DTO、MCP schema、测试 fixture 和文档必须保持一致。
 - 只有在协议语义确实变化时才更新 `src/version.ts`；普通实现修复不要随意升级协议版本。

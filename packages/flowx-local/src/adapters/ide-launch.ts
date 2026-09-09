@@ -9,8 +9,6 @@ export type IdeLaunchInput = {
   chatPrompt: string;
   apiBaseUrl: string;
   mcpToken: string;
-  /** Optional absolute MCP entry; when omitted, ensureProject defaults to `flowx-local mcp`. */
-  mcpEntryPath?: string;
 };
 
 export type IdeLaunchResult = {
@@ -46,7 +44,6 @@ export async function launchIde(
   (deps.ensureProject ?? ensureProject)(input.gitRoot, {
     apiBaseUrl: input.apiBaseUrl,
     mcpToken: input.mcpToken,
-    mcpEntryPath: input.mcpEntryPath,
     ide: input.ide,
   });
   const promptPath = (deps.writePromptFile ?? writePromptFile)(
