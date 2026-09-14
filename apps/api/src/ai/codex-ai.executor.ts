@@ -1355,7 +1355,30 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     }
   }
 
-  protected runCliProcess(
+  private async loginWithApiKey(apiKey: string, env: NodeJS.ProcessEnv, codexHome: string) {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn('codex', ['login', '--with-api-key'], {
+        cwd: process.cwd(),
+        env: { ...env, CODEX_HOME: codexHome },
+        stdio: ['pipe', 'ignore', 'pipe'],
+      });
+      let stderr = '';
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
+      child.on('error', reject);
+      child.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        reject(new Error(`Codex API key login failed (exit code ${code ?? 'unknown'}).${stderr ? ` ${stderr.trim()}` : ''}`));
+      });
+      child.stdin.end(`${apiKey}\n`);
+    });
+  }
+
+  protected async runCliProcess(
     args: string[],
     cwd: string,
     stageName: string,
@@ -1363,7 +1386,20 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     context?: AIInvocationContext,
     options?: { timeoutMs?: number },
   ) {
-    return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+    const apiKey =
+      context?.codexApiKey ??
+      (context?.codexCredentialSource === 'instance' ? process.env.OPENAI_API_KEY?.trim() : undefined);
+    const invocationEnv = this.buildInvocationEnv(context);
+    const authHomePromise = apiKey ? mkdtemp(join(tmpdir(), 'flowx-codex-home-')) : Promise.resolve(undefined);
+
+    return authHomePromise.then(async (authHome) => {
+      try {
+        const env = authHome ? { ...invocationEnv, CODEX_HOME: authHome } : invocationEnv;
+        if (authHome && apiKey) {
+          await this.loginWithApiKey(apiKey, env, authHome);
+        }
+
+        return await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
       let stdout = '';
       let stderr = '';
       let finished = false;
@@ -1390,7 +1426,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
 
       const child = spawn('codex', invocationArgs, {
         cwd,
-        env: this.buildInvocationEnv(context),
+        env,
         stdio: ['pipe', 'pipe', 'pipe'],
       });
       const timeoutMs = options?.timeoutMs ?? CODEX_TIMEOUT_MS;
@@ -1511,6 +1547,12 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
       });
 
       child.stdin.end();
+        });
+      } finally {
+        if (authHome) {
+          await rm(authHome, { recursive: true, force: true });
+        }
+      }
     });
   }
 
