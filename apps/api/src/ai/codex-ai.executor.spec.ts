@@ -3,9 +3,29 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BrainstormOutput, ReviewDailyChangesInput } from '../common/types';
-import { CodexAiExecutor } from './codex-ai.executor';
+import { buildCodexInvocationArgs, CodexAiExecutor } from './codex-ai.executor';
 
 describe('CodexAiExecutor', () => {
+  it('forces the built-in OpenAI provider for organization API keys', () => {
+    const args = ['exec', '--skip-git-repo-check', 'prompt'];
+
+    expect(buildCodexInvocationArgs(args, { codexApiKey: 'redacted' })).toEqual([
+      'exec',
+      '--config',
+      'model_provider="openai"',
+      '--skip-git-repo-check',
+      'prompt',
+    ]);
+    expect(buildCodexInvocationArgs(args, { codexCredentialSource: 'instance' })).toEqual([
+      'exec',
+      '--config',
+      'model_provider="openai"',
+      '--skip-git-repo-check',
+      'prompt',
+    ]);
+    expect(buildCodexInvocationArgs(args, { codexCredentialSource: 'login-state' })).toBe(args);
+  });
+
   const strictBrainstorm = (executor: CodexAiExecutor, raw: unknown): BrainstormOutput =>
     (executor as unknown as { assertStrictBrainstormOutput: (r: unknown) => BrainstormOutput }).assertStrictBrainstormOutput(
       raw,

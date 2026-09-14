@@ -82,6 +82,20 @@ const CODEX_AUTH_ERROR_PATTERNS = [
   /unauthorized/i,
 ];
 
+/**
+ * Organization credentials are OpenAI API keys. Do not let a server user's
+ * custom Codex provider (for example an internal proxy) redirect these calls.
+ */
+export function buildCodexInvocationArgs(args: string[], context?: AIInvocationContext): string[] {
+  const usesApiKey = Boolean(context?.codexApiKey) || context?.codexCredentialSource === 'instance';
+  if (!usesApiKey) {
+    return args;
+  }
+
+  const [command, ...rest] = args;
+  return [command ?? 'exec', '--config', 'model_provider="openai"', ...rest];
+}
+
 export interface StructuredJsonStageOptions {
   timeoutMs?: number;
 }
@@ -1358,12 +1372,13 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
       const timestamp = createdAt.replace(/[:.]/g, '-');
       const stageSlug = stageName.replace(/[^a-z0-9-_]+/gi, '-');
       const artifactPath = join(this.debugRoot, `${timestamp}-${stageSlug}.json`);
+      const invocationArgs = buildCodexInvocationArgs(args, context);
       const persistArtifact = (payload: Record<string, unknown>) =>
         this.persistDebugArtifact(artifactPath, {
           provider: this.providerName,
           stageName,
           cwd,
-          args,
+          args: invocationArgs,
           prompt,
           createdAt,
           ...payload,
@@ -1374,7 +1389,7 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
         this.logger.warn(`Failed to persist ${this.providerLabel} debug artifact: ${message}`);
       });
 
-      const child = spawn('codex', args, {
+      const child = spawn('codex', invocationArgs, {
         cwd,
         env: this.buildInvocationEnv(context),
         stdio: ['pipe', 'pipe', 'pipe'],
