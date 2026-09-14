@@ -1,4 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { GitCredentialsService } from '../auth/git-credentials.service';
+import { parseRepositoryRemote } from '../briefings/repository-remote';
+import { buildGitAuthEnv, resolveGitRemoteAuth } from '../workspaces/git-remote-auth';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -15,8 +18,23 @@ export function compareRemoteSha(remoteSha: string, headSha: string): boolean {
   );
 }
 
+export function buildGitRemoteVerificationEnv(
+  remoteUrl: string,
+  token: string | null | undefined,
+): NodeJS.ProcessEnv {
+  const parsed = parseRepositoryRemote(remoteUrl);
+  const auth = parsed ? resolveGitRemoteAuth(remoteUrl, token) : null;
+  return {
+    ...process.env,
+    GIT_TERMINAL_PROMPT: '0',
+    ...buildGitAuthEnv(auth),
+  };
+}
+
 @Injectable()
 export class WorkflowGitRemoteService {
+  constructor(private readonly gitCredentialsService: GitCredentialsService) {}
+
   async verifyBranchTip(remoteUrl: string, branch: string, headSha: string): Promise<boolean> {
     const execFileAsync = promisify(execFile);
     const trimmedUrl = remoteUrl.trim();
@@ -27,10 +45,17 @@ export class WorkflowGitRemoteService {
     }
 
     try {
+      const parsed = parseRepositoryRemote(trimmedUrl);
+      const token = parsed
+        ? await this.gitCredentialsService.getAccessTokenForProvider(parsed.provider)
+        : null;
       const { stdout } = await execFileAsync(
         'git',
         ['ls-remote', trimmedUrl, `refs/heads/${trimmedBranch}`],
-        { maxBuffer: 1024 * 1024 },
+        {
+          env: buildGitRemoteVerificationEnv(trimmedUrl, token),
+          maxBuffer: 1024 * 1024,
+        },
       );
       const line = stdout
         .split('\n')
