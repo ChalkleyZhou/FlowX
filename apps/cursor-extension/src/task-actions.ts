@@ -76,11 +76,13 @@ function buildTaskActionItems(task: FlowXTaskItem): TaskActionItem[] {
         description: 'Open the saved .flowx prompt in Cursor Chat',
         action: 'copyPrompt',
       },
-      {
-        label: 'Report Completion',
-        description: 'Submit implementation summary and git metadata to FlowX',
-        action: 'report',
-      },
+      ...(task.workflowStage === 'SPEC_PLAN'
+        ? []
+        : [{
+            label: 'Report Completion',
+            description: 'Submit implementation summary and git metadata to FlowX',
+            action: 'report' as const,
+          }]),
     );
   }
   if (items.length === 0) {

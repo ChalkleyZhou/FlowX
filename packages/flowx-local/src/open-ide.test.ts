@@ -1,8 +1,9 @@
+import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 import { openIde } from './open-ide.js';
 
 describe('openIde', () => {
-  it('opens Cursor with the repository path and copies the prompt', async () => {
+  it('opens the Cursor macOS app with the repository path and copies the prompt', async () => {
     const spawn = vi.fn(() => ({ unref: vi.fn() }));
     const exec = vi.fn(() => ({ stdin: { end: vi.fn() } }));
 
@@ -10,7 +11,7 @@ describe('openIde', () => {
       openIde('cursor', '/work/repo', 'Do the work', { spawn, exec, platform: 'darwin' }),
     ).resolves.toEqual({ opened: true, prefilled: false });
 
-    expect(spawn).toHaveBeenCalledWith('cursor', ['/work/repo'], expect.objectContaining({ detached: true }));
+    expect(spawn).toHaveBeenCalledWith('open', ['-a', 'Cursor', '/work/repo'], expect.objectContaining({ detached: true }));
     expect(exec).toHaveBeenCalledWith('pbcopy');
   });
 
@@ -38,6 +39,16 @@ describe('openIde', () => {
         platform: 'linux',
       }),
     ).resolves.toEqual({ opened: false, prefilled: false });
+  });
+
+  it('keeps the daemon alive when an IDE process emits an async spawn error', async () => {
+    const child = new EventEmitter() as EventEmitter & { unref: () => void };
+    child.unref = vi.fn();
+    await openIde('cursor', '/work/repo', 'Do the work', {
+      spawn: vi.fn(() => child), exec: vi.fn(), platform: 'linux',
+    });
+
+    expect(() => child.emit('error', Object.assign(new Error('missing cursor'), { code: 'ENOENT' }))).not.toThrow();
   });
 
   it('opens WorkBuddy on macOS with open -a', async () => {

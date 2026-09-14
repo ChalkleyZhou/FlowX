@@ -22,6 +22,8 @@ export interface EdgeTaskItem {
   scheduleSignal?: string | null;
   repository: { id: string; name: string; url: string | null } | null;
   workflowRunId: string | null;
+  executionSessionId?: string | null;
+  workflowStage?: 'SPEC_PLAN' | 'EXECUTION' | null;
   eligible: boolean;
   ineligibleReason?: string;
 }
@@ -59,7 +61,12 @@ export class EdgeTasksService {
             orderBy: { createdAt: 'asc' },
           },
           workflowRuns: {
-            include: { workflowRepositories: true },
+            include: {
+              workflowRepositories: true,
+              executionSessions: {
+                select: { id: true, sourceTool: true, status: true, metadata: true },
+              },
+            },
             orderBy: { createdAt: 'desc' },
           },
         },
@@ -75,9 +82,11 @@ export class EdgeTasksService {
     return [
       ...requirements.map((requirement) => {
         const repository = requirement.requirementRepositories[0]?.repository ?? null;
-        const localExecutionWorkflow = requirement.workflowRuns.find((workflow) =>
-          this.isReportableLocalWorkflow(workflow),
+        const localWorkflow = requirement.workflowRuns.find((workflow) => this.isReportableLocalWorkflow(workflow));
+        const localSpecPlanWorkflow = requirement.workflowRuns.find((workflow) =>
+          this.isReportableLocalSpecPlanWorkflow(workflow),
         );
+        const localExecutionWorkflow = localWorkflow ?? localSpecPlanWorkflow;
         const activeWorkflow =
           localExecutionWorkflow ??
           requirement.workflowRuns.find((workflow) => this.isActiveWorkflow(workflow));
@@ -90,6 +99,9 @@ export class EdgeTasksService {
           scheduleSignal: requirement.planningStatus,
           repository,
           workflowRunId: localExecutionWorkflow?.id ?? null,
+          executionSessionId:
+            localExecutionWorkflow?.executionSessions?.find((session) => this.isLocalSession(session))?.id ?? null,
+          workflowStage: localWorkflow ? 'EXECUTION' : localSpecPlanWorkflow ? 'SPEC_PLAN' : null,
           eligible: !!repository && !activeWorkflow,
           ineligibleReason: !repository
             ? 'No active repository is bound to this requirement.'
@@ -112,9 +124,7 @@ export class EdgeTasksService {
           scheduleSignal: null,
           repository: bug.repository,
           workflowRunId:
-            activeFixWorkflow && this.isReportableLocalWorkflow(activeFixWorkflow)
-              ? activeFixWorkflow.id
-              : null,
+            activeFixWorkflow && this.isReportableLocalWorkflow(activeFixWorkflow) ? activeFixWorkflow.id : null,
           eligible: !!bug.repository && !activeFixWorkflow,
           ineligibleReason: !bug.repository
             ? 'No repository is bound to this bug.'
@@ -183,6 +193,28 @@ export class EdgeTasksService {
       workflow.runType === WorkflowRunType.LOCAL_CHAT &&
       workflow.status.toLowerCase() === WorkflowRunStatus.EXECUTION_RUNNING
     );
+  }
+
+  private isReportableLocalSpecPlanWorkflow(workflow: {
+    status: string;
+    executionSessions?: Array<{ sourceTool?: string | null; status?: string | null; metadata?: unknown }>;
+  }) {
+    return (
+      workflow.status.toLowerCase() === WorkflowRunStatus.SPEC_PLAN_PENDING &&
+      workflow.executionSessions?.some((session) =>
+        this.isLocalSession(session) && this.readMetadataString(session.metadata, 'stage') === 'SPEC_PLAN',
+      ) === true
+    );
+  }
+
+  private isLocalSession(session: { sourceTool?: string | null; status?: string | null }) {
+    return session.sourceTool === 'flowx-local' && session.status?.toUpperCase() === 'RUNNING';
+  }
+
+  private readMetadataString(metadata: unknown, key: string) {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+    const value = (metadata as Record<string, unknown>)[key];
+    return typeof value === 'string' ? value.trim() : null;
   }
 
   private buildTaskItem(input: Omit<EdgeTaskItem, 'priority' | 'scheduleSignal' | 'repository'> & {

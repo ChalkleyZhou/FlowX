@@ -74,6 +74,25 @@ describe('EdgeTasksService', () => {
     );
   });
 
+  it('exposes a running local Spec & Plan session in Cursor tasks', async () => {
+    const { service, prisma } = createService();
+    prisma.requirement.findMany.mockResolvedValue([{ id: 'req-1', title: 'Plan export', status: 'ACTIVE',
+      requirementRepositories: [{ repository: { id: 'repo-1', name: 'web', url: 'https://example.com/web.git' } }],
+      workflowRuns: [{ id: 'workflow-spec', runType: 'FULL', status: 'SPEC_PLAN_PENDING',
+        executionSessions: [{ id: 'session-spec', sourceTool: 'flowx-local', status: 'RUNNING',
+          metadata: { stage: 'SPEC_PLAN' } }],
+      }],
+    }]);
+    prisma.bug.findMany.mockResolvedValue([]);
+
+    const [task] = await service.listTasks({});
+
+    expect(task).toEqual(expect.objectContaining({
+      workflowRunId: 'workflow-spec', executionSessionId: 'session-spec',
+      workflowStage: 'SPEC_PLAN', eligible: false,
+    }));
+  });
+
   it('lists OpenDesign candidates with suggestedAction from status', async () => {
     const { service, prisma } = createService();
     prisma.workflowRun.findMany.mockResolvedValue([

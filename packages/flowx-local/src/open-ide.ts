@@ -14,7 +14,7 @@ type SpawnCommand = (
   command: string,
   args: string[],
   options: { cwd?: string; detached: boolean; stdio: 'ignore' },
-) => { unref?: () => void };
+) => { unref?: () => void; on?: (event: 'error', listener: (error: unknown) => void) => unknown };
 
 type ExecuteCommand = (
   command: string,
@@ -71,6 +71,9 @@ function resolveLaunchCommand(
   deps: OpenIdeDependencies,
 ): { command: string; args: string[]; cwd?: string } | null {
   if (ide === 'cursor') {
+    if (platform === 'darwin') {
+      return { command: 'open', args: ['-a', 'Cursor', gitRoot] };
+    }
     return { command: 'cursor', args: [gitRoot] };
   }
   if (ide === 'codex') {
@@ -111,6 +114,7 @@ export async function openIde(
       detached: true,
       stdio: 'ignore',
     });
+    child.on?.('error', () => undefined);
     child.unref?.();
     copyToClipboard(prompt, platform, dependencies.exec ?? ((command) => exec(command)));
     return { opened: true, prefilled: false };

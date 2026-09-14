@@ -81,6 +81,19 @@ describe('showTaskActions', () => {
     );
   });
 
+  it('offers the prompt but not development completion for local Spec & Plan', async () => {
+    const task = { ...readyTask, workflowRunId: 'workflow-spec', workflowStage: 'SPEC_PLAN' as const };
+    const deps = createDeps({ showQuickPick: vi.fn().mockResolvedValue(undefined) });
+
+    await showTaskActions(deps, task);
+
+    const actions = (deps.showQuickPick as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as Array<{
+      action: string;
+    }>;
+    expect(actions.map((item) => item.action)).toContain('copyPrompt');
+    expect(actions.map((item) => item.action)).not.toContain('report');
+  });
+
   it('offers to open FlowX for blocked tasks without a local handoff', async () => {
     const blockedTask = {
       ...readyTask,

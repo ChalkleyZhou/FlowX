@@ -10,6 +10,7 @@ export interface FlowXTaskItem {
   repository: { id: string; name: string; url: string | null } | null;
   workflowRunId: string | null;
   executionSessionId?: string | null;
+  workflowStage?: 'SPEC_PLAN' | 'EXECUTION' | null;
   eligible: boolean;
   ineligibleReason?: string;
 }
