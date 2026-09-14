@@ -246,6 +246,74 @@ describe('WorkflowService SpecPlan lifecycle', () => {
     });
   });
 
+  it('retries Spec & Plan when the workflow failed at that stage', async () => {
+    const service = makeServiceWithPrisma({});
+    const workflow = {
+      id: 'run-sp-failed',
+      status: 'FAILED',
+      currentStage: 'SPEC_PLAN',
+      aiProvider: 'mock',
+      requirement: {
+        id: 'req-1',
+        title: 'Test requirement',
+        description: 'desc',
+        acceptanceCriteria: 'criteria',
+        workspace: { name: 'ws' },
+      },
+      workflowRepositories: [],
+      stageExecutions: [{ id: 'se-failed', stage: 'SPEC_PLAN', status: 'FAILED', attempt: 5 }],
+    };
+    let workflowStatus = 'FAILED';
+    const tx = {
+      stageExecution: {
+        create: vi.fn().mockResolvedValue({ id: 'se-retry', attempt: 6, status: 'RUNNING' }),
+        findFirst: vi.fn().mockResolvedValue({ attempt: 5 }),
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ id: 'se-retry', status: 'RUNNING', attempt: 6 }),
+        findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'se-retry', status: 'RUNNING', attempt: 6 }),
+        update: vi.fn(),
+      },
+      workflowRun: {
+        update: vi.fn().mockImplementation(async ({ data }: { data: { status: string } }) => {
+          workflowStatus = data.status;
+          return { id: workflow.id, status: data.status };
+        }),
+        findUniqueOrThrow: vi.fn().mockImplementation(async () => ({ ...workflow, status: workflowStatus })),
+      },
+    };
+    const prisma = {
+      $transaction: vi.fn().mockImplementation((callback: (transaction: typeof tx) => unknown) => callback(tx)),
+    };
+    Object.assign(service, { prisma });
+
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(workflow as never);
+    vi.spyOn(service as never, 'runInBackground' as never).mockImplementation(
+      ((_taskName: string, job: () => Promise<void>) => {
+        void job();
+      }) as never,
+    );
+    vi.spyOn(service as never, 'resolveAiExecutor' as never).mockReturnValue({
+      generateSpecPlan: vi.fn().mockResolvedValue(sampleSpecPlan),
+    } as never);
+    vi.spyOn(service as never, 'buildWorkspaceContext' as never).mockReturnValue({} as never);
+    vi.spyOn(service as never, 'getWorkflowBriefContext' as never).mockReturnValue(null as never);
+    vi.spyOn(service as never, 'getWorkflowDesignContext' as never).mockReturnValue(null as never);
+    vi.spyOn(service as never, 'getAiProviderLabel' as never).mockReturnValue('Mock' as never);
+    Object.assign(service as object, {
+      aiInvocationContextService: { resolveInvocationContext: vi.fn().mockResolvedValue({}) },
+    });
+
+    await service.runSpecPlan(workflow.id);
+
+    await vi.waitFor(() => {
+      expect(tx.workflowRun.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'SPEC_PLAN_PENDING', currentStage: 'SPEC_PLAN' }),
+        }),
+      );
+      expect(workflowStatus).toBe('SPEC_PLAN_WAITING_CONFIRMATION');
+    });
+  });
+
   it('confirmSpecPlan advances to execution pending when output is valid', async () => {
     let finalStatus = 'SPEC_PLAN_WAITING_CONFIRMATION';
     const tx = {

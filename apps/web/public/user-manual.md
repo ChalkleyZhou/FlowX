@@ -139,6 +139,8 @@ flowx-local login
 2. 生成完成后进入 **待确认 Spec & Plan**，可查看结构化文档、人工修改、确认或带意见驳回修订。
 3. 确认后进入 **待执行开发**，可按需选择云端执行或本地启动（Cursor / Codex / WorkBuddy）。
 
+如果生成失败，Spec & Plan 阶段卡片会显示 **重新生成 Spec & Plan**，可直接开始下一次尝试，无需先回退工作流。
+
 本地生成时，Agent 使用 `flowx_upload_artifact` 上传 `spec.md` 和 `plan.md`，再通过 `flowx_submit_spec_plan` 回传结构化结果。服务端校验资料和领取时的上下文指纹后进入同一个人工确认节点；Markdown 资料不能代替结构化结果。安装脚本会写入用户级 MCP，一般不必手改。
 
 ### 启动研发工作流

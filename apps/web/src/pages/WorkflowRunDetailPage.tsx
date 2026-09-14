@@ -1244,6 +1244,10 @@ export function WorkflowRunDetailPage() {
     const brainstormStage = getStage(workflowRun, 'BRAINSTORM');
     const designStage = getStage(workflowRun, 'DESIGN');
     const specPlanStage = getStage(workflowRun, 'SPEC_PLAN');
+    const canRetryFailedSpecPlan =
+      workflowRun.status === 'FAILED' &&
+      workflowRun.currentStage === 'SPEC_PLAN' &&
+      specPlanStage?.status === 'FAILED';
     const executionStage = getStage(workflowRun, 'EXECUTION');
     const reviewStage = getStage(workflowRun, 'AI_REVIEW');
     const repositoryPaths = workflowRun.workflowRepositories.map((repository) => ({
@@ -1414,9 +1418,10 @@ export function WorkflowRunDetailPage() {
         actions: [
           {
             key: 'run',
-            label: '生成 Spec & Plan',
+            label: canRetryFailedSpecPlan ? '重新生成 Spec & Plan' : '生成 Spec & Plan',
             onClick: () => void runAction('SPEC_PLAN', () => api.runSpecPlan(workflowRun.id), 'Spec & Plan 已启动'),
-            disabled: workflowRun.status !== 'SPEC_PLAN_PENDING' || stageActionsLocked,
+            disabled:
+              (workflowRun.status !== 'SPEC_PLAN_PENDING' && !canRetryFailedSpecPlan) || stageActionsLocked,
             loading: busyStage === 'SPEC_PLAN',
             variant: 'primary' as const,
           },
@@ -2098,7 +2103,13 @@ export function WorkflowRunDetailPage() {
                     },
                   ]}
                   output={selectedStageContent.output}
-                  actions={workflowWorkspaceConfig ? [] : selectedStageContent.actions}
+                  actions={
+                    selectedStage === 'SPEC_PLAN' && selectedStageContent.status === 'FAILED'
+                      ? selectedStageContent.actions.filter((action) => action.key === 'run')
+                      : workflowWorkspaceConfig
+                        ? []
+                        : selectedStageContent.actions
+                  }
                 />
               ) : (
                 <Card className="rounded-md border border-border bg-card">

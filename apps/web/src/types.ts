@@ -362,6 +362,7 @@ export interface WorkflowDesignArtifactPage {
 export interface WorkflowRun {
   id: string;
   status: string;
+  currentStage?: string | null;
   runType?: string;
   aiProvider: 'codex' | 'cursor';
   fixForBug?: { id: string; title: string; status: string } | null;

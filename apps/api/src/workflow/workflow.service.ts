@@ -2102,9 +2102,13 @@ export class WorkflowService {
     const aiProviderLabel = this.getAiProviderLabel(workflow.aiProvider);
     this.assertStageNotRunning(workflow, StageType.SPEC_PLAN);
     const workflowStatus = this.fromPrismaWorkflowStatus(workflow.status);
+    const retryingFailedSpecPlan =
+      workflowStatus === WorkflowRunStatus.FAILED &&
+      workflow.currentStage === stageTypeMap[StageType.SPEC_PLAN];
     if (
       workflowStatus !== WorkflowRunStatus.SPEC_PLAN_PENDING &&
-      !(workflowStatus === WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION && humanFeedback)
+      !(workflowStatus === WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION && humanFeedback) &&
+      !retryingFailedSpecPlan
     ) {
       this.stateMachine.assertStageMatchesWorkflow(StageType.SPEC_PLAN, workflowStatus);
     }
@@ -2116,6 +2120,12 @@ export class WorkflowService {
         ? this.getLatestStageOrThrow(workflow, StageType.SPEC_PLAN)
         : null;
     const startedWorkflow = await this.prisma.$transaction(async (tx) => {
+      if (retryingFailedSpecPlan) {
+        await this.transitionWorkflow(tx, id, WorkflowRunStatus.FAILED, {
+          to: WorkflowRunStatus.SPEC_PLAN_PENDING,
+          stage: StageType.SPEC_PLAN,
+        });
+      }
       if (workflowStatus === WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION) {
         await this.transitionWorkflow(tx, id, WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION, {
           to: WorkflowRunStatus.SPEC_PLAN_PENDING,

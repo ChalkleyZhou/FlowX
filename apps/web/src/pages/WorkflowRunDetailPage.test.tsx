@@ -334,6 +334,41 @@ describe('WorkflowRunDetailPage', () => {
     expect(api.runBrainstorm).toHaveBeenCalledWith('workflow-1');
   });
 
+  it('shows a retry action inline when Spec & Plan failed', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'FAILED',
+        currentStage: 'SPEC_PLAN',
+        stageExecutions: [
+          {
+            id: 'stage-spec-plan-failed',
+            stage: 'SPEC_PLAN',
+            status: 'FAILED',
+            statusMessage: '执行失败，请查看错误信息后重试',
+            attempt: 5,
+            output: null,
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.runSpecPlan).mockResolvedValue(createWorkflowRun());
+
+    await renderPage();
+
+    const retryButtons = Array.from(container.querySelectorAll('button')).filter((button) =>
+      button.textContent?.includes('重新生成 Spec & Plan'),
+    );
+    expect(retryButtons.length).toBeGreaterThan(0);
+    expect(retryButtons.some((button) => !button.disabled)).toBe(true);
+
+    await act(async () => {
+      retryButtons.find((button) => !button.disabled)?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(api.runSpecPlan).toHaveBeenCalledWith('workflow-1');
+  });
+
   async function selectBrainstormStep() {
     const stepButton = Array.from(container.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('产品构思'),
