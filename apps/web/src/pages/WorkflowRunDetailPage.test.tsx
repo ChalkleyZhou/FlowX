@@ -39,6 +39,8 @@ vi.mock('../api', () => ({
     convertReviewFindingToBug: vi.fn(),
     claimLocalExecution: vi.fn(),
     issueLocalLaunchTicket: vi.fn(),
+    issueSpecPlanLocalLaunchTicket: vi.fn(),
+    claimLocalSpecPlan: vi.fn(),
     getLocalHandoff: vi.fn(),
     getExecutionSession: vi.fn(),
     listExecutionSessionEvidence: vi.fn(),
@@ -63,6 +65,7 @@ const { probeFlowxLocal, launchFlowxLocal, launchOpenDesignLocal, submitOpenDesi
   }));
 
 vi.mock('../lib/flowx-local-bridge', () => ({
+  FLOWX_LOCAL_DEFAULT_PORT: 3920,
   probeFlowxLocal,
   launchFlowxLocal,
   launchOpenDesignLocal,
@@ -367,6 +370,107 @@ describe('WorkflowRunDetailPage', () => {
     });
 
     expect(api.runSpecPlan).toHaveBeenCalledWith('workflow-1');
+  });
+
+  it('launches local Spec & Plan from a failed stage', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'FAILED',
+        currentStage: 'SPEC_PLAN',
+        stageExecutions: [
+          {
+            id: 'stage-spec-plan-failed',
+            stage: 'SPEC_PLAN',
+            status: 'FAILED',
+            statusMessage: '执行失败，请查看错误信息后重试',
+            attempt: 5,
+            output: null,
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.issueSpecPlanLocalLaunchTicket).mockResolvedValue({
+      ticket: 'spec-ticket-1',
+      expiresAt: '2099-01-01T00:00:00.000Z',
+      loopbackPort: 3920,
+    });
+    probeFlowxLocal.mockResolvedValue(true);
+    launchFlowxLocal.mockResolvedValue({
+      ok: true,
+      gitRoot: '/tmp/flowx',
+      ide: 'cursor',
+      prefilled: true,
+      promptPath: '/tmp/flowx/.flowx/tasks/workflow-1.md',
+      opened: true,
+    });
+
+    await renderPage();
+
+    const localButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '本地生成' && !button.disabled,
+    );
+    expect(localButton).toBeTruthy();
+    await act(async () => {
+      localButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const cursorButton = Array.from(document.body.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Cursor',
+    );
+    expect(cursorButton).toBeTruthy();
+    await act(async () => {
+      cursorButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.issueSpecPlanLocalLaunchTicket).toHaveBeenCalledWith('workflow-1');
+    expect(launchFlowxLocal).toHaveBeenCalledWith(
+      { ticket: 'spec-ticket-1', ide: 'cursor', apiBaseUrl: 'http://127.0.0.1:3000' },
+      3920,
+    );
+  });
+
+  it('does not claim local Spec & Plan when flowx-local is unavailable', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({ status: 'SPEC_PLAN_PENDING' }));
+    probeFlowxLocal.mockResolvedValue(false);
+    await renderPage();
+
+    const localButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '本地生成' && !button.disabled,
+    );
+    await act(async () => {
+      localButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    const cursorButton = Array.from(document.body.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Cursor',
+    );
+    await act(async () => {
+      cursorButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(api.issueSpecPlanLocalLaunchTicket).not.toHaveBeenCalled();
+  });
+
+  it('allows reopening a running local Spec & Plan session', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'SPEC_PLAN_PENDING',
+        currentStage: 'SPEC_PLAN',
+        stageExecutions: [{
+          id: 'stage-spec-local', stage: 'SPEC_PLAN', status: 'RUNNING', attempt: 2,
+          input: { source: 'LOCAL_SPEC_PLAN' }, output: null,
+        }],
+      }),
+    );
+    await renderPage();
+
+    expect(Array.from(container.querySelectorAll('button')).some(
+      (button) => button.textContent?.trim() === '本地生成' && !button.disabled,
+    )).toBe(true);
   });
 
   async function selectBrainstormStep() {

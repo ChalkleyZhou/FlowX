@@ -1441,7 +1441,11 @@ export class WorkflowService {
     notifyRecipient?: WorkflowNotificationSession,
   ): Promise<{ workflow: WorkflowPayload; handoff: LocalSpecPlanHandoff }> {
     const workflow = await this.getWorkflowOrThrow(id);
-    if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.SPEC_PLAN_PENDING) {
+    const workflowStatus = this.fromPrismaWorkflowStatus(workflow.status);
+    const canRecoverFailedSpecPlan =
+      workflowStatus === WorkflowRunStatus.FAILED &&
+      workflow.currentStage === stageTypeMap[StageType.SPEC_PLAN];
+    if (workflowStatus !== WorkflowRunStatus.SPEC_PLAN_PENDING && !canRecoverFailedSpecPlan) {
       throw new BadRequestException(
         'Local Spec & Plan can only be claimed while Spec & Plan is pending.',
       );
@@ -1459,6 +1463,12 @@ export class WorkflowService {
       sourceFingerprint: this.buildLocalSpecPlanSourceFingerprint(workflow),
     };
     const updated = await this.prisma.$transaction(async (tx) => {
+      if (canRecoverFailedSpecPlan) {
+        await this.transitionWorkflow(tx, id, WorkflowRunStatus.FAILED, {
+          to: WorkflowRunStatus.SPEC_PLAN_PENDING,
+          stage: StageType.SPEC_PLAN,
+        });
+      }
       const stage = await this.getOrCreateRunnableSkippableStageExecution(
         tx,
         id,

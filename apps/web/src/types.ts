@@ -460,6 +460,49 @@ export interface LocalExecutionClaimResponse {
   handoff: LocalHandoffPayload;
 }
 
+export interface LocalSpecPlanHandoff {
+  protocolVersion: string;
+  workflowRunId: string;
+  executionSessionId: string;
+  traceId: string;
+  contextPackage: {
+    protocolVersion: string;
+    generatedAt: string;
+    sourceTool: 'cursor' | 'codex';
+    stage: 'SPEC_PLAN';
+    workflowRunId: string;
+    executionSessionId: string;
+    traceId: string;
+    sourceFingerprint: string;
+    requirement: {
+      id: string;
+      title: string;
+      description: string;
+      acceptanceCriteria: string;
+    };
+    repositories: Array<{
+      repositoryId: string;
+      workflowRepositoryId: string;
+      name: string;
+      url: string | null;
+      baseBranch: string;
+      workingBranch: string;
+    }>;
+    outputContract: {
+      resultFileName: 'spec-plan.json';
+      specFileName: 'spec.md';
+      planFileName: 'plan.md';
+      format: 'flowx-spec-plan-v1';
+    };
+  };
+  completionEndpoint: string;
+}
+
+export interface LocalSpecPlanClaimResponse {
+  workflow: WorkflowRun;
+  handoff: LocalSpecPlanHandoff;
+}
+
 export interface OpenDesignHandoff {
   protocolVersion: string;
   workflowRunId: string;

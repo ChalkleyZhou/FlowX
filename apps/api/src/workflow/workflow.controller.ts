@@ -174,6 +174,14 @@ export class WorkflowController {
     return this.localLaunchService.issueTicket(id, req.authSession);
   }
 
+  @Post(':id/spec-plan/local-launch-ticket')
+  issueSpecPlanLocalLaunchTicket(@Param('id') id: string, @Req() req: WorkflowRequest) {
+    if (!req.authSession?.user?.id) {
+      throw new UnauthorizedException('Missing authenticated user.');
+    }
+    return this.localLaunchService.issueTicket(id, req.authSession, { stage: 'SPEC_PLAN' });
+  }
+
   @Post(':id/execution/complete-local')
   completeLocalExecution(
     @Param('id') id: string,

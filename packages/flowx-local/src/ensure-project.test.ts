@@ -62,6 +62,22 @@ describe('ensureProject', () => {
     expect(readFileSync(skillPath, 'utf8')).toBe('custom instructions');
   });
 
+  it('installs the Spec & Plan skill when launching that stage', () => {
+    const gitRoot = makeProject();
+
+    ensureProject(gitRoot, {
+      apiBaseUrl: 'https://flowx.example',
+      mcpToken: 'token-1',
+      ide: 'codex',
+      stage: 'spec-plan',
+    });
+
+    const skillPath = join(gitRoot, '.agents', 'skills', 'flowx-spec-plan', 'SKILL.md');
+    expect(existsSync(skillPath)).toBe(true);
+    expect(readFileSync(skillPath, 'utf8')).toContain('flowx_submit_spec_plan');
+    expect(existsSync(join(gitRoot, '.agents', 'skills', 'flowx-local-execution', 'SKILL.md'))).toBe(false);
+  });
+
   it('writes WorkBuddy project skill and mcp when ide is workbuddy', () => {
     const gitRoot = makeProject();
     const mcpPath = join(gitRoot, '.workbuddy', 'mcp.json');

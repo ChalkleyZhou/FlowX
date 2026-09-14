@@ -7,14 +7,15 @@ export type EnsureProjectOptions = {
   apiBaseUrl: string;
   mcpToken: string;
   ide?: Ide;
+  stage?: 'execution' | 'spec-plan';
 };
 
-function templatePath(): string {
+function templatePath(stage: EnsureProjectOptions['stage']): string {
   return join(
     dirname(fileURLToPath(import.meta.url)),
     '..',
     'templates',
-    'flowx-local-execution',
+    stage === 'spec-plan' ? 'flowx-spec-plan' : 'flowx-local-execution',
     'SKILL.md',
   );
 }
@@ -53,10 +54,11 @@ function mergeFlowxMcp(mcpPath: string, options: EnsureProjectOptions): void {
 }
 
 export function ensureProject(gitRoot: string, options: EnsureProjectOptions): void {
-  const skill = readFileSync(templatePath(), 'utf8');
+  const skill = readFileSync(templatePath(options.stage), 'utf8');
+  const skillName = options.stage === 'spec-plan' ? 'flowx-spec-plan' : 'flowx-local-execution';
   if (options.ide === 'workbuddy') {
     writeIfMissing(
-      join(gitRoot, '.workbuddy', 'skills', 'flowx-local-execution', 'SKILL.md'),
+      join(gitRoot, '.workbuddy', 'skills', skillName, 'SKILL.md'),
       skill,
     );
     mergeFlowxMcp(join(gitRoot, '.workbuddy', 'mcp.json'), options);
@@ -64,11 +66,11 @@ export function ensureProject(gitRoot: string, options: EnsureProjectOptions): v
   }
 
   writeIfMissing(
-    join(gitRoot, '.cursor', 'skills', 'flowx-local-execution', 'SKILL.md'),
+    join(gitRoot, '.cursor', 'skills', skillName, 'SKILL.md'),
     skill,
   );
   writeIfMissing(
-    join(gitRoot, '.agents', 'skills', 'flowx-local-execution', 'SKILL.md'),
+    join(gitRoot, '.agents', 'skills', skillName, 'SKILL.md'),
     skill,
   );
   mergeFlowxMcp(join(gitRoot, '.cursor', 'mcp.json'), options);

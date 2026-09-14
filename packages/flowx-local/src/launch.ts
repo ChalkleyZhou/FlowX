@@ -13,8 +13,12 @@ type RedeemResponse = {
   workflowRunId: string;
   handoff: {
     executionSessionId?: string;
-    repositories: Array<{ url: string; workingBranch?: string }>;
+    repositories?: Array<{ url: string; workingBranch?: string }>;
+    contextPackage?: {
+      repositories?: Array<{ url: string; workingBranch?: string }>;
+    };
   };
+  stage?: 'EXECUTION' | 'SPEC_PLAN';
   chatPrompt: string;
   mcpToken: string;
 };
@@ -88,7 +92,10 @@ export async function runLaunch(
   }
 
   const redeemed = (await response.json()) as RedeemResponse;
-  const repository = redeemed.handoff?.repositories.find((item) => item.url?.trim());
+  const repositories = redeemed.stage === 'SPEC_PLAN'
+    ? redeemed.handoff?.contextPackage?.repositories
+    : redeemed.handoff?.repositories;
+  const repository = repositories?.find((item) => item.url?.trim());
   const executionSessionId = redeemed.handoff?.executionSessionId?.trim();
   if (!repository) {
     throw new Error('No repository URL was provided by the local handoff.');
@@ -113,6 +120,7 @@ export async function runLaunch(
     gitRoot,
     workflowRunId: redeemed.workflowRunId,
     executionSessionId,
+    ...(redeemed.stage === 'SPEC_PLAN' ? { stage: 'spec-plan' as const } : {}),
     chatPrompt: redeemed.chatPrompt,
     apiBaseUrl: apiBaseUrl,
     mcpToken: redeemed.mcpToken,

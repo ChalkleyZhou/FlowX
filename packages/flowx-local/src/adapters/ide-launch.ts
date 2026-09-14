@@ -9,6 +9,7 @@ export type IdeLaunchInput = {
   chatPrompt: string;
   apiBaseUrl: string;
   mcpToken: string;
+  stage?: 'execution' | 'spec-plan';
 };
 
 export type IdeLaunchResult = {
@@ -45,6 +46,7 @@ export async function launchIde(
     apiBaseUrl: input.apiBaseUrl,
     mcpToken: input.mcpToken,
     ide: input.ide,
+    ...(input.stage ? { stage: input.stage } : {}),
   });
   const promptPath = (deps.writePromptFile ?? writePromptFile)(
     input.gitRoot,

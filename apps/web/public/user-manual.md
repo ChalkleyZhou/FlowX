@@ -135,7 +135,7 @@ flowx-local login
 
 设计确认或跳过后，工作流进入 **Spec & Plan** 阶段（不可跳过）：
 
-1. 在工作流详情点击 **生成 Spec & Plan**，或由本地 Agent 调用 `flowx_get_spec_plan_handoff` 领取任务。两种方式都会结合仓库上下文、PRD 与设计 Artifact 产出实现边界（spec）与实现路径（plan）。
+1. 在工作流详情点击 **生成 Spec & Plan**（云端）或 **本地生成**（选择 Cursor / Codex / WorkBuddy），也可以由本地 Agent 调用 `flowx_get_spec_plan_handoff` 领取任务。三种方式都会结合仓库上下文、PRD 与设计 Artifact 产出实现边界（spec）与实现路径（plan）。
 2. 生成完成后进入 **待确认 Spec & Plan**，可查看结构化文档、人工修改、确认或带意见驳回修订。
 3. 确认后进入 **待执行开发**，可按需选择云端执行或本地启动（Cursor / Codex / WorkBuddy）。
 

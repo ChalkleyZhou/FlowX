@@ -22,6 +22,7 @@ import type {
   LocalDevPreviewStatus,
   LocalExecutionClaimResponse,
   LocalHandoffPayload,
+  LocalSpecPlanClaimResponse,
   OpenDesignHandoff,
   OpenDesignHandoffResponse,
   OrganizationMember,
@@ -875,6 +876,15 @@ export const api = {
       `/workflow-runs/${id}/execution/local-launch-ticket`,
       { method: 'POST' },
     ),
+  issueSpecPlanLocalLaunchTicket: (id: string) =>
+    request<{ ticket: string; expiresAt: string; loopbackPort: number }>(
+      `/workflow-runs/${id}/spec-plan/local-launch-ticket`,
+      { method: 'POST' },
+    ),
+  claimLocalSpecPlan: (id: string) =>
+    request<LocalSpecPlanClaimResponse>(`/workflow-runs/${id}/spec-plan/claim-local`, {
+      method: 'POST',
+    }),
   getLocalHandoff: (id: string) =>
     request<LocalHandoffPayload>(`/workflow-runs/${id}/execution/local-handoff`),
   completeLocalExecution: (

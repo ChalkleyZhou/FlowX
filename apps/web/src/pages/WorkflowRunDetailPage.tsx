@@ -33,6 +33,7 @@ import { Textarea as UiTextarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
 import { useConfirm } from '../components/ConfirmDialog';
 import {
+  FLOWX_LOCAL_DEFAULT_PORT,
   launchFlowxLocal,
   launchOpenDesignLocal,
   probeFlowxLocal,
@@ -403,6 +404,7 @@ export function WorkflowRunDetailPage() {
   const [executionEvents, setExecutionEvents] = useState<ExecutionSessionSyncEvent[]>([]);
   const [executionSessionLoading, setExecutionSessionLoading] = useState(false);
   const [localLaunchOpen, setLocalLaunchOpen] = useState(false);
+  const [localLaunchStage, setLocalLaunchStage] = useState<'execution' | 'spec-plan'>('execution');
   const [localLaunchBusy, setLocalLaunchBusy] = useState(false);
   const [localLaunchSetupRequired, setLocalLaunchSetupRequired] = useState(false);
   const [openDesignBusy, setOpenDesignBusy] = useState(false);
@@ -854,6 +856,44 @@ export function WorkflowRunDetailPage() {
     }
   }
 
+  async function launchLocalSpecPlan(ide: FlowxLocalLaunchBody['ide']) {
+    if (
+      !workflowRun ||
+      (workflowRun.status !== 'SPEC_PLAN_PENDING' &&
+        !(workflowRun.status === 'FAILED' && workflowRun.currentStage === 'SPEC_PLAN')) ||
+      localLaunchBusy
+    ) {
+      return;
+    }
+
+    setLocalLaunchBusy(true);
+    setLocalLaunchSetupRequired(false);
+    try {
+      const daemonReachable = await probeFlowxLocal(FLOWX_LOCAL_DEFAULT_PORT);
+      if (!daemonReachable) {
+        setLocalLaunchSetupRequired(true);
+        setLocalLaunchOpen(false);
+        toast.error('未检测到本机 flowx-local，请先完成本地安装（设置 → 本地 Agent）');
+        return;
+      }
+
+      const started = await api.issueSpecPlanLocalLaunchTicket(workflowRun.id);
+      const result = await launchFlowxLocal(
+        { ticket: started.ticket, ide, apiBaseUrl: getFlowxApiBaseUrl() },
+        started.loopbackPort,
+      );
+      setLocalLaunchOpen(false);
+      await refresh({ silent: true });
+      toast.success(
+        `${localIdeLabel(ide)}${result.opened ? ' 已打开本地 Spec & Plan' : ' 本地 Spec & Plan 会话已就绪'}`,
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '本地 Spec & Plan 启动失败');
+    } finally {
+      setLocalLaunchBusy(false);
+    }
+  }
+
   async function launchLocalExecution(ide: FlowxLocalLaunchBody['ide']) {
     if (
       !workflowRun ||
@@ -894,6 +934,14 @@ export function WorkflowRunDetailPage() {
     } finally {
       setLocalLaunchBusy(false);
     }
+  }
+
+  function launchSelectedLocal(ide: FlowxLocalLaunchBody['ide']) {
+    if (localLaunchStage === 'spec-plan') {
+      void launchLocalSpecPlan(ide);
+      return;
+    }
+    void launchLocalExecution(ide);
   }
 
   async function launchLocalOpenDesign() {
@@ -1248,6 +1296,13 @@ export function WorkflowRunDetailPage() {
       workflowRun.status === 'FAILED' &&
       workflowRun.currentStage === 'SPEC_PLAN' &&
       specPlanStage?.status === 'FAILED';
+    const localSpecPlanRunning =
+      workflowRun.status === 'SPEC_PLAN_PENDING' &&
+      specPlanStage?.status === 'RUNNING' &&
+      !!specPlanStage.input &&
+      typeof specPlanStage.input === 'object' &&
+      'source' in specPlanStage.input &&
+      specPlanStage.input.source === 'LOCAL_SPEC_PLAN';
     const executionStage = getStage(workflowRun, 'EXECUTION');
     const reviewStage = getStage(workflowRun, 'AI_REVIEW');
     const repositoryPaths = workflowRun.workflowRepositories.map((repository) => ({
@@ -1417,6 +1472,20 @@ export function WorkflowRunDetailPage() {
         output: sanitizeDisplayValue(specPlanStage?.output, repositoryPaths),
         actions: [
           {
+            key: 'claim-local',
+            label: '本地生成',
+            onClick: () => {
+              setLocalLaunchStage('spec-plan');
+              setLocalLaunchOpen(true);
+            },
+            disabled:
+              (workflowRun.status !== 'SPEC_PLAN_PENDING' && !canRetryFailedSpecPlan) ||
+              localLaunchBusy ||
+              (stageActionsLocked && !localSpecPlanRunning),
+            loading: localLaunchBusy && localLaunchStage === 'spec-plan',
+            variant: 'primary' as const,
+          },
+          {
             key: 'run',
             label: canRetryFailedSpecPlan ? '重新生成 Spec & Plan' : '生成 Spec & Plan',
             onClick: () => void runAction('SPEC_PLAN', () => api.runSpecPlan(workflowRun.id), 'Spec & Plan 已启动'),
@@ -1490,7 +1559,10 @@ export function WorkflowRunDetailPage() {
           {
             key: 'claim-local',
             label: '本地启动',
-            onClick: () => setLocalLaunchOpen(true),
+            onClick: () => {
+              setLocalLaunchStage('execution');
+              setLocalLaunchOpen(true);
+            },
             disabled:
               (workflowRun.status !== 'EXECUTION_PENDING' && !localExecutionActive) || busyStage !== null,
             loading: localLaunchBusy,
@@ -1672,7 +1744,7 @@ export function WorkflowRunDetailPage() {
           loading: submittingAction === 'feedback',
           variant: 'primary',
         }
-      : selectedStage === 'EXECUTION' && localLaunchAction
+      : (selectedStage === 'EXECUTION' || selectedStage === 'SPEC_PLAN') && localLaunchAction
         ? {
             key: localLaunchAction.key,
             label: localLaunchAction.label,
@@ -1708,7 +1780,7 @@ export function WorkflowRunDetailPage() {
             onClick: () => openWorkspaceEditMode(editableStage),
           }
         : undefined,
-      selectedStage === 'EXECUTION' ? runActionView : undefined,
+      selectedStage === 'EXECUTION' || selectedStage === 'SPEC_PLAN' ? runActionView : undefined,
       selectedStage === 'EXECUTION' ? completeLocalAction : undefined,
       selectedStage === 'EXECUTION' ? cancelLocalAction : undefined,
       !isManualEditMode ? confirmAction : undefined,
@@ -1772,9 +1844,10 @@ export function WorkflowRunDetailPage() {
       <Dialog open={localLaunchOpen} onOpenChange={setLocalLaunchOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>选择 IDE</DialogTitle>
+            <DialogTitle>{localLaunchStage === 'spec-plan' ? '选择 IDE 生成 Spec & Plan' : '选择 IDE'}</DialogTitle>
             <DialogDescription>
-              FlowX 会通过本机 flowx-local 打开所选 IDE，并将当前工作流的执行上下文交给它。
+              FlowX 会通过本机 flowx-local 打开所选 IDE，并将当前工作流的
+              {localLaunchStage === 'spec-plan' ? ' Spec & Plan handoff' : '执行上下文'} 交给它。
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-3">
@@ -1782,7 +1855,7 @@ export function WorkflowRunDetailPage() {
               type="button"
               className="flex-1"
               disabled={localLaunchBusy}
-              onClick={() => void launchLocalExecution('cursor')}
+              onClick={() => launchSelectedLocal('cursor')}
             >
               {localLaunchBusy ? '启动中...' : 'Cursor'}
             </UiButton>
@@ -1791,7 +1864,7 @@ export function WorkflowRunDetailPage() {
               variant="outline"
               className="flex-1"
               disabled={localLaunchBusy}
-              onClick={() => void launchLocalExecution('codex')}
+              onClick={() => launchSelectedLocal('codex')}
             >
               Codex
             </UiButton>
@@ -1800,7 +1873,7 @@ export function WorkflowRunDetailPage() {
               variant="outline"
               className="flex-1"
               disabled={localLaunchBusy}
-              onClick={() => void launchLocalExecution('workbuddy')}
+              onClick={() => launchSelectedLocal('workbuddy')}
             >
               WorkBuddy
             </UiButton>
@@ -2105,7 +2178,7 @@ export function WorkflowRunDetailPage() {
                   output={selectedStageContent.output}
                   actions={
                     selectedStage === 'SPEC_PLAN' && selectedStageContent.status === 'FAILED'
-                      ? selectedStageContent.actions.filter((action) => action.key === 'run')
+                      ? selectedStageContent.actions.filter((action) => action.key === 'run' || action.key === 'claim-local')
                       : workflowWorkspaceConfig
                         ? []
                         : selectedStageContent.actions

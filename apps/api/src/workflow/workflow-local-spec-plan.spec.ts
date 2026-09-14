@@ -73,6 +73,42 @@ function createService(prisma: Record<string, unknown>) {
 }
 
 describe('WorkflowService local Spec & Plan', () => {
+  it('recovers a failed Spec & Plan workflow before creating a local session', async () => {
+    const failedWorkflow = { ...workflow, status: 'FAILED', currentStage: 'SPEC_PLAN' };
+    const createSession = vi.fn().mockImplementation(({ data }) => data);
+    const tx = {
+      executionSession: { create: createSession },
+      workflowRun: { findUniqueOrThrow: vi.fn().mockResolvedValue(failedWorkflow) },
+    };
+    const prisma = {
+      executionSession: { findMany: vi.fn().mockResolvedValue([]) },
+      $transaction: vi.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
+    };
+    const service = createService(prisma);
+    const transition = vi
+      .spyOn(service as never, 'transitionWorkflow' as never)
+      .mockResolvedValue(undefined);
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(failedWorkflow);
+    vi.spyOn(
+      service as never,
+      'getOrCreateRunnableSkippableStageExecution' as never,
+    ).mockResolvedValue({ id: 'stage-spec-retry', attempt: 6 });
+    vi.spyOn(service as never, 'updateStageExecution' as never).mockResolvedValue(undefined);
+
+    await service.claimLocalSpecPlan('workflow-spec-1', {
+      user: { id: 'user-1', displayName: 'Developer' },
+      organization: { id: 'org-1' },
+    });
+
+    expect(transition).toHaveBeenCalledWith(
+      tx,
+      'workflow-spec-1',
+      'failed',
+      { to: 'spec_plan_pending', stage: 'spec_plan' },
+    );
+    transition.mockRestore();
+  });
+
   it('claims the pending stage and returns a versioned handoff', async () => {
     const createSession = vi.fn().mockImplementation(({ data }) => data);
     const tx = {
