@@ -92,9 +92,10 @@ export async function runLaunch(
   }
 
   const redeemed = (await response.json()) as RedeemResponse;
-  const repositories = redeemed.stage === 'SPEC_PLAN'
-    ? redeemed.handoff?.contextPackage?.repositories
-    : redeemed.handoff?.repositories;
+  // 新版 Spec & Plan handoff 将仓库放在 contextPackage；兼容未带 stage 字段的旧 API 响应。
+  const specPlanRepositories = redeemed.handoff?.contextPackage?.repositories;
+  const isSpecPlan = redeemed.stage === 'SPEC_PLAN' || Array.isArray(specPlanRepositories);
+  const repositories = isSpecPlan ? specPlanRepositories : redeemed.handoff?.repositories;
   const repository = repositories?.find((item) => item.url?.trim());
   const executionSessionId = redeemed.handoff?.executionSessionId?.trim();
   if (!repository) {
@@ -120,7 +121,7 @@ export async function runLaunch(
     gitRoot,
     workflowRunId: redeemed.workflowRunId,
     executionSessionId,
-    ...(redeemed.stage === 'SPEC_PLAN' ? { stage: 'spec-plan' as const } : {}),
+    ...(isSpecPlan ? { stage: 'spec-plan' as const } : {}),
     chatPrompt: redeemed.chatPrompt,
     apiBaseUrl: apiBaseUrl,
     mcpToken: redeemed.mcpToken,

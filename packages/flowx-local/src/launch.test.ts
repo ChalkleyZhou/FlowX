@@ -137,6 +137,41 @@ describe('runLaunch', () => {
     expect(resolveRepoPath).toHaveBeenCalledWith('https://github.com/org/repo.git');
   });
 
+  it('detects a Spec & Plan handoff when an older API omits the stage field', async () => {
+    const adapterLaunch = vi.fn(async () => ({
+      ok: true as const,
+      gitRoot: '/work/repo',
+      ide: 'cursor' as const,
+      prefilled: true,
+      promptPath: '/work/repo/.flowx/tasks/workflow-1.md',
+      executionSessionId: 'session-spec',
+      workflowRunId: 'workflow-1',
+    }));
+
+    await runLaunch(
+      { ticket: 'ticket-spec', ide: 'cursor', apiBaseUrl: 'https://flowx.example' },
+      {
+        fetch: async () => ({
+          ok: true,
+          json: async () => ({
+            apiBaseUrl: 'https://flowx.example',
+            workflowRunId: 'workflow-1',
+            handoff: {
+              executionSessionId: 'session-spec',
+              contextPackage: { repositories: [{ url: 'https://github.com/org/repo.git' }] },
+            },
+            chatPrompt: 'Generate Spec & Plan.',
+            mcpToken: 'token-1',
+          }),
+        }),
+        resolveRepoPath: vi.fn(async () => '/work/repo'),
+        registry: { resolve: vi.fn(() => ({ launch: adapterLaunch })) },
+      },
+    );
+
+    expect(adapterLaunch).toHaveBeenCalledWith(expect.objectContaining({ stage: 'spec-plan' }));
+  });
+
   it('rejects an incomplete redemption before launching an adapter', async () => {
     const adapterLaunch = vi.fn();
     const registry = {
