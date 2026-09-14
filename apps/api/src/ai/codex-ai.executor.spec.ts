@@ -26,6 +26,16 @@ describe('CodexAiExecutor', () => {
     expect(buildCodexInvocationArgs(args, { codexCredentialSource: 'login-state' })).toBe(args);
   });
 
+  it('does not treat the API-key-incompatible plugin catalog warning as model auth failure', () => {
+    const executor = new CodexAiExecutor();
+    const isAuthenticationError = (executor as unknown as { isCodexAuthenticationError: (stderr: string) => boolean })
+      .isCodexAuthenticationError.bind(executor);
+
+    expect(isAuthenticationError('plugin catalog request failed with status 401 Unauthorized')).toBe(false);
+    expect(isAuthenticationError('Incorrect API key provided: sk-...')).toBe(true);
+    expect(isAuthenticationError('auth error code: invalid_api_key')).toBe(true);
+  });
+
   const strictBrainstorm = (executor: CodexAiExecutor, raw: unknown): BrainstormOutput =>
     (executor as unknown as { assertStrictBrainstormOutput: (r: unknown) => BrainstormOutput }).assertStrictBrainstormOutput(
       raw,

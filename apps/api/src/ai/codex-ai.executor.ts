@@ -76,10 +76,9 @@ const CODEX_WRITE_SANDBOX = process.env.CODEX_WRITE_SANDBOX?.trim() || 'workspac
 const OPENDESIGN_MCP_ENABLED = /^(1|true|yes|on)$/i.test(process.env.OPENDESIGN_MCP_ENABLED?.trim() ?? '');
 const CODEX_AUTH_ERROR_PATTERNS = [
   /invalid_api_key/i,
+  /incorrect api key/i,
   /authentication failed/i,
   /not authenticated/i,
-  /401/i,
-  /unauthorized/i,
 ];
 
 /**
