@@ -1641,6 +1641,14 @@ export function WorkflowRunDetailPage() {
             variant: 'primary' as const,
           },
           {
+            key: 'skip-ai-review',
+            label: '跳过 AI 审查',
+            onClick: () =>
+              void runAction('AI_REVIEW', () => api.skipReview(workflowRun.id), '已跳过 AI 审查，进入人工审核'),
+            disabled: workflowRun.status !== 'REVIEW_PENDING' || stageActionsLocked,
+            loading: busyStage === 'AI_REVIEW',
+          },
+          {
             key: 'accept',
             label: '通过',
             onClick: () =>

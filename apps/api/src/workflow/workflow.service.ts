@@ -2672,6 +2672,69 @@ export class WorkflowService {
     return startedWorkflow;
   }
 
+  async skipReview(
+    id: string,
+    notifyRecipient?: WorkflowNotificationSession,
+  ) {
+    const workflow = await this.getWorkflowOrThrow(id);
+    this.assertStageNotRunning(workflow, StageType.AI_REVIEW);
+    if (workflow.status !== 'REVIEW_PENDING') {
+      throw new BadRequestException('AI Review 只能从待审查状态跳过。');
+    }
+
+    const updatedWorkflow = await this.prisma.$transaction(async (tx) => {
+      const reviewStage = await this.getOrCreateSkippableStageExecution(tx, id, StageType.AI_REVIEW);
+      await this.updateStageExecution(tx, reviewStage.id, StageExecutionStatus.SKIPPED, {
+        output: this.buildSkippedStageOutput('User chose to skip AI review and continue to human review.'),
+        statusMessage: '已跳过 AI 审查，等待人工审核',
+        errorMessage: null,
+        finishedAt: new Date(),
+      });
+
+      await tx.reviewReport.upsert({
+        where: { workflowRunId: id },
+        create: {
+          workflowRunId: id,
+          status: 'WAITING_HUMAN_REVIEW',
+          issues: [],
+          bugs: [],
+          missingTests: [],
+          suggestions: [],
+          impactScope: [],
+        },
+        update: {
+          status: 'WAITING_HUMAN_REVIEW',
+          issues: [],
+          bugs: [],
+          missingTests: [],
+          suggestions: [],
+          impactScope: [],
+        },
+      });
+
+      await this.transitionWorkflow(tx, id, WorkflowRunStatus.REVIEW_PENDING, {
+        to: WorkflowRunStatus.HUMAN_REVIEW_PENDING,
+        stage: StageType.HUMAN_REVIEW,
+      });
+
+      return tx.workflowRun.findUniqueOrThrow({
+        where: { id },
+        include: this.workflowInclude(),
+      });
+    });
+
+    this.notifyStageCompleted({
+      recipient: this.toNotificationRecipient(notifyRecipient),
+      workflowRunId: updatedWorkflow.id,
+      requirementTitle: updatedWorkflow.requirement.title,
+      stageName: 'AI 审查',
+      result: '已跳过',
+      nextStep: '等待人工审核决策',
+    });
+
+    return updatedWorkflow;
+  }
+
   async fixReviewFinding(
     id: string,
     findingId: string,

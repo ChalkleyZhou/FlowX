@@ -959,6 +959,8 @@ export const api = {
     }),
   runReview: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/review/run`, { method: 'POST' }),
+  skipReview: (id: string) =>
+    request<WorkflowRun>(`/workflow-runs/${id}/review/skip`, { method: 'POST' }),
   getReviewFindings: (workflowRunId: string) =>
     request<ReviewFinding[]>(`/workflow-runs/${workflowRunId}/review-findings`),
   syncReviewFindings: (reviewReportId: string) =>

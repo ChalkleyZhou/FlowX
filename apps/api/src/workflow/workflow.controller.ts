@@ -221,6 +221,11 @@ export class WorkflowController {
     return this.workflowService.runReview(id, undefined, req.authSession);
   }
 
+  @Post(':id/review/skip')
+  skipReview(@Param('id') id: string, @Req() req: WorkflowRequest) {
+    return this.workflowService.skipReview(id, req.authSession);
+  }
+
   @Post(':id/review/revise')
   reviseReview(@Param('id') id: string, @Body() dto: StageFeedbackDto, @Req() req: WorkflowRequest) {
     return this.workflowService.runReview(id, dto.feedback, req.authSession);
