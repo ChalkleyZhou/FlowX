@@ -79,6 +79,8 @@ export function buildLocalChatPrompt(input: BuildLocalChatPromptInput) {
     ...formatSuggestedChecks(input.suggestedChecks),
     '',
     '## Completion',
+    'Call `flowx_get_workflow_position` and continue only when the current stage is execution.',
+    'Ask whether to implement with the user\'s own skill or the FlowX execution skill. Do not redo earlier confirmed stages.',
     'When the implementation is ready, call MCP `flowx_report_completion` with `workflowRunId`, `executionSessionId`, and `workflowRepositoryId`, plus `implementationSummary`, `testResult`, and `pushed`.',
   ];
 

@@ -168,4 +168,78 @@ describe('EdgeTasksService', () => {
       }),
     );
   });
+
+  it('returns the live stage and prior outputs for a workflow handed to another person', async () => {
+    const { service, prisma } = createService();
+    prisma.workflowRun.findMany.mockResolvedValue([
+      {
+        id: 'workflow-spec',
+        status: 'SPEC_PLAN_PENDING',
+        requirement: { id: 'req-1', title: 'Export CSV' },
+        stageExecutions: [
+          {
+            id: 'stage-prd',
+            stage: 'BRAINSTORM',
+            status: 'COMPLETED',
+            attempt: 1,
+            output: { markdown: '# Export PRD' },
+          },
+          {
+            id: 'stage-design',
+            stage: 'DESIGN',
+            status: 'COMPLETED',
+            attempt: 1,
+            output: { markdown: '# Export design' },
+          },
+        ],
+        artifacts: [{ id: 'artifact-design', artifactType: 'DESIGN_HTML', name: 'Web端/index.html' }],
+      },
+    ]);
+
+    await expect(service.listWorkflowPositions({ workflowRunId: 'workflow-spec' })).resolves.toEqual([
+      expect.objectContaining({
+        workflowRunId: 'workflow-spec',
+        title: 'Export CSV',
+        status: 'SPEC_PLAN_PENDING',
+        localAction: 'generate',
+        stage: 'spec-plan',
+        outputContract: expect.objectContaining({ files: ['spec.md', 'plan.md', 'spec-plan.json'] }),
+        priorOutputs: [
+          expect.objectContaining({ stage: 'brainstorm', summary: '# Export PRD' }),
+          expect.objectContaining({ stage: 'design', summary: '# Export design' }),
+        ],
+        artifacts: [{ id: 'artifact-design', artifactType: 'DESIGN_HTML', name: 'Web端/index.html' }],
+      }),
+    ]);
+    expect(prisma.workflowRun.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'workflow-spec' },
+      }),
+    );
+  });
+
+  it('hides finished workflows from the open position list', async () => {
+    const { service, prisma } = createService();
+    prisma.workflowRun.findMany.mockResolvedValue([]);
+
+    await service.listWorkflowPositions({ workspaceId: 'workspace-1' });
+
+    expect(prisma.workflowRun.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          status: { notIn: ['DONE', 'FAILED'] },
+          requirement: { workspaceId: 'workspace-1' },
+        },
+      }),
+    );
+  });
+
+  it('rejects an unknown workflow id', async () => {
+    const { service, prisma } = createService();
+    prisma.workflowRun.findMany.mockResolvedValue([]);
+
+    await expect(service.listWorkflowPositions({ workflowRunId: 'missing' })).rejects.toThrow(
+      /missing/,
+    );
+  });
 });

@@ -1,6 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { WorkflowRunStatus, WorkflowRunType } from '../common/enums';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  resolveLocalPosition,
+  summarizePriorOutputs,
+  type WorkflowPositionArtifactRef,
+  type WorkflowPositionPriorOutput,
+} from './workflow-position';
 
 export type EdgeTaskType = 'requirement' | 'bug';
 
@@ -26,6 +32,19 @@ export interface EdgeTaskItem {
   workflowStage?: 'SPEC_PLAN' | 'EXECUTION' | null;
   eligible: boolean;
   ineligibleReason?: string;
+}
+
+export interface WorkflowPositionItem {
+  workflowRunId: string;
+  requirementId: string;
+  title: string;
+  status: string;
+  localAction: ReturnType<typeof resolveLocalPosition>['localAction'];
+  stage: ReturnType<typeof resolveLocalPosition>['stage'];
+  message: string;
+  outputContract: ReturnType<typeof resolveLocalPosition>['outputContract'];
+  priorOutputs: WorkflowPositionPriorOutput[];
+  artifacts: WorkflowPositionArtifactRef[];
 }
 
 export type OpenDesignSuggestedAction = 'brainstorm' | 'design';
@@ -134,6 +153,53 @@ export class EdgeTasksService {
         });
       }),
     ];
+  }
+
+  async listWorkflowPositions(filters: {
+    workspaceId?: string;
+    workflowRunId?: string;
+  }): Promise<WorkflowPositionItem[]> {
+    const workspaceId = filters.workspaceId?.trim() || undefined;
+    const workflowRunId = filters.workflowRunId?.trim() || undefined;
+    const workflows = await this.prisma.workflowRun.findMany({
+      where: {
+        ...(workflowRunId ? { id: workflowRunId } : { status: { notIn: ['DONE', 'FAILED'] } }),
+        ...(workspaceId ? { requirement: { workspaceId } } : {}),
+      },
+      include: {
+        requirement: { select: { id: true, title: true } },
+        stageExecutions: {
+          select: { id: true, stage: true, status: true, attempt: true, output: true },
+        },
+        artifacts: {
+          where: {
+            status: 'AVAILABLE',
+            artifactType: { in: ['SPEC_MARKDOWN', 'PLAN_MARKDOWN', 'DESIGN_HTML'] },
+          },
+          select: { id: true, artifactType: true, name: true },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (workflowRunId && workflows.length === 0) {
+      throw new NotFoundException(`Workflow ${workflowRunId} was not found.`);
+    }
+    return workflows.map((workflow) => {
+      const position = resolveLocalPosition(workflow.status);
+      return {
+        workflowRunId: workflow.id,
+        requirementId: workflow.requirement.id,
+        title: workflow.requirement.title,
+        status: workflow.status,
+        localAction: position.localAction,
+        stage: position.stage,
+        message: position.message,
+        outputContract: position.outputContract,
+        priorOutputs: summarizePriorOutputs(workflow.stageExecutions),
+        artifacts: workflow.artifacts,
+      };
+    });
   }
 
   async listOpenDesignTasks(filters: {

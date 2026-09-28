@@ -137,6 +137,7 @@ describe('LocalLaunchService', () => {
     expect(redeemed.stage).toBe('SPEC_PLAN');
     expect(redeemed.executionSessionId).toBeUndefined();
     expect(redeemed.handoff).toEqual(specPlanHandoff);
+    expect(redeemed.chatPrompt).toContain('flowx_get_workflow_position');
     expect(redeemed.chatPrompt).toContain('flowx_submit_spec_plan');
   });
 

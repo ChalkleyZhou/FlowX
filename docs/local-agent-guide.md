@@ -18,14 +18,16 @@ irm https://<当前站点>/install.ps1 | iex
 flowx-local login
 ```
 
-不需要预先安装 Node.js。脚本会优先复用已有的 Node.js 20+；没有可用版本时，会把固定版本的 FlowX 私有 runtime 安装到 `~/.flowx/runtime`，再把包和启动器安装到 `~/.flowx`。之后注册后台服务（macOS LaunchAgent / Linux systemd --user / Windows 计划任务），检测到 Cursor / Codex 时询问是否写入需求登记、产品构思、Spec & Plan、本地冒烟四个 FlowX Skill 和 MCP。WorkBuddy 请再执行 `flowx-local setup workbuddy`。`login` 只粘贴设置页生成的 `fxpat_…`。
+不需要预先安装 Node.js。脚本会优先复用已有的 Node.js 20+；没有可用版本时，会把固定版本的 FlowX 私有 runtime 安装到 `~/.flowx/runtime`，再把包和启动器安装到 `~/.flowx`。之后注册后台服务（macOS LaunchAgent / Linux systemd --user / Windows 计划任务），检测到 Cursor / Codex 时询问是否写入继续流程、需求登记、产品构思、Spec & Plan、本地执行、本地冒烟这几个 FlowX Skill 和 MCP。WorkBuddy 请再执行 `flowx-local setup workbuddy`。`login` 只粘贴设置页生成的 `fxpat_…`。
 
 ## 怎么用
 
-- **新建需求**：在 IDE 里明确说要「在 FlowX 新建需求」。普通写代码不会登记；说不清时 Agent 会先问。流程：选项目 → 确认版本 → 创建需求 → **你确认后再启动工作流**。
-- **本地开发**：工作流进入待执行后，网页点「本地启动」，选 Cursor / Codex / WorkBuddy。
-- **构思 / 设计**：`flowx_list_tasks` → bind → 提交 `prd.md` → 同一会话拉设计 handoff → 提交 `design.md` 与 HTML。
-- **Spec & Plan**：绑定 `spec-plan` 阶段后调用 `flowx_get_spec_plan_handoff`，生成结构化 `spec-plan.json`、`spec.md` 和 `plan.md`。先用 `flowx_upload_artifact` 分别上传两个 Markdown 文件，再以返回的 Artifact ID 调用 `flowx_submit_spec_plan`；回传后仍在网页人工确认。
+- **新建需求**：在 IDE 里明确说要「在 FlowX 新建需求」。普通写代码不会登记；说不清时 Agent 会先问。流程：选项目 → 确认版本 → 创建需求 → **你确认后再启动工作流**。启动后按当前阶段继续，不固定进入构思。
+- **继续流程**：说「接着做这条 FlowX」。Agent 先调用 `flowx_get_workflow_position` 读取服务器上的当前阶段。产品写完并确认 PRD、设计后，开发在另一台机器上会从 Spec & Plan 或执行接着做。等待网页确认时，本地不生成下一步。
+- **生成方式**：只对当前阶段选择一次。用自己的技能时按该阶段契约生成，文件已经在本地就确认后提交；或使用 FlowX 对应技能生成。这个选择不留给下一个人。
+- **本地开发**：网页点「本地启动」后选 Cursor / Codex / WorkBuddy。启动只写入项目 MCP，不把 FlowX 生成技能放进仓库。
+- **构思 / 设计**：确认当前阶段后提交 `prd.md`，再提交 `design.md` 与 HTML。
+- **Spec & Plan**：确认当前阶段后生成 `spec-plan.json`、`spec.md` 和 `plan.md`。先用 `flowx_upload_artifact` 分别上传两个 Markdown 文件，再以返回的 Artifact ID 调用 `flowx_submit_spec_plan`；回传后仍在网页人工确认。
 - **多人多端冒烟**：使用 `flowx_create_smoke_run` 创建目标端矩阵，或用 `flowx_list_smoke_tasks` 查看已有轮次。每位开发者按目标端调用 `flowx_claim_smoke_task` 领取未占用用例，上传日志、截图、JUnit 或 coverage 后调用 `flowx_submit_smoke_report`。同一用例的多人结果会在服务端汇总，原始结果不会相互覆盖。
 
 旧 Skill 名 `flowx-brainstorm-spec` 请执行 `flowx-local update`。无参数的 `flowx-local update` 只刷新本机已有 Skill 的目标；已在用 Cursor / Codex、尚未装 WorkBuddy 的用户，请执行 `flowx-local setup workbuddy` 或 `flowx-local update workbuddy`。更细的设计回传格式见仓库 `docs/opendesign-design-stage.md`。

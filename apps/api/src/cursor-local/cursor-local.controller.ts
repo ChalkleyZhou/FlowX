@@ -11,6 +11,14 @@ export class CursorLocalController {
     return this.cursorLocalService.listTasks({ workspaceId, session: req.authSession });
   }
 
+  @Get('workflow-position')
+  listWorkflowPositions(
+    @Query('workspaceId') workspaceId: string | undefined,
+    @Query('workflowRunId') workflowRunId: string | undefined,
+  ) {
+    return this.cursorLocalService.listWorkflowPositions({ workspaceId, workflowRunId });
+  }
+
   @Get('opendesign-tasks')
   listOpenDesignTasks(
     @Query('workspaceId') workspaceId: string | undefined,

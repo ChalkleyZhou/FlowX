@@ -857,7 +857,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     {
       title: 'Start FlowX Workflow',
       description:
-        'Start a workflow for an existing requirement after showing the user a start summary and receiving explicit confirmation. Always pass userConfirmedStart=true only after that confirmation. Then ask whether to continue into product brainstorm (bind + flowx-product-prd) or stop.',
+        'Start a workflow for an existing requirement after showing the user a start summary and receiving explicit confirmation. Always pass userConfirmedStart=true only after that confirmation. Then follow flowx-continue: call flowx_get_workflow_position and let the user choose their own skill or a FlowX skill for the current stage.',
       inputSchema: z.object({
         requirementId: z.string().min(1),
         userConfirmedStart: z.boolean(),
@@ -882,6 +882,29 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
             ...(input.aiProvider ? { aiProvider: input.aiProvider } : {}),
           }),
         }),
+      );
+    },
+  );
+
+  server.registerTool(
+    'flowx_get_workflow_position',
+    {
+      title: 'Get FlowX Workflow Position',
+      description:
+        'Read the live FlowX workflow position before generating or submitting. Returns server status, localAction, the current stage, prior submitted outputs, and outputContract. Do not infer the stage from local files, chat history, or another person\'s machine.',
+      inputSchema: z.object({
+        workflowRunId: z.string().optional(),
+        workspaceId: z.string().optional(),
+      }),
+    },
+    async ({ workflowRunId, workspaceId }) => {
+      const { client } = await resolveSession(options.homeDir);
+      const params = new URLSearchParams();
+      if (workflowRunId?.trim()) params.set('workflowRunId', workflowRunId.trim());
+      if (workspaceId?.trim()) params.set('workspaceId', workspaceId.trim());
+      const query = params.toString();
+      return runRequest(() =>
+        client.request(`/cursor-local/workflow-position${query ? `?${query}` : ''}`),
       );
     },
   );

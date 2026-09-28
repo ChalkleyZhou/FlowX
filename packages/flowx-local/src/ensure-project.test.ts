@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 describe('ensureProject', () => {
-  it('writes missing skills and merges the FlowX MCP server', () => {
+  it('merges the FlowX MCP server without writing a project skill', () => {
     const gitRoot = makeProject();
     const cursorDir = join(gitRoot, '.cursor');
     const mcpPath = join(cursorDir, 'mcp.json');
@@ -31,8 +31,8 @@ describe('ensureProject', () => {
       mcpToken: 'token-1',
     });
 
-    expect(existsSync(join(cursorDir, 'skills', 'flowx-local-execution', 'SKILL.md'))).toBe(true);
-    expect(existsSync(join(gitRoot, '.agents', 'skills', 'flowx-local-execution', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(cursorDir, 'skills', 'flowx-local-execution', 'SKILL.md'))).toBe(false);
+    expect(existsSync(join(gitRoot, '.agents', 'skills', 'flowx-local-execution', 'SKILL.md'))).toBe(false);
     expect(JSON.parse(readFileSync(mcpPath, 'utf8'))).toEqual({
       mcpServers: {
         existing: { command: 'test' },
@@ -62,7 +62,7 @@ describe('ensureProject', () => {
     expect(readFileSync(skillPath, 'utf8')).toBe('custom instructions');
   });
 
-  it('installs the Spec & Plan skill when launching that stage', () => {
+  it('does not install a stage skill when launching Spec & Plan', () => {
     const gitRoot = makeProject();
 
     ensureProject(gitRoot, {
@@ -72,13 +72,12 @@ describe('ensureProject', () => {
       stage: 'spec-plan',
     });
 
-    const skillPath = join(gitRoot, '.agents', 'skills', 'flowx-spec-plan', 'SKILL.md');
-    expect(existsSync(skillPath)).toBe(true);
-    expect(readFileSync(skillPath, 'utf8')).toContain('flowx_submit_spec_plan');
-    expect(existsSync(join(gitRoot, '.agents', 'skills', 'flowx-local-execution', 'SKILL.md'))).toBe(false);
+    expect(existsSync(join(gitRoot, '.agents', 'skills', 'flowx-spec-plan', 'SKILL.md'))).toBe(false);
+    expect(existsSync(join(gitRoot, '.cursor', 'skills', 'flowx-local-execution', 'SKILL.md'))).toBe(false);
+    expect(existsSync(join(gitRoot, '.cursor', 'mcp.json'))).toBe(true);
   });
 
-  it('writes WorkBuddy project skill and mcp when ide is workbuddy', () => {
+  it('merges WorkBuddy MCP without writing a project skill', () => {
     const gitRoot = makeProject();
     const mcpPath = join(gitRoot, '.workbuddy', 'mcp.json');
     mkdirSync(join(gitRoot, '.workbuddy'), { recursive: true });
@@ -90,7 +89,7 @@ describe('ensureProject', () => {
       ide: 'workbuddy',
     });
 
-    expect(existsSync(join(gitRoot, '.workbuddy', 'skills', 'flowx-local-execution', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(gitRoot, '.workbuddy', 'skills', 'flowx-local-execution', 'SKILL.md'))).toBe(false);
     expect(existsSync(join(gitRoot, '.cursor', 'mcp.json'))).toBe(false);
     expect(existsSync(join(gitRoot, '.cursor', 'skills', 'flowx-local-execution', 'SKILL.md'))).toBe(false);
     expect(existsSync(join(gitRoot, '.agents', 'skills', 'flowx-local-execution', 'SKILL.md'))).toBe(false);

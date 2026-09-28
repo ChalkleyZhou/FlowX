@@ -3,7 +3,7 @@
 Preferred Web entry for local execution: start from FlowX Web, open Cursor, Codex, or WorkBuddy on your machine via the `flowx-local` bridge, then finish with MCP or the Web UI.
 
 ```text
-FlowX Web「本地启动」 → flowx-local (loopback) → Cursor / Codex / WorkBuddy (+ Skill + MCP)
+FlowX Web「本地启动」 → flowx-local (loopback) → Cursor / Codex / WorkBuddy (+ MCP)
 ```
 
 This path reuses the same `claim-local` / handoff contract as [local-execution-handoff.md](./local-execution-handoff.md). Prefer completing through the session API returned as `executionSessionId`; `complete-local` remains a compatibility wrapper. The Cursor extension remains an optional fallback; see [cursor-plugin-local-chat.md](./cursor-plugin-local-chat.md).
@@ -51,7 +51,7 @@ Unmapped repos prompt for a local directory on first launch (when a picker is av
 2. On the Workflow detail page, click **本地启动**.
 3. Choose **Cursor**, **Codex**, or **WorkBuddy**.
 
-Web claims local execution when needed, issues a short-lived launch ticket, and calls `flowx-local` `/launch`. The daemon resolves repo paths, ensures FlowX Skill + MCP config in the project, opens the IDE, and delivers the task prompt (Chat/Agent prefill when possible; otherwise a file under `.flowx/tasks/` plus clipboard).
+Web claims local execution when needed, issues a short-lived launch ticket, and calls `flowx-local` `/launch`. The daemon resolves repo paths, merges the FlowX MCP config in the project, opens the IDE, and delivers the task prompt (Chat/Agent prefill when possible; otherwise a file under `.flowx/tasks/` plus clipboard). Generation skills stay in the user skill directory and are chosen for the current stage.
 
 WorkBuddy launch: macOS runs `open -a WorkBuddy <repo>`; Windows uses `%LOCALAPPDATA%\Programs\WorkBuddy\WorkBuddy.exe` or `WORKBUDDY_PATH`; Linux writes project files but does not open the desktop app.
 

@@ -26,6 +26,7 @@ describe('local chat workflow helpers', () => {
     expect(prompt).toContain('CSV downloads with headers');
     expect(prompt).toContain('session-1');
     expect(prompt).toContain('workflow-repository-1');
+    expect(prompt).toContain('flowx_get_workflow_position');
     expect(prompt).toContain('flowx_report_completion');
   });
 

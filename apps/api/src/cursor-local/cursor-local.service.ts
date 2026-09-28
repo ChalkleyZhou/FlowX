@@ -27,6 +27,10 @@ export class CursorLocalService {
     return this.edgeTasksService.listOpenDesignTasks(filters);
   }
 
+  listWorkflowPositions(filters: { workspaceId?: string; workflowRunId?: string }) {
+    return this.edgeTasksService.listWorkflowPositions(filters);
+  }
+
   startHandoff(dto: StartLocalChatDto, session?: EdgeWorkflowSession) {
     return this.edgeHandoffService.startHandoff(
       { ...dto, sourceTool: 'cursor' },

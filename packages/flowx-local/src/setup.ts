@@ -30,9 +30,11 @@ export type SetupResult = {
 };
 
 export const SETUP_SKILL_NAMES = [
+  'flowx-continue',
   'flowx-product-prd',
   'flowx-intake-requirement',
   'flowx-spec-plan',
+  'flowx-local-execution',
   'flowx-local-smoke',
 ] as const;
 export type SetupSkillName = (typeof SETUP_SKILL_NAMES)[number];

@@ -251,8 +251,8 @@ async function writeInitialMarkdown(resultPath: string) {
       [
         '# 产品需求（PRD）',
         '',
-        '请按用户级 Skill `flowx-product-prd`：先与用户头脑风暴澄清产品需求，再写本 `prd.md`，',
-        '展示全文供确认，仅在用户确认后调用 `flowx_submit_brainstorm`。',
+        '请先调用 `flowx_get_workflow_position` 确认当前阶段。可用自己的技能按契约写本 `prd.md`，',
+        '或使用 FlowX 技能 `flowx-product-prd`。展示全文供确认后调用 `flowx_submit_brainstorm`。',
         '',
         '读者：产品经理、设计师。勿写技术实现细节。',
         '',
@@ -349,15 +349,16 @@ function buildInstructions(
 
 本目录只保存 FlowX 会话凭据与调试副本，**不是**你的 Open Design 工程目录。
 
-推荐流程（与用户级 Skill \`flowx-product-prd\` 一致；请先运行 \`flowx-local setup\`）：
-1. 在 Open Design 中打开或创建你自己的项目目录。
-2. 通过 FlowX MCP 拉取上下文：
+推荐流程（请先运行 \`flowx-local setup\`；生成方式在当前阶段再选）：
+1. 调用 \`flowx_get_workflow_position\` 确认当前仍是构思。用户可选自己的技能按契约写 \`prd.md\`，或使用 FlowX 技能 \`flowx-product-prd\`。
+2. 在 Open Design 中打开或创建你自己的项目目录。
+3. 通过 FlowX MCP 拉取上下文：
    - \`flowx_get_active_design_session\`
    - \`flowx_get_brainstorm_handoff\`（可省略参数，默认用当前活跃会话）
-3. **先头脑风暴**澄清目标用户、问题、场景、边界与验收标准；写好 \`prd.md\`（勿把对话原文当 PRD）。
-4. 读者为产品经理/设计师；**禁止**在 PRD 正文中写 API、框架、数据库或实现细节。
-5. 把完整 \`prd.md\` 展示给用户确认。
-6. **仅在用户确认后** 调用 \`flowx_submit_brainstorm\`，\`markdown\` 为完整 PRD 正文。
+4. 选择 FlowX 技能时，**先头脑风暴**澄清目标用户、问题、场景、边界与验收标准；选择自己的技能时，沿用已有写法。写好 \`prd.md\`（勿把对话原文当 PRD）。
+5. 读者为产品经理/设计师；**禁止**在 PRD 正文中写 API、框架、数据库或实现细节。
+6. 把完整 \`prd.md\` 展示给用户确认。
+7. **仅在用户确认后** 调用 \`flowx_submit_brainstorm\`，\`markdown\` 为完整 PRD 正文。
 
 会话标识：
 - workflowRunId: \`${workflowRunId}\`
@@ -372,15 +373,16 @@ function buildInstructions(
 本目录只保存 FlowX 会话凭据与调试副本，**不是**你的 Open Design 工程目录。
 
 推荐流程：
-1. 在 Open Design 中打开或创建你自己的项目目录。
-2. 通过 FlowX MCP 拉取上下文：
+1. 调用 \`flowx_get_workflow_position\` 确认当前仍是设计。用户可选自己的技能按契约完成，或使用 FlowX 技能 \`flowx-product-prd\` 的设计段。
+2. 在 Open Design 中打开或创建你自己的项目目录。
+3. 通过 FlowX MCP 拉取上下文：
    - \`flowx_get_active_design_session\`
    - \`flowx_get_design_handoff\`（可省略参数，默认用当前活跃会话）
-3. 在项目里完成 \`design.md\`：写清概述、页面与交互、多端说明和验收要点，并向用户展示全文确认。
-4. 按端组织 HTML 设计稿（可复制到本会话 \`design/\` 或直接在回传 JSON 中填写）：
+4. 在项目里完成 \`design.md\`：写清概述、页面与交互、多端说明和验收要点，并向用户展示全文确认。已有 \`design.md\` 时确认后提交，不要重写。
+5. 按端组织 HTML 设计稿（可复制到本会话 \`design/\` 或直接在回传 JSON 中填写）：
    - 推荐目录名：\`Web端\` / \`移动端\` / \`管理后台\`（按需，有啥交啥）
    - 每端可有多个 \`.html\` 文件
-5. 确认 \`design.md\` 后通过 MCP 回传：\`flowx_submit_design({ markdown, output })\`，其中 \`markdown\` 为完整 \`design.md\` 正文，\`output.surfaces\` 仍为按端多页 HTML（可一次只交一端）。
+6. 确认 \`design.md\` 后通过 MCP 回传：\`flowx_submit_design({ markdown, output })\`，其中 \`markdown\` 为完整 \`design.md\` 正文，\`output.surfaces\` 仍为按端多页 HTML（可一次只交一端）。
 
 会话标识：
 - workflowRunId: \`${workflowRunId}\`

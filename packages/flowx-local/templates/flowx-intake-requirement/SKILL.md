@@ -53,13 +53,15 @@ description: 仅在用户明确要求把事项新建、登记或发起到 FlowX 
    - 发布版本
    - 仓库范围
    - AI 执行器（`codex` / `cursor`，若用户有偏好）
-   - 选项：**启动并进入构思** / **仅启动，暂不构思**
-   仅当用户明确选择后，以 `userConfirmedStart: true` 调用 `flowx_start_workflow`。
+   - 选项：**启动** / **先不启动**
+   用户选择「启动」后，以 `userConfirmedStart: true` 调用 `flowx_start_workflow`。
+   用户选择「先不启动」时结束，不调用 `flowx_start_workflow`。
    禁止在未确认时启动。
 
 6. **启动后分支**
-   - **进入构思：** `flowx_bind_workflow`（stage=`brainstorm`）→ 按 `flowx-product-prd` 继续（handoff → `prd.md` → 确认后 submit）
-   - **暂不构思：** 告知可在 Web 查看，或稍后 `flowx_list_tasks`；结束，不写 `prd.md`
+   - 展示启动结果，询问现在是否继续。
+   - **现在继续：** 按 `flowx-continue` 调用 `flowx_get_workflow_position`，为服务器返回的当前阶段选择自己的技能或 FlowX 技能。不要固定进入构思，也不要直接调用 `flowx-product-prd`。
+   - **暂不继续：** 告知可在 Web 查看；结束，不写 `prd.md`。
 
 ## 禁止
 

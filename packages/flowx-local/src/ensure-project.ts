@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { Ide } from './open-ide.js';
 
 export type EnsureProjectOptions = {
@@ -9,24 +8,6 @@ export type EnsureProjectOptions = {
   ide?: Ide;
   stage?: 'execution' | 'spec-plan';
 };
-
-function templatePath(stage: EnsureProjectOptions['stage']): string {
-  return join(
-    dirname(fileURLToPath(import.meta.url)),
-    '..',
-    'templates',
-    stage === 'spec-plan' ? 'flowx-spec-plan' : 'flowx-local-execution',
-    'SKILL.md',
-  );
-}
-
-function writeIfMissing(path: string, content: string): void {
-  if (existsSync(path)) {
-    return;
-  }
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, content, 'utf8');
-}
 
 function mergeFlowxMcp(mcpPath: string, options: EnsureProjectOptions): void {
   mkdirSync(dirname(mcpPath), { recursive: true });
@@ -54,25 +35,12 @@ function mergeFlowxMcp(mcpPath: string, options: EnsureProjectOptions): void {
 }
 
 export function ensureProject(gitRoot: string, options: EnsureProjectOptions): void {
-  const skill = readFileSync(templatePath(options.stage), 'utf8');
-  const skillName = options.stage === 'spec-plan' ? 'flowx-spec-plan' : 'flowx-local-execution';
+  // 生成技能留在用户级目录，由用户在当前阶段选择。项目启动只合并 MCP。
   if (options.ide === 'workbuddy') {
-    writeIfMissing(
-      join(gitRoot, '.workbuddy', 'skills', skillName, 'SKILL.md'),
-      skill,
-    );
     mergeFlowxMcp(join(gitRoot, '.workbuddy', 'mcp.json'), options);
     return;
   }
 
-  writeIfMissing(
-    join(gitRoot, '.cursor', 'skills', skillName, 'SKILL.md'),
-    skill,
-  );
-  writeIfMissing(
-    join(gitRoot, '.agents', 'skills', skillName, 'SKILL.md'),
-    skill,
-  );
   mergeFlowxMcp(join(gitRoot, '.cursor', 'mcp.json'), options);
 }
 

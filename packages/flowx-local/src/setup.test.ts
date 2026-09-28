@@ -79,8 +79,8 @@ describe('flowx-local setup', () => {
     };
 
     const first = await runSetup({ homeDir: home, targets: 'cursor,codex,od', ...extras });
-    // 4 skills × (cursor + agents) = 8 paths; codex/od share agents roots per skill.
-    expect(first.written).toHaveLength(8);
+    // 6 skills × (cursor + agents) = 12 paths; codex/od share agents roots per skill.
+    expect(first.written).toHaveLength(12);
     expect(first.skipped).toEqual([]);
     const cursorPrd = join(home, '.cursor', 'skills', 'flowx-product-prd', 'SKILL.md');
     const agentsPrd = join(home, '.agents', 'skills', 'flowx-product-prd', 'SKILL.md');
@@ -115,15 +115,34 @@ describe('flowx-local setup', () => {
     expect(readFileSync(cursorSpecPlan, 'utf8')).toContain('PLAN_MARKDOWN');
     expect(readFileSync(cursorSmoke, 'utf8')).toContain('flowx_claim_smoke_task');
     expect(readFileSync(cursorSmoke, 'utf8')).toContain('testedRevisions');
+    const cursorContinue = join(home, '.cursor', 'skills', 'flowx-continue', 'SKILL.md');
+    const cursorExecution = join(home, '.cursor', 'skills', 'flowx-local-execution', 'SKILL.md');
+    expect(readFileSync(cursorContinue, 'utf8')).toContain('flowx_get_workflow_position');
+    expect(readFileSync(cursorExecution, 'utf8')).toContain('flowx_report_completion');
+    expect(readFileSync(cursorIntake, 'utf8')).toContain('flowx-continue');
 
     writeFileSync(cursorPrd, '# custom\n', 'utf8');
     const second = await runSetup({ homeDir: home, targets: 'cursor', ...extras });
     expect(second.written).toEqual([]);
-    expect(second.skipped).toEqual([cursorPrd, cursorIntake, cursorSpecPlan, cursorSmoke]);
+    expect(second.skipped).toEqual([
+      cursorContinue,
+      cursorPrd,
+      cursorIntake,
+      cursorSpecPlan,
+      cursorExecution,
+      cursorSmoke,
+    ]);
     expect(readFileSync(cursorPrd, 'utf8')).toBe('# custom\n');
 
     const forced = await runSetup({ homeDir: home, targets: 'cursor', force: true, ...extras });
-    expect(forced.written).toEqual([cursorPrd, cursorIntake, cursorSpecPlan, cursorSmoke]);
+    expect(forced.written).toEqual([
+      cursorContinue,
+      cursorPrd,
+      cursorIntake,
+      cursorSpecPlan,
+      cursorExecution,
+      cursorSmoke,
+    ]);
     expect(readFileSync(cursorPrd, 'utf8')).toContain('flowx_submit_brainstorm');
     expect(readFileSync(cursorIntake, 'utf8')).toContain('flowx_create_requirement');
     expect(readFileSync(cursorSpecPlan, 'utf8')).toContain('flowx_get_spec_plan_handoff');

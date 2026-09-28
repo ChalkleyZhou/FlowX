@@ -22,8 +22,8 @@ Web 设置生成 Personal API Token（fxpat_…）或 flowx-local login --token
    - 亦可设置环境变量 `FLOWX_API_TOKEN` 与 `FLOWX_API_BASE_URL`。Token 与浏览器登录用户同权，默认不过期；可在设置页撤销。
    - 若出现 `could not reach …/auth/session/me` 警告，说明当时 API 不可达：本机需先启动 API，或重新 login 并指定正确的 `--api-base-url`（警告后仍会保存 token，错误地址会导致后续 MCP 失败）。
 2. **安装并配置 MCP**：`flowx-local setup`，在 Cursor / Codex 中配置 `flowx-local mcp`。
-3. **领取任务**：Agent 调用 `flowx_list_tasks` 列出可构思 / 可设计的工作流 → 与用户确认一条 → `flowx_bind_workflow` 写入 `~/.flowx/current-workflow.json`（含 `workflowRunId`、stage 等；**不含** token）。
-4. **产品构思**（面向产品经理 / 设计师，不写实现细节）：`flowx_get_brainstorm_handoff` → 多轮头脑风暴澄清 → 写 `prd.md` → 用户确认后 `flowx_submit_brainstorm`。请先 `flowx-local setup` 安装 `flowx-product-prd` Skill；本机若仍为旧 Skill，用 `flowx-local setup --force` 迁移。
+3. **领取任务**：Agent 先调用 `flowx_get_workflow_position` 看服务器上的当前阶段 → 与用户确认一条 → `flowx_bind_workflow` 写入 `~/.flowx/current-workflow.json`（含 `workflowRunId`、stage 等；**不含** token）。本机 binding 不能代表其他人的进度。
+4. **产品构思**（面向产品经理 / 设计师，不写实现细节）：当前阶段是构思时，用户选择自己的技能或 `flowx-product-prd`。产物都是确认后的 `prd.md`，再 `flowx_submit_brainstorm`。请先 `flowx-local setup` 安装技能；本机若仍为旧 Skill，用 `flowx-local setup --force` 迁移。
 5. **同一会话进入设计**：submit 成功响应带 `next.stage=design`（及 hint）；本地 binding 切到 `design`。立刻调用 `flowx_get_design_handoff`（服务端按需惰性创建 design `ExecutionSession`）→ 完成 `design.md` 与多端 HTML → 向用户确认 `design.md` 全文后 `flowx_submit_design({ markdown, output })`。
 6. Web 进入 `DESIGN_WAITING_CONFIRMATION`，在「设计文档」与「设计稿预览」两个模块中审阅后人工确认。
 

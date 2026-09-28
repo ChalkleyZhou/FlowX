@@ -4,6 +4,7 @@ import { CursorLocalService } from './cursor-local.service';
 function createService() {
   const edgeTasks = {
     listTasks: vi.fn().mockResolvedValue([{ id: 'req-1' }]),
+    listWorkflowPositions: vi.fn().mockResolvedValue([{ workflowRunId: 'wf-1', stage: 'spec-plan' }]),
     listOpenDesignTasks: vi.fn().mockResolvedValue([
       {
         kind: 'opendesign-workflow',
@@ -44,6 +45,16 @@ describe('CursorLocalService compatibility layer', () => {
       expect.objectContaining({ kind: 'opendesign-workflow', workflowRunId: 'wf-1' }),
     ]);
     expect(edgeTasks.listOpenDesignTasks).toHaveBeenCalledWith(filters);
+  });
+
+  it('delegates workflow position lookup to EdgeTasksService', async () => {
+    const { service, edgeTasks } = createService();
+    const filters = { workflowRunId: 'wf-1' };
+
+    await expect(service.listWorkflowPositions(filters)).resolves.toEqual([
+      expect.objectContaining({ workflowRunId: 'wf-1', stage: 'spec-plan' }),
+    ]);
+    expect(edgeTasks.listWorkflowPositions).toHaveBeenCalledWith(filters);
   });
 
   it('maps cursor-local handoff to sourceTool=cursor', async () => {

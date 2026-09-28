@@ -1,11 +1,11 @@
 ---
 name: flowx-product-prd
-description: FlowX 产品构思：多轮头脑风暴澄清产品需求后，写出给产品经理/设计师确认的 prd.md，再经 MCP 回传。Use when FlowX local brainstorm / 产品构思 / OpenDesign brainstorm is active.
+description: 仅当用户在 flowx-continue 中为当前构思或设计阶段明确选择 FlowX 技能时，用 FlowX 的方式生成 prd.md 或 design.md。阶段进行中不足以触发本技能。
 ---
 
 # FlowX 产品构思 → PRD
 
-在 FlowX「产品构思」阶段（Cursor / OpenDesign + FlowX MCP）使用本 Skill。
+仅在 `flowx_get_workflow_position` 确认当前阶段是构思或设计，且用户选择「用 FlowX 技能生成」之后使用。文件已存在且用户只要提交时，回到 `flowx-continue`，不要重写。
 
 ## 读者与目标
 

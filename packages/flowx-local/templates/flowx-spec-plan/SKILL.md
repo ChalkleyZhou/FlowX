@@ -1,11 +1,11 @@
 ---
 name: flowx-spec-plan
-description: 在 FlowX 工作流的 Spec & Plan 阶段，本地领取上下文、生成结构化方案和 Markdown 资料，并通过 MCP 回传等待人工确认。
+description: 仅当用户在 flowx-continue 中为当前 Spec & Plan 阶段明确选择 FlowX 技能时，生成 spec.md、plan.md 和 spec-plan.json。阶段进行中不足以触发本技能。
 ---
 
 # FlowX 本地 Spec & Plan
 
-仅在用户要继续一个处于 `SPEC_PLAN_PENDING` 的 FlowX 工作流时使用。
+仅在 `flowx_get_workflow_position` 确认当前阶段是 Spec & Plan，且用户选择「用 FlowX 技能生成」之后使用。已有 `spec.md` 和 `plan.md` 时，回到 `flowx-continue` 按契约提交，不要重写。
 
 1. 确认当前工作流后，用 `flowx_bind_workflow` 绑定 `spec-plan` 阶段，再调用 `flowx_get_spec_plan_handoff`。不要从聊天记录猜测 `workflowRunId`、`executionSessionId` 或 `sourceFingerprint`。
 2. 根据 handoff 中的需求、构思、设计和仓库上下文生成：

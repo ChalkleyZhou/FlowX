@@ -1,6 +1,6 @@
 ---
 name: flowx-local-smoke
-description: 在 FlowX 本地冒烟阶段，多开发者按目标端领取用例、执行验证、上传证据并回传可聚合结果。
+description: 仅当用户明确要执行 FlowX 本地冒烟时，按目标端领取用例、执行验证、上传证据并回传。不要从工作流状态自动进入冒烟。
 ---
 
 # FlowX 本地冒烟

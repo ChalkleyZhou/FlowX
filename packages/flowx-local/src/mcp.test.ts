@@ -87,6 +87,7 @@ describe('flowx-local MCP server', () => {
       'flowx_create_project_version',
       'flowx_create_requirement',
       'flowx_start_workflow',
+      'flowx_get_workflow_position',
       'flowx_list_tasks',
       'flowx_get_task_context',
       'flowx_collect_git_report',
@@ -590,6 +591,48 @@ describe('flowx-local MCP server', () => {
       id: 'wr_1',
       requirementId: 'req_1',
     });
+
+    await client.close();
+    await server.close();
+  });
+
+  it('forwards workflow position lookup without deciding the stage locally', async () => {
+    const homeDir = makeHome();
+    delete process.env.FLOWX_API_TOKEN;
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/cursor-local/workflow-position?workflowRunId=workflow-spec')) {
+        return new Response(
+          JSON.stringify([
+            {
+              workflowRunId: 'workflow-spec',
+              status: 'SPEC_PLAN_PENDING',
+              localAction: 'generate',
+              stage: 'spec-plan',
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { client, server } = await connectClient(homeDir);
+
+    const result = await client.callTool({
+      name: 'flowx_get_workflow_position',
+      arguments: { workflowRunId: 'workflow-spec' },
+    });
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(String((result.content as Array<{ text: string }>)[0].text))).toEqual([
+      {
+        workflowRunId: 'workflow-spec',
+        status: 'SPEC_PLAN_PENDING',
+        localAction: 'generate',
+        stage: 'spec-plan',
+      },
+    ]);
 
     await client.close();
     await server.close();

@@ -140,8 +140,9 @@ function buildLocalSpecPlanPrompt(handoff: {
     '## 本地工作流',
     `- Workflow run id: ${handoff.workflowRunId}`,
     `- Execution session id: ${handoff.executionSessionId}`,
-    '- 使用 FlowX MCP 获取完整 handoff 上下文。',
-    '- 生成结构化 spec-plan.json、spec.md 和 plan.md。',
+    '- 先调用 flowx_get_workflow_position，确认当前阶段仍是 Spec & Plan。',
+    '- 让用户选择：用自己的技能按契约生成，或用 FlowX 的 flowx-spec-plan。',
+    '- 已有 spec.md 和 plan.md 时，确认后提交，不要重写。',
     '- 先上传 spec.md（SPEC_MARKDOWN）和 plan.md（PLAN_MARKDOWN），再调用 flowx_submit_spec_plan。',
     '- 回传成功后停止，不要自动确认 Web 阶段。',
   ].join('\n');
