@@ -82,13 +82,12 @@ describe('ExecutionSessionPanel', () => {
       );
     });
 
-    expect(container.textContent).toContain('执行会话');
-    expect(container.textContent).toContain('RUNNING');
-    expect(container.textContent).toContain('cursor');
+    expect(container.textContent).toContain('运行状态');
+    expect(container.textContent).toContain('最近有回报');
+    expect(container.textContent).toContain('Cursor');
     expect(container.textContent).toContain('device-1');
-    expect(container.textContent).toContain('trace-123');
     expect(container.textContent).toContain('Web tests passed');
-    expect(container.textContent).toContain('HEARTBEAT');
+    expect(container.textContent).toContain('检查点');
 
     const refreshButton = Array.from(container.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('刷新'),
@@ -107,9 +106,9 @@ describe('ExecutionSessionPanel', () => {
       controlMode: 'COOPERATIVE', canControl: true, cancelRequestedAt: '2026-09-30T08:00:00Z',
       commands: [{ id: 'c1', commandType: 'CANCEL', status: 'DELIVERED', issuedAt: '2026-09-30T08:00:00Z' }],
     }} />));
-    expect(container.textContent).toContain('失联');
     expect(container.textContent).toContain('等待本地确认停止');
-    const cancel = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === '请求取消');
+    expect(container.textContent).toContain('Agent 已领取');
+    const cancel = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === '请求停止');
     expect(cancel?.disabled).toBe(true);
   });
 
@@ -120,7 +119,7 @@ describe('ExecutionSessionPanel', () => {
       blockedReason: '等待接口定义', canControl: true };
     await act(async () => root?.render(<ExecutionSessionPanel evidence={[]} session={session} onCommand={onCommand} />));
     expect(container.textContent).toContain('等待接口定义');
-    await act(async () => Array.from(container.querySelectorAll('button')).find((b) => b.textContent === '请求恢复')?.click());
+    await act(async () => Array.from(container.querySelectorAll('button')).find((b) => b.textContent === '请求继续')?.click());
     expect(onCommand).toHaveBeenCalledWith('RESUME');
     await act(async () => root?.render(<ExecutionSessionPanel evidence={[]} session={{ ...session, canControl: false }} onCommand={onCommand} />));
     expect(container.textContent).not.toContain('请求恢复');

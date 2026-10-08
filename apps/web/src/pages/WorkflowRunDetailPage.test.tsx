@@ -1821,7 +1821,8 @@ describe('WorkflowRunDetailPage', () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain('执行会话');
+    expect(container.textContent).toContain('运行状态');
+    expect(container.textContent).toContain('查看完整运行');
     expect(api.getExecutionSession).toHaveBeenCalledWith('session-1');
     expect(api.listExecutionSessionEvidence).toHaveBeenCalledWith('session-1');
   });

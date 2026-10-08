@@ -2333,16 +2333,25 @@ export function WorkflowRunDetailPage() {
                 <p role="alert" className="text-destructive">{executionSessionError}</p>
               ) : null}
               {selectedStage === 'EXECUTION' && executionSession ? (
-                <ExecutionControlActions
-                  key={executionSession.id}
-                  session={{ ...executionSession, evidence: executionEvidence, syncEvents: executionEvents }}
-                  loading={executionSessionLoading}
-                  onChanged={async (newSessionId) => {
-                    if (newSessionId && workflowRun) setLocalHandoff(await api.getLocalHandoff(workflowRun.id));
-                    await refreshExecutionSession();
-                    await refresh({ silent: true });
-                  }}
-                />
+                <div className="space-y-3">
+                  <div className="flex justify-end">
+                    <UiButton asChild type="button" variant="outline" size="sm">
+                      <Link to={`/execution-sessions/${executionSession.id}`}>
+                        查看完整运行
+                      </Link>
+                    </UiButton>
+                  </div>
+                  <ExecutionControlActions
+                    key={executionSession.id}
+                    session={{ ...executionSession, evidence: executionEvidence, syncEvents: executionEvents }}
+                    loading={executionSessionLoading}
+                    onChanged={async (newSessionId) => {
+                      if (newSessionId && workflowRun) setLocalHandoff(await api.getLocalHandoff(workflowRun.id));
+                      await refreshExecutionSession();
+                      await refresh({ silent: true });
+                    }}
+                  />
+                </div>
               ) : null}
 
               {selectedStage === 'EXECUTION' && executionHtml ? (

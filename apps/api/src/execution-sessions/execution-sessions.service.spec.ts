@@ -173,6 +173,23 @@ describe('ExecutionSessionsService', () => {
     );
   });
 
+  it('loads the task title and executor for the standalone detail page', async () => {
+    const { service, prisma } = createService();
+    prisma.executionSession.findUnique.mockResolvedValue(session({
+      workflowRun: { requirement: { title: '修复登录' } },
+      claimedByUser: { displayName: '张三' },
+    }));
+
+    await service.findOne('session-1', { organizationId: 'org-1' });
+
+    expect(prisma.executionSession.findUnique).toHaveBeenCalledWith(expect.objectContaining({
+      include: expect.objectContaining({
+        workflowRun: { select: { requirement: { select: { title: true } } } },
+        claimedByUser: { select: { displayName: true } },
+      }),
+    }));
+  });
+
   it('delegates to WorkflowService.completeLocalExecutionBySession when repositories are reported', async () => {
     const completeLocalExecutionBySession = vi.fn().mockResolvedValue({
       workflow: { id: 'workflow-1' },

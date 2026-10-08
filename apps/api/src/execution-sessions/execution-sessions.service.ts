@@ -137,6 +137,8 @@ export class ExecutionSessionsService {
       where: { id },
       include: {
         stageExecution: { select: { stage: true } },
+        workflowRun: { select: { requirement: { select: { title: true } } } },
+        claimedByUser: { select: { displayName: true } },
         commands: { orderBy: { issuedAt: 'desc' }, take: 10 },
         syncEvents: {
           orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
