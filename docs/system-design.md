@@ -112,7 +112,7 @@ Workspace
   -> Issue / Bug
 ```
 
-该链路已经具备研发流程基础；Artifact、Evidence、ExecutionSession 以及 TestDesign/TestRequest/TestPlan/TestRun 的独立模型已经落地。Spec & Plan 可由本地 `ExecutionSession` 领取，结构化输出继续写入 `StageExecution`，`spec.md` 和 `plan.md` 作为 Artifact 上传。TestDesign 在 Spec & Plan 确认后与开发执行并行，提测前汇合并冻结功能与动态冒烟快照。`LOCAL_SMOKE` 通过 `TestRunTarget`、`TestExecution` 和 append-only `TestExecutionCaseResult` 支持多人多端执行，服务端聚合 `TestResult` 并生成版本化 `TEST_REPORT`。Release、RuntimeFeedback 和自动化测试结果导入仍需继续建设。
+该链路已经具备研发流程基础；Artifact、Evidence、ExecutionSession 以及 TestDesign/TestRequest/TestPlan/TestRun 的独立模型已经落地。开发执行的受控会话由 `ExecutionCommand`、检查点和回执构成协作式运行控制：云端保存状态和命令，本地 Agent 在检查点领取并确认。失联是基于服务端最后检查点的健康计算，不代表可以远程终止 IDE。完成报告必须绑定原会话和原执行人，按工作流基线核对 Git 提交后才推进 Review。Spec & Plan 可由本地 `ExecutionSession` 领取，结构化输出继续写入 `StageExecution`，`spec.md` 和 `plan.md` 作为 Artifact 上传。TestDesign 在 Spec & Plan 确认后与开发执行并行，提测前汇合并冻结功能与动态冒烟快照。`LOCAL_SMOKE` 通过 `TestRunTarget`、`TestExecution` 和 append-only `TestExecutionCaseResult` 支持多人多端执行，服务端聚合 `TestResult` 并生成版本化 `TEST_REPORT`。Release、RuntimeFeedback 和自动化测试结果导入仍需继续建设。
 
 ## 5. 工作流设计原则
 

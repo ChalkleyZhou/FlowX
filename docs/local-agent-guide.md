@@ -26,6 +26,8 @@ flowx-local login
 - **继续流程**：说「接着做这条 FlowX」。Agent 先调用 `flowx_get_workflow_position` 读取服务器上的当前阶段。产品写完并确认 PRD、设计后，开发在另一台机器上会从 Spec & Plan 或执行接着做。等待网页确认时，本地不生成下一步。
 - **生成方式**：只对当前阶段选择一次。用自己的技能时按该阶段契约生成，文件已经在本地就确认后提交；或使用 FlowX 对应技能生成。这个选择不留给下一个人。
 - **本地开发**：网页点「本地启动」后选 Cursor / Codex / WorkBuddy。启动只写入项目 MCP，不把 FlowX 生成技能放进仓库。
+- **运行控制**：新版本地 Agent 会在开始、等待和重要操作前后调用执行检查点。网页可以请求取消、恢复阻塞任务或请求同步；Agent 领取命令后才执行并回执。取消不会强杀 Cursor/Codex 进程，必须在本地确认由本任务启动的操作已经停止后回执。超过 5 分钟未收到检查点会显示“失联”，这表示平台没有新回报，不代表平台已经停止本地进程。
+- **完成回传**：完成报告要携带 handoff 返回的 `executionSessionId`。本地工具会按工作流的 `baseBranch` 与当前分支的共同基线收集已提交文件，因此提交并推送后工作区干净仍可以完成；分支不一致或存在待处理控制命令时会拒绝提交。
 - **构思 / 设计**：确认当前阶段后提交 `prd.md`，再提交 `design.md` 与 HTML。
 - **Spec & Plan**：确认当前阶段后生成 `spec-plan.json`、`spec.md` 和 `plan.md`。先用 `flowx_upload_artifact` 分别上传两个 Markdown 文件，再以返回的 Artifact ID 调用 `flowx_submit_spec_plan`；回传后仍在网页人工确认。
 - **多人多端冒烟**：使用 `flowx_create_smoke_run` 创建目标端矩阵，或用 `flowx_list_smoke_tasks` 查看已有轮次。每位开发者按目标端调用 `flowx_claim_smoke_task` 领取未占用用例，上传日志、截图、JUnit 或 coverage 后调用 `flowx_submit_smoke_report`。同一用例的多人结果会在服务端汇总，原始结果不会相互覆盖。

@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { FLOWX_PROTOCOL_VERSION } from '@flowx-ai/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import type { SpecPlanOutput } from '../common/types';
@@ -103,6 +103,45 @@ const baseWorkflow = {
 } as const;
 
 describe('WorkflowService local execution', () => {
+  it('rejects the legacy completion alias for controlled and replacement sessions', async () => {
+    for (const fields of [{ controlMode: 'COOPERATIVE' }, { idempotencyKey: 'local-retry:old-session' }]) {
+      const { service } = createLocalExecutionService({ executionSession: { findFirst: vi.fn().mockResolvedValue({ id: 'session-1', ...fields }) } });
+      const complete = vi.spyOn(service, 'completeLocalExecutionBySession');
+      await expect(service.completeLocalExecution('workflow-1', { pushed: true, repositories: [] })).rejects.toBeInstanceOf(ConflictException);
+      expect(complete).not.toHaveBeenCalled();
+    }
+  });
+
+  it('requires the original executor to complete a controlled session', async () => {
+    const { service } = createLocalExecutionService({ executionSession: { findUnique: vi.fn().mockResolvedValue({
+      id: 'session-1', executorType: 'LOCAL', controlMode: 'COOPERATIVE', claimedByUserId: 'owner', organizationId: 'org-1',
+    }) } });
+    await expect(service.completeLocalExecutionBySession('session-1', { pushed: true, repositories: [] }, undefined,
+      { organizationId: 'org-1', userId: 'other' })).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('rejects a cancellation after a concurrent workflow transition without acknowledging the command', async () => {
+    const beforeCancel = vi.fn();
+    const tx = { workflowRun: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) } };
+    const { service } = createLocalExecutionService({
+      executionSession: { findFirst: vi.fn().mockResolvedValue({ id: 'session-1', stageExecutionId: 'stage-1', status: 'RUNNING' }) },
+      $transaction: vi.fn(async (callback) => callback(tx)),
+    });
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(baseWorkflow);
+    vi.spyOn(service as never, 'assertLocalExecutionActive' as never).mockImplementation(() => undefined);
+    vi.spyOn(service as never, 'getLatestStageOrThrow' as never).mockReturnValue({ id: 'stage-1' });
+    await expect(service.cancelLocalExecution(baseWorkflow.id, { expectedSessionId: 'session-1', beforeCancel })).rejects.toBeInstanceOf(ConflictException);
+    expect(beforeCancel).not.toHaveBeenCalled();
+  });
+
+  it('rejects cancelling a replacement session with an old session id', async () => {
+    const { service } = createLocalExecutionService({ executionSession: { findFirst: vi.fn().mockResolvedValue({ id: 'new-session' }) } });
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(baseWorkflow);
+    vi.spyOn(service as never, 'assertLocalExecutionActive' as never).mockImplementation(() => undefined);
+    vi.spyOn(service as never, 'getLatestStageOrThrow' as never).mockReturnValue({ id: 'stage-1' });
+    await expect(service.cancelLocalExecution(baseWorkflow.id, { expectedSessionId: 'old-session' })).rejects.toThrow(/会话已变化/);
+  });
+
   it('keeps the legacy path when the execution-session feature flag is disabled', () => {
     const original = process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED;
     process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED = 'false';
@@ -144,6 +183,7 @@ describe('WorkflowService local execution', () => {
             create: vi.fn().mockImplementation(({ data }: { data: unknown }) => data),
           },
           workflowRun: {
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
             findUniqueOrThrow: vi.fn().mockResolvedValue(updatedWorkflow),
           },
         }),
@@ -285,7 +325,7 @@ describe('WorkflowService local execution', () => {
     };
     const result = await service.completeLocalExecution('workflow-run-local-001', dto);
 
-    expect(bySessionSpy).toHaveBeenCalledWith('session-1', dto, undefined);
+    expect(bySessionSpy).toHaveBeenCalledWith('session-1', dto, undefined, { organizationId: undefined, userId: undefined });
     expect(result).toEqual({ workflow: delegated.workflow, handoff: delegated.handoff });
   });
 

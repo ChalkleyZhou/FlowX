@@ -4,6 +4,8 @@ import { CompleteExecutionSessionDto } from './dto/complete-execution-session.dt
 import { FailExecutionSessionDto } from './dto/fail-execution-session.dto';
 import { HeartbeatExecutionSessionDto } from './dto/heartbeat-execution-session.dto';
 import { ExecutionSessionsService } from './execution-sessions.service';
+import { ExecutionControlService } from './execution-control.service';
+import { AcknowledgeExecutionCommandDto, ExecutionCheckpointDto, ListExecutionSessionsDto, RequestExecutionCommandDto, RetryExecutionSessionDto } from './dto/execution-control.dto';
 import { SyncEventsService } from './sync-events.service';
 
 @Controller('execution-sessions')
@@ -11,11 +13,39 @@ export class ExecutionSessionsController {
   constructor(
     private readonly executionSessionsService: ExecutionSessionsService,
     private readonly syncEventsService: SyncEventsService,
+    private readonly control: ExecutionControlService,
   ) {}
 
+  @Get()
+  list(@Query() filters: ListExecutionSessionsDto, @Req() req: ExecutionSessionRequest) {
+    return this.control.list(filters, toScope(req));
+  }
+
+  @Post(':id/commands')
+  command(@Param('id') id: string, @Body() dto: RequestExecutionCommandDto, @Req() req: ExecutionSessionRequest) {
+    return this.control.request(id, dto, toScope(req));
+  }
+
+  @Post(':id/retry')
+  retry(@Param('id') id: string, @Body() dto: RetryExecutionSessionDto, @Req() req: ExecutionSessionRequest) {
+    return this.control.retry(id, dto, toScope(req));
+  }
+
+  @Post(':id/checkpoint')
+  checkpoint(@Param('id') id: string, @Body() dto: ExecutionCheckpointDto, @Req() req: ExecutionSessionRequest) {
+    return this.control.checkpoint(id, dto, toScope(req));
+  }
+
+  @Post(':id/commands/:commandId/ack')
+  acknowledge(@Param('id') id: string, @Param('commandId') commandId: string,
+    @Body() dto: AcknowledgeExecutionCommandDto, @Req() req: ExecutionSessionRequest) {
+    return this.control.acknowledge(id, commandId, dto, toScope(req));
+  }
+
   @Get(':id')
-  findOne(@Param('id') id: string, @Req() req: ExecutionSessionRequest) {
-    return this.executionSessionsService.findOne(id, toScope(req));
+  async findOne(@Param('id') id: string, @Req() req: ExecutionSessionRequest) {
+    const session = await this.executionSessionsService.findOne(id, toScope(req));
+    return { ...session, ...this.control.describe(session, toScope(req)) };
   }
 
   @Get(':id/events')
@@ -110,6 +140,7 @@ type ExecutionSessionRequest = {
       id?: string | null;
       providerOrganizationId?: string | null;
       name?: string | null;
+      role?: string | null;
     } | null;
   };
 };
@@ -118,5 +149,6 @@ function toScope(req: ExecutionSessionRequest) {
   return {
     userId: req.authSession?.user?.id ?? null,
     organizationId: req.authSession?.organization?.id ?? null,
+    organizationRole: req.authSession?.organization?.role ?? null,
   };
 }

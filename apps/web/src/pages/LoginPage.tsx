@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { Activity, ArrowUpRight, Check, Eye, EyeOff, ShieldCheck, Sparkles } from 'lucide-react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { api, toApiUrl } from '../api';
@@ -238,7 +238,15 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="login-page">
+      <div className="login-page__backdrop" aria-hidden="true">
+        <div className="login-page__aurora login-page__aurora--one" />
+        <div className="login-page__aurora login-page__aurora--two" />
+        <div className="login-page__aurora login-page__aurora--three" />
+        <div className="login-page__grid" />
+        <div className="login-page__scanline" />
+      </div>
+
       <Dialog
         open={organizationModalOpen}
         onOpenChange={(open) => {
@@ -270,21 +278,71 @@ export function LoginPage() {
         </DialogContent>
       </Dialog>
 
-      <header className="mx-auto flex w-full max-w-[1120px] items-center justify-between border-b border-border px-6 py-6 max-[780px]:px-4 max-[780px]:py-5">
-        <FlowXLogo size="md" />
-        <span className="hidden text-sm text-muted-foreground sm:block">AI 产研效能平台</span>
+      <header className="login-header">
+        <FlowXLogo
+          size="md"
+          className="login-header__logo"
+          iconClassName="login-header__logo-icon"
+          labelClassName="login-header__logo-label"
+        />
+        <div className="login-header__status">
+          <span className="login-header__status-dot" />
+          <span>AI 产研效能平台</span>
+        </div>
       </header>
 
-      <main className="flex min-h-[calc(100vh-89px)] items-start justify-center px-4 pb-16 pt-12 max-[780px]:min-h-0 max-[780px]:px-3 max-[780px]:pb-8 max-[780px]:pt-8">
-        <div className="w-full max-w-[440px]">
-          <div className="mb-5">
-            <p className="m-0 text-xs font-semibold uppercase tracking-[0.12em] text-primary">Workspace access</p>
-            <h1 className="mt-3 text-3xl font-bold leading-tight tracking-tight text-foreground">登录 FlowX</h1>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">进入你的 AI 产研效能工作台。</p>
+      <main className="login-main">
+        <section className="login-intro" aria-labelledby="login-page-title">
+          <div className="login-intro__eyebrow">
+            <span className="login-intro__eyebrow-line" />
+            <span>FLOWX / INTELLIGENCE OS</span>
+          </div>
+          <h1 id="login-page-title" className="login-intro__title">
+            让复杂的研发，<span>自然流动。</span>
+          </h1>
+          <p className="login-intro__description">
+            从灵感到交付，让每一次协作都被看见、被连接、被持续推进。
+          </p>
+
+          <div className="login-intro__signal">
+            <div className="login-intro__signal-icon"><Activity size={17} aria-hidden="true" /></div>
+            <div>
+              <div className="login-intro__signal-label">WORKFLOW SIGNAL</div>
+              <div className="login-intro__signal-value">研发节奏，实时同步</div>
+            </div>
+            <ArrowUpRight className="login-intro__signal-arrow" size={18} aria-hidden="true" />
           </div>
 
-          <Card className="w-full rounded-lg border border-border bg-card shadow-md">
-            <CardContent className="space-y-6 p-6 max-[420px]:p-5">
+          <div className="login-intro__metrics" aria-label="FlowX 平台能力">
+            <div>
+              <strong>01</strong>
+              <span>统一工作台</span>
+            </div>
+            <div>
+              <strong>02</strong>
+              <span>AI 协作编排</span>
+            </div>
+            <div>
+              <strong>03</strong>
+              <span>全程可追踪</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="login-panel" aria-label="登录区域">
+          <div className="login-panel__heading">
+            <div>
+              <div className="login-panel__kicker"><Sparkles size={14} aria-hidden="true" /> WORKSPACE ACCESS</div>
+              <h2>登录 FlowX</h2>
+              <p>进入你的 AI 产研效能工作台。</p>
+            </div>
+            <div className="login-panel__secure" title="安全连接">
+              <ShieldCheck size={18} aria-hidden="true" />
+            </div>
+          </div>
+
+          <Card className="login-card">
+            <CardContent className="login-card__content">
 
           {errorText ? (
             <Alert variant="destructive" className="mb-[18px]">
@@ -297,9 +355,9 @@ export function LoginPage() {
             <button
               type="button"
               className={cn(
-                'h-10 rounded-sm border-0 bg-transparent text-sm font-semibold text-muted-foreground transition-[background-color,color,box-shadow] duration-150',
+                'login-card__tab h-10 rounded-sm border-0 bg-transparent text-sm font-semibold text-muted-foreground transition-[background-color,color,box-shadow] duration-150',
                 'hover:text-foreground',
-                loginMode === 'password' && 'bg-card text-foreground',
+                loginMode === 'password' && 'login-card__tab--active bg-card text-foreground',
               )}
               onClick={() => setLoginMode('password')}
             >
@@ -308,9 +366,9 @@ export function LoginPage() {
             <button
               type="button"
               className={cn(
-                'h-10 rounded-sm border-0 bg-transparent text-sm font-semibold text-muted-foreground transition-[background-color,color,box-shadow] duration-150',
+                'login-card__tab h-10 rounded-sm border-0 bg-transparent text-sm font-semibold text-muted-foreground transition-[background-color,color,box-shadow] duration-150',
                 'hover:text-foreground',
-                loginMode === 'register' && 'bg-card text-foreground',
+                loginMode === 'register' && 'login-card__tab--active bg-card text-foreground',
               )}
               onClick={() => setLoginMode('register')}
             >
@@ -371,7 +429,7 @@ export function LoginPage() {
               <Button
                 type="submit"
                 size="lg"
-                className="w-full"
+                className="login-card__submit w-full"
                 disabled={submitting || oauthProcessing}
               >
                 {loginMode === 'password' ? '账号登录' : '注册并登录'}
@@ -383,7 +441,7 @@ export function LoginPage() {
                 type="button"
                 size="lg"
                 variant="outline"
-                className="w-full"
+                className="login-card__oauth w-full"
                 onClick={() => void loginByDingTalk()}
                 disabled={submitting || oauthProcessing}
               >
@@ -391,11 +449,20 @@ export function LoginPage() {
               </Button>
             </div>
           </form>
+          <div className="login-card__footnote">
+            <Check size={14} aria-hidden="true" />
+            <span>企业用户可使用钉钉身份登录。</span>
+          </div>
             </CardContent>
           </Card>
-          <p className="mt-4 text-center text-xs leading-5 text-muted-foreground">企业用户可使用钉钉身份登录。</p>
-        </div>
+        </section>
       </main>
+
+      <footer className="login-footer">
+        <span>FLOWX PLATFORM</span>
+        <span className="login-footer__divider" />
+        <span>为每个想法，找到下一步。</span>
+      </footer>
     </div>
   );
 }

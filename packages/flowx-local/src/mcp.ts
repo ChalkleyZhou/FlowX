@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   ARTIFACT_TYPES,
+  type ExecutionCheckpointResult,
   type ArtifactType,
   type BrainstormCompletionReport,
   type DesignCompletionReport,
@@ -15,6 +16,7 @@ import { z } from 'zod';
 import { readActiveDesignSession } from './active-design-session.js';
 import { PACKAGE_VERSION } from './config.js';
 import { resolveApiAuth } from './credentials.js';
+import { ensureDeviceIdentity } from './device.js';
 import { collectGitReport } from './git-report.js';
 import { Outbox } from './outbox.js';
 import {
@@ -948,48 +950,100 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     {
       title: 'Collect Git Report',
       description: 'Collect current branch, HEAD, changed files, untracked files, and diff summary.',
-      inputSchema: z.object({ cwd: z.string().optional() }),
+      inputSchema: z.object({ cwd: z.string().optional(), baseBranch: z.string().min(1).optional() }),
     },
-    async ({ cwd }) => textResult(await collectGitReport(cwd?.trim() || process.cwd())),
+    async ({ cwd, baseBranch }) => textResult(await collectGitReport(cwd?.trim() || process.cwd(), baseBranch)),
+  );
+
+  server.registerTool(
+    'flowx_execution_checkpoint',
+    {
+      title: '检查 FlowX 执行状态',
+      description: '本地开发开始、操作前后及等待期间每 30 秒调用。获取控制命令；取消命令必须先停止本任务操作，再单独确认。该工具不会终止 IDE。',
+      inputSchema: z.object({ executionSessionId: z.string().min(1), blockedReason: z.string().trim().min(1).max(2000).optional() }),
+    },
+    async ({ executionSessionId, blockedReason }) => runRequest(async () => {
+      const { client } = await resolveSession(options.homeDir);
+      const { deviceId } = ensureDeviceIdentity({ homeDir: options.homeDir });
+      const result = await client.request(`/execution-sessions/${encodeURIComponent(executionSessionId)}/checkpoint`, {
+        method: 'POST', body: JSON.stringify({ deviceId, blockedReason }),
+      }) as ExecutionCheckpointResult;
+      return { ...result, instructions: [
+        'CANCEL：停止本任务的修改和命令，确认本任务启动的操作已停止后回执 ACKED；无法停止回执 FAILED，禁止提交完成。',
+        'RESUME：重新读取平台状态和上下文，确认可继续后回执 ACKED；不要恢复已取消的会话。',
+        'REQUEST_SYNC：执行 flowx-local sync 并核对本任务待同步结果，全部成功后回执 ACKED；仍有失败则回执 FAILED。',
+        '平台不可达时保留本地产物；恢复连接后先读取检查点再继续。',
+      ] };
+    }),
+  );
+
+  server.registerTool(
+    'flowx_ack_execution_command',
+    {
+      title: '回执 FlowX 控制命令',
+      description: '仅在实际处理命令之后回执。CANCEL 的 ACKED 表示本任务操作已停止；工具本身不会停止任何进程。请求失败时必须重试同一 commandId。',
+      inputSchema: z.object({ executionSessionId: z.string().min(1), commandId: z.string().min(1), outcome: z.enum(['ACKED', 'FAILED']), message: z.string().max(2000).optional() }),
+    },
+    async ({ executionSessionId, commandId, outcome, message }) => runRequest(async () => {
+      const { client } = await resolveSession(options.homeDir);
+      const { deviceId } = ensureDeviceIdentity({ homeDir: options.homeDir });
+      return client.request(`/execution-sessions/${encodeURIComponent(executionSessionId)}/commands/${encodeURIComponent(commandId)}/ack`, {
+        method: 'POST', body: JSON.stringify({ deviceId, outcome, message }),
+      });
+    }),
   );
 
   server.registerTool(
     'flowx_report_completion',
     {
       title: 'Report FlowX Completion',
-      description: 'Collect local Git state and report local execution completion to FlowX.',
+      description: 'Collect local Git state and report completion. Use executionSessionId from the handoff; controlled sessions must check pending commands before submitting.',
       inputSchema: z.object({
         workflowRunId: z.string(),
         workflowRepositoryId: z.string(),
+        executionSessionId: z.string().min(1).optional(),
         implementationSummary: z.string(),
         testResult: z.string(),
         pushed: z.boolean(),
         cwd: z.string().optional(),
       }),
     },
-    async (input) => {
-      const report = await collectGitReport(input.cwd?.trim() || process.cwd());
-      if (report.changedFiles.length === 0) return textResult('No changed files were found.', true);
+    async (input) => runRequest(async () => {
       const { client } = await resolveSession(options.homeDir);
-      return runRequest(() =>
-        client.request(`/workflow-runs/${encodeURIComponent(input.workflowRunId)}/execution/complete-local`, {
-          method: 'POST',
-          body: JSON.stringify({
-            pushed: input.pushed,
-            implementationSummary: input.implementationSummary,
-            testResult: input.testResult,
-            diffSummary: report.diffSummary,
-            untrackedFiles: report.untrackedFiles,
-            repositories: [{
-              workflowRepositoryId: input.workflowRepositoryId,
-              headSha: report.headSha,
-              changedFiles: report.changedFiles,
-              patchSummary: input.implementationSummary,
-            }],
-          }),
+      if (input.executionSessionId) {
+        const { deviceId } = ensureDeviceIdentity({ homeDir: options.homeDir });
+        const checkpoint = await client.request(`/execution-sessions/${encodeURIComponent(input.executionSessionId)}/checkpoint`, {
+          method: 'POST', body: JSON.stringify({ deviceId }),
+        }) as ExecutionCheckpointResult;
+        if (checkpoint.session.workflowRunId !== input.workflowRunId) throw new Error('会话不属于当前工作流。');
+        if (checkpoint.session.cancelRequestedAt || checkpoint.commands.length ||
+          !['RUNNING', 'COMPLETED'].includes(checkpoint.session.status)) {
+          throw new Error('请先处理检查点中的控制命令或阻塞状态，再提交完成。');
+        }
+      }
+      const workflow = await client.request(`/workflow-runs/${encodeURIComponent(input.workflowRunId)}`) as {
+        workflowRepositories: Array<{ id: string; baseBranch: string; workingBranch: string }>;
+      };
+      const repository = workflow.workflowRepositories.find((item) => item.id === input.workflowRepositoryId);
+      if (!repository) throw new Error('仓库不属于当前工作流。');
+      const report = await collectGitReport(input.cwd?.trim() || process.cwd(), repository.baseBranch);
+      if (report.branch !== repository.workingBranch) throw new Error('当前分支与交接工作分支不一致，请核对后提交。');
+      if (report.changedFiles.length === 0) throw new Error('相对任务基线没有已提交变更，请先核对提交和基线。');
+      return client.request(input.executionSessionId
+        ? `/execution-sessions/${encodeURIComponent(input.executionSessionId)}/complete`
+        : `/workflow-runs/${encodeURIComponent(input.workflowRunId)}/execution/complete-local`, {
+        method: 'POST',
+        body: JSON.stringify({
+          pushed: input.pushed,
+          implementationSummary: input.implementationSummary,
+          testResult: input.testResult,
+          diffSummary: report.diffSummary,
+          untrackedFiles: report.untrackedFiles,
+          repositories: [{ workflowRepositoryId: input.workflowRepositoryId, headSha: report.headSha,
+            changedFiles: report.changedFiles, patchSummary: input.implementationSummary }],
         }),
-      );
-    },
+      });
+    }),
   );
 
   return server;

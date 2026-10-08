@@ -2,6 +2,7 @@ import { forwardRef, Module } from '@nestjs/common';
 import { WorkflowModule } from '../workflow/workflow.module';
 import { ExecutionSessionsController } from './execution-sessions.controller';
 import { ExecutionSessionsService } from './execution-sessions.service';
+import { ExecutionControlService } from './execution-control.service';
 import { SyncEventsService } from './sync-events.service';
 
 @Module({
@@ -9,7 +10,7 @@ import { SyncEventsService } from './sync-events.service';
   // must stay lazy via forwardRef to avoid a circular module-resolution failure at bootstrap.
   imports: [forwardRef(() => WorkflowModule)],
   controllers: [ExecutionSessionsController],
-  providers: [ExecutionSessionsService, SyncEventsService],
+  providers: [ExecutionSessionsService, SyncEventsService, ExecutionControlService],
   exports: [ExecutionSessionsService, SyncEventsService],
 })
 export class ExecutionSessionsModule {}

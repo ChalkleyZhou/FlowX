@@ -19,7 +19,7 @@ Cursor local Chat uses this same local execution contract with a shorter task pi
 6. If the repository has a registered **remote URL**, the API verifies the branch tip with `git ls-remote` before completing.
 7. Workflow moves to review (same path as cloud execution). An **execution HTML artifact** may be written under `.flowx-data` (see [workflow-artifacts.md](./workflow-artifacts.md)).
 
-**`POST /workflow-runs/:id/execution/complete-local`** remains a compatibility wrapper for old Web, MCP, and Extension clients. It resolves the active LOCAL session and delegates to the same server-side completion command; new clients should use the session endpoint.
+**`POST /workflow-runs/:id/execution/complete-local`** remains a compatibility wrapper for old Web, MCP, and Extension clients without cooperative control. Controlled sessions and retry sessions must use the explicit session endpoint, so an old Agent cannot submit a result into a replacement session.
 
 Cancel with **`POST /workflow-runs/:id/execution/cancel-local`** to return to `EXECUTION_PENDING`.
 
@@ -37,7 +37,7 @@ Example: `flowx/work/local-handoff/ocal-001` for run id ending in `ocal-001`.
 
 ## API: session complete body
 
-Use the same body for **`POST /execution-sessions/:executionSessionId/complete`**. `complete-local` accepts it unchanged for compatibility.
+Use the same body for **`POST /execution-sessions/:executionSessionId/complete`**. The compatibility endpoint accepts it only for non-controlled sessions.
 
 ```json
 {

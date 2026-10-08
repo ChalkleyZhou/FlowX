@@ -68,6 +68,7 @@ const scopeFactories: Record<string, (organizationId: string) => Record<string, 
   WorkflowRepository: (organizationId) => ({ workflowRun: workflowScope(organizationId) }),
   StageExecution: (organizationId) => ({ workflowRun: workflowScope(organizationId) }),
   ExecutionSession: executionSessionScope,
+  ExecutionCommand: (organizationId) => ({ executionSession: executionSessionScope(organizationId) }),
   SyncEvent: (organizationId) => ({
     executionSession: executionSessionScope(organizationId),
   }),

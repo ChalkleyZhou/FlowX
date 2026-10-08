@@ -12,6 +12,10 @@ import type {
   DeliveryTarget,
   DingTalkUserSyncResult,
   ExecutionSessionDetail,
+  ExecutionCommand,
+  ExecutionCommandType,
+  ExecutionSessionStatus,
+  SourceTool,
   ExecutionSessionEvidence,
   ExecutionSessionEventsPage,
   Issue,
@@ -810,6 +814,16 @@ export const api = {
       ).toString()}`,
     ),
   getWorkflowRun: (id: string) => request<WorkflowRun>(`/workflow-runs/${id}`),
+  listExecutionSessions: (params: { projectId?: string; workflowRunId?: string; status?: ExecutionSessionStatus; sourceTool?: SourceTool; since?: string; until?: string; cursor?: string; take?: number } = {}) =>
+    request<{ items: ExecutionSessionDetail[]; nextCursor: string | null }>(`/execution-sessions${queryString({ ...params, take: params.take === undefined ? undefined : String(params.take) })}`),
+  requestExecutionCommand: (id: string, commandType: ExecutionCommandType, idempotencyKey: string) =>
+    request<ExecutionCommand>(`/execution-sessions/${encodeURIComponent(id)}/commands`, {
+      method: 'POST', body: JSON.stringify({ commandType, idempotencyKey }),
+    }),
+  retryExecutionSession: (id: string, sourceTool: 'cursor' | 'codex') =>
+    request<{ executionSessionId: string; workflowRunId: string }>(`/execution-sessions/${encodeURIComponent(id)}/retry`, {
+      method: 'POST', body: JSON.stringify({ previousExecutionStopped: true, sourceTool }),
+    }),
   getExecutionSession: (id: string) =>
     request<ExecutionSessionDetail>(`/execution-sessions/${id}`),
   listExecutionSessionEvidence: (id: string) =>
@@ -894,6 +908,10 @@ export const api = {
     request<LocalExecutionClaimResponse>(`/workflow-runs/${id}/execution/complete-local`, {
       method: 'POST',
       body: JSON.stringify(body),
+    }),
+  completeExecutionSession: (id: string, body: { pushed: boolean; repositories: CompleteLocalRepositoryReport[] }) =>
+    request<ExecutionSessionDetail>(`/execution-sessions/${encodeURIComponent(id)}/complete`, {
+      method: 'POST', body: JSON.stringify(body),
     }),
   cancelLocalExecution: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/execution/cancel-local`, { method: 'POST' }),

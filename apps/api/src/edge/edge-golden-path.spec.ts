@@ -150,6 +150,7 @@ describe('Edge development golden path', () => {
           }),
         },
         workflowRun: {
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
           findUniqueOrThrow: vi.fn().mockResolvedValue(baseWorkflow),
         },
       }),

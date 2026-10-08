@@ -729,6 +729,11 @@ model ExecutionSession {
   errorMessage     String?
   summary          String?
   metadata         Json?
+  controlMode      String          @default("NONE")
+  blockedReason    String?
+  cancelRequestedAt DateTime?
+  activeControlDeviceKey String?    @unique
+  commands         ExecutionCommand[]
   syncEvents       SyncEvent[]
   artifacts        Artifact[]
   evidence         Evidence[]
@@ -743,6 +748,25 @@ model ExecutionSession {
   @@index([workspaceId, status, createdAt])
   @@index([projectId, status, createdAt])
   @@index([claimedByUserId, createdAt])
+}
+
+model ExecutionCommand {
+  id                 String           @id @default(cuid())
+  executionSessionId String
+  executionSession   ExecutionSession @relation(fields: [executionSessionId], references: [id], onDelete: Cascade)
+  commandType        String
+  status             String           @default("CREATED")
+  idempotencyKey     String
+  requestedByUserId  String
+  issuedAt           DateTime         @default(now())
+  deliveredAt        DateTime?
+  acknowledgedAt     DateTime?
+  expiresAt          DateTime?
+  errorMessage       String?
+  updatedAt          DateTime         @updatedAt
+
+  @@unique([executionSessionId, idempotencyKey])
+  @@index([executionSessionId, status, issuedAt])
 }
 
 model SyncEvent {

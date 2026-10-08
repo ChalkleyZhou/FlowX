@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { SyncEventsService } from './sync-events.service';
 
@@ -69,6 +69,21 @@ function createService() {
 }
 
 describe('SyncEventsService', () => {
+  it('checks access before returning a duplicate event', async () => {
+    const { service, prisma, executionSessionsService } = createService();
+    prisma.syncEvent.findFirst.mockResolvedValue(event());
+    executionSessionsService.requireAccessibleSession.mockRejectedValue(new ForbiddenException());
+    await expect(service.append('session-1', dto())).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('does not treat replayed events as cooperative execution checkpoints', async () => {
+    const { service, prisma, executionSessionsService } = createService();
+    executionSessionsService.requireAccessibleSession.mockResolvedValue({ id: 'session-1', status: 'RUNNING', controlMode: 'COOPERATIVE', claimedByUserId: 'user-1', deviceId: 'device-1' } as never);
+    prisma.syncEvent.create.mockResolvedValue(event());
+    await service.append('session-1', dto(), { userId: 'user-1', organizationId: 'org-1' });
+    expect(prisma.executionSession.update).not.toHaveBeenCalled();
+  });
+
   it('returns an identical duplicate without writing again', async () => {
     const { service, prisma } = createService();
     prisma.syncEvent.findFirst.mockResolvedValue(event());
@@ -120,7 +135,7 @@ describe('SyncEventsService', () => {
     );
     expect(prisma.executionSession.update).toHaveBeenCalledWith({
       where: { id: 'session-1' },
-      data: { lastHeartbeatAt: new Date('2026-07-22T00:00:00.000Z') },
+      data: { lastHeartbeatAt: expect.any(Date) },
     });
   });
 

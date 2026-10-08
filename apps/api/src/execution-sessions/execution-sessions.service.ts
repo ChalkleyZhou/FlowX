@@ -12,6 +12,7 @@ import {
 import { Prisma } from '@prisma/client';
 import {
   FLOWX_PROTOCOL_VERSION,
+  EXECUTION_HEARTBEAT_INTERVAL_MS,
   isExecutionSessionTerminal,
   type ExecutionSessionStatus,
   type ExecutorType,
@@ -135,6 +136,8 @@ export class ExecutionSessionsService {
     const session = await this.prisma.executionSession.findUnique({
       where: { id },
       include: {
+        stageExecution: { select: { stage: true } },
+        commands: { orderBy: { issuedAt: 'desc' }, take: 10 },
         syncEvents: {
           orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
           take: 100,
@@ -171,10 +174,17 @@ export class ExecutionSessionsService {
         message: `Execution session ${id} is already ${session.status}.`,
       });
     }
-    return this.prisma.executionSession.update({
-      where: { id },
-      data: { lastHeartbeatAt: occurredAt },
+    // 心跳采用接收时间，避免客户端时钟漂移及离线重放造成长期假在线。
+    if (session.controlMode === 'COOPERATIVE') {
+      throw new BadRequestException('已接入运行控制的会话请使用 checkpoint 上报心跳。');
+    }
+    const now = new Date();
+    if (session.lastHeartbeatAt && now.getTime() - session.lastHeartbeatAt.getTime() < EXECUTION_HEARTBEAT_INTERVAL_MS) return session;
+    await this.prisma.executionSession.updateMany({
+      where: { id, status: session.status, lastHeartbeatAt: session.lastHeartbeatAt },
+      data: { lastHeartbeatAt: now },
     });
+    return this.prisma.executionSession.findUniqueOrThrow({ where: { id } });
   }
 
   /**
@@ -209,10 +219,12 @@ export class ExecutionSessionsService {
           untrackedFiles: input.untrackedFiles,
         },
         scope.notifySession,
-        { organizationId: scope.organizationId },
+        { organizationId: scope.organizationId, userId: scope.userId },
       );
       return result.executionSession;
     }
+    const session = await this.requireAccessibleSession(id, scope);
+    if (session.controlMode === 'COOPERATIVE') throw new BadRequestException('本地开发完成必须提交仓库和测试报告。');
     return this.transition(id, 'COMPLETED', input, scope);
   }
 
@@ -232,6 +244,12 @@ export class ExecutionSessionsService {
   ) {
     const session = await this.requireAccessibleSession(id, scope);
     const from = session.status as ExecutionSessionStatus;
+    if (session.controlMode === 'COOPERATIVE' && to !== 'FAILED') {
+      throw new BadRequestException('已接入运行控制，请通过检查点和命令回执变更状态。');
+    }
+    if (session.controlMode === 'COOPERATIVE' && scope.userId !== session.claimedByUserId) {
+      throw new ForbiddenException('仅执行人可以上报失败。');
+    }
     if (from === to) {
       return session;
     }
@@ -244,6 +262,7 @@ export class ExecutionSessionsService {
         status: to,
         startedAt: to === 'RUNNING' ? session.startedAt ?? now : undefined,
         completedAt: isExecutionSessionTerminal(to) ? now : undefined,
+        activeControlDeviceKey: isExecutionSessionTerminal(to) ? null : undefined,
         summary: input.summary ?? undefined,
         errorCode: input.errorCode ?? undefined,
         errorMessage: input.errorMessage ?? undefined,

@@ -99,4 +99,31 @@ describe('ExecutionSessionPanel', () => {
 
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
+  it('显示失联和待取消回执，禁用重复取消', async () => {
+    const onCommand = vi.fn();
+    await act(async () => root?.render(<ExecutionSessionPanel evidence={[]} onCommand={onCommand} session={{
+      id: 's1', workflowRunId: 'w1', status: 'RUNNING', executorType: 'LOCAL', sourceTool: 'codex',
+      protocolVersion: '1.2', traceId: 't1', createdAt: '', updatedAt: '', health: 'STALE',
+      controlMode: 'COOPERATIVE', canControl: true, cancelRequestedAt: '2026-09-30T08:00:00Z',
+      commands: [{ id: 'c1', commandType: 'CANCEL', status: 'DELIVERED', issuedAt: '2026-09-30T08:00:00Z' }],
+    }} />));
+    expect(container.textContent).toContain('失联');
+    expect(container.textContent).toContain('等待本地确认停止');
+    const cancel = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === '请求取消');
+    expect(cancel?.disabled).toBe(true);
+  });
+
+  it('只给有权限的阻塞会话显示恢复入口', async () => {
+    const onCommand = vi.fn();
+    const session = { id: 's1', workflowRunId: 'w1', status: 'BLOCKED' as const, executorType: 'LOCAL' as const,
+      sourceTool: 'codex' as const, protocolVersion: '1.2', traceId: 't1', createdAt: '', updatedAt: '',
+      blockedReason: '等待接口定义', canControl: true };
+    await act(async () => root?.render(<ExecutionSessionPanel evidence={[]} session={session} onCommand={onCommand} />));
+    expect(container.textContent).toContain('等待接口定义');
+    await act(async () => Array.from(container.querySelectorAll('button')).find((b) => b.textContent === '请求恢复')?.click());
+    expect(onCommand).toHaveBeenCalledWith('RESUME');
+    await act(async () => root?.render(<ExecutionSessionPanel evidence={[]} session={{ ...session, canControl: false }} onCommand={onCommand} />));
+    expect(container.textContent).not.toContain('请求恢复');
+  });
+
 });

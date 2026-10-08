@@ -34,6 +34,6 @@ description: 继续一条 FlowX 流程。先联网读取当前阶段，再让用
 - 构思：确认后的完整 `prd.md` 调用 `flowx_submit_brainstorm`。
 - 设计：确认后的 `design.md` 和 HTML 调用 `flowx_submit_design`。
 - Spec & Plan：先 `flowx_upload_artifact` 上传 `spec.md`（`SPEC_MARKDOWN`）和 `plan.md`（`PLAN_MARKDOWN`），再 `flowx_submit_spec_plan`。
-- 执行：`flowx_collect_git_report` 后 `flowx_report_completion`。
+- 执行：先用本次 `executionSessionId` 调用 `flowx_execution_checkpoint`，处理待办命令；再 `flowx_collect_git_report`，通过 `flowx_report_completion` 显式携带该会话 ID 提交。运行期间的检查点、取消和恢复规则见 `flowx-local-execution` 的“执行检查点与运行控制”，使用自己的开发技能时同样适用。
 
 上传结果为 `queued: true` 时先执行 `flowx-local sync`，确认成功后再用 Artifact ID 完成阶段。指纹不一致时重新拉取 handoff，不复用旧产物。提交成功后停止，等待网页确认。

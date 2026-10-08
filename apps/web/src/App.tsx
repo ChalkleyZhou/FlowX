@@ -27,6 +27,7 @@ import { PersonalApiTokensPage } from './pages/PersonalApiTokensPage';
 import { OrganizationUsersPage } from './pages/OrganizationUsersPage';
 import { RequirementsPage } from './pages/RequirementsPage';
 import { WorkflowRunDetailPage } from './pages/WorkflowRunDetailPage';
+import { ExecutionSessionsPage } from './pages/ExecutionSessionsPage';
 import { WorkflowRunsPage } from './pages/WorkflowRunsPage';
 import { WorkspacesPage } from './pages/WorkspacesPage';
 import { UserManualPage } from './pages/UserManualPage';
@@ -63,6 +64,7 @@ export default function App() {
             <Route path="/daily-code-reviews/:reviewId" element={<DailyCodeReviewDetailPage />} />
             <Route path="/requirements" element={<RequirementsPage />} />
             <Route path="/requirements/:id" element={<RequirementDetailPage />} />
+            <Route path="/execution-sessions" element={<ExecutionSessionsPage />} />
             <Route path="/workflow-runs" element={<WorkflowRunsPage />} />
             <Route path="/workflow-runs/:workflowRunId" element={<WorkflowRunDetailPage />} />
             <Route path="/issues" element={<IssuesPage />} />

@@ -42,6 +42,7 @@ import { ConfirmProvider, useConfirm } from './ConfirmDialog';
 const primaryItems = [
   { key: '/requirements', label: '需求', icon: ClipboardList },
   { key: '/workflow-runs', label: '工作流', icon: Workflow },
+  { key: '/execution-sessions', label: 'Agent 运行', icon: RadioTower },
   { key: '/projects', label: '项目', icon: FolderKanban },
   { key: '/briefings', label: '简报', icon: Newspaper },
   { key: '/code-reviews', label: '代码审查', icon: GitPullRequest },

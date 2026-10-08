@@ -975,9 +975,19 @@ export interface GitCredentialStatus {
   updatedAt?: string;
 }
 
+export type ExecutionCommandType = 'CANCEL' | 'RESUME' | 'REQUEST_SYNC';
+export interface ExecutionCommand {
+  id: string;
+  commandType: ExecutionCommandType;
+  status: 'CREATED' | 'DELIVERED' | 'ACKED' | 'FAILED' | 'EXPIRED';
+  issuedAt: string;
+  errorMessage?: string | null;
+}
+
 export type ExecutionSessionStatus =
   | 'CREATED'
   | 'CLAIMED'
+  | 'BLOCKED'
   | 'RUNNING'
   | 'COMPLETING'
   | 'COMPLETED'
@@ -995,6 +1005,14 @@ export type SourceTool =
   | 'flowx-worker';
 
 export interface ExecutionSessionDetail {
+  controlMode?: 'NONE' | 'COOPERATIVE';
+  health?: 'UNKNOWN' | 'ONLINE' | 'STALE' | 'TERMINAL';
+  canControl?: boolean;
+  blockedReason?: string | null;
+  cancelRequestedAt?: string | null;
+  commands?: ExecutionCommand[];
+  workflowRun?: { requirement: { title: string } } | null;
+  claimedByUser?: { displayName: string } | null;
   id: string;
   workflowRunId: string;
   stageExecutionId?: string | null;

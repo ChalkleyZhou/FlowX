@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
   validateSyncEvent,
@@ -31,16 +31,17 @@ export class SyncEventsService {
     dto: AppendSyncEventDto,
     scope: ExecutionSessionScope = {},
   ) {
+    const session = await this.executionSessionsService.requireAccessibleSession(executionSessionId, scope);
+    if (session.controlMode === 'COOPERATIVE' &&
+      (session.claimedByUserId !== scope.userId || session.deviceId !== dto.deviceId)) {
+      throw new ForbiddenException('仅原执行人及绑定设备可以追加执行事件。');
+    }
     const duplicate = await this.findDuplicate(dto.eventId, dto.idempotencyKey);
     if (duplicate) {
       this.assertMatchingDuplicate(duplicate, executionSessionId, dto);
       return duplicate;
     }
 
-    const session = await this.executionSessionsService.requireAccessibleSession(
-      executionSessionId,
-      scope,
-    );
     const event: FlowXSyncEvent = {
       eventId: dto.eventId,
       schemaVersion: dto.schemaVersion,
@@ -91,13 +92,13 @@ export class SyncEventsService {
         });
 
         if (
-          dto.eventType === 'execution.heartbeat' ||
+          session.controlMode !== 'COOPERATIVE' && (dto.eventType === 'execution.heartbeat' ||
           dto.eventType === 'execution.progressed' ||
-          dto.eventType === 'execution.started'
+          dto.eventType === 'execution.started')
         ) {
           await tx.executionSession.update({
             where: { id: executionSessionId },
-            data: { lastHeartbeatAt: new Date(dto.occurredAt) },
+            data: { lastHeartbeatAt: new Date() },
           });
         }
         return created;

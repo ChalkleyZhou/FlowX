@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -91,6 +92,8 @@ describe('flowx-local MCP server', () => {
       'flowx_list_tasks',
       'flowx_get_task_context',
       'flowx_collect_git_report',
+      'flowx_execution_checkpoint',
+      'flowx_ack_execution_command',
       'flowx_report_completion',
     ]);
     expect(result.tools.find((tool) => tool.name === 'flowx_list_projects')?.description).toContain(
@@ -950,4 +953,79 @@ describe('flowx-local MCP server', () => {
     await client.close();
     await server.close();
   });
+});
+
+
+describe('执行控制 MCP', () => {
+  it('检查点返回取消指令且不自动确认停止', async () => {
+    const homeDir = makeHome();
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_test' }, homeDir);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      session: { id: 's1', status: 'RUNNING', cancelRequestedAt: '2026-09-30T08:00:00Z' },
+      commands: [{ id: 'c1', commandType: 'CANCEL', status: 'DELIVERED' }], heartbeatIntervalMs: 30000,
+    }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { client, server } = await connectClient(homeDir);
+    try {
+      const result = await client.callTool({ name: 'flowx_execution_checkpoint', arguments: { executionSessionId: 's1' } });
+      expect(result.isError).toBeUndefined();
+      expect(JSON.stringify(result.content)).toContain('CANCEL');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe('https://flowx.example/api/execution-sessions/s1/checkpoint');
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ deviceId: expect.any(String) });
+    } finally { await client.close(); await server.close(); }
+  });
+
+  it('明确回执使用本机设备和会话 ID', async () => {
+    const homeDir = makeHome();
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_test' }, homeDir);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: 'ACKED' }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { client, server } = await connectClient(homeDir);
+    try {
+      const result = await client.callTool({ name: 'flowx_ack_execution_command', arguments: { executionSessionId: 's1', commandId: 'c1', outcome: 'ACKED' } });
+      expect(result.isError).toBeUndefined();
+      expect(fetchMock.mock.calls[0][0]).toBe('https://flowx.example/api/execution-sessions/s1/commands/c1/ack');
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ outcome: 'ACKED', deviceId: expect.any(String) });
+    } finally { await client.close(); await server.close(); }
+  });
+
+  it('平台拒绝回执时向 Agent 返回错误，不声称命令已执行', async () => {
+    const homeDir = makeHome();
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_test' }, homeDir);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('会话已被替换', { status: 409 })));
+    const { client, server } = await connectClient(homeDir);
+    try {
+      const result = await client.callTool({ name: 'flowx_ack_execution_command', arguments: { executionSessionId: 's1', commandId: 'c1', outcome: 'ACKED' } });
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result.content)).toContain('409');
+    } finally { await client.close(); await server.close(); }
+  });
+});
+
+it('完成报告包含已提交变更，使用原会话并在取消后拒绝再次提交', async () => {
+  const homeDir = makeHome();
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: homeDir, stdio: 'pipe' });
+  git('init', '-b', 'main'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@example.invalid');
+  writeFileSync(join(homeDir, 'file.txt'), 'base'); git('add', '.'); git('-c', 'core.hooksPath=/dev/null', 'commit', '-m', 'base');
+  git('checkout', '-b', 'feature'); writeFileSync(join(homeDir, 'file.txt'), 'changed'); git('add', '.'); git('-c', 'core.hooksPath=/dev/null', 'commit', '-m', 'change');
+  process.env.FLOWX_API_TOKEN = 'test-token'; process.env.FLOWX_API_BASE_URL = 'https://flowx.example/api';
+  let cancelled = false;
+  const posted: Record<string, unknown>[] = [];
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.endsWith('/checkpoint')) return Response.json({ session: { id: 's1', workflowRunId: 'w1', status: 'RUNNING', cancelRequestedAt: cancelled ? 'now' : null }, commands: cancelled ? [{ commandType: 'CANCEL' }] : [] });
+    if (url.endsWith('/workflow-runs/w1')) return Response.json({ workflowRepositories: [{ id: 'r1', baseBranch: 'main', workingBranch: 'feature' }] });
+    if (url.endsWith('/execution-sessions/s1/complete')) { posted.push(JSON.parse(String(init?.body))); return Response.json({ status: 'COMPLETED' }); }
+    throw new Error(`Unexpected URL: ${url}`);
+  });
+  const { client, server } = await connectClient(homeDir);
+  const args = { workflowRunId: 'w1', workflowRepositoryId: 'r1', executionSessionId: 's1', implementationSummary: '完成修改', testResult: '通过', pushed: true, cwd: homeDir };
+  const result = await client.callTool({ name: 'flowx_report_completion', arguments: args });
+  expect(result.isError).toBeUndefined();
+  expect(posted[0]).toMatchObject({ repositories: [{ workflowRepositoryId: 'r1', changedFiles: ['file.txt'] }] });
+  cancelled = true;
+  expect((await client.callTool({ name: 'flowx_report_completion', arguments: args })).isError).toBe(true);
+  expect(posted).toHaveLength(1);
+  await client.close(); await server.close();
 });

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -648,6 +649,7 @@ export class WorkflowService {
     id: string,
     notifyRecipient?: WorkflowNotificationSession,
     sourceTool: SourceTool = 'cursor',
+    claimIdempotencyKey?: string,
   ) {
     const workflow = await this.getWorkflowOrThrow(id);
     this.assertStageNotRunning(workflow, StageType.EXECUTION);
@@ -672,6 +674,11 @@ export class WorkflowService {
     );
 
     const updatedWorkflow = await this.prisma.$transaction(async (tx) => {
+      const claim = await tx.workflowRun.updateMany({
+        where: { id, status: 'EXECUTION_PENDING', updatedAt: workflow.updatedAt },
+        data: { updatedAt: new Date() },
+      });
+      if (claim.count !== 1) throw new ConflictException('工作流已被领取或状态已变化，请刷新。');
       await this.transitionWorkflow(tx, id, WorkflowRunStatus.EXECUTION_PENDING, {
         to: WorkflowRunStatus.EXECUTION_RUNNING,
         stage: StageType.EXECUTION,
@@ -705,7 +712,7 @@ export class WorkflowService {
             sourceTool,
             protocolVersion: executionSession.protocolVersion,
             traceId: executionSession.traceId,
-            idempotencyKey: `local-claim:${id}:${stageExecution.id}`,
+            idempotencyKey: claimIdempotencyKey ?? `local-claim:${id}:${stageExecution.id}`,
             claimedByUserId: recipient?.flowxUserId ?? null,
             startedAt: new Date(claimedAt),
             lastHeartbeatAt: new Date(claimedAt),
@@ -757,10 +764,14 @@ export class WorkflowService {
       : null;
 
     if (executionSession) {
+      if (executionSession.controlMode === 'COOPERATIVE' || executionSession.idempotencyKey?.startsWith('local-retry:')) {
+        throw new ConflictException('当前执行必须携带原 executionSessionId，通过执行会话入口提交完成。');
+      }
       const result = await this.completeLocalExecutionBySession(
         executionSession.id,
         dto,
         notifyRecipient,
+        { organizationId: notifyRecipient?.organization?.id, userId: notifyRecipient?.user?.id },
       );
       return { workflow: result.workflow, handoff: result.handoff };
     }
@@ -788,7 +799,7 @@ export class WorkflowService {
     executionSessionId: string,
     dto: CompleteLocalExecutionDto,
     notifyRecipient?: WorkflowNotificationSession,
-    scope: { organizationId?: string | null } = {},
+    scope: { organizationId?: string | null; userId?: string | null } = {},
   ) {
     const session = await this.prisma.executionSession.findUnique({
       where: { id: executionSessionId },
@@ -798,6 +809,10 @@ export class WorkflowService {
     }
     if (session.organizationId && session.organizationId !== scope.organizationId?.trim()) {
       throw new ConflictException('Execution session belongs to another organization.');
+    }
+
+    if ((session.controlMode === 'COOPERATIVE' || session.idempotencyKey?.startsWith('local-retry:')) && session.claimedByUserId !== scope.userId) {
+      throw new ForbiddenException('仅原执行人可以提交执行完成报告。');
     }
 
     if (!session.workflowRunId) {
@@ -824,6 +839,12 @@ export class WorkflowService {
       });
     }
 
+    if (session.stageExecutionId && this.getLatestStageOrThrow(workflow, StageType.EXECUTION).id !== session.stageExecutionId) {
+      throw new ConflictException('会话不属于当前执行阶段，不能提交完成。');
+    }
+    if (session.cancelRequestedAt || session.status === 'BLOCKED') {
+      throw new ConflictException('会话正在取消或处于阻塞状态，不能提交完成。');
+    }
     const result = await this.localCompletionCommand.run({
       workflow,
       executionSession: session,
@@ -854,16 +875,43 @@ export class WorkflowService {
     };
   }
 
-  async cancelLocalExecution(id: string) {
+  async cancelLocalExecution(id: string, options?: {
+    expectedSessionId: string;
+    beforeCancel?: (tx: Prisma.TransactionClient) => Promise<void>;
+  }) {
     const workflow = await this.getWorkflowOrThrow(id);
     this.assertLocalExecutionActive(workflow);
     const executionStage = this.getLatestStageOrThrow(workflow, StageType.EXECUTION);
     const executionSession = this.isExecutionSessionProjectionEnabled()
-      ? await this.findLatestLocalExecutionSession(id, true)
+      ? await this.findLatestLocalExecutionSession(id, !options)
       : null;
 
+    if (options && executionSession?.id !== options.expectedSessionId) {
+      throw new ConflictException('会话已变化，不能取消新的执行会话。');
+    }
+    if (executionSession?.controlMode === 'COOPERATIVE' && !options?.beforeCancel) {
+      throw new ConflictException('当前会话已接入运行控制，请下发取消命令并等待本地停止回执。');
+    }
     return this.prisma.$transaction(async (tx) => {
-      await this.updateStageExecution(tx, executionStage.id, StageExecutionStatus.REJECTED, {
+      const lock = await tx.workflowRun.updateMany({
+        where: { id, status: 'EXECUTION_RUNNING', updatedAt: workflow.updatedAt },
+        data: { updatedAt: new Date() },
+      });
+      if (lock.count !== 1) throw new ConflictException('工作流状态已变化，取消未生效。');
+      if (executionSession?.stageExecutionId && executionSession.stageExecutionId !== executionStage.id) {
+        throw new ConflictException('会话不属于当前执行阶段。');
+      }
+      if (executionSession) {
+        const lockSession = await tx.executionSession.updateMany({
+          where: { id: executionSession.id, status: executionSession.status, updatedAt: executionSession.updatedAt },
+          data: { updatedAt: new Date() },
+        });
+        if (lockSession.count !== 1 || executionSession.status === 'COMPLETED') {
+          throw new ConflictException('会话已变化，取消未生效。');
+        }
+      }
+      await options?.beforeCancel?.(tx);
+      await this.updateStageExecution(tx, executionStage.id, StageExecutionStatus.FAILED, {
         errorMessage: 'User cancelled local execution',
         statusMessage: '本地执行已取消',
         finishedAt: new Date(),
@@ -880,6 +928,7 @@ export class WorkflowService {
           },
           data: {
             status: 'CANCELLED',
+            activeControlDeviceKey: null,
             completedAt: new Date(),
             errorCode: 'LOCAL_EXECUTION_CANCELLED',
             errorMessage: 'User cancelled local execution',
@@ -3604,10 +3653,12 @@ export class WorkflowService {
     const transition = await tx.executionSession.updateMany({
       where: {
         id: input.executionSession.id,
-        status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] },
+        cancelRequestedAt: null,
+        status: { in: ACTIVE_EXECUTION_SESSION_STATUSES.filter((status) => status !== 'BLOCKED') },
       },
       data: {
         status: 'COMPLETED',
+        activeControlDeviceKey: null,
         completedAt,
         summary:
           input.completionReport.implementationSummary ??

@@ -12,13 +12,22 @@ function lines(value: string) {
   return value.split('\n').map((line) => line.trim()).filter(Boolean);
 }
 
-export async function collectGitReport(cwd: string) {
+export async function collectGitReport(cwd: string, baseBranch?: string) {
+  let base: string | undefined;
+  if (baseBranch) {
+    // 使用明确的引用命名空间，避免分支名被当成 Git 参数。
+    for (const ref of [`refs/remotes/origin/${baseBranch}`, `refs/heads/${baseBranch}`]) {
+      try { base = await git(cwd, ['merge-base', 'HEAD', ref]); break; } catch { /* 尝试本地基线 */ }
+    }
+    if (!base) throw new Error('找不到任务基线分支，请先获取远程基线后重试。');
+  }
+  const diffRange = base ? [base, 'HEAD'] : ['HEAD'];
   const [branch, headSha, changedText, untrackedText, diffSummary, statusText] = await Promise.all([
     git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']),
     git(cwd, ['rev-parse', 'HEAD']),
-    git(cwd, ['diff', '--name-only', 'HEAD']),
+    git(cwd, ['diff', '--name-only', ...diffRange, '--']),
     git(cwd, ['ls-files', '--others', '--exclude-standard']),
-    git(cwd, ['diff', '--stat', 'HEAD']),
+    git(cwd, ['diff', '--stat', ...diffRange, '--']),
     git(cwd, ['status', '--porcelain']),
   ]);
 

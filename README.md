@@ -29,10 +29,14 @@ flowchart LR
 1. `Workspace`、`Project`、`Requirement`、排期和项目简报。
 2. 一条工作流内的产品构思、设计、Spec & Plan、执行、AI Review 和人工确认。
 3. Codex、Cursor、Mock executor 抽象，以及 OpenDesign 本地设计会话。
-4. Cursor Extension、`flowx-local`、本地执行交接、可靠 Outbox 和本地完成回传。
+4. Cursor Extension、`flowx-local`、本地执行交接、运行控制检查点、可靠 Outbox 和本地完成回传。
 5. Workflow Repository、工作分支、Artifact 和本地预览。
 6. ReviewFinding、Issue、Bug、每日 Code Review 和投递目标。
 7. Git 凭据、AI 凭据、认证和组织用户管理。
+
+### 小团队当前可用的运行控制
+
+本地 Agent 在仓库中执行，FlowX Web 管理执行会话、检查点、阻塞、取消命令、回执和完成证据。失联只表示超过 5 分钟没有收到检查点；取消需要本地 Agent 协作确认，不能远程强杀 IDE。完成回传绑定原执行会话，并按任务基线核对提交。
 
 ### 目标演进方向
 

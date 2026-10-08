@@ -22,6 +22,17 @@ class LocalStorageMock {
 }
 
 describe('api helpers', () => {
+  it('为执行列表和控制命令传递筛选、幂等键和认证信息', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [], nextCursor: null }) });
+    vi.stubGlobal('fetch', fetchMock);
+    await api.listExecutionSessions({ projectId: 'p1', status: 'BLOCKED', take: 10 });
+    expect(fetchMock.mock.calls[0][0]).toContain('projectId=p1');
+    expect(fetchMock.mock.calls[0][0]).toContain('status=BLOCKED');
+    await api.requestExecutionCommand('s1', 'CANCEL', 'stable-key');
+    expect(fetchMock.mock.calls[1][0]).toContain('/execution-sessions/s1/commands');
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ commandType: 'CANCEL', idempotencyKey: 'stable-key' });
+  });
+
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.stubGlobal('localStorage', new LocalStorageMock());
@@ -447,6 +458,14 @@ describe('api helpers', () => {
       ['http://localhost:3000/delivery-targets/target-1', 'PATCH'],
       ['http://localhost:3000/delivery-targets/target-1', 'DELETE'],
     ]);
+  });
+
+  it('submits local completion to the original execution session', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 's1', status: 'COMPLETED' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const report = { pushed: true, repositories: [{ workflowRepositoryId: 'r1', headSha: 'abc', changedFiles: ['a.ts'] }] };
+    await api.completeExecutionSession('s1', report);
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:3000/execution-sessions/s1/complete', expect.objectContaining({ method: 'POST', body: JSON.stringify(report) }));
   });
 
   it('gets execution session by id', async () => {

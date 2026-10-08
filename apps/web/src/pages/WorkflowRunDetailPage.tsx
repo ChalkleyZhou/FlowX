@@ -9,7 +9,7 @@ import { DiffFileListPanel } from '../components/DiffFileListPanel';
 import { DiffViewerPanel } from '../components/DiffViewerPanel';
 import { EmptyState } from '../components/EmptyState';
 import { DetailHeader } from '../components/DetailHeader';
-import { ExecutionSessionPanel } from '../components/ExecutionSessionPanel';
+import { ExecutionControlActions } from '../components/ExecutionControlActions';
 import { MetricCard } from '../components/MetricCard';
 import { SectionHeader } from '../components/SectionHeader';
 import { StatPill } from '../components/StatPill';
@@ -402,6 +402,7 @@ export function WorkflowRunDetailPage() {
   const [executionSession, setExecutionSession] = useState<ExecutionSessionDetail | null>(null);
   const [executionEvidence, setExecutionEvidence] = useState<ExecutionSessionEvidence[]>([]);
   const [executionEvents, setExecutionEvents] = useState<ExecutionSessionSyncEvent[]>([]);
+  const [executionSessionError, setExecutionSessionError] = useState<string | null>(null);
   const [executionSessionLoading, setExecutionSessionLoading] = useState(false);
   const [localLaunchOpen, setLocalLaunchOpen] = useState(false);
   const [localLaunchStage, setLocalLaunchStage] = useState<'execution' | 'spec-plan'>('execution');
@@ -693,10 +694,12 @@ export function WorkflowRunDetailPage() {
         api.listExecutionSessionEvidence(executionSessionId),
         api.listExecutionSessionEvents(executionSessionId, { take: 10 }).catch(() => null),
       ]);
+      setExecutionSessionError(null);
       setExecutionSession(session);
       setExecutionEvidence(evidence);
       setExecutionEvents(eventsPage?.items ?? []);
-    } catch {
+    } catch (error) {
+      setExecutionSessionError(error instanceof Error ? error.message : '执行会话加载失败，请刷新后重试。');
       setExecutionSession(null);
       setExecutionEvidence([]);
       setExecutionEvents([]);
@@ -841,10 +844,12 @@ export function WorkflowRunDetailPage() {
         };
       });
 
-      await api.completeLocalExecution(workflowRun.id, {
-        pushed: completeLocalPushed,
-        repositories,
-      });
+      const report = { pushed: completeLocalPushed, repositories };
+      if (localHandoff.executionSessionId) {
+        await api.completeExecutionSession(localHandoff.executionSessionId, report);
+      } else {
+        await api.completeLocalExecution(workflowRun.id, report);
+      }
       setCompleteLocalOpen(false);
       setLocalHandoff(null);
       await refresh();
@@ -1588,19 +1593,24 @@ export function WorkflowRunDetailPage() {
           },
           {
             key: 'cancel-local',
-            label: '取消本地执行',
+            label: executionSession?.controlMode === 'COOPERATIVE' ? '请求取消本地执行' : '取消本地执行',
             onClick: () =>
               void runAction(
                 'EXECUTION',
                 async () => {
+                  if (executionSession?.controlMode === 'COOPERATIVE') {
+                    await api.requestExecutionCommand(executionSession.id, 'CANCEL', crypto.randomUUID());
+                    await refreshExecutionSession();
+                    return workflowRun;
+                  }
                   const updated = await api.cancelLocalExecution(workflowRun.id);
                   setLocalHandoff(null);
                   return updated;
                 },
-                '本地执行已取消',
+                executionSession?.controlMode === 'COOPERATIVE' ? '已请求取消，等待本地停止回执' : '本地执行已取消',
                 { allowWhileRunning: true },
               ),
-            disabled: !localExecutionActive || stageActionsLocked,
+            disabled: !localExecutionActive || stageActionsLocked || Boolean(executionSessionId && !executionSession) || (executionSession?.controlMode === 'COOPERATIVE' && (!executionSession.canControl || Boolean(executionSession.cancelRequestedAt))),
             danger: true,
           },
           {
@@ -2319,13 +2329,19 @@ export function WorkflowRunDetailPage() {
                 </Card>
               ) : null}
 
-              {selectedStage === 'EXECUTION' && executionSessionId ? (
-                <ExecutionSessionPanel
-                  session={executionSession}
-                  evidence={executionEvidence}
-                  events={executionEvents}
+              {selectedStage === 'EXECUTION' && executionSessionId && executionSessionError ? (
+                <p role="alert" className="text-destructive">{executionSessionError}</p>
+              ) : null}
+              {selectedStage === 'EXECUTION' && executionSession ? (
+                <ExecutionControlActions
+                  key={executionSession.id}
+                  session={{ ...executionSession, evidence: executionEvidence, syncEvents: executionEvents }}
                   loading={executionSessionLoading}
-                  onRefresh={() => void refreshExecutionSession()}
+                  onChanged={async (newSessionId) => {
+                    if (newSessionId && workflowRun) setLocalHandoff(await api.getLocalHandoff(workflowRun.id));
+                    await refreshExecutionSession();
+                    await refresh({ silent: true });
+                  }}
                 />
               ) : null}
 
