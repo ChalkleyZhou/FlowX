@@ -330,9 +330,9 @@ describe('Quality pages', () => {
     );
     await act(async () => importButton?.click());
 
-    expect(document.body.textContent).toContain('选择目标用例库并上传填写完成的 CSV 模板');
+    expect(document.body.textContent).toContain('选择目标用例库，上传 CSV 模板或 Excel 用例表');
     expect(document.body.textContent).toContain('下载模板');
-    expect(document.body.querySelector('input[type="file"]')?.getAttribute('accept')).toBe('.csv,text/csv');
+    expect(document.body.querySelector('input[type="file"]')?.getAttribute('accept')).toContain('.xlsx');
   });
 
   it('creates, edits and deletes modules from the module management dialog', async () => {

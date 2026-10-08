@@ -276,6 +276,7 @@ export function CreateCaseDialog({
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState('P2');
   const [precondition, setPrecondition] = useState('');
+  const [testData, setTestData] = useState('');
   const [steps, setSteps] = useState('');
   const [expected, setExpected] = useState('');
   const [tags, setTags] = useState('');
@@ -319,6 +320,7 @@ export function CreateCaseDialog({
         title: title.trim(),
         priority,
         precondition: precondition.trim() || undefined,
+        testData: testData.trim() || undefined,
         steps: stepList,
         expected: expected.trim(),
         tags: tags.split(',').map((item) => item.trim()).filter(Boolean),
@@ -326,6 +328,7 @@ export function CreateCaseDialog({
       setExternalId('');
       setTitle('');
       setPrecondition('');
+      setTestData('');
       setSteps('');
       setExpected('');
       setTags('');
@@ -383,6 +386,7 @@ export function CreateCaseDialog({
           </div>
           <Field label="标题"><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field>
           <Field label="前置条件（可选）"><Input value={precondition} onChange={(event) => setPrecondition(event.target.value)} /></Field>
+          <Field label="测试数据（可选）"><Textarea rows={2} value={testData} onChange={(event) => setTestData(event.target.value)} /></Field>
           <Field label="执行步骤">
             <Textarea rows={4} placeholder="每行一个步骤" value={steps} onChange={(event) => setSteps(event.target.value)} />
           </Field>

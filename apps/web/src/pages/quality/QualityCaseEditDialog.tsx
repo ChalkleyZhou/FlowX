@@ -45,6 +45,7 @@ export function QualityCaseEditDialog({
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<TestCaseDefinition['priority']>('P2');
   const [precondition, setPrecondition] = useState('');
+  const [testData, setTestData] = useState('');
   const [steps, setSteps] = useState('');
   const [expected, setExpected] = useState('');
   const [tags, setTags] = useState('');
@@ -58,6 +59,7 @@ export function QualityCaseEditDialog({
     setTitle(testCase.title);
     setPriority(testCase.priority);
     setPrecondition(testCase.precondition ?? '');
+    setTestData(testCase.testData ?? '');
     setSteps(testCase.steps.join('\n'));
     setExpected(testCase.expected);
     setTags(testCase.tags?.join(', ') ?? '');
@@ -98,6 +100,7 @@ export function QualityCaseEditDialog({
         title: title.trim(),
         priority,
         precondition: precondition.trim() || null,
+        testData: testData.trim() || null,
         steps: stepList,
         expected: expected.trim(),
         tags: tags.split(',').map((item) => item.trim()).filter(Boolean),
@@ -163,6 +166,9 @@ export function QualityCaseEditDialog({
           </Field>
           <Field label="前置条件（可选）">
             <Input aria-label="编辑前置条件" value={precondition} disabled={saving} onChange={(event) => setPrecondition(event.target.value)} />
+          </Field>
+          <Field label="测试数据（可选）">
+            <Textarea aria-label="编辑测试数据" rows={2} value={testData} disabled={saving} onChange={(event) => setTestData(event.target.value)} />
           </Field>
           <Field label="执行步骤">
             <Textarea aria-label="编辑执行步骤" rows={5} value={steps} disabled={saving} onChange={(event) => setSteps(event.target.value)} />

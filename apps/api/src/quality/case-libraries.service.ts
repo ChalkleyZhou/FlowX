@@ -177,6 +177,7 @@ export class CaseLibrariesService {
         title: dto.title.trim(),
         priority: dto.priority ?? 'P2',
         precondition: dto.precondition?.trim() || null,
+        testData: dto.testData?.trim() || null,
         steps: dto.steps as Prisma.InputJsonValue,
         expected: dto.expected.trim(),
         tags: dto.tags as Prisma.InputJsonValue | undefined,
@@ -213,36 +214,14 @@ export class CaseLibrariesService {
         externalId: item.externalId?.trim() || undefined,
         title,
         moduleName: item.moduleName?.trim() || undefined,
+        parentModuleName: item.parentModuleName?.trim() || undefined,
         precondition: item.precondition?.trim() || undefined,
+        testData: item.testData?.trim() || undefined,
         steps,
         expected,
         tags: item.tags?.map((tag) => tag.trim()).filter(Boolean),
       };
     });
-
-    const moduleNames = [...new Set(cases.map((item) => item.moduleName).filter(Boolean))] as string[];
-    const modules = moduleNames.length
-      ? await this.prisma.testCaseModule.findMany({
-          where: { libraryId, name: { in: moduleNames } },
-          select: { id: true, name: true },
-        })
-      : [];
-    const modulesByName = new Map<string, string[]>();
-    for (const module of modules) {
-      modulesByName.set(module.name, [...(modulesByName.get(module.name) ?? []), module.id]);
-    }
-
-    for (const [index, item] of cases.entries()) {
-      const moduleName = item.moduleName;
-      if (!moduleName) continue;
-      const matchingModules = modulesByName.get(moduleName) ?? [];
-      if (matchingModules.length === 0) {
-        throw new BadRequestException(`第 ${index + 2} 行：模块“${moduleName}”不存在于目标用例库。`);
-      }
-      if (matchingModules.length > 1) {
-        throw new BadRequestException(`第 ${index + 2} 行：模块“${moduleName}”存在重名，请先调整模块名称。`);
-      }
-    }
 
     const externalIdRows = new Map<string, number>();
     for (const [index, item] of cases.entries()) {
@@ -270,16 +249,20 @@ export class CaseLibrariesService {
       }
     }
 
-    const result = await this.prisma.testCaseDefinition.createMany({
+    const writeCases = (moduleByKey: Map<string, { id: string; name: string; parentId: string | null }>) => ({
       data: cases.map((item) => {
         const moduleName = item.moduleName;
+        const parent = item.parentModuleName
+          ? moduleByKey.get(`:${item.parentModuleName}`)
+          : undefined;
         return {
           libraryId,
-          moduleId: moduleName ? modulesByName.get(moduleName)?.[0] : null,
+          moduleId: moduleName ? moduleByKey.get(`${parent?.id ?? ''}:${moduleName}`)?.id ?? null : null,
           externalId: item.externalId ?? null,
           title: item.title,
           priority: item.priority ?? 'P2',
           precondition: item.precondition ?? null,
+          testData: item.testData ?? null,
           steps: item.steps as Prisma.InputJsonValue,
           expected: item.expected,
           tags: item.tags?.length
@@ -288,6 +271,47 @@ export class CaseLibrariesService {
           createdByUserId: userId ?? null,
         };
       }),
+    });
+
+    if (!dto.autoCreateModules) {
+      const modules = await this.prisma.testCaseModule.findMany({
+        where: { libraryId },
+        select: { id: true, name: true, parentId: true },
+      });
+      const moduleByKey = new Map(modules.map((module) => [`${module.parentId ?? ''}:${module.name}`, module]));
+      for (const [index, item] of cases.entries()) {
+        if (item.moduleName && !moduleByKey.has(`:${item.moduleName}`)) {
+          throw new BadRequestException(`第 ${index + 2} 行：模块“${item.moduleName}”不存在于目标用例库。`);
+        }
+      }
+      const result = await this.prisma.testCaseDefinition.createMany(writeCases(moduleByKey));
+      return { imported: result.count };
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.testCaseModule.findMany({
+        where: { libraryId },
+        select: { id: true, name: true, parentId: true },
+      });
+      const moduleByKey = new Map(existing.map((module) => [`${module.parentId ?? ''}:${module.name}`, module]));
+      const ensureModule = async (name: string, parentId: string | null) => {
+        const key = `${parentId ?? ''}:${name}`;
+        const found = moduleByKey.get(key);
+        if (found) return found;
+        const created = await tx.testCaseModule.create({
+          data: { libraryId, name, parentId },
+          select: { id: true, name: true, parentId: true },
+        });
+        moduleByKey.set(key, created);
+        return created;
+      };
+      for (const item of cases) {
+        const parent = item.parentModuleName
+          ? await ensureModule(item.parentModuleName, null)
+          : null;
+        if (item.moduleName) await ensureModule(item.moduleName, parent?.id ?? null);
+      }
+      return tx.testCaseDefinition.createMany(writeCases(moduleByKey));
     });
 
     return { imported: result.count };
@@ -354,6 +378,7 @@ export class CaseLibrariesService {
         ...(dto.title !== undefined ? { title } : {}),
         ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
         ...(dto.precondition !== undefined ? { precondition: dto.precondition?.trim() || null } : {}),
+        ...(dto.testData !== undefined ? { testData: dto.testData?.trim() || null } : {}),
         ...(dto.steps !== undefined ? { steps: steps as Prisma.InputJsonValue } : {}),
         ...(dto.expected !== undefined ? { expected } : {}),
         ...(dto.tags !== undefined

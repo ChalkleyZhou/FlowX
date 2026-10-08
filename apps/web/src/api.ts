@@ -1091,6 +1091,7 @@ export const api = {
       title: string;
       priority?: string;
       precondition?: string;
+      testData?: string;
       steps: string[];
       expected: string;
       tags?: string[];
@@ -1109,6 +1110,7 @@ export const api = {
       title?: string;
       priority?: string;
       precondition?: string | null;
+      testData?: string | null;
       steps?: string[];
       expected?: string;
       tags?: string[];
@@ -1118,10 +1120,10 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
-  importTestCases: (libraryId: string, cases: TestCaseImportRow[]) =>
+  importTestCases: (libraryId: string, cases: TestCaseImportRow[], autoCreateModules = false) =>
     request<{ imported: number }>(`/quality/case-libraries/${libraryId}/cases/import`, {
       method: 'POST',
-      body: JSON.stringify({ cases }),
+      body: JSON.stringify({ cases, autoCreateModules }),
     }),
   deleteTestCase: (id: string) =>
     request<{ success: true }>(`/quality/test-cases/${id}`, { method: 'DELETE' }),

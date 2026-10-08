@@ -243,6 +243,7 @@ export class TestRequestsService {
             title: definition.title,
             priority: definition.priority,
             precondition: definition.precondition,
+            testData: definition.testData,
             steps: definition.steps as unknown as Prisma.InputJsonValue,
             expected: definition.expected,
             metadata: definition.metadata ?? Prisma.JsonNull,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildTestCaseImportTemplate, parseTestCaseImportCsv } from './test-case-import';
+import { buildTestCaseImportTemplate, parseTestCaseImportCsv, parseTestCaseImportXlsx } from './test-case-import';
+import * as XLSX from 'xlsx';
 
 describe('test case CSV import', () => {
   it('builds a UTF-8 template with the supported columns', () => {
@@ -9,6 +10,22 @@ describe('test case CSV import', () => {
     expect(template).toContain('标题（必填）');
     expect(template).toContain('步骤（必填，每行一个）');
     expect(template).toContain('预期结果（必填）');
+    expect(template).toContain('测试数据（可选）');
+  });
+
+  it('maps the external Excel case format and retains extra classification as tags', () => {
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ['用例ID', '用例标题', '一级模块', '二级模块', '场景类型', '优先级', '用例类型', '适用端', '适用机型', '需求/追溯ID', '测试目的', '前置条件', '测试数据', '操作步骤', '预期结果'],
+      ['CASE-1', '登录', '账号', '登录', '正常', 'P0', '功能测试', '手机端', '全部', 'REQ-1', '验证登录', '已注册', '账号=test', '输入账号', '进入首页'],
+    ]);
+    XLSX.utils.book_append_sheet(workbook, sheet, '用例');
+    const preview = parseTestCaseImportXlsx(XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }));
+    expect(preview.errors).toEqual([]);
+    expect(preview.rows[0]).toMatchObject({ externalId: 'CASE-1', parentModuleName: '账号', moduleName: '登录', testData: '账号=test', steps: ['输入账号'] });
+    expect(preview.autoCreateModules).toBe(true);
+    expect(preview.rows[0].tags).toEqual(expect.arrayContaining(['一级模块=账号', '二级模块=登录', '需求/追溯ID=REQ-1']));
+    expect(preview.notice).toContain('执行记录列不导入');
   });
 
   it('parses multiline steps, defaults priority and splits tags', () => {

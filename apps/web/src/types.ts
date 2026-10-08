@@ -669,6 +669,7 @@ export interface TestCaseDefinition {
   title: string;
   priority: 'P0' | 'P1' | 'P2' | 'P3';
   precondition?: string | null;
+  testData?: string | null;
   steps: string[];
   expected: string;
   tags?: string[] | null;
@@ -699,7 +700,9 @@ export interface TestCaseImportRow {
   title: string;
   priority?: 'P0' | 'P1' | 'P2' | 'P3';
   moduleName?: string;
+  parentModuleName?: string;
   precondition?: string;
+  testData?: string;
   steps: string[];
   expected: string;
   tags?: string[];
@@ -711,6 +714,8 @@ export interface TestCaseSnapshot {
   sourceVersion?: number | null;
   title: string;
   priority: string;
+  precondition?: string | null;
+  testData?: string | null;
   steps: string[];
   expected: string;
   selectedBy: string;

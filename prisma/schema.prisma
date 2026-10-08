@@ -1071,6 +1071,7 @@ model TestCaseDefinition {
   title           String
   priority        String                 @default("P2")
   precondition    String?
+  testData        String?
   steps           Json
   expected        String
   tags            Json?
@@ -1292,6 +1293,7 @@ model TestCaseSnapshot {
   title              String
   priority           String
   precondition       String?
+  testData           String?
   steps              Json
   expected           String
   metadata           Json?

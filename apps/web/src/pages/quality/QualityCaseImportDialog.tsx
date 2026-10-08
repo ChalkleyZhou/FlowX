@@ -23,6 +23,7 @@ import type { TestCaseLibrary } from '../../types';
 import {
   downloadTestCaseImportTemplate,
   parseTestCaseImportCsv,
+  parseTestCaseImportXlsx,
   type TestCaseImportPreview,
 } from '../../utils/test-case-import';
 import { Field } from './quality-ui';
@@ -66,8 +67,9 @@ export function QualityCaseImportDialog({
     setFileName(file?.name ?? '');
     setPreview(null);
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.csv')) {
-      setPreview({ rows: [], sourceRowCount: 0, errors: [{ row: 1, message: '仅支持 CSV 文件' }] });
+    const extension = file.name.toLowerCase().split('.').at(-1);
+    if (extension !== 'csv' && extension !== 'xlsx') {
+      setPreview({ rows: [], sourceRowCount: 0, errors: [{ row: 1, message: '仅支持 CSV 或 XLSX 文件' }] });
       return;
     }
     if (file.size > MAX_FILE_BYTES) {
@@ -77,7 +79,9 @@ export function QualityCaseImportDialog({
 
     setParsing(true);
     try {
-      setPreview(parseTestCaseImportCsv(await file.text()));
+      setPreview(extension === 'xlsx'
+        ? parseTestCaseImportXlsx(await file.arrayBuffer())
+        : parseTestCaseImportCsv(await file.text()));
     } catch {
       setPreview({ rows: [], sourceRowCount: 0, errors: [{ row: 1, message: '无法读取该文件' }] });
     } finally {
@@ -89,7 +93,7 @@ export function QualityCaseImportDialog({
     if (!libraryId || !preview || preview.errors.length || !preview.rows.length) return;
     setImporting(true);
     try {
-      const result = await api.importTestCases(libraryId, preview.rows);
+      const result = await api.importTestCases(libraryId, preview.rows, preview.autoCreateModules);
       toast.success(`已导入 ${result.imported} 条测试用例`);
       await onImported();
     } catch (error) {
@@ -108,7 +112,7 @@ export function QualityCaseImportDialog({
       <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>批量导入用例</DialogTitle>
-          <DialogDescription>选择目标用例库并上传填写完成的 CSV 模板。</DialogDescription>
+          <DialogDescription>选择目标用例库，上传 CSV 模板或 Excel 用例表。</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-5">
@@ -123,13 +127,13 @@ export function QualityCaseImportDialog({
             </Select>
           </Field>
 
-          <Field label="CSV 文件">
+          <Field label="CSV / XLSX 文件">
             <Input
               key={fileInputKey}
               type="file"
-              accept=".csv,text/csv"
+              accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               disabled={importing}
-              aria-label="选择 CSV 文件"
+              aria-label="选择 CSV 或 XLSX 文件"
               onChange={(event) => void handleFileChange(event)}
             />
           </Field>
@@ -157,6 +161,7 @@ export function QualityCaseImportDialog({
               校验通过，共 {preview.sourceRowCount} 条用例
             </div>
           ) : null}
+          {preview?.notice ? <p className="text-xs leading-5 text-muted-foreground">{preview.notice}</p> : null}
         </div>
 
         <DialogFooter className="sm:justify-between sm:space-x-0">

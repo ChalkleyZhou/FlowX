@@ -4,7 +4,8 @@ import { CaseLibrariesService } from './case-libraries.service';
 
 function createService() {
   const prisma = {
-    $transaction: vi.fn((operations: Promise<unknown>[]) => Promise.all(operations)),
+    $transaction: vi.fn((operations: Promise<unknown>[] | ((tx: unknown) => Promise<unknown>)) =>
+      typeof operations === 'function' ? operations(prisma) : Promise.all(operations)),
     workspace: { findUnique: vi.fn() },
     project: { findFirst: vi.fn() },
     testCaseLibrary: { create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
@@ -274,18 +275,45 @@ describe('CaseLibrariesService', () => {
     expect(prisma.testCaseDefinition.createMany).not.toHaveBeenCalled();
   });
 
+  it('creates Excel module hierarchy and cases in one transaction', async () => {
+    const { service, prisma } = createService();
+    prisma.testCaseLibrary.findUnique.mockResolvedValue({ id: 'library-1', status: 'ACTIVE' });
+    prisma.testCaseDefinition.findMany.mockResolvedValue([]);
+    prisma.testCaseModule.findMany.mockResolvedValue([]);
+    prisma.testCaseModule.create
+      .mockResolvedValueOnce({ id: 'parent-1', name: '眼镜端发布前', parentId: null })
+      .mockResolvedValueOnce({ id: 'child-1', name: '阶段恢复', parentId: 'parent-1' });
+    prisma.testCaseDefinition.createMany.mockResolvedValue({ count: 2 });
+
+    await expect(service.importCases('library-1', {
+      autoCreateModules: true,
+      cases: [
+        { title: '开机', parentModuleName: '眼镜端发布前', moduleName: '阶段恢复', steps: ['开机'], expected: '进入主页' },
+        { title: '配对', parentModuleName: '眼镜端发布前', moduleName: '阶段恢复', steps: ['配对'], expected: '成功' },
+      ],
+    })).resolves.toEqual({ imported: 2 });
+
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function));
+    expect(prisma.testCaseModule.create).toHaveBeenCalledTimes(2);
+    expect(prisma.testCaseDefinition.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ moduleId: 'child-1' }), expect.objectContaining({ moduleId: 'child-1' })],
+    });
+  });
+
   it('rejects duplicate external IDs in the same import', async () => {
     const { service, prisma } = createService();
     prisma.testCaseLibrary.findUnique.mockResolvedValue({ id: 'library-1', status: 'ACTIVE' });
 
     await expect(
       service.importCases('library-1', {
+        autoCreateModules: true,
         cases: [
-          { externalId: 'CASE-1', title: '用例 1', steps: ['步骤'], expected: '成功' },
-          { externalId: 'CASE-1', title: '用例 2', steps: ['步骤'], expected: '成功' },
+          { externalId: 'CASE-1', title: '用例 1', moduleName: '阶段恢复', steps: ['步骤'], expected: '成功' },
+          { externalId: 'CASE-1', title: '用例 2', moduleName: '阶段恢复', steps: ['步骤'], expected: '成功' },
         ],
       }),
     ).rejects.toThrow('第 3 行：用例编号“CASE-1”与第 2 行重复。');
+    expect(prisma.testCaseModule.create).not.toHaveBeenCalled();
     expect(prisma.testCaseDefinition.createMany).not.toHaveBeenCalled();
   });
 

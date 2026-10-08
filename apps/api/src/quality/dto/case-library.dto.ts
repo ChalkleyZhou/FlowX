@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsIn,
+  IsBoolean,
   IsInt,
   IsNumber,
   IsObject,
@@ -157,6 +158,11 @@ export class CreateTestCaseDefinitionDto {
   @IsString()
   precondition?: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  testData?: string;
+
   @IsArray()
   @IsString({ each: true })
   steps!: string[];
@@ -214,6 +220,11 @@ export class UpdateTestCaseDefinitionDto {
   precondition?: string | null;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  testData?: string | null;
+
+  @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(50)
@@ -258,8 +269,18 @@ export class ImportTestCaseRowDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(200)
+  parentModuleName?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(5000)
   precondition?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  testData?: string;
 
   @IsArray()
   @ArrayMinSize(1)
@@ -282,6 +303,10 @@ export class ImportTestCaseRowDto {
 }
 
 export class ImportTestCasesDto {
+  @IsOptional()
+  @IsBoolean()
+  autoCreateModules?: boolean;
+
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(1000)

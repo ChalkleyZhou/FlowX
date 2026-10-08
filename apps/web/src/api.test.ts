@@ -241,7 +241,7 @@ describe('api helpers', () => {
       priority: 'P0',
       steps: ['输入账号', '点击登录'],
       expected: '进入首页',
-    }]);
+    }], true);
 
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:3000/quality/case-libraries/library-1/cases/import',
@@ -255,6 +255,7 @@ describe('api helpers', () => {
             steps: ['输入账号', '点击登录'],
             expected: '进入首页',
           }],
+          autoCreateModules: true,
         }),
       }),
     );

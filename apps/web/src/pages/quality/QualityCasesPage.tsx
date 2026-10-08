@@ -398,6 +398,9 @@ export function QualityCasesPage() {
               {selectedCase.precondition ? (
                 <div><h3 className="font-medium text-foreground">前置条件</h3><p className="mt-2 leading-6 text-muted-foreground">{selectedCase.precondition}</p></div>
               ) : null}
+              {selectedCase.testData ? (
+                <div><h3 className="font-medium text-foreground">测试数据</h3><p className="mt-2 whitespace-pre-wrap leading-6 text-muted-foreground">{selectedCase.testData}</p></div>
+              ) : null}
               <div>
                 <h3 className="font-medium text-foreground">执行步骤</h3>
                 <ol className="mt-2 list-decimal space-y-1 pl-5 leading-6 text-muted-foreground">
