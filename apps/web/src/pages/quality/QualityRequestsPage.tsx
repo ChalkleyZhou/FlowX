@@ -42,7 +42,11 @@ export function QualityRequestsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [workflowRuns, setWorkflowRuns] = useState<WorkflowRun[]>([]);
   const [requests, setRequests] = useState<TestRequest[]>([]);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const createFromWorkflow = searchParams.get('create') === '1';
+  const initialProjectId = searchParams.get('projectId') ?? undefined;
+  const initialProjectVersionId = searchParams.get('projectVersionId') ?? undefined;
+  const initialWorkflowRunId = searchParams.get('workflowRunId') ?? undefined;
+  const [dialogOpen, setDialogOpen] = useState(createFromWorkflow);
 
   const projectId = searchParams.get('projectId') ?? ALL;
   const status = searchParams.get('status') ?? ALL;
@@ -71,6 +75,12 @@ export function QualityRequestsPage() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  useEffect(() => {
+    if (createFromWorkflow) {
+      setDialogOpen(true);
+    }
+  }, [createFromWorkflow]);
 
   function updateQuery(patch: Record<string, string | null>) {
     const next = new URLSearchParams(searchParams);
@@ -222,6 +232,9 @@ export function QualityRequestsPage() {
         onOpenChange={setDialogOpen}
         projects={projects}
         workflowRuns={workflowRuns}
+        initialProjectId={initialProjectId}
+        initialProjectVersionId={initialProjectVersionId}
+        initialWorkflowRunId={initialWorkflowRunId}
         onCreated={async () => {
           setDialogOpen(false);
           await refresh(true);

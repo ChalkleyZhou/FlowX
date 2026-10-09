@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ClipboardCheck, Send } from 'lucide-react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api, getFlowxApiBaseUrl } from '../api';
 import { ContextPanel } from '../components/ContextPanel';
@@ -1300,6 +1301,23 @@ export function WorkflowRunDetailPage() {
     }
   }
 
+  function openTestRequest() {
+    if (!workflowRun) return;
+    const versionId = workflowRun.requirement.versionId;
+    const project = workflowRun.requirement.project;
+    if (!versionId || !project.workspace?.id) {
+      toast.error('当前需求缺少项目版本或 Workspace，无法发起提测');
+      return;
+    }
+    const params = new URLSearchParams({
+      create: '1',
+      projectId: project.id,
+      projectVersionId: versionId,
+      workflowRunId: workflowRun.id,
+    });
+    navigate(`/quality/test-requests?${params.toString()}`);
+  }
+
   const stageContent = useMemo<Record<WorkflowStageKey, StageDetailView> | null>(() => {
     if (!workflowRun) {
       return null;
@@ -1732,6 +1750,12 @@ export function WorkflowRunDetailPage() {
   const selectedStageContent = stageContent?.[selectedStage];
   const selectedStageIndex = STAGE_SEQUENCE.indexOf(selectedStage);
   const reviewReportId = workflowRun?.reviewReport?.id ?? null;
+  const testDesignSourceReady = Boolean(
+    workflowRun &&
+      getStage(workflowRun, 'DESIGN')?.status === 'COMPLETED' &&
+      getStage(workflowRun, 'SPEC_PLAN')?.status === 'COMPLETED',
+  );
+  const testRequestSourceReady = workflowRun?.status === 'DONE';
   const workflowWorkspaceConfig = useMemo<WorkflowWorkspaceConfig | null>(() => {
     if (!selectedStageContent) {
       return null;
@@ -2172,6 +2196,54 @@ export function WorkflowRunDetailPage() {
                 <p className="whitespace-pre-line text-sm leading-6 text-foreground">
                   {workflowRun.requirement.acceptanceCriteria?.trim() || '当前需求尚未填写验收标准。'}
                 </p>
+              </div>
+            </div>
+          </ContextPanel>
+
+          <ContextPanel
+            eyebrow="测试与质量"
+            title="用例与提测"
+            description="测试设计不阻塞开发主流程；研发完成后从这里进入提测，系统会继续校验测试设计和提测门禁。"
+          >
+            <div className="grid divide-y divide-border lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+              <div className="space-y-3 pb-5 lg:pr-5 lg:pb-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-semibold text-foreground">出用例</h3>
+                  <Badge variant={testDesignSourceReady ? 'success' : 'secondary'}>
+                    {testDesignSourceReady ? 'Spec & Plan 后可开始' : '等待设计方案和 Spec & Plan'}
+                  </Badge>
+                </div>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  测试设计会生成复用、优化、新增和冒烟用例候选，确认后才能进入提测范围。
+                </p>
+                <UiButton
+                  size="sm"
+                  variant="outline"
+                  disabled={!testDesignSourceReady || stageActionsLocked}
+                  onClick={() => void openTestDesign()}
+                >
+                  <ClipboardCheck aria-hidden="true" className="h-4 w-4" />
+                  生成测试用例
+                </UiButton>
+              </div>
+              <div className="space-y-3 pt-5 lg:pl-5 lg:pt-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-semibold text-foreground">提测</h3>
+                  <Badge variant={testRequestSourceReady ? 'success' : 'secondary'}>
+                    {testRequestSourceReady ? '研发完成，可发起' : '等待工作流完成'}
+                  </Badge>
+                </div>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  发起提测会自动带入当前项目、版本和研发工作流，并在提测页选择已确认的测试设计。
+                </p>
+                <UiButton
+                  size="sm"
+                  disabled={!testRequestSourceReady}
+                  onClick={openTestRequest}
+                >
+                  <Send aria-hidden="true" className="h-4 w-4" />
+                  发起提测
+                </UiButton>
               </div>
             </div>
           </ContextPanel>

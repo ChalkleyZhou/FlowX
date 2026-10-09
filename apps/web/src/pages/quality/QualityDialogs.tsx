@@ -29,20 +29,26 @@ export function CreateRequestDialog({
   onOpenChange,
   projects,
   workflowRuns,
+  initialProjectId,
+  initialProjectVersionId,
+  initialWorkflowRunId,
   onCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projects: Project[];
   workflowRuns: WorkflowRun[];
+  initialProjectId?: string;
+  initialProjectVersionId?: string;
+  initialWorkflowRunId?: string;
   onCreated: () => Promise<void>;
 }) {
   const toast = useToast();
-  const [projectId, setProjectId] = useState('');
-  const [versionId, setVersionId] = useState('');
+  const [projectId, setProjectId] = useState(initialProjectId ?? '');
+  const [versionId, setVersionId] = useState(initialProjectVersionId ?? '');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
+  const [selectedRunIds, setSelectedRunIds] = useState<string[]>(initialWorkflowRunId ? [initialWorkflowRunId] : []);
   const [testDesigns, setTestDesigns] = useState<TestDesign[]>([]);
   const [testDesignId, setTestDesignId] = useState('');
   const [saving, setSaving] = useState(false);
@@ -60,6 +66,13 @@ export function CreateRequestDialog({
     )),
     [testDesigns, selectedRunIds],
   );
+
+  useEffect(() => {
+    if (!open) return;
+    setProjectId(initialProjectId ?? '');
+    setVersionId(initialProjectVersionId ?? '');
+    setSelectedRunIds(initialWorkflowRunId ? [initialWorkflowRunId] : []);
+  }, [open, initialProjectId, initialProjectVersionId, initialWorkflowRunId]);
 
   useEffect(() => {
     if (!open || !projectId || !versionId) {

@@ -1080,6 +1080,26 @@ describe('WorkflowRunDetailPage', () => {
     });
   });
 
+  it('shows direct test design and test submission entries in workflow quality context', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({
+      status: 'DONE',
+      stageExecutions: [
+        { id: 'stage-design', stage: 'DESIGN', status: 'COMPLETED', statusMessage: null, attempt: 1, output: { design: {} } },
+        { id: 'stage-spec', stage: 'SPEC_PLAN', status: 'COMPLETED', statusMessage: null, attempt: 1, output: sampleSpecPlanOutput },
+      ],
+    }));
+
+    await renderPage();
+
+    expect(container.textContent).toContain('测试与质量');
+    expect(container.textContent).toContain('生成测试用例');
+    expect(container.textContent).toContain('发起提测');
+    const submitButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.trim() === '发起提测',
+    );
+    expect(submitButton?.disabled).toBe(false);
+  });
+
   it('confirms Spec & Plan and unlocks execution actions', async () => {
     const waitingRun = createWorkflowRun({
       status: 'SPEC_PLAN_WAITING_CONFIRMATION',
