@@ -31,6 +31,7 @@ vi.mock('../api', () => ({
     runExecution: vi.fn(),
     reviseExecution: vi.fn(),
     runReview: vi.fn(),
+    skipReview: vi.fn(),
     reviseReview: vi.fn(),
     decideHumanReview: vi.fn(),
     syncReviewFindings: vi.fn(),
@@ -750,6 +751,77 @@ describe('WorkflowRunDetailPage', () => {
 
     expect(launchOpenDesignLocal).not.toHaveBeenCalled();
     expect(api.retryOpenDesignHandoff).not.toHaveBeenCalled();
+  });
+
+  it('lets a Cursor workflow use Codex for AI review', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({
+      status: 'REVIEW_PENDING',
+      aiProvider: 'cursor',
+      stageExecutions: [{
+        id: 'stage-review', stage: 'AI_REVIEW', status: 'PENDING',
+        statusMessage: null, attempt: 1, output: null,
+      }],
+    }));
+    vi.mocked(api.runReview).mockResolvedValue(createWorkflowRun());
+
+    await renderPage();
+
+    const reviewStep = Array.from(container.querySelectorAll('.workflow-steps button')).find((button) =>
+      button.textContent?.includes('AI 审查'),
+    );
+    expect(reviewStep).toBeTruthy();
+    await act(async () => {
+      reviewStep?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const runButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.trim() === '重新执行 AI 审查' && !button.disabled,
+    );
+    expect(runButton).toBeTruthy();
+    await act(async () => {
+      runButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const codexButton = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.trim() === 'Codex',
+    );
+    expect(codexButton).toBeTruthy();
+    await act(async () => {
+      codexButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(api.runReview).toHaveBeenCalledWith('workflow-1', 'codex');
+  });
+
+  it('allows skipping AI review from the review stage', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({
+      status: 'REVIEW_PENDING',
+      stageExecutions: [{
+        id: 'stage-review', stage: 'AI_REVIEW', status: 'PENDING',
+        statusMessage: null, attempt: 1, output: null,
+      }],
+    }));
+    vi.mocked(api.skipReview).mockResolvedValue(createWorkflowRun({ status: 'HUMAN_REVIEW_PENDING' }));
+
+    await renderPage();
+    const reviewStep = Array.from(container.querySelectorAll('.workflow-steps button')).find((button) =>
+      button.textContent?.includes('AI 审查'),
+    );
+    await act(async () => {
+      reviewStep?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const skipButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.trim() === '跳过 AI 审查' && !button.disabled,
+    );
+    expect(skipButton).toBeTruthy();
+    await act(async () => {
+      skipButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(api.skipReview).toHaveBeenCalledWith('workflow-1');
   });
 
   it('starts workflow design from the design stage card', async () => {

@@ -15,6 +15,7 @@ import { CompleteLocalExecutionDto } from './dto/complete-local-execution.dto';
 import { CreateWorkflowRunDto } from './dto/create-workflow-run.dto';
 import { HumanReviewDecisionDto } from './dto/human-review-decision.dto';
 import { StageFeedbackDto } from './dto/stage-feedback.dto';
+import { ReviewFeedbackDto, ReviewRunDto } from './dto/review-run.dto';
 import { SubmitLocalDesignDto } from './dto/submit-local-design.dto';
 import { StageManualEditDto } from './dto/stage-manual-edit.dto';
 import { LocalLaunchService } from './local-launch.service';
@@ -217,8 +218,8 @@ export class WorkflowController {
   }
 
   @Post(':id/review/run')
-  runReview(@Param('id') id: string, @Req() req: WorkflowRequest) {
-    return this.workflowService.runReview(id, undefined, req.authSession);
+  runReview(@Param('id') id: string, @Body() dto: ReviewRunDto, @Req() req: WorkflowRequest) {
+    return this.workflowService.runReview(id, undefined, req.authSession, dto?.aiProvider);
   }
 
   @Post(':id/review/skip')
@@ -227,8 +228,8 @@ export class WorkflowController {
   }
 
   @Post(':id/review/revise')
-  reviseReview(@Param('id') id: string, @Body() dto: StageFeedbackDto, @Req() req: WorkflowRequest) {
-    return this.workflowService.runReview(id, dto.feedback, req.authSession);
+  reviseReview(@Param('id') id: string, @Body() dto: ReviewFeedbackDto, @Req() req: WorkflowRequest) {
+    return this.workflowService.runReview(id, dto.feedback, req.authSession, dto.aiProvider);
   }
 
   @Patch(':id/review/manual-edit')

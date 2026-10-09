@@ -299,7 +299,7 @@ export function RequirementsPage() {
               </div>
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-foreground">AI 执行器</label>
+                  <label className="text-sm font-semibold text-foreground">默认 AI 执行器</label>
                   <Select
                     value={launchAiProvider}
                     onValueChange={(value: 'codex' | 'cursor') => setLaunchAiProvider(value)}
@@ -316,7 +316,7 @@ export function RequirementsPage() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs leading-5 text-muted-foreground">
-                    Codex 适合当前默认链路；Cursor 会通过服务器上的 `cursor-agent` 执行。
+                    平台生成与开发执行使用此默认工具；AI 审查可在该阶段单独选择。
                   </p>
                 </div>
                 <div className="flex items-center justify-between gap-3">

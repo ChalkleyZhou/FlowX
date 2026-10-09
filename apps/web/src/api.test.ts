@@ -22,6 +22,19 @@ class LocalStorageMock {
 }
 
 describe('api helpers', () => {
+  it('passes the selected AI provider to review endpoints', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'run-1' }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.runReview('run-1', 'codex');
+    await api.reviseReview('run-1', '再检查边界情况', 'cursor');
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ aiProvider: 'codex' });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      feedback: '再检查边界情况', aiProvider: 'cursor',
+    });
+  });
+
   it('为执行列表和控制命令传递筛选、幂等键和认证信息', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [], nextCursor: null }) });
     vi.stubGlobal('fetch', fetchMock);

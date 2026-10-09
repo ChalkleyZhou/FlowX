@@ -418,6 +418,54 @@ describe('WorkflowService SpecPlan lifecycle', () => {
 });
 
 describe('WorkflowService review-finding execution flow', () => {
+  it('uses the selected review provider after a Cursor workflow execution', async () => {
+    const { service } = createService();
+    const workflow = {
+      id: 'run-review',
+      status: 'REVIEW_PENDING',
+      aiProvider: 'cursor',
+      codeExecution: { patchSummary: 'done', changedFiles: [], codeChanges: [], diffArtifacts: [] },
+      requirement: { id: 'req-1', title: 'Review', description: '', acceptanceCriteria: '', workspace: {} },
+      workflowRepositories: [],
+      stageExecutions: [],
+    };
+    const createStageExecution = vi.fn().mockResolvedValue({ id: 'review-stage' });
+    const resolveAiExecutor = vi.fn().mockReturnValue({ reviewCode: vi.fn().mockRejectedValue(new Error('stop')) });
+    const resolveInvocationContext = vi.fn().mockResolvedValue({});
+    const markRunningStageFailed = vi.fn();
+    let backgroundJob: (() => Promise<void>) | undefined;
+    Object.assign(service, {
+      prisma: {
+        $transaction: (callback: (tx: object) => Promise<unknown>) => callback({
+          workflowRun: { findUniqueOrThrow: vi.fn().mockResolvedValue(workflow) },
+        }),
+      },
+      aiInvocationContextService: {
+        normalizeAiProvider: (provider: string) => provider,
+        resolveInvocationContext,
+      },
+    });
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(workflow as never);
+    vi.spyOn(service as never, 'resolveConfirmedSpecPlan' as never).mockResolvedValue(sampleSpecPlan as never);
+    vi.spyOn(service as never, 'createStageExecution' as never).mockImplementation(createStageExecution as never);
+    vi.spyOn(service as never, 'resolveAiExecutor' as never).mockImplementation(resolveAiExecutor as never);
+    vi.spyOn(service as never, 'markRunningStageFailed' as never).mockImplementation(markRunningStageFailed as never);
+    vi.spyOn(service as never, 'runInBackground' as never).mockImplementation(((_name: string, job: () => Promise<void>) => {
+      backgroundJob = job;
+    }) as never);
+
+    await service.runReview('run-review', undefined, undefined, 'codex');
+    await backgroundJob?.();
+
+    expect(resolveAiExecutor).toHaveBeenCalledWith('codex');
+    expect(resolveInvocationContext).toHaveBeenCalledWith('codex', null);
+    expect(createStageExecution).toHaveBeenCalledWith(
+      expect.anything(), 'run-review', StageType.AI_REVIEW,
+      expect.objectContaining({ input: expect.objectContaining({ aiProvider: 'codex' }) }),
+    );
+    expect(markRunningStageFailed).toHaveBeenCalled();
+  });
+
   it('keeps the workflow in human review pending after fixing a finding', () => {
     const { service } = createService();
 

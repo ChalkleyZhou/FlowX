@@ -2575,10 +2575,12 @@ export class WorkflowService {
     id: string,
     humanFeedback?: string,
     notifyRecipient?: WorkflowNotificationSession,
+    reviewProvider?: AIExecutorProvider,
   ) {
     const workflow = await this.getWorkflowOrThrow(id);
-    const aiExecutor = this.resolveAiExecutor(workflow.aiProvider);
-    const aiProviderLabel = this.getAiProviderLabel(workflow.aiProvider);
+    const aiProvider = reviewProvider ?? this.aiInvocationContextService.normalizeAiProvider(workflow.aiProvider);
+    const aiExecutor = this.resolveAiExecutor(aiProvider);
+    const aiProviderLabel = this.getAiProviderLabel(aiProvider);
     this.assertStageNotRunning(workflow, StageType.AI_REVIEW);
     const recipient = this.toNotificationRecipient(notifyRecipient);
     if (!this.canRunReviewFromStatus(workflow.status)) {
@@ -2611,6 +2613,7 @@ export class WorkflowService {
         input: {
           specPlan: confirmedSpecPlan,
           execution: workflow.codeExecution,
+          aiProvider,
           humanFeedback: humanFeedback ?? null,
           notifier: recipient,
         },
@@ -2628,7 +2631,7 @@ export class WorkflowService {
     this.runInBackground(`review:${id}`, async () => {
       try {
         const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
-          workflow.aiProvider,
+          aiProvider,
           recipient,
         );
         const output = await aiExecutor.reviewCode(

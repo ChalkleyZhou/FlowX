@@ -975,8 +975,11 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ output }),
     }),
-  runReview: (id: string) =>
-    request<WorkflowRun>(`/workflow-runs/${id}/review/run`, { method: 'POST' }),
+  runReview: (id: string, aiProvider?: 'codex' | 'cursor') =>
+    request<WorkflowRun>(`/workflow-runs/${id}/review/run`, {
+      method: 'POST',
+      body: JSON.stringify({ aiProvider }),
+    }),
   skipReview: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/review/skip`, { method: 'POST' }),
   getReviewFindings: (workflowRunId: string) =>
@@ -1263,10 +1266,10 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
-  reviseReview: (id: string, feedback: string) =>
+  reviseReview: (id: string, feedback: string, aiProvider?: 'codex' | 'cursor') =>
     request<WorkflowRun>(`/workflow-runs/${id}/review/revise`, {
       method: 'POST',
-      body: JSON.stringify({ feedback }),
+      body: JSON.stringify({ feedback, aiProvider }),
     }),
   manualEditReview: (id: string, output: unknown) =>
     request<WorkflowRun>(`/workflow-runs/${id}/review/manual-edit`, {

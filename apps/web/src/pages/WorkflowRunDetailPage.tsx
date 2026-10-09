@@ -405,6 +405,8 @@ export function WorkflowRunDetailPage() {
   const [executionSessionError, setExecutionSessionError] = useState<string | null>(null);
   const [executionSessionLoading, setExecutionSessionLoading] = useState(false);
   const [localLaunchOpen, setLocalLaunchOpen] = useState(false);
+  const [reviewLaunchOpen, setReviewLaunchOpen] = useState(false);
+  const [reviewProviderOverride, setReviewProviderOverride] = useState<'codex' | 'cursor' | null>(null);
   const [localLaunchStage, setLocalLaunchStage] = useState<'execution' | 'spec-plan'>('execution');
   const [localLaunchBusy, setLocalLaunchBusy] = useState(false);
   const [localLaunchSetupRequired, setLocalLaunchSetupRequired] = useState(false);
@@ -519,6 +521,10 @@ export function WorkflowRunDetailPage() {
     setSubmittingManualEdit(false);
   }, [selectedStage, workflowRun?.id]);
 
+  useEffect(() => {
+    setReviewProviderOverride(null);
+  }, [workflowRun?.id]);
+
   const hasRunningStage = workflowRun?.stageExecutions.some((item) => item.status === 'RUNNING') ?? false;
   const canRollbackToPreviousStage = Boolean(
     workflowRun &&
@@ -531,6 +537,12 @@ export function WorkflowRunDetailPage() {
   const localInstallPs1 = `irm ${window.location.origin}/install.ps1 | iex`;
   const latestExecutionStage = workflowRun ? getStage(workflowRun, 'EXECUTION') : undefined;
   const latestReviewStage = workflowRun ? getStage(workflowRun, 'AI_REVIEW') : undefined;
+  const previousReviewProvider = (latestReviewStage?.input as { aiProvider?: unknown } | null)?.aiProvider;
+  const reviewProvider = reviewProviderOverride ?? (
+    previousReviewProvider === 'codex' || previousReviewProvider === 'cursor'
+      ? previousReviewProvider
+      : workflowRun?.aiProvider === 'cursor' ? 'cursor' : 'codex'
+  );
   const hasStaleReviewResults =
     !!workflowRun?.reviewReport &&
     !!latestExecutionStage?.attempt &&
@@ -1083,7 +1095,7 @@ export function WorkflowRunDetailPage() {
       } else if (editableStage === 'execution') {
         await api.reviseExecution(workflowRun.id, nextFeedback);
       } else {
-        await api.reviseReview(workflowRun.id, nextFeedback);
+        await api.reviseReview(workflowRun.id, nextFeedback, reviewProvider);
       }
 
       setFeedbackText('');
@@ -1643,7 +1655,7 @@ export function WorkflowRunDetailPage() {
           {
             key: 'run',
             label: workflowRun.reviewReport ? '重新执行 AI 审查' : '执行 AI 审查',
-            onClick: () => void runAction('AI_REVIEW', () => api.runReview(workflowRun.id), 'AI 审查已启动'),
+            onClick: () => setReviewLaunchOpen(true),
             disabled:
               !['REVIEW_PENDING', 'HUMAN_REVIEW_PENDING', 'DONE'].includes(workflowRun.status) ||
               stageActionsLocked,
@@ -1732,6 +1744,7 @@ export function WorkflowRunDetailPage() {
 
     const actionsByKey = new Map(selectedStageContent.actions.map((action) => [action.key, action]));
     const runActionView = actionsByKey.get('run');
+    const skipAiReviewAction = actionsByKey.get('skip-ai-review');
     const localLaunchAction = actionsByKey.get('claim-local');
     const completeLocalAction = actionsByKey.get('complete-local');
     const cancelLocalAction = actionsByKey.get('cancel-local');
@@ -1799,6 +1812,7 @@ export function WorkflowRunDetailPage() {
           }
         : undefined,
       selectedStage === 'EXECUTION' || selectedStage === 'SPEC_PLAN' ? runActionView : undefined,
+      selectedStage === 'AI_REVIEW' ? skipAiReviewAction : undefined,
       selectedStage === 'EXECUTION' ? completeLocalAction : undefined,
       selectedStage === 'EXECUTION' ? cancelLocalAction : undefined,
       !isManualEditMode ? confirmAction : undefined,
@@ -1895,6 +1909,34 @@ export function WorkflowRunDetailPage() {
             >
               WorkBuddy
             </UiButton>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={reviewLaunchOpen} onOpenChange={setReviewLaunchOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>选择 AI 审查工具</DialogTitle>
+            <DialogDescription>选择本次审查使用的 AI 工具。</DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3">
+            {(['codex', 'cursor'] as const).map((provider) => (
+              <UiButton
+                key={provider}
+                type="button"
+                className="flex-1"
+                variant={reviewProvider === provider ? 'default' : 'outline'}
+                disabled={stageActionsLocked}
+                onClick={() => {
+                  if (!workflowRun) return;
+                  setReviewProviderOverride(provider);
+                  setReviewLaunchOpen(false);
+                  void runAction('AI_REVIEW', () => api.runReview(workflowRun.id, provider), 'AI 审查已启动');
+                }}
+              >
+                {provider === 'codex' ? 'Codex' : 'Cursor CLI'}
+              </UiButton>
+            ))}
           </div>
         </DialogContent>
       </Dialog>
@@ -2026,7 +2068,7 @@ export function WorkflowRunDetailPage() {
               { key: 'project', label: workflowRun.requirement.project.name, variant: 'outline' },
               {
                 key: 'provider',
-                label: workflowRun.aiProvider === 'cursor' ? 'Cursor CLI' : 'Codex',
+                label: `默认 AI：${workflowRun.aiProvider === 'cursor' ? 'Cursor CLI' : 'Codex'}`,
                 variant: 'outline',
               },
               { key: 'id', label: workflowRun.id, variant: 'outline' },
@@ -2173,6 +2215,9 @@ export function WorkflowRunDetailPage() {
                   attempt={selectedStageContent.attempt}
                   metaItems={[
                     { key: 'step', label: '当前步骤', value: `${selectedStageIndex + 1}/${STAGE_SEQUENCE.length}` },
+                    ...(selectedStage === 'AI_REVIEW' && latestReviewStage?.input
+                      ? [{ key: 'review-provider', label: '审查工具', value: (previousReviewProvider ?? workflowRun.aiProvider) === 'cursor' ? 'Cursor CLI' : 'Codex' }]
+                      : []),
                     {
                       key: 'focus-status',
                       label: '阶段状态',
@@ -2481,7 +2526,7 @@ export function WorkflowRunDetailPage() {
                       </div>
                       <div>
                         <UiButton
-                          onClick={() => void runAction('AI_REVIEW', () => api.runReview(workflowRun.id), 'AI 审查已启动')}
+                          onClick={() => setReviewLaunchOpen(true)}
                           disabled={stageActionsLocked}
                         >
                           {busyStage === 'AI_REVIEW' ? '处理中...' : '重新执行 AI 审查'}

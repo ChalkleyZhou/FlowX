@@ -120,6 +120,7 @@ Workspace
 - `StageExecution` 按 attempt 追加，保留阶段执行历史。
 - 状态流转统一通过 `WorkflowStateMachine` 或工作流编排服务校验。
 - 本地执行和云端执行是同一状态机上的不同 executor。
+- AI 审查的 `aiProvider` 由本次 `/workflow-runs/:id/review/run` 或 `/review/revise` 请求选择，记录在审查 `StageExecution.input`；未传时使用 `WorkflowRun.aiProvider`，因此开发与审查可以使用不同工具。
 - 人工确认是流程能力，不应耦合具体 AI Provider。
 - 后续新增 `ExecutionSession` 表达一次真实的本地、Agent、Worker 或测试执行。
 
