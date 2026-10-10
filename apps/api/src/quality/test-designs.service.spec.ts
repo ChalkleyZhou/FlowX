@@ -23,6 +23,7 @@ function setup() {
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     $transaction: vi.fn(async (callback: (tx: typeof transaction) => unknown) => callback(transaction)),
   };
@@ -129,22 +130,22 @@ describe('TestDesignsService', () => {
     transaction.testDesign.findUnique.mockResolvedValue({ ...design, revision: 2, status: 'WAITING_REVIEW' });
 
     const recipient = { flowxUserId: 'user-1', flowxOrganizationId: 'org-1', displayName: '测试用户' };
+    prisma.testDesign.update.mockResolvedValue({ ...design, status: 'GENERATING' });
     const result = await service.generate('design-1', recipient);
 
-    expect(aiExecutor.generateTestDesign).toHaveBeenCalledOnce();
+    expect(result).toEqual(expect.objectContaining({ status: 'GENERATING' }));
+    expect(aiExecutor.generateTestDesign).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(aiExecutor.generateTestDesign).toHaveBeenCalledOnce());
     expect(invocationContext.resolveInvocationContext).toHaveBeenCalledWith('codex', recipient);
-    expect(aiExecutor.generateTestDesign).toHaveBeenCalledWith(
-      expect.anything(), { codexCredentialSource: 'organization' },
-    );
+    expect(aiExecutor.generateTestDesign).toHaveBeenCalledWith(expect.anything(), { codexCredentialSource: 'organization' });
     expect(prisma.testCaseDefinition.findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
       where: { status: 'ACTIVE', library: { workspaceId: 'workspace-1', projectId: 'project-1' } },
     }));
     expect(prisma.testCaseDefinition.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
       where: { status: 'ACTIVE', library: { workspaceId: 'workspace-1', projectId: null } },
     }));
-    expect(transaction.testDesignCandidate.createMany).toHaveBeenCalledWith(expect.objectContaining({ data: [expect.objectContaining({ sourceDefinitionId: 'case-1', action: 'REUSE' })] }));
+    await vi.waitFor(() => expect(transaction.testDesignCandidate.createMany).toHaveBeenCalledWith(expect.objectContaining({ data: [expect.objectContaining({ sourceDefinitionId: 'case-1', action: 'REUSE' })] })));
     expect(transaction.testDesignSmokeCase.createMany).toHaveBeenCalledWith(expect.objectContaining({ data: [expect.objectContaining({ title: '登录冒烟' })] }));
-    expect(result).toEqual(expect.objectContaining({ status: 'WAITING_REVIEW' }));
   });
 
   it('marks generation failed when AI output is invalid', async () => {
@@ -157,13 +158,12 @@ describe('TestDesignsService', () => {
     prisma.testCaseDefinition.findMany.mockResolvedValue([]);
     aiExecutor.generateTestDesign.mockResolvedValue({ candidates: [], smokeCases: [], uncoveredItems: null });
 
-    await expect(service.generate('design-1')).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'TEST_DESIGN_GENERATION_INVALID' }),
-    });
-    expect(prisma.testDesign.update).toHaveBeenLastCalledWith({
+    prisma.testDesign.update.mockResolvedValue({ ...design, status: 'GENERATING' });
+    await expect(service.generate('design-1')).resolves.toEqual(expect.objectContaining({ status: 'GENERATING' }));
+    await vi.waitFor(() => expect(prisma.testDesign.update).toHaveBeenLastCalledWith({
       where: { id: 'design-1' },
       data: { status: 'GENERATION_FAILED' },
-    });
+    }));
   });
 
   it('returns a retryable error and clears generating state when the AI executor fails', async () => {
@@ -176,14 +176,12 @@ describe('TestDesignsService', () => {
     prisma.testCaseDefinition.findMany.mockResolvedValue([]);
     aiExecutor.generateTestDesign.mockRejectedValue(new Error('provider unavailable'));
 
-    await expect(service.generate('design-1')).rejects.toMatchObject({
-      status: 503,
-      response: expect.objectContaining({ code: 'TEST_DESIGN_AI_FAILED' }),
-    });
-    expect(prisma.testDesign.update).toHaveBeenLastCalledWith({
+    prisma.testDesign.update.mockResolvedValue({ ...design, status: 'GENERATING' });
+    await expect(service.generate('design-1')).resolves.toEqual(expect.objectContaining({ status: 'GENERATING' }));
+    await vi.waitFor(() => expect(prisma.testDesign.update).toHaveBeenLastCalledWith({
       where: { id: 'design-1' },
       data: { status: 'GENERATION_FAILED' },
-    });
+    }));
   });
 
   it('blocks confirmation while any candidate is unresolved', async () => {

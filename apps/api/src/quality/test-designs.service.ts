@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { BadRequestException, HttpException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type {
   GenerateTestDesignInput,
@@ -44,6 +44,8 @@ const comparisonCaseSelect = {
 
 @Injectable()
 export class TestDesignsService {
+  private readonly logger = new Logger(TestDesignsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(AI_EXECUTOR) private readonly aiExecutor: AIExecutor,
@@ -228,8 +230,8 @@ export class TestDesignsService {
       })),
       changeSummary: typeof sourceSummary.changeSummary === 'string' ? sourceSummary.changeSummary : null,
     };
-    await this.prisma.testDesign.update({
-      where: { id },
+    const claimed = await this.prisma.testDesign.updateMany({
+      where: { id, status: { not: 'GENERATING' }, testRequest: { is: null } },
       data: {
         status: 'GENERATING',
         sourceFingerprint: refreshed.sourceFingerprint,
@@ -237,64 +239,75 @@ export class TestDesignsService {
         staleReason: null,
       },
     });
-    let output: TestDesignGenerationOutput;
+    if (claimed.count === 0) {
+      throw new BadRequestException('Test design generation is already in progress or linked to a test request.');
+    }
+    setTimeout(() => {
+      void this.completeGeneration(id, input, existingCases.map((item) => item.id), sourceSummary, recipient)
+        .catch((error) => this.logger.error(`Test design background generation failed id=${id}: ${error instanceof Error ? error.message : String(error)}`));
+    }, 0);
+    return { ...design, status: 'GENERATING', sourceFingerprint: refreshed.sourceFingerprint, sourceSummary, staleReason: null };
+  }
+
+  private async completeGeneration(
+    id: string,
+    input: GenerateTestDesignInput,
+    existingCaseIds: string[],
+    sourceSummary: Record<string, unknown>,
+    recipient?: AiInvocationRecipient | null,
+  ) {
     try {
       const provider = this.aiInvocationContextService.getConfiguredDefaultProvider();
       const context = await this.aiInvocationContextService.resolveInvocationContext(provider, recipient);
-      output = await this.aiExecutor.generateTestDesign(input, context);
-      validateGeneratedOutput(output, new Set(existingCases.map((item) => item.id)));
+      const output: TestDesignGenerationOutput = await this.aiExecutor.generateTestDesign(input, context);
+      validateGeneratedOutput(output, new Set(existingCaseIds));
+      await this.prisma.$transaction(async (tx) => {
+        await tx.testDesignCandidate.deleteMany({ where: { testDesignId: id } });
+        await tx.testDesignSmokeCase.deleteMany({ where: { testDesignId: id } });
+        await tx.testDesign.update({
+          where: { id },
+          data: {
+            status: 'WAITING_REVIEW',
+            revision: { increment: 1 },
+            sourceSummary: { ...sourceSummary, aiSourceSummary: output.sourceSummary } as Prisma.InputJsonValue,
+            coverageSummary: output.coverageSummary as Prisma.InputJsonValue,
+            uncoveredItems: output.uncoveredItems as Prisma.InputJsonValue,
+            staleReason: null,
+            confirmedByUserId: null,
+            confirmedAt: null,
+          },
+        });
+        await tx.testDesignCandidate.createMany({
+          data: output.candidates.map((candidate, index) => ({
+            testDesignId: id,
+            action: candidate.action,
+            sourceDefinitionId: candidate.sourceDefinitionId ?? null,
+            sourceVersion: candidate.sourceVersion ?? null,
+            matchScore: candidate.matchScore ?? null,
+            matchReason: candidate.matchReason ?? null,
+            coverageKeys: candidate.coverageKeys as Prisma.InputJsonValue,
+            proposedCase: candidate.proposedCase as unknown as Prisma.InputJsonValue,
+            sortOrder: index,
+          })),
+        });
+        await tx.testDesignSmokeCase.createMany({
+          data: output.smokeCases.map((item, index) => ({
+            testDesignId: id,
+            title: item.title,
+            priority: item.priority,
+            precondition: item.precondition ?? null,
+            steps: item.steps as Prisma.InputJsonValue,
+            expected: item.expected,
+            blocking: item.blocking,
+            coverageKeys: item.coverageKeys as Prisma.InputJsonValue,
+            sortOrder: index,
+          })),
+        });
+      });
     } catch (error) {
+      this.logger.error(`Test design generation failed id=${id}: ${error instanceof Error ? error.message : String(error)}`);
       await this.prisma.testDesign.update({ where: { id }, data: { status: 'GENERATION_FAILED' } });
-      if (error instanceof HttpException) throw error;
-      throw new ServiceUnavailableException({
-        code: 'TEST_DESIGN_AI_FAILED',
-        message: '测试用例生成失败，请检查 AI 凭据、额度及服务端日志后重试。',
-      });
     }
-    return this.prisma.$transaction(async (tx) => {
-      await tx.testDesignCandidate.deleteMany({ where: { testDesignId: id } });
-      await tx.testDesignSmokeCase.deleteMany({ where: { testDesignId: id } });
-      await tx.testDesign.update({
-        where: { id },
-        data: {
-          status: 'WAITING_REVIEW',
-          revision: { increment: 1 },
-          sourceSummary: { ...sourceSummary, aiSourceSummary: output.sourceSummary } as Prisma.InputJsonValue,
-          coverageSummary: output.coverageSummary as Prisma.InputJsonValue,
-          uncoveredItems: output.uncoveredItems as Prisma.InputJsonValue,
-          staleReason: null,
-          confirmedByUserId: null,
-          confirmedAt: null,
-        },
-      });
-      await tx.testDesignCandidate.createMany({
-        data: output.candidates.map((candidate, index) => ({
-          testDesignId: id,
-          action: candidate.action,
-          sourceDefinitionId: candidate.sourceDefinitionId ?? null,
-          sourceVersion: candidate.sourceVersion ?? null,
-          matchScore: candidate.matchScore ?? null,
-          matchReason: candidate.matchReason ?? null,
-          coverageKeys: candidate.coverageKeys as Prisma.InputJsonValue,
-          proposedCase: candidate.proposedCase as unknown as Prisma.InputJsonValue,
-          sortOrder: index,
-        })),
-      });
-      await tx.testDesignSmokeCase.createMany({
-        data: output.smokeCases.map((item, index) => ({
-          testDesignId: id,
-          title: item.title,
-          priority: item.priority,
-          precondition: item.precondition ?? null,
-          steps: item.steps as Prisma.InputJsonValue,
-          expected: item.expected,
-          blocking: item.blocking,
-          coverageKeys: item.coverageKeys as Prisma.InputJsonValue,
-          sortOrder: index,
-        })),
-      });
-      return tx.testDesign.findUnique({ where: { id }, include: designInclude });
-    });
   }
 
   async updateCandidate(id: string, candidateId: string, dto: UpdateTestDesignCandidateDto) {

@@ -52,12 +52,18 @@ export function QualityTestDesignPage() {
 
   useEffect(() => { void load(); }, [id]);
 
+  useEffect(() => {
+    if (!id || design?.status !== 'GENERATING') return;
+    const timer = window.setInterval(() => void load(), 2000);
+    return () => window.clearInterval(timer);
+  }, [design?.status, id]);
+
   async function generate() {
     if (!id) return;
     setBusy(true);
     try {
       setDesign(await api.generateTestDesign(id));
-      toast.success('测试用例和冒烟候选已生成');
+      toast.success('已开始后台生成测试用例，页面会自动刷新结果');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '生成测试设计失败');
     } finally {

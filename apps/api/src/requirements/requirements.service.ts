@@ -341,11 +341,6 @@ export class RequirementsService {
     const previousBriefs = await this.getPreviousBriefs(requirementId);
     const previousAttemptCount = previousBriefs.length;
     const executor = this.resolveIdeationExecutor();
-    const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
-      undefined,
-      this.toAiInvocationRecipient(authSession),
-    );
-
     const session = await this.prisma.ideationSession.create({
       data: {
         requirementId,
@@ -362,7 +357,12 @@ export class RequirementsService {
       data: { ideationStatus: ideationStatusMap[IdeationStatus.BRAINSTORM_PENDING] },
     });
 
+    this.runIdeationInBackground(`brainstorm:${session.id}`, async () => {
     try {
+      const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
+        undefined,
+        this.toAiInvocationRecipient(authSession),
+      );
       const result = await executor.brainstorm(
         {
           requirementTitle: requirement.title,
@@ -408,6 +408,7 @@ export class RequirementsService {
         data: { ideationStatus: ideationStatusMap[IdeationStatus.NONE] },
       });
     }
+    });
 
     return this.findOne(requirementId);
   }
@@ -424,11 +425,6 @@ export class RequirementsService {
 
     const executor = this.resolveIdeationExecutor();
     const previousBriefs = await this.getPreviousBriefs(requirementId);
-    const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
-      undefined,
-      this.toAiInvocationRecipient(authSession),
-    );
-
     const session = await this.prisma.ideationSession.create({
       data: {
         requirementId,
@@ -445,7 +441,12 @@ export class RequirementsService {
       data: { ideationStatus: ideationStatusMap[IdeationStatus.BRAINSTORM_PENDING] },
     });
 
+    this.runIdeationInBackground(`brainstorm-revise:${session.id}`, async () => {
     try {
+      const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
+        undefined,
+        this.toAiInvocationRecipient(authSession),
+      );
       const result = await executor.brainstorm(
         {
           requirementTitle: requirement.title,
@@ -491,6 +492,7 @@ export class RequirementsService {
         data: { ideationStatus: ideationStatusMap[IdeationStatus.BRAINSTORM_WAITING_CONFIRMATION] },
       });
     }
+    });
 
     return this.findOne(requirementId);
   }
@@ -564,11 +566,6 @@ export class RequirementsService {
 
     const previousDesigns = await this.getPreviousDesigns(requirementId);
     const executor = this.resolveIdeationExecutor();
-    const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
-      undefined,
-      this.toAiInvocationRecipient(authSession),
-    );
-
     const session = await this.prisma.ideationSession.create({
       data: {
         requirementId,
@@ -585,7 +582,12 @@ export class RequirementsService {
       data: { ideationStatus: ideationStatusMap[IdeationStatus.DESIGN_PENDING] },
     });
 
+    this.runIdeationInBackground(`design:${session.id}`, async () => {
     try {
+      const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
+        undefined,
+        this.toAiInvocationRecipient(authSession),
+      );
       const readyRepos = this.resolveReadyRepositories(requirement);
       this.logger.log(
         `Ideation design start requirement=${requirementId} session=${session.id} executor=${executor.constructor?.name ?? 'unknown'} readyRepoCount=${readyRepos.length}${readyRepos[0] ? ` primaryRepo=${readyRepos[0].id}` : ''}`,
@@ -643,6 +645,7 @@ export class RequirementsService {
         data: { ideationStatus: ideationStatusMap[IdeationStatus.BRAINSTORM_CONFIRMED] },
       });
     }
+    });
 
     return this.findOne(requirementId);
   }
@@ -671,11 +674,6 @@ export class RequirementsService {
       latestDesignSessionWithOutput?.output,
     );
     const executor = this.resolveIdeationExecutor();
-    const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
-      undefined,
-      this.toAiInvocationRecipient(authSession),
-    );
-
     const session = await this.prisma.ideationSession.create({
       data: {
         requirementId,
@@ -692,7 +690,12 @@ export class RequirementsService {
       data: { ideationStatus: ideationStatusMap[IdeationStatus.DESIGN_PENDING] },
     });
 
+    this.runIdeationInBackground(`design-revise:${session.id}`, async () => {
     try {
+      const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
+        undefined,
+        this.toAiInvocationRecipient(authSession),
+      );
       const readyRepos = this.resolveReadyRepositories(requirement);
       this.logger.log(
         `Ideation design revise start requirement=${requirementId} session=${session.id} executor=${executor.constructor?.name ?? 'unknown'} readyRepoCount=${readyRepos.length}${readyRepos[0] ? ` primaryRepo=${readyRepos[0].id}` : ''}`,
@@ -772,6 +775,7 @@ export class RequirementsService {
         data: { ideationStatus: ideationStatusMap[IdeationStatus.DESIGN_WAITING_CONFIRMATION] },
       });
     }
+    });
 
     return this.findOne(requirementId);
   }
@@ -885,6 +889,14 @@ export class RequirementsService {
 
   private resolveIdeationExecutor(): AIExecutor {
     return this.executorRegistry.get(this.aiInvocationContextService.normalizeAiProvider(undefined));
+  }
+
+  private runIdeationInBackground(taskName: string, job: () => Promise<void>) {
+    setTimeout(() => {
+      void job().catch((error) => {
+        this.logger.error(`${taskName} failed: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    }, 0);
   }
 
   private toAiInvocationRecipient(session?: IdeationAuthSession): AiInvocationRecipient | null {

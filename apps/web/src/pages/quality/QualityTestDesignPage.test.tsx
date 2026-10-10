@@ -99,6 +99,7 @@ describe('QualityTestDesignPage', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     if (root) act(() => root?.unmount());
     document.body.innerHTML = '';
     vi.clearAllMocks();
@@ -165,5 +166,29 @@ describe('QualityTestDesignPage', () => {
       revision: 2,
       cases: [expect.objectContaining({ id: 'smoke-1', resolution: 'ACCEPTED' })],
     });
+  });
+
+  it('polls while test design generation is running', async () => {
+    vi.useFakeTimers();
+    vi.mocked(api.generateTestDesign).mockResolvedValue({ ...design, status: 'GENERATING' });
+    vi.mocked(api.getTestDesign)
+      .mockResolvedValueOnce(design)
+      .mockResolvedValueOnce(design);
+    await renderPage();
+
+    const generateButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('生成候选'),
+    );
+    await act(async () => {
+      generateButton?.click();
+      await Promise.resolve();
+    });
+    expect(successToast).toHaveBeenCalledWith('已开始后台生成测试用例，页面会自动刷新结果');
+
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+      await Promise.resolve();
+    });
+    expect(api.getTestDesign).toHaveBeenCalledTimes(2);
   });
 });

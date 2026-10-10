@@ -91,7 +91,7 @@ AI 负责生成和解释测试范围，确定性规则负责从 `DRAFT` 进入 `
 | `PATCH` | `/quality/test-designs/:id/smoke` | 编辑和确认冒烟候选 |
 | `POST` | `/quality/test-designs/:id/confirm` | 确认测试设计 |
 
-测试设计生成复用当前组织的 AI 凭据解析；AI 执行器失败返回 `TEST_DESIGN_AI_FAILED`（503），生成输出校验失败返回 `TEST_DESIGN_GENERATION_INVALID`（400），两者都将测试设计状态置为 `GENERATION_FAILED` 以便重试。
+测试设计生成复用当前组织的 AI 凭据解析。接口只负责创建 `GENERATING` 任务并立即返回，AI 在后台执行；完成后状态变为 `WAITING_REVIEW`，失败变为 `GENERATION_FAILED`，前端通过查询测试设计状态获取结果并支持重试。
 
 所有对象沿 Workspace 继承当前组织边界。API 不允许跨 Workspace 关联项目，也不允许从其他项目用例库选择用例。
 
