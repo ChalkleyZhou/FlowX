@@ -86,9 +86,12 @@ AI 负责生成和解释测试范围，确定性规则负责从 `DRAFT` 进入 `
 | `POST` | `/quality/test-designs` | 创建测试设计草稿 |
 | `GET` | `/quality/test-designs/:id` | 查询测试设计、候选和冒烟项 |
 | `POST` | `/quality/test-designs/:id/generate` | 生成或重新生成候选 |
+
 | `PATCH` | `/quality/test-designs/:id/candidates/:candidateId` | 处理功能用例候选 |
 | `PATCH` | `/quality/test-designs/:id/smoke` | 编辑和确认冒烟候选 |
 | `POST` | `/quality/test-designs/:id/confirm` | 确认测试设计 |
+
+测试设计生成复用当前组织的 AI 凭据解析；AI 执行器失败返回 `TEST_DESIGN_AI_FAILED`（503），生成输出校验失败返回 `TEST_DESIGN_GENERATION_INVALID`（400），两者都将测试设计状态置为 `GENERATION_FAILED` 以便重试。
 
 所有对象沿 Workspace 继承当前组织边界。API 不允许跨 Workspace 关联项目，也不允许从其他项目用例库选择用例。
 

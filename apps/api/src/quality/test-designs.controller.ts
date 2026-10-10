@@ -27,8 +27,13 @@ export class TestDesignsController {
   }
 
   @Post(':id/generate')
-  generate(@Param('id') id: string) {
-    return this.designs.generate(id);
+  generate(@Param('id') id: string, @Req() req: QualityRequest) {
+    const session = req.authSession;
+    return this.designs.generate(id, session?.user ? {
+      flowxUserId: session.user.id,
+      flowxOrganizationId: session.organization?.id ?? null,
+      displayName: session.user.displayName ?? '',
+    } : null);
   }
 
   @Patch(':id/candidates/:candidateId')
@@ -47,4 +52,9 @@ export class TestDesignsController {
   }
 }
 
-type QualityRequest = { authSession?: { user: { id: string } } };
+type QualityRequest = {
+  authSession?: {
+    user: { id: string; displayName?: string };
+    organization?: { id?: string | null } | null;
+  };
+};

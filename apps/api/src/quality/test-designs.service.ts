@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, HttpException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type {
   GenerateTestDesignInput,
@@ -8,6 +8,7 @@ import type {
   TestDesignGenerationOutput,
 } from '../common/types';
 import { AI_EXECUTOR, type AIExecutor } from '../ai/ai-executor';
+import { AiInvocationContextService, type AiInvocationRecipient } from '../ai/ai-invocation-context.service';
 import type {
   ConfirmTestDesignDto,
   CreateTestDesignDto,
@@ -46,6 +47,7 @@ export class TestDesignsService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(AI_EXECUTOR) private readonly aiExecutor: AIExecutor,
+    private readonly aiInvocationContextService: AiInvocationContextService,
   ) {}
 
   async createDesign(dto: CreateTestDesignDto) {
@@ -174,7 +176,7 @@ export class TestDesignsService {
     return design;
   }
 
-  async generate(id: string) {
+  async generate(id: string, recipient?: AiInvocationRecipient | null) {
     const design = await this.getDesign(id);
     if (design.status === 'GENERATING') {
       throw new BadRequestException('Test design generation is already in progress.');
@@ -237,12 +239,18 @@ export class TestDesignsService {
     });
     let output: TestDesignGenerationOutput;
     try {
-      output = await this.aiExecutor.generateTestDesign(input);
+      const provider = this.aiInvocationContextService.getConfiguredDefaultProvider();
+      const context = await this.aiInvocationContextService.resolveInvocationContext(provider, recipient);
+      output = await this.aiExecutor.generateTestDesign(input, context);
+      validateGeneratedOutput(output, new Set(existingCases.map((item) => item.id)));
     } catch (error) {
       await this.prisma.testDesign.update({ where: { id }, data: { status: 'GENERATION_FAILED' } });
-      throw error;
+      if (error instanceof HttpException) throw error;
+      throw new ServiceUnavailableException({
+        code: 'TEST_DESIGN_AI_FAILED',
+        message: '测试用例生成失败，请检查 AI 凭据、额度及服务端日志后重试。',
+      });
     }
-    validateGeneratedOutput(output, new Set(existingCases.map((item) => item.id)));
     return this.prisma.$transaction(async (tx) => {
       await tx.testDesignCandidate.deleteMany({ where: { testDesignId: id } });
       await tx.testDesignSmokeCase.deleteMany({ where: { testDesignId: id } });
