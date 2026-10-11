@@ -868,6 +868,7 @@ export interface TestDesign {
   noCaseReason?: string | null;
   noSmokeReason?: string | null;
   staleReason?: string | null;
+  generationError?: string | null;
   confirmedByUserId?: string | null;
   confirmedAt?: string | null;
   candidates: TestDesignCandidate[];

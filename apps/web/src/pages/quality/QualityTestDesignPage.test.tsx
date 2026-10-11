@@ -201,4 +201,38 @@ describe('QualityTestDesignPage', () => {
     });
     expect(container.textContent).toContain('待处理');
   });
+
+  it('shows the persisted failure reason and clears it when retry starts', async () => {
+    vi.mocked(api.getTestDesign).mockResolvedValueOnce({
+      ...design, status: 'GENERATION_FAILED', generationError: 'AI 凭据无效，请更新组织凭据。',
+    });
+    vi.mocked(api.generateTestDesign).mockResolvedValue({
+      ...design, status: 'GENERATING', generationError: null,
+    });
+    await renderPage();
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('AI 凭据无效');
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('排查编号：design-1');
+    const retry = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('生成候选'));
+    await act(async () => { retry?.click(); await Promise.resolve(); });
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('shows the failure reason when polling completes with an error', async () => {
+    vi.useFakeTimers();
+    vi.mocked(api.getTestDesign)
+      .mockResolvedValueOnce({ ...design, status: 'GENERATING' })
+      .mockResolvedValueOnce({ ...design, status: 'GENERATION_FAILED', generationError: 'AI 生成超时，请稍后重试。' });
+    await renderPage();
+
+    await act(async () => { vi.advanceTimersByTime(2000); await Promise.resolve(); });
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('AI 生成超时');
+    expect(container.textContent).toContain('功能测试候选');
+  });
+
+  it('explains that older failures have no recorded reason', async () => {
+    vi.mocked(api.getTestDesign).mockResolvedValueOnce({ ...design, status: 'GENERATION_FAILED' });
+    await renderPage();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('本次失败未记录原因');
+  });
 });

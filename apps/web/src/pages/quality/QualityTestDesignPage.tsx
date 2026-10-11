@@ -155,6 +155,13 @@ export function QualityTestDesignPage() {
         )}
       />
 
+      {design.status === 'GENERATION_FAILED' ? (
+        <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          {design.generationError ?? '本次失败未记录原因。请重新生成；若再次失败，页面会显示诊断信息。'}
+          <p className="mt-1 text-xs">排查编号：{design.id}</p>
+        </div>
+      ) : null}
+
       <Card className="rounded-md border border-border bg-card">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>

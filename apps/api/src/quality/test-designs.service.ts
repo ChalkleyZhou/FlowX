@@ -237,6 +237,7 @@ export class TestDesignsService {
         sourceFingerprint: refreshed.sourceFingerprint,
         sourceSummary: sourceSummary as Prisma.InputJsonValue,
         staleReason: null,
+        generationError: null,
       },
     });
     if (claimed.count === 0) {
@@ -244,9 +245,9 @@ export class TestDesignsService {
     }
     setTimeout(() => {
       void this.completeGeneration(id, input, existingCases.map((item) => item.id), sourceSummary, recipient)
-        .catch((error) => this.logger.error(`Test design background generation failed id=${id}: ${error instanceof Error ? error.message : String(error)}`));
+        .catch((error) => this.logger.error(`Test design background generation failed id=${id}: ${describeGenerationError(error)}`));
     }, 0);
-    return { ...design, status: 'GENERATING', sourceFingerprint: refreshed.sourceFingerprint, sourceSummary, staleReason: null };
+    return { ...design, status: 'GENERATING', sourceFingerprint: refreshed.sourceFingerprint, sourceSummary, staleReason: null, generationError: null };
   }
 
   private async completeGeneration(
@@ -273,6 +274,7 @@ export class TestDesignsService {
             coverageSummary: output.coverageSummary as Prisma.InputJsonValue,
             uncoveredItems: output.uncoveredItems as Prisma.InputJsonValue,
             staleReason: null,
+            generationError: null,
             confirmedByUserId: null,
             confirmedAt: null,
           },
@@ -305,8 +307,11 @@ export class TestDesignsService {
         });
       });
     } catch (error) {
-      this.logger.error(`Test design generation failed id=${id}: ${error instanceof Error ? error.message : String(error)}`);
-      await this.prisma.testDesign.update({ where: { id }, data: { status: 'GENERATION_FAILED' } });
+      this.logger.error(`Test design generation failed id=${id}: ${describeGenerationError(error)} (${error instanceof Error ? error.name : typeof error})`);
+      await this.prisma.testDesign.update({
+        where: { id },
+        data: { status: 'GENERATION_FAILED', generationError: describeGenerationError(error) },
+      });
     }
   }
 
@@ -532,6 +537,50 @@ function caseData(value: TestDesignCaseDraft) {
 
 function assertRevision(current: number, requested: number) {
   if (current !== requested) throw new BadRequestException({ code: 'TEST_DESIGN_REVISION_CONFLICT', message: 'Test design revision is out of date.' });
+}
+
+function describeGenerationError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/invalid_json_schema|invalid schema for response_format|failed to locate output schema/i.test(message)) {
+    return '测试设计输出格式配置无效，请联系管理员更新服务端。';
+  }
+  if (/AUTH_|CREDENTIAL_|api key login failed|authentication failed|invalid_api_key|incorrect api key/i.test(message)) {
+    return 'AI 凭据无效或无法读取，请检查组织 AI 凭据后重试。';
+  }
+  if (/insufficient_quota|billing|exceeded your current quota/i.test(message)) {
+    return 'AI 服务额度不足，请检查账户额度后重试。';
+  }
+  if (/rate.limit|too many requests|\b429\b/i.test(message)) {
+    return 'AI 服务请求过于频繁，请稍后重试。';
+  }
+  if (/timed out|timeout/i.test(message)) {
+    return 'AI 生成超时，请稍后重试或联系管理员调整超时时间。';
+  }
+  if (/CLI is not installed|spawn (?:codex|agent|cursor-agent|cursor) ENOENT/i.test(message)) {
+    return '服务端未安装或无法启动 AI 命令行工具，请联系管理员检查运行环境。';
+  }
+  if (/model_not_found|model.*does not exist|unsupported model|invalid model/i.test(message)) {
+    return 'AI 模型配置无效，请联系管理员检查模型设置。';
+  }
+  if (/context.length|maximum context|prompt is too long|input is too large/i.test(message)) {
+    return '测试设计输入超出 AI 模型长度限制，请缩小需求范围后重试。';
+  }
+  if (/returned empty output|invalid JSON envelope|unexpected (?:token|end of json)|not valid JSON/i.test(message)) {
+    return 'AI 未返回可解析的测试设计，请重试；持续失败时请联系管理员。';
+  }
+  if (/outside the comparison scope|require a source case and version|cannot reference a source case|only one candidate/i.test(message)) {
+    return 'AI 生成的候选引用了无效的已有用例，请重试；持续失败时请联系管理员。';
+  }
+  if (/TEST_DESIGN_OUTPUT_INVALID|TEST_DESIGN_GENERATION_INVALID|generated test design output is invalid|output shape is invalid|accepted test case/i.test(message)) {
+    return 'AI 返回的测试设计输出不符合要求，请重试；持续失败时请联系管理员。';
+  }
+  if (error instanceof Prisma.PrismaClientKnownRequestError || error instanceof Prisma.PrismaClientValidationError) {
+    return '测试设计已生成，但保存结果失败，请联系管理员检查数据库。';
+  }
+  if (/provider unavailable|network|ECONN|ENOTFOUND|fetch failed/i.test(message)) {
+    return 'AI 服务暂不可用或网络连接失败，请稍后重试。';
+  }
+  return '测试设计生成失败，请联系管理员查看服务端日志。';
 }
 
 function validateGeneratedOutput(output: TestDesignGenerationOutput, sourceIds: Set<string>) {

@@ -1123,6 +1123,7 @@ model TestDesign {
   noCaseReason      String?
   noSmokeReason     String?
   staleReason       String?
+  generationError   String?
   confirmedByUserId String?
   confirmedByUser   User?        @relation("TestDesignConfirmedBy", fields: [confirmedByUserId], references: [id], onDelete: SetNull)
   confirmedAt       DateTime?

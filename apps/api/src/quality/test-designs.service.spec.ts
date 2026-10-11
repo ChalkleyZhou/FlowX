@@ -146,6 +146,9 @@ describe('TestDesignsService', () => {
     }));
     await vi.waitFor(() => expect(transaction.testDesignCandidate.createMany).toHaveBeenCalledWith(expect.objectContaining({ data: [expect.objectContaining({ sourceDefinitionId: 'case-1', action: 'REUSE' })] })));
     expect(transaction.testDesignSmokeCase.createMany).toHaveBeenCalledWith(expect.objectContaining({ data: [expect.objectContaining({ title: '登录冒烟' })] }));
+    expect(transaction.testDesign.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'WAITING_REVIEW', generationError: null }),
+    }));
   });
 
   it('marks generation failed when AI output is invalid', async () => {
@@ -162,7 +165,7 @@ describe('TestDesignsService', () => {
     await expect(service.generate('design-1')).resolves.toEqual(expect.objectContaining({ status: 'GENERATING' }));
     await vi.waitFor(() => expect(prisma.testDesign.update).toHaveBeenLastCalledWith({
       where: { id: 'design-1' },
-      data: { status: 'GENERATION_FAILED' },
+      data: { status: 'GENERATION_FAILED', generationError: expect.stringContaining('输出') },
     }));
   });
 
@@ -174,14 +177,36 @@ describe('TestDesignsService', () => {
       sourceSummary: { specPlans: [{ spec: { goal: '登录' } }] },
     } as never);
     prisma.testCaseDefinition.findMany.mockResolvedValue([]);
-    aiExecutor.generateTestDesign.mockRejectedValue(new Error('provider unavailable'));
+    aiExecutor.generateTestDesign.mockRejectedValue(new Error('CODEX_AUTH_INVALID_ORG_KEY: secret=sk-sensitive'));
 
     prisma.testDesign.update.mockResolvedValue({ ...design, status: 'GENERATING' });
     await expect(service.generate('design-1')).resolves.toEqual(expect.objectContaining({ status: 'GENERATING' }));
     await vi.waitFor(() => expect(prisma.testDesign.update).toHaveBeenLastCalledWith({
       where: { id: 'design-1' },
-      data: { status: 'GENERATION_FAILED' },
+      data: { status: 'GENERATION_FAILED', generationError: expect.stringContaining('凭据') },
     }));
+    expect(prisma.testDesign.update.mock.lastCall?.[0].data.generationError).not.toContain('sk-sensitive');
+    expect(prisma.testDesign.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'GENERATING', generationError: null }),
+    }));
+  });
+
+  it('explains a missing Cursor CLI without exposing command output', async () => {
+    const { service, prisma, aiExecutor } = setup();
+    vi.spyOn(service, 'getDesign').mockResolvedValue(design as never);
+    vi.spyOn(service as never, 'loadCurrentSource' as never).mockResolvedValue({
+      sourceFingerprint: 'fingerprint',
+      sourceSummary: { specPlans: [{ spec: { goal: '登录' } }] },
+    } as never);
+    prisma.testCaseDefinition.findMany.mockResolvedValue([]);
+    aiExecutor.generateTestDesign.mockRejectedValue(new Error('Cursor CLI is not installed. secret=sk-sensitive'));
+
+    await expect(service.generate('design-1')).resolves.toEqual(expect.objectContaining({ status: 'GENERATING' }));
+    await vi.waitFor(() => expect(prisma.testDesign.update).toHaveBeenCalledWith({
+      where: { id: 'design-1' },
+      data: { status: 'GENERATION_FAILED', generationError: expect.stringContaining('命令行工具') },
+    }));
+    expect(prisma.testDesign.update.mock.lastCall?.[0].data.generationError).not.toContain('sk-sensitive');
   });
 
   it('blocks confirmation while any candidate is unresolved', async () => {

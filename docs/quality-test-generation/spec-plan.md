@@ -35,6 +35,7 @@
 | `noSmokeReason` | String? | 确认无冒烟场景时的原因 |
 | `confirmedByUserId` / `confirmedAt` | String? / DateTime? | 确认审计信息 |
 | `staleReason` | String? | 过期原因 |
+| `generationError` | String? | 后台生成失败时可向用户展示的诊断；重试和成功时清空 |
 
 `TestDesign` 通过 `TestDesignRequirement` 和 `TestDesignWorkflowRun` 关联一个或多个 `Requirement` 和 `WorkflowRun`，并保留生成输入摘要，避免后续原文变化导致历史内容无法解释。
 
