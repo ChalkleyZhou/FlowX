@@ -64,9 +64,12 @@ export function ExecutionSessionsPage() {
   useEffect(() => {
     let active = true;
     let inFlight = false;
-    async function refresh() {
+    async function refresh(options?: { silent?: boolean }) {
       if (inFlight) return;
-      inFlight = true; setLoading(true);
+      inFlight = true;
+      if (!options?.silent) {
+        setLoading(true);
+      }
       try {
         const result = await api.listExecutionSessions({
           projectId: projectId === 'all' ? undefined : projectId,
@@ -77,10 +80,13 @@ export function ExecutionSessionsPage() {
         if (active) { setRows(result.items); setNextCursor(result.nextCursor); setError(null); }
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : '执行记录加载失败');
-      } finally { inFlight = false; if (active) setLoading(false); }
+      } finally {
+        inFlight = false;
+        if (active && !options?.silent) setLoading(false);
+      }
     }
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 30_000);
+    const timer = window.setInterval(() => void refresh({ silent: true }), 30_000);
     return () => { active = false; window.clearInterval(timer); };
   }, [projectId, status, sourceTool, cursor, revision]);
 
@@ -117,8 +123,11 @@ export function ExecutionSessionDetailPage() {
   const request = useRef(0);
   const listHref = `/execution-sessions${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
 
-  const refresh = async () => {
-    const current = ++request.current; setLoading(true);
+  const refresh = async (options?: { silent?: boolean }) => {
+    const current = ++request.current;
+    if (!options?.silent) {
+      setLoading(true);
+    }
     try {
       const next = await api.getExecutionSession(sessionId);
       if (current !== request.current) return;
@@ -137,9 +146,11 @@ export function ExecutionSessionDetailPage() {
       }
     } catch (cause) {
       if (current === request.current) setError(cause instanceof Error ? cause.message : '运行详情加载失败');
-    } finally { if (current === request.current) setLoading(false); }
+    } finally {
+      if (current === request.current && !options?.silent) setLoading(false);
+    }
   };
-  useEffect(() => { void refresh(); const timer = window.setInterval(() => void refresh(), 30_000); return () => { request.current += 1; window.clearInterval(timer); }; }, [sessionId]);
+  useEffect(() => { void refresh(); const timer = window.setInterval(() => void refresh({ silent: true }), 30_000); return () => { request.current += 1; window.clearInterval(timer); }; }, [sessionId]);
 
   if (loading && !session) return <p role="status" className="text-sm text-muted-foreground">正在读取运行详情…</p>;
   if (error && !session) return <div className="space-y-4"><Button asChild variant="outline"><Link to={listHref}><ArrowLeft />返回运行列表</Link></Button><p role="alert" className="text-danger">{error}</p></div>;

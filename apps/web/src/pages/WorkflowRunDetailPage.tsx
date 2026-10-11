@@ -695,12 +695,14 @@ export function WorkflowRunDetailPage() {
   const executionSessionId =
     selectedStage === 'EXECUTION' ? localHandoff?.executionSessionId ?? null : null;
 
-  const refreshExecutionSession = useCallback(async () => {
+  const refreshExecutionSession = useCallback(async (options?: { silent?: boolean }) => {
     if (!executionSessionId) {
       return;
     }
 
-    setExecutionSessionLoading(true);
+    if (!options?.silent) {
+      setExecutionSessionLoading(true);
+    }
     try {
       const [session, evidence, eventsPage] = await Promise.all([
         api.getExecutionSession(executionSessionId),
@@ -713,11 +715,15 @@ export function WorkflowRunDetailPage() {
       setExecutionEvents(eventsPage?.items ?? []);
     } catch (error) {
       setExecutionSessionError(error instanceof Error ? error.message : '执行会话加载失败，请刷新后重试。');
-      setExecutionSession(null);
-      setExecutionEvidence([]);
-      setExecutionEvents([]);
+      if (!options?.silent) {
+        setExecutionSession(null);
+        setExecutionEvidence([]);
+        setExecutionEvents([]);
+      }
     } finally {
-      setExecutionSessionLoading(false);
+      if (!options?.silent) {
+        setExecutionSessionLoading(false);
+      }
     }
   }, [executionSessionId]);
 
@@ -730,7 +736,7 @@ export function WorkflowRunDetailPage() {
     }
 
     void refreshExecutionSession();
-    const interval = window.setInterval(() => void refreshExecutionSession(), 30_000);
+    const interval = window.setInterval(() => void refreshExecutionSession({ silent: true }), 30_000);
 
     return () => window.clearInterval(interval);
   }, [executionSessionId, refreshExecutionSession]);

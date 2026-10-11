@@ -19,17 +19,23 @@ export function BriefingDetailPage() {
   const [sending, setSending] = useState(false);
   const toast = useToast();
 
-  async function refresh() {
+  async function refresh(options?: { silent?: boolean }) {
     if (!briefingId) {
       return;
     }
-    setLoading(true);
+    if (!options?.silent) {
+      setLoading(true);
+    }
     try {
       setBriefing(await api.getBriefing(briefingId));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载简报失败');
+      if (!options?.silent) {
+        toast.error(error instanceof Error ? error.message : '加载简报失败');
+      }
     } finally {
-      setLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
   }
 
@@ -42,7 +48,7 @@ export function BriefingDetailPage() {
       return;
     }
     const timer = window.setInterval(() => {
-      void refresh();
+      void refresh({ silent: true });
     }, 3000);
     return () => window.clearInterval(timer);
   }, [briefing?.status, briefingId]);

@@ -38,15 +38,21 @@ export function QualityTestDesignPage() {
   const [noSmokeReason, setNoSmokeReason] = useState('');
   const [noCaseReason, setNoCaseReason] = useState('');
 
-  async function load() {
+  async function load(options?: { silent?: boolean }) {
     if (!id) return;
-    setLoading(true);
+    if (!options?.silent) {
+      setLoading(true);
+    }
     try {
       setDesign(await api.getTestDesign(id));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载测试设计失败');
+      if (!options?.silent) {
+        toast.error(error instanceof Error ? error.message : '加载测试设计失败');
+      }
     } finally {
-      setLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
   }
 
@@ -54,7 +60,7 @@ export function QualityTestDesignPage() {
 
   useEffect(() => {
     if (!id || design?.status !== 'GENERATING') return;
-    const timer = window.setInterval(() => void load(), 2000);
+    const timer = window.setInterval(() => void load({ silent: true }), 2000);
     return () => window.clearInterval(timer);
   }, [design?.status, id]);
 
@@ -125,7 +131,7 @@ export function QualityTestDesignPage() {
     }
   }
 
-  if (loading) return <LoadingState />;
+  if (loading && !design) return <LoadingState />;
   if (!design) return <EmptyState title="测试设计不存在" description="请检查链接或返回提测管理。" />;
 
   const pendingCount = design.candidates.filter((item) => item.resolution === 'PENDING').length;

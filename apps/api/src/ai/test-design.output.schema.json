@@ -4,14 +4,14 @@
   "additionalProperties": false,
   "required": ["sourceSummary", "coverageSummary", "candidates", "smokeCases", "uncoveredItems"],
   "properties": {
-    "sourceSummary": { "type": "object" },
-    "coverageSummary": { "type": "object" },
+    "sourceSummary": { "type": "object", "additionalProperties": false, "properties": {}, "required": [] },
+    "coverageSummary": { "type": "object", "additionalProperties": false, "properties": {}, "required": [] },
     "candidates": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["action", "coverageKeys", "proposedCase"],
+        "required": ["action", "sourceDefinitionId", "sourceVersion", "matchScore", "matchReason", "coverageKeys", "proposedCase"],
         "properties": {
           "action": { "enum": ["REUSE", "OPTIMIZE", "CREATE", "EXCLUDE"] },
           "sourceDefinitionId": { "type": ["string", "null"] },
@@ -28,7 +28,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["title", "priority", "steps", "expected", "blocking", "coverageKeys"],
+        "required": ["title", "priority", "precondition", "steps", "expected", "tags", "blocking", "coverageKeys"],
         "properties": {
           "title": { "type": "string", "minLength": 1 },
           "priority": { "type": "string" },
@@ -47,7 +47,7 @@
     "case": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["title", "priority", "steps", "expected"],
+      "required": ["title", "priority", "precondition", "steps", "expected", "tags"],
       "properties": {
         "title": { "type": "string", "minLength": 1 },
         "priority": { "type": "string" },

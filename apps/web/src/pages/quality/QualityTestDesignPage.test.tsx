@@ -171,9 +171,10 @@ describe('QualityTestDesignPage', () => {
   it('polls while test design generation is running', async () => {
     vi.useFakeTimers();
     vi.mocked(api.generateTestDesign).mockResolvedValue({ ...design, status: 'GENERATING' });
+    let finishPoll!: (value: TestDesign) => void;
     vi.mocked(api.getTestDesign)
       .mockResolvedValueOnce(design)
-      .mockResolvedValueOnce(design);
+      .mockImplementationOnce(() => new Promise((resolve) => { finishPoll = resolve; }));
     await renderPage();
 
     const generateButton = Array.from(container.querySelectorAll('button')).find((button) =>
@@ -190,5 +191,14 @@ describe('QualityTestDesignPage', () => {
       await Promise.resolve();
     });
     expect(api.getTestDesign).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain('生成中');
+    expect(container.textContent).toContain('功能测试候选');
+    expect(container.textContent).not.toContain('加载中');
+
+    await act(async () => {
+      finishPoll(design);
+      await Promise.resolve();
+    });
+    expect(container.textContent).toContain('待处理');
   });
 });

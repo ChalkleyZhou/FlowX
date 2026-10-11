@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'fs/promises';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -6,6 +7,20 @@ import type { BrainstormOutput, ReviewDailyChangesInput } from '../common/types'
 import { buildCodexInvocationArgs, CodexAiExecutor } from './codex-ai.executor';
 
 describe('CodexAiExecutor', () => {
+  it('uses a strict test design output schema accepted by Codex', () => {
+    const schema = JSON.parse(readFileSync(join(__dirname, 'test-design.output.schema.json'), 'utf8')) as unknown;
+    const visit = (value: unknown) => {
+      if (!value || typeof value !== 'object') return;
+      const node = value as Record<string, unknown>;
+      if (node.type === 'object') {
+        expect(node.additionalProperties).toBe(false);
+        expect(node.required).toEqual(Object.keys(node.properties as Record<string, unknown>));
+      }
+      Object.values(node).forEach(visit);
+    };
+    visit(schema);
+  });
+
   it('forces the built-in OpenAI provider for organization API keys', () => {
     const args = ['exec', '--skip-git-repo-check', 'prompt'];
 
