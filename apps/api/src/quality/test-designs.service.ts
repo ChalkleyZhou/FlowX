@@ -544,6 +544,9 @@ function describeGenerationError(error: unknown): string {
   if (/invalid_json_schema|invalid schema for response_format|failed to locate output schema/i.test(message)) {
     return '测试设计输出格式配置无效，请联系管理员更新服务端。';
   }
+  if (/schema validation|schema violation|output does not match|structured output.*(?:invalid|failed)|failed to parse.*schema/i.test(message)) {
+    return 'AI 返回的测试设计字段不符合输出格式，请重试；持续失败时请联系管理员更新 AI 输出契约。';
+  }
   if (/AUTH_|CREDENTIAL_|api key login failed|authentication failed|invalid_api_key|incorrect api key/i.test(message)) {
     return 'AI 凭据无效或无法读取，请检查组织 AI 凭据后重试。';
   }

@@ -4,8 +4,29 @@
   "additionalProperties": false,
   "required": ["sourceSummary", "coverageSummary", "candidates", "smokeCases", "uncoveredItems"],
   "properties": {
-    "sourceSummary": { "type": "object", "additionalProperties": false, "properties": {}, "required": [] },
-    "coverageSummary": { "type": "object", "additionalProperties": false, "properties": {}, "required": [] },
+    "sourceSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "sourceTypes", "notes"],
+      "properties": {
+        "summary": { "type": "string" },
+        "sourceTypes": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "coverageSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["functionalAreas", "mainFlows", "edgeCases", "permissions", "dataBoundaries", "notes"],
+      "properties": {
+        "functionalAreas": { "type": "array", "items": { "type": "string" } },
+        "mainFlows": { "type": "array", "items": { "type": "string" } },
+        "edgeCases": { "type": "array", "items": { "type": "string" } },
+        "permissions": { "type": "array", "items": { "type": "string" } },
+        "dataBoundaries": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
     "candidates": {
       "type": "array",
       "items": {

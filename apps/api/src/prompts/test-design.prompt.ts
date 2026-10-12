@@ -7,6 +7,7 @@ export const testDesignPrompt: PromptTemplate = {
   user: `根据已确认的 PRD、设计方案、Spec & Plan 和现有用例，生成本次改动的测试设计。
 
 要求：
+0. sourceSummary 必须严格包含 summary（字符串）、sourceTypes（字符串数组）、notes（字符串数组）；coverageSummary 必须严格包含 functionalAreas、mainFlows、edgeCases、permissions、dataBoundaries、notes，这些字段全部是字符串数组；不要添加其他字段。
 1. candidates 中每条候选只能使用 REUSE、OPTIMIZE、CREATE、EXCLUDE 之一。
 2. 现有用例匹配必须说明 sourceDefinitionId、sourceVersion、matchScore 和 matchReason；低置信度不要强行复用。
    同等匹配质量下优先使用 libraryProjectId 等于当前项目的项目库用例，再考虑 Workspace 共享库。

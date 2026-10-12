@@ -130,7 +130,7 @@
 }
 ```
 
-生成响应包含 `revision`、`sourceFingerprint`、`coverageSummary`、`candidates`、`smokeCases` 和 `uncoveredItems`。候选中的 `sourceDefinitionId` 必须属于当前 Workspace 的共享库或项目库，且状态为 `ACTIVE`。
+生成响应包含 `revision`、`sourceFingerprint`、`sourceSummary`、`coverageSummary`、`candidates`、`smokeCases` 和 `uncoveredItems`。AI 输出中的 `sourceSummary` 固定包含 `summary`、`sourceTypes`、`notes`；`coverageSummary` 固定包含 `functionalAreas`、`mainFlows`、`edgeCases`、`permissions`、`dataBoundaries`、`notes`，以满足严格结构化输出契约。候选中的 `sourceDefinitionId` 必须属于当前 Workspace 的共享库或项目库，且状态为 `ACTIVE`。
 
 `PATCH` 和 `confirm` 请求携带 `revision`。服务端发现修订不一致时返回 `TEST_DESIGN_REVISION_CONFLICT`，前端提示刷新，不覆盖他人的编辑。
 

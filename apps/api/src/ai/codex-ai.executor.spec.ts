@@ -100,8 +100,15 @@ describe('CodexAiExecutor', () => {
     const runJsonStage = vi
       .spyOn(executor as unknown as { runJsonStage: (...args: unknown[]) => Promise<unknown> }, 'runJsonStage')
       .mockResolvedValue({
-        sourceSummary: {},
-        coverageSummary: {},
+        sourceSummary: { summary: '已读取需求上下文', sourceTypes: ['PRD'], notes: [] },
+        coverageSummary: {
+          functionalAreas: [],
+          mainFlows: [],
+          edgeCases: [],
+          permissions: [],
+          dataBoundaries: [],
+          notes: [],
+        },
         candidates: [],
         smokeCases: [],
         uncoveredItems: [],
