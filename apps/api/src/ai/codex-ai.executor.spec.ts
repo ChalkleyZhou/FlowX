@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BrainstormOutput, ReviewDailyChangesInput } from '../common/types';
 import { buildCodexInvocationArgs, CodexAiExecutor } from './codex-ai.executor';
+import { CursorAiExecutor } from './cursor-ai.executor';
 
 describe('CodexAiExecutor', () => {
   it('uses a strict test design output schema accepted by Codex', () => {
@@ -95,8 +96,11 @@ describe('CodexAiExecutor', () => {
     expect(out.brief.userStories).toHaveLength(3);
   });
 
-  it('includes PRD, design, Spec & Plan, existing cases and actual changes in test design prompts', async () => {
-    const executor = new CodexAiExecutor();
+  it.each([
+    ['Codex', CodexAiExecutor],
+    ['Cursor', CursorAiExecutor],
+  ] as const)('%s includes the canonical test design schema and source context in its prompt', async (_provider, Executor) => {
+    const executor = new Executor();
     const runJsonStage = vi
       .spyOn(executor as unknown as { runJsonStage: (...args: unknown[]) => Promise<unknown> }, 'runJsonStage')
       .mockResolvedValue({
@@ -143,6 +147,8 @@ describe('CodexAiExecutor', () => {
     });
 
     const [, prompt] = runJsonStage.mock.calls[0]!;
+    const schema = JSON.parse(readFileSync(join(__dirname, 'test-design.output.schema.json'), 'utf8')) as unknown;
+    expect(prompt).toEqual(expect.stringContaining(JSON.stringify(schema)));
     expect(prompt).toEqual(expect.stringContaining('prd-context'));
     expect(prompt).toEqual(expect.stringContaining('design-context'));
     expect(prompt).toEqual(expect.stringContaining('spec-context'));

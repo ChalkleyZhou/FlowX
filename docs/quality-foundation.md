@@ -93,6 +93,8 @@ AI 负责生成和解释测试范围，确定性规则负责从 `DRAFT` 进入 `
 
 测试设计生成复用当前组织的 AI 凭据解析。接口只负责创建 `GENERATING` 任务并立即返回，AI 在后台执行；完成后状态变为 `WAITING_REVIEW`，失败变为 `GENERATION_FAILED`。失败时 `GET /quality/test-designs/:id` 返回可安全展示的 `generationError`，用于区分凭据、额度、限流、超时、命令行工具、模型配置、输出校验及服务异常；页面同时显示设计 ID 作为排查编号。服务端日志记录该 ID 和安全分类，AI 执行器的本地调试记录可用于进一步定位。重试或成功后清空该字段。升级前已经失败的记录可能没有失败原因，需要重新生成。
 
+测试设计提示词直接嵌入 `test-design.output.schema.json`，让 Codex 和不执行 `--output-schema` 的 Cursor 使用同一份字段契约。所有动作（包括复用和不纳入）都必须返回完整的 `proposedCase`；候选和冒烟用例必须包含非空标题、执行步骤和预期结果。修复输出契约后，需要重新生成失败的测试设计，原失败记录不会自动重试。
+
 所有对象沿 Workspace 继承当前组织边界。API 不允许跨 Workspace 关联项目，也不允许从其他项目用例库选择用例。
 
 ## Web 入口
