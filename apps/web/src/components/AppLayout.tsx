@@ -19,6 +19,7 @@ import {
   KeyRound,
   KeySquare,
   LogOut,
+  LayoutDashboard,
   Settings2,
   Workflow,
   Newspaper,
@@ -40,9 +41,9 @@ import {
 import { ConfirmProvider, useConfirm } from './ConfirmDialog';
 
 const primaryItems = [
+  { key: '/dashboard', label: '看板', icon: LayoutDashboard },
   { key: '/requirements', label: '需求', icon: ClipboardList },
   { key: '/workflow-runs', label: '工作流', icon: Workflow },
-  { key: '/execution-sessions', label: 'Agent 运行', icon: RadioTower },
   { key: '/projects', label: '项目', icon: FolderKanban },
   { key: '/briefings', label: '简报', icon: Newspaper },
   { key: '/code-reviews', label: '代码审查', icon: GitPullRequest },
@@ -105,7 +106,7 @@ function AppLayoutContent({ children }: PropsWithChildren) {
       ...secondaryItems,
     ]
       .sort((left, right) => right.key.length - left.key.length)
-      .find((item) => isPathActive(location.pathname, item.key))?.key ?? '/requirements';
+      .find((item) => isPathActive(location.pathname, item.key))?.key ?? '/dashboard';
 
   async function handleLogout() {
     const confirmed = await confirm({
@@ -327,5 +328,6 @@ function AppLayoutContent({ children }: PropsWithChildren) {
 }
 
 function isPathActive(pathname: string, key: string) {
+  if (key === '/dashboard' && (pathname === '/execution-sessions' || pathname.startsWith('/execution-sessions/'))) return true;
   return pathname === key || pathname.startsWith(`${key}/`);
 }

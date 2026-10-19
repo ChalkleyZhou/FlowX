@@ -71,6 +71,8 @@ Review。`POST /workflow-runs/:id/execution/complete-local` 仍保留给旧 Web�
 
 受控开发会话通过 `flowx_execution_checkpoint` 领取 `CANCEL`、`RESUME`、`REQUEST_SYNC` 命令。命令状态在平台上依次显示为“待领取、已领取待回执、本地已确认或本地处理失败”。平台只能通过协作式回执确认停止，不能远程强杀 IDE 内的 Agent。`STALE` 表示超过 5 分钟没有收到检查点；重新交接前必须确认旧设备上的任务和它启动的命令已经停止。
 
+检查点支持可选 `progressSummary`（非空、最多 2000 字符）。有实质进展时填写“已完成什么、正在做什么”，普通保活省略。服务端在同一事务保存会话摘要和 `execution.progressed` 事件；摘要未变化时不重复登记，终态或待停止回执时不覆盖结果。网页“看板”中的开发进展展示这些实际回报，尚未上报摘要的旧客户端只显示检查点和未知进度。该参数需要新版 `flowx-local` 及重新加载的 MCP/执行技能；进度回报沿用检查点请求，不进入 Outbox，网络失败后先重试检查点再继续。
+
 ## 故障排查
 
 ### FlowX 提示未检测到 flowx-local

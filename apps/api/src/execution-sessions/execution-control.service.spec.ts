@@ -49,6 +49,12 @@ describe('执行控制', () => {
     }));
   });
 
+  it('页码和游标不能同时使用，且页码查询仍要求组织上下文', async () => {
+    const { service } = createHarness();
+    await expect(service.list({ page: 1 } as never, {})).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.list({ page: 1, cursor: 's1' } as never, scope)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('同组织其他成员不能控制任务，管理员可以取消', async () => {
     const { service } = createHarness();
     await expect(service.request('session-1', { commandType: 'CANCEL', idempotencyKey: 'k' },

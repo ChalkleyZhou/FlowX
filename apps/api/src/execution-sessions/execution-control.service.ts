@@ -1,7 +1,9 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, forwardRef } from '@nestjs/common';
 import { Prisma, type ExecutionSession } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import {
-  EXECUTION_HEARTBEAT_INTERVAL_MS, getExecutionHealth, isExecutionSessionTerminal,
+  EXECUTION_HEARTBEAT_INTERVAL_MS, EXECUTION_STALE_AFTER_MS, EXECUTION_SESSION_TERMINAL_STATUSES,
+  getExecutionHealth, isExecutionSessionTerminal,
   type ExecutionSessionStatus,
 } from '@flowx-ai/protocol';
 import { PrismaService } from '../prisma/prisma.service';
@@ -27,6 +29,9 @@ export class ExecutionControlService {
     if (filters.since && filters.until && new Date(filters.since) > new Date(filters.until)) {
       throw new BadRequestException('开始时间不能晚于结束时间。');
     }
+    if (filters.cursor && (filters.page !== undefined || filters.view !== undefined)) {
+      throw new BadRequestException('页码分页不能同时使用游标。');
+    }
     const take = Math.min(Math.max(filters.take ?? 30, 1), 100);
     const where: Prisma.ExecutionSessionWhereInput = {
       workspace: { organizationId },
@@ -34,11 +39,16 @@ export class ExecutionControlService {
       ...(filters.workflowRunId ? { workflowRunId: filters.workflowRunId } : {}),
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.sourceTool ? { sourceTool: filters.sourceTool } : {}),
+      ...(filters.claimedByUserId ? { claimedByUserId: filters.claimedByUserId } : {}),
+      ...(filters.search?.trim() ? { workflowRun: { requirement: { title: { contains: filters.search.trim() } } } } : {}),
       ...(filters.since || filters.until ? { createdAt: {
         ...(filters.since ? { gte: new Date(filters.since) } : {}),
         ...(filters.until ? { lte: new Date(filters.until) } : {}),
       } } : {}),
     };
+    if (filters.page !== undefined || filters.view !== undefined) {
+      return this.listPage(filters, where, scope);
+    }
     // 游标也必须来自当前可见范围，不能使用其他组织的 ID 作为隐式边界。
     if (filters.cursor && !await this.prisma.executionSession.findFirst({ where: { ...where, id: filters.cursor } })) {
       throw new NotFoundException('执行会话游标不存在。');
@@ -52,6 +62,73 @@ export class ExecutionControlService {
     });
     return { items: rows.slice(0, take).map((row) => ({ ...row, ...this.describe(row, scope) })),
       nextCursor: rows.length > take ? rows[take - 1].id : null };
+  }
+
+  private async listPage(filters: ListExecutionSessionsDto, base: Prisma.ExecutionSessionWhereInput, scope: ControlScope) {
+    const pageSize = Math.min(Math.max(filters.take ?? 20, 1), 100);
+    const terminal = [...EXECUTION_SESSION_TERMINAL_STATUSES];
+    const cutoff = new Date(Date.now() - EXECUTION_STALE_AFTER_MS);
+    const attention: Prisma.ExecutionSessionWhereInput = { OR: [
+      { status: { in: ['BLOCKED', 'FAILED'] } },
+      { status: { notIn: terminal }, OR: [
+        { cancelRequestedAt: { not: null } },
+        { controlMode: 'COOPERATIVE', lastHeartbeatAt: { lte: cutoff } },
+      ] },
+    ] };
+    // 显式处理可空字段，避免 SQL NOT 在 NULL 上产生 UNKNOWN，漏掉尚未回报的会话。
+    const normal: Prisma.ExecutionSessionWhereInput = {
+      status: { notIn: ['BLOCKED', 'FAILED'] }, AND: [
+        { OR: [{ status: { in: terminal } }, { cancelRequestedAt: null }] },
+        { OR: [{ status: { in: terminal } }, { controlMode: { not: 'COOPERATIVE' } },
+          { lastHeartbeatAt: null }, { lastHeartbeatAt: { gt: cutoff } }] },
+      ],
+    };
+    const where: Prisma.ExecutionSessionWhereInput = { AND: [base,
+      { executorType: 'LOCAL', stageExecution: { stage: 'EXECUTION' } },
+      ...(filters.view === 'active' ? [{ status: { notIn: terminal } }] : []),
+      ...(filters.view === 'completed' ? [{ status: 'COMPLETED' }] : []),
+      ...(filters.view === 'attention' ? [attention] : []),
+    ] };
+    // 概览不受当前页、快捷视图和精确状态限制，切换卡片后仍展示同一筛选范围的全貌。
+    const overviewBase = { ...base };
+    delete overviewBase.status;
+    const overviewWhere: Prisma.ExecutionSessionWhereInput = { AND: [overviewBase,
+      { executorType: 'LOCAL', stageExecution: { stage: 'EXECUTION' } },
+    ] };
+    const include = {
+      ...accessibleInclude, stageExecution: { select: { stage: true, statusMessage: true } },
+      project: { select: { name: true } },
+      workflowRun: { select: { requirement: { select: { title: true } } } },
+      claimedByUser: { select: { displayName: true } },
+      syncEvents: { where: { eventType: 'execution.progressed' }, orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }], take: 1 },
+      evidence: { where: { evidenceType: { in: ['TEST_RESULT', 'BUILD_RESULT', 'AGENT_SUMMARY'] } },
+        orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }], distinct: ['evidenceType'], take: 3 },
+    } satisfies Prisma.ExecutionSessionInclude;
+    return this.prisma.$transaction(async (tx) => {
+      const statusCounts = await tx.executionSession.groupBy({ by: ['status'], where: overviewWhere, _count: { _all: true } });
+      const counts = {
+        all: statusCounts.reduce((sum, item) => sum + item._count._all, 0),
+        active: statusCounts.filter((item) => !isExecutionSessionTerminal(item.status as ExecutionSessionStatus)).reduce((sum, item) => sum + item._count._all, 0),
+        completed: statusCounts.find((item) => item.status === 'COMPLETED')?._count._all ?? 0,
+        attention: await tx.executionSession.count({ where: { AND: [overviewWhere, attention] } }),
+      };
+      const total = await tx.executionSession.count({ where });
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      const page = Math.min(filters.page ?? 1, totalPages);
+      const offset = (page - 1) * pageSize;
+      const attentionWhere = { AND: [where, attention] };
+      const attentionCount = await tx.executionSession.count({ where: attentionWhere });
+      const orderBy = [{ createdAt: 'desc' }, { id: 'desc' }] satisfies Prisma.ExecutionSessionOrderByWithRelationInput[];
+      const urgent = offset < attentionCount ? await tx.executionSession.findMany({
+        where: attentionWhere, orderBy, skip: offset, take: Math.min(pageSize, attentionCount - offset), include,
+      }) : [];
+      const remaining = pageSize - urgent.length;
+      const others = remaining > 0 ? await tx.executionSession.findMany({
+        where: { AND: [where, normal] }, orderBy, skip: Math.max(0, offset - attentionCount), take: remaining, include,
+      }) : [];
+      return { items: [...urgent, ...others].map((row) => ({ ...row, ...this.describe(row, scope) })),
+        total, page, pageSize, totalPages, counts, nextCursor: null };
+    });
   }
 
   describe(session: Pick<ControlSession, 'id' | 'status' | 'controlMode' | 'lastHeartbeatAt' | 'claimedByUserId' | 'cancelRequestedAt' | 'stageExecution'>, scope: ControlScope) {
@@ -107,9 +184,12 @@ export class ExecutionControlService {
       return await this.prisma.$transaction(async (tx) => {
         const terminal = isExecutionSessionTerminal(session.status as ExecutionSessionStatus);
         const blockedReason = input.blockedReason?.trim();
+        const progressSummary = input.progressSummary?.trim();
         if (input.blockedReason !== undefined && !blockedReason) throw new BadRequestException('阻塞原因不能为空。');
+        if (input.progressSummary !== undefined && !progressSummary) throw new BadRequestException('进度摘要不能为空。');
         if (blockedReason && !['RUNNING', 'BLOCKED'].includes(session.status)) throw new BadRequestException('当前会话不能上报阻塞。');
-        if (!terminal && (session.controlMode !== 'COOPERATIVE' || blockedReason !== undefined ||
+        const progressChanged = !terminal && !session.cancelRequestedAt && progressSummary !== undefined && progressSummary !== session.summary;
+        if (!terminal && (session.controlMode !== 'COOPERATIVE' || blockedReason !== undefined || progressChanged ||
           !session.lastHeartbeatAt || Date.now() - session.lastHeartbeatAt.getTime() >= EXECUTION_HEARTBEAT_INTERVAL_MS)) {
           const update = await tx.executionSession.updateMany({
             where: { id, status: session.status, deviceId: session.deviceId, updatedAt: session.updatedAt },
@@ -117,9 +197,19 @@ export class ExecutionControlService {
               activeControlDeviceKey: JSON.stringify([scope.organizationId, scope.userId, input.deviceId]),
               lastHeartbeatAt: new Date(),
               ...(blockedReason ? { status: 'BLOCKED', blockedReason } : {}),
+              ...(progressChanged ? { summary: progressSummary } : {}),
             },
           });
           if (update.count !== 1) throw new ConflictException('会话已变化，请重新获取检查点。');
+        }
+        if (progressChanged) {
+          const eventId = randomUUID();
+          await tx.syncEvent.create({ data: {
+            eventId, executionSessionId: id, schemaVersion: session.protocolVersion,
+            eventType: 'execution.progressed', sourceTool: session.sourceTool, actorId: scope.userId,
+            deviceId: input.deviceId, traceId: session.traceId, occurredAt: new Date(),
+            idempotencyKey: `checkpoint-progress:${id}:${eventId}`, payload: { summary: progressSummary },
+          } });
         }
         await this.expire(tx, id);
         await tx.executionCommand.updateMany({ where: { executionSessionId: id, status: 'CREATED' },

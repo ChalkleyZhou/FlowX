@@ -12,6 +12,8 @@ import type {
   DeliveryTarget,
   DingTalkUserSyncResult,
   ExecutionSessionDetail,
+  ExecutionSessionsPage,
+  ExecutionSessionView,
   ExecutionCommand,
   ExecutionCommandType,
   ExecutionSessionStatus,
@@ -814,8 +816,10 @@ export const api = {
       ).toString()}`,
     ),
   getWorkflowRun: (id: string) => request<WorkflowRun>(`/workflow-runs/${id}`),
-  listExecutionSessions: (params: { projectId?: string; workflowRunId?: string; status?: ExecutionSessionStatus; sourceTool?: SourceTool; since?: string; until?: string; cursor?: string; take?: number } = {}) =>
-    request<{ items: ExecutionSessionDetail[]; nextCursor: string | null }>(`/execution-sessions${queryString({ ...params, take: params.take === undefined ? undefined : String(params.take) })}`),
+  listExecutionSessions: (params: { projectId?: string; workflowRunId?: string; status?: ExecutionSessionStatus; sourceTool?: SourceTool; claimedByUserId?: string; search?: string; view?: ExecutionSessionView; page?: number; since?: string; until?: string; cursor?: string; take?: number } = {}) =>
+    request<ExecutionSessionsPage>(`/execution-sessions${queryString({ ...params,
+      page: params.page === undefined ? undefined : String(params.page),
+      take: params.take === undefined ? undefined : String(params.take) })}`),
   requestExecutionCommand: (id: string, commandType: ExecutionCommandType, idempotencyKey: string) =>
     request<ExecutionCommand>(`/execution-sessions/${encodeURIComponent(id)}/commands`, {
       method: 'POST', body: JSON.stringify({ commandType, idempotencyKey }),

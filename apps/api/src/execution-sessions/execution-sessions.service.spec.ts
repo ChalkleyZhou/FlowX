@@ -34,6 +34,7 @@ function session(overrides: Record<string, unknown> = {}) {
 
 function createService(workflowService?: Record<string, unknown>) {
   const prisma = {
+    syncEvent: { findFirst: vi.fn() },
     executionSession: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
@@ -50,6 +51,13 @@ function createService(workflowService?: Record<string, unknown>) {
 }
 
 describe('ExecutionSessionsService', () => {
+  it('详情独立读取最新进度前必须先验证组织作用域', async () => {
+    const { service, prisma } = createService();
+    prisma.executionSession.findUnique.mockResolvedValue(session());
+    await expect(service.findOne('session-1', { organizationId: 'other' }, true)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.syncEvent.findFirst).not.toHaveBeenCalled();
+  });
+
   it('reuses a matching idempotent create request', async () => {
     const { service, prisma } = createService();
     prisma.executionSession.findUnique.mockResolvedValue(session());

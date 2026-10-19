@@ -114,6 +114,18 @@ Workspace
 
 该链路已经具备研发流程基础；Artifact、Evidence、ExecutionSession 以及 TestDesign/TestRequest/TestPlan/TestRun 的独立模型已经落地。开发执行的受控会话由 `ExecutionCommand`、检查点和回执构成协作式运行控制：云端保存状态和命令，本地 Agent 在检查点领取并确认。失联是基于服务端最后检查点的健康计算，不代表可以远程终止 IDE。完成报告必须绑定原会话和原执行人，按工作流基线核对 Git 提交后才推进 Review。Spec & Plan 可由本地 `ExecutionSession` 领取，结构化输出继续写入 `StageExecution`，`spec.md` 和 `plan.md` 作为 Artifact 上传。TestDesign 在 Spec & Plan 确认后与开发执行并行，提测前汇合并冻结功能与动态冒烟快照。`LOCAL_SMOKE` 通过 `TestRunTarget`、`TestExecution` 和 append-only `TestExecutionCaseResult` 支持多人多端执行，服务端聚合 `TestResult` 并生成版本化 `TEST_REPORT`。Release、RuntimeFeedback 和自动化测试结果导入仍需继续建设。
 
+### 并行开发进展查询
+
+Web 的默认首页“研发看板”（`/dashboard`）使用 `GET /execution-sessions` 的页码模式，聚合当前组织下 `executorType=LOCAL`、阶段为 `EXECUTION` 的会话。传入 `page` 或 `view` 启用该模式；`view` 支持 `active`、`attention`、`completed`、`all`，Web 默认 `active`。保留 `projectId`、`workflowRunId`、`status`、`sourceTool`、`since`、`until`，新增 `claimedByUserId` 和 `search`（需求名称包含匹配）。`take` 默认 20、最大 100；`page` 为 1～1000000 的整数，不能与 `cursor` 混用。
+
+返回 `{ items, total, page, pageSize, totalPages, counts, nextCursor: null }`，其中 `counts` 包含 `active`、`attention`、`completed`、`all`。概览与列表在同一事务读取，按组织及公共筛选条件统计，忽略 `page`、`view` 和精确 `status`；`active` 与 `attention` 可重叠，不能相加。空结果按第 1/1 页返回，越界页回到末页。服务端先按组织和筛选范围计数，再把阻塞、失败、待停止回执和失联会话置顶，同组按 `createdAt desc, id desc` 排序后分页，计数和记录读取在同一事务完成。失联复用协议中的 `EXECUTION_STALE_AFTER_MS` 和受控会话定义；尚无检查点或旧兼容会话属于未知状态。未传 `page`、`view` 的请求保持旧游标契约和排序。
+
+根路由和普通登录默认进入 `/dashboard`；旧 `/execution-sessions` 列表路径保留查询条件与片段重定向到看板，原详情路由保留。认证保护保存原路径、查询与片段，深链接登录后返回原目标。侧栏看板为首项，列表和详情均归属看板导航。
+
+列表批量附带项目名、阶段状态摘要、最新 `execution.progressed` 事件及测试/构建/Agent 摘要各自最新的一条证据，无需每条会话再发查询。`GET /execution-sessions/:id` 另行返回 `latestProgress`，避免进度被最近心跳挤掉。页面展示已有事实，不采集 IDE 对话、不生成进度百分比。URL 保存筛选和页码，筛选变化回到首页，后台刷新保留已有内容。独立详情只读，工作流原有协作式控制入口继续保留。
+
+`POST /execution-sessions/:id/checkpoint` 和 MCP `flowx_execution_checkpoint` 支持可选 `progressSummary`（1～2000 字符，去空白后非空）。摘要变化时，在原有执行人、设备和会话版本校验后，同一事务更新会话摘要并追加 `execution.progressed`，重试相同摘要不重复写事件。终态和已有停止请求的会话忽略新摘要，不覆盖已有结果；省略摘要时沿用普通检查点节流。客户端继续保持薄透传，不新增本地状态机和 Outbox 队列。
+
 ## 5. 工作流设计原则
 
 - `WorkflowRun` 表达一次业务流程。

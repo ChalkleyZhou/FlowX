@@ -38,9 +38,13 @@ describe('api helpers', () => {
   it('为执行列表和控制命令传递筛选、幂等键和认证信息', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [], nextCursor: null }) });
     vi.stubGlobal('fetch', fetchMock);
-    await api.listExecutionSessions({ projectId: 'p1', status: 'BLOCKED', take: 10 });
+    await api.listExecutionSessions({ projectId: 'p1', status: 'BLOCKED', take: 20,
+      page: 2, view: 'attention', claimedByUserId: 'u1', search: '登录 改造' });
     expect(fetchMock.mock.calls[0][0]).toContain('projectId=p1');
     expect(fetchMock.mock.calls[0][0]).toContain('status=BLOCKED');
+    const url = new URL(fetchMock.mock.calls[0][0]);
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({ page: '2', take: '20',
+      view: 'attention', claimedByUserId: 'u1', search: '登录 改造' });
     await api.requestExecutionCommand('s1', 'CANCEL', 'stable-key');
     expect(fetchMock.mock.calls[1][0]).toContain('/execution-sessions/s1/commands');
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ commandType: 'CANCEL', idempotencyKey: 'stable-key' });

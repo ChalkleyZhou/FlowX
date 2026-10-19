@@ -44,7 +44,7 @@ export class ExecutionSessionsController {
 
   @Get(':id')
   async findOne(@Param('id') id: string, @Req() req: ExecutionSessionRequest) {
-    const session = await this.executionSessionsService.findOne(id, toScope(req));
+    const session = await this.executionSessionsService.findOne(id, toScope(req), true);
     return { ...session, ...this.control.describe(session, toScope(req)) };
   }
 

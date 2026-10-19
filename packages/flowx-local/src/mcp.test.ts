@@ -967,12 +967,15 @@ describe('执行控制 MCP', () => {
     vi.stubGlobal('fetch', fetchMock);
     const { client, server } = await connectClient(homeDir);
     try {
-      const result = await client.callTool({ name: 'flowx_execution_checkpoint', arguments: { executionSessionId: 's1' } });
+      const result = await client.callTool({ name: 'flowx_execution_checkpoint', arguments: {
+        executionSessionId: 's1', progressSummary: '已完成接口调整，正在执行回归测试',
+      } });
       expect(result.isError).toBeUndefined();
       expect(JSON.stringify(result.content)).toContain('CANCEL');
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(fetchMock.mock.calls[0][0]).toBe('https://flowx.example/api/execution-sessions/s1/checkpoint');
-      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ deviceId: expect.any(String) });
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ deviceId: expect.any(String),
+        progressSummary: '已完成接口调整，正在执行回归测试' });
     } finally { await client.close(); await server.close(); }
   });
 

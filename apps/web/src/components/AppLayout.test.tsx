@@ -123,6 +123,14 @@ describe('AppLayout', () => {
     expect(main?.className).not.toMatch(/(?:^|\s)max-w-/);
   });
 
+  it('看板位于主导航首项，旧运行详情仍高亮看板', async () => {
+    await act(async () => root?.render(<MemoryRouter initialEntries={['/execution-sessions/s1']}><ThemeProvider><AppLayout><div>content</div></AppLayout></ThemeProvider></MemoryRouter>));
+    const links = container.querySelectorAll('nav a');
+    expect(links[0]?.textContent).toBe('看板');
+    expect(links[0]?.getAttribute('href')).toBe('/dashboard');
+    expect(links[0]?.className).toContain('bg-nav-active');
+  });
+
   it('does not logout when user cancels confirmation', async () => {
     await act(async () => {
       root?.render(

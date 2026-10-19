@@ -10,6 +10,10 @@ export class ListExecutionSessionsDto {
   @IsOptional() @IsString() @MaxLength(200) workflowRunId?: string;
   @IsOptional() @IsIn(EXECUTION_SESSION_STATUSES) status?: ExecutionSessionStatus;
   @IsOptional() @IsIn(SOURCE_TOOLS) sourceTool?: SourceTool;
+  @IsOptional() @IsString() @MaxLength(200) claimedByUserId?: string;
+  @IsOptional() @IsString() @MaxLength(200) search?: string;
+  @IsOptional() @IsIn(['active', 'attention', 'completed', 'all']) view?: 'active' | 'attention' | 'completed' | 'all';
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1_000_000) page?: number;
   @IsOptional() @IsDateString() since?: string;
   @IsOptional() @IsDateString() until?: string;
   @IsOptional() @IsString() @MaxLength(200) cursor?: string;
@@ -22,6 +26,7 @@ export class RequestExecutionCommandDto {
 export class ExecutionCheckpointDto {
   @IsString() @IsNotEmpty() @MaxLength(200) deviceId!: string;
   @IsOptional() @IsString() @IsNotEmpty() @MaxLength(2000) blockedReason?: string;
+  @IsOptional() @IsString() @IsNotEmpty() @MaxLength(2000) progressSummary?: string;
 }
 export class AcknowledgeExecutionCommandDto {
   @IsString() @IsNotEmpty() @MaxLength(200) deviceId!: string;

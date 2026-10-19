@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { WorkflowStateMachine } from '../common/workflow-state-machine';
 import { WorkflowService } from '../workflow/workflow.service';
 import { ExecutionControlService } from './execution-control.service';
+import { ExecutionSessionsService } from './execution-sessions.service';
 
 // 只在临时目录构建旧 schema 并应用本次 migration，不接触开发数据库。
 const directory = mkdtempSync(join(tmpdir(), 'flowx-control-db-'));
@@ -55,6 +56,119 @@ async function session() {
 }
 
 describe('执行控制真实 SQLite 链路', () => {
+  it('开发进展在全量筛选后分页，异常跨页置顶，返回真实进度和总数', async () => {
+    const project = await prisma.project.create({ data: { name: '并行项目', workspaceId } });
+    const requirement = await prisma.requirement.create({ data: {
+      title: '并行登录改造', description: '', acceptanceCriteria: '', projectId: project.id, workspaceId,
+    } });
+    const rows = [];
+    for (const [index, status] of ['RUNNING', 'BLOCKED', 'RUNNING', 'FAILED', 'COMPLETED', 'CANCELLED'].entries()) {
+      const row = await session();
+      await prisma.workflowRun.update({ where: { id: row.workflowRunId! }, data: { requirementId: requirement.id } });
+      rows.push(await prisma.executionSession.update({ where: { id: row.id }, data: {
+        projectId: project.id, status, controlMode: 'COOPERATIVE',
+        lastHeartbeatAt: new Date(Date.now() - (index === 2 ? 600_000 : 1000)),
+        createdAt: new Date(Date.now() - index * 1000),
+        blockedReason: status === 'BLOCKED' ? '等待接口确认' : null,
+        summary: status === 'COMPLETED' ? '登录改造已完成' : null,
+      } }));
+    }
+    await prisma.syncEvent.create({ data: {
+      executionSessionId: rows[0].id, eventId: randomUUID(), idempotencyKey: randomUUID(),
+      schemaVersion: '1.2', traceId: rows[0].traceId, sourceTool: 'codex',
+      eventType: 'execution.progressed', payload: { summary: '正在执行回归测试' }, occurredAt: new Date(),
+    } });
+    await prisma.evidence.create({ data: {
+      executionSessionId: rows[0].id, evidenceType: 'TEST_RESULT', sourceTool: 'codex',
+      title: '回归测试', summary: '18/20 通过',
+    } });
+    await prisma.evidence.createMany({ data: Array.from({ length: 6 }, (_, index) => ({
+      executionSessionId: rows[0].id, evidenceType: 'BUILD_RESULT', sourceTool: 'codex',
+      title: `构建 ${index}`, occurredAt: new Date(Date.now() + 1000 + index),
+    })) });
+    const filters = { page: 1, take: 2, view: 'active', projectId: project.id,
+      claimedByUserId: scope.userId, sourceTool: 'codex', search: ' 登录 ' } as const;
+    const first = await control.list(filters, scope);
+    expect(first).toMatchObject({ total: 3, page: 1, pageSize: 2, totalPages: 2 });
+    expect(first).toMatchObject({ counts: { active: 3, attention: 3, completed: 1, all: 6 } });
+    expect(first.items.map((row) => row.id)).toEqual([rows[1].id, rows[2].id]);
+    const second = await control.list({ ...filters, page: 2 }, scope);
+    expect(second.items.map((row) => row.id)).toEqual([rows[0].id]);
+    expect(second.items[0]).toMatchObject({ project: { name: '并行项目' },
+      syncEvents: [{ payload: { summary: '正在执行回归测试' } }] });
+    expect('evidence' in second.items[0] && second.items[0].evidence).toEqual(expect.arrayContaining([expect.objectContaining({ summary: '18/20 通过' })]));
+    await prisma.syncEvent.createMany({ data: Array.from({ length: 101 }, (_, index) => ({
+      executionSessionId: rows[0].id, eventId: randomUUID(), idempotencyKey: randomUUID(),
+      schemaVersion: '1.2', traceId: rows[0].traceId, sourceTool: 'codex',
+      eventType: 'execution.heartbeat', payload: {}, occurredAt: new Date(Date.now() + index + 1),
+    })) });
+    const detail = await new ExecutionSessionsService(prisma as never, workflow).findOne(rows[0].id, scope, true);
+    expect(detail).toMatchObject({ project: { name: '并行项目' }, latestProgress: { payload: { summary: '正在执行回归测试' } } });
+    expect(await control.list({ ...filters, page: 99 }, scope)).toMatchObject({ page: 2 });
+    expect(await control.list({ ...filters, view: 'attention', take: 20 }, scope)).toMatchObject({ total: 3 });
+    expect(await control.list({ ...filters, view: 'completed' }, scope)).toMatchObject({ total: 1, items: [{ id: rows[4].id }] });
+    expect(await control.list({ ...filters, view: 'all' }, scope)).toMatchObject({ total: 6 });
+    expect(await control.list({ ...filters, claimedByUserId: 'other' }, scope)).toMatchObject({ total: 0, page: 1, items: [] });
+    expect(await control.list({ ...filters, claimedByUserId: 'other' }, scope)).toMatchObject({ counts: { active: 0, attention: 0, completed: 0, all: 0 } });
+    expect(await control.list({ ...filters, search: '不存在' }, scope)).toMatchObject({ total: 0 });
+    expect(await control.list(filters, { ...scope, organizationId: 'another' })).toMatchObject({ total: 0 });
+    await prisma.executionSession.update({ where: { id: rows[0].id }, data: { executorType: 'CLOUD' } });
+    expect(await control.list({ ...filters, view: 'all' }, scope)).toMatchObject({ total: 5 });
+    await prisma.stageExecution.update({ where: { id: rows[1].stageExecutionId! }, data: { stage: 'SPEC_PLAN' } });
+    expect(await control.list({ ...filters, view: 'all' }, scope)).toMatchObject({ total: 4 });
+  });
+
+  it('未知回报和终态不误判失联，可空字段不会导致分页漏项，旧游标继续可用', async () => {
+    const project = await prisma.project.create({ data: { name: '未知回报项目', workspaceId } });
+    const updates = [
+      { status: 'RUNNING', controlMode: 'COOPERATIVE', lastHeartbeatAt: null },
+      { status: 'RUNNING', controlMode: 'NONE', lastHeartbeatAt: new Date(0) },
+      { status: 'RUNNING', controlMode: 'COOPERATIVE', lastHeartbeatAt: new Date(), cancelRequestedAt: new Date() },
+      { status: 'COMPLETED', controlMode: 'COOPERATIVE', lastHeartbeatAt: new Date(0), cancelRequestedAt: new Date() },
+      { status: 'CANCELLED', controlMode: 'COOPERATIVE', lastHeartbeatAt: new Date(0) },
+    ];
+    const ids = [];
+    for (const [index, update] of updates.entries()) {
+      const row = await session();
+      await prisma.executionSession.update({ where: { id: row.id }, data: {
+        ...update, projectId: project.id, createdAt: new Date(Date.now() - index * 1000),
+      } });
+      ids.push(row.id);
+    }
+    const all = await control.list({ projectId: project.id, page: 1, view: 'all' }, scope);
+    expect(all.items.map((item) => item.id)).toEqual([ids[2], ids[0], ids[1], ids[3], ids[4]]);
+    expect(all.items.filter((item) => item.health === 'UNKNOWN')).toHaveLength(2);
+    expect(await control.list({ projectId: project.id, page: 1, view: 'attention' }, scope)).toMatchObject({ total: 1 });
+    expect(await control.list({ projectId: project.id, page: 1, status: 'CANCELLED' }, scope)).toMatchObject({ total: 1 });
+    expect(await control.list({ projectId: project.id, page: 1, status: 'CANCELLED' }, scope)).toMatchObject({
+      counts: { active: 3, attention: 1, completed: 1, all: 5 },
+    });
+    const legacy = await control.list({ projectId: project.id, take: 2 }, scope);
+    expect(legacy.items.map((item) => item.id)).toEqual(ids.slice(0, 2));
+    expect(legacy.nextCursor).toBe(ids[1]);
+    const next = await control.list({ projectId: project.id, cursor: legacy.nextCursor!, take: 2 }, scope);
+    expect(next.items.map((item) => item.id)).toEqual(ids.slice(2, 4));
+  });
+
+  it('检查点回传具体进展，重试不重复写事件，终态与待停止会话不覆盖已有结果', async () => {
+    const row = await session();
+    const deviceId = randomUUID();
+    const input = { deviceId, progressSummary: '已完成接口调整，正在执行回归测试' };
+    await control.checkpoint(row.id, input, scope);
+    await control.checkpoint(row.id, input, scope);
+    expect(await prisma.syncEvent.count({ where: { executionSessionId: row.id, eventType: 'execution.progressed' } })).toBe(1);
+    expect(await prisma.executionSession.findUniqueOrThrow({ where: { id: row.id } })).toMatchObject({ summary: input.progressSummary });
+    const detail = await new ExecutionSessionsService(prisma as never, workflow).findOne(row.id, scope, true);
+    expect(detail).toMatchObject({ latestProgress: { payload: { summary: input.progressSummary } } });
+    await prisma.executionSession.update({ where: { id: row.id }, data: { cancelRequestedAt: new Date() } });
+    await control.checkpoint(row.id, { deviceId, progressSummary: '不应覆盖的进展' }, scope);
+    expect((await prisma.executionSession.findUniqueOrThrow({ where: { id: row.id } })).summary).toBe(input.progressSummary);
+    await prisma.executionSession.update({ where: { id: row.id }, data: { status: 'COMPLETED', summary: '完成摘要' } });
+    await control.checkpoint(row.id, input, scope);
+    expect((await prisma.executionSession.findUniqueOrThrow({ where: { id: row.id } })).summary).toBe('完成摘要');
+    await expect(control.checkpoint(row.id, { deviceId, progressSummary: ' ' }, scope)).rejects.toThrow(/进度摘要不能为空/);
+  });
+
   it('取消只有本地回执后才推进工作流；重复请求和回执不会重复推进', async () => {
     const row = await session();
     const deviceId = randomUUID();

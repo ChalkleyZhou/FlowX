@@ -959,14 +959,14 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     'flowx_execution_checkpoint',
     {
       title: '检查 FlowX 执行状态',
-      description: '本地开发开始、操作前后及等待期间每 30 秒调用。获取控制命令；取消命令必须先停止本任务操作，再单独确认。该工具不会终止 IDE。',
-      inputSchema: z.object({ executionSessionId: z.string().min(1), blockedReason: z.string().trim().min(1).max(2000).optional() }),
+      description: '本地开发开始、操作前后及等待期间每 30 秒调用。有实质进展时用 progressSummary 回报已完成什么、正在做什么；普通保活可省略。获取控制命令；取消命令必须先停止本任务操作，再单独确认。该工具不会终止 IDE。',
+      inputSchema: z.object({ executionSessionId: z.string().min(1), blockedReason: z.string().trim().min(1).max(2000).optional(), progressSummary: z.string().trim().min(1).max(2000).optional() }),
     },
-    async ({ executionSessionId, blockedReason }) => runRequest(async () => {
+    async ({ executionSessionId, blockedReason, progressSummary }) => runRequest(async () => {
       const { client } = await resolveSession(options.homeDir);
       const { deviceId } = ensureDeviceIdentity({ homeDir: options.homeDir });
       const result = await client.request(`/execution-sessions/${encodeURIComponent(executionSessionId)}/checkpoint`, {
-        method: 'POST', body: JSON.stringify({ deviceId, blockedReason }),
+        method: 'POST', body: JSON.stringify({ deviceId, blockedReason, progressSummary }),
       }) as ExecutionCheckpointResult;
       return { ...result, instructions: [
         'CANCEL：停止本任务的修改和命令，确认本任务启动的操作已停止后回执 ACKED；无法停止回执 FAILED，禁止提交完成。',

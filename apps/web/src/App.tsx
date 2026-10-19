@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider } from './auth';
 import { BugsPage } from './pages/BugsPage';
 import { BugDetailPage } from './pages/BugDetailPage';
@@ -33,10 +33,15 @@ import { WorkspacesPage } from './pages/WorkspacesPage';
 import { UserManualPage } from './pages/UserManualPage';
 import { LocalAgentGuidePage } from './pages/LocalAgentGuidePage';
 import { builtInPlugins } from './plugins/registry';
-import { ProtectedLayout, ProtectedRoute } from './routes/ProtectedRoute';
+import { ProtectedLayout } from './routes/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
 import { ToastProvider } from './components/ui/toast';
 import { ThemeProvider } from './components/theme-provider';
+
+function ExecutionSessionsRedirect() {
+  const { search, hash } = useLocation();
+  return <Navigate to={`/dashboard${search}${hash}`} replace />;
+}
 
 export default function App() {
   return (
@@ -47,7 +52,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route
             path="/"
-            element={<Navigate to="/requirements" replace />}
+            element={<Navigate to="/dashboard" replace />}
           />
           <Route
             element={<ProtectedLayout />}
@@ -64,7 +69,8 @@ export default function App() {
             <Route path="/daily-code-reviews/:reviewId" element={<DailyCodeReviewDetailPage />} />
             <Route path="/requirements" element={<RequirementsPage />} />
             <Route path="/requirements/:id" element={<RequirementDetailPage />} />
-            <Route path="/execution-sessions" element={<ExecutionSessionsPage />} />
+            <Route path="/dashboard" element={<ExecutionSessionsPage />} />
+            <Route path="/execution-sessions" element={<ExecutionSessionsRedirect />} />
             <Route path="/execution-sessions/:sessionId" element={<ExecutionSessionDetailPage />} />
             <Route path="/workflow-runs" element={<WorkflowRunsPage />} />
             <Route path="/workflow-runs/:workflowRunId" element={<WorkflowRunDetailPage />} />

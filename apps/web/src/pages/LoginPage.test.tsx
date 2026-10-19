@@ -57,7 +57,7 @@ function HomePageProbe() {
     homePageMountSpy();
   }, []);
 
-  return <div>requirements-page</div>;
+  return <div>dashboard-page</div>;
 }
 
 function setInputValue(element: HTMLInputElement, value: string) {
@@ -112,8 +112,8 @@ describe('LoginPage', () => {
           <AuthProvider>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
-              <Route path="/" element={<Navigate to="/requirements" replace />} />
-              <Route path="/requirements" element={<HomePageProbe />} />
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<HomePageProbe />} />
             </Routes>
           </AuthProvider>
         </MemoryRouter>,
@@ -149,7 +149,7 @@ describe('LoginPage', () => {
 
     expect(api.loginByPassword).toHaveBeenCalledTimes(1);
     expect(homePageMountSpy).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain('requirements-page');
+    expect(container.textContent).toContain('dashboard-page');
   });
 
   it('renders a focused workspace access layout for the AI product R&D platform', async () => {
@@ -162,8 +162,8 @@ describe('LoginPage', () => {
           <AuthProvider>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
-              <Route path="/" element={<Navigate to="/requirements" replace />} />
-              <Route path="/requirements" element={<HomePageProbe />} />
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<HomePageProbe />} />
             </Routes>
           </AuthProvider>
         </MemoryRouter>,
@@ -244,8 +244,8 @@ describe('LoginPage', () => {
             <AuthProvider>
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
-                <Route path="/" element={<Navigate to="/requirements" replace />} />
-                <Route path="/requirements" element={<HomePageProbe />} />
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard" element={<HomePageProbe />} />
               </Routes>
             </AuthProvider>
           </MemoryRouter>

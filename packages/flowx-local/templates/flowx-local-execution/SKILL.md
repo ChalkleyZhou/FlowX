@@ -17,6 +17,14 @@ Implement the change, then:
 
 从本次 handoff 获取 `executionSessionId`。开始工作、重要操作前后以及等待期间每 30 秒调用 `flowx_execution_checkpoint`。不要仅凭本地记录判断任务仍有效；检查点表示 Agent 最近一次回报，不等于平台可以终止 IDE。
 
+有实质进展时，通过检查点的 `progressSummary` 回报已完成什么、正在做什么（最多 2000 字符），供平台“开发进展”展示。例如：
+
+```json
+{"executionSessionId":"<本次会话 ID>","progressSummary":"已完成登录接口调整，正在运行回归测试"}
+```
+
+普通等待或保活时可省略 `progressSummary`。只回报实际事实，不编造完成百分比；具体测试结论仍通过完成报告和证据回传。
+
 - `CANCEL`：停止本任务的修改与命令。确认本任务启动的操作已停止后，调用 `flowx_ack_execution_command` 回执 `ACKED`；无法停止则回执 `FAILED` 并说明原因。不要终止整个 IDE 或其他任务进程，不再提交完成。
 - `RESUME`：重新获取当前任务上下文，确认阻塞已解除后回执 `ACKED`，再继续；无法恢复则回执 `FAILED`。
 - `REQUEST_SYNC`：执行 `flowx-local sync`，核对本任务的待上传数据；全部成功后回执 `ACKED`，否则回执 `FAILED`。命令不代表开发报告已进入可靠离线队列。

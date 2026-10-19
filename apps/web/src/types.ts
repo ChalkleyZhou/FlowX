@@ -1011,6 +1011,9 @@ export type SourceTool =
   | 'flowx-worker';
 
 export interface ExecutionSessionDetail {
+  latestProgress?: ExecutionSessionSyncEvent | null;
+  project?: { name: string } | null;
+  stageExecution?: { stage: string; statusMessage?: string | null } | null;
   controlMode?: 'NONE' | 'COOPERATIVE';
   health?: 'UNKNOWN' | 'ONLINE' | 'STALE' | 'TERMINAL';
   canControl?: boolean;
@@ -1045,6 +1048,19 @@ export interface ExecutionSessionDetail {
   syncEvents?: ExecutionSessionSyncEvent[];
   artifacts?: ExecutionSessionArtifact[];
   evidence?: ExecutionSessionEvidence[];
+}
+
+export type ExecutionSessionView = 'active' | 'attention' | 'completed' | 'all';
+
+export interface ExecutionSessionsPage {
+  items: ExecutionSessionDetail[];
+  nextCursor: string | null;
+  counts?: Record<ExecutionSessionView, number>;
+  // 旧游标模式不返回页码元数据。
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  totalPages?: number;
 }
 
 export type EvidenceType =
