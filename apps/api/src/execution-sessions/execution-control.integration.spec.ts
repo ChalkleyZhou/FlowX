@@ -10,6 +10,7 @@ import { WorkflowStateMachine } from '../common/workflow-state-machine';
 import { WorkflowService } from '../workflow/workflow.service';
 import { ExecutionControlService } from './execution-control.service';
 import { ExecutionSessionsService } from './execution-sessions.service';
+import { SyncEventsService } from './sync-events.service';
 
 // 只在临时目录构建旧 schema 并应用本次 migration，不接触开发数据库。
 const directory = mkdtempSync(join(tmpdir(), 'flowx-control-db-'));
@@ -56,6 +57,26 @@ async function session() {
 }
 
 describe('执行控制真实 SQLite 链路', () => {
+  it('实质进展先筛选再分页，不被大量心跳挤掉，并继续校验组织访问', async () => {
+    const row = await session();
+    const service = new SyncEventsService(prisma as never, new ExecutionSessionsService(prisma as never));
+    const recordedAt = Date.now();
+    const types = ['execution.started', 'execution.progressed', 'execution.blocked', ...Array.from({ length: 101 }, () => 'execution.heartbeat'), 'evidence.reported'];
+    await prisma.syncEvent.createMany({ data: types.map((eventType, index) => ({
+      executionSessionId: row.id, eventId: randomUUID(), idempotencyKey: randomUUID(),
+      schemaVersion: '1.2', traceId: row.traceId, sourceTool: 'codex', eventType,
+      payload: { summary: `记录 ${index}` }, occurredAt: new Date(recordedAt + index),
+    })) });
+    const first = await service.list(row.id, { view: 'progress', take: 2 }, scope);
+    expect(first.items.map((item) => item.eventType)).toEqual(['execution.blocked', 'execution.progressed']);
+    const second = await service.list(row.id, { view: 'progress', take: 2, cursor: first.nextCursor! }, scope);
+    expect(second.items.map((item) => item.eventType)).toEqual(['execution.started']);
+    expect(second.nextCursor).toBeNull();
+    await expect(service.list(row.id, { view: 'progress' }, { organizationId: 'other-org' })).rejects.toThrow();
+    const legacy = await service.list(row.id, { take: 2 }, scope);
+    expect(legacy.items.map((item) => item.eventType)).toEqual(['evidence.reported', 'execution.heartbeat']);
+  });
+
   it('开发进展在全量筛选后分页，异常跨页置顶，返回真实进度和总数', async () => {
     const project = await prisma.project.create({ data: { name: '并行项目', workspaceId } });
     const requirement = await prisma.requirement.create({ data: {

@@ -4,7 +4,7 @@ import { ArrowLeft, ExternalLink, RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import { DevelopmentProgressRow } from '../components/DevelopmentProgressRow';
 import { DevelopmentOverview } from '../components/DevelopmentOverview';
-import { ExecutionSessionPanel } from '../components/ExecutionSessionPanel';
+import { DevelopmentProgressDetail } from '../components/DevelopmentProgressDetail';
 import { EmptyState } from '../components/EmptyState';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/ui/button';
@@ -151,6 +151,8 @@ export function ExecutionSessionDetailPage() {
   const [session, setSession] = useState<ExecutionSessionDetail | null>(null);
   const [evidence, setEvidence] = useState<NonNullable<ExecutionSessionDetail['evidence']>>([]);
   const [events, setEvents] = useState<NonNullable<ExecutionSessionDetail['syncEvents']>>([]);
+  const [resultsUnavailable, setResultsUnavailable] = useState(false);
+  const [eventsUnavailable, setEventsUnavailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const request = useRef(0);
@@ -167,15 +169,19 @@ export function ExecutionSessionDetailPage() {
       const next = await api.getExecutionSession(sessionId);
       if (current !== request.current) return;
       setSession(next);
+      if (next.evidence) setEvidence(next.evidence);
+      if (next.syncEvents) setEvents(next.syncEvents);
       terminal.current = ['COMPLETED', 'FAILED', 'CANCELLED'].includes(next.status);
       setError(null);
       const [evidenceResult, eventsResult] = await Promise.allSettled([
-        api.listExecutionSessionEvidence(sessionId), api.listExecutionSessionEvents(sessionId, { take: 10 }),
+        api.listExecutionSessionEvidence(sessionId), api.listExecutionSessionEvents(sessionId, { take: 10, view: 'progress' }),
       ]);
       if (current !== request.current) return;
       if (evidenceResult.status === 'fulfilled') setEvidence(evidenceResult.value);
       if (eventsResult.status === 'fulfilled') setEvents(eventsResult.value.items);
-      if (evidenceResult.status === 'rejected' || eventsResult.status === 'rejected') setError('运行状态已更新，但部分证据或事件暂时无法读取。');
+      setResultsUnavailable(evidenceResult.status === 'rejected');
+      setEventsUnavailable(eventsResult.status === 'rejected');
+      if (evidenceResult.status === 'rejected' || eventsResult.status === 'rejected') setError('当前进展已更新，但部分开发结果或进展记录暂时无法读取。');
     } catch (cause) {
       if (current === request.current) setError(cause instanceof Error ? cause.message : '运行详情加载失败');
     } finally {
@@ -184,7 +190,7 @@ export function ExecutionSessionDetailPage() {
   };
   useEffect(() => {
     terminal.current = false;
-    setSession(null); setEvidence([]); setEvents([]);
+    setSession(null); setEvidence([]); setEvents([]); setResultsUnavailable(false); setEventsUnavailable(false);
     void refresh();
     const timer = window.setInterval(() => { if (!terminal.current) void refresh({ silent: true }); }, 30_000);
     return () => { request.current += 1; inFlight.current = false; window.clearInterval(timer); };
@@ -194,9 +200,8 @@ export function ExecutionSessionDetailPage() {
   if (error && !session) return <div className="space-y-4"><Button asChild variant="outline"><Link to={listHref}><ArrowLeft />返回看板</Link></Button><p role="alert" className="text-danger">{error}</p><Button variant="outline" onClick={() => void refresh()}>重试</Button></div>;
   if (!session) return null;
   return <div className="space-y-5">
-    <PageHeader eyebrow="开发进展详情" title={session.workflowRun?.requirement.title ?? '开发进展'} description={`${session.sourceTool === 'codex' ? 'Codex' : session.sourceTool === 'cursor' ? 'Cursor' : session.sourceTool} · ${session.claimedByUser?.displayName ?? '未记录执行人'}`} actions={<div className="flex flex-wrap gap-2"><Button asChild variant="outline"><Link to={listHref}><ArrowLeft />返回看板</Link></Button>{session.workflowRunId ? <Button asChild variant="outline"><Link to={`/workflow-runs/${session.workflowRunId}`}>打开工作流<ExternalLink /></Link></Button> : null}</div>} />
+    <PageHeader eyebrow="开发进展详情" title={session.workflowRun?.requirement.title ?? '开发进展'} description="查看当前推进情况、最近进展和本地回传的开发结果。" actions={<div className="flex flex-wrap gap-2"><Button variant="outline" disabled={loading} onClick={() => void refresh()}><RefreshCw />刷新</Button><Button asChild variant="outline"><Link to={listHref}><ArrowLeft />返回看板</Link></Button>{session.workflowRunId ? <Button asChild variant="outline"><Link to={`/workflow-runs/${session.workflowRunId}`}>打开工作流<ExternalLink /></Link></Button> : null}</div>} />
     {error ? <p role="alert" className="text-sm text-danger">{error}</p> : null}
-    <DevelopmentProgressRow detail session={{ ...session, syncEvents: events, evidence }} search={searchParams.toString() ? `?${searchParams.toString()}` : ''} />
-    <ExecutionSessionPanel session={{ ...session, canControl: false }} evidence={evidence} events={events} onRefresh={() => void refresh()} loading={loading} />
+    <DevelopmentProgressDetail session={session} evidence={evidence} events={events} loading={loading} resultsUnavailable={resultsUnavailable} eventsUnavailable={eventsUnavailable} />
   </div>;
 }

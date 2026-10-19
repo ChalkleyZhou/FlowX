@@ -834,12 +834,13 @@ export const api = {
     request<ExecutionSessionEvidence[]>(`/execution-sessions/${id}/evidence`),
   listExecutionSessionEvents: (
     id: string,
-    params?: { cursor?: string; take?: number },
+    params?: { cursor?: string; take?: number; view?: 'progress' },
   ) =>
     request<ExecutionSessionEventsPage>(
       `/execution-sessions/${id}/events${queryString({
         cursor: params?.cursor,
         take: params?.take !== undefined ? String(params.take) : undefined,
+        view: params?.view,
       })}`,
     ),
   listWorkflowDesignArtifacts: (id: string) =>

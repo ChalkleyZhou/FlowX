@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { api } from '../api';
 import { ExecutionSessionDetailPage, ExecutionSessionsPage } from './ExecutionSessionsPage';
-import type { ExecutionSessionDetail } from '../types';
+import type { ExecutionSessionDetail, ExecutionSessionEvidence, ExecutionSessionSyncEvent } from '../types';
 
 vi.mock('../api', () => ({ api: {
   getProjects: vi.fn(), getOrganizationMembers: vi.fn(), listExecutionSessions: vi.fn(), getExecutionSession: vi.fn(),
@@ -139,7 +139,9 @@ it('独立详情用于查看，证据读取失败仍保留状态和工作流入�
   vi.mocked(api.listExecutionSessionEvidence).mockRejectedValueOnce(new Error('证据服务暂不可用'));
   await render('/execution-sessions/s1');
   expect(container.textContent).toContain('修复登录');
-  expect(container.textContent).toContain('运行状态已更新，但部分证据或事件暂时无法读取。');
+  expect(container.textContent).toContain('当前进展已更新，但部分开发结果或进展记录暂时无法读取。');
+  expect(container.querySelector('[aria-label="开发结果"]')?.textContent).toContain('开发结果暂时无法读取，请刷新重试。');
+  expect(container.textContent).not.toContain('任务仍在进行中，提交、测试和构建结果会在本地回传后显示。');
   expect(container.textContent).toContain('打开工作流');
   expect(container.textContent).not.toContain('请求停止');
   expect(container.textContent).not.toContain('重新交接');
@@ -152,4 +154,88 @@ it('详情的进度不会被最近心跳挤掉，并且不提供指向自身的�
   await render('/execution-sessions/s1');
   expect(container.textContent).toContain('正在运行回归测试');
   expect(container.querySelector('a[href="/execution-sessions/s1"]')).toBeNull();
+});
+
+function reportedResult(evidenceType: ExecutionSessionEvidence['evidenceType'], overrides: Partial<ExecutionSessionEvidence> = {}): ExecutionSessionEvidence {
+  return { id: evidenceType, executionSessionId: row.id, evidenceType, sourceTool: 'codex', title: evidenceType,
+    status: 'REPORTED', occurredAt: row.createdAt, createdAt: row.createdAt, updatedAt: row.createdAt, ...overrides };
+}
+function progressEvent(id: string, eventType: string, summary: string, occurredAt = row.createdAt): ExecutionSessionSyncEvent {
+  return { id, eventId: id, executionSessionId: row.id, schemaVersion: '1.2', eventType, sourceTool: 'codex',
+    traceId: 'trace', occurredAt, receivedAt: occurredAt, idempotencyKey: id, payload: { summary } };
+}
+
+it('进展详情展示实质进展记录，心跳不进入记录，技术信息默认折叠', async () => {
+  const latest = progressEvent('p1', 'execution.progressed', '已完成接口联调，正在执行回归测试');
+  vi.mocked(api.getExecutionSession).mockResolvedValue({ ...row, deviceId: 'device-1', latestProgress: latest });
+  vi.mocked(api.listExecutionSessionEvents).mockResolvedValue({ items: [
+    progressEvent('h1', 'execution.heartbeat', '仅保活，不代表进度'),
+    latest,
+    progressEvent('p0', 'execution.started', '已开始处理登录问题', '2026-09-30T07:00:00Z'),
+  ], nextCursor: null });
+  await render('/execution-sessions/s1');
+  expect(api.listExecutionSessionEvents).toHaveBeenLastCalledWith('s1', { view: 'progress', take: 10 });
+  const timeline = container.querySelector('[aria-label="最近进展"]');
+  expect(timeline?.textContent).toContain('已完成接口联调，正在执行回归测试');
+  expect(timeline?.textContent).toContain('已开始处理登录问题');
+  expect(timeline?.querySelectorAll('time')).toHaveLength(2);
+  expect(container.textContent).not.toContain('仅保活，不代表进度');
+  expect(container.textContent).not.toContain('完成证据');
+  expect(container.textContent).not.toContain('运行状态');
+  const technical = container.querySelector('details');
+  expect(technical?.querySelector('summary')?.textContent).toContain('技术信息');
+  expect(technical?.open).toBe(false);
+  expect(technical?.textContent).toContain('device-1');
+});
+
+it('开发结果分类展示提交、文件、测试与构建，明确回报和核验状态', async () => {
+  vi.mocked(api.listExecutionSessionEvidence).mockResolvedValue([
+    reportedResult('GIT_COMMIT', { title: 'web commit abc123', metadata: { workingBranch: 'codex/login', headSha: 'abc123', pushed: false } }),
+    reportedResult('CHANGED_FILES', { metadata: { changedFiles: ['src/login.ts', 'src/login.test.ts'] } }),
+    reportedResult('TEST_RESULT', { title: 'Local execution test result', summary: '18/20 通过，登录续期失败' }),
+    reportedResult('BUILD_RESULT', { status: 'VERIFIED', summary: '构建通过' }),
+    reportedResult('USER_CONFIRMATION', { status: 'REJECTED', summary: '尚未满足验收要求' }),
+  ]);
+  await render('/execution-sessions/s1');
+  const results = container.querySelector('[aria-label="开发结果"]');
+  for (const text of ['代码提交', '变更文件', '测试结果', '构建结果', '人工确认', '本地回报', '已核验', '核验未通过',
+    'codex/login', 'abc123', '尚未推送', 'src/login.ts', '18/20 通过，登录续期失败', '构建通过']) {
+    expect(results?.textContent).toContain(text);
+  }
+  expect(results?.textContent).toContain('核验状态不代表测试是否通过');
+  expect(results?.textContent).not.toContain('Local execution test result');
+  expect(results?.textContent).not.toContain('全部通过');
+});
+
+it('没有回传结果时按任务状态解释，缺少进展明确提示未知', async () => {
+  await render('/execution-sessions/s1');
+  expect(container.textContent).toContain('任务仍在进行中，提交、测试和构建结果会在本地回传后显示。');
+  expect(container.querySelector('[aria-label="最近进展"]')?.textContent).toContain('尚未收到具体进展记录');
+  vi.mocked(api.getExecutionSession).mockResolvedValue({ ...row, status: 'COMPLETED' });
+  await click('刷新');
+  expect(container.textContent).toContain('任务已结束，尚未收到开发结果，请到对应工作流查看产出或在本地确认回传情况。');
+});
+
+it('最近同步都是心跳时仍保留独立获取的最近进展正文', async () => {
+  vi.mocked(api.getExecutionSession).mockResolvedValue({ ...row,
+    latestProgress: progressEvent('older', 'execution.progressed', '已修复权限校验'),
+  });
+  vi.mocked(api.listExecutionSessionEvents).mockResolvedValue({ items: [progressEvent('h1', 'execution.heartbeat', '仅保活')], nextCursor: null });
+  await render('/execution-sessions/s1');
+  expect(container.querySelector('[aria-label="最近进展"]')?.textContent).toContain('已修复权限校验');
+});
+
+it('详情静默刷新失败保留已有进展和开发结果，并可主动刷新恢复', async () => {
+  vi.useFakeTimers();
+  vi.mocked(api.listExecutionSessionEvidence).mockResolvedValue([reportedResult('TEST_RESULT', { summary: '接口测试 42/42 通过' })]);
+  vi.mocked(api.getExecutionSession).mockResolvedValue({ ...row, latestProgress: progressEvent('p1', 'execution.progressed', '正在检查权限边界') });
+  await render('/execution-sessions/s1');
+  vi.mocked(api.getExecutionSession).mockRejectedValueOnce(new Error('服务暂时不可用'));
+  await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('服务暂时不可用');
+  expect(container.querySelector('[aria-label="开发结果"]')?.textContent).toContain('接口测试 42/42 通过');
+  expect(container.querySelector('[aria-label="最近进展"]')?.textContent).toContain('正在检查权限边界');
+  expect(container.textContent).not.toContain('正在读取运行详情');
+  await click('刷新');
+  expect(container.querySelector('[role="alert"]')).toBeNull();
 });

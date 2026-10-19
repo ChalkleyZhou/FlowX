@@ -69,6 +69,12 @@ function createService() {
 }
 
 describe('SyncEventsService', () => {
+  it('拒绝未知的事件视图且不查询记录', async () => {
+    const { service, prisma } = createService();
+    await expect(service.list('session-1', { view: 'unknown' })).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.syncEvent.findMany).not.toHaveBeenCalled();
+  });
+
   it('checks access before returning a duplicate event', async () => {
     const { service, prisma, executionSessionsService } = createService();
     prisma.syncEvent.findFirst.mockResolvedValue(event());

@@ -537,6 +537,13 @@ describe('api helpers', () => {
     );
   });
 
+  it('读取实质进展时传递事件视图和数量', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [], nextCursor: null }) });
+    vi.stubGlobal('fetch', fetchMock);
+    await api.listExecutionSessionEvents('session-1', { view: 'progress', take: 10 });
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:3000/execution-sessions/session-1/events?take=10&view=progress', expect.any(Object));
+  });
+
   it('calls code review source endpoints with expected methods and payloads', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

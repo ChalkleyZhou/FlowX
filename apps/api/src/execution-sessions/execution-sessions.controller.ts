@@ -53,6 +53,7 @@ export class ExecutionSessionsController {
     @Param('id') id: string,
     @Query('cursor') cursor: string | undefined,
     @Query('take') rawTake: string | undefined,
+    @Query('view') view: string | undefined,
     @Req() req: ExecutionSessionRequest,
   ) {
     const parsedTake = rawTake ? Number.parseInt(rawTake, 10) : undefined;
@@ -61,6 +62,7 @@ export class ExecutionSessionsController {
       {
         cursor: cursor?.trim() || undefined,
         take: Number.isFinite(parsedTake) ? parsedTake : undefined,
+        view,
       },
       toScope(req),
     );

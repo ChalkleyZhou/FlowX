@@ -122,7 +122,7 @@ Web 的默认首页“研发看板”（`/dashboard`）使用 `GET /execution-se
 
 根路由和普通登录默认进入 `/dashboard`；旧 `/execution-sessions` 列表路径保留查询条件与片段重定向到看板，原详情路由保留。认证保护保存原路径、查询与片段，深链接登录后返回原目标。侧栏看板为首项，列表和详情均归属看板导航。
 
-列表批量附带项目名、阶段状态摘要、最新 `execution.progressed` 事件及测试/构建/Agent 摘要各自最新的一条证据，无需每条会话再发查询。`GET /execution-sessions/:id` 另行返回 `latestProgress`，避免进度被最近心跳挤掉。页面展示已有事实，不采集 IDE 对话、不生成进度百分比。URL 保存筛选和页码，筛选变化回到首页，后台刷新保留已有内容。独立详情只读，工作流原有协作式控制入口继续保留。
+列表批量附带项目名、阶段状态摘要、最新 `execution.progressed` 事件及测试/构建/Agent 摘要各自最新的一条证据，无需每条会话再发查询。`GET /execution-sessions/:id` 另行返回 `latestProgress`，避免进度被最近心跳挤掉。页面展示已有事实，不采集 IDE 对话、不生成进度百分比。URL 保存筛选和页码，筛选变化回到首页，后台刷新保留已有内容。独立详情使用专用 `DevelopmentProgressDetail` 展示当前进展、最近进展和分类开发结果，不再复用运行控制面板。`GET /execution-sessions/:id/events` 支持可选 `view=progress`，在组织访问校验后先筛选 `execution.*` 且非 `execution.heartbeat` 的事件，再进行原有游标分页；省略 `view` 保持原契约，非法视图返回 400。Web 请求该视图最近 10 条并与 `latestProgress` 合并、去重和倒序展示，心跳不会挤掉历史进展；结果按 `evidenceType` 分类，`REPORTED`、`VERIFIED`、`REJECTED` 显示为本地回报、已核验、核验未通过，不将记录核验状态当作测试结论。技术信息默认折叠，结果读取失败保留已有数据并提示重试。工作流原有协作式控制入口继续保留。
 
 `POST /execution-sessions/:id/checkpoint` 和 MCP `flowx_execution_checkpoint` 支持可选 `progressSummary`（1～2000 字符，去空白后非空）。摘要变化时，在原有执行人、设备和会话版本校验后，同一事务更新会话摘要并追加 `execution.progressed`，重试相同摘要不重复写事件。终态和已有停止请求的会话忽略新摘要，不覆盖已有结果；省略摘要时沿用普通检查点节流。客户端继续保持薄透传，不新增本地状态机和 Outbox 队列。
 

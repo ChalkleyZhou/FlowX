@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable 
 import { Prisma } from '@prisma/client';
 import {
   validateSyncEvent,
+  SYNC_EVENT_TYPES,
   type ExecutionSessionStatus,
   type FlowXSyncEvent,
   type SyncEventType,
@@ -117,13 +118,18 @@ export class SyncEventsService {
 
   async list(
     executionSessionId: string,
-    options: { cursor?: string; take?: number } = {},
+    options: { cursor?: string; take?: number; view?: string } = {},
     scope: ExecutionSessionScope = {},
   ) {
     await this.executionSessionsService.requireAccessibleSession(executionSessionId, scope);
+    if (options.view !== undefined && options.view !== 'progress') {
+      throw new BadRequestException('不支持的事件视图。');
+    }
     const take = Math.min(Math.max(options.take ?? 50, 1), 100);
     const rows = await this.prisma.syncEvent.findMany({
-      where: { executionSessionId },
+      where: { executionSessionId,
+        ...(options.view === 'progress' ? { eventType: { in: SYNC_EVENT_TYPES.filter((type) => type.startsWith('execution.') && type !== 'execution.heartbeat') } } : {}),
+      },
       orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
       take: take + 1,
       ...(options.cursor ? { cursor: { id: options.cursor }, skip: 1 } : {}),
