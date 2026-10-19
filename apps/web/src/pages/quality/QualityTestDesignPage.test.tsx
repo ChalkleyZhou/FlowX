@@ -202,6 +202,37 @@ describe('QualityTestDesignPage', () => {
     expect(container.querySelector('article button')).toBeNull();
   });
 
+  it('confirms persisted smoke cases without sending read-only database fields', async () => {
+    const persistedSmoke = {
+      ...design.smokeCases[0],
+      testDesignId: 'design-1',
+      sortOrder: 0,
+      createdAt: '2026-10-19T00:00:00.000Z',
+      updatedAt: '2026-10-19T00:00:00.000Z',
+    };
+    vi.mocked(api.getTestDesign).mockResolvedValue({ ...design, smokeCases: [persistedSmoke] });
+    vi.mocked(api.updateTestDesignSmoke).mockResolvedValue({
+      ...design,
+      revision: 3,
+      smokeCases: [{ ...persistedSmoke, resolution: 'ACCEPTED' }],
+    });
+    await renderPage();
+
+    const smokeButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.trim() === '确认冒烟',
+    );
+    expect(smokeButton).toBeDefined();
+    await act(async () => { smokeButton?.click(); });
+
+    expect(api.updateTestDesignSmoke).toHaveBeenCalledWith('design-1', {
+      revision: 2,
+      cases: [{ ...design.smokeCases[0], resolution: 'ACCEPTED' }],
+    });
+    expect(smokeButton?.disabled).toBe(true);
+    expect(container.textContent).toContain('第 3 版');
+    expect(errorToast).not.toHaveBeenCalled();
+  });
+
   it('identifies a missing exclusion reason and hides reuse without a source case', async () => {
     vi.mocked(api.getTestDesign).mockResolvedValue({
       ...design,

@@ -121,7 +121,17 @@ export function QualityTestDesignPage() {
     try {
       const result = await api.updateTestDesignSmoke(id, {
         revision: design.revision,
-        cases: design.smokeCases.map((item) => ({ ...item, resolution: 'ACCEPTED' })),
+        cases: design.smokeCases.map((item) => ({
+          id: item.id,
+          title: item.title,
+          priority: item.priority,
+          precondition: item.precondition,
+          steps: item.steps,
+          expected: item.expected,
+          blocking: item.blocking,
+          coverageKeys: item.coverageKeys,
+          resolution: 'ACCEPTED',
+        })),
       });
       setDesign(result);
     } catch (error) {
