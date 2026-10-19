@@ -168,6 +168,51 @@ describe('QualityTestDesignPage', () => {
     });
   });
 
+  it.each([
+    ['本次不测', undefined, '本次不测'],
+    ['纳入本次测试（复用）', 'REUSE', '已纳入'],
+  ] as const)('makes the exclusion decision explicit when choosing %s', async (label, action, status) => {
+    const candidate = {
+      ...design.candidates[0],
+      action: 'EXCLUDE' as const,
+      matchReason: '本次只修改导出功能，登录流程不受影响',
+    };
+    vi.mocked(api.getTestDesign)
+      .mockResolvedValueOnce({ ...design, candidates: [candidate] })
+      .mockResolvedValue({
+        ...design,
+        candidates: [{ ...candidate, action: action ?? 'EXCLUDE', resolution: 'ACCEPTED' }],
+      });
+    await renderPage();
+
+    const card = container.querySelector('article');
+    expect(card?.textContent).toContain('AI 建议本次不测');
+    expect(card?.textContent).toContain(`AI 建议不纳入的原因：${candidate.matchReason}`);
+    expect(card?.querySelector('header [aria-label="处理状态"]')?.textContent).toBe('待处理');
+    const button = Array.from(card?.querySelectorAll('button') ?? []).find((item) => item.textContent?.trim() === label);
+    expect(button).toBeDefined();
+    await act(async () => { button?.click(); });
+
+    expect(api.updateTestDesignCandidate).toHaveBeenCalledWith('design-1', 'candidate-1', {
+      revision: 2,
+      resolution: 'ACCEPTED',
+      ...(action ? { action } : {}),
+    });
+    expect(container.querySelector('article header [aria-label="处理状态"]')?.textContent).toBe(status);
+    expect(container.querySelector('article button')).toBeNull();
+  });
+
+  it('identifies a missing exclusion reason and hides reuse without a source case', async () => {
+    vi.mocked(api.getTestDesign).mockResolvedValue({
+      ...design,
+      candidates: [{ ...design.candidates[0], action: 'EXCLUDE', matchReason: null, sourceDefinitionId: null, sourceDefinition: null }],
+    });
+    await renderPage();
+
+    expect(container.textContent).toContain('AI 未提供不纳入原因');
+    expect(container.textContent).not.toContain('纳入本次测试（复用）');
+  });
+
   it('polls while test design generation is running', async () => {
     vi.useFakeTimers();
     vi.mocked(api.generateTestDesign).mockResolvedValue({ ...design, status: 'GENERATING' });

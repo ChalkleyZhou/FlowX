@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Play, RefreshCw } from 'lucide-react';
+import { Check, Minus, Play, RefreshCw } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { api } from '../../api';
 import { EmptyState } from '../../components/EmptyState';
@@ -174,30 +174,38 @@ export function QualityTestDesignPage() {
           <section aria-label="功能测试候选" className="space-y-3">
             <h2 className="text-base font-semibold">功能测试候选</h2>
             {design.candidates.length ? design.candidates.map((candidate) => (
-              <div key={candidate.id} className="flex flex-col gap-3 rounded-md border border-border p-4 md:flex-row md:items-center md:justify-between">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-medium">{candidate.proposedCase.title}</p>
-                    <Badge variant="outline">{actionLabels[candidate.action]}</Badge>
-                    {candidate.sourceDefinition?.library ? <Badge variant="secondary">{candidate.sourceDefinition.library.projectId ? '项目库' : 'Workspace 共享库'}</Badge> : null}
+              <article key={candidate.id} className="min-w-0 space-y-3 rounded-md border border-border p-4 [overflow-wrap:anywhere]">
+                <header className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-2">
+                    <h3 className="font-medium">{candidate.proposedCase.title}</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">{candidate.action === 'EXCLUDE' && candidate.resolution === 'PENDING' ? 'AI 建议本次不测' : actionLabels[candidate.action]}</Badge>
+                      {candidate.sourceDefinition?.library ? <Badge variant="secondary">{candidate.sourceDefinition.library.projectId ? '项目库' : 'Workspace 共享库'}</Badge> : null}
+                    </div>
                   </div>
-                  <p className="mt-1 text-sm text-muted-foreground">{candidate.matchReason ?? '暂无匹配说明'}</p>
-                  <div className="mt-3 grid gap-4 text-sm lg:grid-cols-2">
-                    {candidate.sourceDefinition ? <CaseSummary label="现有用例" testCase={candidate.sourceDefinition} /> : null}
-                    <CaseSummary label={candidate.sourceDefinition ? '建议结果' : '生成用例'} testCase={candidate.proposedCase} />
-                  </div>
+                  <Badge aria-label="处理状态" variant="outline" className="shrink-0 whitespace-nowrap">
+                    {candidate.resolution === 'PENDING' ? '待处理' : candidate.resolution === 'ACCEPTED' && candidate.action !== 'EXCLUDE' ? '已纳入' : '本次不测'}
+                  </Badge>
+                </header>
+                <p className="text-sm text-muted-foreground">
+                  {candidate.action === 'EXCLUDE'
+                    ? candidate.matchReason?.trim() ? `AI 建议不纳入的原因：${candidate.matchReason}` : 'AI 未提供不纳入原因'
+                    : candidate.matchReason ?? '暂无匹配说明'}
+                </p>
+                <div className="grid gap-4 text-sm lg:grid-cols-2">
+                  {candidate.sourceDefinition ? <CaseSummary label="现有用例" testCase={candidate.sourceDefinition} /> : null}
+                  <CaseSummary label={candidate.sourceDefinition ? '建议结果' : '生成用例'} testCase={candidate.proposedCase} />
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <Badge variant="outline">{candidate.resolution === 'PENDING' ? '待处理' : candidate.resolution === 'ACCEPTED' ? '已接受' : '已排除'}</Badge>
+                {candidate.resolution === 'PENDING' ? <div className="flex flex-wrap justify-end gap-2">
                   {candidate.resolution === 'PENDING' && candidate.action === 'EXCLUDE' ? (
                     <>
-                      <Button size="sm" onClick={() => void resolveCandidate(candidate, 'ACCEPTED')}>确认不纳入</Button>
-                      {candidate.sourceDefinitionId ? <Button size="sm" variant="outline" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'REUSE')}>改为复用</Button> : null}
+                      <Button size="sm" className="min-h-9 h-auto max-w-full whitespace-normal py-2" onClick={() => void resolveCandidate(candidate, 'ACCEPTED')}><Minus className="h-4 w-4 shrink-0" />本次不测</Button>
+                      {candidate.sourceDefinitionId ? <Button size="sm" variant="outline" className="min-h-9 h-auto max-w-full whitespace-normal py-2" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'REUSE')}><Check className="h-4 w-4 shrink-0" />纳入本次测试（复用）</Button> : null}
                     </>
                   ) : null}
                   {candidate.resolution === 'PENDING' && candidate.action !== 'EXCLUDE' ? <><Button size="sm" onClick={() => void resolveCandidate(candidate, 'ACCEPTED')}>接受</Button><Button size="sm" variant="outline" onClick={() => void resolveCandidate(candidate, 'REJECTED')}>排除</Button></> : null}
-                </div>
-              </div>
+                </div> : null}
+              </article>
             )) : <div className="space-y-2"><EmptyState title="暂无功能候选" description="确认时需要填写无功能用例原因。" /><Input value={noCaseReason} onChange={(event) => setNoCaseReason(event.target.value)} placeholder="无功能用例原因" /></div>}
           </section>
 
