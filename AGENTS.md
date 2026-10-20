@@ -109,6 +109,7 @@ pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma
 
 ## 文档与使用手册同步
 
+- 每次 Git 提交都必须同步更新根目录 `CHANGELOG.md`，在对应的未发布或版本条目中记录本次提交的用户可见变化、修复或维护动作。
 - 任何用户可见的功能、页面交互、API、CLI 命令、配置键、环境变量、安装方式、部署行为或工作流状态变更，都要在同一变更中检查并更新对应文档。
 - 面向终端用户的变更至少检查 `README.md`、`docs/user-manual.md` 和相关专题文档；平台内展示的手册还要同步 `apps/web/public` 对应镜像。
 - 修改 API、数据模型、AI 输出、协议或架构时，同步检查 `docs/system-design.md`、`docs/architecture`、接口/专题说明和相关 spec/contract。

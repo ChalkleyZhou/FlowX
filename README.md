@@ -68,6 +68,7 @@ flowchart LR
 ## Structure
 
 - `docs/system-design.md`: 当前系统设计与目标演进索引
+- `CHANGELOG.md`: 项目变更记录
 - `docs/architecture/edge-cloud-ai-rd-platform.md`: 端云协同目标架构、协议和实施路线
 - `docs/superpowers/plans/2026-07-22-edge-cloud-foundation.md`: 第一阶段端云协同底座实施计划
 - `docs/docker-deployment.md`: Docker 与 Nginx 部署指南
