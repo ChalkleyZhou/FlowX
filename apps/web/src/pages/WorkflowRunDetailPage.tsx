@@ -240,6 +240,14 @@ function getStepDescription(stage?: { status?: string; statusMessage?: string | 
 }
 
 function inferFocusedStage(run: WorkflowRun): WorkflowStageKey {
+  if (run.status === 'REVIEW_PENDING') {
+    return 'AI_REVIEW';
+  }
+
+  if (run.status === 'HUMAN_REVIEW_PENDING') {
+    return 'HUMAN_REVIEW';
+  }
+
   for (const stageKey of STAGE_SEQUENCE) {
     const stage = getStage(run, stageKey);
     if (stage?.status === 'RUNNING' || stage?.status === 'WAITING_CONFIRMATION' || stage?.status === 'FAILED') {
@@ -271,12 +279,8 @@ function inferFocusedStage(run: WorkflowRun): WorkflowStageKey {
     return 'SPEC_PLAN';
   }
 
-  if (run.status === 'EXECUTION_PENDING' || run.status === 'EXECUTION_RUNNING' || run.status === 'REVIEW_PENDING') {
+  if (run.status === 'EXECUTION_PENDING' || run.status === 'EXECUTION_RUNNING') {
     return 'EXECUTION';
-  }
-
-  if (run.status === 'HUMAN_REVIEW_PENDING') {
-    return 'HUMAN_REVIEW';
   }
 
   if (run.status === 'DONE') {
