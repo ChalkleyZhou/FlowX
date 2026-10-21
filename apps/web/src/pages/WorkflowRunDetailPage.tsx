@@ -446,10 +446,31 @@ export function WorkflowRunDetailPage() {
   }
 
   function openWorkspaceEditMode(stage: EditableStage) {
-    setSelectedStage(getStageKeyForEditableStage(stage));
+    const targetStage = stage === 'review' && selectedStage === 'HUMAN_REVIEW'
+      ? 'HUMAN_REVIEW'
+      : getStageKeyForEditableStage(stage);
+    setSelectedStage(targetStage);
     if (stage === 'spec-plan' && workflowRun) {
       const currentOutput = parseSpecPlanOutput(getStage(workflowRun, 'SPEC_PLAN')?.output);
       setManualEditDraft(currentOutput ? serializeSpecPlanOutput(currentOutput) : '{\n  "spec": {},\n  "plan": {}\n}');
+    } else if (stage === 'review' && workflowRun) {
+      const currentOutput = workflowRun.reviewReport ?? getStage(workflowRun, 'AI_REVIEW')?.output;
+      const reviewOutput = currentOutput && typeof currentOutput === 'object' && !Array.isArray(currentOutput)
+        ? currentOutput as Record<string, unknown>
+        : {};
+      setManualEditDraft(
+        JSON.stringify(
+          {
+            issues: Array.isArray(reviewOutput.issues) ? reviewOutput.issues : [],
+            bugs: Array.isArray(reviewOutput.bugs) ? reviewOutput.bugs : [],
+            missingTests: Array.isArray(reviewOutput.missingTests) ? reviewOutput.missingTests : [],
+            suggestions: Array.isArray(reviewOutput.suggestions) ? reviewOutput.suggestions : [],
+            impactScope: Array.isArray(reviewOutput.impactScope) ? reviewOutput.impactScope : [],
+          },
+          null,
+          2,
+        ),
+      );
     }
     setSidebarMode('manual-edit');
     focusWorkflowSidebarTextarea();
@@ -553,7 +574,12 @@ export function WorkflowRunDetailPage() {
   useEffect(() => {
     const reviewReportId = workflowRun?.reviewReport?.id;
 
-    if (!workflowRun || !reviewReportId || selectedStage !== 'AI_REVIEW' || workflowRun.status !== 'HUMAN_REVIEW_PENDING') {
+    if (
+      !workflowRun ||
+      !reviewReportId ||
+      (selectedStage !== 'AI_REVIEW' && selectedStage !== 'HUMAN_REVIEW') ||
+      workflowRun.status !== 'HUMAN_REVIEW_PENDING'
+    ) {
       return;
     }
 
@@ -1073,7 +1099,7 @@ export function WorkflowRunDetailPage() {
     if (stageKey === 'EXECUTION') {
       return 'execution';
     }
-    if (stageKey === 'AI_REVIEW') {
+    if (stageKey === 'AI_REVIEW' || stageKey === 'HUMAN_REVIEW') {
       return 'review';
     }
     return null;
@@ -1142,7 +1168,7 @@ export function WorkflowRunDetailPage() {
     }
 
     const editableStage = getEditableStageForSelectedStage(selectedStage);
-    if (editableStage !== 'spec-plan') {
+    if (editableStage !== 'spec-plan' && editableStage !== 'review') {
       return;
     }
 
@@ -1154,19 +1180,27 @@ export function WorkflowRunDetailPage() {
       return;
     }
 
-    const normalized = parseSpecPlanOutput(parsed);
-    if (!normalized) {
-      toast.error('Spec & Plan 结构无效，需包含 spec.goal 与 plan.approach');
-      return;
-    }
-
     setSubmittingManualEdit(true);
     try {
-      await api.manualEditSpecPlan(workflowRun.id, normalized);
+      if (editableStage === 'spec-plan') {
+        const normalized = parseSpecPlanOutput(parsed);
+        if (!normalized) {
+          toast.error('Spec & Plan 结构无效，需包含 spec.goal 与 plan.approach');
+          return;
+        }
+        await api.manualEditSpecPlan(workflowRun.id, normalized);
+        toast.success('Spec & Plan 人工修改已保存');
+      } else {
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          toast.error('AI 审查结果必须是 JSON 对象');
+          return;
+        }
+        await api.manualEditReview(workflowRun.id, parsed);
+        toast.success('AI 审查结果人工修改已保存');
+      }
       setSidebarMode('feedback');
       setManualEditDraft('');
       await refresh();
-      toast.success('Spec & Plan 人工修改已保存');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '保存人工修改失败');
     } finally {
@@ -1740,11 +1774,60 @@ export function WorkflowRunDetailPage() {
       HUMAN_REVIEW: {
         title: stageMeta.HUMAN_REVIEW.stageNo,
         subtitle: stageMeta.HUMAN_REVIEW.title,
-        status: workflowRun.status === 'HUMAN_REVIEW_PENDING' || workflowRun.status === 'DONE' ? 'WAITING_CONFIRMATION' : undefined,
+        status:
+          workflowRun.status === 'HUMAN_REVIEW_PENDING'
+            ? 'WAITING_CONFIRMATION'
+            : workflowRun.status === 'DONE'
+              ? 'COMPLETED'
+              : undefined,
         statusMessage: null,
         attempt: undefined,
-        output: null,
-        actions: [],
+        output: sanitizeDisplayValue(workflowRun.reviewReport, repositoryPaths),
+        actions: [
+          {
+            key: 'accept',
+            label: '通过',
+            onClick: () =>
+              void runAction('HUMAN_REVIEW', () => api.decideHumanReview(workflowRun.id, 'accept'), '工作流已通过', {
+                focusNextStage: true,
+              }),
+            disabled: workflowRun.status !== 'HUMAN_REVIEW_PENDING' || stageActionsLocked,
+            loading: busyStage === 'HUMAN_REVIEW',
+          },
+          {
+            key: 'rework',
+            label: '返工',
+            onClick: () =>
+              void runAction('HUMAN_REVIEW', () => api.decideHumanReview(workflowRun.id, 'rework'), '工作流已退回开发执行'),
+            disabled: workflowRun.status !== 'HUMAN_REVIEW_PENDING' || stageActionsLocked,
+            loading: busyStage === 'HUMAN_REVIEW',
+          },
+          {
+            key: 'rollback',
+            label: '回滚',
+            onClick: () =>
+              void runAction('HUMAN_REVIEW', () => api.decideHumanReview(workflowRun.id, 'rollback'), '工作流已回滚'),
+            disabled: workflowRun.status !== 'HUMAN_REVIEW_PENDING' || stageActionsLocked,
+            loading: busyStage === 'HUMAN_REVIEW',
+            danger: true,
+          },
+          {
+            key: 'feedback',
+            label: '提意见给 AI',
+            onClick: (): void => setWorkspaceMode('feedback'),
+            disabled:
+              (workflowRun.status !== 'HUMAN_REVIEW_PENDING' && workflowRun.status !== 'DONE') ||
+              stageActionsLocked,
+          },
+          {
+            key: 'edit',
+            label: '人工修改',
+            onClick: (): void => openWorkspaceEditMode('review'),
+            disabled:
+              (workflowRun.status !== 'HUMAN_REVIEW_PENDING' && workflowRun.status !== 'DONE') ||
+              stageActionsLocked,
+          },
+        ],
       },
     };
   }, [workflowRun, busyStage, stageActionsLocked, localHandoff, localExecutionActive, localLaunchBusy, openDesignBusy, feedbackText]);
@@ -1781,11 +1864,14 @@ export function WorkflowRunDetailPage() {
     const confirmAction = actionsByKey.get('confirm');
     const rejectAction = actionsByKey.get('reject');
     const acceptAction = actionsByKey.get('accept');
+    const reworkAction = actionsByKey.get('rework');
+    const rollbackAction = actionsByKey.get('rollback');
     const editAction = actionsByKey.get('edit');
     const testDesignAction = actionsByKey.get('test-design');
 
     const canSendFeedback = Boolean(actionsByKey.get('feedback')) && selectedStageContent.actions.some((action) => action.key === 'feedback' && !action.disabled);
-    const isManualEditMode = sidebarMode === 'manual-edit' && editableStage === 'spec-plan';
+    const isManualEditMode =
+      sidebarMode === 'manual-edit' && (editableStage === 'spec-plan' || editableStage === 'review');
 
     const primaryAction: WorkflowWorkspaceAction = isManualEditMode
       ? {
@@ -1848,6 +1934,8 @@ export function WorkflowRunDetailPage() {
       !isManualEditMode ? confirmAction : undefined,
       !isManualEditMode ? rejectAction : undefined,
       !isManualEditMode ? acceptAction : undefined,
+      selectedStage === 'HUMAN_REVIEW' && !isManualEditMode ? reworkAction : undefined,
+      selectedStage === 'HUMAN_REVIEW' && !isManualEditMode ? rollbackAction : undefined,
       !isManualEditMode ? testDesignAction : undefined,
     ]
       .filter((action): action is StageActionView => Boolean(action))
@@ -2270,11 +2358,14 @@ export function WorkflowRunDetailPage() {
                 onChange={(next) => setSelectedStage(STAGE_SEQUENCE[next] ?? 'SPEC_PLAN')}
                 items={STAGE_SEQUENCE.map((stageKey) => {
                   const stage = getStage(workflowRun, stageKey);
+                  const stageStatus = stageKey === 'HUMAN_REVIEW'
+                    ? stageContent?.HUMAN_REVIEW.status ?? stage?.status
+                    : stage?.status;
                   return {
                     key: stageKey,
                     title: stageMeta[stageKey].stepLabel,
-                    description: getStepDescription(stage),
-                    status: getStepVisualStatus(stage?.status),
+                    description: getStepDescription({ status: stageStatus, statusMessage: stage?.statusMessage }),
+                    status: getStepVisualStatus(stageStatus),
                   };
                 })}
               />
@@ -2494,7 +2585,8 @@ export function WorkflowRunDetailPage() {
               ) : null}
 
 
-              {diffReviewData.length > 0 && (selectedStage === 'EXECUTION' || selectedStage === 'AI_REVIEW') ? (
+              {diffReviewData.length > 0 &&
+              (selectedStage === 'EXECUTION' || selectedStage === 'AI_REVIEW' || selectedStage === 'HUMAN_REVIEW') ? (
               <Card className="rounded-md border-border bg-card">
                 <CardHeader className="space-y-4 p-5">
                   <div className="flex items-start justify-between gap-4 max-[1180px]:flex-col">
@@ -2579,7 +2671,7 @@ export function WorkflowRunDetailPage() {
               </Card>
             ) : null}
 
-            {selectedStage === 'AI_REVIEW' ? (
+            {selectedStage === 'AI_REVIEW' || selectedStage === 'HUMAN_REVIEW' ? (
               <Card className="rounded-md border-border bg-card">
                 <CardHeader className="p-5">
                   <div className="mb-4 flex items-start justify-between gap-4 max-[960px]:flex-col">
@@ -2767,7 +2859,11 @@ export function WorkflowRunDetailPage() {
                   feedbackPlaceholder={workflowWorkspaceConfig.feedbackPlaceholder}
                   onFeedbackChange={setFeedbackText}
                   manualEditText={manualEditDraft}
-                  manualEditPlaceholder='{"spec":{"goal":"..."},"plan":{"approach":"..."}}'
+                  manualEditPlaceholder={
+                    workflowWorkspaceConfig.stage === 'review'
+                      ? '{"issues":[],"bugs":[],"missingTests":[],"suggestions":[],"impactScope":[]}'
+                      : '{"spec":{"goal":"..."},"plan":{"approach":"..."}}'
+                  }
                   onManualEditChange={setManualEditDraft}
                   primaryAction={workflowWorkspaceConfig.primaryAction}
                   secondaryActions={workflowWorkspaceConfig.secondaryActions}

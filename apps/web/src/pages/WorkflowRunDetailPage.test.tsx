@@ -33,6 +33,7 @@ vi.mock('../api', () => ({
     runReview: vi.fn(),
     skipReview: vi.fn(),
     reviseReview: vi.fn(),
+    manualEditReview: vi.fn(),
     decideHumanReview: vi.fn(),
     syncReviewFindings: vi.fn(),
     fixReviewFinding: vi.fn(),
@@ -1632,6 +1633,104 @@ describe('WorkflowRunDetailPage', () => {
     expect(text).toContain('立即修复');
     expect(text).not.toContain('返工');
     expect(text).not.toContain('回滚');
+  });
+
+  it('shows human review decisions when the workflow focuses the human review stage', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'HUMAN_REVIEW_PENDING',
+        reviewReport: {
+          id: 'review-1',
+          issues: ['当前人工修订的问题'],
+          bugs: [],
+          missingTests: [],
+          suggestions: [],
+          impactScope: [],
+          status: 'WAITING_HUMAN_REVIEW',
+        },
+        stageExecutions: [
+          {
+            id: 'stage-execution',
+            stage: 'EXECUTION',
+            status: 'COMPLETED',
+            statusMessage: null,
+            attempt: 1,
+            output: { patchSummary: '已完成开发' },
+          },
+          {
+            id: 'stage-review',
+            stage: 'AI_REVIEW',
+            status: 'COMPLETED',
+            statusMessage: null,
+            attempt: 1,
+            output: { suggestions: ['补充错误码处理'] },
+          },
+        ],
+      }),
+    );
+    vi.mocked(api.decideHumanReview).mockResolvedValue(createWorkflowRun({ status: 'DONE' }));
+    vi.mocked(api.manualEditReview).mockResolvedValue(createWorkflowRun({ status: 'HUMAN_REVIEW_PENDING' }));
+    vi.mocked(api.syncReviewFindings).mockResolvedValue([]);
+
+    await renderPage();
+
+    const text = container.textContent ?? '';
+    expect(text).toContain('人工评审');
+    expect(text).toContain('人工评审待人工确认');
+    expect(text).toContain('通过');
+    expect(text).toContain('返工');
+    expect(text).toContain('回滚');
+
+    const editButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '人工修改' && !button.disabled,
+    );
+    expect(editButton).toBeTruthy();
+
+    await act(async () => {
+      editButton?.click();
+      await Promise.resolve();
+    });
+
+    const textarea = container.querySelector('textarea');
+    expect(textarea?.value).toContain('issues');
+    expect(textarea?.value).toContain('当前人工修订的问题');
+    const editedReview = {
+      issues: ['补充错误码处理'],
+      bugs: [],
+      missingTests: [],
+      suggestions: [],
+      impactScope: ['登录模块'],
+    };
+
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(textarea, JSON.stringify(editedReview, null, 2));
+      textarea?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    const saveButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '保存人工修改',
+    );
+    expect(saveButton).toBeTruthy();
+
+    await act(async () => {
+      saveButton?.click();
+      await Promise.resolve();
+    });
+
+    expect(api.manualEditReview).toHaveBeenCalledWith('workflow-1', editedReview);
+
+    const acceptButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '通过' && !button.disabled,
+    );
+    expect(acceptButton).toBeTruthy();
+
+    await act(async () => {
+      acceptButton?.click();
+      await Promise.resolve();
+    });
+
+    expect(api.decideHumanReview).toHaveBeenCalledWith('workflow-1', 'accept');
   });
 
 
