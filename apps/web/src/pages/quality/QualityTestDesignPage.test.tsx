@@ -170,7 +170,7 @@ describe('QualityTestDesignPage', () => {
 
   it.each([
     ['本次不测', undefined, '本次不测'],
-    ['纳入本次测试（复用）', 'REUSE', '已纳入'],
+    ['按原用例复用', 'REUSE', '已纳入'],
   ] as const)('makes the exclusion decision explicit when choosing %s', async (label, action, status) => {
     const candidate = {
       ...design.candidates[0],
@@ -181,7 +181,19 @@ describe('QualityTestDesignPage', () => {
       .mockResolvedValueOnce({ ...design, candidates: [candidate] })
       .mockResolvedValue({
         ...design,
-        candidates: [{ ...candidate, action: action ?? 'EXCLUDE', resolution: 'ACCEPTED' }],
+        candidates: [{
+          ...candidate,
+          action: action ?? 'EXCLUDE',
+          resolution: 'ACCEPTED',
+          proposedCase: action ? {
+            title: design.candidates[0].sourceDefinition!.title,
+            priority: design.candidates[0].sourceDefinition!.priority,
+            precondition: design.candidates[0].sourceDefinition!.precondition,
+            steps: design.candidates[0].sourceDefinition!.steps,
+            expected: design.candidates[0].sourceDefinition!.expected,
+            tags: design.candidates[0].sourceDefinition!.tags ?? [],
+          } : candidate.proposedCase,
+        }],
       });
     await renderPage();
 
@@ -196,10 +208,91 @@ describe('QualityTestDesignPage', () => {
     expect(api.updateTestDesignCandidate).toHaveBeenCalledWith('design-1', 'candidate-1', {
       revision: 2,
       resolution: 'ACCEPTED',
-      ...(action ? { action } : {}),
+      ...(action ? {
+        action,
+        proposedCase: {
+          title: design.candidates[0].sourceDefinition!.title,
+          priority: design.candidates[0].sourceDefinition!.priority,
+          precondition: design.candidates[0].sourceDefinition!.precondition,
+          steps: design.candidates[0].sourceDefinition!.steps,
+          expected: design.candidates[0].sourceDefinition!.expected,
+          tags: design.candidates[0].sourceDefinition!.tags,
+        },
+      } : {}),
     });
     expect(container.querySelector('article header [aria-label="处理状态"]')?.textContent).toBe(status);
     expect(container.querySelector('article button')).toBeNull();
+  });
+
+  it('requires an explicit choice when AI labels changed content as reuse', async () => {
+    vi.mocked(api.getTestDesign).mockResolvedValue({
+      ...design,
+      candidates: [{ ...design.candidates[0], action: 'REUSE', resolution: 'PENDING' }],
+    });
+    await renderPage();
+
+    const card = container.querySelector('article');
+    expect(card?.textContent).toContain('建议结果与现有用例不同');
+    expect(card?.textContent).toContain('按原用例复用');
+    expect(card?.textContent).toContain('按建议优化');
+    expect(card?.textContent).toContain('本次不测');
+    expect(card?.textContent).not.toContain('接受');
+  });
+
+  it('lets an accepted but changed reuse be excluded before confirming the design', async () => {
+    const candidate = {
+      ...design.candidates[0],
+      action: 'REUSE' as const,
+      resolution: 'ACCEPTED' as const,
+    };
+    const initialDesign = {
+      ...design,
+      candidates: [candidate, {
+        ...candidate,
+        id: 'candidate-2',
+        action: 'CREATE' as const,
+        sourceDefinitionId: null,
+        sourceDefinition: null,
+      }],
+      smokeCases: design.smokeCases.map((item) => ({ ...item, resolution: 'ACCEPTED' as const })),
+    };
+    const correctedDesign = {
+      ...initialDesign,
+      revision: 3,
+      candidates: [{ ...candidate, action: 'EXCLUDE' as const }, initialDesign.candidates[1]],
+    };
+    vi.mocked(api.getTestDesign).mockResolvedValueOnce(initialDesign).mockResolvedValue(correctedDesign);
+    vi.mocked(api.updateTestDesignCandidate).mockResolvedValue(correctedDesign.candidates[0]);
+    vi.mocked(api.confirmTestDesign).mockResolvedValue({ ...correctedDesign, status: 'CONFIRMED' });
+
+    await renderPage();
+
+    expect(container.textContent).toContain('待处理 1 条');
+    const confirmButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.trim() === '确认测试设计',
+    );
+    expect(confirmButton?.disabled).toBe(true);
+
+    const excludeButton = Array.from(container.querySelectorAll<HTMLButtonElement>('article button')).find((button) =>
+      button.textContent?.trim() === '改为本次不测',
+    );
+    expect(excludeButton).toBeDefined();
+    await act(async () => {
+      excludeButton?.click();
+      await Promise.resolve();
+    });
+    expect(api.updateTestDesignCandidate).toHaveBeenCalledWith('design-1', 'candidate-1', {
+      revision: 2,
+      resolution: 'ACCEPTED',
+      action: 'EXCLUDE',
+    });
+
+    expect(confirmButton?.disabled).toBe(false);
+    await act(async () => {
+      confirmButton?.click();
+      await Promise.resolve();
+    });
+    expect(api.confirmTestDesign).toHaveBeenCalledWith('design-1', expect.objectContaining({ revision: 3 }));
   });
 
   it('confirms persisted smoke cases without sending read-only database fields', async () => {

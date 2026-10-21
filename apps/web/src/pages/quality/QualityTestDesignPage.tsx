@@ -9,7 +9,7 @@ import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { useToast } from '../../components/ui/toast';
-import type { TestDesign, TestDesignCandidate } from '../../types';
+import type { TestCaseDefinition, TestDesign, TestDesignCandidate } from '../../types';
 import { LoadingState, statusBadgeVariant } from './quality-ui';
 
 const statusLabels: Record<string, string> = {
@@ -28,6 +28,34 @@ const actionLabels: Record<TestDesignCandidate['action'], string> = {
   CREATE: '新增项目用例',
   EXCLUDE: '不纳入本次范围',
 };
+
+function sourceCaseDraft(source: TestCaseDefinition): TestDesignCandidate['proposedCase'] {
+  return {
+    title: source.title,
+    priority: source.priority,
+    precondition: source.precondition ?? null,
+    steps: source.steps,
+    expected: source.expected,
+    tags: source.tags ?? [],
+  };
+}
+
+function comparableCase(value: TestDesignCandidate['proposedCase']) {
+  return {
+    title: value.title.trim(),
+    priority: value.priority || 'P2',
+    precondition: value.precondition?.trim() || null,
+    steps: value.steps.map((step) => step.trim()).filter(Boolean),
+    expected: value.expected.trim(),
+    tags: value.tags ?? [],
+  };
+}
+
+function changedReuse(candidate: TestDesignCandidate) {
+  if (candidate.action !== 'REUSE' || !candidate.sourceDefinition) return false;
+  return JSON.stringify(comparableCase(candidate.proposedCase)) !==
+    JSON.stringify(comparableCase(sourceCaseDraft(candidate.sourceDefinition)));
+}
 
 export function QualityTestDesignPage() {
   const { id } = useParams<{ id: string }>();
@@ -81,6 +109,7 @@ export function QualityTestDesignPage() {
     candidate: TestDesignCandidate,
     resolution: 'ACCEPTED' | 'REJECTED',
     action?: TestDesignCandidate['action'],
+    proposedCase?: TestDesignCandidate['proposedCase'],
   ) {
     if (!id || !design) return;
     try {
@@ -88,6 +117,7 @@ export function QualityTestDesignPage() {
         revision: design.revision,
         resolution,
         ...(action ? { action } : {}),
+        ...(proposedCase ? { proposedCase } : {}),
       });
       await load();
     } catch (error) {
@@ -144,11 +174,14 @@ export function QualityTestDesignPage() {
   if (loading && !design) return <LoadingState />;
   if (!design) return <EmptyState title="测试设计不存在" description="请检查链接或返回提测管理。" />;
 
-  const pendingCount = design.candidates.filter((item) => item.resolution === 'PENDING').length;
+  const pendingCount = design.candidates.filter((item) =>
+    item.resolution === 'PENDING' || (item.resolution === 'ACCEPTED' && changedReuse(item)),
+  ).length;
   const smokePending = design.smokeCases.some((item) => item.resolution !== 'ACCEPTED');
   const hasAcceptedCases = design.candidates.some((item) => item.resolution === 'ACCEPTED' && item.action !== 'EXCLUDE');
   const reviewable = design.status === 'WAITING_REVIEW' || design.status === 'WAITING_CONFIRMATION';
-  const confirmationIncomplete = !reviewable || pendingCount > 0 || smokePending || (!hasAcceptedCases && !noCaseReason.trim()) || (!design.smokeCases.length && !noSmokeReason.trim());
+  const confirmationIncomplete = !reviewable || pendingCount > 0 || smokePending ||
+    (!hasAcceptedCases && !noCaseReason.trim()) || (!design.smokeCases.length && !noSmokeReason.trim());
   const frozen = Boolean(design.testRequest);
 
   return (
@@ -183,7 +216,10 @@ export function QualityTestDesignPage() {
         <CardContent className="space-y-6">
           <section aria-label="功能测试候选" className="space-y-3">
             <h2 className="text-base font-semibold">功能测试候选</h2>
-            {design.candidates.length ? design.candidates.map((candidate) => (
+            {design.candidates.length ? design.candidates.map((candidate) => {
+              const sourceDefinition = candidate.sourceDefinition;
+              const reuseContentChanged = candidate.resolution !== 'REJECTED' && changedReuse(candidate);
+              return (
               <article key={candidate.id} className="min-w-0 space-y-3 rounded-md border border-border p-4 [overflow-wrap:anywhere]">
                 <header className="flex items-start justify-between gap-3">
                   <div className="min-w-0 space-y-2">
@@ -203,20 +239,31 @@ export function QualityTestDesignPage() {
                     : candidate.matchReason ?? '暂无匹配说明'}
                 </p>
                 <div className="grid gap-4 text-sm lg:grid-cols-2">
-                  {candidate.sourceDefinition ? <CaseSummary label="现有用例" testCase={candidate.sourceDefinition} /> : null}
-                  <CaseSummary label={candidate.sourceDefinition ? '建议结果' : '生成用例'} testCase={candidate.proposedCase} />
+                  {sourceDefinition ? <CaseSummary label="现有用例" testCase={sourceDefinition} /> : null}
+                  <CaseSummary label={sourceDefinition ? '建议结果' : '生成用例'} testCase={candidate.proposedCase} />
                 </div>
+                {reuseContentChanged ? <p role="alert" className="text-sm text-destructive">建议结果与现有用例不同，不能按复用确认。按建议优化会更新现有用例版本。</p> : null}
                 {candidate.resolution === 'PENDING' ? <div className="flex flex-wrap justify-end gap-2">
                   {candidate.resolution === 'PENDING' && candidate.action === 'EXCLUDE' ? (
                     <>
                       <Button size="sm" className="min-h-9 h-auto max-w-full whitespace-normal py-2" onClick={() => void resolveCandidate(candidate, 'ACCEPTED')}><Minus className="h-4 w-4 shrink-0" />本次不测</Button>
-                      {candidate.sourceDefinitionId ? <Button size="sm" variant="outline" className="min-h-9 h-auto max-w-full whitespace-normal py-2" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'REUSE')}><Check className="h-4 w-4 shrink-0" />纳入本次测试（复用）</Button> : null}
+                      {sourceDefinition ? <Button size="sm" variant="outline" className="min-h-9 h-auto max-w-full whitespace-normal py-2" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'REUSE', sourceCaseDraft(sourceDefinition))}><Check className="h-4 w-4 shrink-0" />按原用例复用</Button> : null}
                     </>
                   ) : null}
-                  {candidate.resolution === 'PENDING' && candidate.action !== 'EXCLUDE' ? <><Button size="sm" onClick={() => void resolveCandidate(candidate, 'ACCEPTED')}>接受</Button><Button size="sm" variant="outline" onClick={() => void resolveCandidate(candidate, 'REJECTED')}>排除</Button></> : null}
+                  {candidate.resolution === 'PENDING' && reuseContentChanged && sourceDefinition ? <>
+                    <Button size="sm" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'REUSE', sourceCaseDraft(sourceDefinition))}>按原用例复用</Button>
+                    <Button size="sm" variant="outline" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'OPTIMIZE')}>按建议优化</Button>
+                    <Button size="sm" variant="outline" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'EXCLUDE')}>本次不测</Button>
+                  </> : null}
+                  {candidate.resolution === 'PENDING' && candidate.action !== 'EXCLUDE' && !reuseContentChanged ? <><Button size="sm" onClick={() => void resolveCandidate(candidate, 'ACCEPTED')}>接受</Button><Button size="sm" variant="outline" onClick={() => void resolveCandidate(candidate, 'REJECTED')}>排除</Button></> : null}
+                </div> : null}
+                {candidate.resolution === 'ACCEPTED' && reuseContentChanged && sourceDefinition ? <div className="flex flex-wrap justify-end gap-2">
+                  <Button size="sm" variant="outline" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'EXCLUDE')}>改为本次不测</Button>
+                  <Button size="sm" variant="outline" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'REUSE', sourceCaseDraft(sourceDefinition))}>改为按原用例复用</Button>
+                  <Button size="sm" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'OPTIMIZE')}>改为按建议优化</Button>
                 </div> : null}
               </article>
-            )) : <div className="space-y-2"><EmptyState title="暂无功能候选" description="确认时需要填写无功能用例原因。" /><Input value={noCaseReason} onChange={(event) => setNoCaseReason(event.target.value)} placeholder="无功能用例原因" /></div>}
+            ); }) : <div className="space-y-2"><EmptyState title="暂无功能候选" description="确认时需要填写无功能用例原因。" /><Input value={noCaseReason} onChange={(event) => setNoCaseReason(event.target.value)} placeholder="无功能用例原因" /></div>}
           </section>
 
           <section aria-label="本次冒烟用例" className="space-y-3 border-t border-border pt-6">
