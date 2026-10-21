@@ -263,7 +263,7 @@ export function QualityCasesPage() {
               filters={(
                 <>
                   <Select
-                    value={workspaceId || undefined}
+                    value={workspaceId || ''}
                     onValueChange={(value) => updateQuery({ workspaceId: value, projectId: null, libraryId: null, page: null })}
                     disabled={metaLoading}
                   >

@@ -122,7 +122,7 @@ export function ProjectsPage() {
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-foreground">所属工作区</label>
               <Select
-                value={createDraft.workspaceId || undefined}
+                value={createDraft.workspaceId || ''}
                 onValueChange={(value) => setCreateDraft((current) => ({ ...current, workspaceId: value }))}
               >
                 <SelectTrigger>

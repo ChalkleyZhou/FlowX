@@ -380,7 +380,7 @@ export function RequirementsPage() {
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-foreground">所属项目</label>
               <Select
-                value={createDraft.projectId || undefined}
+                value={createDraft.projectId || ''}
                 onValueChange={(value) => {
                   const project = projects.find((item) => item.id === value);
                   setCreateDraft((current) => ({

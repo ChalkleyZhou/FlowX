@@ -346,6 +346,24 @@ describe('AppLayout', () => {
     expect(sidebar?.className).toContain('overflow-y-auto');
   });
 
+  it('窄屏主导航允许换行，避免入口被裁切', async () => {
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/workspaces']}>
+          <ThemeProvider>
+            <AppLayout>
+              <div>content</div>
+            </AppLayout>
+          </ThemeProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    const nav = container.querySelector('nav[aria-label="主导航"]');
+    expect(nav?.className).toContain('max-xl:flex-wrap');
+    expect(nav?.className).toContain('max-xl:overflow-visible');
+  });
+
   it('includes an independent Code Review nav entry', async () => {
     await act(async () => {
       root?.render(

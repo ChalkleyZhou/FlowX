@@ -66,6 +66,24 @@ export function CreateRequestDialog({
     )),
     [testDesigns, selectedRunIds],
   );
+  const designAvailabilityMessage = useMemo(() => {
+    if (!versionId || compatibleTestDesigns.length) return null;
+    if (!testDesigns.length) {
+      return '当前项目版本暂无已确认测试设计，请先从工作流详情创建并确认。';
+    }
+    if (testDesigns.every((design) => design.testRequest)) {
+      return '已确认测试设计已关联提测记录，请重新生成一版测试设计后再发起提测。';
+    }
+    return '当前所选工作流未包含在可用的已确认测试设计中，请调整工作流或重新生成测试设计。';
+  }, [compatibleTestDesigns.length, testDesigns, versionId]);
+  const canSubmit = Boolean(
+    project
+    && versionId
+    && title.trim()
+    && selectedRunIds.length
+    && selectedRunIds.every((runId) => eligibleRuns.some((run) => run.id === runId))
+    && testDesignId,
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -178,7 +196,7 @@ export function CreateRequestDialog({
                 {compatibleTestDesigns.map((item) => <SelectItem key={item.id} value={item.id}>第 {item.revision} 版 · {item.candidates.length} 条功能用例 / {item.smokeCases.length} 条冒烟</SelectItem>)}
               </SelectContent>
             </Select>
-            {versionId && !compatibleTestDesigns.length ? <p className="mt-1 text-xs text-muted-foreground">当前所选工作流暂无可用的已确认测试设计，请先从工作流详情创建并确认。</p> : null}
+            {designAvailabilityMessage ? <p className="mt-1 text-xs text-muted-foreground">{designAvailabilityMessage}</p> : null}
           </Field>
           <Field label="说明（可选）">
             <Textarea rows={2} value={description} onChange={(event) => setDescription(event.target.value)} />
@@ -210,7 +228,7 @@ export function CreateRequestDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
-          <Button disabled={saving} onClick={() => void submit()}>
+          <Button disabled={saving || !canSubmit} onClick={() => void submit()}>
             {saving ? '创建中...' : '创建提测草稿'}
           </Button>
         </DialogFooter>

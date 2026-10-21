@@ -130,9 +130,20 @@ it('首屏失败可重试，无匹配记录可清除筛选', async () => {
   expect(container.querySelector('[role="alert"]')?.textContent).toContain('读取失败');
   vi.mocked(api.listExecutionSessions).mockResolvedValueOnce({ items: [], nextCursor: null, total: 0, page: 1, pageSize: 20, totalPages: 1 });
   await click('重试');
-  expect(container.textContent).toContain('没有匹配的开发任务');
+  expect(container.textContent).toContain('暂无开发任务');
   await click('清除筛选');
   expect(api.listExecutionSessions).toHaveBeenLastCalledWith(expect.objectContaining({ search: undefined, page: 1 }));
+});
+
+it('当前视图为空但仍有其他状态任务时给出明确范围说明', async () => {
+  vi.mocked(api.listExecutionSessions).mockResolvedValueOnce({
+    items: [], nextCursor: null, total: 0, page: 1, pageSize: 20, totalPages: 1,
+    counts: { active: 0, attention: 0, completed: 1, all: 1 },
+  });
+  await render();
+  expect(container.textContent).toContain('暂无进行中的开发任务');
+  expect(container.textContent).toContain('当前没有进行中任务，但还有 1 条已完成记录');
+  expect(container.textContent).not.toContain('没有匹配的开发任务');
 });
 
 it('独立详情用于查看，证据读取失败仍保留状态和工作流入口', async () => {

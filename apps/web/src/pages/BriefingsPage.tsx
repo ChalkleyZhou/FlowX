@@ -180,7 +180,7 @@ export function BriefingsPage() {
               <div className="flex min-w-[220px] flex-1 flex-col gap-1.5 sm:max-w-xs">
                 <label className="text-xs font-medium text-muted-foreground">项目</label>
                 <Select
-                  value={selectedProjectId || undefined}
+                  value={selectedProjectId || ''}
                   onValueChange={(value) => {
                     setSelectedProjectId(value);
                     writeBriefingsPagePreferences({ projectId: value });

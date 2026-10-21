@@ -208,7 +208,7 @@ export function ScheduleHubPage() {
 
             <FilterField label="需求">
               <Select
-                value={projectId ? requirementId || ALL_REQUIREMENTS : undefined}
+                value={projectId ? requirementId || ALL_REQUIREMENTS : ''}
                 onValueChange={handleRequirementChange}
                 disabled={!projectId || metaLoading}
               >

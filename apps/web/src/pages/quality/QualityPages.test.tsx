@@ -313,6 +313,62 @@ describe('Quality pages', () => {
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   });
 
+  it('disables提测提交并解释已确认测试设计已被冻结', async () => {
+    const workflowRun: WorkflowRun = {
+      id: 'workflow-1',
+      status: 'DONE',
+      aiProvider: 'codex',
+      requirement: {
+        id: 'requirement-1',
+        title: '登录体验优化',
+        description: '',
+        acceptanceCriteria: '',
+        ideationStatus: 'DONE',
+        project,
+        versionId: 'version-1',
+      },
+      workflowRepositories: [],
+      reviewFindings: [],
+      stageExecutions: [],
+    };
+    const design: TestDesign = {
+      id: 'design-1',
+      workspaceId: workspace.id,
+      projectId: project.id,
+      projectVersionId: 'version-1',
+      status: 'CONFIRMED',
+      revision: 2,
+      sourceFingerprint: 'fingerprint-1',
+      sourceSummary: {},
+      candidates: [],
+      smokeCases: [],
+      testRequest: { id: 'request-1', title: '2.6.0 登录能力提测' },
+      workflowRuns: [{ workflowRun: { id: workflowRun.id, status: workflowRun.status } }],
+    };
+    vi.mocked(api.getWorkflowRuns).mockResolvedValue([workflowRun]);
+    vi.mocked(api.getTestDesigns).mockResolvedValue([design]);
+
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/quality/test-requests?create=1&projectId=project-1&projectVersionId=version-1&workflowRunId=workflow-1']}>
+          <Routes>
+            <Route path="/quality/test-requests" element={<QualityRequestsPage />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const titleInput = document.body.querySelector('input[placeholder="例如：2.6.0 登录能力提测"]') as HTMLInputElement;
+    await act(async () => setInputValue(titleInput, '2.6.0 登录能力提测'));
+
+    expect(document.body.textContent).toContain('已确认测试设计已关联提测记录');
+    const submitButton = Array.from(document.body.querySelectorAll('button')).find((button) => button.textContent?.trim() === '创建提测草稿');
+    expect(submitButton).toBeTruthy();
+    expect(submitButton?.hasAttribute('disabled')).toBe(true);
+  });
+
   it('loads the selected workspace case library and test cases', async () => {
     await renderPage('/quality/test-cases?workspaceId=workspace-1', <QualityCasesPage />);
 

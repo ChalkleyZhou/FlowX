@@ -181,12 +181,12 @@ export function DeliveryTargetsPage() {
           <SectionHeader eyebrow="Create" title="新增投递目标" />
         </CardHeader>
         <CardContent className="grid gap-3 p-5 pt-0 md:grid-cols-2 xl:grid-cols-3">
-          <Select value={workspaceId || undefined} onValueChange={handleWorkspaceChange}>
+          <Select value={workspaceId || ''} onValueChange={handleWorkspaceChange}>
             <SelectTrigger><SelectValue placeholder="工作区" /></SelectTrigger>
             <SelectContent>{workspaces.map((workspace) => <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>)}</SelectContent>
           </Select>
           <Select
-            value={projectId || undefined}
+            value={projectId || ''}
             onValueChange={setProjectId}
             disabled={workspaceProjects.length === 0}
           >

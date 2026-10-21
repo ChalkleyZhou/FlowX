@@ -5,7 +5,7 @@ import { cn } from '../lib/utils';
 const metrics = [
   { key: 'active', label: '进行中', description: '等待启动与正在推进', icon: Activity, tone: 'text-primary' },
   { key: 'attention', label: '需关注', description: '阻塞、失败或回报中断', icon: CircleAlert, tone: 'text-warning' },
-  { key: 'completed', label: '已完成', description: '已回传完成结果', icon: CheckCircle2, tone: 'text-success' },
+  { key: 'completed', label: '已完成', description: '已回传结果，需结合代码和测试证据判断', icon: CheckCircle2, tone: 'text-success' },
   { key: 'all', label: '全部', description: '包含已取消的执行历史', icon: Layers, tone: 'text-muted-foreground' },
 ] as const;
 

@@ -116,7 +116,7 @@ export function CodeReviewSourcesPage() {
         </CardHeader>
         <CardContent className="p-5 pt-0">
           <Select
-            value={workspaceId || undefined}
+            value={workspaceId || ''}
             onValueChange={(value) => {
               setWorkspaceId(value);
               void refresh(value);

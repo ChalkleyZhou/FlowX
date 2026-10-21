@@ -254,7 +254,7 @@ export function BriefingSourcesPage() {
         <CardContent className="space-y-3 p-5 pt-0">
           <div className="grid gap-3 md:grid-cols-3">
             <Select
-              value={workspaceId || undefined}
+              value={workspaceId || ''}
               onValueChange={(value) => {
                 setWorkspaceId(value);
                 setRepositoryId('');
@@ -268,7 +268,7 @@ export function BriefingSourcesPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={repositoryId || undefined} onValueChange={setRepositoryId}>
+            <Select value={repositoryId || ''} onValueChange={setRepositoryId}>
               <SelectTrigger><SelectValue placeholder="仓库" /></SelectTrigger>
               <SelectContent>
                 {repositories.map((repository: Repository) => (

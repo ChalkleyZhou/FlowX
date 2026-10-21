@@ -280,7 +280,7 @@ export function ScheduleAssignmentDialog({
                   项目 <span className="text-destructive">*</span>
                 </label>
                 <Select
-                  value={projectId || undefined}
+                  value={projectId || ''}
                   onValueChange={handleProjectChange}
                   disabled={metaLoading || projects.length === 0}
                   required
@@ -302,7 +302,7 @@ export function ScheduleAssignmentDialog({
                   需求 <span className="text-destructive">*</span>
                 </label>
                 <Select
-                  value={requirementId || undefined}
+                  value={requirementId || ''}
                   onValueChange={setRequirementId}
                   disabled={metaLoading || !projectId || !requirementPickerReady}
                   required
@@ -337,7 +337,7 @@ export function ScheduleAssignmentDialog({
               成员 <span className="text-destructive">*</span>
             </label>
             <Select
-              value={draft.userId || undefined}
+              value={draft.userId || ''}
               onValueChange={(value) => setDraft((c) => ({ ...c, userId: value }))}
               disabled={metaLoading || members.length === 0}
               required

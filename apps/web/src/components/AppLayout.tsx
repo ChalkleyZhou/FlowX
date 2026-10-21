@@ -167,7 +167,7 @@ function AppLayoutContent({ children }: PropsWithChildren) {
           <div className="mb-1 flex w-full items-center gap-3 border-b border-nav-border px-2 pb-4 pt-1">
             <FlowXLogo labelClassName="[&>div:first-child]:text-foreground [&>div:last-child]:text-nav-text" />
           </div>
-          <nav aria-label="主导航" className="flex flex-col gap-1 pt-0.5 max-xl:w-full max-xl:flex-row max-xl:flex-nowrap max-xl:overflow-x-auto max-xl:pb-1">
+          <nav aria-label="主导航" className="flex flex-col gap-1 pt-0.5 max-xl:w-full max-xl:flex-row max-xl:flex-wrap max-xl:overflow-visible max-xl:pb-1">
             {primaryItems.map((item) => {
               const active = isPathActive(location.pathname, item.key);
               const childActive = item.children?.some((child) => selectedKey === child.key) ?? false;

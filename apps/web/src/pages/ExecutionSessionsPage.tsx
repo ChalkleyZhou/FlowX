@@ -112,6 +112,22 @@ export function ExecutionSessionsPage() {
   }
   const pageNumbers = [...new Set([1, pagination.totalPages, pagination.page - 1, pagination.page, pagination.page + 1])]
     .filter((number) => number >= 1 && number <= pagination.totalPages).sort((a, b) => a - b);
+  const viewLabel = views.find(([key]) => key === view)?.[1] ?? '当前';
+  const totalCount = counts?.all ?? pagination.total;
+  const emptyState = totalCount === 0
+    ? {
+      title: '暂无开发任务',
+      description: '当前组织还没有本地开发执行记录，可以从需求或工作流启动一次研发任务。',
+    }
+    : view === 'active'
+      ? {
+        title: '暂无进行中的开发任务',
+        description: `当前没有进行中任务，但还有 ${counts?.completed ?? 0} 条已完成记录；可切换“已完成”或“全部”查看。`,
+      }
+      : {
+        title: `暂无${viewLabel}的开发任务`,
+        description: '可以调整筛选条件，或切换其他概览范围查看开发记录。',
+      };
 
   return <div className="space-y-5">
     <PageHeader eyebrow="Dashboard" title="研发看板" description="查看并行开发的整体情况，优先关注阻塞和异常。每 30 秒自动更新，具体开发操作在本地完成。" actions={<Button variant="outline" disabled={loading} onClick={() => setRevision((value) => value + 1)}><RefreshCw />刷新</Button>} />
@@ -131,7 +147,7 @@ export function ExecutionSessionsPage() {
     </div>
     {error ? <div className="flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger" role="alert"><span>{error}</span><Button variant="outline" size="sm" onClick={() => setRevision((value) => value + 1)}>重试</Button></div> : null}
     {loading ? <p role="status" className="text-sm text-muted-foreground">正在读取运行记录…</p> : null}
-    {!loading && !error && !rows.length ? <EmptyState title="没有匹配的开发任务" description="可以调整筛选，或到工作流查看需求。本地开发执行启动后，进展会汇总到这里。" action={<Button asChild variant="outline"><Link to="/workflow-runs">查看工作流</Link></Button>} /> : null}
+    {!loading && !error && !rows.length ? <EmptyState title={emptyState.title} description={emptyState.description} action={<Button asChild variant="outline"><Link to="/workflow-runs">查看工作流</Link></Button>} /> : null}
     <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-base font-semibold">{views.find(([key]) => key === view)?.[1]}的开发任务</h2><p className="text-xs text-muted-foreground">概览按项目、执行人、工具和搜索统计；任务卡片异常优先</p></div>
     {rows.length ? <div className="grid items-start gap-4 2xl:grid-cols-2" aria-busy={loading}>{rows.map((row) => <DevelopmentProgressRow key={row.id} session={row} search={query ? `?${query}` : ''} />)}</div> : null}
     <nav className="flex flex-wrap items-center justify-between gap-3" aria-label="开发任务分页">
