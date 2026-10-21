@@ -2,11 +2,11 @@
 
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../../api';
 import { ConfirmProvider } from '../../components/ConfirmDialog';
-import type { Project, TestCaseDefinition, TestCaseLibrary, TestRequest, Workspace } from '../../types';
+import type { Project, TestCaseDefinition, TestCaseLibrary, TestDesign, TestRequest, WorkflowRun, Workspace } from '../../types';
 import { QualityCasesPage } from './QualityCasesPage';
 import { QualityRequestsPage } from './QualityRequestsPage';
 import { QualityRequestDetailPage } from './QualityRequestDetailPage';
@@ -29,6 +29,7 @@ vi.mock('../../api', () => ({
     getProjects: vi.fn(),
     getWorkflowRuns: vi.fn(),
     getTestRequests: vi.fn(),
+    getTestDesigns: vi.fn(),
     getTestCaseLibraries: vi.fn(),
     getTestCaseModules: vi.fn(),
     getTestCases: vi.fn(),
@@ -151,6 +152,7 @@ describe('Quality pages', () => {
     vi.mocked(api.getProjects).mockResolvedValue([project]);
     vi.mocked(api.getWorkflowRuns).mockResolvedValue([]);
     vi.mocked(api.getTestRequests).mockResolvedValue([testRequest]);
+    vi.mocked(api.getTestDesigns).mockResolvedValue([]);
     vi.mocked(api.getTestRequest).mockResolvedValue(testRequest);
     vi.mocked(api.getLocalSmokeRuns).mockResolvedValue([]);
     vi.mocked(api.getSubmissionReport).mockResolvedValue(null);
@@ -221,6 +223,94 @@ describe('Quality pages', () => {
     expect(container.textContent).toContain('覆盖认证主链路和历史缺陷回归');
     expect(container.querySelector('section[aria-label="提测记录"] > .bg-card')).toBeTruthy();
     expect(container.querySelector('[role="tablist"]')).toBeNull();
+  });
+
+  it('does not reopen the workflow create dialog after creating a request and returning', async () => {
+    const workflowRun: WorkflowRun = {
+      id: 'workflow-1',
+      status: 'DONE',
+      aiProvider: 'codex',
+      requirement: {
+        id: 'requirement-1',
+        title: '登录体验优化',
+        description: '',
+        acceptanceCriteria: '',
+        ideationStatus: 'DONE',
+        project,
+        versionId: 'version-1',
+      },
+      workflowRepositories: [],
+      reviewFindings: [],
+      stageExecutions: [],
+    };
+    const design: TestDesign = {
+      id: 'design-1',
+      workspaceId: workspace.id,
+      projectId: project.id,
+      projectVersionId: 'version-1',
+      status: 'CONFIRMED',
+      revision: 1,
+      sourceFingerprint: 'fingerprint-1',
+      sourceSummary: {},
+      candidates: [],
+      smokeCases: [],
+      workflowRuns: [{ workflowRun: { id: workflowRun.id, status: 'DONE' } }],
+    };
+    vi.mocked(api.getWorkflowRuns).mockResolvedValue([workflowRun]);
+    vi.mocked(api.getTestDesigns).mockResolvedValue([design]);
+    vi.mocked(api.createTestRequest).mockResolvedValue(testRequest);
+
+    function RequestRoute() {
+      const location = useLocation();
+      const navigate = useNavigate();
+      return <>
+        <span data-testid="request-search">{location.search}</span>
+        <button onClick={() => navigate('/quality/test-requests/request-1')}>查看提测详情</button>
+        <QualityRequestsPage />
+      </>;
+    }
+
+    function DetailRoute() {
+      const navigate = useNavigate();
+      return <button onClick={() => navigate(-1)}>返回提测管理</button>;
+    }
+
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/workflow-runs/workflow-1', '/quality/test-requests?create=1&projectId=project-1&projectVersionId=version-1&workflowRunId=workflow-1']} initialIndex={1}>
+          <Routes>
+            <Route path="/quality/test-requests" element={<RequestRoute />} />
+            <Route path="/quality/test-requests/:id" element={<DetailRoute />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(document.body.querySelector('[role="dialog"]')).toBeTruthy();
+    expect(container.querySelector('[data-testid="request-search"]')?.textContent).not.toContain('create=1');
+
+    const titleInput = document.body.querySelector('input[placeholder="例如：2.6.0 登录能力提测"]') as HTMLInputElement;
+    await act(async () => setInputValue(titleInput, '2.6.0 登录能力提测'));
+    const submitButton = Array.from(document.body.querySelectorAll('button')).find((button) => button.textContent?.trim() === '创建提测草稿');
+    await act(async () => {
+      submitButton?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.createTestRequest).toHaveBeenCalledTimes(1);
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+
+    await act(async () => {
+      Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.trim() === '查看提测详情')?.click();
+    });
+    expect(container.textContent).toContain('返回提测管理');
+    await act(async () => {
+      Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.trim() === '返回提测管理')?.click();
+    });
+    expect(container.textContent).toContain('提测管理');
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it('loads the selected workspace case library and test cases', async () => {

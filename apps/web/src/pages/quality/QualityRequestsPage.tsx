@@ -79,8 +79,13 @@ export function QualityRequestsPage() {
   useEffect(() => {
     if (createFromWorkflow) {
       setDialogOpen(true);
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+        next.delete('create');
+        return next;
+      }, { replace: true });
     }
-  }, [createFromWorkflow]);
+  }, [createFromWorkflow, setSearchParams]);
 
   function updateQuery(patch: Record<string, string | null>) {
     const next = new URLSearchParams(searchParams);
