@@ -107,7 +107,7 @@ const PRIOR_STAGES = {
   SPEC_PLAN: { stage: 'spec-plan' as const, files: ['spec.md', 'plan.md', 'spec-plan.json'] },
 };
 
-const VISIBLE_STAGE_STATUSES = new Set(['COMPLETED', 'WAITING_CONFIRMATION']);
+const CONFIRMED_STAGE_STATUSES = new Set(['COMPLETED']);
 
 export function resolveLocalPosition(status: string): ResolvedLocalPosition {
   const normalized = status.trim().toUpperCase();
@@ -131,10 +131,14 @@ export function summarizePriorOutputs(
   for (const execution of sorted) {
     const key = execution.stage.trim().toUpperCase();
     const known = PRIOR_STAGES[key as keyof typeof PRIOR_STAGES];
-    if (!known || seen.has(key) || !VISIBLE_STAGE_STATUSES.has(execution.status.trim().toUpperCase())) {
+    if (!known || seen.has(key)) {
       continue;
     }
+    // 最新 attempt 即使失败、驳回或尚待确认，也不能回退到旧确认稿。
     seen.add(key);
+    if (!CONFIRMED_STAGE_STATUSES.has(execution.status.trim().toUpperCase())) {
+      continue;
+    }
     results.push({
       stage: known.stage,
       stageExecutionId: execution.id,

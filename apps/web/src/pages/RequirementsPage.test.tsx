@@ -2,7 +2,7 @@
 
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../api';
 import type { Requirement } from '../types';
@@ -27,6 +27,11 @@ vi.mock('../api', () => ({
 vi.mock('../components/ui/toast', () => ({
   useToast: () => ({ success: successToast, error: errorToast }),
 }));
+
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname}{location.search}</output>;
+}
 
 describe('RequirementsPage', () => {
   let container: HTMLDivElement;
@@ -144,4 +149,56 @@ describe('RequirementsPage', () => {
       ),
     ).toBe(false);
   });
+
+  it('消费详情启动链接并保留 projectId，取消或刷新后不重复弹出', async () => {
+    await act(async () => {
+      root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1&launchRequirementId=requirement-1']}>
+        <RequirementsPage /><LocationProbe />
+      </MemoryRouter>);
+    });
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('启动工作流');
+    expect(container.querySelector('output')?.textContent).toBe('/requirements?projectId=project-1');
+    const cancel = Array.from(document.querySelectorAll('button')).find((item) => item.textContent === '取消');
+    await act(async () => { cancel?.click(); });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    await act(async () => {
+      root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1&launchRequirementId=requirement-1']}>
+        <RequirementsPage /><LocationProbe />
+      </MemoryRouter>);
+    });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(api.createWorkflowRun).not.toHaveBeenCalled();
+  });
+
+  it('启动弹框展示活跃流范围，并允许选择不同仓库启动并行流程', async () => {
+    const apiRepository = { id: 'repository-2', name: 'flowx-api', url: 'https://example.com/flowx-api.git' };
+    vi.mocked(api.getRequirements).mockResolvedValue([{
+      ...requirement,
+      requirementRepositories: [...requirement.requirementRepositories!, { id: 'scope-2', repository: apiRepository }],
+      workflowRuns: [{ id: 'run-active', status: 'EXECUTION_RUNNING', workflowRepositories: [{ id: 'wr-1', name: 'flowx-web', status: 'READY' }] },
+        { id: 'run-done', status: 'DONE', workflowRepositories: [{ id: 'wr-2', name: 'flowx-api', status: 'READY' }] }],
+    }]);
+    vi.mocked(api.createWorkflowRun).mockResolvedValue({ id: 'run-new' } as Awaited<ReturnType<typeof api.createWorkflowRun>>);
+    await act(async () => {
+      root?.render(<MemoryRouter initialEntries={['/requirements']}><Routes>
+        <Route path="/requirements" element={<RequirementsPage />} />
+        <Route path="/workflow-runs/:id" element={<LocationProbe />} />
+      </Routes></MemoryRouter>);
+    });
+    const launch = Array.from(container.querySelectorAll('button')).find((item) => item.textContent === '启动工作流');
+    await act(async () => { launch?.click(); });
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain('已有活跃工作流');
+    expect(dialog?.textContent).toContain('flowx-web');
+    expect(dialog?.querySelector('a[href="/workflow-runs/run-active"]')).toBeTruthy();
+    expect(dialog?.querySelector('a[href="/workflow-runs/run-done"]')).toBeNull();
+    const choose = Array.from(dialog?.querySelectorAll('button') ?? []).find((item) => item.textContent === '选择 flowx-api');
+    await act(async () => { choose?.click(); });
+    const confirm = Array.from(dialog?.querySelectorAll('button') ?? []).find((item) => item.textContent === '确认启动');
+    expect(confirm?.disabled).toBe(false);
+    await act(async () => { confirm?.click(); });
+    expect(api.createWorkflowRun).toHaveBeenCalledWith('requirement-1', ['repository-2'], 'codex');
+    expect(container.textContent).toBe('/workflow-runs/run-new');
+  });
+
 });

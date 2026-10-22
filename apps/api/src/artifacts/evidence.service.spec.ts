@@ -7,7 +7,7 @@ function createService() {
     artifact: { findUnique: vi.fn() },
     evidence: { create: vi.fn(), findMany: vi.fn() },
   };
-  const executionSessions = { requireAccessibleSession: vi.fn() };
+  const executionSessions = { requireWritableSession: vi.fn() };
   return {
     service: new EvidenceService(prisma as never, executionSessions as never),
     prisma,
@@ -18,7 +18,7 @@ function createService() {
 describe('EvidenceService', () => {
   it('allows structured evidence without an artifact', async () => {
     const { service, prisma, executionSessions } = createService();
-    executionSessions.requireAccessibleSession.mockResolvedValue({
+    executionSessions.requireWritableSession.mockResolvedValue({
       id: 'session-1',
       workflowRunId: 'workflow-1',
       workspaceId: 'workspace-1',
@@ -38,7 +38,7 @@ describe('EvidenceService', () => {
 
   it('rejects an artifact from another workflow', async () => {
     const { service, prisma, executionSessions } = createService();
-    executionSessions.requireAccessibleSession.mockResolvedValue({
+    executionSessions.requireWritableSession.mockResolvedValue({
       id: 'session-1',
       workflowRunId: 'workflow-1',
       workspaceId: 'workspace-1',

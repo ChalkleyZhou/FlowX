@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, Res } from '@nestjs/common';
 import {
   ClaimLocalSmokeDto,
   CompleteLocalSmokeDto,
@@ -36,8 +36,9 @@ export class LocalSmokeController {
   }
 
   @Get('quality/test-requests/:id/submission-report')
-  latestReport(@Param('id') id: string) {
-    return this.localSmoke.latestReport(id);
+  async latestReport(@Param('id') id: string, @Res() response: { json(body: unknown): void }) {
+    // Nest 默认把 null 作为空响应；报告接口必须返回合法的 JSON null。
+    response.json(await this.localSmoke.latestReport(id));
   }
 
   @Post('execution-sessions/:id/local-smoke/complete')
@@ -48,6 +49,7 @@ export class LocalSmokeController {
   ) {
     return this.localSmoke.complete(id, dto, {
       organizationId: req.authSession?.organization?.id,
+      userId: req.authSession?.user.id,
     });
   }
 }

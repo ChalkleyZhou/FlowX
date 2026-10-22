@@ -1,3 +1,4 @@
+import { assertLocalSessionOwner, type LocalSessionScope } from '../workflow/workflow-local-ownership';
 import {
   BadRequestException,
   ConflictException,
@@ -274,7 +275,7 @@ export class LocalSmokeService {
   async complete(
     executionSessionId: string,
     report: LocalSmokeCompletionReport,
-    scope: { organizationId?: string | null } = {},
+    scope: LocalSessionScope = {},
   ) {
     const session = await this.prisma.executionSession.findUnique({
       where: { id: executionSessionId },
@@ -292,6 +293,7 @@ export class LocalSmokeService {
     if (session.organizationId && session.organizationId !== scope.organizationId?.trim()) {
       throw new ForbiddenException('Local smoke execution belongs to another organization.');
     }
+    assertLocalSessionOwner(session, scope);
     const existingKey = readMetadataString(session.metadata, 'completionIdempotencyKey');
     if (session.status === 'COMPLETED') {
       if (existingKey === report.idempotencyKey) return this.getTasks(session.testRun.id);

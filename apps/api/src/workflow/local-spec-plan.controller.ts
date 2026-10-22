@@ -23,6 +23,7 @@ export class LocalSpecPlanController {
     @Req() req: LocalSpecPlanRequest,
   ) {
     return this.workflowService.completeLocalSpecPlanSession(id, dto, {
+      userId: req.authSession?.user.id,
       organizationId: req.authSession?.organization?.id,
     });
   }

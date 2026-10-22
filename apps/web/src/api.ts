@@ -1,3 +1,4 @@
+import type { WorkflowCollaboration } from './utils/workflow-collaboration';
 import type {
   AuthOrganization,
   AuthSession,
@@ -135,6 +136,13 @@ function normalizeHeaders(headers?: HeadersInit) {
   return JSON.stringify(headerEntries.sort(([left], [right]) => left.localeCompare(right)));
 }
 
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const token = getAuthToken();
   const url = buildApiUrl(path);
@@ -171,7 +179,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       } catch {
         // Ignore parse failures and fall back to raw text below.
       }
-      throw new Error(parsedMessage || text || '请求失败');
+      throw new ApiError(parsedMessage || text || '请求失败', response.status);
     }
 
     return response.json() as Promise<T>;
@@ -816,6 +824,13 @@ export const api = {
       ).toString()}`,
     ),
   getWorkflowRun: (id: string) => request<WorkflowRun>(`/workflow-runs/${id}`),
+  getWorkflowCollaboration: (id: string) =>
+    request<WorkflowCollaboration>(`/workflow-runs/${id}/collaboration`),
+  releaseWorkflowLocalTask: (id: string, payload: {
+    executionSessionId: string; confirmedStopped: true; reason: string;
+  }) => request<{ released: boolean }>(`/workflow-runs/${id}/local-task/release`, {
+    method: 'POST', body: JSON.stringify(payload),
+  }),
   listExecutionSessions: (params: { projectId?: string; workflowRunId?: string; status?: ExecutionSessionStatus; sourceTool?: SourceTool; claimedByUserId?: string; search?: string; view?: ExecutionSessionView; page?: number; since?: string; until?: string; cursor?: string; take?: number } = {}) =>
     request<ExecutionSessionsPage>(`/execution-sessions${queryString({ ...params,
       page: params.page === undefined ? undefined : String(params.page),

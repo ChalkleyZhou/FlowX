@@ -38,6 +38,7 @@ export class OpenDesignEdgeController {
     @Req() req: OpenDesignRequest,
   ) {
     return this.openDesignEdgeService.complete(id, dto, {
+      userId: req.authSession?.user.id,
       organizationId: req.authSession?.organization?.id ?? null,
     });
   }
@@ -49,6 +50,7 @@ export class OpenDesignEdgeController {
     @Req() req: OpenDesignRequest,
   ) {
     return this.openDesignEdgeService.completeBrainstorm(id, dto, {
+      userId: req.authSession?.user.id,
       organizationId: req.authSession?.organization?.id ?? null,
     });
   }

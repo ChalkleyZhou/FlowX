@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { ArtifactsService } from './artifacts.service';
 
@@ -16,7 +16,7 @@ function createService() {
     },
   };
   const executionSessions = {
-    requireAccessibleSession: vi.fn(),
+    requireWritableSession: vi.fn().mockResolvedValue({}),
   };
   const storage = {
     provider: 'local',
@@ -42,9 +42,41 @@ const runningSession = {
 };
 
 describe('ArtifactsService', () => {
+  it.each(['write', 'delete'])('无会话的历史设计稿缺少作者时禁止公共%s，但仍可读取', async (action) => {
+    const { service, prisma, storage } = createService();
+    const artifact = { id: 'legacy-design', artifactType: 'DESIGN_HTML', workflowRunId: 'workflow-1',
+      executionSessionId: null, createdByUserId: null, storageProvider: 'local', storageKey: 'managed/legacy/design.html', status: 'PENDING' };
+    prisma.artifact.findUnique.mockResolvedValue(artifact);
+    await expect(service.findOne(artifact.id, { userId: 'user-1', organizationId: 'org-1' })).resolves.toEqual(artifact);
+    const result = action === 'write' ? service.writeManagedContent(artifact.id, Buffer.from('test'), { userId: 'user-1', organizationId: 'org-1' }) :
+      service.markDeleted(artifact.id, { userId: 'user-1', organizationId: 'org-1' });
+    await expect(result).rejects.toBeInstanceOf(ConflictException);
+    expect(storage.write).not.toHaveBeenCalled();
+    expect(prisma.artifact.update).not.toHaveBeenCalled();
+  });
+
+  it.each(['write', 'delete'])('有作者但无会话的兼容设计稿禁止其他人公共%s', async (action) => {
+    const { service, prisma, storage } = createService();
+    prisma.artifact.findUnique.mockResolvedValue({ id: 'compat-design', artifactType: 'DESIGN_HTML', workflowRunId: 'workflow-1',
+      executionSessionId: null, createdByUserId: 'owner', storageProvider: 'local', storageKey: 'managed/compat/design.html', status: 'PENDING' });
+    const result = action === 'write' ? service.writeManagedContent('compat-design', Buffer.from('test'), { userId: 'other', organizationId: 'org-1' }) :
+      service.markDeleted('compat-design', { userId: 'other', organizationId: 'org-1' });
+    await expect(result).rejects.toBeInstanceOf(ForbiddenException);
+    expect(storage.write).not.toHaveBeenCalled();
+    expect(prisma.artifact.update).not.toHaveBeenCalled();
+  });
+
+  it('兼容设计稿原作者可以软删除', async () => {
+    const { service, prisma } = createService();
+    prisma.artifact.findUnique.mockResolvedValue({ id: 'compat-design', artifactType: 'DESIGN_HTML', workflowRunId: 'workflow-1',
+      executionSessionId: null, createdByUserId: 'owner', status: 'AVAILABLE' });
+    prisma.artifact.update.mockResolvedValue({ id: 'compat-design', status: 'DELETED' });
+    await expect(service.markDeleted('compat-design', { userId: 'owner', organizationId: 'org-1' })).resolves.toMatchObject({ status: 'DELETED' });
+  });
+
   it('returns the existing artifact for a matching sha256 registration', async () => {
     const { service, prisma, executionSessions } = createService();
-    executionSessions.requireAccessibleSession.mockResolvedValue(runningSession);
+    executionSessions.requireWritableSession.mockResolvedValue(runningSession);
     prisma.artifact.findFirst.mockResolvedValue({
       id: 'artifact-1',
       storageProvider: 'local',
@@ -70,7 +102,7 @@ describe('ArtifactsService', () => {
 
   it('rejects invalid external URLs', async () => {
     const { service, executionSessions } = createService();
-    executionSessions.requireAccessibleSession.mockResolvedValue(runningSession);
+    executionSessions.requireWritableSession.mockResolvedValue(runningSession);
 
     await expect(
       service.registerForSession(
@@ -100,7 +132,7 @@ describe('ArtifactsService', () => {
 
   it('validates local storage keys through the provider before registration', async () => {
     const { service, prisma, executionSessions, storage } = createService();
-    executionSessions.requireAccessibleSession.mockResolvedValue(runningSession);
+    executionSessions.requireWritableSession.mockResolvedValue(runningSession);
     prisma.artifact.findFirst.mockResolvedValue(null);
     prisma.artifact.create.mockImplementation(({ data }: { data: unknown }) => data);
 
@@ -117,7 +149,7 @@ describe('ArtifactsService', () => {
   it('creates a pending managed upload and verifies uploaded content', async () => {
     const { service, prisma, executionSessions, storage } = createService();
     const expectedSha256 = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08';
-    executionSessions.requireAccessibleSession.mockResolvedValue(runningSession);
+    executionSessions.requireWritableSession.mockResolvedValue(runningSession);
     prisma.artifact.create.mockImplementation(({ data }: { data: unknown }) => ({ id: 'artifact-1', ...data as object }));
     prisma.artifact.findUnique.mockResolvedValue({
       id: 'artifact-1',

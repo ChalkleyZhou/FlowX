@@ -20,6 +20,7 @@ const output = {
 };
 
 const workflow = {
+  updatedAt: new Date('2026-10-22T00:00:00Z'),
   id: 'workflow-spec-1',
   status: 'SPEC_PLAN_PENDING',
   runType: 'FULL',
@@ -78,7 +79,7 @@ describe('WorkflowService local Spec & Plan', () => {
     const createSession = vi.fn().mockImplementation(({ data }) => data);
     const tx = {
       executionSession: { create: createSession },
-      workflowRun: { findUniqueOrThrow: vi.fn().mockResolvedValue(failedWorkflow) },
+      workflowRun: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), findUniqueOrThrow: vi.fn().mockResolvedValue(failedWorkflow) },
     };
     const prisma = {
       executionSession: { findMany: vi.fn().mockResolvedValue([]) },
@@ -113,7 +114,7 @@ describe('WorkflowService local Spec & Plan', () => {
     const createSession = vi.fn().mockImplementation(({ data }) => data);
     const tx = {
       executionSession: { create: createSession },
-      workflowRun: { findUniqueOrThrow: vi.fn().mockResolvedValue(workflow) },
+      workflowRun: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), findUniqueOrThrow: vi.fn().mockResolvedValue(workflow) },
     };
     const prisma = {
       executionSession: { findMany: vi.fn().mockResolvedValue([]) },
@@ -137,6 +138,7 @@ describe('WorkflowService local Spec & Plan', () => {
         data: expect.objectContaining({
           sourceTool: 'flowx-local',
           executorType: 'LOCAL',
+          claimedByUserId: 'user-1',
           stageExecutionId: 'stage-spec-1',
           metadata: expect.objectContaining({ stage: 'SPEC_PLAN' }),
         }),
@@ -155,6 +157,7 @@ describe('WorkflowService local Spec & Plan', () => {
     const activeSession = {
       id: 'session-spec-1',
       workflowRunId: 'workflow-spec-1',
+      claimedByUserId: 'user-1',
       stageExecutionId: 'stage-spec-1',
       organizationId: 'org-1',
       status: 'RUNNING',
@@ -183,7 +186,7 @@ describe('WorkflowService local Spec & Plan', () => {
           output,
           artifactIds: ['artifact-spec'],
         },
-        { organizationId: 'org-1' },
+        { organizationId: 'org-1', userId: 'user-1' },
       ),
     ).rejects.toThrow(/SPEC_MARKDOWN.*PLAN_MARKDOWN/i);
   });
@@ -192,6 +195,7 @@ describe('WorkflowService local Spec & Plan', () => {
     const activeSession = {
       id: 'session-spec-1',
       workflowRunId: 'workflow-spec-1',
+      claimedByUserId: 'user-1',
       stageExecutionId: 'stage-spec-1',
       organizationId: 'org-1',
       status: 'RUNNING',
@@ -204,7 +208,7 @@ describe('WorkflowService local Spec & Plan', () => {
     const tx = {
       executionSession: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       evidence: { create: vi.fn() },
-      workflowRun: { findUniqueOrThrow: vi.fn().mockResolvedValue(completedWorkflow) },
+      workflowRun: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), findUniqueOrThrow: vi.fn().mockResolvedValue(completedWorkflow) },
     };
     const prisma = {
       executionSession: { findUnique: vi.fn().mockResolvedValue(activeSession) },
@@ -233,7 +237,7 @@ describe('WorkflowService local Spec & Plan', () => {
         output,
         artifactIds: ['artifact-spec', 'artifact-plan'],
       },
-      { organizationId: 'org-1' },
+      { organizationId: 'org-1', userId: 'user-1' },
     );
 
     expect(updateStage).toHaveBeenCalledWith(

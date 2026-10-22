@@ -32,7 +32,7 @@ export class SyncEventsService {
     dto: AppendSyncEventDto,
     scope: ExecutionSessionScope = {},
   ) {
-    const session = await this.executionSessionsService.requireAccessibleSession(executionSessionId, scope);
+    const session = await this.executionSessionsService.requireWritableSession(executionSessionId, scope);
     if (session.controlMode === 'COOPERATIVE' &&
       (session.claimedByUserId !== scope.userId || session.deviceId !== dto.deviceId)) {
       throw new ForbiddenException('仅原执行人及绑定设备可以追加执行事件。');

@@ -62,7 +62,7 @@ export class ArtifactsService {
     input: RegisterArtifactDto | ArtifactRegistrationInput,
     scope: ExecutionSessionScope = {},
   ) {
-    const session = await this.executionSessionsService.requireAccessibleSession(
+    const session = await this.executionSessionsService.requireWritableSession(
       executionSessionId,
       scope,
     );
@@ -85,7 +85,7 @@ export class ArtifactsService {
     input: CreateArtifactUploadDto,
     scope: ExecutionSessionScope = {},
   ) {
-    const session = await this.executionSessionsService.requireAccessibleSession(
+    const session = await this.executionSessionsService.requireWritableSession(
       executionSessionId,
       scope,
     );
@@ -132,6 +132,7 @@ export class ArtifactsService {
       throw new BadRequestException('Artifact content exceeds the 100 MB upload limit.');
     }
     const artifact = await this.findOne(artifactId, scope);
+    await this.assertWritableArtifact(artifact, scope);
     if (artifact.storageProvider !== 'local' || !artifact.storageKey?.startsWith('managed/')) {
       throw new BadRequestException('Artifact does not accept managed content uploads.');
     }
@@ -277,11 +278,33 @@ export class ArtifactsService {
   }
 
   async markDeleted(id: string, scope: ExecutionSessionScope = {}) {
-    await this.findOne(id, scope);
+    const artifact = await this.findOne(id, scope);
+    await this.assertWritableArtifact(artifact, scope);
     return this.prisma.artifact.update({
       where: { id },
       data: { status: 'DELETED' },
     });
+  }
+
+  private async assertWritableArtifact(
+    artifact: { executionSessionId: string | null; workflowRunId: string | null; artifactType: string; createdByUserId: string | null },
+    scope: ExecutionSessionScope,
+  ) {
+    if (artifact.executionSessionId) {
+      await this.executionSessionsService.requireWritableSession(artifact.executionSessionId, scope);
+      return;
+    }
+    if (artifact.workflowRunId && artifact.artifactType === 'DESIGN_HTML') {
+      if (!artifact.createdByUserId) {
+        throw new ConflictException({
+          code: 'LOCAL_TASK_OWNER_UNRECORDED',
+          message: '历史设计稿未记录执行人，仅支持查看；请通过当前工作流重新生成设计稿。',
+        });
+      }
+      if (artifact.createdByUserId !== scope.userId?.trim()) {
+        throw new ForbiddenException('仅原设计稿提交人可以修改或删除该设计稿。');
+      }
+    }
   }
 
   private async register(

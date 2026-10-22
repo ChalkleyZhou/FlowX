@@ -3,6 +3,7 @@ import { WorkflowStateMachine } from '../common/workflow-state-machine';
 import { WorkflowService } from './workflow.service';
 
 const workflow = {
+  updatedAt: new Date('2026-10-22T00:00:00Z'),
   id: 'workflow-design-1',
   status: 'DESIGN_PENDING',
   runType: 'LOCAL_DESIGN',
@@ -61,7 +62,7 @@ describe('WorkflowService local OpenDesign', () => {
     const createSession = vi.fn().mockImplementation(({ data }) => data);
     const tx = {
       executionSession: { create: createSession },
-      workflowRun: { findUniqueOrThrow: vi.fn().mockResolvedValue(workflow) },
+      workflowRun: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), findUniqueOrThrow: vi.fn().mockResolvedValue(workflow) },
     };
     const prisma = {
       executionSession: { findMany: vi.fn().mockResolvedValue([]) },
@@ -85,6 +86,7 @@ describe('WorkflowService local OpenDesign', () => {
         data: expect.objectContaining({
           sourceTool: 'opendesign',
           executorType: 'LOCAL',
+          claimedByUserId: 'user-1',
           stageExecutionId: 'stage-design-1',
         }),
       }),
@@ -105,7 +107,7 @@ describe('WorkflowService local OpenDesign', () => {
     const createSession = vi.fn().mockImplementation(({ data }) => data);
     const tx = {
       executionSession: { create: createSession },
-      workflowRun: { findUniqueOrThrow: vi.fn().mockResolvedValue(brainstormWorkflow) },
+      workflowRun: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), findUniqueOrThrow: vi.fn().mockResolvedValue(brainstormWorkflow) },
     };
     const prisma = {
       executionSession: { findMany: vi.fn().mockResolvedValue([]) },
@@ -138,6 +140,7 @@ describe('WorkflowService local OpenDesign', () => {
     const activeSession = {
       id: 'session-1',
       workflowRunId: 'workflow-design-1',
+      claimedByUserId: 'user-1',
       stageExecutionId: 'stage-design-1',
       organizationId: 'org-1',
       status: 'RUNNING',
@@ -164,7 +167,7 @@ describe('WorkflowService local OpenDesign', () => {
             surfaces: [],
           },
         },
-        { organizationId: 'org-1' },
+        { organizationId: 'org-1', userId: 'user-1' },
       ),
     ).rejects.toThrow(/markdown/i);
   });
@@ -173,6 +176,7 @@ describe('WorkflowService local OpenDesign', () => {
     const activeSession = {
       id: 'session-1',
       workflowRunId: 'workflow-design-1',
+      claimedByUserId: 'user-1',
       stageExecutionId: 'stage-design-1',
       organizationId: 'org-1',
       status: 'RUNNING',
@@ -186,7 +190,7 @@ describe('WorkflowService local OpenDesign', () => {
       executionSession: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       artifact: { findFirst: vi.fn().mockResolvedValue({ id: 'artifact-1' }) },
       evidence: { create: vi.fn().mockResolvedValue({ id: 'evidence-1' }) },
-      workflowRun: { findUniqueOrThrow: vi.fn().mockResolvedValue(completedWorkflow) },
+      workflowRun: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), findUniqueOrThrow: vi.fn().mockResolvedValue(completedWorkflow) },
     };
     const prisma = {
       executionSession: { findUnique: vi.fn().mockResolvedValue(activeSession) },
@@ -243,10 +247,11 @@ describe('WorkflowService local OpenDesign', () => {
           ],
         },
       },
-      { organizationId: 'org-1' },
+      { organizationId: 'org-1', userId: 'user-1' },
     );
 
     expect(result.workflow.status).toBe('DESIGN_WAITING_CONFIRMATION');
+    expect((service as unknown as { persistAndMergeDesignSurfaces: unknown }).persistAndMergeDesignSurfaces).toHaveBeenCalledWith(workflow.id, expect.any(Array), expect.any(Array), { executionSessionId: 'session-1', createdByUserId: 'user-1' });
     expect(tx.executionSession.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: 'COMPLETED' }) }),
     );
@@ -286,7 +291,7 @@ describe('WorkflowService local OpenDesign', () => {
         create: createSession,
         updateMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
-      workflowRun: { findUniqueOrThrow: vi.fn().mockResolvedValue(rejectedWorkflow) },
+      workflowRun: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), findUniqueOrThrow: vi.fn().mockResolvedValue(rejectedWorkflow) },
     };
     const prisma = {
       // Previous OpenDesign session is COMPLETED after submit, so it must not block reclaim.
@@ -309,6 +314,7 @@ describe('WorkflowService local OpenDesign', () => {
     expect(createSession).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          claimedByUserId: 'user-1',
           stageExecutionId: 'stage-design-2',
           idempotencyKey: 'local-design:workflow-design-1:stage-design-2',
           sourceTool: 'opendesign',
@@ -371,6 +377,7 @@ describe('WorkflowService local OpenDesign', () => {
     const activeSession = {
       id: 'session-active',
       workflowRunId: 'workflow-design-1',
+      claimedByUserId: 'user-1',
       stageExecutionId: 'stage-design-1',
       status: 'RUNNING',
       sourceTool: 'opendesign',
@@ -385,7 +392,7 @@ describe('WorkflowService local OpenDesign', () => {
     vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(workflow);
     const claimSpy = vi.spyOn(service, 'claimLocalDesign');
 
-    const result = await service.getLocalDesignHandoff('workflow-design-1');
+    const result = await service.getLocalDesignHandoff('workflow-design-1', { user: { id: 'user-1', displayName: 'Designer' } });
 
     expect(claimSpy).not.toHaveBeenCalled();
     expect(result.executionSessionId).toBe('session-active');
@@ -472,6 +479,7 @@ describe('WorkflowService local OpenDesign', () => {
     const activeSession = {
       id: 'session-b',
       workflowRunId: 'workflow-design-1',
+      claimedByUserId: 'user-1',
       stageExecutionId: 'stage-brainstorm-1',
       organizationId: 'org-1',
       status: 'RUNNING',
@@ -484,7 +492,7 @@ describe('WorkflowService local OpenDesign', () => {
     const tx = {
       executionSession: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       evidence: { create: vi.fn().mockResolvedValue({ id: 'evidence-1' }) },
-      workflowRun: { findUniqueOrThrow: vi.fn().mockResolvedValue(designPendingWorkflow) },
+      workflowRun: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), findUniqueOrThrow: vi.fn().mockResolvedValue(designPendingWorkflow) },
     };
     const prisma = {
       executionSession: { findUnique: vi.fn().mockResolvedValue(activeSession) },
@@ -503,7 +511,7 @@ describe('WorkflowService local OpenDesign', () => {
         summary: 'Spec ready',
         markdown: '# Spec\n\nDone.',
       },
-      { organizationId: 'org-1' },
+      { organizationId: 'org-1', userId: 'user-1' },
     );
 
     expect(result.workflow.status).toBe('DESIGN_PENDING');
@@ -523,6 +531,7 @@ describe('WorkflowService local OpenDesign', () => {
     const completedSession = {
       id: 'session-b',
       workflowRunId: 'workflow-design-1',
+      claimedByUserId: 'user-1',
       stageExecutionId: 'stage-brainstorm-1',
       organizationId: 'org-1',
       status: 'COMPLETED',
@@ -549,7 +558,7 @@ describe('WorkflowService local OpenDesign', () => {
         summary: 'Spec ready',
         markdown: '# Spec\n\nDone.',
       },
-      { organizationId: 'org-1' },
+      { organizationId: 'org-1', userId: 'user-1' },
     );
 
     expect(result.workflowStatus).toBe('DESIGN_PENDING');
@@ -559,4 +568,12 @@ describe('WorkflowService local OpenDesign', () => {
       hint: 'call flowx_get_design_handoff',
     });
   });
+  it('兼容回传入口不能绕过已释放会话或替换其他执行人的待审产物', async () => {
+    const service = createService({ executionSession: { findFirst: vi.fn().mockResolvedValue({ id: 'old-session', status: 'CANCELLED' }) } });
+    vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(workflow);
+    await expect(service.submitLocalDesign('workflow-design-1', {}, {
+      user: { id: 'user-1', displayName: 'Designer' }, organization: { id: 'org-1' },
+    })).rejects.toThrow(/当前会话|专用回传/);
+  });
+
 });

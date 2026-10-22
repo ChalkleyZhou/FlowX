@@ -27,7 +27,7 @@ export class CursorLocalService {
     return this.edgeTasksService.listOpenDesignTasks(filters);
   }
 
-  listWorkflowPositions(filters: { workspaceId?: string; workflowRunId?: string }) {
+  listWorkflowPositions(filters: { workspaceId?: string; workflowRunId?: string; session?: EdgeWorkflowSession }) {
     return this.edgeTasksService.listWorkflowPositions(filters);
   }
 

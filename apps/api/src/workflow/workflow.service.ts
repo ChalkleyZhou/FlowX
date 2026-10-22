@@ -79,6 +79,7 @@ import { buildExecutionOutputFromLocalReport } from './workflow-local-execution-
 import { buildLocalHandoff, type LocalHandoffPayload } from './workflow-local-handoff';
 import { WorkflowArtifactService } from './workflow-artifact.service';
 import { WorkflowGitRemoteService } from './workflow-git-remote.service';
+import { assertLocalSessionOwner, type LocalSessionScope } from './workflow-local-ownership';
 
 const execFile = promisify(execFileCallback);
 
@@ -1308,11 +1309,13 @@ export class WorkflowService {
     notifyRecipient?: WorkflowNotificationSession,
   ): Promise<{ workflow: WorkflowPayload; handoff: OpenDesignHandoff }> {
     const workflow = await this.getWorkflowOrThrow(id);
+    this.assertLocalWorkflowOrganization(workflow, notifyRecipient);
     if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.DESIGN_PENDING) {
       throw new BadRequestException('Local OpenDesign can only be claimed while design is pending.');
     }
-    const existing = await this.findActiveOpenDesignSession(id, 'DESIGN');
+    const existing = await this.findActiveOpenDesignSession(workflow, 'DESIGN');
     if (existing) {
+      assertLocalSessionOwner(existing, { userId: notifyRecipient?.user.id, organizationId: notifyRecipient?.organization?.id }, 'claim');
       return {
         workflow,
         handoff: this.buildOpenDesignHandoff(workflow, existing),
@@ -1325,7 +1328,7 @@ export class WorkflowService {
       traceId: randomUUID(),
       protocolVersion: FLOWX_PROTOCOL_VERSION,
     };
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const updated = await this.claimLocalStageTransaction(workflow, async (tx) => {
       const designStage = await this.getOrCreateRunnableSkippableStageExecution(
         tx,
         id,
@@ -1380,13 +1383,15 @@ export class WorkflowService {
     notifyRecipient?: WorkflowNotificationSession,
   ): Promise<{ workflow: WorkflowPayload; handoff: OpenDesignBrainstormHandoff }> {
     const workflow = await this.getWorkflowOrThrow(id);
+    this.assertLocalWorkflowOrganization(workflow, notifyRecipient);
     if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.BRAINSTORM_PENDING) {
       throw new BadRequestException(
         'Local OpenDesign brainstorm can only be claimed while brainstorm is pending.',
       );
     }
-    const existing = await this.findActiveOpenDesignSession(id, 'BRAINSTORM');
+    const existing = await this.findActiveOpenDesignSession(workflow, 'BRAINSTORM');
     if (existing) {
+      assertLocalSessionOwner(existing, { userId: notifyRecipient?.user.id, organizationId: notifyRecipient?.organization?.id }, 'claim');
       return {
         workflow,
         handoff: this.buildOpenDesignBrainstormHandoff(workflow, existing),
@@ -1399,7 +1404,7 @@ export class WorkflowService {
       traceId: randomUUID(),
       protocolVersion: FLOWX_PROTOCOL_VERSION,
     };
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const updated = await this.claimLocalStageTransaction(workflow, async (tx) => {
       const brainstormStage = await this.getOrCreateRunnableSkippableStageExecution(
         tx,
         id,
@@ -1454,7 +1459,8 @@ export class WorkflowService {
     notifyRecipient?: WorkflowNotificationSession,
   ): Promise<OpenDesignHandoff> {
     const workflow = await this.getWorkflowOrThrow(id);
-    const session = await this.findActiveOpenDesignSession(id, 'DESIGN');
+    this.assertLocalWorkflowOrganization(workflow, notifyRecipient);
+    const session = await this.findActiveOpenDesignSession(workflow, 'DESIGN');
     if (!session) {
       if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.DESIGN_PENDING) {
         throw new BadRequestException(
@@ -1464,6 +1470,7 @@ export class WorkflowService {
       const claimed = await this.claimLocalDesign(id, notifyRecipient);
       return claimed.handoff;
     }
+    assertLocalSessionOwner(session, { userId: notifyRecipient?.user.id, organizationId: notifyRecipient?.organization?.id }, 'claim');
     return this.buildOpenDesignHandoff(workflow, session);
   }
 
@@ -1472,7 +1479,8 @@ export class WorkflowService {
     notifyRecipient?: WorkflowNotificationSession,
   ): Promise<OpenDesignBrainstormHandoff> {
     const workflow = await this.getWorkflowOrThrow(id);
-    const session = await this.findActiveOpenDesignSession(id, 'BRAINSTORM');
+    this.assertLocalWorkflowOrganization(workflow, notifyRecipient);
+    const session = await this.findActiveOpenDesignSession(workflow, 'BRAINSTORM');
     if (!session) {
       if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.BRAINSTORM_PENDING) {
         throw new BadRequestException(
@@ -1482,6 +1490,7 @@ export class WorkflowService {
       const claimed = await this.claimLocalBrainstorm(id, notifyRecipient);
       return claimed.handoff;
     }
+    assertLocalSessionOwner(session, { userId: notifyRecipient?.user.id, organizationId: notifyRecipient?.organization?.id }, 'claim');
     return this.buildOpenDesignBrainstormHandoff(workflow, session);
   }
 
@@ -1490,6 +1499,7 @@ export class WorkflowService {
     notifyRecipient?: WorkflowNotificationSession,
   ): Promise<{ workflow: WorkflowPayload; handoff: LocalSpecPlanHandoff }> {
     const workflow = await this.getWorkflowOrThrow(id);
+    this.assertLocalWorkflowOrganization(workflow, notifyRecipient);
     const workflowStatus = this.fromPrismaWorkflowStatus(workflow.status);
     const canRecoverFailedSpecPlan =
       workflowStatus === WorkflowRunStatus.FAILED &&
@@ -1499,8 +1509,9 @@ export class WorkflowService {
         'Local Spec & Plan can only be claimed while Spec & Plan is pending.',
       );
     }
-    const existing = await this.findActiveLocalSpecPlanSession(id);
+    const existing = await this.findActiveLocalSpecPlanSession(workflow);
     if (existing) {
+      assertLocalSessionOwner(existing, { userId: notifyRecipient?.user.id, organizationId: notifyRecipient?.organization?.id }, 'claim');
       return { workflow, handoff: this.buildLocalSpecPlanHandoff(workflow, existing) };
     }
 
@@ -1511,7 +1522,7 @@ export class WorkflowService {
       protocolVersion: FLOWX_PROTOCOL_VERSION,
       sourceFingerprint: this.buildLocalSpecPlanSourceFingerprint(workflow),
     };
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const updated = await this.claimLocalStageTransaction(workflow, async (tx) => {
       if (canRecoverFailedSpecPlan) {
         await this.transitionWorkflow(tx, id, WorkflowRunStatus.FAILED, {
           to: WorkflowRunStatus.SPEC_PLAN_PENDING,
@@ -1576,7 +1587,8 @@ export class WorkflowService {
     notifyRecipient?: WorkflowNotificationSession,
   ): Promise<LocalSpecPlanHandoff> {
     const workflow = await this.getWorkflowOrThrow(id);
-    const session = await this.findActiveLocalSpecPlanSession(id);
+    this.assertLocalWorkflowOrganization(workflow, notifyRecipient);
+    const session = await this.findActiveLocalSpecPlanSession(workflow);
     if (!session) {
       if (this.fromPrismaWorkflowStatus(workflow.status) !== WorkflowRunStatus.SPEC_PLAN_PENDING) {
         throw new BadRequestException(
@@ -1585,13 +1597,14 @@ export class WorkflowService {
       }
       return (await this.claimLocalSpecPlan(id, notifyRecipient)).handoff;
     }
+    assertLocalSessionOwner(session, { userId: notifyRecipient?.user.id, organizationId: notifyRecipient?.organization?.id }, 'claim');
     return this.buildLocalSpecPlanHandoff(workflow, session);
   }
 
   async completeLocalSpecPlanSession(
     executionSessionId: string,
     report: SpecPlanCompletionReport,
-    scope: { organizationId?: string | null } = {},
+    scope: LocalSessionScope = {},
   ) {
     const session = await this.prisma.executionSession.findUnique({
       where: { id: executionSessionId },
@@ -1602,6 +1615,7 @@ export class WorkflowService {
     if (session.organizationId && session.organizationId !== scope.organizationId?.trim()) {
       throw new ConflictException('Local Spec & Plan session belongs to another organization.');
     }
+    assertLocalSessionOwner(session, scope);
     if (!session.workflowRunId || !session.stageExecutionId) {
       throw new BadRequestException('Local Spec & Plan session is missing its workflow stage.');
     }
@@ -1651,6 +1665,8 @@ export class WorkflowService {
         'Available SPEC_MARKDOWN and PLAN_MARKDOWN artifacts are required before completion.',
       );
     }
+
+    this.assertCurrentLocalStage(workflow, session.stageExecutionId, 'SPEC_PLAN');
 
     const updated = await this.prisma.$transaction(async (tx) => {
       await this.updateStageExecution(
@@ -1713,7 +1729,7 @@ export class WorkflowService {
   async completeLocalDesignSession(
     executionSessionId: string,
     report: DesignCompletionReport,
-    scope: { organizationId?: string | null } = {},
+    scope: LocalSessionScope = {},
   ) {
     const session = await this.prisma.executionSession.findUnique({
       where: { id: executionSessionId },
@@ -1727,6 +1743,7 @@ export class WorkflowService {
     if (session.organizationId && session.organizationId !== scope.organizationId?.trim()) {
       throw new ConflictException('OpenDesign execution session belongs to another organization.');
     }
+    assertLocalSessionOwner(session, scope);
     if (!session.workflowRunId) {
       throw new NotFoundException('OpenDesign execution session is not linked to a workflow.');
     }
@@ -1760,10 +1777,13 @@ export class WorkflowService {
     }
     const parsed = assertDesignSpecOutput(report.output);
     const previousSurfaces = this.getDesignSurfaceInventory(workflow);
+    this.assertCurrentLocalStage(workflow, session.stageExecutionId, 'DESIGN');
+
     const persistedSurfaces = await this.persistAndMergeDesignSurfaces(
       workflow.id,
       previousSurfaces,
       parsed.surfaces,
+      { executionSessionId, createdByUserId: session.claimedByUserId },
     );
     const persistedOutput = this.toPersistedDesignStageOutput(
       markdown,
@@ -1854,7 +1874,7 @@ export class WorkflowService {
   async completeLocalBrainstormSession(
     executionSessionId: string,
     report: BrainstormCompletionReport,
-    scope: { organizationId?: string | null } = {},
+    scope: LocalSessionScope = {},
   ) {
     const session = await this.prisma.executionSession.findUnique({
       where: { id: executionSessionId },
@@ -1868,6 +1888,7 @@ export class WorkflowService {
     if (session.organizationId && session.organizationId !== scope.organizationId?.trim()) {
       throw new ConflictException('OpenDesign brainstorm session belongs to another organization.');
     }
+    assertLocalSessionOwner(session, scope);
     if (!session.workflowRunId) {
       throw new NotFoundException('OpenDesign brainstorm session is not linked to a workflow.');
     }
@@ -1902,6 +1923,8 @@ export class WorkflowService {
       summary: report.summary?.trim() || undefined,
       source: 'LOCAL_OPENDESIGN',
     };
+
+    this.assertCurrentLocalStage(workflow, session.stageExecutionId, 'BRAINSTORM');
 
     const updated = await this.prisma.$transaction(async (tx) => {
       if (!session.stageExecutionId) {
@@ -1980,7 +2003,7 @@ export class WorkflowService {
     });
   }
 
-  async submitLocalDesign(id: string, rawOutput: unknown) {
+  async submitLocalDesign(id: string, rawOutput: unknown, actor?: WorkflowNotificationSession) {
     const workflow = await this.getWorkflowOrThrow(id);
     this.assertStageNotRunning(workflow, StageType.DESIGN);
     const workflowStatus = this.fromPrismaWorkflowStatus(workflow.status);
@@ -1991,6 +2014,20 @@ export class WorkflowService {
       throw new BadRequestException(
         'Local design can only be submitted while the design stage is pending or waiting for confirmation.',
       );
+    }
+
+    if (!actor?.user.id) throw new ForbiddenException('本地设计回传需要执行人身份。');
+    this.assertLocalWorkflowOrganization(workflow, actor);
+    const previousSession = await this.prisma.executionSession.findFirst({
+      where: { workflowRunId: id, executorType: 'LOCAL', stageExecution: { stage: 'DESIGN' } },
+    });
+    if (previousSession) {
+      throw new ConflictException('该流程已使用本地设计会话，请通过当前会话的专用回传入口提交，旧客户端不能覆盖新尝试。');
+    }
+    const latest = this.latestLocalStage(workflow, 'DESIGN');
+    const legacyOwner = this.readMetadataString(latest?.input, 'claimedByUserId');
+    if (latest?.input && this.readMetadataString(latest.input, 'source') === 'LOCAL_OD_MCP') {
+      assertLocalSessionOwner({ id: latest.id, claimedByUserId: legacyOwner }, { userId: actor.user.id }, 'complete');
     }
 
     const parsed = assertDesignSpecOutput(rawOutput);
@@ -2007,6 +2044,7 @@ export class WorkflowService {
       id,
       previousSurfaces,
       parsed.surfaces,
+      { createdByUserId: actor.user.id },
     );
     const persistedOutput = this.toPersistedDesignStageOutput(
       markdown,
@@ -2014,7 +2052,7 @@ export class WorkflowService {
       persistedSurfaces,
     );
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.claimLocalStageTransaction(workflow, async (tx) => {
       if (workflowStatus === WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION) {
         await this.transitionWorkflow(tx, id, WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION, {
           to: WorkflowRunStatus.DESIGN_PENDING,
@@ -2024,7 +2062,7 @@ export class WorkflowService {
 
       const stageExecution = await this.getOrCreateRunnableSkippableStageExecution(tx, id, StageType.DESIGN);
       await this.updateStageExecution(tx, stageExecution.id, StageExecutionStatus.RUNNING, {
-        input: { source: 'LOCAL_OD_MCP' },
+        input: { source: 'LOCAL_OD_MCP', claimedByUserId: actor.user.id },
         statusMessage: '本地 OpenDesign 设计已提交，正在记录',
         startedAt: new Date(),
       });
@@ -3334,16 +3372,63 @@ export class WorkflowService {
       .digest('hex');
   }
 
-  private async findActiveLocalSpecPlanSession(workflowRunId: string) {
+  private assertLocalWorkflowOrganization(workflow: WorkflowPayload, session?: WorkflowNotificationSession) {
+    const organizationId = workflow.requirement.workspace?.organizationId ??
+      workflow.requirement.project.workspace?.organizationId;
+    if (organizationId && organizationId !== session?.organization?.id) {
+      throw new ForbiddenException('该工作流属于其他组织。');
+    }
+  }
+
+  private assertCurrentLocalStage(workflow: WorkflowPayload, stageExecutionId: string | null, stage: string) {
+    if (this.latestLocalStage(workflow, stage)?.id !== stageExecutionId) {
+      throw new ConflictException('当前阶段已重新交接，旧任务结果不能覆盖新尝试。');
+    }
+  }
+
+  private latestLocalStage(workflow: WorkflowPayload, stage: string) {
+    return workflow.stageExecutions.filter((row) => row.stage === stage)
+      .sort((a, b) => b.attempt - a.attempt)[0];
+  }
+
+  /** 先锁工作流版本再领取，防止两个端同时创建同阶段任务。 */
+  private async claimLocalStageTransaction<T>(
+    workflow: WorkflowPayload,
+    action: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const locked = await tx.workflowRun.updateMany({
+          where: { id: workflow.id, status: workflow.status, updatedAt: workflow.updatedAt },
+          data: { updatedAt: new Date(Math.max(Date.now(), workflow.updatedAt.getTime() + 1)) },
+        });
+        if (locked.count !== 1) {
+          throw new ConflictException('当前阶段已被其他操作更新，请刷新后查看执行人。');
+        }
+        return action(tx);
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError &&
+        ['P2002', 'P2034', 'P2028', 'P1008'].includes(error.code)) {
+        throw new ConflictException('当前阶段正在被其他执行人领取，请刷新后重试。');
+      }
+      throw error;
+    }
+  }
+
+  private async findActiveLocalSpecPlanSession(workflow: WorkflowPayload) {
+    const latest = this.latestLocalStage(workflow, 'SPEC_PLAN');
+    if (!latest) return null;
     const sessions = await this.prisma.executionSession.findMany({
       where: {
-        workflowRunId,
+        workflowRunId: workflow.id,
+        stageExecutionId: latest.id,
         sourceTool: 'flowx-local',
         status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] },
       },
       orderBy: { createdAt: 'desc' },
     });
-    return sessions.find((session) => this.isLocalSpecPlanSession(session)) ?? null;
+    return sessions.find((session) => session.stageExecutionId === latest.id && this.isLocalSpecPlanSession(session)) ?? null;
   }
 
   private isLocalSpecPlanSession(session: { metadata: unknown }) {
@@ -3445,18 +3530,21 @@ export class WorkflowService {
   }
 
   private async findActiveOpenDesignSession(
-    workflowRunId: string,
+    workflow: WorkflowPayload,
     stage: 'BRAINSTORM' | 'DESIGN',
   ) {
+    const latest = this.latestLocalStage(workflow, stage);
+    if (!latest) return null;
     const sessions = await this.prisma.executionSession.findMany({
       where: {
-        workflowRunId,
+        workflowRunId: workflow.id,
+        stageExecutionId: latest.id,
         sourceTool: 'opendesign',
         status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] },
       },
       orderBy: { createdAt: 'desc' },
     });
-    return sessions.find((session) => this.isOpenDesignSessionStage(session, stage)) ?? null;
+    return sessions.find((session) => session.stageExecutionId === latest.id && this.isOpenDesignSessionStage(session, stage)) ?? null;
   }
 
   private isOpenDesignSessionStage(
@@ -4250,6 +4338,7 @@ export class WorkflowService {
     workflowRunId: string,
     surfaceId: string,
     pages: DesignSurfaceInput['pages'],
+    ownership?: { executionSessionId?: string; createdByUserId?: string | null },
   ): Promise<DesignSurfaceInventory> {
     const generatedAt = new Date().toISOString();
     const safeSurface = this.encodeDesignPathSegment(surfaceId);
@@ -4272,6 +4361,7 @@ export class WorkflowService {
         try {
           await this.artifactsService.registerWorkflowArtifact({
             workflowRunId,
+            ...ownership,
             artifactType: 'DESIGN_HTML',
             name: `${surfaceId}/${page.title ?? page.id}`,
             version: generatedAt,
@@ -4306,10 +4396,11 @@ export class WorkflowService {
     workflowRunId: string,
     previous: DesignSurfaceInventory[] | undefined,
     surfaces: DesignSurfaceInput[],
+    ownership?: { executionSessionId?: string; createdByUserId?: string | null },
   ): Promise<DesignSurfaceInventory[]> {
     const incoming: DesignSurfaceInventory[] = [];
     for (const surface of surfaces) {
-      incoming.push(await this.persistDesignSurfacePages(workflowRunId, surface.id, surface.pages));
+      incoming.push(await this.persistDesignSurfacePages(workflowRunId, surface.id, surface.pages, ownership));
     }
     return this.mergeDesignSurfaceInventory(previous, incoming);
   }

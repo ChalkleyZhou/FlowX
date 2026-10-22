@@ -108,8 +108,8 @@ export class WorkflowController {
   }
 
   @Post(':id/design/submit-local')
-  submitLocalDesign(@Param('id') id: string, @Body() dto: SubmitLocalDesignDto) {
-    return this.workflowService.submitLocalDesign(id, dto);
+  submitLocalDesign(@Param('id') id: string, @Body() dto: SubmitLocalDesignDto, @Req() req: WorkflowRequest) {
+    return this.workflowService.submitLocalDesign(id, dto, req.authSession);
   }
 
   @Post(':id/design/revise')

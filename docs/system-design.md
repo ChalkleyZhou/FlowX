@@ -114,6 +114,26 @@ Workspace
 
 该链路已经具备研发流程基础；Artifact、Evidence、ExecutionSession 以及 TestDesign/TestRequest/TestPlan/TestRun 的独立模型已经落地。开发执行的受控会话由 `ExecutionCommand`、检查点和回执构成协作式运行控制：云端保存状态和命令，本地 Agent 在检查点领取并确认。失联是基于服务端最后检查点的健康计算，不代表可以远程终止 IDE。完成报告必须绑定原会话和原执行人，按工作流基线核对 Git 提交后才推进 Review。Spec & Plan 可由本地 `ExecutionSession` 领取，结构化输出继续写入 `StageExecution`，`spec.md` 和 `plan.md` 作为 Artifact 上传。TestDesign 在 Spec & Plan 确认后与开发执行并行，提测前汇合并冻结功能与动态冒烟快照。`LOCAL_SMOKE` 通过 `TestRunTarget`、`TestExecution` 和 append-only `TestExecutionCaseResult` 支持多人多端执行，服务端聚合 `TestResult` 并生成版本化 `TEST_REPORT`。Release、RuntimeFeedback 和自动化测试结果导入仍需继续建设。
 
+### 工作流接续与本地协同
+
+需求详情从已有 `WorkflowRun` 展示状态与仓库范围：单条活跃流程直接继续，多条逐项选择，终态保留历史入口。另起流程复用启动窗口的仓库与执行器选择，展示占用范围并由服务端校验冲突。工作流详情将当前任务、阶段导航、产物与操作前置，需求背景、分支、统计与质量入口默认折叠；当前任务始终取服务器当前阶段，不随历史阶段选择改变。
+
+`GET /workflow-runs/:id/collaboration` 在组织权限内纯读取各阶段最新 attempt 的最新本地 `ExecutionSession`，返回执行人、运行健康度、最近回报与操作权限，不调用会隐式领取的 handoff。健康度复用 `getExecutionHealth`；`controlMode=NONE` 或缺少真实检查点的会话属于未知状态，领取时间不得作为本地启动证据。失联只表示缺少新回报，不能自动释放会话。
+
+本地构思、设计和 Spec & Plan 的领取与回传统一核对组织及 `claimedByUserId`：原领取人幂等领取复用原会话，他人领取得到冲突，并发首次领取只允许一个成功。回传不能以组织访问权限替代领取身份；无领取人的历史会话必须先重新交接。`flowx_get_workflow_position` 在他人占用时返回兼容动作 `localAction: none` 和等待说明，继续上下文只采用最新已确认的上游产物，不能因本机文件或旧聊天推断阶段。
+
+`POST /workflow-runs/:id/local-task/release` 接收 `{ executionSessionId, confirmedStopped: true, reason }`，`reason` 去空白后必填且不超过 2000 字。该恢复入口仅允许当前 `BRAINSTORM`、`DESIGN`、`SPEC_PLAN` 待执行阶段最新 attempt 中仍活动的、`controlMode != COOPERATIVE` 的本地任务。原执行人或同组织管理员可操作，无 owner 的历史会话仅同组织管理员可操作；必须确认已在原设备停止。事务将旧会话置为 `CANCELLED`、当前 `StageExecution` 置为 `FAILED`，并以 `execution.local_task_released` 记录操作人、原因和停止确认。后续领取创建新 attempt，旧会话的晚到回传被拒绝。此接口不能远程关闭 IDE，开发阶段的协作式停止请求与本地回执保持原有机制。
+
+所有 `LOCAL` 会话的公共写入口统一使用领取人校验，包括通用心跳/状态、SyncEvent、Artifact 上传/内容/删除与 Evidence；读取仍按组织可见。构思、设计、方案与冒烟的终态只能通过专用编排回传或明确交接，不能用通用 `complete/fail/cancel` 单独改变会话。`CANCELLED` 会话拒绝后续写入。专用设计回传产生的 HTML 绑定 `executionSessionId`；无会话的旧兼容稿按 `createdByUserId` 校验，未记录执行人的历史稿只读。
+
+`POST /workflow-runs/:id/design/submit-local` 仅供尚未使用本地设计会话的旧集成使用，必须提供登录身份并记录产物和阶段执行人、锁定工作流版本。流程一旦存在本地设计会话，该兼容入口返回 `409` 并引导当前会话的专用回传，避免已取消任务绕过晚到结果校验。
+
+### 提测与冒烟读取契约
+
+`LOCAL_SMOKE` 保留按目标端和用例租约并行、版本指纹校验、原始结果追加及失败优先聚合，回传入口同时验证组织和原领取人身份，不能代用他人的 `TestExecution`。有效租约、必测项缺结果或阻断项未通过时仍阻止生成报告。
+
+提测报告读取在尚无报告时明确返回 HTTP 200、JSON `null`，避免空响应导致 JSON 解析失败。提测详情的基本信息、报告和冒烟轮次独立加载，局部失败保留已有信息并单独重试；主请求区分 `403`、`404` 与网络错误，不从空数据推断记录不存在。
+
 ### 并行开发进展查询
 
 Web 的默认首页“研发看板”（`/dashboard`）使用 `GET /execution-sessions` 的页码模式，聚合当前组织下 `executorType=LOCAL`、阶段为 `EXECUTION` 的会话。传入 `page` 或 `view` 启用该模式；`view` 支持 `active`、`attention`、`completed`、`all`，Web 默认 `active`。保留 `projectId`、`workflowRunId`、`status`、`sourceTool`、`since`、`until`，新增 `claimedByUserId` 和 `search`（需求名称包含匹配）。`take` 默认 20、最大 100；`page` 为 1～1000000 的整数，不能与 `cursor` 混用。
@@ -134,7 +154,7 @@ Web 的默认首页“研发看板”（`/dashboard`）使用 `GET /execution-se
 - 本地执行和云端执行是同一状态机上的不同 executor。
 - AI 审查的 `aiProvider` 由本次 `/workflow-runs/:id/review/run` 或 `/review/revise` 请求选择，记录在审查 `StageExecution.input`；未传时使用 `WorkflowRun.aiProvider`，因此开发与审查可以使用不同工具。
 - 人工确认是流程能力，不应耦合具体 AI Provider。
-- 后续新增 `ExecutionSession` 表达一次真实的本地、Agent、Worker 或测试执行。
+- `ExecutionSession` 表达一次本地、Agent、Worker 或测试执行；领取记录和真实本地运行证据分别展示。
 
 ## 6. AI 与工具接入原则
 

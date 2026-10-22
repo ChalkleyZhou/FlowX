@@ -35,8 +35,9 @@ function session(overrides: Record<string, unknown> = {}) {
 function createService(workflowService?: Record<string, unknown>) {
   const prisma = {
     syncEvent: { findFirst: vi.fn() },
+    stageExecution: { findUnique: vi.fn().mockResolvedValue({ stage: 'EXECUTION' }) },
     executionSession: {
-      findUnique: vi.fn(),
+      findUnique: vi.fn().mockResolvedValue(session()),
       findFirst: vi.fn(),
       findUniqueOrThrow: vi.fn(),
       create: vi.fn(),
@@ -141,7 +142,7 @@ describe('ExecutionSessionsService', () => {
     const result = await service.complete(
       'session-1',
       { summary: 'Done' },
-      { organizationId: 'org-1' },
+      { organizationId: 'org-1', userId: 'user-1' },
     );
 
     expect(result.status).toBe('COMPLETED');
@@ -157,7 +158,7 @@ describe('ExecutionSessionsService', () => {
     const { service, prisma } = createService();
     prisma.executionSession.findUnique.mockResolvedValue(session({ status: 'COMPLETED' }));
 
-    const result = await service.complete('session-1', {}, { organizationId: 'org-1' });
+    const result = await service.complete('session-1', {}, { organizationId: 'org-1', userId: 'user-1' });
 
     expect(result.status).toBe('COMPLETED');
     expect(prisma.executionSession.updateMany).not.toHaveBeenCalled();
@@ -167,7 +168,7 @@ describe('ExecutionSessionsService', () => {
     const { service, prisma } = createService();
     prisma.executionSession.findUnique.mockResolvedValue(session({ status: 'COMPLETED' }));
 
-    await expect(service.markRunning('session-1', { organizationId: 'org-1' })).rejects.toBeInstanceOf(
+    await expect(service.markRunning('session-1', { organizationId: 'org-1', userId: 'user-1' })).rejects.toBeInstanceOf(
       BadRequestException,
     );
   });
@@ -188,7 +189,7 @@ describe('ExecutionSessionsService', () => {
       claimedByUser: { displayName: '张三' },
     }));
 
-    await service.findOne('session-1', { organizationId: 'org-1' });
+    await service.findOne('session-1', { organizationId: 'org-1', userId: 'user-1' });
 
     expect(prisma.executionSession.findUnique).toHaveBeenCalledWith(expect.objectContaining({
       include: expect.objectContaining({
@@ -211,13 +212,13 @@ describe('ExecutionSessionsService', () => {
       pushed: true,
       repositories: [{ workflowRepositoryId: 'wr-1', headSha: 'deadbeef', changedFiles: ['a.ts'] }],
     };
-    const result = await service.complete('session-1', dto, { organizationId: 'org-1' });
+    const result = await service.complete('session-1', dto, { organizationId: 'org-1', userId: 'user-1' });
 
     expect(completeLocalExecutionBySession).toHaveBeenCalledWith(
       'session-1',
       expect.objectContaining({ idempotencyKey: 'complete-1', pushed: true, repositories: dto.repositories }),
       undefined,
-      { organizationId: 'org-1' },
+      { organizationId: 'org-1', userId: 'user-1' },
     );
     expect(result.status).toBe('COMPLETED');
   });
@@ -239,7 +240,7 @@ describe('ExecutionSessionsService', () => {
     prisma.executionSession.updateMany.mockResolvedValue({ count: 1 });
     prisma.executionSession.findUniqueOrThrow.mockResolvedValue(session({ status: 'COMPLETED' }));
 
-    const result = await service.complete('session-1', { summary: 'Done' }, { organizationId: 'org-1' });
+    const result = await service.complete('session-1', { summary: 'Done' }, { organizationId: 'org-1', userId: 'user-1' });
 
     expect(result.status).toBe('COMPLETED');
     expect(completeLocalExecutionBySession).not.toHaveBeenCalled();

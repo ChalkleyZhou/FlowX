@@ -5,7 +5,8 @@ import { api, getFlowxApiBaseUrl } from '../api';
 import { ContextPanel } from '../components/ContextPanel';
 import { OpenDesignLaunchGuideDialog } from '../components/OpenDesignLaunchGuideDialog';
 import { DesignArtifactPreview } from '../components/DesignArtifactPreview';
-import { DesignDocumentPanel } from '../components/DesignDocumentPanel';
+import { BriefingMarkdownView } from '../components/BriefingMarkdownView';
+import { WorkflowCollaborationPanel } from '../components/WorkflowCollaborationPanel';
 import { DiffFileListPanel } from '../components/DiffFileListPanel';
 import { DiffViewerPanel } from '../components/DiffViewerPanel';
 import { EmptyState } from '../components/EmptyState';
@@ -240,19 +241,15 @@ function getStepDescription(stage?: { status?: string; statusMessage?: string | 
 }
 
 function inferFocusedStage(run: WorkflowRun): WorkflowStageKey {
+  if (run.currentStage && STAGE_SEQUENCE.includes(run.currentStage as WorkflowStageKey)) {
+    return run.currentStage as WorkflowStageKey;
+  }
   if (run.status === 'REVIEW_PENDING') {
     return 'AI_REVIEW';
   }
 
   if (run.status === 'HUMAN_REVIEW_PENDING') {
     return 'HUMAN_REVIEW';
-  }
-
-  for (const stageKey of STAGE_SEQUENCE) {
-    const stage = getStage(run, stageKey);
-    if (stage?.status === 'RUNNING' || stage?.status === 'WAITING_CONFIRMATION' || stage?.status === 'FAILED') {
-      return stageKey;
-    }
   }
 
   if (run.status === 'REPOSITORY_GROUNDING_PENDING') {
@@ -285,6 +282,13 @@ function inferFocusedStage(run: WorkflowRun): WorkflowStageKey {
 
   if (run.status === 'DONE') {
     return 'AI_REVIEW';
+  }
+
+  for (const stageKey of STAGE_SEQUENCE) {
+    const stage = getStage(run, stageKey);
+    if (stage?.status === 'RUNNING' || stage?.status === 'WAITING_CONFIRMATION' || stage?.status === 'FAILED') {
+      return stageKey;
+    }
   }
 
   return 'SPEC_PLAN';
@@ -383,9 +387,15 @@ function sanitizeDisplayValue(value: unknown, repositories: RepositoryPathContex
 
 export function WorkflowRunDetailPage() {
   const { workflowRunId = '' } = useParams();
+  return <WorkflowRunDetailContent key={workflowRunId} />;
+}
+
+function WorkflowRunDetailContent() {
+  const { workflowRunId = '' } = useParams();
   const navigate = useNavigate();
   const [workflowRun, setWorkflowRun] = useState<WorkflowRun | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedStage, setSelectedStage] = useState<WorkflowStageKey>('SPEC_PLAN');
   const [branchSummaryExpanded, setBranchSummaryExpanded] = useState(false);
   const [busyStage, setBusyStage] = useState<string | null>(null);
@@ -430,6 +440,11 @@ export function WorkflowRunDetailPage() {
   const hasInitializedStageSelectionRef = useRef(false);
   const syncedReviewReportIdRef = useRef<string | null>(null);
   const busyStageRef = useRef<string | null>(null);
+  const workflowRouteRef = useRef(workflowRunId);
+  workflowRouteRef.current = workflowRunId;
+  const workflowRequestRef = useRef<{ id: string; promise: Promise<WorkflowRun | null> } | null>(null);
+  const workflowMountedRef = useRef(true);
+  useEffect(() => { workflowMountedRef.current = true; return () => { workflowMountedRef.current = false; }; }, []);
 
   function focusWorkflowSidebarTextarea() {
     if (typeof document === 'undefined') {
@@ -480,38 +495,40 @@ export function WorkflowRunDetailPage() {
     focusWorkflowSidebarTextarea();
   }
 
-  async function refresh(options?: { silent?: boolean }) {
-    if (!workflowRunId) {
-      return null;
-    }
-
-    if (!options?.silent) {
-      setLoading(true);
-    }
-
-    try {
-      const nextWorkflowRun = await api.getWorkflowRun(workflowRunId);
-      const nextSnapshot = buildWorkflowSnapshot(nextWorkflowRun);
-
-      if (nextSnapshot !== lastWorkflowSnapshotRef.current) {
-        lastWorkflowSnapshotRef.current = nextSnapshot;
-        setWorkflowRun(nextWorkflowRun);
+  function refresh(options?: { silent?: boolean }): Promise<WorkflowRun | null> {
+    if (!workflowRunId) return Promise.resolve(null);
+    if (workflowRequestRef.current?.id === workflowRunId) return workflowRequestRef.current.promise;
+    const requestId = workflowRunId;
+    const isCurrent = () => workflowMountedRef.current && workflowRouteRef.current === requestId;
+    if (!options?.silent && !workflowRun) setLoading(true);
+    const promise = (async () => {
+      try {
+        const nextWorkflowRun = await api.getWorkflowRun(requestId);
+        if (!isCurrent()) return null;
+        setLoadError(null);
+        const nextSnapshot = buildWorkflowSnapshot(nextWorkflowRun);
+        if (nextSnapshot !== lastWorkflowSnapshotRef.current) {
+          lastWorkflowSnapshotRef.current = nextSnapshot;
+          setWorkflowRun(nextWorkflowRun);
+        }
+        return nextWorkflowRun;
+      } catch (error) {
+        if (isCurrent()) setLoadError(error instanceof Error ? error.message : '加载工作流失败');
+        return null;
+      } finally {
+        if (isCurrent()) setLoading(false);
+        if (workflowRequestRef.current?.id === requestId) workflowRequestRef.current = null;
       }
-
-      return nextWorkflowRun;
-    } catch (error) {
-      if (!options?.silent) {
-        toast.error(error instanceof Error ? error.message : '加载工作流失败');
-      }
-      return null;
-    } finally {
-      if (!options?.silent) {
-        setLoading(false);
-      }
-    }
+    })();
+    workflowRequestRef.current = { id: requestId, promise };
+    return promise;
   }
 
   useEffect(() => {
+    setWorkflowRun(null);
+    setLoading(true);
+    setLoadError(null);
+    lastWorkflowSnapshotRef.current = '';
     void refresh();
   }, [workflowRunId]);
 
@@ -725,51 +742,52 @@ export function WorkflowRunDetailPage() {
   const executionSessionId =
     selectedStage === 'EXECUTION' ? localHandoff?.executionSessionId ?? null : null;
 
-  const refreshExecutionSession = useCallback(async (options?: { silent?: boolean }) => {
-    if (!executionSessionId) {
-      return;
-    }
-
-    if (!options?.silent) {
-      setExecutionSessionLoading(true);
-    }
-    try {
-      const [session, evidence, eventsPage] = await Promise.all([
-        api.getExecutionSession(executionSessionId),
-        api.listExecutionSessionEvidence(executionSessionId),
-        api.listExecutionSessionEvents(executionSessionId, { take: 10 }).catch(() => null),
-      ]);
-      setExecutionSessionError(null);
-      setExecutionSession(session);
-      setExecutionEvidence(evidence);
-      setExecutionEvents(eventsPage?.items ?? []);
-    } catch (error) {
-      setExecutionSessionError(error instanceof Error ? error.message : '执行会话加载失败，请刷新后重试。');
-      if (!options?.silent) {
-        setExecutionSession(null);
-        setExecutionEvidence([]);
-        setExecutionEvents([]);
+  const executionSessionKeyRef = useRef(executionSessionId);
+  executionSessionKeyRef.current = executionSessionId;
+  const executionRequestRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
+  const refreshExecutionSession = useCallback((options?: { silent?: boolean }): Promise<void> => {
+    if (!executionSessionId) return Promise.resolve();
+    if (executionRequestRef.current?.key === executionSessionId) return executionRequestRef.current.promise;
+    const requestId = workflowRunId;
+    const sessionId = executionSessionId;
+    const isCurrent = () => workflowMountedRef.current && workflowRouteRef.current === requestId && executionSessionKeyRef.current === sessionId;
+    if (!options?.silent && !executionSession) setExecutionSessionLoading(true);
+    const promise = (async () => {
+      try {
+        const [session, evidence, eventsPage] = await Promise.all([
+          api.getExecutionSession(sessionId),
+          api.listExecutionSessionEvidence(sessionId),
+          api.listExecutionSessionEvents(sessionId, { take: 10 }).catch(() => null),
+        ]);
+        if (!isCurrent()) return;
+        setExecutionSessionError(null);
+        setExecutionSession(session);
+        setExecutionEvidence(evidence);
+        setExecutionEvents(eventsPage?.items ?? []);
+      } catch (error) {
+        if (isCurrent()) setExecutionSessionError(error instanceof Error ? error.message : '执行会话加载失败，请刷新后重试。');
+      } finally {
+        if (isCurrent()) setExecutionSessionLoading(false);
+        if (executionRequestRef.current?.key === sessionId) executionRequestRef.current = null;
       }
-    } finally {
-      if (!options?.silent) {
-        setExecutionSessionLoading(false);
-      }
-    }
-  }, [executionSessionId]);
+    })();
+    executionRequestRef.current = { key: sessionId, promise };
+    return promise;
+  }, [executionSessionId, workflowRunId]);
 
   useEffect(() => {
-    if (!executionSessionId) {
-      setExecutionSession(null);
-      setExecutionEvidence([]);
-      setExecutionEvents([]);
-      return;
-    }
-
-    void refreshExecutionSession();
-    const interval = window.setInterval(() => void refreshExecutionSession({ silent: true }), 30_000);
-
-    return () => window.clearInterval(interval);
+    setExecutionSession(null);
+    setExecutionEvidence([]);
+    setExecutionEvents([]);
+    setExecutionSessionError(null);
+    if (executionSessionId) void refreshExecutionSession();
   }, [executionSessionId, refreshExecutionSession]);
+
+  useEffect(() => {
+    if (!executionSessionId || ['DONE', 'FAILED', 'CANCELLED', 'CANCELED'].includes(workflowRun?.status ?? '') || ['COMPLETED', 'FAILED', 'CANCELLED', 'CANCELED'].includes(executionSession?.status ?? '')) return;
+    const interval = window.setInterval(() => void refreshExecutionSession({ silent: true }), 30_000);
+    return () => window.clearInterval(interval);
+  }, [executionSessionId, refreshExecutionSession, executionSession?.status, workflowRun?.status]);
 
   const hasExecutionArtifact = useMemo(() => {
     if (selectedStage !== 'EXECUTION' || !workflowRun) {
@@ -813,7 +831,7 @@ export function WorkflowRunDetailPage() {
   }, [hasExecutionArtifact, workflowRun?.id]);
 
   useEffect(() => {
-    if (!hasRunningStage) {
+    if (!hasRunningStage || !workflowRun || ['DONE', 'FAILED', 'CANCELLED', 'CANCELED'].includes(workflowRun.status)) {
       return;
     }
 
@@ -822,7 +840,7 @@ export function WorkflowRunDetailPage() {
     }, 2500);
 
     return () => window.clearInterval(timer);
-  }, [hasRunningStage, workflowRunId]);
+  }, [hasRunningStage, workflowRunId, workflowRun?.status]);
 
 
   useEffect(() => {
@@ -2177,7 +2195,7 @@ export function WorkflowRunDetailPage() {
         </DialogContent>
       </Dialog>
 
-      {workflowRun ? (
+      {workflowRun?.id === workflowRunId ? (
         <div className="flex flex-col gap-5">
           <DetailHeader
             eyebrow="Workflow Detail"
@@ -2220,131 +2238,16 @@ export function WorkflowRunDetailPage() {
             }
           />
 
-          {workflowRun.workflowRepositories.length > 0 ? (
-            <div className="rounded-md border border-border bg-muted/35 px-4 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm leading-6 text-muted-foreground">{branchSummaryText}</p>
-                <UiButton
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setBranchSummaryExpanded((current) => !current)}
-                >
-                  {branchSummaryExpanded ? '收起分支' : '查看分支'}
-                </UiButton>
-              </div>
-              {branchSummaryExpanded ? (
-                <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
-                  {workflowRun.workflowRepositories.map((repository) => (
-                    <div key={repository.id} className="text-sm leading-6 text-muted-foreground">
-                      <span className="font-medium text-foreground">{repository.name}</span>
-                      {' / '}
-                      <span>{repository.workingBranch}</span>
-                      {' / '}
-                      <span>基线 {repository.baseBranch}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {workflowMetrics ? (
-            <div className="grid gap-5 md:grid-cols-4">
-              <MetricCard
-                label="当前状态"
-                value={formatWorkflowStatus(workflowRun.status)}
-                helpText={hasRunningStage ? '当前有阶段正在后台执行。' : '当前没有后台执行中的阶段。'}
-              />
-              <MetricCard
-                label="阶段进度"
-                value={`${workflowMetrics.completedStages}/${STAGE_SEQUENCE.length}`}
-                helpText="已完成阶段数，按任务拆解到 AI 审查统计。"
-              />
-              <MetricCard
-                label="待人工处理"
-                value={workflowMetrics.waitingStages}
-                helpText="等待人工确认或下一步决策的阶段数量。"
-              />
-              <MetricCard
-                label="代码上下文"
-                value={workflowMetrics.repositoryCount}
-                helpText={
-                  workflowMetrics.findingsCount > 0
-                    ? `已沉淀 ${workflowMetrics.findingsCount} 条审查条目。`
-                    : '当前还没有沉淀的审查条目。'
-                }
-              />
-            </div>
-          ) : null}
-
-          <ContextPanel
-            eyebrow="Workflow Context"
-            title="需求与验收信息"
-            description="集中查看本次工作流对应的需求背景与完成标准。"
-          >
-            <div className="flex flex-col gap-4">
-              <div>
-                <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">需求描述</div>
-                <p className="whitespace-pre-line text-sm leading-6 text-foreground">
-                  {workflowRun.requirement.description?.trim() || '当前需求尚未填写描述。'}
-                </p>
-              </div>
-              <div>
-                <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">验收标准</div>
-                <p className="whitespace-pre-line text-sm leading-6 text-foreground">
-                  {workflowRun.requirement.acceptanceCriteria?.trim() || '当前需求尚未填写验收标准。'}
-                </p>
-              </div>
-            </div>
-          </ContextPanel>
-
-          <ContextPanel
-            eyebrow="测试与质量"
-            title="用例与提测"
-            description="测试设计不阻塞开发主流程；研发完成后从这里进入提测，系统会继续校验测试设计和提测门禁。"
-          >
-            <div className="grid divide-y divide-border lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-              <div className="space-y-3 pb-5 lg:pr-5 lg:pb-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-semibold text-foreground">出用例</h3>
-                  <Badge variant={testDesignSourceReady ? 'success' : 'secondary'}>
-                    {testDesignSourceReady ? 'Spec & Plan 后可开始' : '等待设计方案和 Spec & Plan'}
-                  </Badge>
-                </div>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  测试设计会生成复用、优化、新增和冒烟用例候选，确认后才能进入提测范围。
-                </p>
-                <UiButton
-                  size="sm"
-                  variant="outline"
-                  disabled={!testDesignSourceReady || stageActionsLocked}
-                  onClick={() => void openTestDesign()}
-                >
-                  <ClipboardCheck aria-hidden="true" className="h-4 w-4" />
-                  生成测试用例
-                </UiButton>
-              </div>
-              <div className="space-y-3 pt-5 lg:pl-5 lg:pt-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-semibold text-foreground">提测</h3>
-                  <Badge variant={testRequestSourceReady ? 'success' : 'secondary'}>
-                    {testRequestSourceReady ? '研发完成，可发起' : '等待工作流完成'}
-                  </Badge>
-                </div>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  发起提测会自动带入当前项目、版本和研发工作流，并在提测页选择已确认的测试设计。
-                </p>
-                <UiButton
-                  size="sm"
-                  disabled={!testRequestSourceReady}
-                  onClick={openTestRequest}
-                >
-                  <Send aria-hidden="true" className="h-4 w-4" />
-                  发起提测
-                </UiButton>
-              </div>
-            </div>
-          </ContextPanel>
+          <WorkflowCollaborationPanel
+            workflowRunId={workflowRun.id}
+            workflowStatus={workflowRun.status}
+            currentStage={inferFocusedStage(workflowRun)}
+            currentStageLabel={stageMeta[inferFocusedStage(workflowRun)].title}
+            stageExecutionId={getStage(workflowRun, inferFocusedStage(workflowRun))?.id}
+            stageStatus={getStage(workflowRun, inferFocusedStage(workflowRun))?.status}
+            onReleased={() => refresh({ silent: true })}
+          />
+          {loadError ? <div role="alert" className="flex items-center gap-3 text-sm text-destructive"><span>{loadError}</span><UiButton variant="outline" size="sm" onClick={() => void refresh({ silent: true })}>重新加载工作流</UiButton></div> : null}
 
           <Card className="rounded-md border-border bg-card">
             <CardHeader className="p-5 pb-0">
@@ -2411,7 +2314,11 @@ export function WorkflowRunDetailPage() {
                       ),
                     },
                   ]}
-                  output={selectedStageContent.output}
+                  output={selectedStage === 'DESIGN'
+                    ? '设计产物请查看下方设计文档与设计稿预览。'
+                    : selectedStage === 'SPEC_PLAN' && selectedSpecPlanOutput
+                      ? '结构化产物请查看下方 Spec & Plan 文档。'
+                      : selectedStageContent.output}
                   actions={
                     selectedStage === 'SPEC_PLAN' && selectedStageContent.status === 'FAILED'
                       ? selectedStageContent.actions.filter((action) => action.key === 'run' || action.key === 'claim-local')
@@ -2429,7 +2336,18 @@ export function WorkflowRunDetailPage() {
               )}
 
               {selectedStage === 'DESIGN' && workflowRun ? (
-                <DesignDocumentPanel output={getStage(workflowRun, 'DESIGN')?.output} />
+                <Card className="rounded-md border-border bg-card">
+                  <CardHeader className="p-5 pb-0"><SectionHeader eyebrow="Design Doc" title="设计文档" /></CardHeader>
+                  <CardContent className="p-5 pt-4">
+                    {(() => {
+                      const output = getStage(workflowRun, 'DESIGN')?.output;
+                      const markdown = output && typeof output === 'object' && !Array.isArray(output) && 'markdown' in output ? output.markdown : null;
+                      return typeof markdown === 'string' && markdown.trim()
+                        ? <BriefingMarkdownView markdown={markdown} />
+                        : <EmptyState description="尚未提交设计文档" />;
+                    })()}
+                  </CardContent>
+                </Card>
               ) : null}
 
               {selectedStage === 'DESIGN' && workflowRun ? (
@@ -2828,7 +2746,7 @@ export function WorkflowRunDetailPage() {
                     <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
                       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">当前阶段</p>
                       <p className="mt-1 text-sm font-medium text-foreground">设计方案（DesignSpec）</p>
-                      <p className="mt-1 text-xs text-muted-foreground">此阶段不写入可运行 Demo 代码，确认后再进入 Demo 生成。</p>
+                      <p className="mt-1 text-xs text-muted-foreground">确认后进入 Spec & Plan，完成技术方案确认后再进入开发执行。</p>
                     </div>
 
                     <div className="space-y-2">
@@ -2875,6 +2793,133 @@ export function WorkflowRunDetailPage() {
               ) : null}
             </div>
           </div>
+          <details className="rounded-md border border-border p-5">
+            <summary className="cursor-pointer text-sm font-semibold">需求背景、分支、统计与质量入口</summary>
+            <div className="mt-5 flex flex-col gap-5">
+          {workflowRun.workflowRepositories.length > 0 ? (
+            <div className="rounded-md border border-border bg-muted/35 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm leading-6 text-muted-foreground">{branchSummaryText}</p>
+                <UiButton
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setBranchSummaryExpanded((current) => !current)}
+                >
+                  {branchSummaryExpanded ? '收起分支' : '查看分支'}
+                </UiButton>
+              </div>
+              {branchSummaryExpanded ? (
+                <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+                  {workflowRun.workflowRepositories.map((repository) => (
+                    <div key={repository.id} className="text-sm leading-6 text-muted-foreground">
+                      <span className="font-medium text-foreground">{repository.name}</span>
+                      {' / '}
+                      <span>{repository.workingBranch}</span>
+                      {' / '}
+                      <span>基线 {repository.baseBranch}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {workflowMetrics ? (
+            <div className="grid gap-5 md:grid-cols-4">
+              <MetricCard
+                label="当前状态"
+                value={formatWorkflowStatus(workflowRun.status)}
+                helpText="阶段状态由平台记录，本地运行情况请查看当前任务回报。"
+              />
+              <MetricCard
+                label="阶段进度"
+                value={`${workflowMetrics.completedStages}/${STAGE_SEQUENCE.length}`}
+                helpText="已完成阶段数，按仓库 Grounding 到人工评审统计。"
+              />
+              <MetricCard
+                label="待人工处理"
+                value={workflowMetrics.waitingStages}
+                helpText="等待人工确认或下一步决策的阶段数量。"
+              />
+              <MetricCard
+                label="代码上下文"
+                value={workflowMetrics.repositoryCount}
+                helpText="本次工作流关联的代码仓库数量。"
+              />
+            </div>
+          ) : null}
+
+          <ContextPanel
+            eyebrow="Workflow Context"
+            title="需求与验收信息"
+            description="集中查看本次工作流对应的需求背景与完成标准。"
+          >
+            <div className="flex flex-col gap-4">
+              <div>
+                <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">需求描述</div>
+                <p className="whitespace-pre-line text-sm leading-6 text-foreground">
+                  {workflowRun.requirement.description?.trim() || '当前需求尚未填写描述。'}
+                </p>
+              </div>
+              <div>
+                <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">验收标准</div>
+                <p className="whitespace-pre-line text-sm leading-6 text-foreground">
+                  {workflowRun.requirement.acceptanceCriteria?.trim() || '当前需求尚未填写验收标准。'}
+                </p>
+              </div>
+            </div>
+          </ContextPanel>
+
+          <ContextPanel
+            eyebrow="测试与质量"
+            title="用例与提测"
+            description="测试设计不阻塞开发主流程；研发完成后从这里进入提测，系统会继续校验测试设计和提测门禁。"
+          >
+            <div className="grid divide-y divide-border lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+              <div className="space-y-3 pb-5 lg:pr-5 lg:pb-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-semibold text-foreground">出用例</h3>
+                  <Badge variant={testDesignSourceReady ? 'success' : 'secondary'}>
+                    {testDesignSourceReady ? 'Spec & Plan 后可开始' : '等待设计方案和 Spec & Plan'}
+                  </Badge>
+                </div>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  测试设计会生成复用、优化、新增和冒烟用例候选，确认后才能进入提测范围。
+                </p>
+                <UiButton
+                  size="sm"
+                  variant="outline"
+                  disabled={!testDesignSourceReady || stageActionsLocked}
+                  onClick={() => void openTestDesign()}
+                >
+                  <ClipboardCheck aria-hidden="true" className="h-4 w-4" />
+                  生成测试用例
+                </UiButton>
+              </div>
+              <div className="space-y-3 pt-5 lg:pl-5 lg:pt-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-semibold text-foreground">提测</h3>
+                  <Badge variant={testRequestSourceReady ? 'success' : 'secondary'}>
+                    {testRequestSourceReady ? '研发完成，可发起' : '等待工作流完成'}
+                  </Badge>
+                </div>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  发起提测会自动带入当前项目、版本和研发工作流，并在提测页选择已确认的测试设计。
+                </p>
+                <UiButton
+                  size="sm"
+                  disabled={!testRequestSourceReady}
+                  onClick={openTestRequest}
+                >
+                  <Send aria-hidden="true" className="h-4 w-4" />
+                  发起提测
+                </UiButton>
+              </div>
+            </div>
+          </ContextPanel>
+
+            </div>
+          </details>
         </div>
       ) : (
         <Card className="rounded-md border border-border bg-card">
@@ -2884,7 +2929,7 @@ export function WorkflowRunDetailPage() {
                 <Spinner className="h-7 w-7" />
               </div>
             ) : (
-              <EmptyState description="没有找到对应的工作流记录。" />
+              <div role="alert" className="space-y-3"><p className="text-sm text-destructive">{loadError ?? '工作流尚未加载。'}</p><UiButton variant="outline" onClick={() => void refresh()}>重新加载工作流</UiButton></div>
             )}
           </CardContent>
         </Card>

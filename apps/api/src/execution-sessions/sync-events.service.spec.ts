@@ -61,6 +61,8 @@ function createService() {
       projectId: 'project-1',
     }),
   };
+  const requireWritableSession = vi.fn().mockImplementation((...args) => executionSessionsService.requireAccessibleSession(...args));
+  Object.assign(executionSessionsService, { requireWritableSession });
   return {
     service: new SyncEventsService(prisma as never, executionSessionsService as never),
     prisma,

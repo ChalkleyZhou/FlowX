@@ -25,6 +25,7 @@ import {
   assertExecutionSessionTransition,
 } from './execution-session-state';
 import { WorkflowService } from '../workflow/workflow.service';
+import { assertLocalSessionOwner } from '../workflow/workflow-local-ownership';
 
 export type CompleteExecutionSessionScopeWithSession = ExecutionSessionScope & {
   notifySession?: {
@@ -172,12 +173,24 @@ export class ExecutionSessionsService {
     return session;
   }
 
+  /** 团队成员可以读取执行进展，只有本地领取人可以写入执行数据。 */
+  async requireWritableSession(id: string, scope: ExecutionSessionScope = {}) {
+    const session = await this.requireAccessibleSession(id, scope);
+    if (session.executorType === 'LOCAL') {
+      assertLocalSessionOwner(session, scope);
+      if (session.status === 'CANCELLED') {
+        throw new ConflictException('该本地任务已取消，请使用当前工作流的新任务，不能继续回传旧会话。');
+      }
+    }
+    return session;
+  }
+
   async markRunning(id: string, scope: ExecutionSessionScope = {}) {
     return this.transition(id, 'RUNNING', {}, scope);
   }
 
   async heartbeat(id: string, occurredAt: Date, scope: ExecutionSessionScope = {}) {
-    const session = await this.requireAccessibleSession(id, scope);
+    const session = await this.requireWritableSession(id, scope);
     if (isExecutionSessionTerminal(session.status as ExecutionSessionStatus)) {
       throw new BadRequestException({
         code: 'EXECUTION_SESSION_TERMINAL',
@@ -217,6 +230,8 @@ export class ExecutionSessionsService {
       if (!this.workflowService) {
         throw new BadRequestException('Local completion is not available in this environment.');
       }
+      const session = await this.requireWritableSession(id, scope);
+      await this.assertGenericTerminalAllowed(session);
       const result = await this.workflowService.completeLocalExecutionBySession(
         id,
         {
@@ -233,7 +248,7 @@ export class ExecutionSessionsService {
       );
       return result.executionSession;
     }
-    const session = await this.requireAccessibleSession(id, scope);
+    const session = await this.requireWritableSession(id, scope);
     if (session.controlMode === 'COOPERATIVE') throw new BadRequestException('本地开发完成必须提交仓库和测试报告。');
     return this.transition(id, 'COMPLETED', input, scope);
   }
@@ -252,8 +267,9 @@ export class ExecutionSessionsService {
     input: TransitionInput,
     scope: ExecutionSessionScope,
   ) {
-    const session = await this.requireAccessibleSession(id, scope);
+    const session = await this.requireWritableSession(id, scope);
     const from = session.status as ExecutionSessionStatus;
+    if (isExecutionSessionTerminal(to)) await this.assertGenericTerminalAllowed(session);
     if (session.controlMode === 'COOPERATIVE' && to !== 'FAILED') {
       throw new BadRequestException('已接入运行控制，请通过检查点和命令回执变更状态。');
     }
@@ -286,6 +302,16 @@ export class ExecutionSessionsService {
       });
     }
     return this.prisma.executionSession.findUniqueOrThrow({ where: { id } });
+  }
+
+  private async assertGenericTerminalAllowed(session: { executorType: string; stageExecutionId: string | null; testRunId: string | null }) {
+    if (session.executorType !== 'LOCAL') return;
+    const stage = session.stageExecutionId ? await this.prisma.stageExecution.findUnique({
+      where: { id: session.stageExecutionId }, select: { stage: true },
+    }) : null;
+    if (session.testRunId || (stage && ['BRAINSTORM', 'DESIGN', 'SPEC_PLAN'].includes(stage.stage.toUpperCase()))) {
+      throw new ConflictException('该本地任务需要通过所属阶段的专用回传接口完成，或确认原设备已停止后重新交接。');
+    }
   }
 
   private assertMatchingCreateRequest(

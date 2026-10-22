@@ -139,7 +139,7 @@ export class OpenDesignEdgeService {
   complete(
     executionSessionId: string,
     report: DesignCompletionReport,
-    scope: { organizationId?: string | null },
+    scope: { organizationId?: string | null; userId?: string | null },
   ) {
     return this.workflowService.completeLocalDesignSession(
       executionSessionId,
@@ -151,7 +151,7 @@ export class OpenDesignEdgeService {
   completeBrainstorm(
     executionSessionId: string,
     report: BrainstormCompletionReport,
-    scope: { organizationId?: string | null },
+    scope: { organizationId?: string | null; userId?: string | null },
   ) {
     return this.workflowService.completeLocalBrainstormSession(
       executionSessionId,

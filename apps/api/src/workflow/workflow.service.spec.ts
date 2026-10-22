@@ -693,6 +693,7 @@ const validLocalDesign = {
 };
 
 describe('WorkflowService submitLocalDesign', () => {
+  const actor = { user: { id: 'designer', displayName: '设计师' }, organization: { id: 'org' } };
   afterEach(async () => {
     const { rm } = await import('fs/promises');
     const { join } = await import('path');
@@ -701,6 +702,7 @@ describe('WorkflowService submitLocalDesign', () => {
 
   it('rejects when the workflow is not in a design stage', async () => {
     const prisma = {
+      executionSession: { findFirst: vi.fn().mockResolvedValue(null) },
       workflowRun: {
         findUniqueOrThrow: vi.fn().mockResolvedValue({
           id: 'run-ld',
@@ -709,23 +711,26 @@ describe('WorkflowService submitLocalDesign', () => {
         }),
       },
     };
-    await expect(makeServiceWithPrisma(prisma).submitLocalDesign('run-ld', validLocalDesign)).rejects.toThrow(
+    await expect(makeServiceWithPrisma(prisma).submitLocalDesign('run-ld', validLocalDesign, actor)).rejects.toThrow(
       /pending or waiting/,
     );
   });
 
   it('rejects invalid design output before mutating state', async () => {
     const prisma = {
+      executionSession: { findFirst: vi.fn().mockResolvedValue(null) },
       workflowRun: {
         findUniqueOrThrow: vi.fn().mockResolvedValue({
           id: 'run-ld',
+          updatedAt: new Date('2026-10-22T00:00:00Z'),
+          requirement: { workspace: { organizationId: 'org' }, project: {} },
           status: 'DESIGN_PENDING',
           stageExecutions: [{ id: 'se-1', stage: 'DESIGN', status: 'PENDING', attempt: 1 }],
         }),
       },
     };
     await expect(
-      makeServiceWithPrisma(prisma).submitLocalDesign('run-ld', { design: {}, demo: {}, surfaces: [] }),
+      makeServiceWithPrisma(prisma).submitLocalDesign('run-ld', { design: {}, demo: {}, surfaces: [] }, actor),
     ).rejects.toThrow(/DESIGN_OUTPUT_INVALID/);
   });
 
@@ -747,6 +752,7 @@ describe('WorkflowService submitLocalDesign', () => {
         }),
       },
       workflowRun: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         update: vi.fn().mockImplementation(async ({ data }: { data: { status: string } }) => {
           finalStatus = data.status;
           return { id: 'run-ld', status: data.status };
@@ -760,9 +766,12 @@ describe('WorkflowService submitLocalDesign', () => {
     };
 
     const prisma = {
+      executionSession: { findFirst: vi.fn().mockResolvedValue(null) },
       workflowRun: {
         findUniqueOrThrow: vi.fn().mockResolvedValue({
           id: 'run-ld',
+          updatedAt: new Date('2026-10-22T00:00:00Z'),
+          requirement: { workspace: { organizationId: 'org' }, project: {} },
           status: 'DESIGN_PENDING',
           stageExecutions: [{ id: 'se-1', stage: 'DESIGN', status: 'PENDING', attempt: 1 }],
         }),
@@ -770,7 +779,7 @@ describe('WorkflowService submitLocalDesign', () => {
       $transaction: vi.fn().mockImplementation((cb: (t: typeof tx) => unknown) => cb(tx)),
     };
 
-    const result = (await makeServiceWithPrisma(prisma).submitLocalDesign('run-ld', validLocalDesign)) as {
+    const result = (await makeServiceWithPrisma(prisma).submitLocalDesign('run-ld', validLocalDesign, actor)) as {
       status: string;
     };
 
@@ -799,11 +808,14 @@ describe('WorkflowService submitLocalDesign', () => {
 describe('WorkflowService design artifact persistence', () => {
   it('persists surface pages to disk and reads them back (rejecting traversal)', async () => {
     const { service } = createService();
+    const registerWorkflowArtifact = vi.fn().mockResolvedValue({ id: 'artifact-local' });
+    Object.assign(service, { artifactsService: { registerWorkflowArtifact } });
     const helpers = service as unknown as {
       persistDesignSurfacePages: (
         runId: string,
         surfaceId: string,
         pages: Array<{ id: string; html: string }>,
+        ownership?: { executionSessionId: string; createdByUserId: string },
       ) => Promise<{ id: string; pages: Array<{ relPath: string; bytes: number }> }>;
       readWorkflowDesignArtifactHtml: (relPath: string) => Promise<string | null>;
       mergeDesignSurfaceInventory: (
@@ -816,7 +828,8 @@ describe('WorkflowService design artifact persistence', () => {
     const html = '<!doctype html><html><body><h1>FlowX</h1></body></html>';
     const surface = await helpers.persistDesignSurfacePages(runId, 'Web端', [
       { id: '首页', html },
-    ]);
+    ], { executionSessionId: 'local-session', createdByUserId: 'designer' });
+    expect(registerWorkflowArtifact).toHaveBeenCalledWith(expect.objectContaining({ executionSessionId: 'local-session', createdByUserId: 'designer' }));
 
     expect(surface.id).toBe('Web端');
     expect(surface.pages[0]?.relPath).toContain(`${runId}/`);

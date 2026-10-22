@@ -31,6 +31,8 @@ import { useToast } from '../components/ui/toast';
 import type { Project, Requirement, Workspace } from '../types';
 import { formatAssignmentSummary, formatScheduleRange } from '../utils/business-days';
 import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
+import { formatRequirementWorkflowScope, getActiveRequirementWorkflows } from '../utils/requirement-workflows';
+import { formatWorkflowStatus } from '../utils/workflow-ui';
 
 const UNVERSIONED = '__unversioned__';
 const emptyCreateDraft = {
@@ -46,13 +48,14 @@ const AI_PROVIDER_STORAGE_KEY = 'flowx-default-ai-provider';
 
 export function RequirementsPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>();
   const [selectedProjectId, setSelectedProjectId] = useState<string>();
   const [loading, setLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [launchModalRequirement, setLaunchModalRequirement] = useState<Requirement | null>(null);
   const [launchRepositoryIds, setLaunchRepositoryIds] = useState<string[]>([]);
@@ -113,6 +116,7 @@ export function RequirementsPage() {
       setWorkspaces(workspaceList);
       setProjects(projectList);
       setRequirements(requirementList);
+      setHasLoaded(true);
       setAvailableAiProviders(workflowProviderConfig.providers);
       const storedProvider =
         typeof window !== 'undefined'
@@ -141,6 +145,24 @@ export function RequirementsPage() {
       setSelectedProjectId(projectId);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    const requirementId = searchParams.get('launchRequirementId');
+    if (!hasLoaded || !requirementId) {
+      return;
+    }
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('launchRequirementId');
+    setSearchParams(nextParams, { replace: true });
+    const target = requirements.find((item) => item.id === requirementId);
+    if (target) {
+      setLaunchModalRequirement(target);
+      setLaunchRepositoryIds([]);
+      setLaunchAiProvider(defaultAiProvider);
+    } else {
+      toast.error('未找到要启动的需求，请刷新后重试');
+    }
+  }, [hasLoaded, searchParams, requirements, defaultAiProvider, setSearchParams]);
 
   async function createRequirement(values: {
     projectId: string;
@@ -234,23 +256,15 @@ export function RequirementsPage() {
     return repositories.map((repository) => repository.name).join('、');
   }
 
-  function getActiveWorkflowRuns(requirement: Requirement) {
-    return (requirement.workflowRuns ?? []).filter(
-      (run) => !['DONE', 'FAILED'].includes(run.status),
-    );
-  }
-
   function renderActiveWorkflowScope(requirement: Requirement) {
-    const activeRuns = getActiveWorkflowRuns(requirement);
+    const activeRuns = getActiveRequirementWorkflows(requirement);
     if (activeRuns.length === 0) {
       return '当前没有进行中的工作流。';
     }
 
     return activeRuns
       .map((run) => {
-        const repositories = run.workflowRepositories?.map((repository) => repository.name) ?? [];
-        const scopeLabel = repositories.length > 0 ? repositories.join('、') : '未记录仓库范围';
-        return `${run.id.slice(-6)} · ${run.status} · ${scopeLabel}`;
+        return `${run.id.slice(-6)} · ${formatWorkflowStatus(run.status)} · ${formatRequirementWorkflowScope(run)}`;
       })
       .join(' | ');
   }
@@ -297,6 +311,20 @@ export function RequirementsPage() {
                   默认范围：{renderRepositoryScope(launchModalRequirement)}
                 </div>
               </div>
+              {getActiveRequirementWorkflows(launchModalRequirement).length > 0 ? (
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-sm font-semibold">已有活跃工作流</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">下列仓库范围已被占用，可继续已有流程，或选择不同仓库并行启动。</p>
+                  <ul className="mt-2 flex flex-col gap-2 text-sm">
+                    {getActiveRequirementWorkflows(launchModalRequirement).map((run) => (
+                      <li key={run.id}>
+                        {formatWorkflowStatus(run.status)} · {formatRequirementWorkflowScope(run)}
+                        {' · '}<Link className="text-primary hover:underline" to={`/workflow-runs/${run.id}`}>继续此工作流</Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-semibold text-foreground">默认 AI 执行器</label>
@@ -597,8 +625,8 @@ export function RequirementsPage() {
                       <Badge variant="outline">{formatPriority(item.priority)}</Badge>
                       {item.version ? <Badge variant="outline">{item.version.name}</Badge> : null}
                       <Badge variant="default">{item.workflowRuns?.length ?? 0} 条工作流</Badge>
-                      <Badge variant={getActiveWorkflowRuns(item).length > 0 ? 'warning' : 'outline'}>
-                        {getActiveWorkflowRuns(item).length} 条活跃流
+                      <Badge variant={getActiveRequirementWorkflows(item).length > 0 ? 'warning' : 'outline'}>
+                        {getActiveRequirementWorkflows(item).length} 条活跃流
                       </Badge>
                       <Badge variant="outline">
                         {(item.requirementRepositories?.length ?? 0) > 0

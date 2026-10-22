@@ -104,7 +104,7 @@ describe('LocalSmokeService', () => {
         testRequest: {
           workspaceId: 'workspace-1',
           projectId: 'project-1',
-          workspace: { organizationId: 'org-1' },
+          workspace: { organizationId: 'org-1', userId: 'user-1' },
         },
       },
     });
@@ -168,7 +168,7 @@ describe('LocalSmokeService', () => {
         testRequest: {
           workspaceId: 'workspace-1',
           projectId: 'project-1',
-          workspace: { organizationId: 'org-1' },
+          workspace: { organizationId: 'org-1', userId: 'user-1' },
         },
       },
     });
@@ -223,6 +223,7 @@ describe('LocalSmokeService', () => {
       id: 'session-1',
       status: 'RUNNING',
       organizationId: 'org-1',
+      claimedByUserId: 'user-1',
       sourceTool: 'flowx-local',
       metadata: {},
       testExecution: {
@@ -263,7 +264,7 @@ describe('LocalSmokeService', () => {
           { testRunCaseId: 'case-1', result: 'PASSED', artifactIds: ['log-1'] },
         ],
       },
-      { organizationId: 'org-1' },
+      { organizationId: 'org-1', userId: 'user-1' },
     );
 
     expect(tx.testExecutionCaseResult.create).toHaveBeenCalledWith(
@@ -283,6 +284,7 @@ describe('LocalSmokeService', () => {
       id: 'session-1',
       status: 'RUNNING',
       organizationId: 'org-1',
+      claimedByUserId: 'user-1',
       sourceTool: 'flowx-local',
       metadata: {},
       testExecution: {
@@ -315,7 +317,7 @@ describe('LocalSmokeService', () => {
           ],
           caseResults: [{ testRunCaseId: 'case-1', result: 'PASSED' }],
         },
-        { organizationId: 'org-1' },
+        { organizationId: 'org-1', userId: 'user-1' },
       ),
     ).resolves.toEqual({ status: 'STALE', reason: 'TESTED_REVISIONS_MISMATCH' });
     expect(tx.testRunCaseLease.deleteMany).toHaveBeenCalledWith({

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { ContextPanel } from '../components/ContextPanel';
 import { DetailHeader } from '../components/DetailHeader';
@@ -9,29 +9,42 @@ import { Card, CardContent } from '../components/ui/card';
 import { Spinner } from '../components/ui/spinner';
 import type { Requirement } from '../types';
 import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
+import { formatRequirementWorkflowScope, getActiveRequirementWorkflows, isActiveRequirementWorkflow } from '../utils/requirement-workflows';
+import { formatWorkflowStatus } from '../utils/workflow-ui';
 
 export function RequirementDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const [requirement, setRequirement] = useState<Requirement | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const requestVersion = useRef(0);
 
   const fetchRequirement = useCallback(async () => {
     if (!id) {
       return;
     }
+    const version = ++requestVersion.current;
+    setLoading(true);
+    setError(null);
     try {
       const data = await api.getRequirement(id);
-      setRequirement(data);
+      if (version === requestVersion.current) {
+        setRequirement(data);
+      }
     } catch (err) {
-      console.error('Failed to fetch requirement:', err);
+      if (version === requestVersion.current) {
+        setError(err instanceof Error ? err.message : '加载需求失败，请重试');
+      }
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) {
+        setLoading(false);
+      }
     }
   }, [id]);
 
   useEffect(() => {
     void fetchRequirement();
+    return () => { requestVersion.current += 1; };
   }, [fetchRequirement]);
 
   useEffect(() => {
@@ -39,18 +52,6 @@ export function RequirementDetailPage() {
       document.getElementById('scheduling')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [requirement, loading]);
-
-  async function handleLaunchWorkflow() {
-    if (!id) {
-      return;
-    }
-    try {
-      const workflow = await api.createWorkflowRun(id);
-      navigate(`/workflow-runs/${workflow.id}`);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : '启动工作流失败');
-    }
-  }
 
   if (loading) {
     return (
@@ -60,15 +61,23 @@ export function RequirementDetailPage() {
     );
   }
 
-  if (!requirement) {
+  if (error || !requirement) {
     return (
       <Card className="border-border bg-card">
-        <CardContent className="p-5">
-          <p className="text-sm text-muted-foreground">需求未找到</p>
+        <CardContent className="flex flex-col gap-3 p-5">
+          <p role="alert" className="text-sm text-muted-foreground">{error ?? '需求未找到'}</p>
+          <div className="flex gap-3">
+            <Button onClick={() => void fetchRequirement()}>重试</Button>
+            <Button variant="outline" asChild><Link to="/requirements">返回列表</Link></Button>
+          </div>
         </CardContent>
       </Card>
     );
   }
+
+  const activeWorkflows = getActiveRequirementWorkflows(requirement);
+  const historicalWorkflows = (requirement.workflowRuns ?? []).filter((run) => !isActiveRequirementWorkflow(run));
+  const launchParams = new URLSearchParams({ projectId: requirement.project.id, launchRequirementId: requirement.id });
 
   return (
     <div className="flex flex-col gap-5">
@@ -100,10 +109,55 @@ export function RequirementDetailPage() {
             <Button variant="outline" asChild>
               <Link to={`/requirements/${requirement.id}#scheduling`}>排期</Link>
             </Button>
-            <Button onClick={() => void handleLaunchWorkflow()}>启动研发工作流</Button>
+            {activeWorkflows.length === 1 ? (
+              <Button asChild><Link to={`/workflow-runs/${activeWorkflows[0].id}`}>继续当前工作流</Link></Button>
+            ) : activeWorkflows.length > 1 ? (
+              <Button asChild><a href="#active-workflows">选择要继续的工作流</a></Button>
+            ) : null}
+            <Button variant={activeWorkflows.length > 0 ? 'outline' : 'default'} asChild>
+              <Link to={`/requirements?${launchParams.toString()}`}>
+                {activeWorkflows.length > 0 ? '启动其他仓库工作流' : '启动研发工作流'}
+              </Link>
+            </Button>
           </div>
         )}
       />
+
+      <section id="active-workflows" className="scroll-mt-5">
+        <ContextPanel
+          eyebrow="Workflow"
+          title={activeWorkflows.length > 1 ? '选择要继续的工作流' : '当前工作流'}
+          description={activeWorkflows.length > 0 ? '按仓库范围继续已有流程；需要并行推进其他仓库时，可另行启动。' : '当前没有活跃工作流，可以选择仓库和执行器后启动。'}
+        >
+          <div className="flex flex-col gap-3">
+            {activeWorkflows.map((run) => (
+              <div key={run.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-3">
+                <div>
+                  <p className="text-sm font-medium">{formatWorkflowStatus(run.status)} · {run.id.slice(-6)}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">仓库范围：{formatRequirementWorkflowScope(run)}</p>
+                </div>
+                <Button variant="outline" asChild><Link to={`/workflow-runs/${run.id}`}>继续此工作流</Link></Button>
+              </div>
+            ))}
+          </div>
+        </ContextPanel>
+      </section>
+
+      {historicalWorkflows.length > 0 ? (
+        <ContextPanel eyebrow="History" title="历史工作流" description="已完成或失败的流程，可进入查看历史产物与记录。">
+          <div className="flex flex-col gap-3">
+            {historicalWorkflows.map((run) => (
+              <div key={run.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-3">
+                <div>
+                  <p className="text-sm font-medium">{formatWorkflowStatus(run.status)} · {run.id.slice(-6)}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">仓库范围：{formatRequirementWorkflowScope(run)}</p>
+                </div>
+                <Button variant="outline" asChild><Link to={`/workflow-runs/${run.id}`}>查看历史</Link></Button>
+              </div>
+            ))}
+          </div>
+        </ContextPanel>
+      ) : null}
 
       <ContextPanel
         eyebrow="Requirement"

@@ -106,6 +106,29 @@ describe('api helpers', () => {
     await expect(api.getRequirements()).rejects.toThrow('first problem；second problem');
   });
 
+  it('保留真实 HTTP 错误状态供页面区分访问失败原因', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ message: '没有访问权限' }), { status: 403 },
+    )));
+    await expect(api.getTestRequest('request-1')).rejects.toMatchObject({
+      name: 'ApiError', message: '没有访问权限', status: 403,
+    });
+  });
+
+  it('真实 Response 的报告 JSON null 和对象均按原契约解析', async () => {
+    const report = { id: 'report-1', name: 'submission-report.html' };
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response('null', { headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(report))));
+    await expect(api.getSubmissionReport('request-1')).resolves.toBeNull();
+    await expect(api.getSubmissionReport('request-1')).resolves.toEqual(report);
+  });
+
+  it('正常 JSON 请求收到空响应时仍报解析错误，避免隐藏契约损坏', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('')));
+    await expect(api.getTestRequest('request-1')).rejects.toBeInstanceOf(SyntaxError);
+  });
+
   it('deduplicates concurrent identical get requests', async () => {
     const payload = [{ id: 'workspace-1' }];
     const fetchMock = vi.fn().mockImplementation(
@@ -567,4 +590,16 @@ describe('api helpers', () => {
       ['http://localhost:3000/code-review-sources/cr-source-1', 'DELETE'],
     ]);
   });
+  it('协同读取使用纯 GET，显式交接传递确认和原因', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ sessions: [] }) });
+    vi.stubGlobal('fetch', fetchMock);
+    await api.getWorkflowCollaboration('run-1');
+    await api.releaseWorkflowLocalTask('run-1', { executionSessionId: 'session-1', confirmedStopped: true, reason: '原设备已停止' });
+    expect(fetchMock.mock.calls.map(([url, options]) => [url, options.method ?? 'GET'])).toEqual([
+      ['http://localhost:3000/workflow-runs/run-1/collaboration', 'GET'],
+      ['http://localhost:3000/workflow-runs/run-1/local-task/release', 'POST'],
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ executionSessionId: 'session-1', confirmedStopped: true, reason: '原设备已停止' });
+  });
+
 });

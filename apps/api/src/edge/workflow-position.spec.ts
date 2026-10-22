@@ -37,7 +37,17 @@ describe('resolveLocalPosition', () => {
 });
 
 describe('summarizePriorOutputs', () => {
-  it('keeps the latest submitted stage output and a short summary', () => {
+  it.each(['REJECTED', 'FAILED', 'PENDING', 'RUNNING', 'WAITING_CONFIRMATION'])(
+    'does not fall back to a confirmed output when the latest attempt is %s',
+    (status) => {
+      expect(summarizePriorOutputs([
+        { id: 'old', stage: 'DESIGN', status: 'COMPLETED', attempt: 1, output: { markdown: '旧确认稿' } },
+        { id: 'latest', stage: 'DESIGN', status, attempt: 2, output: { markdown: '新稿' } },
+      ])).toEqual([]);
+    },
+  );
+
+  it('keeps only the latest confirmed stage output and a short summary', () => {
     const outputs = summarizePriorOutputs([
       {
         id: 'brainstorm-old',
@@ -76,13 +86,6 @@ describe('summarizePriorOutputs', () => {
         status: 'COMPLETED',
         files: ['prd.md'],
         summary: '# Export PRD',
-      },
-      {
-        stage: 'design',
-        stageExecutionId: 'design-1',
-        status: 'WAITING_CONFIRMATION',
-        files: ['design.md'],
-        summary: '# Export design',
       },
     ]);
   });

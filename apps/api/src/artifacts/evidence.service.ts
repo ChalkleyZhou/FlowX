@@ -19,7 +19,7 @@ export class EvidenceService {
     input: RegisterEvidenceDto,
     scope: ExecutionSessionScope = {},
   ) {
-    const session = await this.executionSessionsService.requireAccessibleSession(
+    const session = await this.executionSessionsService.requireWritableSession(
       executionSessionId,
       scope,
     );

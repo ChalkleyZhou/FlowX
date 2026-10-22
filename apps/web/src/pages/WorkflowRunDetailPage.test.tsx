@@ -2,7 +2,7 @@
 
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkflowRunDetailPage } from './WorkflowRunDetailPage';
 import { api } from '../api';
@@ -12,6 +12,8 @@ import type { SpecPlanOutput, WorkflowRun } from '../types';
 vi.mock('../api', () => ({
   api: {
     getWorkflowRun: vi.fn(),
+    getWorkflowCollaboration: vi.fn(),
+    releaseWorkflowLocalTask: vi.fn(),
     runSpecPlan: vi.fn(),
     reviseSpecPlan: vi.fn(),
     confirmSpecPlan: vi.fn(),
@@ -185,6 +187,7 @@ describe('WorkflowRunDetailPage', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
+    vi.mocked(api.getWorkflowCollaboration).mockResolvedValue({ workflowRunId: 'workflow-1', currentStage: 'SPEC_PLAN', sessions: [] });
   });
 
   afterEach(() => {
@@ -195,6 +198,160 @@ describe('WorkflowRunDetailPage', () => {
     }
     document.body.innerHTML = '';
     vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('keeps the current task tied to the real current stage while browsing history', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({
+      status: 'DESIGN_PENDING', currentStage: 'DESIGN', stageExecutions: [
+        { id: 'old-failed', stage: 'BRAINSTORM', status: 'FAILED', attempt: 1, output: null },
+        { id: 'design-current', stage: 'DESIGN', status: 'PENDING', attempt: 1, output: null },
+      ],
+    }));
+    await renderPage();
+    const panel = container.querySelector('[data-testid="workflow-current-task"]');
+    expect(panel?.textContent).toContain('设计方案');
+    expect(panel?.textContent).toContain('待执行');
+    await selectBrainstormStep();
+    expect(panel?.textContent).toContain('设计方案');
+    expect(panel?.textContent).not.toContain('产品构思');
+    expect(api.getWorkflowCollaboration).toHaveBeenCalledWith('workflow-1');
+    expect(api.claimLocalSpecPlan).not.toHaveBeenCalled();
+    expect(api.claimLocalExecution).not.toHaveBeenCalled();
+  });
+
+  it('uses the workflow status before old failures when legacy data has no currentStage', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({
+      status: 'DESIGN_PENDING', currentStage: null, stageExecutions: [
+        { id: 'old-failed', stage: 'BRAINSTORM', status: 'FAILED', attempt: 1, output: null },
+        { id: 'design-current', stage: 'DESIGN', status: 'PENDING', attempt: 1, output: null },
+      ],
+    }));
+    await renderPage();
+    const panel = container.querySelector('[data-testid="workflow-current-task"]');
+    expect(panel?.textContent).toContain('设计方案');
+    expect(panel?.textContent).not.toContain('产品构思');
+  });
+
+  it('places current task, stage navigation and outputs before background and quality entries', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun());
+    await renderPage();
+    const text = container.textContent ?? '';
+    expect(text.indexOf('当前任务')).toBeGreaterThan(-1);
+    expect(text.indexOf('当前任务')).toBeLessThan(text.indexOf('按阶段查看流程与产物'));
+    expect(text.indexOf('Spec & Plan 文档')).toBeLessThan(text.indexOf('需求与验收信息'));
+    expect(text.indexOf('Spec & Plan 文档')).toBeLessThan(text.indexOf('用例与提测'));
+    expect(text).toContain('本次工作流关联的代码仓库数量');
+  });
+
+  it('renders design markdown as a document and describes the actual next stage', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({
+      status: 'DESIGN_WAITING_CONFIRMATION', currentStage: 'DESIGN', stageExecutions: [{
+        id: 'design-current', stage: 'DESIGN', status: 'WAITING_CONFIRMATION', attempt: 1,
+        output: { markdown: '# 页面结构\n\n- **登录入口**' },
+      }],
+    }));
+    await renderPage();
+    expect(container.querySelector('h1')?.textContent).toBeTruthy();
+    expect(Array.from(container.querySelectorAll('h1')).some(node => node.textContent === '页面结构')).toBe(true);
+    expect(container.querySelector('strong')?.textContent).toBe('登录入口');
+    expect(container.textContent).not.toContain('暂无输出');
+    expect(container.textContent).toContain('确认后进入 Spec & Plan');
+    expect(container.textContent).not.toContain('确认后再进入 Demo 生成');
+  });
+
+  it('shows a retryable load failure instead of claiming the workflow does not exist', async () => {
+    vi.mocked(api.getWorkflowRun).mockRejectedValueOnce(new Error('网络暂时不可用')).mockResolvedValue(createWorkflowRun());
+    await renderPage();
+    expect(container.textContent).toContain('网络暂时不可用');
+    expect(container.textContent).not.toContain('没有找到对应的工作流记录');
+    const retry = Array.from(container.querySelectorAll('button')).find(node => node.textContent === '重新加载工作流');
+    await act(async () => { retry?.click(); });
+    expect(container.textContent).toContain('修复登录流程');
+  });
+
+  it('keeps the current page while background refresh is pending and does not overlap requests', async () => {
+    vi.useFakeTimers();
+    const run = createWorkflowRun({ status: 'SPEC_PLAN_PENDING', currentStage: 'SPEC_PLAN', stageExecutions: [{ id: 'stage-1', stage: 'SPEC_PLAN', status: 'RUNNING', attempt: 1, output: null }] });
+    vi.mocked(api.getWorkflowRun).mockResolvedValueOnce(run);
+    await renderPage();
+    let finish!: (value: WorkflowRun) => void;
+    vi.mocked(api.getWorkflowRun).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(container.textContent).toContain('修复登录流程');
+    expect(api.getWorkflowRun).toHaveBeenCalledTimes(2);
+    await act(async () => { finish({ ...run, status: 'FAILED' }); });
+    const calls = vi.mocked(api.getWorkflowRun).mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(api.getWorkflowRun).toHaveBeenCalledTimes(calls);
+    vi.useRealTimers();
+  });
+
+  it('ignores a previous workflow response when navigating to another workflow', async () => {
+    let finishOld!: (value: WorkflowRun) => void;
+    vi.mocked(api.getWorkflowRun).mockImplementation(id => id === 'workflow-1'
+      ? new Promise(resolve => { finishOld = resolve; })
+      : Promise.resolve(createWorkflowRun({ id: 'workflow-2', requirement: { ...createWorkflowRun().requirement, title: '新的需求' } })));
+    function SwitchWorkflow() {
+      const navigate = useNavigate();
+      return <button onClick={() => navigate('/workflow-runs/workflow-2')}>切换工作流</button>;
+    }
+    await act(async () => {
+      root?.render(<MemoryRouter initialEntries={['/workflow-runs/workflow-1']}><ConfirmProvider><SwitchWorkflow /><Routes><Route path="/workflow-runs/:workflowRunId" element={<WorkflowRunDetailPage />} /></Routes></ConfirmProvider></MemoryRouter>);
+    });
+    await act(async () => { container.querySelector('button')?.click(); });
+    expect(container.textContent).toContain('新的需求');
+    await act(async () => { finishOld(createWorkflowRun()); });
+    expect(container.textContent).toContain('新的需求');
+    expect(container.textContent).not.toContain('workflow-1');
+  });
+
+  it('回退操作期间切换工作流，旧操作结果不覆盖新页面', async () => {
+    let finishRollback!: (value: WorkflowRun) => void;
+    const first = createWorkflowRun({ status: 'SPEC_PLAN_PENDING', currentStage: 'SPEC_PLAN', stageExecutions: [
+      { id: 'design', stage: 'DESIGN', status: 'COMPLETED', attempt: 1, output: {} },
+      { id: 'spec', stage: 'SPEC_PLAN', status: 'PENDING', attempt: 1, output: null },
+    ] });
+    vi.mocked(api.getWorkflowRun).mockImplementation(id => Promise.resolve(id === 'workflow-1' ? first
+      : createWorkflowRun({ id: 'workflow-2', requirement: { ...first.requirement, title: '新页面需求' } })));
+    vi.mocked(api.rollbackWorkflowToPreviousStage).mockImplementation(() => new Promise(resolve => { finishRollback = resolve; }));
+    function SwitchWorkflow() {
+      const navigate = useNavigate();
+      return <button onClick={() => navigate('/workflow-runs/workflow-2')}>切到新工作流</button>;
+    }
+    await act(async () => {
+      root?.render(<MemoryRouter initialEntries={['/workflow-runs/workflow-1']}><ConfirmProvider><SwitchWorkflow /><Routes><Route path="/workflow-runs/:workflowRunId" element={<WorkflowRunDetailPage />} /></Routes></ConfirmProvider></MemoryRouter>);
+    });
+    const rollback = Array.from(container.querySelectorAll('button')).find(node => node.textContent?.includes('回退到上一阶段'));
+    expect(rollback).toBeTruthy();
+    await act(async () => { rollback?.click(); });
+    const confirmButton = Array.from(document.querySelectorAll('[role="dialog"] button')).find(node => node.textContent?.trim() === '确认');
+    expect(confirmButton).toBeTruthy();
+    await act(async () => { confirmButton?.dispatchEvent(new MouseEvent('click', { bubbles: true })); await Promise.resolve(); await Promise.resolve(); });
+    expect(api.rollbackWorkflowToPreviousStage).toHaveBeenCalledWith('workflow-1');
+    await act(async () => { Array.from(container.querySelectorAll('button')).find(node => node.textContent === '切到新工作流')?.click(); });
+    expect(container.textContent).toContain('新页面需求');
+    await act(async () => { finishRollback(first); });
+    expect(container.textContent).toContain('新页面需求');
+  });
+
+  it('stops execution session polling after the local session reaches a terminal status', async () => {
+    vi.useFakeTimers();
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({
+      status: 'EXECUTION_RUNNING', currentStage: 'EXECUTION', stageExecutions: [{
+        id: 'execution-1', stage: 'EXECUTION', status: 'RUNNING', attempt: 1,
+        input: { executor: 'LOCAL' }, output: null,
+      }],
+    }));
+    vi.mocked(api.getLocalHandoff).mockResolvedValue({ executionSessionId: 'session-1', repositories: [] } as never);
+    vi.mocked(api.getExecutionSession).mockResolvedValue({ id: 'session-1', workflowRunId: 'workflow-1', status: 'COMPLETED', executorType: 'LOCAL', sourceTool: 'cursor', protocolVersion: '1.0', traceId: 'trace-1', createdAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:00:00Z' });
+    vi.mocked(api.listExecutionSessionEvidence).mockResolvedValue([]);
+    vi.mocked(api.listExecutionSessionEvents).mockResolvedValue({ items: [], nextCursor: null });
+    await renderPage();
+    const calls = vi.mocked(api.getExecutionSession).mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(api.getExecutionSession).toHaveBeenCalledTimes(calls);
+    vi.useRealTimers();
   });
 
   it('renders workflow context separately from the header summary', async () => {

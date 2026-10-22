@@ -765,6 +765,8 @@ export interface TestRunTarget {
 
 export interface TestExecution {
   id: string;
+  claimedCaseIds?: string[];
+  leaseExpiresAt?: string | null;
   status: string;
   targetId: string;
   deviceId?: string | null;

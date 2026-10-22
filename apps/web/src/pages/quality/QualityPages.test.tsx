@@ -4,7 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../../api';
+import { api, ApiError } from '../../api';
 import { ConfirmProvider } from '../../components/ConfirmDialog';
 import type { Project, TestCaseDefinition, TestCaseLibrary, TestDesign, TestRequest, WorkflowRun, Workspace } from '../../types';
 import { QualityCasesPage } from './QualityCasesPage';
@@ -23,7 +23,8 @@ function setInputValue(element: HTMLInputElement, value: string) {
   element.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-vi.mock('../../api', () => ({
+vi.mock('../../api', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../api')>(),
   api: {
     getWorkspaces: vi.fn(),
     getProjects: vi.fn(),
@@ -566,6 +567,137 @@ describe('Quality pages', () => {
     expect(container.querySelector('[role="tablist"]')).toBeNull();
   });
 
+  async function renderDetail(withNavigation = false) {
+    function DetailRoute() {
+      const navigate = useNavigate();
+      return <>
+        {withNavigation ? <button onClick={() => navigate('/quality/test-requests/request-2')}>切换提测</button> : null}
+        <QualityRequestDetailPage />
+      </>;
+    }
+    await act(async () => {
+      root?.render(<MemoryRouter initialEntries={['/quality/test-requests/request-1']}>
+        <Routes><Route path="/quality/test-requests/:id" element={<DetailRoute />} /></Routes>
+      </MemoryRouter>);
+    });
+  }
+
+  async function clickButton(label: string) {
+    const button = Array.from(container.querySelectorAll('button')).find(
+      (item) => item.getAttribute('aria-label') === label || item.textContent?.trim() === label,
+    );
+    expect(button, `找不到按钮：${label}`).toBeTruthy();
+    await act(async () => { button?.click(); });
+  }
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => { resolve = done; });
+    return { promise, resolve };
+  }
+
+  it('报告请求未完成也显示已加载的提测详情', async () => {
+    const report = deferred<null>();
+    vi.mocked(api.getSubmissionReport).mockReturnValueOnce(report.promise);
+    await renderDetail();
+    expect(container.textContent).toContain(testRequest.title);
+    expect(container.textContent).toContain('报告加载中');
+    await act(async () => { report.resolve(null); });
+    expect(container.textContent).toContain('暂无提测报告');
+  });
+
+  it('报告失败保留详情和轮次，提供局部重试', async () => {
+    vi.mocked(api.getLocalSmokeRuns).mockResolvedValueOnce([
+      { id: 'smoke-1', name: '有效冒烟轮次', runType: 'LOCAL_SMOKE', status: 'ACTIVE' },
+    ]);
+    vi.mocked(api.getSubmissionReport).mockRejectedValueOnce(new Error('报告服务暂不可用'));
+    await renderDetail();
+    expect(container.textContent).toContain(testRequest.title);
+    expect(container.textContent).toContain('有效冒烟轮次');
+    expect(container.textContent).toContain('报告服务暂不可用');
+    expect(container.textContent).not.toContain('提测不存在');
+    await clickButton('重试报告');
+    expect(container.textContent).toContain('暂无提测报告');
+    expect(api.getTestRequest).toHaveBeenCalledTimes(1);
+    expect(api.getLocalSmokeRuns).toHaveBeenCalledTimes(1);
+  });
+
+  it('轮次失败不显示零统计或假空态，报告仍然可用', async () => {
+    vi.mocked(api.getLocalSmokeRuns).mockRejectedValueOnce(new Error('轮次接口不可用'));
+    vi.mocked(api.getSubmissionReport).mockResolvedValue({
+      id: 'report-1', name: 'submission-report.html', artifactType: 'TEST_REPORT', version: '1', createdAt: '2026-09-09T02:00:00Z',
+    });
+    await renderDetail();
+    expect(container.textContent).toContain(testRequest.title);
+    expect(container.textContent).toContain('轮次接口不可用');
+    expect(container.textContent).toContain('下载报告');
+    expect(container.textContent).not.toContain('暂无本地冒烟轮次');
+    expect(container.textContent).not.toContain('0/0');
+    await clickButton('重试轮次');
+    expect(container.textContent).toContain('暂无本地冒烟轮次');
+    expect(api.getTestRequest).toHaveBeenCalledTimes(1);
+    expect(api.getSubmissionReport).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [new ApiError('权限被拒绝', 403), '无权访问提测'],
+    [new ApiError('记录已删除', 404), '提测不存在'],
+    [new TypeError('Failed to fetch'), '网络连接失败'],
+    [new ApiError('服务暂不可用', 503), '加载提测详情失败'],
+  ])('主接口失败区分错误并支持返回与重试：%s', async (error, title) => {
+    vi.mocked(api.getTestRequest).mockRejectedValueOnce(error);
+    await renderDetail();
+    expect(container.textContent).toContain(title);
+    expect(container.textContent).toContain(error.message);
+    expect(container.querySelector('a[href="/quality/test-requests"]')).toBeTruthy();
+    await clickButton('重试详情');
+    expect(container.textContent).toContain(testRequest.title);
+    expect(container.textContent).not.toContain(title);
+  });
+
+  it('刷新失败保留已有详情、轮次与报告并提示数据未更新', async () => {
+    vi.mocked(api.getLocalSmokeRuns).mockResolvedValue([
+      { id: 'smoke-1', name: '已有冒烟轮次', runType: 'LOCAL_SMOKE', status: 'ACTIVE' },
+    ]);
+    vi.mocked(api.getSubmissionReport).mockResolvedValue({
+      id: 'report-1', name: 'submission-report.html', artifactType: 'TEST_REPORT', version: '1', createdAt: '2026-09-09T02:00:00Z',
+    });
+    await renderDetail();
+    vi.mocked(api.getTestRequest).mockRejectedValueOnce(new Error('详情刷新失败'));
+    vi.mocked(api.getLocalSmokeRuns).mockRejectedValueOnce(new Error('轮次刷新失败'));
+    vi.mocked(api.getSubmissionReport).mockRejectedValueOnce(new Error('报告刷新失败'));
+    await clickButton('刷新');
+    expect(container.textContent).toContain(testRequest.title);
+    expect(container.textContent).toContain('已有冒烟轮次');
+    expect(container.textContent).toContain('下载报告');
+    expect(container.textContent).toContain('详情刷新失败');
+    expect(container.textContent).toContain('轮次刷新失败');
+    expect(container.textContent).toContain('报告刷新失败');
+    expect(container.textContent).toContain('保留上次加载的数据');
+  });
+
+  it('切换路由后旧详情、轮次和报告响应不能覆盖新提测', async () => {
+    const oldRequest = deferred<TestRequest>();
+    const oldRuns = deferred<Awaited<ReturnType<typeof api.getLocalSmokeRuns>>>();
+    const oldReport = deferred<Awaited<ReturnType<typeof api.getSubmissionReport>>>();
+    vi.mocked(api.getTestRequest).mockReturnValueOnce(oldRequest.promise)
+      .mockResolvedValueOnce({ ...testRequest, id: 'request-2', title: '第二条提测' });
+    vi.mocked(api.getLocalSmokeRuns).mockReturnValueOnce(oldRuns.promise);
+    vi.mocked(api.getSubmissionReport).mockReturnValueOnce(oldReport.promise).mockResolvedValueOnce(null);
+    await renderDetail(true);
+    await clickButton('切换提测');
+    expect(container.textContent).toContain('第二条提测');
+    await act(async () => {
+      oldRequest.resolve(testRequest);
+      oldRuns.resolve([{ id: 'old-smoke', name: '旧轮次', runType: 'LOCAL_SMOKE', status: 'ACTIVE' }]);
+      oldReport.resolve({ id: 'old-report', name: 'old.html', artifactType: 'TEST_REPORT', version: '1', createdAt: '2026-09-09T02:00:00Z' });
+    });
+    expect(container.textContent).toContain('第二条提测');
+    expect(container.textContent).not.toContain(testRequest.title);
+    expect(container.textContent).not.toContain('旧轮次');
+    expect(container.textContent).not.toContain('下载报告');
+  });
+
   it('shows the multi-target local smoke matrix and report entry', async () => {
     vi.mocked(api.getLocalSmokeRuns).mockResolvedValue([
       {
@@ -608,6 +740,9 @@ describe('Quality pages', () => {
             status: 'COMPLETED',
             deviceId: 'mac-1',
             claimedByUser: { displayName: '张三' },
+            claimedCaseIds: ['run-case-1'],
+            leaseExpiresAt: '2099-01-01T00:00:00Z',
+            summary: '登录回归已通过',
             startedAt: '2026-09-09T01:00:00Z',
           },
         ],
@@ -639,6 +774,9 @@ describe('Quality pages', () => {
     expect(container.textContent).toContain('本地冒烟 #1');
     expect(container.textContent).toContain('登录主链路');
     expect(container.textContent).toContain('张三');
+    expect(container.textContent).toContain('领取范围：登录主链路');
+    expect(container.textContent).toContain('已完成回传');
+    expect(container.textContent).toContain('登录回归已通过');
     expect(container.textContent).toContain('下载报告');
   });
 });

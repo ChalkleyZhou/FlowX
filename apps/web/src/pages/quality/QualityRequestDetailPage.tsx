@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, Download, Plus } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
-import { api } from '../../api';
+import { api, ApiError } from '../../api';
 import { EmptyState } from '../../components/EmptyState';
 import { MetricCard } from '../../components/MetricCard';
 import { PageHeader } from '../../components/PageHeader';
@@ -19,7 +19,6 @@ import {
 } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { useToast } from '../../components/ui/toast';
-import type { ArtifactSummary, TestRequest, TestRun } from '../../types';
 import { LoadingState, RefreshButton, runStatusLabels, statusBadgeVariant } from './quality-ui';
 
 const TARGET_OPTIONS = [
@@ -29,42 +28,73 @@ const TARGET_OPTIONS = [
   { key: 'android', name: 'Android' },
 ];
 
+function useDetailResource<T>(id: string, fetcher: (id: string) => Promise<T>) {
+  const [data, setData] = useState<T>();
+  const [error, setError] = useState<Error | null>(null);
+  const [loading, setLoading] = useState(true);
+  const sequence = useRef(0);
+  const mounted = useRef(false);
+
+  // 刷新保留已加载数据；只接受当前组件最新一次请求的结果。
+  const reload = useCallback(async () => {
+    if (!mounted.current) return;
+    const current = ++sequence.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await fetcher(id);
+      if (mounted.current && current === sequence.current) setData(result);
+    } catch (cause) {
+      if (mounted.current && current === sequence.current) {
+        setError(cause instanceof Error ? cause : new Error('请求失败，请重试'));
+      }
+    } finally {
+      if (mounted.current && current === sequence.current) setLoading(false);
+    }
+  }, [id, fetcher]);
+
+  useEffect(() => {
+    mounted.current = true;
+    void reload();
+    return () => { mounted.current = false; sequence.current += 1; };
+  }, [reload]);
+
+  return { data, error, loading, reload };
+}
+
+function LoadError({ error, retained, loading, label, retry }: {
+  error: Error; retained: boolean; loading: boolean; label: string; retry: () => void;
+}) {
+  return <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm">
+    <span>{label}加载失败：{error.message}{retained ? '。保留上次加载的数据，尚未更新。' : ''}</span>
+    <Button variant="outline" size="sm" disabled={loading} onClick={retry}>重试{label}</Button>
+  </div>;
+}
+
 export function QualityRequestDetailPage() {
   const { id = '' } = useParams();
+  // 路由切换时隔离数据、弹框和请求生命周期，避免旧提测回包覆盖新提测。
+  return <QualityRequestDetailContent key={id} id={id} />;
+}
+
+function QualityRequestDetailContent({ id }: { id: string }) {
   const toast = useToast();
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const detail = useDetailResource(id, api.getTestRequest);
+  const smoke = useDetailResource(id, api.getLocalSmokeRuns);
+  const submission = useDetailResource(id, api.getSubmissionReport);
+  const request = detail.data;
+  const runs = smoke.data ?? [];
+  const report = submission.data;
+  const refreshing = detail.loading || smoke.loading || submission.loading;
   const [creating, setCreating] = useState(false);
   const [finalizingId, setFinalizingId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [request, setRequest] = useState<TestRequest | null>(null);
-  const [runs, setRuns] = useState<TestRun[]>([]);
-  const [report, setReport] = useState<ArtifactSummary | null>(null);
   const [runName, setRunName] = useState('本地冒烟');
   const [selectedTargets, setSelectedTargets] = useState<string[]>(['web', 'api']);
 
-  async function refresh(silent = false) {
-    silent ? setRefreshing(true) : setLoading(true);
-    try {
-      const [nextRequest, nextRuns, nextReport] = await Promise.all([
-        api.getTestRequest(id),
-        api.getLocalSmokeRuns(id),
-        api.getSubmissionReport(id),
-      ]);
-      setRequest(nextRequest);
-      setRuns(nextRuns);
-      setReport(nextReport);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载提测详情失败');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+  async function refresh() {
+    await Promise.all([detail.reload(), smoke.reload(), submission.reload()]);
   }
-
-  useEffect(() => {
-    void refresh();
-  }, [id]);
 
   const totals = useMemo(() => {
     const cases = runs.flatMap((run) => run.cases ?? []);
@@ -91,7 +121,7 @@ export function QualityRequestDetailPage() {
       });
       toast.success('本地冒烟轮次已创建');
       setDialogOpen(false);
-      await refresh(true);
+      await refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '创建本地冒烟失败');
     } finally {
@@ -104,7 +134,7 @@ export function QualityRequestDetailPage() {
     try {
       await api.finalizeLocalSmokeRun(runId);
       toast.success('提测报告已生成');
-      await refresh(true);
+      await refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '冒烟门禁尚未通过');
     } finally {
@@ -127,8 +157,20 @@ export function QualityRequestDetailPage() {
     }
   }
 
-  if (loading) return <LoadingState />;
-  if (!request) return <EmptyState title="提测不存在" description="该提测可能已删除或无权访问。" />;
+  if (!request && detail.loading) return <LoadingState />;
+  if (!request) {
+    const status = detail.error instanceof ApiError ? detail.error.status : undefined;
+    const title = status === 404 ? '提测不存在'
+      : status === 403 ? '无权访问提测'
+      : detail.error instanceof TypeError ? '网络连接失败'
+      : '加载提测详情失败';
+    return <EmptyState title={title} description={detail.error?.message ?? '请重试加载提测详情。'} action={(
+      <div className="flex gap-2">
+        <Button asChild variant="outline"><Link to="/quality/test-requests">返回提测列表</Link></Button>
+        <Button onClick={() => void detail.reload()}>重试详情</Button>
+      </div>
+    )} />;
+  }
 
   return (
     <>
@@ -141,7 +183,7 @@ export function QualityRequestDetailPage() {
             <Button asChild variant="outline" size="icon" title="返回提测列表" aria-label="返回提测列表">
               <Link to="/quality/test-requests"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></Link>
             </Button>
-            <RefreshButton loading={refreshing} onClick={() => void refresh(true)} />
+            <RefreshButton loading={refreshing} onClick={() => void refresh()} />
             {report ? (
               <Button variant="outline" onClick={() => void downloadReport()}>
                 <Download aria-hidden="true" className="h-4 w-4" />下载报告
@@ -154,6 +196,13 @@ export function QualityRequestDetailPage() {
         )}
       />
 
+      {detail.error ? <LoadError error={detail.error} retained loading={detail.loading} label="详情" retry={() => void detail.reload()} /> : null}
+      {submission.error ? <LoadError error={submission.error} retained={submission.data !== undefined} loading={submission.loading} label="报告" retry={() => void submission.reload()} /> : null}
+      {!submission.error && !report ? <p role="status" className="text-sm text-muted-foreground">{submission.loading ? '报告加载中…' : '暂无提测报告，完成冒烟后可汇总生成。'}</p> : null}
+      {smoke.error ? <LoadError error={smoke.error} retained={smoke.data !== undefined} loading={smoke.loading} label="轮次" retry={() => void smoke.reload()} /> : null}
+      {smoke.data === undefined && smoke.loading ? <p role="status" className="text-sm text-muted-foreground">冒烟轮次加载中…</p> : null}
+
+      {smoke.data !== undefined ? <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="冒烟轮次" value={runs.length} />
         <MetricCard label="目标端" value={totals.targets} />
@@ -188,7 +237,7 @@ export function QualityRequestDetailPage() {
                 <div className="flex flex-wrap gap-2">
                   {(run.targets ?? []).map((target) => (
                     <Badge key={target.id} variant={statusBadgeVariant(target.status)}>
-                      {target.name} · {runStatusLabels[target.status] ?? target.status}
+                      {target.name} · {runStatusLabels[target.status] ?? (target.status === 'PENDING' ? '待执行' : target.status)}
                     </Badge>
                   ))}
                 </div>
@@ -205,7 +254,7 @@ export function QualityRequestDetailPage() {
                             <td className="p-3 font-medium">{target?.name ?? '-'}</td>
                             <td className="p-3">{item.snapshot.title}</td>
                             <td className="p-3">{item.snapshot.priority}</td>
-                            <td className="p-3"><Badge variant={statusBadgeVariant(item.result?.result ?? 'PENDING')}>{item.result?.result ?? '待执行'}</Badge></td>
+                            <td className="p-3"><Badge variant={statusBadgeVariant(item.result?.result ?? 'PENDING')}>{runStatusLabels[item.result?.result ?? 'PENDING'] ?? item.result?.result ?? '待执行'}</Badge></td>
                             <td className="max-w-[320px] p-3 text-muted-foreground">{item.result?.actualResult || '-'}</td>
                           </tr>
                         );
@@ -215,9 +264,25 @@ export function QualityRequestDetailPage() {
                 </div>
                 {(run.executions ?? []).length ? (
                   <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
-                    {(run.executions ?? []).map((execution) => (
-                      <span key={execution.id}>{execution.claimedByUser?.displayName ?? '未知执行人'} · {execution.deviceId || '未记录设备'} · {execution.status}</span>
-                    ))}
+                    {(run.executions ?? []).map((execution) => {
+                      const target = run.targets?.find((item) => item.id === execution.targetId);
+                      const claimed = execution.claimedCaseIds;
+                      const titles = Array.isArray(claimed) ? claimed.map((caseId) =>
+                        run.cases?.find((item) => item.id === caseId)?.snapshot.title ?? caseId) : [];
+                      const active = execution.status === 'RUNNING';
+                      const lease = execution.leaseExpiresAt ? Date.parse(execution.leaseExpiresAt) : NaN;
+                      const leaseLabel = !active ? '领取已结束' : !Number.isFinite(lease)
+                        ? '租约信息未记录' : lease > Date.now() ? '租约有效' : '租约已到期';
+                      const status = ({ RUNNING: '等待回传', COMPLETED: '已完成回传', STALE: '结果版本已过期',
+                        FAILED: '执行失败', CANCELLED: '已取消' } as Record<string, string>)[execution.status] ?? execution.status;
+                      return <div key={execution.id} className="w-full rounded-md border border-border p-3">
+                        <p className="font-medium text-foreground">{target?.name ?? '未记录目标端'} · {execution.claimedByUser?.displayName ?? '未记录执行人'} · {status}</p>
+                        <p>领取范围：{titles.join('、') || '未记录领取用例'} · {leaseLabel}</p>
+                        {active && Number.isFinite(lease) ? <p>租约截止：{new Date(lease).toLocaleString('zh-CN')}；租约到期不代表原设备任务已停止。</p> : null}
+                        {execution.summary ? <p>回传结论：{execution.summary}</p> : null}
+                        <p>设备：{execution.deviceId || '未记录设备'}</p>
+                      </div>;
+                    })}
                   </div>
                 ) : null}
               </CardContent>
@@ -227,6 +292,8 @@ export function QualityRequestDetailPage() {
       ) : (
         <EmptyState title="暂无本地冒烟轮次" description="创建轮次后，本地开发者可以按目标端认领并回传结果。" />
       )}
+
+      </> : null}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
