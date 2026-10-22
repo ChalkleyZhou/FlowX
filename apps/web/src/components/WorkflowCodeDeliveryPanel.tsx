@@ -22,15 +22,15 @@ function CodeDeliveryContent({ workflowRunId, workflowStatus, onChanged }: Props
   const [confirmRows, setConfirmRows] = useState<CodeBranchSubmission[] | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const mounted = useRef(false);
-  const pending = useRef<Promise<void> | null>(null);
+  const pending = useRef<{ generation: number; promise: Promise<void> } | null>(null);
   const generation = useRef(0);
   const writable = workflowStatus === 'EXECUTION_PENDING' || workflowStatus === 'EXECUTION_RUNNING';
 
   const refresh = useCallback((): Promise<void> => {
-    if (pending.current) return pending.current;
+    if (pending.current?.generation === generation.current) return pending.current.promise;
     const request = ++generation.current;
     setLoading(true);
-    pending.current = (async () => {
+    const promise = (async () => {
       try {
         const result = await api.getCodeDelivery(workflowRunId);
         if (mounted.current && generation.current === request) { setData(result); setError(null); }
@@ -38,10 +38,11 @@ function CodeDeliveryContent({ workflowRunId, workflowStatus, onChanged }: Props
         if (mounted.current && generation.current === request) setError(cause instanceof Error ? cause.message : '代码交付加载失败');
       } finally {
         if (mounted.current && generation.current === request) setLoading(false);
-        pending.current = null;
+        if (pending.current?.generation === request) pending.current = null;
       }
     })();
-    return pending.current;
+    pending.current = { generation: request, promise };
+    return promise;
   }, [workflowRunId]);
 
   useEffect(() => {

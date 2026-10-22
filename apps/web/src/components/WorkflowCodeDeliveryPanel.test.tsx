@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import { act, StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { WorkflowCodeDeliveryPanel } from './WorkflowCodeDeliveryPanel';
@@ -55,6 +55,14 @@ it('返工后可只读查看历史分支，不能将旧尝试纳入新交付', a
   expect(container.querySelector('details')?.textContent).toContain('第 1 次');
   expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
   expect(Array.from(container.querySelectorAll('button')).find(node => node.textContent === '确认本次交付')?.disabled).toBe(true);
+});
+
+it('StrictMode 重放挂载后只读交付仍完成加载，不复用已失效请求', async () => {
+  vi.mocked(api.getCodeDelivery).mockResolvedValue(snapshot({ canSubmit: false }));
+  await act(async () => { root.render(<StrictMode><WorkflowCodeDeliveryPanel workflowRunId="wf-1" workflowStatus="REVIEW_PENDING" onChanged={changed} /></StrictMode>); });
+  expect(container.textContent).toContain('feature/web');
+  expect(container.textContent).not.toContain('正在读取代码交付');
+  expect(container.querySelector('button')?.disabled).toBe(false);
 });
 
 it('只传仓库和分支，提交不调用整体完成接口', async () => {
