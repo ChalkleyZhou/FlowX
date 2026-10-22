@@ -29,7 +29,6 @@ import { Spinner } from '../components/ui/spinner';
 import { Textarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
 import type { Project, Requirement, Workspace } from '../types';
-import { formatAssignmentSummary, formatScheduleRange } from '../utils/business-days';
 import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
 import { formatRequirementWorkflowScope, getActiveRequirementWorkflows } from '../utils/requirement-workflows';
 import { formatWorkflowStatus } from '../utils/workflow-ui';
@@ -678,37 +677,13 @@ export function RequirementsPage() {
                   badges={
                     <>
                       <Badge variant="secondary">{item.project.name}</Badge>
-                      <Badge variant="outline">{item.project.workspace.name}</Badge>
                       <Badge variant="outline">{formatPlanningStatus(item.planningStatus)}</Badge>
                       <Badge variant="outline">{formatPriority(item.priority)}</Badge>
-                      {item.version ? <Badge variant="outline">{item.version.name}</Badge> : null}
-                      <Badge variant="default">{item.workflowRuns?.length ?? 0} 条工作流</Badge>
-                      <Badge variant={getActiveRequirementWorkflows(item).length > 0 ? 'warning' : 'outline'}>
-                        {getActiveRequirementWorkflows(item).length} 条活跃流
-                      </Badge>
-                      <Badge variant="outline">
-                        {(item.requirementRepositories?.length ?? 0) > 0
-                          ? `${item.requirementRepositories?.length ?? 0} 个目标仓库`
-                          : '默认仓库范围'}
-                      </Badge>
+                      {item.prototypeImport && item.prototypeImport.status !== 'CONFIRMED' ? (
+                        <Badge variant="warning">待确认原型</Badge>
+                      ) : null}
                     </>
                   }
-                  description={<p className="leading-6">{item.description}</p>}
-                  details={(
-                    <>
-                      <p className="text-sm leading-6 text-muted-foreground">{item.acceptanceCriteria}</p>
-                      <p className="text-sm leading-6 text-muted-foreground">
-                        人员排期：{formatAssignmentSummary(item.assignments)}
-                        {' · '}
-                        周期：{formatScheduleRange(
-                          item.assignments?.map((a) => a.plannedStartDate).sort()[0],
-                          item.assignments?.map((a) => a.plannedEndDate).sort().at(-1),
-                        )}
-                      </p>
-                      <p className="text-sm leading-6 text-muted-foreground">仓库范围：{renderRepositoryScope(item)}</p>
-                      <p className="text-sm leading-6 text-muted-foreground">并行占用：{renderActiveWorkflowScope(item)}</p>
-                    </>
-                  )}
                   actions={
                     <>
                       <UiButton variant="default" asChild>

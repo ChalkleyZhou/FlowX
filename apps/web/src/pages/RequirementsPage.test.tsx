@@ -137,7 +137,7 @@ describe('RequirementsPage', () => {
 
     expect(container.textContent).toContain('创建需求');
     expect(container.textContent).not.toContain('用 Cursor / Codex 发起');
-    expect(container.textContent).toContain('2.6.0');
+    expect(container.textContent).not.toContain('2.6.0');
     expect(container.textContent).toContain('本页可直接创建需求');
 
     const webCreate = Array.from(container.querySelectorAll('button')).find(
@@ -149,6 +149,27 @@ describe('RequirementsPage', () => {
         (element) => element.textContent?.trim() === '网页创建',
       ),
     ).toBe(false);
+  });
+
+  it('需求列表只保留标题和关键状态，详细内容在详情页查看', async () => {
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/requirements']}>
+          <Routes>
+            <Route path="/requirements" element={<RequirementsPage />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('端云设计闭环');
+    expect(container.textContent).toContain('FlowX');
+    expect(container.textContent).not.toContain(requirement.description);
+    expect(container.textContent).not.toContain(requirement.acceptanceCriteria);
+    expect(container.textContent).not.toContain('人员排期：');
+    expect(container.textContent).not.toContain('并行占用：');
   });
 
   it('消费详情启动链接并保留 projectId，取消或刷新后不重复弹出', async () => {
