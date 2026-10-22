@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { ContextPanel } from '../components/ContextPanel';
 import { DetailHeader } from '../components/DetailHeader';
+import { PrototypeImportPanel } from '../components/PrototypeImportPanel';
 import { RequirementSchedulingPanel } from '../components/RequirementSchedulingPanel';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -19,12 +20,12 @@ export function RequirementDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const requestVersion = useRef(0);
 
-  const fetchRequirement = useCallback(async () => {
+  const fetchRequirement = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!id) {
       return;
     }
     const version = ++requestVersion.current;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const data = await api.getRequirement(id);
@@ -114,20 +115,26 @@ export function RequirementDetailPage() {
             ) : activeWorkflows.length > 1 ? (
               <Button asChild><a href="#active-workflows">选择要继续的工作流</a></Button>
             ) : null}
-            <Button variant={activeWorkflows.length > 0 ? 'outline' : 'default'} asChild>
+            {(!requirement.prototypeImport || requirement.prototypeImport.status === 'CONFIRMED') && <Button variant={activeWorkflows.length > 0 ? 'outline' : 'default'} asChild>
               <Link to={`/requirements?${launchParams.toString()}`}>
                 {activeWorkflows.length > 0 ? '启动其他仓库工作流' : '启动研发工作流'}
               </Link>
-            </Button>
+            </Button>}
           </div>
         )}
       />
+
+      {requirement.prototypeImport && <PrototypeImportPanel
+        importId={requirement.prototypeImport.id}
+        existingWorkflowId={activeWorkflows.length === 1 ? activeWorkflows[0].id : undefined}
+        onConfirmed={() => fetchRequirement({ silent: true })}
+      />}
 
       <section id="active-workflows" className="scroll-mt-5">
         <ContextPanel
           eyebrow="Workflow"
           title={activeWorkflows.length > 1 ? '选择要继续的工作流' : '当前工作流'}
-          description={activeWorkflows.length > 0 ? '按仓库范围继续已有流程；需要并行推进其他仓库时，可另行启动。' : '当前没有活跃工作流，可以选择仓库和执行器后启动。'}
+          description={activeWorkflows.length > 0 ? '按仓库范围继续已有流程；需要并行推进其他仓库时，可另行启动。' : requirement.prototypeImport?.status !== undefined && requirement.prototypeImport.status !== 'CONFIRMED' ? '请先完成原型与需求确认。' : '当前没有活跃工作流，可以选择仓库和执行器后启动。'}
         >
           <div className="flex flex-col gap-3">
             {activeWorkflows.map((run) => (
@@ -176,7 +183,7 @@ export function RequirementDetailPage() {
         </div>
       </ContextPanel>
 
-      <RequirementSchedulingPanel requirement={requirement} onChanged={fetchRequirement} />
+      <RequirementSchedulingPanel requirement={requirement} onChanged={() => fetchRequirement()} />
     </div>
   );
 }

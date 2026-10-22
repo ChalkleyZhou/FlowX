@@ -39,3 +39,7 @@ Refactor before adding features when any of the following becomes true:
 - Prefer table-driven rules and pure helpers for business invariants.
 - Keep diffs narrow and explicit in high-risk files.
 - Leave behind tests or docs whenever a new rule is introduced.
+
+## 原型导入边界
+
+原型 ZIP 读取、受限预览和导入状态位于独立 `prototype-imports` 模块；AI 分析以 `prototype-analysis.output.schema.json` 为契约源，消费者共用运行时校验。确认后以工作流 intake 快照作为后续事实来源，避免多个入口重复推导需求与设计。安全外壳、CAS 基线与状态接续的回归属于该模块必需验证，详见 [原型导入](../prototype-import.md)。

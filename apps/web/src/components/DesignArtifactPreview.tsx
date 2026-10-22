@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ExternalLink, RefreshCw, Sparkles } from 'lucide-react';
 import { api } from '../api';
 import type { DesignSurfaceInventory, WorkflowDesignArtifactPage } from '../types';
@@ -16,6 +16,7 @@ interface Props {
  * Scripts 允许交互稿渲染；禁止 same-origin，避免未信任 HTML 访问 FlowX。
  */
 export function DesignArtifactPreview({ workflowRunId, reloadKey }: Props) {
+  const iframe = useRef<HTMLIFrameElement>(null);
   const [surfaces, setSurfaces] = useState<DesignSurfaceInventory[]>([]);
   const [selectedSurfaceId, setSelectedSurfaceId] = useState<string | null>(null);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
@@ -83,6 +84,16 @@ export function DesignArtifactPreview({ workflowRunId, reloadKey }: Props) {
     };
   }, [workflowRunId, selectedSurfaceId, selectedPageId]);
 
+  useEffect(() => {
+    const handleNavigate = (event: MessageEvent<unknown>) => {
+      if (selectedSurface?.id !== 'prototype' || event.source !== iframe.current?.contentWindow || !event.data || typeof event.data !== 'object') return;
+      const message = event.data as { type?: unknown; path?: unknown };
+      if (message.type === 'flowx-prototype-navigate' && typeof message.path === 'string' && selectedSurface.pages.some((item) => item.id === message.path)) setSelectedPageId(message.path);
+    };
+    window.addEventListener('message', handleNavigate);
+    return () => window.removeEventListener('message', handleNavigate);
+  }, [selectedSurface]);
+
   const openInNewWindow = useCallback(() => {
     if (!page?.html) {
       return;
@@ -103,7 +114,7 @@ export function DesignArtifactPreview({ workflowRunId, reloadKey }: Props) {
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Sparkles className="h-4 w-4 text-primary" aria-hidden />
-          OpenDesign 高保真设计稿
+          {selectedSurface?.id === 'prototype' ? '已导入原型' : 'OpenDesign 高保真设计稿'}
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={() => void loadInventory()} disabled={loading} aria-label="刷新设计稿">
@@ -182,6 +193,7 @@ export function DesignArtifactPreview({ workflowRunId, reloadKey }: Props) {
 
           {page?.html ? (
             <iframe
+              ref={iframe}
               title={`OpenDesign 设计稿 ${selectedSurfaceId ?? ''} / ${selectedPageId ?? ''}`}
               sandbox="allow-scripts"
               srcDoc={page.html}

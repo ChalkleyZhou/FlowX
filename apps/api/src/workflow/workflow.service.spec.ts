@@ -806,6 +806,71 @@ describe('WorkflowService submitLocalDesign', () => {
 });
 
 describe('WorkflowService design artifact persistence', () => {
+  it('persists long Chinese prototype paths without changing page identities or navigation lookups', async () => {
+    const { service } = createService();
+    const helpers = service as unknown as {
+      persistDesignSurfacePages: (
+        runId: string,
+        surfaceId: string,
+        pages: Array<{ id: string; html: string }>,
+      ) => Promise<{ id: string; pages: Array<{ id: string; relPath: string; bytes: number; generatedAt: string }> }>;
+    };
+    const { rm } = await import('fs/promises');
+    const { basename, join } = await import('path');
+    const runId = `test-long-page-${Date.now()}`;
+    const pageId = `原型导出/项目研发事项管理与协作流程设计/${'事项详情页面'.repeat(12)}.html`;
+    const secondPageId = `${pageId}.backup.html`;
+    const html = '<html><body>事项详情</body></html>';
+    try {
+      const surface = await helpers.persistDesignSurfacePages(runId, 'prototype', [
+        { id: pageId, html },
+        { id: secondPageId, html: '<html>另一页面</html>' },
+      ]);
+      expect(surface.pages.map((page) => page.id)).toEqual([pageId, secondPageId]);
+      expect(new Set(surface.pages.map((page) => page.relPath)).size).toBe(2);
+      expect(surface.pages.every((page) => Buffer.byteLength(basename(page.relPath)) < 255)).toBe(true);
+      Object.assign(service, {
+        getWorkflowOrThrow: async () => ({
+          stageExecutions: [{ stage: 'DESIGN', attempt: 1, output: { surfaces: [surface] } }],
+        }),
+      });
+      expect(await service.getWorkflowDesignArtifactPage(runId, 'prototype', pageId)).toMatchObject({
+        exists: true,
+        pageId,
+        html,
+      });
+    } finally {
+      await rm(join(process.cwd(), '.flowx-data', 'design-artifacts', runId), { recursive: true, force: true });
+    }
+  });
+
+  it('continues reading existing design artifacts through their persisted relative path', async () => {
+    const { service } = createService();
+    const { mkdir, rm, writeFile } = await import('fs/promises');
+    const { join } = await import('path');
+    const runId = `test-legacy-page-${Date.now()}`;
+    const surfaceId = 'Web端';
+    const pageId = '旧版首页';
+    const generatedAt = '2026-10-21T12:00:00.000Z';
+    const relPath = `${runId}/${encodeURIComponent(surfaceId)}/${encodeURIComponent(pageId)}-2026-10-21T12-00-00-000Z.html`;
+    const root = join(process.cwd(), '.flowx-data', 'design-artifacts');
+    const html = '<html>旧版已确认设计</html>';
+    try {
+      await mkdir(join(root, runId, encodeURIComponent(surfaceId)), { recursive: true });
+      await writeFile(join(root, relPath), html, 'utf8');
+      Object.assign(service, {
+        getWorkflowOrThrow: async () => ({
+          stageExecutions: [{ stage: 'DESIGN', attempt: 1, output: {
+            surfaces: [{ id: surfaceId, pages: [{ id: pageId, relPath, bytes: Buffer.byteLength(html), generatedAt }] }],
+          } }],
+        }),
+      });
+      expect(await service.getWorkflowDesignArtifactPage(runId, surfaceId, pageId)).toMatchObject({ exists: true, html });
+    } finally {
+      await rm(join(root, runId), { recursive: true, force: true });
+    }
+  });
+
   it('persists surface pages to disk and reads them back (rejecting traversal)', async () => {
     const { service } = createService();
     const registerWorkflowArtifact = vi.fn().mockResolvedValue({ id: 'artifact-local' });

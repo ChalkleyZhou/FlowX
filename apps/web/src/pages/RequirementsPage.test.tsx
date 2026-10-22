@@ -20,6 +20,7 @@ vi.mock('../api', () => ({
     getRequirements: vi.fn(),
     getWorkflowProviders: vi.fn(),
     createRequirement: vi.fn(),
+    createPrototypeImport: vi.fn(),
     createWorkflowRun: vi.fn(),
   },
 }));
@@ -199,6 +200,62 @@ describe('RequirementsPage', () => {
     await act(async () => { confirm?.click(); });
     expect(api.createWorkflowRun).toHaveBeenCalledWith('requirement-1', ['repository-2'], 'codex');
     expect(container.textContent).toBe('/workflow-runs/run-new');
+  });
+
+  it('创建默认普通填写；原型入口只需项目和 ZIP，失败保留文件后重试接续详情', async () => {
+    vi.mocked(api.createPrototypeImport).mockRejectedValueOnce(new Error('网络中断，请重试')).mockResolvedValueOnce({ requirementId: 'req-import' } as Awaited<ReturnType<typeof api.createPrototypeImport>>);
+    await act(async () => { root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1']}><Routes>
+      <Route path="/requirements" element={<RequirementsPage />} />
+      <Route path="/requirements/:id" element={<LocationProbe />} />
+    </Routes></MemoryRouter>); });
+    await act(async () => { Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '创建需求')?.click(); });
+    expect(document.querySelector('[role="dialog"] input[id="requirement-title"]')).toBeTruthy();
+    await act(async () => { Array.from(document.querySelectorAll('button')).find((button) => button.textContent === '已有原型')?.click(); });
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.querySelector('input[id="requirement-title"]')).toBeNull();
+    const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['zip'], 'prototype.zip', { type: 'application/zip' });
+    Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    const upload = Array.from(dialog.querySelectorAll('button')).find((button) => button.textContent === '上传原型，AI 整理')!;
+    await act(async () => { upload.click(); });
+    expect(dialog.textContent).toContain('网络中断，请重试');
+    expect(input.files?.[0]).toBe(file);
+    expect(api.createRequirement).not.toHaveBeenCalled();
+    await act(async () => { upload.click(); });
+    expect(api.createPrototypeImport).toHaveBeenLastCalledWith({ projectId: 'project-1', goal: '', aiProvider: 'codex' }, file);
+    expect(container.textContent).toBe('/requirements/req-import');
+  });
+
+  it('上传中阻止重复提交与关闭弹窗', async () => {
+    let resolveUpload!: (value: Awaited<ReturnType<typeof api.createPrototypeImport>>) => void;
+    vi.mocked(api.createPrototypeImport).mockReturnValueOnce(new Promise((resolve) => { resolveUpload = resolve; }));
+    await act(async () => { root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1']}><RequirementsPage /></MemoryRouter>); });
+    await act(async () => { Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '创建需求')?.click(); });
+    await act(async () => { Array.from(document.querySelectorAll('button')).find((button) => button.textContent === '已有原型')?.click(); });
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [new File(['zip'], 'prototype.zip')] });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    const form = dialog.querySelector('form')!;
+    await act(async () => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    expect(api.createPrototypeImport).toHaveBeenCalledTimes(1);
+    expect(dialog.querySelector('button[type="submit"]')?.hasAttribute('disabled')).toBe(true);
+    const close = Array.from(dialog.querySelectorAll('button')).find((button) => button.textContent === 'Close');
+    await act(async () => { close?.click(); });
+    expect(document.querySelector('[role="dialog"]')).toBeTruthy();
+    await act(async () => { resolveUpload({ requirementId: 'req-import' } as Awaited<ReturnType<typeof api.createPrototypeImport>>); });
+  });
+
+  it('未确认原型在需求列表与启动深链均进入确认页', async () => {
+    vi.mocked(api.getRequirements).mockResolvedValue([{ ...requirement, prototypeImport: { id: 'import-1', status: 'WAITING_CONFIRMATION' } }]);
+    await act(async () => { root?.render(<MemoryRouter initialEntries={['/requirements?launchRequirementId=requirement-1']}><Routes>
+      <Route path="/requirements" element={<RequirementsPage />} />
+      <Route path="/requirements/:id" element={<LocationProbe />} />
+    </Routes></MemoryRouter>); });
+    expect(container.textContent).toBe('/requirements/requirement-1');
+    expect(api.createWorkflowRun).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
 });

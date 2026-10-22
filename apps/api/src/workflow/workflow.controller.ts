@@ -67,8 +67,8 @@ export class WorkflowController {
   ) {
     return this.workflowService.getWorkflowDesignArtifactPage(
       id,
-      decodeURIComponent(surfaceId),
-      decodeURIComponent(pageId),
+      surfaceId,
+      pageId,
     );
   }
 

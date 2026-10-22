@@ -218,6 +218,7 @@ export class RequirementsService {
       },
       include: {
         ...this.requirementRelationsInclude,
+        prototypeImport: { select: { id: true, status: true } },
         project: {
           include: {
             workspace: {
@@ -303,6 +304,7 @@ export class RequirementsService {
             createdAt: 'asc',
           },
         },
+        prototypeImport: { select: { id: true, status: true } },
         ideationSessions: {
           orderBy: {
             createdAt: 'asc',

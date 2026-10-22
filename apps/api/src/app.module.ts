@@ -1,3 +1,4 @@
+import { PrototypeImportsModule } from './prototype-imports/prototype-imports.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
@@ -46,6 +47,7 @@ import { PluginsModule } from './plugins/plugins.module';
     ReviewArtifactsModule,
     WorkspacesModule,
     RequirementsModule,
+    PrototypeImportsModule,
     WorkflowModule,
     PluginsModule,
   ],

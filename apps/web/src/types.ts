@@ -278,6 +278,7 @@ export interface Requirement {
   priority?: string;
   planningStatus?: string;
   ideationStatus: string;
+  prototypeImport?: { id: string; status: string } | null;
   project: Project;
   assignments?: RequirementAssignment[];
   workspace?: Workspace | null;
@@ -1230,4 +1231,35 @@ export interface WorkflowCodeDelivery {
     status: string;
     submissions: CodeBranchSubmission[];
   }>;
+}
+
+export interface PrototypeAnalysis {
+  title: string;
+  description: string;
+  acceptanceCriteria: string[];
+  brief: { expandedDescription: string; userStories: Array<{ role: string; action: string; benefit: string }>; edgeCases: string[]; successMetrics: string[]; openQuestions: string[]; assumptions: string[]; outOfScope: string[] };
+  design: { overview: string; pages: Array<{ name: string; route: string; layout: string; keyComponents: string[]; interactions: string[] }>; demoScenario: string; designRationale: string };
+  clarifications: Array<{ id: string; question: string; required: boolean; suggestedAnswer: string }>;
+  evidence: Array<{ path: string; observation: string }>;
+  inferences: string[];
+}
+export interface PrototypeImport {
+  id: string;
+  requirementId: string;
+  status: 'ANALYZING' | 'WAITING_CONFIRMATION' | 'FAILED' | 'CONFIRMED';
+  revision: number;
+  materialRevision: number;
+  aiProvider: 'codex' | 'cursor';
+  goal: string;
+  manifest: { files: Array<{ path: string; bytes: number; kind: 'html' | 'image' | 'document' | 'source' | 'asset' }>; pages: Array<{ path: string; title: string }>; kinds: string[]; warnings: string[]; sources: Array<{ name: string; revision: number }> };
+  analysis: PrototypeAnalysis | null;
+  answers: Record<string, string>;
+  errorMessage: string | null;
+  confirmedAt?: string | null;
+}
+export interface PrototypeImportUpdate {
+  revision: number;
+  analysis?: PrototypeAnalysis;
+  answers?: Record<string, string>;
+  feedback?: string;
 }

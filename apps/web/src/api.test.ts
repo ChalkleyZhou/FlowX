@@ -603,3 +603,19 @@ describe('api helpers', () => {
   });
 
 });
+
+describe('原型包导入 API', () => {
+  it('multipart 上传保留认证并交给浏览器设置 boundary', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'import-1' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    localStorage.setItem('flowx-auth-token', 'test-token');
+    await api.createPrototypeImport({ projectId: 'project-1', goal: '管理事项', aiProvider: 'codex' }, new File(['zip'], 'prototype.zip'));
+    const options = fetchMock.mock.calls[0][1];
+    expect(options.body).toBeInstanceOf(FormData);
+    expect(options.body.get('projectId')).toBe('project-1');
+    expect(options.body.get('file').name).toBe('prototype.zip');
+    const headers = new Headers(options.headers);
+    expect(headers.get('Authorization')).toBe('Bearer test-token');
+    expect(headers.has('Content-Type')).toBe(false);
+  });
+});

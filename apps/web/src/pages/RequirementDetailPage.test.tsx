@@ -9,6 +9,7 @@ import type { Requirement } from '../types';
 import { RequirementDetailPage } from './RequirementDetailPage';
 
 vi.mock('../api', () => ({ api: { getRequirement: vi.fn(), createWorkflowRun: vi.fn() } }));
+vi.mock('../components/PrototypeImportPanel', () => ({ PrototypeImportPanel: ({ importId, existingWorkflowId }: { importId: string; existingWorkflowId?: string }) => <div data-import={importId} data-workflow={existingWorkflowId}>原型确认面板</div> }));
 vi.mock('../components/RequirementSchedulingPanel', () => ({ RequirementSchedulingPanel: () => null }));
 
 const requirement: Requirement = {
@@ -127,6 +128,20 @@ describe('RequirementDetailPage 流程接续', () => {
     await act(async () => { resolvePrevious(requirement); });
     expect(container.textContent).toContain('第二条需求');
     expect(container.querySelector('a[href="/workflow-runs/run-second"]')).toBeTruthy();
+  });
+
+  it('原型未确认优先显示确认面板并隐藏普通启动入口', async () => {
+    vi.mocked(api.getRequirement).mockResolvedValue({ ...requirement, prototypeImport: { id: 'import-1', status: 'WAITING_CONFIRMATION' } });
+    await renderPage();
+    expect(container.querySelector('[data-import="import-1"]')).toBeTruthy();
+    expect(container.textContent).not.toContain('启动研发工作流');
+    expect(container.textContent).toContain('请先完成原型与需求确认');
+  });
+
+  it('已确认原型传递已有活跃工作流，避免重复启动', async () => {
+    vi.mocked(api.getRequirement).mockResolvedValue({ ...requirement, prototypeImport: { id: 'import-1', status: 'CONFIRMED' }, workflowRuns: [run('run-existing', 'SPEC_PLAN_RUNNING', 'web')] });
+    await renderPage();
+    expect(container.querySelector('[data-import="import-1"]')?.getAttribute('data-workflow')).toBe('run-existing');
   });
 
 });

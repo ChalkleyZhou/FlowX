@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { EmptyState } from '../components/EmptyState';
@@ -67,6 +67,13 @@ export function RequirementsPage() {
   ]);
   const [launchSubmitting, setLaunchSubmitting] = useState(false);
   const [createDraft, setCreateDraft] = useState(emptyCreateDraft);
+  const [createMode, setCreateMode] = useState<'manual' | 'prototype'>('manual');
+  const [prototypeFile, setPrototypeFile] = useState<File | null>(null);
+  const [prototypeGoal, setPrototypeGoal] = useState('');
+  const [prototypeProvider, setPrototypeProvider] = useState<'codex' | 'cursor'>('codex');
+  const [prototypeError, setPrototypeError] = useState<string | null>(null);
+  const [prototypeSubmitting, setPrototypeSubmitting] = useState(false);
+  const prototypeInFlight = useRef(false);
   const toast = useToast();
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === createDraft.projectId) ?? null,
@@ -155,7 +162,9 @@ export function RequirementsPage() {
     nextParams.delete('launchRequirementId');
     setSearchParams(nextParams, { replace: true });
     const target = requirements.find((item) => item.id === requirementId);
-    if (target) {
+    if (target?.prototypeImport && target.prototypeImport.status !== 'CONFIRMED') {
+      navigate(`/requirements/${target.id}`);
+    } else if (target) {
       setLaunchModalRequirement(target);
       setLaunchRepositoryIds([]);
       setLaunchAiProvider(defaultAiProvider);
@@ -217,6 +226,27 @@ export function RequirementsPage() {
 
     if (!createDraft.projectId) {
       toast.error('请选择项目');
+      return;
+    }
+
+    if (createMode === 'prototype') {
+      if (prototypeInFlight.current) return;
+      if (!prototypeFile || !/\.zip$/i.test(prototypeFile.name) || prototypeFile.size > 20 * 1024 * 1024) {
+        setPrototypeError('请选择不超过 20 MiB 的 ZIP 文件');
+        return;
+      }
+      prototypeInFlight.current = true;
+      setPrototypeSubmitting(true);
+      setPrototypeError(null);
+      try {
+        const imported = await api.createPrototypeImport({ projectId: createDraft.projectId, goal: prototypeGoal.trim(), aiProvider: prototypeProvider }, prototypeFile);
+        navigate(`/requirements/${imported.requirementId}`);
+      } catch (error) {
+        setPrototypeError(error instanceof Error ? error.message : '上传原型失败，请重试');
+      } finally {
+        prototypeInFlight.current = false;
+        setPrototypeSubmitting(false);
+      }
       return;
     }
 
@@ -393,18 +423,25 @@ export function RequirementsPage() {
       <Dialog
         open={createModalOpen}
         onOpenChange={(open) => {
+          if (prototypeInFlight.current) return;
           setCreateModalOpen(open);
           if (!open) {
             setCreateDraft(emptyCreateDraft);
+            setCreateMode('manual'); setPrototypeFile(null); setPrototypeGoal(''); setPrototypeError(null);
           }
         }}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto" onEscapeKeyDown={(event) => { if (prototypeSubmitting) event.preventDefault(); }} onPointerDownOutside={(event) => { if (prototypeSubmitting) event.preventDefault(); }}>
           <DialogHeader>
             <DialogTitle>创建需求</DialogTitle>
-            <DialogDescription>填写基础信息后，这条需求会先归档到项目，再发起工作流。</DialogDescription>
+            <DialogDescription>可填写需求，或上传已有原型，由 AI 整理后确认并继续研发。</DialogDescription>
           </DialogHeader>
+          <div role="tablist" aria-label="需求创建方式" className="flex gap-2">
+            <UiButton role="tab" aria-selected={createMode === 'manual'} variant={createMode === 'manual' ? 'default' : 'outline'} disabled={prototypeSubmitting} onClick={() => setCreateMode('manual')}>普通填写</UiButton>
+            <UiButton role="tab" aria-selected={createMode === 'prototype'} variant={createMode === 'prototype' ? 'default' : 'outline'} disabled={prototypeSubmitting} onClick={() => setCreateMode('prototype')}>已有原型</UiButton>
+          </div>
           <form className="flex flex-col gap-4" onSubmit={(event) => void handleCreateRequirement(event)}>
+            <fieldset disabled={prototypeSubmitting} className="contents">
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-foreground">所属项目</label>
               <Select
@@ -419,7 +456,7 @@ export function RequirementsPage() {
                   }));
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="所属项目">
                   <SelectValue placeholder="选择需求归属的项目" />
                 </SelectTrigger>
                 <SelectContent>
@@ -431,6 +468,7 @@ export function RequirementsPage() {
                 </SelectContent>
               </Select>
             </div>
+            {createMode === 'manual' && <>
             {createDraft.projectId ? (
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-semibold text-foreground">发布版本</label>
@@ -511,9 +549,24 @@ export function RequirementsPage() {
                 <p className="text-sm leading-6 text-muted-foreground">先选择项目，再指定这条需求实际影响的仓库。</p>
               )}
             </div>
-            <UiButton type="submit" className="mt-2">
-              创建需求
+            </>}
+            {createMode === 'prototype' && <>
+              <label className="flex flex-col gap-2 text-sm">原型 ZIP（最大 20 MiB）
+                <UiInput type="file" accept=".zip,application/zip" aria-label="原型 ZIP" onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  setPrototypeFile(file);
+                  setPrototypeError(file && (!/\.zip$/i.test(file.name) || file.size > 20 * 1024 * 1024) ? '请选择不超过 20 MiB 的 ZIP 文件' : null);
+                }} />
+              </label>
+              <p className="text-xs text-muted-foreground">上传 HTML 原型、图片、说明或源码。AI 整理需求并提出必要问题，确认后进入技术方案阶段。</p>
+              <label className="flex flex-col gap-2 text-sm">一句话目标（可选）<Textarea aria-label="一句话目标" value={prototypeGoal} onChange={(event) => setPrototypeGoal(event.target.value)} /></label>
+              <div className="flex flex-col gap-2 text-sm"><label>默认 AI 执行器</label><Select value={prototypeProvider} onValueChange={(value: 'codex' | 'cursor') => setPrototypeProvider(value)}><SelectTrigger aria-label="原型整理执行器"><SelectValue /></SelectTrigger><SelectContent>{availableAiProviders.map((provider) => <SelectItem key={provider.id} value={provider.id}>{provider.label}</SelectItem>)}</SelectContent></Select></div>
+              {prototypeError && <p role="alert" className="text-sm text-danger">{prototypeError}</p>}
+            </>}
+            <UiButton type="submit" className="mt-2" disabled={prototypeSubmitting}>
+              {createMode === 'prototype' ? prototypeSubmitting ? '上传整理中…' : '上传原型，AI 整理' : '创建需求'}
             </UiButton>
+            </fieldset>
           </form>
         </DialogContent>
       </Dialog>
@@ -535,7 +588,12 @@ export function RequirementsPage() {
             title="需求列表"
             extra={(
               <div className="flex flex-wrap items-center gap-2">
-                <UiButton onClick={() => setCreateModalOpen(true)}>
+                <UiButton onClick={() => {
+                  const project = projects.find((item) => item.id === selectedProjectId);
+                  setCreateDraft({ ...emptyCreateDraft, projectId: project?.id ?? '', versionId: project?.currentVersionId ?? UNVERSIONED });
+                  setPrototypeProvider(defaultAiProvider);
+                  setCreateModalOpen(true);
+                }}>
                   创建需求
                 </UiButton>
               </div>
@@ -662,11 +720,15 @@ export function RequirementsPage() {
                       <UiButton
                         variant="outline"
                         onClick={() => {
+                          if (item.prototypeImport && item.prototypeImport.status !== 'CONFIRMED') {
+                            navigate(`/requirements/${item.id}`);
+                            return;
+                          }
                           setLaunchModalRequirement(item);
                           setLaunchRepositoryIds([]);
                         }}
                       >
-                        启动工作流
+                        {item.prototypeImport && item.prototypeImport.status !== 'CONFIRMED' ? '确认原型' : '启动工作流'}
                       </UiButton>
                       <UiButton variant="outline" onClick={() => navigate(`/workflow-runs?requirementId=${item.id}`)}>
                         查看流程

@@ -315,6 +315,53 @@ describe('WorkflowRunDetailPage', () => {
     expect(container.textContent).toContain('修复登录流程');
   });
 
+  it('后台完成 Grounding 后自动跟随到 Spec & Plan 并展示可执行操作', async () => {
+    vi.useFakeTimers();
+    const grounding = { id: 'grounding-1', stage: 'REPOSITORY_GROUNDING', status: 'RUNNING', attempt: 1, output: null };
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({
+      status: 'REPOSITORY_GROUNDING_PENDING', currentStage: 'REPOSITORY_GROUNDING', stageExecutions: [grounding],
+    }));
+    await renderPage();
+    const selectedStep = () => Array.from(container.querySelectorAll('div'))
+      .find((element) => element.classList.contains('text-[28px]'));
+    expect(selectedStep()?.textContent).toContain('仓库 Grounding');
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({
+      status: 'SPEC_PLAN_PENDING', currentStage: 'SPEC_PLAN', stageExecutions: [
+        { ...grounding, status: 'COMPLETED' },
+        { id: 'spec-1', stage: 'SPEC_PLAN', status: 'PENDING', attempt: 1, output: null },
+      ],
+    }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+    expect(selectedStep()?.textContent).toContain('Spec & Plan');
+    const generate = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '生成 Spec & Plan');
+    expect(generate).toBeTruthy();
+    expect(generate?.disabled).toBe(false);
+  });
+
+  it('后台阶段推进不会打断用户手选的已完成历史阶段', async () => {
+    vi.useFakeTimers();
+    const brainstorm = { id: 'brainstorm-1', stage: 'BRAINSTORM', status: 'COMPLETED', attempt: 1, output: { brief: { expandedDescription: '历史构思', userStories: [], edgeCases: [], successMetrics: [], openQuestions: [], assumptions: [], outOfScope: [] } } };
+    const design = { id: 'design-1', stage: 'DESIGN', status: 'RUNNING', attempt: 1, output: null };
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({
+      status: 'DESIGN_RUNNING', currentStage: 'DESIGN', stageExecutions: [brainstorm, design],
+    }));
+    await renderPage();
+    await selectBrainstormStep();
+    const selectedStep = () => Array.from(container.querySelectorAll('div'))
+      .find((element) => element.classList.contains('text-[28px]'));
+    expect(selectedStep()?.textContent).toContain('产品构思');
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({
+      status: 'SPEC_PLAN_PENDING', currentStage: 'SPEC_PLAN', stageExecutions: [
+        brainstorm, { ...design, status: 'COMPLETED' },
+        { id: 'spec-1', stage: 'SPEC_PLAN', status: 'PENDING', attempt: 1, output: null },
+      ],
+    }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+    expect(selectedStep()?.textContent).toContain('产品构思');
+    expect(container.querySelector('[data-testid="workflow-current-task"]')?.textContent).toContain('Spec & Plan');
+    expect(container.textContent).toContain('历史构思');
+  });
+
   it('keeps the current page while background refresh is pending and does not overlap requests', async () => {
     vi.useFakeTimers();
     const run = createWorkflowRun({ status: 'SPEC_PLAN_PENDING', currentStage: 'SPEC_PLAN', stageExecutions: [{ id: 'stage-1', stage: 'SPEC_PLAN', status: 'RUNNING', attempt: 1, output: null }] });

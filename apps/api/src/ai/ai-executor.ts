@@ -1,3 +1,4 @@
+import type { PrototypeAnalysis, PrototypeAnalysisInput } from '../prototype-imports/prototype-analysis';
 import {
   BrainstormInput,
   BrainstormOutput,
@@ -33,6 +34,7 @@ export interface AIInvocationContext {
 }
 
 export interface AIExecutor {
+  analyzePrototype?(input: PrototypeAnalysisInput, context?: AIInvocationContext): Promise<PrototypeAnalysis>;
   brainstorm(input: BrainstormInput, context?: AIInvocationContext): Promise<BrainstormOutput>;
   generateDesign(
     input: GenerateDesignInput,

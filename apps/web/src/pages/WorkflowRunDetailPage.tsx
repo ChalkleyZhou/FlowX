@@ -444,6 +444,7 @@ function WorkflowRunDetailContent() {
   const confirm = useConfirm();
   const lastWorkflowSnapshotRef = useRef<string>('');
   const hasInitializedStageSelectionRef = useRef(false);
+  const lastSuggestedStageRef = useRef<WorkflowStageKey | null>(null);
   const syncedReviewReportIdRef = useRef<string | null>(null);
   const busyStageRef = useRef<string | null>(null);
   const workflowRouteRef = useRef(workflowRunId);
@@ -540,6 +541,7 @@ function WorkflowRunDetailContent() {
 
   useEffect(() => {
     hasInitializedStageSelectionRef.current = false;
+    lastSuggestedStageRef.current = null;
     syncedReviewReportIdRef.current = null;
   }, [workflowRunId]);
 
@@ -549,6 +551,8 @@ function WorkflowRunDetailContent() {
     }
 
     const suggestedStage = inferFocusedStage(workflowRun);
+    const previousSuggestedStage = lastSuggestedStageRef.current;
+    lastSuggestedStageRef.current = suggestedStage;
     if (!hasInitializedStageSelectionRef.current) {
       setSelectedStage(suggestedStage);
       hasInitializedStageSelectionRef.current = true;
@@ -557,7 +561,11 @@ function WorkflowRunDetailContent() {
 
     const currentStage = getStage(workflowRun, selectedStage);
 
-    if (!currentStage || currentStage.status === 'NOT_STARTED' || currentStage.status === undefined) {
+    // 跟随仍在查看的当前阶段；用户手选已完成的历史阶段时保留其选择。
+    if (
+      (selectedStage === previousSuggestedStage && suggestedStage !== previousSuggestedStage) ||
+      !currentStage || currentStage.status === 'NOT_STARTED' || currentStage.status === undefined
+    ) {
       setSelectedStage(suggestedStage);
     }
   }, [workflowRun]);
@@ -2379,7 +2387,7 @@ function WorkflowRunDetailContent() {
                     <SectionHeader
                       eyebrow="Design Preview"
                       title="设计稿预览"
-                      description="OpenDesign 生成的高保真单页设计稿。可通过下方反馈让 AI 迭代修改后重新生成。"
+                      description="查看已保存的设计页面与原型交互；导入原型保留上传成果。"
                     />
                   </CardHeader>
                   <CardContent className="p-5 pt-4">

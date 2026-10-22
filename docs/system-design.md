@@ -61,6 +61,7 @@ flowchart LR
 | `workspaces` | 工作区、Repository 登记、同步和本地副本 | 项目管理中心 / AI 上下文中心 |
 | `projects` | 项目基础信息、发布版本清单与当前版本 | 项目管理中心 |
 | `requirements` | 需求、ideation 与设计编排 | 项目管理中心 / 研发流程中心 |
+| `prototype-imports` | 原型 ZIP 私有存储、AI 整理、草稿版本与一次确认 | 项目管理中心 / 研发流程中心 |
 | `workflow` | 工作流状态机、阶段执行、本地/云端执行和审查 | 研发流程中心 |
 | `ai`、`prompts` | Executor、Prompt 和输出 schema | AI 上下文中心 |
 | `schedule` | 需求排期与成员分配 | 项目管理中心 |
@@ -127,6 +128,16 @@ Workspace
 所有 `LOCAL` 会话的公共写入口统一使用领取人校验，包括通用心跳/状态、SyncEvent、Artifact 上传/内容/删除与 Evidence；读取仍按组织可见。构思、设计、方案与冒烟的终态只能通过专用编排回传或明确交接，不能用通用 `complete/fail/cancel` 单独改变会话。`CANCELLED` 会话拒绝后续写入。专用设计回传产生的 HTML 绑定 `executionSessionId`；无会话的旧兼容稿按 `createdByUserId` 校验，未记录执行人的历史稿只读。
 
 `POST /workflow-runs/:id/design/submit-local` 仅供尚未使用本地设计会话的旧集成使用，必须提供登录身份并记录产物和阶段执行人、锁定工作流版本。流程一旦存在本地设计会话，该兼容入口返回 `409` 并引导当前会话的专用回传，避免已取消任务绕过晚到结果校验。
+
+### 原型 ZIP 导入与确认快照
+
+`PrototypeImport` 与 Requirement 一对一关联，保存 `ANALYZING / WAITING_CONFIRMATION / FAILED / CONFIRMED` 状态、CAS `revision`、独立材料版本 `materialRevision`、文件清单、AI 分析、答案及确认人/时间。所有读取、下载、预览和写入经需求项目的 Workspace 校验组织。上传先私有保存原包，再事务创建临时需求；异步分析采用现有 AI invocation 的组织凭据上下文。当前任务为单进程后台执行，重启将分析中记录标为可重试失败，保留材料。
+
+Codex / Cursor 的 `analyzePrototype` 共用 `prototype-analysis.output.schema.json`，运行时按同一 schema 校验需求、简报、设计、澄清、来源与推断。分析上下文整体有界，材料被标记为非指令，来源路径必须属于材料清单；不支持的 executor 明确失败。图片未做视觉理解、PDF/Word 未提取正文。保存/补传/重试/确认均比较 revision；Web 编辑基线不随刷新偷换，服务端拒绝旧版本。确认前校验必答项，事务更新 Requirement 和 ideation Artifact 并锁定确认稿。
+
+工作流创建读取已确认导入，未确认阻断，`REQUIREMENT_INTAKE` 保存不可变确认快照。grounding 后使用快照简报和原型页面，记录 BRAINSTORM 为复用跳过、DESIGN 为已确认完成，再经现有状态机到 `SPEC_PLAN_PENDING`。设计稿保持原页面 ID，但持久化文件名采用短摘要，兼容中文长路径；后续重试不重做导入确认。
+
+原型存储在 API 工作目录 `.flowx-data/prototype-imports/{id}/{materialRevision}`，保存各次原包与合并材料。预览静态内联包内资源，不安装依赖或执行构建命令。HTML 置于可信外壳的 sandbox iframe（无 same-origin）中；外壳 CSP 的 `frame-src 'none'` 阻止内部原型自身外部导航，原型 CSP 限制请求、资源与表单。包内导航经消息源校验及清单校验转发；新窗口同样保留可信外壳。它是原型预览环境，不是完整应用运行环境。完整接口、限制与备份见 [原型导入](prototype-import.md)。
 
 ### 多仓分支交付
 

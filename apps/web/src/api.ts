@@ -35,6 +35,8 @@ import type {
   OrganizationMember,
   PersonalApiTokenCreated,
   PersonalApiTokenMeta,
+  PrototypeImport,
+  PrototypeImportUpdate,
   Project,
   ProjectBriefingConfig,
   ProjectCodeReviewConfig,
@@ -144,12 +146,12 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+async function request<T>(path: string, options?: RequestInit, responseType: 'json' | 'blob' = 'json'): Promise<T> {
   const token = getAuthToken();
   const url = buildApiUrl(path);
   const requestOptions = {
     headers: {
-      'Content-Type': 'application/json',
+      ...(!(typeof FormData !== 'undefined' && options?.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options?.headers ?? {}),
     },
@@ -183,7 +185,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       throw new ApiError(parsedMessage || text || '请求失败', response.status);
     }
 
-    return response.json() as Promise<T>;
+    return (responseType === 'blob' ? response.blob() : response.json()) as Promise<T>;
   })();
 
   if (requestKey) {
@@ -237,6 +239,22 @@ export function getBugScreenshotUrl(bugId: string, screenshotId: string) {
 }
 
 export const api = {
+  createPrototypeImport: (payload: { projectId: string; goal?: string; aiProvider?: 'codex' | 'cursor' }, file: File) => {
+    const body = new FormData(); body.append('file', file); body.append('projectId', payload.projectId);
+    if (payload.goal) body.append('goal', payload.goal);
+    if (payload.aiProvider) body.append('aiProvider', payload.aiProvider);
+    return request<PrototypeImport>('/prototype-imports', { method: 'POST', body });
+  },
+  getPrototypeImport: (id: string) => request<PrototypeImport>(`/prototype-imports/${id}`),
+  savePrototypeImport: (id: string, payload: PrototypeImportUpdate) => request<PrototypeImport>(`/prototype-imports/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  analyzePrototypeImport: (id: string, payload: PrototypeImportUpdate) => request<PrototypeImport>(`/prototype-imports/${id}/analyze`, { method: 'POST', body: JSON.stringify(payload) }),
+  confirmPrototypeImport: (id: string, payload: PrototypeImportUpdate) => request<PrototypeImport>(`/prototype-imports/${id}/confirm`, { method: 'POST', body: JSON.stringify(payload) }),
+  supplementPrototypeImport: (id: string, revision: number, file: File) => {
+    const body = new FormData(); body.append('file', file); body.append('revision', String(revision));
+    return request<PrototypeImport>(`/prototype-imports/${id}/files`, { method: 'POST', body });
+  },
+  previewPrototypeImport: (id: string, path: string) => request<{ html: string; warnings: string[] }>(`/prototype-imports/${id}/preview?path=${encodeURIComponent(path)}`),
+  downloadPrototypeImport: (id: string, revision: number) => request<Blob>(`/prototype-imports/${id}/source?revision=${revision}`, undefined, 'blob'),
   getWorkflowProviders: () =>
     request<{
       defaultProvider: 'codex' | 'cursor';

@@ -1,0 +1,262 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "title",
+    "description",
+    "acceptanceCriteria",
+    "brief",
+    "design",
+    "clarifications",
+    "evidence",
+    "inferences"
+  ],
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20000
+    },
+    "acceptanceCriteria": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      },
+      "minItems": 1
+    },
+    "brief": {
+      "type": "object",
+      "description": "产品简报正文；所有结构化字段必须在此对象内。",
+      "additionalProperties": false,
+      "required": [
+        "expandedDescription",
+        "userStories",
+        "edgeCases",
+        "successMetrics",
+        "openQuestions",
+        "assumptions",
+        "outOfScope"
+      ],
+      "properties": {
+        "expandedDescription": {
+          "type": "string",
+          "minLength": 1,
+          "description": "2–3 段用户与业务视角说明；不写实现细节。篇幅精炼，避免单次输出过长被 CLI 截断。"
+        },
+        "userStories": {
+          "type": "array",
+          "description": "用户故事列表；每条需三者俱全。",
+          "minItems": 0,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "role",
+              "action",
+              "benefit"
+            ],
+            "properties": {
+              "role": {
+                "type": "string",
+                "minLength": 1,
+                "description": "用户角色或使用者类型"
+              },
+              "action": {
+                "type": "string",
+                "minLength": 1,
+                "description": "要完成的关键行为"
+              },
+              "benefit": {
+                "type": "string",
+                "minLength": 1,
+                "description": "带来的价值或解决的问题"
+              }
+            }
+          }
+        },
+        "edgeCases": {
+          "type": "array",
+          "description": "边界情况与异常路径（产品/交互层面，非代码异常栈）。",
+          "minItems": 0,
+          "items": {
+            "type": "string",
+            "description": "一条边界或风险场景"
+          }
+        },
+        "successMetrics": {
+          "type": "array",
+          "description": "可衡量或可验证的成功指标。",
+          "items": {
+            "type": "string",
+            "description": "指标描述"
+          }
+        },
+        "openQuestions": {
+          "type": "array",
+          "description": "需产品或业务方确认的问题。",
+          "items": {
+            "type": "string"
+          }
+        },
+        "assumptions": {
+          "type": "array",
+          "description": "撰写简报时依赖的前提假设。",
+          "items": {
+            "type": "string"
+          }
+        },
+        "outOfScope": {
+          "type": "array",
+          "description": "明确排除在本次范围外的内容。",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "overview",
+        "pages",
+        "demoScenario",
+        "designRationale"
+      ],
+      "properties": {
+        "overview": {
+          "type": "string",
+          "minLength": 1,
+          "description": "高层设计思路（非 API/库表设计）。"
+        },
+        "pages": {
+          "type": "array",
+          "minItems": 0,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "route",
+              "layout",
+              "keyComponents",
+              "interactions"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "route": {
+                "type": "string",
+                "minLength": 1
+              },
+              "layout": {
+                "type": "string",
+                "minLength": 1
+              },
+              "keyComponents": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "interactions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "demoScenario": {
+          "type": "string",
+          "minLength": 1
+        },
+        "designRationale": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "clarifications": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "question",
+          "required",
+          "suggestedAnswer"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "稳定唯一的ASCII问题标识，仅字母数字下划线和连字符，不使用保留键名"
+          },
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "suggestedAnswer": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "observation"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "observation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        }
+      },
+      "minItems": 1
+    },
+    "inferences": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      }
+    }
+  },
+  "title": "PrototypeAnalysis",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

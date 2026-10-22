@@ -1,3 +1,5 @@
+import { PrototypeArchive } from '../prototype-imports/prototype-archive';
+import { buildPrototypeWorkflowSnapshot, readPrototypeWorkflowSnapshot } from './workflow-prototype-import';
 import { codeDeliveryReviewRepositories, codeDeliverySourceStage } from './workflow-code-delivery-review';
 import {
   BadRequestException,
@@ -229,6 +231,7 @@ export class WorkflowService {
         status: 'ACTIVE',
       },
       include: {
+        prototypeImport: true,
         project: {
           include: {
             workspace: {
@@ -253,6 +256,9 @@ export class WorkflowService {
         },
       },
     });
+    const prototypeSnapshot = requirement.prototypeImport
+      ? buildPrototypeWorkflowSnapshot(requirement.prototypeImport)
+      : null;
     const requestedRepositoryIds = Array.from(
       new Set((dto.repositoryIds ?? []).map((value) => value.trim()).filter(Boolean)),
     );
@@ -275,6 +281,9 @@ export class WorkflowService {
           })
         : defaultRepositories;
 
+    if (prototypeSnapshot && selectedRepositories.length === 0) {
+      throw new BadRequestException('导入方案已确认，请先在项目工作区添加代码仓库，再继续研发。');
+    }
     const selectedRepositoryIds = new Set(selectedRepositories.map((repository) => repository.id));
     const existingActiveWorkflows = await this.prisma.workflowRun.findMany({
       where: {
@@ -317,6 +326,12 @@ export class WorkflowService {
         },
       });
 
+      if (prototypeSnapshot) {
+        await this.createStageExecution(tx, workflow.id, StageType.REQUIREMENT_INTAKE, {
+          input: { source: 'prototype-import' }, output: prototypeSnapshot,
+          status: StageExecutionStatus.COMPLETED, statusMessage: '用户已确认导入原型与需求，使用固定版本接续研发', finishedAt: new Date(),
+        });
+      }
       if (selectedRepositories.length > 0) {
         const workflowRepositoryRecords = selectedRepositories.map((repository) => ({
           repositoryId: repository.id,
@@ -4419,7 +4434,8 @@ export class WorkflowService {
           `DESIGN_ARTIFACT_TOO_LARGE: surface=${surfaceId} page=${page.id} is ${bytes} bytes, exceeds limit ${DESIGN_ARTIFACT_MAX_BYTES}.`,
         );
       }
-      const safePage = this.encodeDesignPathSegment(page.id);
+      // 原型路径可能很长；文件名使用固定长度摘要，清单仍保留原始页面标识供导航使用。
+      const safePage = createHash('sha256').update(page.id).digest('hex');
       const fileName = `${safePage}-${generatedAt.replace(/[:.]/g, '-')}.html`;
       const relPath = `${workflowRunId}/${safeSurface}/${fileName}`;
       await writeFile(join(absDir, fileName), page.html, 'utf8');
@@ -4610,6 +4626,8 @@ export class WorkflowService {
   }
 
   private getWorkflowBriefContext(workflow: WorkflowPayload): BrainstormBrief {
+    const imported = readPrototypeWorkflowSnapshot(this.getLatestCompletedStageOutput(workflow, StageType.REQUIREMENT_INTAKE));
+    if (imported) return imported.analysis.brief;
     const stage = this.getLatestCompletedStageOutput(workflow, StageType.BRAINSTORM);
     if (stage?.brief && typeof stage.brief === 'object' && !Array.isArray(stage.brief)) {
       return stage.brief as BrainstormBrief;
@@ -4673,6 +4691,14 @@ export class WorkflowService {
         await this.repositorySyncService.generateWorkflowRepositoryGrounding(workflowId);
         const groundedWorkflow = await this.getWorkflowOrThrow(workflowId);
         const groundingOutput = this.buildGroundingStageOutput(groundedWorkflow.workflowRepositories);
+        const prototypeSnapshot = readPrototypeWorkflowSnapshot(this.getLatestCompletedStageOutput(groundedWorkflow, StageType.REQUIREMENT_INTAKE));
+        let importedDesignOutput: Record<string, unknown> | null = null;
+        if (prototypeSnapshot) {
+          const { analysis } = prototypeSnapshot;
+          const demo: DemoArtifact = { summary: analysis.description, flows: [], scope: { included: analysis.acceptanceCriteria, excluded: analysis.brief.outOfScope }, knownGaps: analysis.inferences };
+          const surfaces = await this.persistAndMergeDesignSurfaces(workflowId, [], await new PrototypeArchive().surfaces(prototypeSnapshot.importId, prototypeSnapshot.materialRevision));
+          importedDesignOutput = { ...this.toPersistedDesignStageOutput(buildDesignMarkdownFromStructured(analysis.design, demo), { design: analysis.design, demo }, surfaces), source: 'prototype-import', importId: prototypeSnapshot.importId, importRevision: prototypeSnapshot.revision };
+        }
 
         await this.prisma.$transaction(async (tx) => {
           const groundingStage = await tx.stageExecution.findFirstOrThrow({
@@ -4701,14 +4727,27 @@ export class WorkflowService {
             workflowId,
             WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING,
             {
-              to: localDesign
+              to: localDesign || prototypeSnapshot
                 ? WorkflowRunStatus.DESIGN_PENDING
                 : WorkflowRunStatus.BRAINSTORM_PENDING,
-              stage: localDesign ? StageType.DESIGN : StageType.BRAINSTORM,
+              stage: localDesign || prototypeSnapshot ? StageType.DESIGN : StageType.BRAINSTORM,
             },
           );
 
-          if (localDesign) {
+          if (prototypeSnapshot && importedDesignOutput) {
+            await this.createStageExecution(tx, workflowId, StageType.BRAINSTORM, {
+              input: { source: 'prototype-import', importId: prototypeSnapshot.importId },
+              status: StageExecutionStatus.SKIPPED, statusMessage: '已从用户原型整理并确认需求，无需重复构思', finishedAt: new Date(),
+            });
+            await this.createStageExecution(tx, workflowId, StageType.DESIGN, {
+              input: { source: 'prototype-import', importId: prototypeSnapshot.importId }, output: importedDesignOutput,
+              status: StageExecutionStatus.COMPLETED, statusMessage: '复用用户已确认的原型与设计说明，未重新生成设计', finishedAt: new Date(),
+            });
+            await this.transitionWorkflow(tx, workflowId, WorkflowRunStatus.DESIGN_PENDING, { to: WorkflowRunStatus.SPEC_PLAN_PENDING, stage: StageType.SPEC_PLAN });
+            await this.createStageExecution(tx, workflowId, StageType.SPEC_PLAN, {
+              input: { source: 'prototype-import', importId: prototypeSnapshot.importId }, status: StageExecutionStatus.PENDING, statusMessage: '需求与设计已确认，可直接生成技术方案',
+            });
+          } else if (localDesign) {
             await this.createStageExecution(tx, workflowId, StageType.DESIGN, {
               input: {
                 requirementId: groundedWorkflow.requirementId,

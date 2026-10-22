@@ -22,6 +22,7 @@ model Requirement {
   workspaceId             String?
   workspace               Workspace?              @relation(fields: [workspaceId], references: [id])
   ideationStatus          String                  @default("NONE")
+  prototypeImport         PrototypeImport?
   requirementRepositories RequirementRepository[]
   assignments             RequirementAssignment[]
   ideationSessions        IdeationSession[]
@@ -1478,4 +1479,26 @@ model TestResult {
 
   @@index([result, executedAt])
   @@index([bugId, createdAt])
+}
+
+// 原型材料与 AI 整理结果独立保存，确认后作为工作流上游事实来源。
+model PrototypeImport {
+  id               String @id @default(cuid())
+  requirementId    String @unique
+  requirement      Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  status           String @default("ANALYZING")
+  revision         Int @default(1)
+  materialRevision Int @default(1)
+  aiProvider       String @default("codex")
+  goal             String @default("")
+  manifest         Json
+  analysis         Json?
+  answers          Json?
+  errorMessage     String?
+  confirmedBy      String?
+  confirmedAt      DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([status, updatedAt])
 }

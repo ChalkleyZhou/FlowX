@@ -91,4 +91,22 @@ describe('DesignArtifactPreview', () => {
     expect(container.querySelector('iframe')).toBeNull();
     expect(container.textContent ?? '').toContain('暂无高保真设计稿');
   });
+  it('导入原型的多页跳转校验来源和页面清单', async () => {
+    vi.mocked(api.listWorkflowDesignArtifacts).mockResolvedValue({ surfaces: [{ id: 'prototype', pages: [
+      { id: 'index.html', relPath: 'index.html', bytes: 10, generatedAt: '2026-10-22T00:00:00Z' },
+      { id: 'detail.html', relPath: 'detail.html', bytes: 10, generatedAt: '2026-10-22T00:00:00Z' },
+    ] }] });
+    vi.mocked(api.getWorkflowDesignArtifactPage).mockResolvedValue({ exists: true, html: '<p>原型</p>', surfaceId: 'prototype', pageId: 'index.html' });
+    await act(async () => { root?.render(<DesignArtifactPreview workflowRunId="run-1" />); });
+    const iframe = container.querySelector('iframe')!;
+    const initialCalls = vi.mocked(api.getWorkflowDesignArtifactPage).mock.calls.length;
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', { source: window, data: { type: 'flowx-prototype-navigate', path: 'detail.html' } }));
+      window.dispatchEvent(new MessageEvent('message', { source: iframe.contentWindow, data: { type: 'flowx-prototype-navigate', path: '../external.html' } }));
+    });
+    expect(api.getWorkflowDesignArtifactPage).toHaveBeenCalledTimes(initialCalls);
+    await act(async () => { window.dispatchEvent(new MessageEvent('message', { source: iframe.contentWindow, data: { type: 'flowx-prototype-navigate', path: 'detail.html' } })); });
+    expect(api.getWorkflowDesignArtifactPage).toHaveBeenLastCalledWith('run-1', 'prototype', 'detail.html');
+  });
+
 });

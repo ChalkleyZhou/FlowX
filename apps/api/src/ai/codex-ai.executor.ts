@@ -1,3 +1,4 @@
+import { assertPrototypeAnalysis, buildPrototypeAnalysisPrompt, type PrototypeAnalysis, type PrototypeAnalysisInput } from '../prototype-imports/prototype-analysis';
 import { Injectable, Logger } from '@nestjs/common';
 import { promisify } from 'util';
 import { execFile as execFileCallback, spawn } from 'child_process';
@@ -105,6 +106,13 @@ export class CodexAiExecutor implements AIExecutor {
   protected readonly providerName: string = 'codex';
   protected readonly providerLabel: string = 'Codex';
   protected readonly debugRoot: string = CODEX_DEBUG_ROOT;
+
+  async analyzePrototype(input: PrototypeAnalysisInput, context?: AIInvocationContext): Promise<PrototypeAnalysis> {
+    const output = await this.runStructuredJsonStage<unknown>(
+      'prototype-analysis.output.schema.json', buildPrototypeAnalysisPrompt(input), 'prototype analysis', context,
+    );
+    return assertPrototypeAnalysis(output);
+  }
 
   async brainstorm(input: BrainstormInput, context?: AIInvocationContext): Promise<BrainstormOutput> {
     const prompt = this.buildBrainstormPrompt(input);

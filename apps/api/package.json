@@ -21,13 +21,17 @@
     "@prisma/client": "^6.5.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "esbuild": "^0.28.2",
     "nodemailer": "^8.0.10",
+    "parse5": "^7.3.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "yauzl": "^3.4.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
     "@types/nodemailer": "^8.0.0",
+    "@types/yauzl": "^3.4.0",
     "prisma": "^6.5.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
