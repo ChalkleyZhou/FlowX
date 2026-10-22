@@ -7,6 +7,7 @@ import { OpenDesignLaunchGuideDialog } from '../components/OpenDesignLaunchGuide
 import { DesignArtifactPreview } from '../components/DesignArtifactPreview';
 import { BriefingMarkdownView } from '../components/BriefingMarkdownView';
 import { WorkflowCollaborationPanel } from '../components/WorkflowCollaborationPanel';
+import { WorkflowCodeDeliveryPanel } from '../components/WorkflowCodeDeliveryPanel';
 import { DiffFileListPanel } from '../components/DiffFileListPanel';
 import { DiffViewerPanel } from '../components/DiffViewerPanel';
 import { EmptyState } from '../components/EmptyState';
@@ -149,6 +150,11 @@ function localLaunchSuccessMessage(
     return `提示词已生成，但未打开 ${label}`;
   }
   return `已打开 ${label}；提示词文件已生成，内容已复制到剪贴板`;
+}
+
+function isCodeDeliveryStage(stage: { input?: unknown } | undefined): boolean {
+  const input = stage?.input;
+  return !!input && typeof input === 'object' && !Array.isArray(input) && 'executor' in input && input.executor === 'CODE_DELIVERY';
 }
 
 function isLocalExecutionActive(workflowRun: WorkflowRun): boolean {
@@ -569,9 +575,10 @@ function WorkflowRunDetailContent() {
   }, [workflowRun?.id]);
 
   const hasRunningStage = workflowRun?.stageExecutions.some((item) => item.status === 'RUNNING') ?? false;
+  const hasBlockingRunningStage = workflowRun?.stageExecutions.some((item) => item.status === 'RUNNING' && !isCodeDeliveryStage(item)) ?? false;
   const canRollbackToPreviousStage = Boolean(
     workflowRun &&
-      !hasRunningStage &&
+      !hasBlockingRunningStage &&
       workflowRun.status !== 'CREATED' &&
       workflowRun.status !== 'REPOSITORY_GROUNDING_PENDING',
   );
@@ -1719,6 +1726,7 @@ function WorkflowRunDetailContent() {
             onClick: (): void => openWorkspaceEditMode('execution'),
             disabled:
               !workflowRun.codeExecution ||
+              isCodeDeliveryStage(executionStage) ||
               !['REVIEW_PENDING', 'HUMAN_REVIEW_PENDING', 'DONE'].includes(workflowRun.status) ||
               stageActionsLocked,
           },
@@ -2245,6 +2253,10 @@ function WorkflowRunDetailContent() {
             currentStageLabel={stageMeta[inferFocusedStage(workflowRun)].title}
             stageExecutionId={getStage(workflowRun, inferFocusedStage(workflowRun))?.id}
             stageStatus={getStage(workflowRun, inferFocusedStage(workflowRun))?.status}
+            executionMode={(() => {
+              const input = getStage(workflowRun, 'EXECUTION')?.input;
+              return input && typeof input === 'object' && 'executor' in input && typeof input.executor === 'string' ? input.executor : undefined;
+            })()}
             onReleased={() => refresh({ silent: true })}
           />
           {loadError ? <div role="alert" className="flex items-center gap-3 text-sm text-destructive"><span>{loadError}</span><UiButton variant="outline" size="sm" onClick={() => void refresh({ silent: true })}>重新加载工作流</UiButton></div> : null}
@@ -2279,6 +2291,17 @@ function WorkflowRunDetailContent() {
             </CardContent>
           </Card>
 
+          {['EXECUTION', 'AI_REVIEW', 'HUMAN_REVIEW'].includes(selectedStage) ? (
+            <WorkflowCodeDeliveryPanel
+              key={`${workflowRun.id}:${getStage(workflowRun, 'EXECUTION')?.id ?? 'pending'}`}
+              workflowRunId={workflowRun.id}
+              workflowStatus={workflowRun.status}
+              onChanged={async () => {
+                const nextWorkflowRun = await refresh({ silent: true });
+                if (nextWorkflowRun) setSelectedStage(inferFocusedStage(nextWorkflowRun));
+              }}
+            />
+          ) : null}
           <div className="grid items-start gap-5 min-[1281px]:grid-cols-[minmax(0,1.5fr)_360px] max-[1280px]:grid-cols-1">
             {/* Left: main content */}
             <div className="flex flex-col gap-5">
@@ -2697,7 +2720,7 @@ function WorkflowRunDetailContent() {
               </Card>
             ) : null}
 
-            {workflowRun.status === 'DONE' ? (
+            {workflowRun.status === 'DONE' && !isCodeDeliveryStage(latestExecutionStage) ? (
               <Card className="rounded-md border-border bg-card">
                 <CardHeader className="p-5">
                   <SectionHeader
@@ -2772,7 +2795,9 @@ function WorkflowRunDetailContent() {
                 </Card>
               ) : null}
               {workflowWorkspaceConfig ? (
-                <WorkflowReviewSidebar
+                <details open={selectedStage !== 'EXECUTION' || localExecutionActive} className="space-y-3" key={selectedStage}>
+                  <summary className={selectedStage === 'EXECUTION' ? 'cursor-pointer rounded-md border border-border p-4 text-sm font-semibold' : 'sr-only'}>{selectedStage === 'EXECUTION' ? '其他执行方式与反馈' : '阶段操作与反馈'}</summary>
+                  <WorkflowReviewSidebar
                   stageTitle={workflowWorkspaceConfig.title}
                   stageStatusLabel={workflowWorkspaceConfig.statusLabel}
                   helperText={workflowWorkspaceConfig.helperText}
@@ -2789,7 +2814,8 @@ function WorkflowRunDetailContent() {
                   onManualEditChange={setManualEditDraft}
                   primaryAction={workflowWorkspaceConfig.primaryAction}
                   secondaryActions={workflowWorkspaceConfig.secondaryActions}
-                />
+                  />
+                </details>
               ) : null}
             </div>
           </div>

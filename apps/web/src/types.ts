@@ -1193,3 +1193,41 @@ export interface SpecPlanOutput {
   plan: SpecPlanPlan;
   notes?: SpecPlanNotes;
 }
+export interface CodeBranchSubmission {
+  id: string;
+  workflowRepositoryId: string;
+  branch: string;
+  headSha: string;
+  submittedBy: { id: string; displayName: string } | null;
+  updatedAt: string;
+}
+
+export interface ConfirmedCodeDelivery {
+  confirmedAt: string;
+  confirmedByUserId: string;
+  submissions: Array<{
+    id: string;
+    workflowRepositoryId: string;
+    repository: string;
+    branch: string;
+    headSha: string;
+    baseSha: string;
+    submittedByUserId: string | null;
+  }>;
+}
+
+export interface WorkflowCodeDelivery {
+  workflowRunId: string;
+  canSubmit: boolean;
+  reason: string | null;
+  stageExecutionId: string | null;
+  repositories: Array<{ id: string; name: string; baseBranch: string }>;
+  submissions: CodeBranchSubmission[];
+  confirmedDelivery: ConfirmedCodeDelivery | null;
+  history: Array<{
+    stageExecutionId: string;
+    attempt: number;
+    status: string;
+    submissions: CodeBranchSubmission[];
+  }>;
+}

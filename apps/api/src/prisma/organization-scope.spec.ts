@@ -8,6 +8,7 @@ describe('applyOrganizationScope', () => {
     ['Workspace', { organizationId }],
     ['Project', { workspace: { organizationId } }],
     ['Requirement', { project: { workspace: { organizationId } } }],
+    ['CodeBranchSubmission', { workflowRun: { requirement: { project: { workspace: { organizationId } } } } }],
     ['WorkflowRun', { requirement: { project: { workspace: { organizationId } } } }],
     [
       'ExecutionSession',

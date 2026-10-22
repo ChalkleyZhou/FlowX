@@ -49,7 +49,7 @@ export class GitCredentialsService {
     return this.deleteCredential(organizationId, 'gitlab');
   }
 
-  async getAccessTokenForProvider(provider: GitCredentialProvider): Promise<string | null> {
+  async getAccessTokenForProvider(provider: GitCredentialProvider, organizationId?: string): Promise<string | null> {
     const envToken = this.getEnvAccessToken(provider);
     if (envToken) {
       if (isPlausibleGitAccessToken(provider, envToken)) {
@@ -58,6 +58,11 @@ export class GitCredentialsService {
       this.logger.warn(
         `Ignoring invalid ${provider} token from environment variable; falling back to organization credential.`,
       );
+    }
+
+    if (organizationId !== undefined) {
+      if (!organizationId.trim()) throw new BadRequestException('需要明确的组织上下文来读取 Git 凭据。');
+      return this.getAccessTokenForOrganization(organizationId.trim(), provider);
     }
 
     const organizations = await this.prisma.organization.findMany({

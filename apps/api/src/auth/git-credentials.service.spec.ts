@@ -102,4 +102,21 @@ describe('GitCredentialsService', () => {
       select: { encryptedSecret: true },
     });
   });
+
+  it('显式组织仅读取本组织凭据，不选择其他组织最近更新的凭据', async () => {
+    findMany.mockResolvedValue([{ id: 'org-a' }, { id: 'org-b' }]);
+    findUnique.mockImplementation(async ({ where }) => where.organizationId_provider.organizationId === 'org-a' ? { encryptedSecret: 'encrypted-a' } : null);
+    decrypt.mockReturnValue('token-a');
+    await expect(createService().getAccessTokenForProvider('github', 'org-a')).resolves.toBe('token-a');
+    expect(findUnique).toHaveBeenCalledWith({ where: { organizationId_provider: { organizationId: 'org-a', provider: 'github' } }, select: { encryptedSecret: true } });
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('本组织没有凭据时不回退到另一组织', async () => {
+    findUnique.mockResolvedValue(null);
+    findMany.mockResolvedValue([{ id: 'org-b', encryptedSecret: 'encrypted-b' }]);
+    await expect(createService().getAccessTokenForProvider('gitlab', 'org-a')).resolves.toBeNull();
+    expect(findMany).not.toHaveBeenCalled();
+    expect(decrypt).not.toHaveBeenCalled();
+  });
 });

@@ -184,7 +184,7 @@ export class EdgeTasksService {
       include: {
         requirement: { select: { id: true, title: true } },
         stageExecutions: {
-          select: { id: true, stage: true, status: true, attempt: true, output: true },
+          select: { id: true, stage: true, status: true, attempt: true, input: true, output: true },
         },
         executionSessions: {
           where: {
@@ -219,6 +219,14 @@ export class EdgeTasksService {
     }
     return workflows.map((workflow) => {
       let position = resolveLocalPosition(workflow.status);
+      const executionStage = [...workflow.stageExecutions].filter((stage) => stage.stage === 'EXECUTION')
+        .sort((left, right) => right.attempt - left.attempt)[0];
+      const executionInput = executionStage?.input;
+      if (position.stage === 'execution' && executionInput && typeof executionInput === 'object' && !Array.isArray(executionInput) && executionInput.executor === 'CODE_DELIVERY') {
+        position = { ...position, localAction: 'none', outputContract: null,
+          message: '当前采用多人分支交付，请按共享方案自行开发并推送，再到网页提交仓库与分支；无需领取整个需求。' };
+      }
+
       const executionSession = this.currentPositionSession(
         workflow.stageExecutions, workflow.executionSessions ?? [], position.stage, organizationId,
       );

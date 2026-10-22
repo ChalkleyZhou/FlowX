@@ -598,24 +598,48 @@ export class LocalSmokeService {
 
   private async resolveExpectedRevisions(workflowRunIds: string[]) {
     if (!workflowRunIds.length) return [];
-    const evidence = await this.prisma.evidence.findMany({
+    const stages = await this.prisma.stageExecution.findMany({
+      where: { workflowRunId: { in: workflowRunIds }, stage: 'EXECUTION' },
+      orderBy: [{ attempt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+      select: { workflowRunId: true, status: true, input: true, output: true, workflowRun: { select: { status: true } } },
+    });
+    const revisions = new Map<string, TestedRevision>();
+    const seenWorkflows = new Set<string>();
+    const frozenWorkflows = new Set<string>();
+    for (const stage of stages) {
+      if (seenWorkflows.has(stage.workflowRunId)) continue;
+      seenWorkflows.add(stage.workflowRunId);
+      // 回退创建的 PENDING placeholder 没有 executor；仍必须截断所有旧会话版本。
+      if (stage.status !== 'COMPLETED' || stage.workflowRun && !['REVIEW_PENDING', 'HUMAN_REVIEW_PENDING', 'DONE'].includes(stage.workflowRun.status)) {
+        frozenWorkflows.add(stage.workflowRunId);
+        continue;
+      }
+
+      const input = jsonRecord(stage.input);
+      const delivery = jsonRecord(jsonRecord(stage.output)?.delivery);
+      if (input?.executor !== 'CODE_DELIVERY' && !delivery) continue;
+      // 当前分支交付尝试是唯一事实来源，返工时禁止复用旧 session 的证据。
+      frozenWorkflows.add(stage.workflowRunId);
+      if (!Array.isArray(delivery?.submissions)) continue;
+      for (const value of delivery.submissions) {
+        const item = jsonRecord(value);
+        if (typeof item?.workflowRepositoryId !== 'string' || typeof item.branch !== 'string' || typeof item.headSha !== 'string') continue;
+        revisions.set(item.workflowRepositoryId, { workflowRepositoryId: item.workflowRepositoryId, branch: item.branch, headSha: item.headSha });
+      }
+    }
+    const legacyWorkflowIds = workflowRunIds.filter((id) => !frozenWorkflows.has(id));
+    const evidence = legacyWorkflowIds.length ? await this.prisma.evidence.findMany({
       where: {
         evidenceType: 'GIT_COMMIT',
         status: 'REPORTED',
-        executionSession: {
-          workflowRunId: { in: workflowRunIds },
-          status: 'COMPLETED',
-        },
+        executionSession: { workflowRunId: { in: legacyWorkflowIds }, status: 'COMPLETED' },
       },
       select: { metadata: true },
       orderBy: { occurredAt: 'desc' },
-    });
-    const revisions = new Map<string, TestedRevision>();
+    }) : [];
     for (const item of evidence) {
       const revision = readTestedRevision(item.metadata);
-      if (revision && !revisions.has(revision.workflowRepositoryId)) {
-        revisions.set(revision.workflowRepositoryId, revision);
-      }
+      if (revision && !revisions.has(revision.workflowRepositoryId)) revisions.set(revision.workflowRepositoryId, revision);
     }
     return normalizeRevisions([...revisions.values()]);
   }
@@ -761,4 +785,8 @@ function isUniqueConstraintError(value: unknown) {
       'code' in value &&
       (value as { code?: unknown }).code === 'P2002',
   );
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }

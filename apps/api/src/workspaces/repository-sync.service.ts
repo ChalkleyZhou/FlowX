@@ -12,7 +12,7 @@ import {
 import { access, mkdir, readdir, readFile, rm } from 'fs/promises';
 import { promisify } from 'util';
 import { execFile as execFileCallback } from 'child_process';
-import { basename, join } from 'path';
+import { basename, dirname, join } from 'path';
 
 const execFile = promisify(execFileCallback);
 
@@ -535,7 +535,7 @@ export class RepositorySyncService {
     }
   }
 
-  async prepareWorkflowRepository(workflowRepositoryId: string) {
+  async prepareWorkflowRepository(workflowRepositoryId: string, options?: { fromRemoteBranch?: string; organizationId?: string }) {
     const workflowRepository = await this.prisma.workflowRepository.findUniqueOrThrow({
       where: { id: workflowRepositoryId },
       include: { repository: true },
@@ -554,6 +554,18 @@ export class RepositorySyncService {
     });
 
     try {
+      if (options?.fromRemoteBranch) {
+        // 云端返工使用新 attempt 专属路径，直接从已推送分支开始，不读取或重置旧工作副本。
+        if (await this.pathExists(workflowRepository.localPath)) throw new InternalServerErrorException('本次云端返工目录已存在。');
+        await mkdir(dirname(workflowRepository.localPath), { recursive: true });
+        const auth = await this.resolveRemoteAuth(workflowRepository.url, options.organizationId);
+        await this.runGit(['clone', '--no-hardlinks', '--single-branch', '--branch', options.fromRemoteBranch, '--',
+          workflowRepository.url, workflowRepository.localPath], undefined, auth);
+        return this.prisma.workflowRepository.update({ where: { id: workflowRepositoryId }, data: {
+          status: 'READY', syncError: null, preparedAt: new Date(),
+        } });
+      }
+
       await mkdir(this.getWorkflowStoragePath(workflowRepository.workflowRunId), {
         recursive: true,
       });
@@ -622,7 +634,8 @@ export class RepositorySyncService {
         },
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown workflow branch error';
+      const message = options?.fromRemoteBranch ? '无法准备已交付分支，请检查分支是否存在、仓库读取权限与本地目录状态。'
+        : error instanceof Error ? error.message : 'Unknown workflow branch error';
       this.logger.error(`Workflow repository prepare failed for ${workflowRepositoryId}: ${message}`);
       await this.prisma.workflowRepository.update({
         where: { id: workflowRepositoryId },
@@ -656,13 +669,13 @@ export class RepositorySyncService {
     await rm(repositoryPath, { recursive: true, force: true });
   }
 
-  private async resolveRemoteAuth(remoteUrl: string) {
+  private async resolveRemoteAuth(remoteUrl: string, organizationId?: string) {
     const parsed = parseRepositoryRemote(remoteUrl);
     if (!parsed) {
       return null;
     }
 
-    const token = await this.gitCredentialsService.getAccessTokenForProvider(parsed.provider);
+    const token = await this.gitCredentialsService.getAccessTokenForProvider(parsed.provider, organizationId);
     return resolveGitRemoteAuth(remoteUrl, token);
   }
 

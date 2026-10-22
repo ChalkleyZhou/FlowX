@@ -24,6 +24,7 @@ function createService() {
     testExecutionCaseResult: { findMany: vi.fn() },
     testResult: { upsert: vi.fn() },
     evidence: { findMany: vi.fn() },
+    stageExecution: { findMany: vi.fn().mockResolvedValue([]) },
     executionSession: { findUnique: vi.fn() },
     artifact: { findMany: vi.fn(), update: vi.fn() },
     $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
@@ -33,6 +34,42 @@ function createService() {
 }
 
 describe('LocalSmokeService', () => {
+  it('冻结的当前交付版本优先于旧会话，且不混入本次未选仓库', async () => {
+    const { service, prisma } = createService();
+    prisma.stageExecution.findMany.mockResolvedValue([{ workflowRunId: 'workflow-1', stage: 'EXECUTION', attempt: 2, status: 'COMPLETED', input: { executor: 'CODE_DELIVERY' }, output: { delivery: { submissions: [{ workflowRepositoryId: 'wr-1', branch: 'feature/final', headSha: 'a'.repeat(40) }] } } }]);
+    prisma.evidence.findMany.mockResolvedValue([{ executionSession: { workflowRunId: 'workflow-1' }, metadata: { workflowRepositoryId: 'wr-1', workingBranch: 'old', headSha: 'deadbeef' } }, { executionSession: { workflowRunId: 'workflow-1' }, metadata: { workflowRepositoryId: 'wr-unselected', workingBranch: 'old', headSha: 'deadbeef' } }]);
+    const revisions = await (service as unknown as { resolveExpectedRevisions(ids: string[]): Promise<unknown> }).resolveExpectedRevisions(['workflow-1']);
+    expect(revisions).toEqual([{ workflowRepositoryId: 'wr-1', branch: 'feature/final', headSha: 'a'.repeat(40) }]);
+  });
+
+  it('新开发尝试未完成时不回退到旧冻结版本或旧会话证据', async () => {
+    const { service, prisma } = createService();
+    prisma.stageExecution.findMany.mockResolvedValue([
+      { workflowRunId: 'workflow-1', attempt: 3, status: 'RUNNING', input: { executor: 'CODE_DELIVERY' }, output: null },
+      { workflowRunId: 'workflow-1', attempt: 2, status: 'COMPLETED', input: { executor: 'CODE_DELIVERY' }, output: { delivery: { submissions: [{ workflowRepositoryId: 'wr-1', branch: 'old', headSha: 'a'.repeat(40) }] } } },
+    ]);
+    prisma.evidence.findMany.mockResolvedValue([{ executionSession: { workflowRunId: 'workflow-1' }, metadata: { workflowRepositoryId: 'wr-1', workingBranch: 'old', headSha: 'deadbeef' } }]);
+    expect(await (service as unknown as { resolveExpectedRevisions(ids: string[]): Promise<unknown> }).resolveExpectedRevisions(['workflow-1'])).toEqual([]);
+  });
+
+  it('真实回退placeholder不能让上一轮冻结版本退回到更旧会话证据', async () => {
+    const { service, prisma } = createService();
+    prisma.stageExecution.findMany.mockResolvedValue([
+      { workflowRunId: 'workflow-1', attempt: 3, status: 'PENDING', input: { source: 'rollback' }, output: null, workflowRun: { status: 'EXECUTION_PENDING' } },
+      { workflowRunId: 'workflow-1', attempt: 2, status: 'COMPLETED', input: { executor: 'CODE_DELIVERY' }, output: { delivery: { submissions: [{ workflowRepositoryId: 'wr-1', branch: 'frozen', headSha: 'a'.repeat(40) }] } } },
+    ]);
+    prisma.evidence.findMany.mockResolvedValue([{ metadata: { workflowRepositoryId: 'wr-1', workingBranch: 'obsolete', headSha: 'deadbeef' } }]);
+    expect(await (service as unknown as { resolveExpectedRevisions(ids: string[]): Promise<unknown> }).resolveExpectedRevisions(['workflow-1'])).toEqual([]);
+    expect(prisma.evidence.findMany).not.toHaveBeenCalled();
+  });
+
+  it.each(['LOCAL', 'CLOUD'])('已完成的%s仍兼容既有会话commit证据', async (executor) => {
+    const { service, prisma } = createService();
+    prisma.stageExecution.findMany.mockResolvedValue([{ workflowRunId: 'workflow-1', attempt: 3, status: 'COMPLETED', input: { executor }, output: {}, workflowRun: { status: 'DONE' } }]);
+    prisma.evidence.findMany.mockResolvedValue([{ metadata: { workflowRepositoryId: 'wr-1', workingBranch: 'legacy', headSha: 'deadbeef' } }]);
+    expect(await (service as unknown as { resolveExpectedRevisions(ids: string[]): Promise<unknown> }).resolveExpectedRevisions(['workflow-1'])).toEqual([{ workflowRepositoryId: 'wr-1', branch: 'legacy', headSha: 'deadbeef' }]);
+  });
+
   it('creates a target-by-smoke-case matrix without changing TestRequest status', async () => {
     const { service, prisma, tx } = createService();
     prisma.testRequest.findUnique.mockResolvedValue({

@@ -128,6 +128,18 @@ Workspace
 
 `POST /workflow-runs/:id/design/submit-local` 仅供尚未使用本地设计会话的旧集成使用，必须提供登录身份并记录产物和阶段执行人、锁定工作流版本。流程一旦存在本地设计会话，该兼容入口返回 `409` 并引导当前会话的专用回传，避免已取消任务绕过晚到结果校验。
 
+### 多仓分支交付
+
+`CodeBranchSubmission` 关联 WorkflowRun、StageExecution、WorkflowRepository 与 User。同阶段、同仓库、同分支、同提交人的记录唯一，重复提交更新本人 headSha。它表示代码来源，不表示任务指派或执行会话。组织隔离同步纳入 Prisma scope。
+
+`GET /workflow-runs/:id/code-delivery` 返回仓库、当前尝试分支、提交权限/原因、已冻结交付及按 attempt 分组的只读 history；历史提交不能确认至当前尝试。`POST .../branches` 接收 `{ workflowRepositoryId, branch }`，服务器读取完整 SHA。首次提交建立 `executor: CODE_DELIVERY` 的开发尝试，进入 EXECUTION_RUNNING，后续多人提交继续汇集。`POST .../confirm` 接收 `{ submissions: [{ id, headSha }], confirmed: true }`；每仓仅一个最终分支，允许显式选择仓库子集。身份来自认证上下文，不接受前端提供提交人。
+
+提交与确认在 Git I/O 前读取流程版本，事务内 CAS 并重新核对当前 attempt，防止分支更新、返工和确认竞争。Git 凭据显式按已校验组织读取，不借用其他组织最近保存的凭据；部署级环境 token 仍沿用既有优先级。Git 在隔离临时 bare 仓库读取共同基线与所选 commit 的实际 diff，不切换主工作副本；分支变化、无差异、权限错误或输出超限会明确失败。确认写入 CodeExecution 与阶段输出的 delivery 快照、工作流级 GIT_COMMIT Artifact，并使用既有状态机到 REVIEW_PENDING。所选仓库工作分支更新为交付分支，清空旧本地路径；AI review 只采用选中仓库上下文和实际 diff。
+
+冒烟版本优先取最新已完成开发 attempt 的 delivery；新尝试尚未完成时不会回退上一轮冻结交付。旧单人完成继续兼容会话 Evidence。已冻结分支交付禁止旧执行结果手改和自动提交推送路径；实际合并、构建、测试和发布结论不由分支存在推断。
+
+从已确认分支切换到云端返工时，CAS 成功后才在后台按交付分支准备所选仓库的新 attempt 隔离 checkout，使用明确组织凭据。阶段 input 的 `sourceDeliveryStageExecutionId` 继承交付范围；后续连续修复保留本地未推送改动，审查与推送同步限定仓库范围。准备失败不调用 AI，旧冻结产物保留供追溯。
+
 ### 提测与冒烟读取契约
 
 `LOCAL_SMOKE` 保留按目标端和用例租约并行、版本指纹校验、原始结果追加及失败优先聚合，回传入口同时验证组织和原领取人身份，不能代用他人的 `TestExecution`。有效租约、必测项缺结果或阻断项未通过时仍阻止生成报告。

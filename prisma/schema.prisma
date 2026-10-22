@@ -367,6 +367,7 @@ model User {
   yunxiaoWebhookDeliveries YunxiaoWebhookDelivery[]
   yunxiaoWebhookRecipients YunxiaoWebhookRecipient[] @relation("YunxiaoWebhookRecipientMatchedUser")
   yunxiaoMemberMappings YunxiaoMemberMapping[] @relation("YunxiaoMemberMappingFlowXUser")
+  codeBranchSubmissions CodeBranchSubmission[]
   claimedExecutionSessions ExecutionSession[]      @relation("ExecutionSessionClaimedBy")
   createdArtifacts         Artifact[]              @relation("ArtifactCreatedBy")
   createdTestCaseLibraries TestCaseLibrary[]         @relation("TestCaseLibraryCreatedBy")
@@ -628,6 +629,7 @@ model WorkflowRun {
   requirementId        String
   requirement          Requirement          @relation(fields: [requirementId], references: [id])
   fixForBug            Bug?                 @relation("BugFixWorkflow")
+  codeBranchSubmissions CodeBranchSubmission[]
   stageExecutions      StageExecution[]
   codeExecution        CodeExecution?
   reviewReport         ReviewReport?
@@ -643,7 +645,27 @@ model WorkflowRun {
   updatedAt            DateTime             @updatedAt
 }
 
+model CodeBranchSubmission {
+  id                   String @id @default(cuid())
+  workflowRunId        String
+  workflowRun          WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  stageExecutionId     String
+  stageExecution       StageExecution @relation(fields: [stageExecutionId], references: [id], onDelete: Cascade)
+  workflowRepositoryId String
+  workflowRepository   WorkflowRepository @relation(fields: [workflowRepositoryId], references: [id], onDelete: Cascade)
+  submittedByUserId    String
+  submittedByUser      User @relation(fields: [submittedByUserId], references: [id])
+  branch               String
+  headSha              String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([stageExecutionId, workflowRepositoryId, branch, submittedByUserId])
+  @@index([workflowRunId, stageExecutionId])
+}
+
 model WorkflowRepository {
+  codeBranchSubmissions CodeBranchSubmission[]
   id            String      @id @default(cuid())
   workflowRunId String
   workflowRun   WorkflowRun @relation(fields: [workflowRunId], references: [id])
@@ -679,6 +701,7 @@ model RequirementRepository {
 }
 
 model StageExecution {
+  codeBranchSubmissions CodeBranchSubmission[]
   id             String          @id @default(cuid())
   workflowRunId  String
   workflowRun    WorkflowRun     @relation(fields: [workflowRunId], references: [id])

@@ -1,3 +1,4 @@
+import { codeDeliveryReviewRepositories, codeDeliverySourceStage } from './workflow-code-delivery-review';
 import {
   BadRequestException,
   ConflictException,
@@ -949,7 +950,10 @@ export class WorkflowService {
    */
   async rollbackToPreviousStage(id: string) {
     const workflow = await this.getWorkflowOrThrow(id);
-    if (workflow.stageExecutions.some((stage) => stage.status === 'RUNNING')) {
+    const executionStage = workflow.stageExecutions.filter((stage) => stage.stage === 'EXECUTION').sort((a, b) => b.attempt - a.attempt)[0];
+    const collectingBranches = workflow.status === 'EXECUTION_RUNNING' && workflow.currentStage === 'EXECUTION' &&
+      executionStage?.status === 'RUNNING' && this.isCodeDeliveryStage(executionStage);
+    if (workflow.stageExecutions.some((stage) => stage.status === 'RUNNING' && !(collectingBranches && stage.id === executionStage.id))) {
       throw new BadRequestException('当前工作流仍有阶段在执行中，请等待完成后再回退。');
     }
 
@@ -960,11 +964,25 @@ export class WorkflowService {
     }
 
     const { to, stage, skipCreateStageExecution } = resolved;
+    const sourceDeliveryStage = to === WorkflowRunStatus.EXECUTION_PENDING
+      ? codeDeliverySourceStage(workflow.stageExecutions) : undefined;
 
     const updatedWorkflow = await this.prisma.$transaction(async (tx) => {
+      if (collectingBranches) {
+        const activeSessions = await tx.executionSession.count({ where: { workflowRunId: id, status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] } } });
+        if (activeSessions) throw new ConflictException('仍有实际开发会话在运行，请先从原入口停止或取消。');
+        this.stateMachine.assertWorkflowTransition(fromStatus, to);
+        this.stateMachine.assertStageTransition(StageExecutionStatus.RUNNING, StageExecutionStatus.FAILED);
+        const lockedAt = new Date(Math.max(Date.now(), workflow.updatedAt.getTime() + 1));
+        const locked = await tx.workflowRun.updateMany({ where: { id, status: workflow.status, currentStage: workflow.currentStage, updatedAt: workflow.updatedAt },
+          data: { status: workflowStatusMap[to], currentStage: stageTypeMap[stage], updatedAt: lockedAt } });
+        const failed = await tx.stageExecution.updateMany({ where: { id: executionStage.id, workflowRunId: id, status: 'RUNNING', updatedAt: executionStage.updatedAt },
+          data: { status: 'FAILED', finishedAt: new Date(), statusMessage: '已回退到方案阶段，保留本次分支提交历史。' } });
+        if (locked.count !== 1 || failed.count !== 1) throw new ConflictException('分支交付状态已变化，请重新加载后再回退。');
+      }
       await this.applyRollbackDataCleanup(tx, id, to, fromStatus);
 
-      await this.transitionWorkflow(tx, id, fromStatus, { to, stage });
+      if (!collectingBranches) await this.transitionWorkflow(tx, id, fromStatus, { to, stage });
 
       if (to === WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING) {
         await this.createStageExecution(tx, id, StageType.REPOSITORY_GROUNDING, {
@@ -987,6 +1005,7 @@ export class WorkflowService {
             requirementId: workflow.requirementId,
             workflowRunId: id,
             source: 'rollback',
+            ...(sourceDeliveryStage ? { sourceDeliveryStageExecutionId: sourceDeliveryStage.id } : {}),
           },
           status: StageExecutionStatus.PENDING,
           statusMessage: '已回退到此阶段，请重新执行',
@@ -997,6 +1016,11 @@ export class WorkflowService {
         where: { id },
         include: this.workflowInclude(),
       });
+    }).catch((error: unknown) => {
+      if (collectingBranches && error instanceof Prisma.PrismaClientKnownRequestError && ['P2002', 'P2028', 'P2034', 'P1008'].includes(error.code)) {
+        throw new ConflictException('分支交付状态正在变化，请重新加载后再回退。');
+      }
+      throw error;
     });
 
     if (to === WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING) {
@@ -2528,8 +2552,16 @@ export class WorkflowService {
       throw new BadRequestException('Execution can only run after Spec & Plan confirmation.');
     }
     const confirmedSpecPlan = await this.resolveConfirmedSpecPlan(workflow);
+    const previousExecution = workflow.stageExecutions.filter((stage) => stage.stage === 'EXECUTION').sort((a, b) => b.attempt - a.attempt)[0];
+    const sourceDeliveryStage = codeDeliverySourceStage(workflow.stageExecutions);
 
     const startedWorkflow = await this.prisma.$transaction(async (tx) => {
+      const lockedAt = new Date(Math.max(Date.now(), workflow.updatedAt.getTime() + 1));
+      const claimed = await tx.workflowRun.updateMany({
+        where: { id, status: workflow.status, updatedAt: workflow.updatedAt }, data: { updatedAt: lockedAt },
+      });
+      if (claimed.count !== 1) throw new ConflictException('工作流已开始其他开发尝试或状态已变化，请重新加载。');
+
       if (
         workflow.status === 'REVIEW_PENDING' ||
         workflow.status === 'HUMAN_REVIEW_PENDING' ||
@@ -2547,6 +2579,7 @@ export class WorkflowService {
 
       const executionStage = await this.createStageExecution(tx, id, StageType.EXECUTION, {
         input: {
+          ...(sourceDeliveryStage ? { sourceDeliveryStageExecutionId: sourceDeliveryStage.id } : {}),
           requirement: workflow.requirement,
           specPlan: confirmedSpecPlan,
           humanFeedback: humanFeedback ?? null,
@@ -2565,14 +2598,42 @@ export class WorkflowService {
         startedAt: new Date(),
       });
 
+      await tx.workflowRun.update({ where: { id }, data: { updatedAt: lockedAt } });
+
       return tx.workflowRun.findUniqueOrThrow({
         where: { id },
         include: this.workflowInclude(),
       });
+    }).catch((error: unknown) => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2002', 'P2028', 'P2034', 'P1008'].includes(error.code)) {
+        throw new ConflictException('工作流开发状态正在变化，请重新加载后重试。');
+      }
+      throw error;
     });
 
     this.runInBackground(`execution:${id}`, async () => {
       try {
+        let executionRepositories = sourceDeliveryStage
+          ? workflow.workflowRepositories.filter((repository) => codeDeliveryReviewRepositories(workflow.workflowRepositories, [sourceDeliveryStage]).some((selected) => selected.id === repository.id))
+          : workflow.workflowRepositories;
+        if (sourceDeliveryStage && (sourceDeliveryStage.id === previousExecution?.id || executionRepositories.some((repository) => repository.status !== 'READY' || !repository.localPath))) {
+          const selectedRepositories = codeDeliveryReviewRepositories(workflow.workflowRepositories, [sourceDeliveryStage]);
+          const executionStage = startedWorkflow.stageExecutions.filter((stage) => stage.stage === 'EXECUTION').sort((a, b) => b.attempt - a.attempt)[0];
+          if (!selectedRepositories.length || !executionStage) throw new BadRequestException('冻结交付缺少可继续开发的仓库。');
+          const organizationId = workflow.requirement.workspace?.organizationId ?? workflow.requirement.project.workspace.organizationId;
+          for (const repository of selectedRepositories) {
+            const localPath = `${this.repositorySyncService.buildWorkflowRepositoryPath(id, repository.id, repository.name)}-${executionStage.id}`;
+            await this.prisma.workflowRepository.update({ where: { id: repository.id }, data: { localPath, workingBranch: repository.workingBranch, status: 'PENDING' } });
+            await this.repositorySyncService.prepareWorkflowRepository(repository.id, { fromRemoteBranch: repository.workingBranch, organizationId });
+          }
+          const preparedWorkflow = await this.getWorkflowOrThrow(id);
+          const selectedIds = new Set(selectedRepositories.map((repository) => repository.id));
+          executionRepositories = preparedWorkflow.workflowRepositories.filter((repository) => selectedIds.has(repository.id));
+          if (executionRepositories.length !== selectedIds.size || executionRepositories.some((repository) => repository.status !== 'READY' || !repository.localPath)) {
+            throw new BadRequestException('云端返工仓库未准备完成，尚未开始 AI 开发。');
+          }
+        }
+
         const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
           workflow.aiProvider,
           recipient,
@@ -2586,12 +2647,12 @@ export class WorkflowService {
               acceptanceCriteria: workflow.requirement.acceptanceCriteria,
             },
             specPlan: confirmedSpecPlan,
-            workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
+            workspace: this.buildWorkspaceContext(workflow.requirement.workspace, executionRepositories),
             humanFeedback: humanFeedback ?? null,
           },
           invocationContext,
         );
-        const output = this.sanitizeExecutionOutputPaths(rawOutput, workflow.workflowRepositories);
+        const output = this.sanitizeExecutionOutputPaths(rawOutput, executionRepositories);
 
         await this.finalizeExecutionSuccess(id, output, {
           triggerType: trigger?.triggerType,
@@ -2699,7 +2760,7 @@ export class WorkflowService {
                   untrackedFiles: string[];
                 }>) ?? [],
             },
-            workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
+            workspace: this.buildWorkspaceContext(workflow.requirement.workspace, codeDeliveryReviewRepositories(workflow.workflowRepositories, workflow.stageExecutions)),
             humanFeedback: humanFeedback ?? null,
             previousOutput: (previousStage?.output as ReviewCodeOutput | null) ?? null,
           },
@@ -2864,6 +2925,8 @@ export class WorkflowService {
 
   async publishGitChanges(id: string) {
     const workflow = await this.getWorkflowOrThrow(id);
+    const executionStage = workflow.stageExecutions.filter((stage) => stage.stage === 'EXECUTION').sort((a, b) => b.attempt - a.attempt)[0];
+    if (this.isCodeDeliveryStage(executionStage)) throw new ConflictException('分支交付版本已冻结，请返回开发阶段提交新分支；不能使用旧执行结果编辑或自动推送入口。');
     if (workflow.status !== 'DONE') {
       throw new BadRequestException('只有人工确认通过后的工作流才能提交到远程。');
     }
@@ -2941,7 +3004,8 @@ export class WorkflowService {
   }
 
   private resolvePublishRepositories(workflow: WorkflowPayload) {
-    const workflowRepositories = workflow.workflowRepositories
+    const sourceDeliveryStage = codeDeliverySourceStage(workflow.stageExecutions);
+    const workflowRepositories = codeDeliveryReviewRepositories(workflow.workflowRepositories, workflow.stageExecutions)
       .filter((repository) => repository.localPath && repository.status === 'READY')
       .map((repository) => ({
         repository: repository.name,
@@ -2950,7 +3014,7 @@ export class WorkflowService {
         remoteUrl: repository.url,
       }));
 
-    if (workflowRepositories.length > 0) {
+    if (workflowRepositories.length > 0 || sourceDeliveryStage) {
       return workflowRepositories;
     }
 
@@ -3047,6 +3111,8 @@ export class WorkflowService {
 
   async manualEditExecution(id: string, output: Record<string, unknown>) {
     const workflow = await this.getWorkflowOrThrow(id);
+    const executionStage = workflow.stageExecutions.filter((stage) => stage.stage === 'EXECUTION').sort((a, b) => b.attempt - a.attempt)[0];
+    if (this.isCodeDeliveryStage(executionStage)) throw new ConflictException('分支交付版本已冻结，请返回开发阶段提交新分支；不能使用旧执行结果编辑或自动推送入口。');
     if (workflow.status !== 'REVIEW_PENDING' && workflow.status !== 'HUMAN_REVIEW_PENDING') {
       throw new BadRequestException('Execution result is not available for manual edit.');
     }
@@ -4746,6 +4812,11 @@ export class WorkflowService {
         });
       }
     });
+  }
+
+  private isCodeDeliveryStage(stage: WorkflowPayload['stageExecutions'][number] | undefined): boolean {
+    const input = stage?.input;
+    return !!input && typeof input === 'object' && !Array.isArray(input) && input.executor === 'CODE_DELIVERY';
   }
 
   private resolveRollbackTarget(

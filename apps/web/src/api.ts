@@ -58,6 +58,7 @@ import type {
   WorkflowDesignArtifactPage,
   WorkflowDesignArtifactsList,
   WorkflowRun,
+  WorkflowCodeDelivery,
   Workspace,
   YunxiaoIntegrationStatus,
   YunxiaoProjectMembersResponse,
@@ -824,6 +825,12 @@ export const api = {
       ).toString()}`,
     ),
   getWorkflowRun: (id: string) => request<WorkflowRun>(`/workflow-runs/${id}`),
+  getCodeDelivery: (id: string) => request<WorkflowCodeDelivery>(`/workflow-runs/${id}/code-delivery`),
+  submitCodeBranch: (id: string, body: { workflowRepositoryId: string; branch: string }) =>
+    request<WorkflowCodeDelivery>(`/workflow-runs/${id}/code-delivery/branches`, { method: 'POST', body: JSON.stringify(body) }),
+  confirmCodeDelivery: (id: string, body: { confirmed: true; submissions: Array<{ id: string; headSha: string }> }) =>
+    request<WorkflowCodeDelivery>(`/workflow-runs/${id}/code-delivery/confirm`, { method: 'POST', body: JSON.stringify(body) }),
+
   getWorkflowCollaboration: (id: string) =>
     request<WorkflowCollaboration>(`/workflow-runs/${id}/collaboration`),
   releaseWorkflowLocalTask: (id: string, payload: {

@@ -514,3 +514,21 @@ describe('EdgeTasksService workflow position ownership', () => {
   });
 
 });
+
+
+describe('EdgeTasksService 分支交付位置', () => {
+  it('CODE_DELIVERY进行中保持共享方案可读，不诱导旧客户端领取整个需求', async () => {
+    const { service, prisma } = createService();
+    prisma.workflowRun.findMany.mockResolvedValue([{
+      id: 'branch-delivery', status: 'EXECUTION_RUNNING', requirement: { id: 'req-1', title: '共同交付' },
+      executionSessions: [], artifacts: [], stageExecutions: [
+        { id: 'execution', stage: 'EXECUTION', status: 'RUNNING', attempt: 1, input: { executor: 'CODE_DELIVERY' }, output: null },
+        { id: 'spec', stage: 'SPEC_PLAN', status: 'COMPLETED', attempt: 1, output: { spec: { goal: '已确认共享方案' } } },
+      ],
+    }]);
+    const [position] = await service.listWorkflowPositions({});
+    expect(position).toMatchObject({ localAction: 'none', stage: 'execution', outputContract: null, executionSession: null,
+      priorOutputs: [expect.objectContaining({ stage: 'spec-plan', summary: '已确认共享方案' })] });
+    expect(position.message).toMatch(/网页.*分支/);
+  });
+});

@@ -13,6 +13,9 @@ vi.mock('../api', () => ({
   api: {
     getWorkflowRun: vi.fn(),
     getWorkflowCollaboration: vi.fn(),
+    getCodeDelivery: vi.fn(async () => ({ workflowRunId: 'workflow-1', canSubmit: true, reason: null, stageExecutionId: null, repositories: [{ id: 'repo-web', name: 'Web', baseBranch: 'main' }], submissions: [], confirmedDelivery: null })),
+    submitCodeBranch: vi.fn(),
+    confirmCodeDelivery: vi.fn(),
     releaseWorkflowLocalTask: vi.fn(),
     runSpecPlan: vi.fn(),
     reviseSpecPlan: vi.fn(),
@@ -242,6 +245,48 @@ describe('WorkflowRunDetailPage', () => {
     expect(text.indexOf('Spec & Plan 文档')).toBeLessThan(text.indexOf('需求与验收信息'));
     expect(text.indexOf('Spec & Plan 文档')).toBeLessThan(text.indexOf('用例与提测'));
     expect(text).toContain('本次工作流关联的代码仓库数量');
+  });
+
+  it('开发阶段默认汇集分支，共享上下文且其他执行方式作为辅助入口', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({ status: 'EXECUTION_PENDING', currentStage: 'EXECUTION', stageExecutions: [] }));
+    await renderPage();
+    expect(container.querySelector('#workflow-code-delivery')).not.toBeNull();
+    expect(container.textContent).toContain('其他执行方式');
+    expect(container.querySelector('[data-testid="workflow-current-task"]')?.textContent).toContain('待提交代码分支');
+  });
+
+  it('分支收集阶段允许回退，冻结交付不展示旧自动提交推送入口', async () => {
+    const stage = { id: 'delivery-stage', stage: 'EXECUTION', status: 'RUNNING', attempt: 1, input: { executor: 'CODE_DELIVERY' }, output: null };
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({ status: 'EXECUTION_RUNNING', currentStage: 'EXECUTION', reviewReport: undefined, stageExecutions: [stage] }));
+    await renderPage();
+    const rollback = Array.from(container.querySelectorAll('button')).find(node => node.textContent?.includes('回退到上一阶段'));
+    expect(rollback?.disabled).toBe(false);
+    expect(container.querySelector('[data-testid="workflow-current-task"]')?.textContent).toContain('分支交付收集中');
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({ status: 'DONE', currentStage: 'HUMAN_REVIEW', stageExecutions: [{ ...stage, status: 'COMPLETED' }] }));
+    await act(async () => { root?.unmount(); root = createRoot(container); });
+    await renderPage();
+    expect(container.textContent).not.toContain('提交并推送到远程');
+  });
+
+  it('确认分支交付后直接显示 AI 审查操作，无需再手动切换阶段', async () => {
+    const stage = { id: 'delivery-stage', stage: 'EXECUTION', status: 'RUNNING', attempt: 1, input: { executor: 'CODE_DELIVERY' }, output: null };
+    const delivery = {
+      workflowRunId: 'workflow-1', canSubmit: true, reason: null, stageExecutionId: stage.id,
+      repositories: [{ id: 'repo-web', name: 'Web', baseBranch: 'main' }],
+      submissions: [{ id: 'submission-1', workflowRepositoryId: 'repo-web', branch: 'feature/web', headSha: 'a'.repeat(40), submittedBy: { id: 'user-1', displayName: '开发者' }, updatedAt: '2026-10-22T06:00:00Z' }],
+      confirmedDelivery: null, history: [],
+    };
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({ status: 'EXECUTION_RUNNING', currentStage: 'EXECUTION', stageExecutions: [stage] }));
+    vi.mocked(api.getCodeDelivery).mockResolvedValueOnce(delivery);
+    await renderPage();
+    await act(async () => container.querySelector<HTMLInputElement>('#workflow-code-delivery input[type="checkbox"]')!.click());
+    const button = (text: string) => Array.from(document.body.querySelectorAll('button')).find(node => node.textContent === text)!;
+    await act(async () => button('确认本次交付').click());
+    vi.mocked(api.confirmCodeDelivery).mockResolvedValueOnce({ ...delivery, canSubmit: false });
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({ status: 'REVIEW_PENDING', currentStage: 'AI_REVIEW', reviewReport: undefined, stageExecutions: [{ ...stage, status: 'COMPLETED' }] }));
+    await act(async () => button('确认并进入审查').click());
+    expect(button('执行 AI 审查')).toBeDefined();
+    expect(button('跳过 AI 审查')).toBeDefined();
   });
 
   it('renders design markdown as a document and describes the actual next stage', async () => {

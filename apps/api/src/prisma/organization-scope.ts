@@ -76,6 +76,7 @@ const scopeFactories: Record<string, (organizationId: string) => Record<string, 
   Evidence: (organizationId) => ({
     executionSession: executionSessionScope(organizationId),
   }),
+  CodeBranchSubmission: (organizationId) => ({ workflowRun: workflowScope(organizationId) }),
   CodeExecution: (organizationId) => ({ workflowRun: workflowScope(organizationId) }),
   ReviewReport: (organizationId) => ({ workflowRun: workflowScope(organizationId) }),
   ReviewFinding: (organizationId) => ({ workflowRun: workflowScope(organizationId) }),

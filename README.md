@@ -34,6 +34,12 @@ flowchart LR
 6. ReviewFinding、Issue、Bug、每日 Code Review 和投递目标。
 7. Git 凭据、AI 凭据、认证和组织用户管理。
 
+### 多人多仓代码交付
+
+同一需求共用一份已确认的 PRD、设计和 Spec & Plan。成员自行使用 IDE 开发，在工作流“代码交付”中选择仓库并填写已推送分支，无需分配或领取开发任务。平台自动记录提交人、时间和完整 commit；各次提交不会自动结束开发。准备好后每仓选择一条最终交付分支，确认后冻结版本与实际 Git diff，进入既有 AI 审查、人工评审和提测。未覆盖仓库会提示；分支核验不代表合并、测试或联调通过。首版支持分支名，暂不解析 PR/MR URL 或同步 CI 状态。
+
+本轮新增 `CodeBranchSubmission` 表。已有部署升级前备份 SQLite，按现有 schema 同步流程执行 `pnpm prisma:generate` 与 `pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma`；Docker 启动仍通过现有 `db push` 同步。详见 [用户手册](docs/user-manual.md) 与 [部署说明](docs/docker-deployment.md)。
+
 ### 小团队当前可用的运行控制
 
 需求详情可直接接续已有工作流：一条活跃流程时显示「继续当前工作流」，多条时按仓库范围逐项选择；已完成或失败的流程保留历史入口。需要另起流程时，仍通过启动窗口选择仓库与执行器，并查看已有占用范围。工作流详情将当前任务、执行人、本地回报、下一步和阶段产物放在前面，需求背景、分支、统计与质量入口默认折叠。

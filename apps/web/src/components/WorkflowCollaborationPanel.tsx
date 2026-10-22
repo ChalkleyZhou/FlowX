@@ -14,6 +14,7 @@ interface WorkflowCollaborationPanelProps {
   currentStageLabel: string;
   stageExecutionId?: string;
   stageStatus?: string;
+  executionMode?: string;
   onReleased: () => void | Promise<unknown>;
 }
 
@@ -81,14 +82,17 @@ export function WorkflowCollaborationPanel(props: WorkflowCollaborationPanelProp
   const recent = cooperative && session?.health === 'ONLINE';
   const stale = cooperative && session?.health === 'STALE';
   const sessionComplete = session?.status === 'COMPLETED';
-  const label = workflowStatus === 'DONE' ? '工作流已完成'
+  const branchDelivery = currentStage === 'EXECUTION' && (props.executionMode === 'CODE_DELIVERY' || workflowStatus === 'EXECUTION_PENDING');
+  const label = branchDelivery ? workflowStatus === 'EXECUTION_PENDING' ? '待提交代码分支' : '分支交付收集中'
+    : workflowStatus === 'DONE' ? '工作流已完成'
     : humanReviewPending ? '待人工评审' : received ? '已回传，待平台确认'
       : failed ? '执行失败'
         : cancelled ? '本次本地任务已结束'
           : sessionComplete ? '已回传，等待平台处理'
             : session ? stale ? '长时间未回报' : recent ? '最近收到本地回报' : '已领取，待本地回报'
               : stageStatus === 'RUNNING' ? '阶段处理中，执行位置待确认' : stageStatus === 'COMPLETED' ? '阶段已完成' : '待执行';
-  const nextAction = workflowStatus === 'DONE' ? '工作流已完成，可查看产物并继续质量流程。' : received ? '请查看下方产物并完成人工确认。'
+  const nextAction = branchDelivery ? '各成员共用已确认的文档自行开发，提交仓库分支后统一确认本次交付。'
+    : workflowStatus === 'DONE' ? '工作流已完成，可查看产物并继续质量流程。' : received ? '请查看下方产物并完成人工确认。'
     : failed ? '请查看错误信息，在下方阶段操作中重试。'
       : sessionComplete ? '平台已收到产物，请刷新查看处理结果。'
         : cancelled ? '旧会话已结束，可在下方重新领取并交接。'
@@ -123,7 +127,7 @@ export function WorkflowCollaborationPanel(props: WorkflowCollaborationPanelProp
         <p className="text-sm text-muted-foreground">{nextAction} {terminal ? '' : nextStageLabels[currentStage]}</p>
       </CardHeader>
       <CardContent className="space-y-3 p-5 pt-0">
-        {session ? <>
+        {branchDelivery ? <p className="text-sm text-muted-foreground">按仓库汇集代码分支，不设统一执行人。分支提交不代表整体开发完成。</p> : session ? <>
           <dl className="grid gap-3 text-sm sm:grid-cols-3">
             <div><dt className="text-muted-foreground">当前执行人</dt><dd className="mt-1 font-medium">{session.claimedByUser?.displayName ?? '未记录执行人'}{session.isOwner ? '（我）' : ''}</dd></div>
             <div><dt className="text-muted-foreground">执行位置</dt><dd className="mt-1 font-medium">本地设备{session.deviceId ? ` · ${session.deviceId}` : ''}{session.sourceTool ? ` / ${session.sourceTool}` : ''}</dd></div>

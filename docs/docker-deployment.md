@@ -732,3 +732,9 @@ DINGTALK_APPID
 4. 最后再启用 Nginx，对外只暴露 `80`
 
 这样排障最清晰，不会把 Docker、Nginx、Codex、鉴权问题混在一起。
+
+## 多仓分支交付版本升级
+
+本次增加 `CodeBranchSubmission` 表与关联索引，对应 migration 为 `20261022070000_add_code_branch_submissions`。升级前备份 SQLite 与持久化目录；容器沿用现有启动脚本执行 schema 同步，无新增环境变量。非 Docker 环境先执行 `pnpm prisma:generate`，再按当前数据库管理方式应用 migration 或运行 `pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma`；不要对未纳入 migration 历史的旧库盲目执行全量 `migrate deploy`。
+
+分支确认需要 API 宿主机可执行 Git 并读取所选仓库，沿用已有 Git 凭据配置。实际差异在系统临时目录的隔离 bare 仓库中读取，完成或失败后清理；不会在工作区仓库 checkout。读取过大差异或超时会提示失败并保留流程，不降级为没有真实 diff 的已确认交付。
