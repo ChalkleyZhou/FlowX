@@ -134,11 +134,6 @@ export function ProjectDetailPage() {
         description={project.description?.trim() || '管理项目下的需求与人员排期。'}
         actions={(
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => {
-              setCreateTitle('');
-              setCreateVersion(project.currentVersion ?? null);
-              setCreateOpen(true);
-            }}>新建需求</Button>
             <Button variant="outline" asChild>
               <Link to={`/schedule?projectId=${projectId}`}>在排期中查看</Link>
             </Button>
@@ -173,20 +168,27 @@ export function ProjectDetailPage() {
         <CardHeader className="pb-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <SectionHeader eyebrow="Requirements" title="需求列表" />
-            <Select value={versionFilter} onValueChange={setVersionFilter}>
-              <SelectTrigger className="w-44" aria-label="按版本筛选">
-                <SelectValue placeholder="全部版本" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">全部版本</SelectItem>
-                <SelectItem value="__unversioned__">未挂版本</SelectItem>
-                {(project.versions ?? []).map((version) => (
-                  <SelectItem key={version.id} value={version.id}>
-                    {version.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={versionFilter} onValueChange={setVersionFilter}>
+                <SelectTrigger className="w-44" aria-label="按版本筛选">
+                  <SelectValue placeholder="全部版本" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">全部版本</SelectItem>
+                  <SelectItem value="__unversioned__">未挂版本</SelectItem>
+                  {(project.versions ?? []).map((version) => (
+                    <SelectItem key={version.id} value={version.id}>
+                      {version.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button onClick={() => {
+                setCreateTitle('');
+                setCreateVersion(project.currentVersion ?? null);
+                setCreateOpen(true);
+              }}>新建需求</Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-5 pt-0">
