@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { CreatePrototypeImportDto, PrototypeRevisionDto, UpdatePrototypeImportDto } from './dto/prototype-import.dto';
+import { AnalyzePrototypeImportDto, CreatePrototypeImportDto, SupplementPrototypeImportDto, UpdatePrototypeImportDto } from './dto/prototype-import.dto';
 import { PrototypeImportsService, type PrototypeActor } from './prototype-imports.service';
 
 type Upload = { buffer: Buffer; originalname: string };
@@ -25,9 +25,9 @@ export class PrototypeImportsController {
   @Patch(':id')
   save(@Param('id') id: string, @Body() dto: UpdatePrototypeImportDto, @Req() req: Request) { return this.imports.save(id, dto, req.authSession); }
   @Post(':id/analyze')
-  analyze(@Param('id') id: string, @Body() dto: UpdatePrototypeImportDto, @Req() req: Request) { return this.imports.analyze(id, dto, req.authSession); }
+  analyze(@Param('id') id: string, @Body() dto: AnalyzePrototypeImportDto, @Req() req: Request) { return this.imports.analyze(id, dto, req.authSession); }
   @Post(':id/files') @UseInterceptors(upload())
-  supplement(@Param('id') id: string, @Body() dto: PrototypeRevisionDto, @UploadedFile() uploaded: Upload | undefined, @Req() req: Request) {
+  supplement(@Param('id') id: string, @Body() dto: SupplementPrototypeImportDto, @UploadedFile() uploaded: Upload | undefined, @Req() req: Request) {
     const value = file(uploaded);
     return this.imports.supplement(id, dto, value.buffer, value.originalname, req.authSession);
   }

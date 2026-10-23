@@ -55,7 +55,29 @@ describe('原型快速导入', () => {
     await render();
     expect(container.textContent).toContain('请检查项目代码仓库');
     await act(async () => { button('重试导入')?.click(); });
-    expect(api.analyzePrototypeImport).toHaveBeenCalledWith('import-1', { revision: 3 });
+    expect(api.analyzePrototypeImport).toHaveBeenCalledWith('import-1', { revision: 3, aiProvider: 'codex' });
+    expect(container.textContent).toContain('正在导入');
+  });
+  it('失败后可切换 AI 重试，无需重新上传，提交失败保留选择', async () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    vi.mocked(api.getPrototypeImport).mockResolvedValue({ ...record, status: 'FAILED', revision: 3 });
+    vi.mocked(api.analyzePrototypeImport).mockRejectedValueOnce(new Error('网络中断'));
+    await render();
+    const trigger = container.querySelector('[aria-label="重试使用的 AI"]')!;
+    expect(trigger?.textContent).toBe('Codex');
+    await act(async () => { trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); });
+    await act(async () => { (Array.from(document.querySelectorAll('[role="option"]')).find((item) => item.textContent === 'Cursor CLI') as HTMLElement).click(); });
+    await act(async () => { button('重试导入')!.click(); });
+    expect(api.analyzePrototypeImport).toHaveBeenCalledWith('import-1', { revision: 3, aiProvider: 'cursor' });
+    expect(container.textContent).toContain('网络中断');
+    expect(trigger.textContent).toBe('Cursor CLI');
+    expect(api.supplementPrototypeImport).not.toHaveBeenCalled();
+    let resolveRetry!: (value: PrototypeImport) => void;
+    vi.mocked(api.analyzePrototypeImport).mockReturnValueOnce(new Promise((resolve) => { resolveRetry = resolve; }));
+    await act(async () => { button('重试导入')!.click(); button('重试导入')?.click(); });
+    expect(api.analyzePrototypeImport).toHaveBeenCalledTimes(2);
+    expect(trigger.hasAttribute('disabled')).toBe(true);
+    await act(async () => { resolveRetry({ ...record, aiProvider: 'cursor', revision: 4 }); });
     expect(container.textContent).toContain('正在导入');
   });
   it('旧等待确认记录自动接续，无需点击确认', async () => {
@@ -65,6 +87,21 @@ describe('原型快速导入', () => {
     expect(api.analyzePrototypeImport).toHaveBeenCalledTimes(1);
     expect(api.analyzePrototypeImport).toHaveBeenCalledWith('import-1', { revision: 1 });
     expect(api.confirmPrototypeImport).not.toHaveBeenCalled();
+  });
+  it('补传 ZIP 并重试也使用当前选中的 AI', async () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    vi.mocked(api.getPrototypeImport).mockResolvedValue({ ...record, status: 'FAILED' });
+    vi.mocked(api.supplementPrototypeImport).mockResolvedValue({ ...record, aiProvider: 'cursor', revision: 2 });
+    await render();
+    await act(async () => { container.querySelector('[aria-label="重试使用的 AI"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); });
+    await act(async () => { (Array.from(document.querySelectorAll('[role="option"]')).find((item) => item.textContent === 'Cursor CLI') as HTMLElement).click(); });
+    const file = new File(['zip'], 'more.zip');
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [file] });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await act(async () => { button('上传并重试')!.click(); });
+    expect(api.supplementPrototypeImport).toHaveBeenCalledWith('import-1', 1, file, 'cursor');
+    expect(container.textContent).toContain('正在导入');
   });
   it('轮询保持进度内容、不重叠请求，失败后停止', async () => {
     vi.useFakeTimers(); await render();

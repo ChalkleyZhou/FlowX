@@ -252,10 +252,11 @@ export const api = {
   },
   getPrototypeImport: (id: string) => request<PrototypeImport>(`/prototype-imports/${id}`),
   savePrototypeImport: (id: string, payload: PrototypeImportUpdate) => request<PrototypeImport>(`/prototype-imports/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  analyzePrototypeImport: (id: string, payload: PrototypeImportUpdate) => request<PrototypeImport>(`/prototype-imports/${id}/analyze`, { method: 'POST', body: JSON.stringify(payload) }),
+  analyzePrototypeImport: (id: string, payload: PrototypeImportUpdate & { aiProvider?: PrototypeImport['aiProvider'] }) => request<PrototypeImport>(`/prototype-imports/${id}/analyze`, { method: 'POST', body: JSON.stringify(payload) }),
   confirmPrototypeImport: (id: string, payload: PrototypeImportUpdate) => request<PrototypeImport>(`/prototype-imports/${id}/confirm`, { method: 'POST', body: JSON.stringify(payload) }),
-  supplementPrototypeImport: (id: string, revision: number, file: File) => {
+  supplementPrototypeImport: (id: string, revision: number, file: File, aiProvider?: PrototypeImport['aiProvider']) => {
     const body = new FormData(); body.append('file', file); body.append('revision', String(revision));
+    if (aiProvider !== undefined) body.append('aiProvider', aiProvider);
     return request<PrototypeImport>(`/prototype-imports/${id}/files`, { method: 'POST', body });
   },
   previewPrototypeImport: (id: string, path: string) => request<{ html: string; warnings: string[] }>(`/prototype-imports/${id}/preview?path=${encodeURIComponent(path)}`),

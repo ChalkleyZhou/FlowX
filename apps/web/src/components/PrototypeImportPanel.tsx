@@ -4,6 +4,7 @@ import { api } from '../api';
 import type { PrototypeImport } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 interface Props {
   importId: string;
@@ -20,6 +21,7 @@ export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [retryProvider, setRetryProvider] = useState<PrototypeImport['aiProvider'] | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [selectedPath, setSelectedPath] = useState('');
@@ -59,7 +61,7 @@ export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId
     epoch.current += 1;
     autoEnter.current = new URLSearchParams(location.search).get('importing') === '1';
     request.current = null; operation.current = false; completed.current = null; resumed.current = false;
-    setRecord(null); setError(null); setBusy(false); setExpanded(false); setFile(null); setSelectedPath(''); setPreview(null);
+    setRecord(null); setError(null); setBusy(false); setRetryProvider(null); setExpanded(false); setFile(null); setSelectedPath(''); setPreview(null);
     void refresh();
     return () => { epoch.current += 1; request.current = null; };
   }, [refresh, location.search]);
@@ -145,15 +147,22 @@ export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId
       <p className="text-sm text-muted-foreground">{failed ? '原材料已保留，处理后可直接重试。' : succeeded ? '已接入研发流程。' : 'AI 正在整理需求与设计，完成后自动进入研发流程，无需确认。可离开页面，稍后回来查看。'}</p>
       {(error || record.errorMessage) && <p role="alert" className="text-sm text-danger">{error ?? record.errorMessage}</p>}
       {failed && <div className="flex flex-col gap-3">
+        <div className="flex max-w-xs flex-col gap-2">
+          <label className="text-sm" htmlFor={`prototype-retry-provider-${importId}`}>重试使用的 AI</label>
+          <Select value={retryProvider ?? record.aiProvider} onValueChange={(value: PrototypeImport['aiProvider']) => setRetryProvider(value)} disabled={busy}>
+            <SelectTrigger id={`prototype-retry-provider-${importId}`} aria-label="重试使用的 AI"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="codex">Codex</SelectItem><SelectItem value="cursor">Cursor CLI</SelectItem></SelectContent>
+          </Select>
+        </div>
         <div className="flex gap-2">
-          <Button disabled={busy} onClick={() => void run(() => api.analyzePrototypeImport(importId, { revision: record.revision }))}>{busy ? '重试中…' : '重试导入'}</Button>
+          <Button disabled={busy} onClick={() => void run(() => api.analyzePrototypeImport(importId, { revision: record.revision, aiProvider: retryProvider ?? record.aiProvider }))}>{busy ? '重试中…' : '重试导入'}</Button>
           <Button variant="outline" disabled={busy || loading} onClick={() => void refresh()}>刷新状态</Button>
         </div>
         <label className="flex flex-col gap-2 text-sm">更换或补充 ZIP（可选，最大 20 MiB）
           <Input type="file" accept=".zip,application/zip" aria-label="补传原型 ZIP" disabled={busy} onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
         </label>
         {invalidFile && <p role="alert" className="text-sm text-danger">请选择不超过 20 MiB 的 ZIP 文件</p>}
-        {file && <Button variant="outline" disabled={busy || !!invalidFile} onClick={() => void run(() => api.supplementPrototypeImport(importId, record.revision, file))}>上传并重试</Button>}
+        {file && <Button variant="outline" disabled={busy || !!invalidFile} onClick={() => void run(() => api.supplementPrototypeImport(importId, record.revision, file, retryProvider ?? record.aiProvider))}>上传并重试</Button>}
       </div>}
       {processing && error && <Button variant="outline" disabled={busy || loading} onClick={() => { resumed.current = false; void refresh(); }}>重试接续</Button>}
       {succeeded && <Button asChild><Link to={`/workflow-runs/${existingWorkflowId ?? workflowId}`}>进入工作流</Link></Button>}

@@ -16,3 +16,9 @@ export class UpdatePrototypeImportDto extends PrototypeRevisionDto {
   @IsOptional() @IsObject() analysis?: Record<string, unknown>;
   @IsOptional() @IsObject() answers?: Record<string, string>;
 }
+export class AnalyzePrototypeImportDto extends UpdatePrototypeImportDto {
+  @ValidateIf((_, value) => value !== undefined) @IsIn(['codex', 'cursor']) aiProvider?: 'codex' | 'cursor';
+}
+export class SupplementPrototypeImportDto extends PrototypeRevisionDto {
+  @ValidateIf((_, value) => value !== undefined) @IsIn(['codex', 'cursor']) aiProvider?: 'codex' | 'cursor';
+}

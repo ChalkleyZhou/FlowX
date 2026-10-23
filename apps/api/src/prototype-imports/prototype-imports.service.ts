@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, type OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, type OnModuleInit } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { AI_EXECUTOR_REGISTRY, type AIExecutorRegistry } from '../ai/ai-executor';
@@ -7,7 +7,7 @@ import { WorkflowService } from '../workflow/workflow.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrototypeArchive, type PrototypeManifest } from './prototype-archive';
 import { assertPrototypeAnalysis, type PrototypeAnalysis } from './prototype-analysis';
-import { CreatePrototypeImportDto, PrototypeRevisionDto, UpdatePrototypeImportDto } from './dto/prototype-import.dto';
+import { AnalyzePrototypeImportDto, CreatePrototypeImportDto, SupplementPrototypeImportDto, UpdatePrototypeImportDto } from './dto/prototype-import.dto';
 
 export type PrototypeActor = { user: { id: string; displayName: string }; organization?: { id?: string | null } | null };
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -32,6 +32,7 @@ export function confirmedPrototypeAnalysis(analysis: PrototypeAnalysis, answers:
 
 @Injectable()
 export class PrototypeImportsService implements OnModuleInit {
+  private readonly logger = new Logger(PrototypeImportsService.name);
   private readonly archive = new PrototypeArchive();
   constructor(
     private readonly prisma: PrismaService,
@@ -113,22 +114,22 @@ export class PrototypeImportsService implements OnModuleInit {
     if (saved.count !== 1) throw new ConflictException('草稿已被更新，请刷新。');
     return this.get(id, actor);
   }
-  async analyze(id: string, dto: UpdatePrototypeImportDto, actor?: PrototypeActor) {
+  async analyze(id: string, dto: AnalyzePrototypeImportDto, actor?: PrototypeActor) {
     const record = await this.owned(id, actor);
     this.assertEditable(record, dto.revision);
     const draft = record.analysis || dto.analysis ? this.validated(record, dto) : null;
     const reuseAnalysis = (record.status === 'WAITING_CONFIRMATION' || (record.status === 'FAILED' && !!record.confirmedAt)) && !dto.feedback && !dto.analysis && !dto.answers;
-    const claimed = await this.prisma.prototypeImport.updateMany({ where: { id, revision: dto.revision, status: record.status }, data: { status: 'ANALYZING', revision: { increment: 1 }, errorMessage: null, ...(!reuseAnalysis ? { confirmedAt: null, confirmedBy: null } : {}), ...(draft ? { analysis: json(draft.analysis), answers: draft.answers } : {}) } });
+    const claimed = await this.prisma.prototypeImport.updateMany({ where: { id, revision: dto.revision, status: record.status }, data: { status: 'ANALYZING', revision: { increment: 1 }, errorMessage: null, ...(dto.aiProvider !== undefined ? { aiProvider: dto.aiProvider } : {}), ...(!reuseAnalysis ? { confirmedAt: null, confirmedBy: null } : {}), ...(draft ? { analysis: json(draft.analysis), answers: draft.answers } : {}) } });
     if (claimed.count !== 1) throw new ConflictException('整理已开始，请刷新。');
     const next = await this.owned(id, actor);
     this.schedule(next, actor!, dto.feedback, reuseAnalysis);
     return this.view(next);
   }
-  async supplement(id: string, dto: PrototypeRevisionDto, zip: Buffer, name: string, actor?: PrototypeActor) {
+  async supplement(id: string, dto: SupplementPrototypeImportDto, zip: Buffer, name: string, actor?: PrototypeActor) {
     const record = await this.owned(id, actor);
     this.assertEditable(record, dto.revision);
     const materialRevision = dto.revision + 1;
-    const claimed = await this.prisma.prototypeImport.updateMany({ where: { id, revision: dto.revision, status: record.status }, data: { status: 'ANALYZING', revision: { increment: 1 }, errorMessage: null, confirmedAt: null, confirmedBy: null } });
+    const claimed = await this.prisma.prototypeImport.updateMany({ where: { id, revision: dto.revision, status: record.status }, data: { status: 'ANALYZING', revision: { increment: 1 }, errorMessage: null, confirmedAt: null, confirmedBy: null, ...(dto.aiProvider !== undefined ? { aiProvider: dto.aiProvider } : {}) } });
     if (claimed.count !== 1) throw new ConflictException('材料已变化，请刷新。');
     try {
       const manifest = await this.archive.save(id, materialRevision, zip, name, record.materialRevision);
@@ -208,8 +209,17 @@ export class PrototypeImportsService implements OnModuleInit {
       failureStatus = 'CONFIRMED';
       const existing = await this.prisma.workflowRun.findFirst({ where: { requirementId: record.requirementId, status: { notIn: ['DONE', 'FAILED'] } } });
       if (!existing) await this.workflows.createWorkflowRun({ requirementId: record.requirementId, aiProvider: this.invocation.normalizeAiProvider(record.aiProvider) });
-    } catch {
-      await this.prisma.prototypeImport.updateMany({ where: { id: record.id, revision: failureRevision, status: failureStatus }, data: { status: 'FAILED', errorMessage: failureStatus === 'CONFIRMED' ? '原型已整理，但接入研发流程失败。请检查项目工作区的代码仓库与访问配置后重试，材料已保留。' : 'AI 整理失败，原材料已保留。请检查组织 AI 配置后重试，或上传更完整的原型包。' } });
+    } catch (error) {
+      const credentialFailure = error instanceof Error && /\b(?:CODEX|CURSOR)_(?:AUTH_[A-Z_]+|CREDENTIAL_DECRYPT_FAILED|ORGANIZATION_CREDENTIAL_REQUIRED)\b/.test(error.message);
+      const reason = failureStatus === 'CONFIRMED' ? 'WORKFLOW_HANDOFF_FAILED' : credentialFailure ? 'AI_CREDENTIAL_FAILED' : 'AI_ANALYSIS_FAILED';
+      // 仅记录定位字段与固定错误分类，不把可能包含凭证或原型内容的上游异常写入日志。
+      this.logger.warn(`PROTOTYPE_IMPORT_FAILED id=${record.id} revision=${failureRevision} provider=${record.aiProvider} reason=${reason}`);
+      const errorMessage = failureStatus === 'CONFIRMED'
+        ? '原型已整理，但接入研发流程失败。请检查项目工作区的代码仓库与访问配置后重试，材料已保留。'
+        : credentialFailure
+          ? 'AI 认证失败或凭证不可用，原材料已保留。请检查 AI 凭证，或切换其他 AI 后重试。'
+          : 'AI 整理失败，原材料已保留。可重试或切换其他 AI；若持续失败，请联系管理员查看 AI 执行日志。';
+      await this.prisma.prototypeImport.updateMany({ where: { id: record.id, revision: failureRevision, status: failureStatus }, data: { status: 'FAILED', errorMessage } });
     }
   }
 }

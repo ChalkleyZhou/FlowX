@@ -137,6 +137,8 @@ Workspace
 
 ### 原型 ZIP 自动导入与流程快照
 
+失败导入可通过 `POST /prototype-imports/:id/analyze` 传入可选 `aiProvider`（`codex` / `cursor`）切换 AI，无需重传。执行器与重试状态、修订通过同一次 CAS 更新，省略时保留原值；后台读取新记录解析对应组织凭证，并传递给后续工作流。认证错误返回固定提示，日志仅记录导入 ID、执行器、修订与错误分类，不直接输出上游异常。
+
 `PrototypeImport` 与 Requirement 一对一关联，保留 `ANALYZING / WAITING_CONFIRMATION / FAILED / CONFIRMED` 状态、CAS `revision`、独立材料版本、文件清单、分析及历史答案。所有访问经需求项目的 Workspace 校验组织。上传私有保存原包，事务创建需求，后台通过现有 AI invocation 组织凭据整理。新导入不经过人工确认；历史等待确认记录打开后自动接续。
 
 Codex / Cursor 的 `analyzePrototype` 共用 `prototype-analysis.output.schema.json`。分析上下文有界，材料为非指令，来源路径必须属于材料清单；不支持的 executor 明确失败。AI 输出校验后事务保存 Requirement、简报和设计产物，`CONFIRMED` 表示资料落库完成，自动导入 `confirmedBy=null`，不伪造人工确认；未答问题仍作为 `brief.openQuestions`，建议不会擅自生效。失败重试按 revision 比较，过期任务不能覆盖新结果；流程接续失败复用整理结果并替换同类导入产物。

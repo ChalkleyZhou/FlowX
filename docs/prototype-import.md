@@ -8,7 +8,7 @@
 
 1. 上传后自动创建需求，后台识别材料并生成需求、验收标准、设计说明、来源依据和推断。
 2. AI 整理成功后由服务端自动保存资料并启动工作流，仓库准备完成后接续 Spec & Plan；用户无需填写问题或确认。浏览器展示进度，成功后自动进入流程。
-3. 失败直接显示原因，原材料保留，可点击「重试导入」或补传 ZIP。接续失败时重试复用已整理资料；补传会重新分析。同路径替换，其余文件保留，各次原始包均可下载。
+3. 失败直接显示原因，原材料保留，可在「重试使用的 AI」选择 Codex / Cursor 后点击「重试导入」，无需重新上传或创建需求；默认沿用原选择，失败保留选择。已识别的凭证错误会提示认证问题并建议切换 AI。也可补传 ZIP，补传重试同样使用当前选中的 AI。接续失败时重试复用已整理资料；补传会重新分析。同路径替换，其余文件保留，各次原始包均可下载。
 4. 原型与来源材料按需展开查看。旧「等待确认」记录打开后自动接续，不再展示确认表单。
 
 AI 提出但未回答的问题保留在 `brief.openQuestions`，推断保留在 `inferences / brief.assumptions`，不擅自采用建议为人工已确认规则。导入不增加人员分配、任务领取或设计审批。导入成功表示资料已整理并接入流程，后续技术方案和研发仍按原有工作流推进。
@@ -45,13 +45,15 @@ AI 依据有界清单和文本摘录分析，整体上下文上限 90,000 字符
 | `POST /prototype-imports` | multipart `file`、`projectId`、可选 `title`、`versionId`、`goal`、`aiProvider`，创建并后台分析 |
 | `GET /prototype-imports/:id` | 状态、材料清单、分析结果与 workflowRunId |
 | `PATCH /prototype-imports/:id` | `revision`、可选 `analysis`、`answers`，保留的旧草稿兼容接口，新入口不使用 |
-| `POST /prototype-imports/:id/analyze` | 同上及可选 `feedback`，重试导入；旧等待确认记录无反馈时直接复用资料 |
-| `POST /prototype-imports/:id/files` | multipart `file`、`revision`，合并补传并重新分析 |
+| `POST /prototype-imports/:id/analyze` | 同上及可选 `feedback`、`aiProvider`（`codex` / `cursor`），重试导入；旧等待确认记录无反馈时直接复用资料 |
+| `POST /prototype-imports/:id/files` | multipart `file`、`revision`、可选 `aiProvider`，合并补传并使用所选 AI 重新分析 |
 | `POST /prototype-imports/:id/confirm` | 保留的旧确认兼容接口，新入口不调用 |
 | `GET /prototype-imports/:id/preview?path=...` | JSON `html` 和 `warnings`，用于 sandbox 预览 |
 | `GET /prototype-imports/:id/source?revision=...` | 授权下载对应上传版本的 ZIP |
 
 `title` 用于初始需求标题，未传时沿用 ZIP 文件名；未提供 `goal` 时标题同时作为 AI 整理线索。最终标题使用 AI 整理结果。`versionId` 显式传入时必须属于该项目，非法或跨项目版本在保存原型包前拒绝；省略时兼容使用项目当前版本（包括历史无版本导入）。需求页原型上传必须选择发布版本；项目快捷入口必须有当前版本。两处均显式提交显示的版本，避免上传过程中项目版本切换导致归属变化。
+
+重试指定 `aiProvider` 时，与状态及 `revision` 原子更新导入记录；省略则沿用已有执行器。后台从已保存记录解析对应组织凭证，后续工作流使用该执行器。非法执行器、跨组织请求、旧修订或处理中重试均被拒绝。认证错误只回传固定文案；服务端记录导入 ID、修订、执行器与错误分类，避免泄露上游凭证或原型内容。
 
 服务端完成 schema 和来源校验后，以 CAS revision 更新导入记录并保存 Requirement、简报和设计产物，再调用既有 WorkflowService 创建流程。工作流的 `REQUIREMENT_INTAKE` 保存不可变导入快照，仓库 grounding 后接续 Spec & Plan。自动导入的 `confirmedBy` 为 `null`，`confirmedAt` 表示资料落库时间；历史人工确认快照保持兼容。接续前后不允许普通入口绕过未完成导入；失败重试替换同一需求的导入产物，不新增需求副本。
 
