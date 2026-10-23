@@ -239,8 +239,10 @@ export function getBugScreenshotUrl(bugId: string, screenshotId: string) {
 }
 
 export const api = {
-  createPrototypeImport: (payload: { projectId: string; goal?: string; aiProvider?: 'codex' | 'cursor' }, file: File) => {
+  createPrototypeImport: (payload: { projectId: string; title?: string; versionId?: string; goal?: string; aiProvider?: 'codex' | 'cursor' }, file: File) => {
     const body = new FormData(); body.append('file', file); body.append('projectId', payload.projectId);
+    if (payload.title) body.append('title', payload.title);
+    if (payload.versionId !== undefined) body.append('versionId', payload.versionId);
     if (payload.goal) body.append('goal', payload.goal);
     if (payload.aiProvider) body.append('aiProvider', payload.aiProvider);
     return request<PrototypeImport>('/prototype-imports', { method: 'POST', body });

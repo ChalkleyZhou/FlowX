@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { PageHeader } from '../components/PageHeader';
 import { ProjectBriefingConfigPanel } from '../components/ProjectBriefingConfigPanel';
@@ -26,6 +26,7 @@ import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
 
 export function ProjectDetailPage() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   const toast = useToast();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
@@ -34,6 +35,9 @@ export function ProjectDetailPage() {
   const [createTitle, setCreateTitle] = useState('');
   const [createVersion, setCreateVersion] = useState<ProjectVersionSummary | null>(null);
   const [creating, setCreating] = useState(false);
+  const [createFile, setCreateFile] = useState<File | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const createFileInput = useRef<HTMLInputElement>(null);
   const createInFlight = useRef(false);
 
   async function createRequirement(event: React.FormEvent<HTMLFormElement>) {
@@ -44,9 +48,23 @@ export function ProjectDetailPage() {
       toast.error('请填写需求标题');
       return;
     }
+    if (createFile && (!/\.zip$/i.test(createFile.name) || createFile.size > 20 * 1024 * 1024)) {
+      setCreateError('请选择不超过 20 MiB 的 ZIP 文件');
+      return;
+    }
     createInFlight.current = true;
     setCreating(true);
+    setCreateError(null);
     try {
+      if (createFile) {
+        const storedProvider = window.localStorage.getItem('flowx-default-ai-provider');
+        const imported = await api.createPrototypeImport({
+          projectId, title, versionId: createVersion.id,
+          ...(storedProvider === 'codex' || storedProvider === 'cursor' ? { aiProvider: storedProvider } : {}),
+        }, createFile);
+        navigate(`/requirements/${imported.requirementId}`);
+        return;
+      }
       await api.createRequirement({ projectId, title, versionId: createVersion.id });
       setCreateOpen(false);
       setCreateTitle('');
@@ -54,7 +72,9 @@ export function ProjectDetailPage() {
       await refresh();
       toast.success('需求创建成功');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '创建需求失败');
+      const message = error instanceof Error ? error.message : '创建需求失败';
+      setCreateError(message);
+      toast.error(message);
     } finally {
       createInFlight.current = false;
       setCreating(false);
@@ -113,17 +133,31 @@ export function ProjectDetailPage() {
           <DialogHeader>
             <DialogTitle>新建需求</DialogTitle>
             <DialogDescription>
-              {createVersion ? `${project.name} · 当前版本 ${createVersion.name}。填写标题即可，描述与验收标准可在后续构思中完善。` : '请先设置项目当前版本，再快速新建需求。'}
+              {createVersion ? `${project.name} · 当前版本 ${createVersion.name}。填写标题即可；也可附上原型 ZIP，由 AI 整理需求与设计。` : '请先设置项目当前版本，再快速新建需求。'}
             </DialogDescription>
           </DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={(event) => void createRequirement(event)}>
             <label className="flex flex-col gap-2 text-sm font-semibold" htmlFor="quick-requirement-title">
               需求标题
-              <Input id="quick-requirement-title" required autoFocus value={createTitle} disabled={creating || !createVersion} onChange={(event) => setCreateTitle(event.target.value)} placeholder="例如：优化需求创建体验" />
+              <Input id="quick-requirement-title" required maxLength={1000} autoFocus value={createTitle} disabled={creating || !createVersion} onChange={(event) => setCreateTitle(event.target.value)} placeholder="例如：优化需求创建体验" />
             </label>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="quick-requirement-zip" className="text-sm font-semibold">原型 ZIP（选填）</label>
+              <Input ref={createFileInput} id="quick-requirement-zip" type="file" accept=".zip,application/zip" disabled={creating || !createVersion} onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                setCreateFile(file);
+                setCreateError(file && (!/\.zip$/i.test(file.name) || file.size > 20 * 1024 * 1024) ? '请选择不超过 20 MiB 的 ZIP 文件' : null);
+              }} />
+              <p className="text-xs text-muted-foreground">最大 20 MiB。上传后进入原型与需求确认页；不上传则直接创建。</p>
+              {createFile && <Button type="button" size="sm" variant="outline" className="self-start" disabled={creating} onClick={() => {
+                setCreateFile(null); setCreateError(null);
+                if (createFileInput.current) createFileInput.current.value = '';
+              }}>移除 ZIP</Button>}
+            </div>
+            {createError && <p role="alert" className="text-sm text-danger">{createError}</p>}
             <div className="flex justify-end gap-2">
               {!createVersion && <Button variant="outline" asChild><a href="#project-versions" onClick={() => setCreateOpen(false)}>去设置当前版本</a></Button>}
-              <Button type="submit" disabled={creating || !createVersion}>{creating ? '创建中…' : '创建需求'}</Button>
+              <Button type="submit" disabled={creating || !createVersion}>{creating ? createFile ? '上传整理中…' : '创建中…' : createFile ? '上传原型，AI 整理' : '创建需求'}</Button>
             </div>
           </form>
         </DialogContent>
@@ -185,6 +219,8 @@ export function ProjectDetailPage() {
               </Select>
               <Button onClick={() => {
                 setCreateTitle('');
+                setCreateFile(null);
+                setCreateError(null);
                 setCreateVersion(project.currentVersion ?? null);
                 setCreateOpen(true);
               }}>新建需求</Button>

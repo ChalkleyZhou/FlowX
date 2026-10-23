@@ -2,6 +2,8 @@
 
 已有 OpenDesign 或其他工具导出的原型时，可直接使用「需求 → 创建需求 → 已有原型」，选择项目、ZIP 和 Codex / Cursor。目标可选，不要求先重写 PRD。
 
+项目详情的「需求列表 → 新建需求」也支持原型 ZIP：填写标题、选传 ZIP 即可，自动带入弹窗显示的当前版本。无需另外创建普通需求，上传成功后进入同一个原型确认页。失败保留标题和文件，移除 ZIP 后可恢复普通创建。快捷入口沿用需求页保存的 Codex / Cursor 偏好；未设置时使用服务器默认执行器。
+
 ## 必要路径
 
 1. 上传后自动创建待整理需求，后台识别材料并生成需求、验收标准、设计说明、来源依据和推断。
@@ -40,7 +42,7 @@ AI 依据有界清单和文本摘录分析，整体上下文上限 90,000 字符
 
 | 接口 | 用途 |
 | --- | --- |
-| `POST /prototype-imports` | multipart `file`、`projectId`、可选 `goal`、`aiProvider`，创建并后台分析 |
+| `POST /prototype-imports` | multipart `file`、`projectId`、可选 `title`、`versionId`、`goal`、`aiProvider`，创建并后台分析 |
 | `GET /prototype-imports/:id` | 状态、材料清单、草稿与答案 |
 | `PATCH /prototype-imports/:id` | `revision`、可选 `analysis`、`answers`，保存草稿 |
 | `POST /prototype-imports/:id/analyze` | 同上及可选 `feedback`，重试或修订 |
@@ -48,6 +50,8 @@ AI 依据有界清单和文本摘录分析，整体上下文上限 90,000 字符
 | `POST /prototype-imports/:id/confirm` | 校验当前 revision 和必答项，锁定确认稿 |
 | `GET /prototype-imports/:id/preview?path=...` | JSON `html` 和 `warnings`，用于 sandbox 预览 |
 | `GET /prototype-imports/:id/source?revision=...` | 授权下载对应上传版本的 ZIP |
+
+`title` 用于初始需求标题，未传时沿用 ZIP 文件名；未提供 `goal` 时标题同时作为 AI 整理线索。最终标题以人工确认的草稿为准。`versionId` 显式传入时必须属于该项目，非法或跨项目版本在保存原型包前拒绝；省略时兼容使用项目当前版本（包括历史无版本导入）。项目快捷入口必须有当前版本，并显式提交显示的版本，避免上传过程中项目版本切换导致归属变化。
 
 确认接口本身不创建工作流，Web 随后调用既有创建接口，因此创建失败不影响已确认结果。创建工作流写入确认快照，仓库 grounding 完成后接续 Spec & Plan。未确认导入不能从普通入口绕过确认。
 

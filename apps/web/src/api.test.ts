@@ -609,10 +609,12 @@ describe('原型包导入 API', () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'import-1' }) });
     vi.stubGlobal('fetch', fetchMock);
     localStorage.setItem('flowx-auth-token', 'test-token');
-    await api.createPrototypeImport({ projectId: 'project-1', goal: '管理事项', aiProvider: 'codex' }, new File(['zip'], 'prototype.zip'));
+    await api.createPrototypeImport({ projectId: 'project-1', title: '快捷标题', versionId: 'ver-current', goal: '管理事项', aiProvider: 'codex' }, new File(['zip'], 'prototype.zip'));
     const options = fetchMock.mock.calls[0][1];
     expect(options.body).toBeInstanceOf(FormData);
     expect(options.body.get('projectId')).toBe('project-1');
+    expect(options.body.get('title')).toBe('快捷标题');
+    expect(options.body.get('versionId')).toBe('ver-current');
     expect(options.body.get('file').name).toBe('prototype.zip');
     const headers = new Headers(options.headers);
     expect(headers.get('Authorization')).toBe('Bearer test-token');

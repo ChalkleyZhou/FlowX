@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Module, ValidationPipe, type INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { UpdatePrototypeImportDto } from './dto/prototype-import.dto';
+import { CreatePrototypeImportDto, UpdatePrototypeImportDto } from './dto/prototype-import.dto';
 import { PrototypeImportsController } from './prototype-imports.controller';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -28,6 +28,7 @@ let app: INestApplication, baseUrl: string;
 @Module({ controllers: [PrototypeImportsController], providers: [{ provide: PrototypeImportsService, useFactory: () => service }] })
 class TestModule {}
 Reflect.defineMetadata('design:paramtypes', [PrototypeImportsService], PrototypeImportsController);
+Reflect.defineMetadata('design:paramtypes', [CreatePrototypeImportDto, Object, Object], PrototypeImportsController.prototype, 'create');
 Reflect.defineMetadata('design:paramtypes', [String, UpdatePrototypeImportDto, Object], PrototypeImportsController.prototype, 'confirm');
 const actor = () => ({ user: { id: 'user-a', displayName: '用户' }, organization: { id: org } });
 beforeAll(async () => {
@@ -68,6 +69,35 @@ describe('原型导入到确认', () => {
     expect(result.manifest).toEqual(manifest);
     expect(result.requirementId).toBeTruthy();
     expect(executor.analyzePrototype).toHaveBeenCalled();
+  });
+
+  it('快捷导入使用显式标题与项目版本，不受当前版本变化影响', async () => {
+    const selected = await prisma.projectVersion.create({ data: { projectId: project, name: '快捷创建显示版本' } });
+    const current = await prisma.projectVersion.create({ data: { projectId: project, name: '之后切换的当前版本' } });
+    await prisma.project.update({ where: { id: project }, data: { currentVersionId: current.id } });
+    const body = new FormData(); body.append('projectId', project); body.append('title', '  原型快捷标题  '); body.append('versionId', selected.id); body.append('file', new Blob(['zip']), '原型.zip');
+    const response = await fetch(`${baseUrl}/prototype-imports`, { method: 'POST', headers: { 'x-org-id': org }, body });
+    expect(response.status).toBe(201);
+    const result = await response.json() as { id: string; requirementId: string };
+    expect(await prisma.requirement.findUniqueOrThrow({ where: { id: result.requirementId } })).toMatchObject({ title: '原型快捷标题', versionId: selected.id });
+    expect((await service.get(result.id, actor())).goal).toBe('原型快捷标题');
+    await vi.waitFor(async () => expect((await service.get(result.id, actor())).status).toBe('WAITING_CONFIRMATION'));
+    await prisma.project.update({ where: { id: project }, data: { currentVersionId: null } });
+  });
+
+  it('非法或跨项目版本在保存 ZIP 前拒绝，未指定版本仍兼容当前版本', async () => {
+    const other = await prisma.project.create({ data: { name: '其他项目', workspaceId: workspace } });
+    const foreign = await prisma.projectVersion.create({ data: { name: '其他项目版本', projectId: other.id } });
+    for (const versionId of ['missing', foreign.id]) {
+      const count = await prisma.requirement.count(); const saves = archive.save.mock.calls.length;
+      await expect(service.create({ projectId: project, title: '无效版本', versionId } as CreatePrototypeImportDto, Buffer.from('zip'), 'test.zip', actor())).rejects.toMatchObject({ status: 400 });
+      expect(await prisma.requirement.count()).toBe(count); expect(archive.save).toHaveBeenCalledTimes(saves);
+    }
+    const current = await prisma.projectVersion.create({ data: { name: '默认版本', projectId: project } });
+    await prisma.project.update({ where: { id: project }, data: { currentVersionId: current.id } });
+    const result = await create();
+    expect(await prisma.requirement.findUniqueOrThrow({ where: { id: result.requirementId } })).toMatchObject({ versionId: current.id });
+    await prisma.project.update({ where: { id: project }, data: { currentVersionId: null } });
   });
   it('校验组织，匿名和其他组织无法读取或补传', async () => {
     const result = await create();

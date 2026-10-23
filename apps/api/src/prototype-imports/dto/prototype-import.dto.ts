@@ -1,8 +1,10 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsIn, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength, Min, ValidateIf } from 'class-validator';
 
 export class CreatePrototypeImportDto {
   @IsString() @IsNotEmpty() projectId!: string;
+  @IsOptional() @IsString() @MaxLength(1000) title?: string;
+  @ValidateIf((_, value) => value !== undefined) @IsString() @IsNotEmpty() versionId?: string;
   @IsOptional() @IsString() @MaxLength(10000) goal?: string;
   @IsOptional() @IsIn(['codex', 'cursor']) aiProvider?: string;
 }

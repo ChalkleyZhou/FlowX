@@ -50,6 +50,10 @@ export class PrototypeImportsService implements OnModuleInit {
     const organizationId = this.organization(actor);
     const project = await this.prisma.project.findFirst({ where: { id: dto.projectId, workspace: { organizationId } }, include: { workspace: true } });
     if (!project) throw new NotFoundException('项目不存在或无权访问。');
+    const versionId = dto.versionId === undefined ? project.currentVersionId : dto.versionId;
+    if (dto.versionId !== undefined && (typeof dto.versionId !== 'string' || !dto.versionId.trim() || !await this.prisma.projectVersion.findFirst({ where: { id: dto.versionId, projectId: project.id } }))) {
+      throw new BadRequestException('发布版本不存在或不属于当前项目。');
+    }
     const id = randomUUID();
     const aiProvider = this.invocation.normalizeAiProvider(dto.aiProvider);
     let manifest: PrototypeManifest;
@@ -57,8 +61,8 @@ export class PrototypeImportsService implements OnModuleInit {
     catch { throw new BadRequestException('无法读取原型包，请检查 ZIP 格式、文件路径与大小限制。'); }
     try {
       const record = await this.prisma.$transaction(async (tx) => {
-        const requirement = await tx.requirement.create({ data: { projectId: project.id, workspaceId: project.workspaceId, versionId: project.currentVersionId, title: name.replace(/\.zip$/i, '') || '导入原型', description: dto.goal?.trim() || '正在根据原型整理需求', acceptanceCriteria: '待原型分析后确认' } });
-        return tx.prototypeImport.create({ data: { id, requirementId: requirement.id, aiProvider, goal: dto.goal?.trim() ?? '', manifest: json(manifest), answers: {} } });
+        const requirement = await tx.requirement.create({ data: { projectId: project.id, workspaceId: project.workspaceId, versionId, title: dto.title?.trim() || name.replace(/\.zip$/i, '') || '导入原型', description: dto.goal?.trim() || '正在根据原型整理需求', acceptanceCriteria: '待原型分析后确认' } });
+        return tx.prototypeImport.create({ data: { id, requirementId: requirement.id, aiProvider, goal: dto.goal?.trim() || dto.title?.trim() || '', manifest: json(manifest), answers: {} } });
       });
       this.schedule(record, actor!);
       return this.view(record);
