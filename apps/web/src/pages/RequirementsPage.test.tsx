@@ -223,7 +223,7 @@ describe('RequirementsPage', () => {
     expect(container.textContent).toBe('/workflow-runs/run-new');
   });
 
-  it('创建默认普通填写；原型入口只需项目和 ZIP，失败保留文件后重试接续详情', async () => {
+  it('创建默认普通填写；原型默认当前版本，失败保留文件后重试接续详情', async () => {
     vi.mocked(api.createPrototypeImport).mockRejectedValueOnce(new Error('网络中断，请重试')).mockResolvedValueOnce({ requirementId: 'req-import' } as Awaited<ReturnType<typeof api.createPrototypeImport>>);
     await act(async () => { root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1']}><Routes>
       <Route path="/requirements" element={<RequirementsPage />} />
@@ -234,6 +234,7 @@ describe('RequirementsPage', () => {
     await act(async () => { Array.from(document.querySelectorAll('button')).find((button) => button.textContent === '已有原型')?.click(); });
     const dialog = document.querySelector('[role="dialog"]')!;
     expect(dialog.querySelector('input[id="requirement-title"]')).toBeNull();
+    expect(dialog.querySelector('[aria-label="发布版本"]')?.textContent).toBe('2.6.0');
     const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File(['zip'], 'prototype.zip', { type: 'application/zip' });
     Object.defineProperty(input, 'files', { configurable: true, value: [file] });
@@ -244,8 +245,54 @@ describe('RequirementsPage', () => {
     expect(input.files?.[0]).toBe(file);
     expect(api.createRequirement).not.toHaveBeenCalled();
     await act(async () => { upload.click(); });
-    expect(api.createPrototypeImport).toHaveBeenLastCalledWith({ projectId: 'project-1', goal: '', aiProvider: 'codex' }, file);
+    expect(api.createPrototypeImport).toHaveBeenLastCalledWith({ projectId: 'project-1', versionId: 'ver-1', goal: '', aiProvider: 'codex' }, file);
     expect(container.textContent).toBe('/requirements/req-import?importing=1');
+  });
+
+  it('原型上传可以改选版本，切换项目后默认新项目当前版本', async () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    vi.mocked(api.getProjects).mockResolvedValue([
+      { ...requirement.project, versions: [{ id: 'ver-1', name: '2.6.0' }, { id: 'ver-2', name: '2.7.0' }] },
+      { ...requirement.project, id: 'project-2', name: '另一个项目', currentVersionId: 'ver-3', currentVersion: { id: 'ver-3', name: '3.0.0' }, versions: [{ id: 'ver-3', name: '3.0.0' }] },
+    ]);
+    vi.mocked(api.createPrototypeImport).mockRejectedValue(new Error('网络中断'));
+    await act(async () => { root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1']}><RequirementsPage /></MemoryRouter>); });
+    await act(async () => { Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '创建需求')?.click(); });
+    await act(async () => { Array.from(document.querySelectorAll('button')).find((button) => button.textContent === '已有原型')?.click(); });
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const version = dialog.querySelector('[aria-label="发布版本"]')!;
+    expect(version).toBeTruthy();
+    await act(async () => { version.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); });
+    await act(async () => { (Array.from(document.querySelectorAll('[role="option"]')).find((item) => item.textContent === '2.7.0') as HTMLElement).click(); });
+    expect(version.textContent).toBe('2.7.0');
+    const file = new File(['zip'], 'prototype.zip', { type: 'application/zip' });
+    const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [file] });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    const submit = () => dialog.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await act(async () => { submit(); });
+    expect(api.createPrototypeImport).toHaveBeenLastCalledWith(expect.objectContaining({ projectId: 'project-1', versionId: 'ver-2' }), file);
+    await act(async () => { dialog.querySelector('[aria-label="所属项目"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); });
+    await act(async () => { (Array.from(document.querySelectorAll('[role="option"]')).find((item) => item.textContent === '另一个项目') as HTMLElement).click(); });
+    expect(dialog.querySelector('[aria-label="发布版本"]')?.textContent).toBe('3.0.0');
+    await act(async () => { submit(); });
+    expect(api.createPrototypeImport).toHaveBeenLastCalledWith(expect.objectContaining({ projectId: 'project-2', versionId: 'ver-3' }), file);
+  });
+
+  it('原型上传未选择版本时引导设置，不发起上传', async () => {
+    vi.mocked(api.getProjects).mockResolvedValue([{ ...requirement.project, currentVersionId: null, currentVersion: null, versions: [] }]);
+    await act(async () => { root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1']}><RequirementsPage /></MemoryRouter>); });
+    await act(async () => { Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '创建需求')?.click(); });
+    await act(async () => { Array.from(document.querySelectorAll('button')).find((button) => button.textContent === '已有原型')?.click(); });
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [new File(['zip'], 'prototype.zip')] });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await act(async () => { dialog.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    expect(errorToast).toHaveBeenCalledWith('请选择发布版本');
+    expect(api.createPrototypeImport).not.toHaveBeenCalled();
+    expect(dialog.querySelector('a[href="/projects/project-1"]')).toBeTruthy();
+    expect(input.files?.[0]?.name).toBe('prototype.zip');
   });
 
   it('上传中阻止重复提交与关闭弹窗', async () => {

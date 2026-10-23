@@ -235,6 +235,11 @@ export function RequirementsPage() {
       return;
     }
 
+    if (!createDraft.versionId) {
+      toast.error('请选择发布版本');
+      return;
+    }
+
     if (createMode === 'prototype') {
       if (prototypeInFlight.current) return;
       if (!prototypeFile || !/\.zip$/i.test(prototypeFile.name) || prototypeFile.size > 20 * 1024 * 1024) {
@@ -245,7 +250,7 @@ export function RequirementsPage() {
       setPrototypeSubmitting(true);
       setPrototypeError(null);
       try {
-        const imported = await api.createPrototypeImport({ projectId: createDraft.projectId, goal: prototypeGoal.trim(), aiProvider: prototypeProvider }, prototypeFile);
+        const imported = await api.createPrototypeImport({ projectId: createDraft.projectId, versionId: createDraft.versionId, goal: prototypeGoal.trim(), aiProvider: prototypeProvider }, prototypeFile);
         navigate(`/requirements/${imported.requirementId}?importing=1`);
       } catch (error) {
         setPrototypeError(error instanceof Error ? error.message : '上传原型失败，请重试');
@@ -258,11 +263,6 @@ export function RequirementsPage() {
 
     if (!createDraft.title.trim()) {
       toast.error('请填写需求标题');
-      return;
-    }
-
-    if (!createDraft.versionId) {
-      toast.error('请选择发布版本');
       return;
     }
 
@@ -479,11 +479,11 @@ export function RequirementsPage() {
                 </SelectContent>
               </Select>
             </div>
-            {createMode === 'manual' && <>
             {createDraft.projectId ? (
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-semibold text-foreground">发布版本（必填）</label>
                 <Select
+                  key={createDraft.projectId}
                   value={createDraft.versionId}
                   onValueChange={(value) => setCreateDraft((current) => ({ ...current, versionId: value }))}
                 >
@@ -501,6 +501,7 @@ export function RequirementsPage() {
                 {!(selectedProject?.versions?.length) && <p className="text-sm text-muted-foreground">项目尚无发布版本，请先<Link className="text-primary underline" to={`/projects/${createDraft.projectId}`}>前往项目设置版本</Link>。</p>}
               </div>
             ) : null}
+            {createMode === 'manual' && <>
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-foreground" htmlFor="requirement-title">需求标题（必填）</label>
               <UiInput
