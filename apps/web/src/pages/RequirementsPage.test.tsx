@@ -279,4 +279,62 @@ describe('RequirementsPage', () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
+  it('普通创建只需标题，默认当前版本，其余内容可留空', async () => {
+    vi.mocked(api.createRequirement).mockResolvedValue(requirement);
+    await act(async () => { root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1']}><RequirementsPage /></MemoryRouter>); });
+    await act(async () => { Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '创建需求')?.click(); });
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain('2.6.0');
+    expect(dialog.textContent).not.toContain('不挂版本');
+    const title = dialog.querySelector('#requirement-title') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(title, '  快捷需求  ');
+      title.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => { dialog.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    expect(api.createRequirement).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', title: '快捷需求', versionId: 'ver-1', description: '', acceptanceCriteria: '' }));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it('普通创建无版本时提示先设置，不能提交', async () => {
+    vi.mocked(api.getProjects).mockResolvedValue([{ ...requirement.project, currentVersionId: null, currentVersion: null, versions: [] }]);
+    await act(async () => { root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1']}><RequirementsPage /></MemoryRouter>); });
+    await act(async () => { Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '创建需求')?.click(); });
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const title = dialog.querySelector('#requirement-title') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(title, '无版本需求');
+      title.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => { dialog.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    expect(api.createRequirement).not.toHaveBeenCalled();
+    expect(errorToast).toHaveBeenCalledWith('请选择发布版本');
+    expect(dialog.querySelector('a[href="/projects/project-1"]')).toBeTruthy();
+  });
+
+  it('普通创建失败后保留输入重试，提交中阻止重复请求', async () => {
+    vi.mocked(api.createRequirement).mockRejectedValueOnce(new Error('创建失败，请重试'));
+    await act(async () => { root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1']}><RequirementsPage /></MemoryRouter>); });
+    await act(async () => { Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '创建需求')?.click(); });
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const title = dialog.querySelector('#requirement-title') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(title, '保留草稿');
+      title.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const submit = () => dialog.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await act(async () => { submit(); });
+    expect(errorToast).toHaveBeenCalledWith('创建失败，请重试');
+    expect(title.value).toBe('保留草稿');
+    let resolveCreate!: (value: Requirement) => void;
+    vi.mocked(api.createRequirement).mockReturnValueOnce(new Promise((resolve) => { resolveCreate = resolve; }));
+    await act(async () => { submit(); submit(); });
+    expect(api.createRequirement).toHaveBeenCalledTimes(2);
+    expect(dialog.querySelector('button[type="submit"]')?.hasAttribute('disabled')).toBe(true);
+    await act(async () => { Array.from(dialog.querySelectorAll('button')).find((button) => button.textContent === 'Close')?.click(); });
+    expect(document.querySelector('[role="dialog"]')).toBeTruthy();
+    await act(async () => { resolveCreate(requirement); });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
 });

@@ -74,6 +74,10 @@ export class RequirementsService {
   ) {}
 
   async create(dto: CreateRequirementDto) {
+    const title = dto.title.trim();
+    if (!title) {
+      throw new BadRequestException('请填写需求标题');
+    }
     const project = await this.prisma.project.findUnique({
       where: { id: dto.projectId },
       include: {
@@ -113,12 +117,16 @@ export class RequirementsService {
       },
     });
 
+    if (!versionId) {
+      throw new BadRequestException('请选择发布版本；项目没有当前版本时，请先在项目中设置');
+    }
+
     return this.prisma.requirement.create({
       data: {
         projectId: dto.projectId,
-        title: dto.title,
-        description: dto.description,
-        acceptanceCriteria: dto.acceptanceCriteria,
+        title,
+        description: dto.description?.trim() ?? '',
+        acceptanceCriteria: dto.acceptanceCriteria?.trim() ?? '',
         workspaceId: project.workspaceId,
         versionId,
         requirementRepositories:

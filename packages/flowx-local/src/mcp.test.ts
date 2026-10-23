@@ -524,7 +524,7 @@ describe('flowx-local MCP server', () => {
     await server.close();
   });
 
-  it('forwards versionId including null on create_requirement', async () => {
+  it('creates a requirement with only title and version, rejecting explicit null', async () => {
     const homeDir = makeHome();
     delete process.env.FLOWX_API_TOKEN;
     await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
@@ -532,8 +532,8 @@ describe('flowx-local MCP server', () => {
       const url = String(input);
       if (url.endsWith('/requirements') && init?.method === 'POST') {
         const body = JSON.parse(String(init.body));
-        expect(body.versionId).toBeNull();
-        return new Response(JSON.stringify({ id: 'req_1', title: body.title, versionId: null }), { status: 201 });
+        expect(body).toEqual({ projectId: 'proj_1', title: '本地发起', versionId: 'ver-1' });
+        return new Response(JSON.stringify({ id: 'req_1', title: body.title, versionId: body.versionId }), { status: 201 });
       }
       throw new Error(`unexpected url: ${url}`);
     });
@@ -545,12 +545,13 @@ describe('flowx-local MCP server', () => {
       arguments: {
         projectId: 'proj_1',
         title: '本地发起',
-        description: '描述',
-        acceptanceCriteria: '可在列表看到该需求',
-        versionId: null,
+        versionId: 'ver-1',
       },
     });
     expect(created.isError).toBeUndefined();
+    const invalid = await client.callTool({ name: 'flowx_create_requirement', arguments: { projectId: 'proj_1', title: '无版本', versionId: null } });
+    expect(invalid.isError).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
 
     await client.close();
     await server.close();

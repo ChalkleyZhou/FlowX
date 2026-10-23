@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { PageHeader } from '../components/PageHeader';
@@ -9,6 +9,8 @@ import { SectionHeader } from '../components/SectionHeader';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Input } from '../components/ui/input';
 import {
   Select,
   SelectContent,
@@ -18,7 +20,7 @@ import {
 } from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
-import type { Project } from '../types';
+import type { Project, ProjectVersionSummary } from '../types';
 import { formatAssignmentSummary, formatScheduleRange } from '../utils/business-days';
 import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
 
@@ -28,6 +30,36 @@ export function ProjectDetailPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
   const [versionFilter, setVersionFilter] = useState('__all__');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createTitle, setCreateTitle] = useState('');
+  const [createVersion, setCreateVersion] = useState<ProjectVersionSummary | null>(null);
+  const [creating, setCreating] = useState(false);
+  const createInFlight = useRef(false);
+
+  async function createRequirement(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (createInFlight.current || !projectId || !createVersion) return;
+    const title = createTitle.trim();
+    if (!title) {
+      toast.error('请填写需求标题');
+      return;
+    }
+    createInFlight.current = true;
+    setCreating(true);
+    try {
+      await api.createRequirement({ projectId, title, versionId: createVersion.id });
+      setCreateOpen(false);
+      setCreateTitle('');
+      setVersionFilter(createVersion.id);
+      await refresh();
+      toast.success('需求创建成功');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '创建需求失败');
+    } finally {
+      createInFlight.current = false;
+      setCreating(false);
+    }
+  }
 
   async function refresh() {
     if (!projectId) {
@@ -76,13 +108,38 @@ export function ProjectDetailPage() {
 
   return (
     <>
+      <Dialog open={createOpen} onOpenChange={(open) => { if (!createInFlight.current) setCreateOpen(open); }}>
+        <DialogContent onEscapeKeyDown={(event) => { if (creating) event.preventDefault(); }} onPointerDownOutside={(event) => { if (creating) event.preventDefault(); }}>
+          <DialogHeader>
+            <DialogTitle>新建需求</DialogTitle>
+            <DialogDescription>
+              {createVersion ? `${project.name} · 当前版本 ${createVersion.name}。填写标题即可，描述与验收标准可在后续构思中完善。` : '请先设置项目当前版本，再快速新建需求。'}
+            </DialogDescription>
+          </DialogHeader>
+          <form className="flex flex-col gap-4" onSubmit={(event) => void createRequirement(event)}>
+            <label className="flex flex-col gap-2 text-sm font-semibold" htmlFor="quick-requirement-title">
+              需求标题
+              <Input id="quick-requirement-title" required autoFocus value={createTitle} disabled={creating || !createVersion} onChange={(event) => setCreateTitle(event.target.value)} placeholder="例如：优化需求创建体验" />
+            </label>
+            <div className="flex justify-end gap-2">
+              {!createVersion && <Button variant="outline" asChild><a href="#project-versions" onClick={() => setCreateOpen(false)}>去设置当前版本</a></Button>}
+              <Button type="submit" disabled={creating || !createVersion}>{creating ? '创建中…' : '创建需求'}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
       <PageHeader
         eyebrow="Project"
         title={project.name}
         description={project.description?.trim() || '管理项目下的需求与人员排期。'}
         actions={(
           <div className="flex flex-wrap gap-2">
-            <Button variant="default" asChild>
+            <Button onClick={() => {
+              setCreateTitle('');
+              setCreateVersion(project.currentVersion ?? null);
+              setCreateOpen(true);
+            }}>新建需求</Button>
+            <Button variant="outline" asChild>
               <Link to={`/schedule?projectId=${projectId}`}>在排期中查看</Link>
             </Button>
             <Button variant="outline" asChild>
@@ -104,7 +161,7 @@ export function ProjectDetailPage() {
         <ProjectCodeReviewConfigPanel projectId={projectId} />
       </div>
 
-      <div className="mt-5">
+      <div id="project-versions" className="mt-5 scroll-mt-5">
         <ProjectVersionsPanel
           projectId={projectId}
           currentVersionId={project.currentVersionId}

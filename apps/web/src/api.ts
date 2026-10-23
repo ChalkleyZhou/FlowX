@@ -93,10 +93,10 @@ function buildApiUrl(path: string) {
 interface RequirementPayload {
   projectId: string;
   title: string;
-  description: string;
-  acceptanceCriteria: string;
+  description?: string;
+  acceptanceCriteria?: string;
   repositoryIds?: string[];
-  versionId?: string | null;
+  versionId?: string;
 }
 
 function queryString(params?: Record<string, string | number | undefined>) {

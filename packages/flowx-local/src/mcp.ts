@@ -826,14 +826,14 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     {
       title: 'Create FlowX Requirement',
       description:
-        'Create a requirement on FlowX only after the user explicitly asked to create/register the item in FlowX or confirmed that choice. Never interpret ordinary code changes, current-project feature work, or requirement discussion as authorization to create FlowX data. Requires projectId, title, description, acceptanceCriteria. Confirm the release version with the user first and always pass versionId (id or null); do not omit it to rely on server default.',
+        'Create a requirement on FlowX only after the user explicitly asked to create/register the item in FlowX or confirmed that choice. Never interpret ordinary code changes, current-project feature work, or requirement discussion as authorization to create FlowX data. Requires projectId and title; description and acceptanceCriteria are optional. Confirm the release version with the user first and pass a valid versionId; if omitted the server uses the project current version. A version is required and null is rejected.',
       inputSchema: z.object({
         projectId: z.string().min(1),
-        title: z.string().min(1),
-        description: z.string().min(1),
-        acceptanceCriteria: z.string().min(1),
+        title: z.string().trim().min(1),
+        description: z.string().optional(),
+        acceptanceCriteria: z.string().optional(),
         repositoryIds: z.array(z.string()).optional(),
-        versionId: z.string().min(1).nullable().optional(),
+        versionId: z.string().min(1).optional(),
       }),
     },
     async (input) => {

@@ -9,13 +9,13 @@ export class CreateRequirementDto {
   @IsNotEmpty()
   title!: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  description!: string;
+  description?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  acceptanceCriteria!: string;
+  acceptanceCriteria?: string;
 
   @IsOptional()
   @IsArray()

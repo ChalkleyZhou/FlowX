@@ -33,14 +33,13 @@ import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
 import { formatRequirementWorkflowScope, getActiveRequirementWorkflows } from '../utils/requirement-workflows';
 import { formatWorkflowStatus } from '../utils/workflow-ui';
 
-const UNVERSIONED = '__unversioned__';
 const emptyCreateDraft = {
   projectId: '',
   title: '',
   description: '',
   acceptanceCriteria: '',
   repositoryIds: [] as string[],
-  versionId: UNVERSIONED,
+  versionId: '',
 };
 
 const AI_PROVIDER_STORAGE_KEY = 'flowx-default-ai-provider';
@@ -56,6 +55,8 @@ export function RequirementsPage() {
   const [loading, setLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+  const createInFlight = useRef(false);
   const [launchModalRequirement, setLaunchModalRequirement] = useState<Requirement | null>(null);
   const [launchRepositoryIds, setLaunchRepositoryIds] = useState<string[]>([]);
   const [launchAiProvider, setLaunchAiProvider] = useState<'codex' | 'cursor'>('codex');
@@ -178,8 +179,11 @@ export function RequirementsPage() {
     description: string;
     acceptanceCriteria: string;
     repositoryIds: string[];
-    versionId: string | null;
+    versionId: string;
   }) {
+    if (createInFlight.current) return;
+    createInFlight.current = true;
+    setCreateSubmitting(true);
     try {
       await api.createRequirement(values);
       setCreateDraft(emptyCreateDraft);
@@ -189,6 +193,9 @@ export function RequirementsPage() {
       toast.success('需求创建成功');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '创建需求失败');
+    } finally {
+      createInFlight.current = false;
+      setCreateSubmitting(false);
     }
   }
 
@@ -249,8 +256,13 @@ export function RequirementsPage() {
       return;
     }
 
-    if (!createDraft.title.trim() || !createDraft.description.trim() || !createDraft.acceptanceCriteria.trim()) {
-      toast.error('请完整填写需求信息');
+    if (!createDraft.title.trim()) {
+      toast.error('请填写需求标题');
+      return;
+    }
+
+    if (!createDraft.versionId) {
+      toast.error('请选择发布版本');
       return;
     }
 
@@ -260,7 +272,7 @@ export function RequirementsPage() {
       description: createDraft.description.trim(),
       acceptanceCriteria: createDraft.acceptanceCriteria.trim(),
       repositoryIds: createDraft.repositoryIds,
-      versionId: createDraft.versionId === UNVERSIONED ? null : createDraft.versionId,
+      versionId: createDraft.versionId,
     });
   }
 
@@ -422,7 +434,7 @@ export function RequirementsPage() {
       <Dialog
         open={createModalOpen}
         onOpenChange={(open) => {
-          if (prototypeInFlight.current) return;
+          if (prototypeInFlight.current || createInFlight.current) return;
           setCreateModalOpen(open);
           if (!open) {
             setCreateDraft(emptyCreateDraft);
@@ -430,17 +442,17 @@ export function RequirementsPage() {
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto" onEscapeKeyDown={(event) => { if (prototypeSubmitting) event.preventDefault(); }} onPointerDownOutside={(event) => { if (prototypeSubmitting) event.preventDefault(); }}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto" onEscapeKeyDown={(event) => { if (prototypeSubmitting || createSubmitting) event.preventDefault(); }} onPointerDownOutside={(event) => { if (prototypeSubmitting || createSubmitting) event.preventDefault(); }}>
           <DialogHeader>
             <DialogTitle>创建需求</DialogTitle>
-            <DialogDescription>可填写需求，或上传已有原型，由 AI 整理后确认并继续研发。</DialogDescription>
+            <DialogDescription>填写标题、选择版本即可创建；也可上传已有原型，由 AI 整理。</DialogDescription>
           </DialogHeader>
           <div role="tablist" aria-label="需求创建方式" className="flex gap-2">
-            <UiButton role="tab" aria-selected={createMode === 'manual'} variant={createMode === 'manual' ? 'default' : 'outline'} disabled={prototypeSubmitting} onClick={() => setCreateMode('manual')}>普通填写</UiButton>
-            <UiButton role="tab" aria-selected={createMode === 'prototype'} variant={createMode === 'prototype' ? 'default' : 'outline'} disabled={prototypeSubmitting} onClick={() => setCreateMode('prototype')}>已有原型</UiButton>
+            <UiButton role="tab" aria-selected={createMode === 'manual'} variant={createMode === 'manual' ? 'default' : 'outline'} disabled={prototypeSubmitting || createSubmitting} onClick={() => setCreateMode('manual')}>普通填写</UiButton>
+            <UiButton role="tab" aria-selected={createMode === 'prototype'} variant={createMode === 'prototype' ? 'default' : 'outline'} disabled={prototypeSubmitting || createSubmitting} onClick={() => setCreateMode('prototype')}>已有原型</UiButton>
           </div>
           <form className="flex flex-col gap-4" onSubmit={(event) => void handleCreateRequirement(event)}>
-            <fieldset disabled={prototypeSubmitting} className="contents">
+            <fieldset disabled={prototypeSubmitting || createSubmitting} className="contents">
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-foreground">所属项目</label>
               <Select
@@ -451,7 +463,7 @@ export function RequirementsPage() {
                     ...current,
                     projectId: value,
                     repositoryIds: [],
-                    versionId: project?.currentVersionId ?? UNVERSIONED,
+                    versionId: project?.currentVersionId ?? '',
                   }));
                 }}
               >
@@ -470,16 +482,15 @@ export function RequirementsPage() {
             {createMode === 'manual' && <>
             {createDraft.projectId ? (
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-foreground">发布版本</label>
+                <label className="text-sm font-semibold text-foreground">发布版本（必填）</label>
                 <Select
                   value={createDraft.versionId}
                   onValueChange={(value) => setCreateDraft((current) => ({ ...current, versionId: value }))}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="发布版本" aria-required="true">
                     <SelectValue placeholder="选择发布版本" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={UNVERSIONED}>不挂版本</SelectItem>
                     {(selectedProject?.versions ?? []).map((version) => (
                       <SelectItem key={version.id} value={version.id}>
                         {version.name}
@@ -487,19 +498,24 @@ export function RequirementsPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {!(selectedProject?.versions?.length) && <p className="text-sm text-muted-foreground">项目尚无发布版本，请先<Link className="text-primary underline" to={`/projects/${createDraft.projectId}`}>前往项目设置版本</Link>。</p>}
               </div>
             ) : null}
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-foreground" htmlFor="requirement-title">需求标题</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="requirement-title">需求标题（必填）</label>
               <UiInput
                 id="requirement-title"
+                required
                 value={createDraft.title}
                 onChange={(event) => setCreateDraft((current) => ({ ...current, title: event.target.value }))}
                 placeholder="AI研发调度系统 MVP"
               />
             </div>
+            <details className="rounded-md border border-border p-3">
+              <summary className="cursor-pointer text-sm font-medium">补充信息（选填）</summary>
+              <div className="mt-4 flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-foreground" htmlFor="requirement-description">需求描述</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="requirement-description">需求描述（选填）</label>
               <Textarea
                 id="requirement-description"
                 rows={4}
@@ -509,7 +525,7 @@ export function RequirementsPage() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-foreground" htmlFor="requirement-acceptance">验收标准</label>
+              <label className="text-sm font-semibold text-foreground" htmlFor="requirement-acceptance">验收标准（选填）</label>
               <Textarea
                 id="requirement-acceptance"
                 rows={4}
@@ -548,6 +564,8 @@ export function RequirementsPage() {
                 <p className="text-sm leading-6 text-muted-foreground">先选择项目，再指定这条需求实际影响的仓库。</p>
               )}
             </div>
+              </div>
+            </details>
             </>}
             {createMode === 'prototype' && <>
               <label className="flex flex-col gap-2 text-sm">原型 ZIP（最大 20 MiB）
@@ -562,8 +580,8 @@ export function RequirementsPage() {
               <div className="flex flex-col gap-2 text-sm"><label>默认 AI 执行器</label><Select value={prototypeProvider} onValueChange={(value: 'codex' | 'cursor') => setPrototypeProvider(value)}><SelectTrigger aria-label="原型整理执行器"><SelectValue /></SelectTrigger><SelectContent>{availableAiProviders.map((provider) => <SelectItem key={provider.id} value={provider.id}>{provider.label}</SelectItem>)}</SelectContent></Select></div>
               {prototypeError && <p role="alert" className="text-sm text-danger">{prototypeError}</p>}
             </>}
-            <UiButton type="submit" className="mt-2" disabled={prototypeSubmitting}>
-              {createMode === 'prototype' ? prototypeSubmitting ? '上传整理中…' : '上传原型，AI 整理' : '创建需求'}
+            <UiButton type="submit" className="mt-2" disabled={prototypeSubmitting || createSubmitting}>
+              {createMode === 'prototype' ? prototypeSubmitting ? '上传整理中…' : '上传原型，AI 整理' : createSubmitting ? '创建中…' : '创建需求'}
             </UiButton>
             </fieldset>
           </form>
@@ -589,7 +607,7 @@ export function RequirementsPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <UiButton onClick={() => {
                   const project = projects.find((item) => item.id === selectedProjectId);
-                  setCreateDraft({ ...emptyCreateDraft, projectId: project?.id ?? '', versionId: project?.currentVersionId ?? UNVERSIONED });
+                  setCreateDraft({ ...emptyCreateDraft, projectId: project?.id ?? '', versionId: project?.currentVersionId ?? '' });
                   setPrototypeProvider(defaultAiProvider);
                   setCreateModalOpen(true);
                 }}>
