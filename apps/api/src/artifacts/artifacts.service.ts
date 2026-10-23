@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  forwardRef,
   Inject,
   Injectable,
   NotFoundException,
@@ -52,6 +53,7 @@ export type WorkflowArtifactRegistrationInput = ArtifactRegistrationInput & {
 export class ArtifactsService {
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => ExecutionSessionsService))
     private readonly executionSessionsService: ExecutionSessionsService,
     @Inject(ARTIFACT_STORAGE_PROVIDER)
     private readonly localStorage: ArtifactStorageProvider,

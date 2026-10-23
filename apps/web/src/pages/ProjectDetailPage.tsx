@@ -62,7 +62,7 @@ export function ProjectDetailPage() {
           projectId, title, versionId: createVersion.id,
           ...(storedProvider === 'codex' || storedProvider === 'cursor' ? { aiProvider: storedProvider } : {}),
         }, createFile);
-        navigate(`/requirements/${imported.requirementId}`);
+        navigate(`/requirements/${imported.requirementId}?importing=1`);
         return;
       }
       await api.createRequirement({ projectId, title, versionId: createVersion.id });
@@ -148,7 +148,7 @@ export function ProjectDetailPage() {
                 setCreateFile(file);
                 setCreateError(file && (!/\.zip$/i.test(file.name) || file.size > 20 * 1024 * 1024) ? '请选择不超过 20 MiB 的 ZIP 文件' : null);
               }} />
-              <p className="text-xs text-muted-foreground">最大 20 MiB。上传后进入原型与需求确认页；不上传则直接创建。</p>
+              <p className="text-xs text-muted-foreground">最大 20 MiB。上传后自动整理并接入研发流程，无需确认；不上传则直接创建。</p>
               {createFile && <Button type="button" size="sm" variant="outline" className="self-start" disabled={creating} onClick={() => {
                 setCreateFile(null); setCreateError(null);
                 if (createFileInput.current) createFileInput.current.value = '';

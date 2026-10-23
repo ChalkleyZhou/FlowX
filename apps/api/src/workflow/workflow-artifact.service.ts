@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -44,7 +44,7 @@ function sha256Hex(content: string | Buffer): string {
 export class WorkflowArtifactService {
   private readonly logger = new Logger(WorkflowArtifactService.name);
 
-  constructor(@Optional() private readonly artifactsService?: ArtifactsService) {}
+  constructor(@Optional() @Inject(forwardRef(() => ArtifactsService)) private readonly artifactsService?: ArtifactsService) {}
 
   getArtifactsRoot(workflowRunId: string): string {
     return getWorkflowArtifactsRoot(workflowRunId);

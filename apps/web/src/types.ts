@@ -1244,6 +1244,7 @@ export interface PrototypeAnalysis {
   inferences: string[];
 }
 export interface PrototypeImport {
+  workflowRunId?: string | null;
   id: string;
   requirementId: string;
   status: 'ANALYZING' | 'WAITING_CONFIRMATION' | 'FAILED' | 'CONFIRMED';

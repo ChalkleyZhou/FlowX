@@ -245,7 +245,7 @@ describe('RequirementsPage', () => {
     expect(api.createRequirement).not.toHaveBeenCalled();
     await act(async () => { upload.click(); });
     expect(api.createPrototypeImport).toHaveBeenLastCalledWith({ projectId: 'project-1', goal: '', aiProvider: 'codex' }, file);
-    expect(container.textContent).toBe('/requirements/req-import');
+    expect(container.textContent).toBe('/requirements/req-import?importing=1');
   });
 
   it('上传中阻止重复提交与关闭弹窗', async () => {
@@ -268,7 +268,7 @@ describe('RequirementsPage', () => {
     await act(async () => { resolveUpload({ requirementId: 'req-import' } as Awaited<ReturnType<typeof api.createPrototypeImport>>); });
   });
 
-  it('未确认原型在需求列表与启动深链均进入确认页', async () => {
+  it('未完成原型导入在需求列表与启动深链均查看导入进度', async () => {
     vi.mocked(api.getRequirements).mockResolvedValue([{ ...requirement, prototypeImport: { id: 'import-1', status: 'WAITING_CONFIRMATION' } }]);
     await act(async () => { root?.render(<MemoryRouter initialEntries={['/requirements?launchRequirementId=requirement-1']}><Routes>
       <Route path="/requirements" element={<RequirementsPage />} />

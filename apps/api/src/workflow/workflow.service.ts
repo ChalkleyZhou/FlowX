@@ -5,6 +5,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  forwardRef,
   Inject,
   Injectable,
   Logger,
@@ -155,7 +156,7 @@ export class WorkflowService {
     @Inject(AI_EXECUTOR_REGISTRY) private readonly aiExecutorRegistry: AIExecutorRegistry,
     private readonly workflowArtifactService: WorkflowArtifactService,
     private readonly workflowGitRemoteService: WorkflowGitRemoteService,
-    @Optional() private readonly artifactsService?: ArtifactsService,
+    @Optional() @Inject(forwardRef(() => ArtifactsService)) private readonly artifactsService?: ArtifactsService,
   ) {
     this.localCompletionCommand = new LocalCompletionCommand(
       workflowArtifactService,
@@ -329,7 +330,7 @@ export class WorkflowService {
       if (prototypeSnapshot) {
         await this.createStageExecution(tx, workflow.id, StageType.REQUIREMENT_INTAKE, {
           input: { source: 'prototype-import' }, output: prototypeSnapshot,
-          status: StageExecutionStatus.COMPLETED, statusMessage: '用户已确认导入原型与需求，使用固定版本接续研发', finishedAt: new Date(),
+          status: StageExecutionStatus.COMPLETED, statusMessage: '原型与需求已导入，使用固定版本接续研发', finishedAt: new Date(),
         });
       }
       if (selectedRepositories.length > 0) {
@@ -4737,15 +4738,15 @@ export class WorkflowService {
           if (prototypeSnapshot && importedDesignOutput) {
             await this.createStageExecution(tx, workflowId, StageType.BRAINSTORM, {
               input: { source: 'prototype-import', importId: prototypeSnapshot.importId },
-              status: StageExecutionStatus.SKIPPED, statusMessage: '已从用户原型整理并确认需求，无需重复构思', finishedAt: new Date(),
+              status: StageExecutionStatus.SKIPPED, statusMessage: '已从用户原型整理需求，无需重复构思', finishedAt: new Date(),
             });
             await this.createStageExecution(tx, workflowId, StageType.DESIGN, {
               input: { source: 'prototype-import', importId: prototypeSnapshot.importId }, output: importedDesignOutput,
-              status: StageExecutionStatus.COMPLETED, statusMessage: '复用用户已确认的原型与设计说明，未重新生成设计', finishedAt: new Date(),
+              status: StageExecutionStatus.COMPLETED, statusMessage: '复用导入原型与设计说明，未重新生成设计', finishedAt: new Date(),
             });
             await this.transitionWorkflow(tx, workflowId, WorkflowRunStatus.DESIGN_PENDING, { to: WorkflowRunStatus.SPEC_PLAN_PENDING, stage: StageType.SPEC_PLAN });
             await this.createStageExecution(tx, workflowId, StageType.SPEC_PLAN, {
-              input: { source: 'prototype-import', importId: prototypeSnapshot.importId }, status: StageExecutionStatus.PENDING, statusMessage: '需求与设计已确认，可直接生成技术方案',
+              input: { source: 'prototype-import', importId: prototypeSnapshot.importId }, status: StageExecutionStatus.PENDING, statusMessage: '需求与设计已导入，可直接生成技术方案',
             });
           } else if (localDesign) {
             await this.createStageExecution(tx, workflowId, StageType.DESIGN, {

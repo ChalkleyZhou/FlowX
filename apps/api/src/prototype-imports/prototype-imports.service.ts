@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { AI_EXECUTOR_REGISTRY, type AIExecutorRegistry } from '../ai/ai-executor';
 import { AiInvocationContextService } from '../ai/ai-invocation-context.service';
+import { WorkflowService } from '../workflow/workflow.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrototypeArchive, type PrototypeManifest } from './prototype-archive';
 import { assertPrototypeAnalysis, type PrototypeAnalysis } from './prototype-analysis';
@@ -24,7 +25,7 @@ export function confirmedPrototypeAnalysis(analysis: PrototypeAnalysis, answers:
   const description = [analysis.description, ...(clarificationText.length ? ['\n已确认业务规则：', ...clarificationText] : [])].join('\n');
   return {
     ...analysis, description,
-    brief: { ...analysis.brief, expandedDescription: description, openQuestions, assumptions: [...analysis.brief.assumptions, ...analysis.inferences] },
+    brief: { ...analysis.brief, expandedDescription: description, openQuestions: [...new Set([...analysis.brief.openQuestions, ...openQuestions])], assumptions: [...new Set([...analysis.brief.assumptions, ...analysis.inferences])] },
     design: { ...analysis.design, designRationale: [analysis.design.designRationale, ...clarificationText].join('\n') },
   };
 }
@@ -36,11 +37,13 @@ export class PrototypeImportsService implements OnModuleInit {
     private readonly prisma: PrismaService,
     @Inject(AI_EXECUTOR_REGISTRY) private readonly executors: AIExecutorRegistry,
     private readonly invocation: AiInvocationContextService,
+    private readonly workflows: WorkflowService,
   ) {}
 
   async onModuleInit() {
-    // 与当前单进程任务模型一致：重启时保留原材料和旧结果，允许显式重试。
-    await this.prisma.prototypeImport.updateMany({ where: { status: 'ANALYZING' }, data: { status: 'FAILED', errorMessage: '服务重启中断了整理，原材料已保留，请重试。' } });
+    // 当前单进程模型中，CREATED 表示仓库准备尚未结束；重启后先释放未完成流程，允许重试。
+    await this.prisma.workflowRun.updateMany({ where: { status: 'CREATED', requirement: { prototypeImport: { isNot: null } }, stageExecutions: { none: { stage: 'REPOSITORY_GROUNDING' } } }, data: { status: 'FAILED' } });
+    await this.prisma.prototypeImport.updateMany({ where: { OR: [{ status: 'ANALYZING' }, { status: 'CONFIRMED', requirement: { workflowRuns: { none: { stageExecutions: { some: { stage: 'REPOSITORY_GROUNDING' } } } } } }] }, data: { status: 'FAILED', errorMessage: '导入未完成流程接续，原材料已保留，请重试。' } });
   }
   private organization(actor?: PrototypeActor) {
     if (!actor?.user.id || !actor.organization?.id) throw new ForbiddenException('请登录并选择组织。');
@@ -61,7 +64,7 @@ export class PrototypeImportsService implements OnModuleInit {
     catch { throw new BadRequestException('无法读取原型包，请检查 ZIP 格式、文件路径与大小限制。'); }
     try {
       const record = await this.prisma.$transaction(async (tx) => {
-        const requirement = await tx.requirement.create({ data: { projectId: project.id, workspaceId: project.workspaceId, versionId, title: dto.title?.trim() || name.replace(/\.zip$/i, '') || '导入原型', description: dto.goal?.trim() || '正在根据原型整理需求', acceptanceCriteria: '待原型分析后确认' } });
+        const requirement = await tx.requirement.create({ data: { projectId: project.id, workspaceId: project.workspaceId, versionId, title: dto.title?.trim() || name.replace(/\.zip$/i, '') || '导入原型', description: dto.goal?.trim() || '正在根据原型整理需求', acceptanceCriteria: '正在根据原型整理验收标准' } });
         return tx.prototypeImport.create({ data: { id, requirementId: requirement.id, aiProvider, goal: dto.goal?.trim() || dto.title?.trim() || '', manifest: json(manifest), answers: {} } });
       });
       this.schedule(record, actor!);
@@ -71,7 +74,11 @@ export class PrototypeImportsService implements OnModuleInit {
       throw error;
     }
   }
-  async get(id: string, actor?: PrototypeActor) { return this.view(await this.owned(id, actor)); }
+  async get(id: string, actor?: PrototypeActor) {
+    const record = await this.owned(id, actor);
+    const workflow = record.status === 'CONFIRMED' ? await this.prisma.workflowRun.findFirst({ where: { requirementId: record.requirementId, stageExecutions: { some: { stage: 'REPOSITORY_GROUNDING' } } }, orderBy: { createdAt: 'desc' }, select: { id: true } }) : null;
+    return { ...this.view(record), workflowRunId: workflow?.id ?? null };
+  }
   private async owned(id: string, actor?: PrototypeActor) {
     const organizationId = this.organization(actor);
     const record = await this.prisma.prototypeImport.findFirst({ where: { id, requirement: { project: { workspace: { organizationId } } } } });
@@ -110,17 +117,18 @@ export class PrototypeImportsService implements OnModuleInit {
     const record = await this.owned(id, actor);
     this.assertEditable(record, dto.revision);
     const draft = record.analysis || dto.analysis ? this.validated(record, dto) : null;
-    const claimed = await this.prisma.prototypeImport.updateMany({ where: { id, revision: dto.revision, status: record.status }, data: { status: 'ANALYZING', revision: { increment: 1 }, errorMessage: null, ...(draft ? { analysis: json(draft.analysis), answers: draft.answers } : {}) } });
+    const reuseAnalysis = (record.status === 'WAITING_CONFIRMATION' || (record.status === 'FAILED' && !!record.confirmedAt)) && !dto.feedback && !dto.analysis && !dto.answers;
+    const claimed = await this.prisma.prototypeImport.updateMany({ where: { id, revision: dto.revision, status: record.status }, data: { status: 'ANALYZING', revision: { increment: 1 }, errorMessage: null, ...(!reuseAnalysis ? { confirmedAt: null, confirmedBy: null } : {}), ...(draft ? { analysis: json(draft.analysis), answers: draft.answers } : {}) } });
     if (claimed.count !== 1) throw new ConflictException('整理已开始，请刷新。');
     const next = await this.owned(id, actor);
-    this.schedule(next, actor!, dto.feedback);
+    this.schedule(next, actor!, dto.feedback, reuseAnalysis);
     return this.view(next);
   }
   async supplement(id: string, dto: PrototypeRevisionDto, zip: Buffer, name: string, actor?: PrototypeActor) {
     const record = await this.owned(id, actor);
     this.assertEditable(record, dto.revision);
     const materialRevision = dto.revision + 1;
-    const claimed = await this.prisma.prototypeImport.updateMany({ where: { id, revision: dto.revision, status: record.status }, data: { status: 'ANALYZING', revision: { increment: 1 }, errorMessage: null } });
+    const claimed = await this.prisma.prototypeImport.updateMany({ where: { id, revision: dto.revision, status: record.status }, data: { status: 'ANALYZING', revision: { increment: 1 }, errorMessage: null, confirmedAt: null, confirmedBy: null } });
     if (claimed.count !== 1) throw new ConflictException('材料已变化，请刷新。');
     try {
       const manifest = await this.archive.save(id, materialRevision, zip, name, record.materialRevision);
@@ -166,25 +174,42 @@ export class PrototypeImportsService implements OnModuleInit {
     if (!target || !sources.some((source) => source.revision === target)) throw new NotFoundException('原始包不存在。');
     return this.archive.download(id, target);
   }
-  private schedule(record: Awaited<ReturnType<PrototypeImportsService['owned']>>, actor: PrototypeActor, feedback?: string) {
-    setTimeout(() => { void this.runAnalysis(record, actor, feedback).catch(() => undefined); }, 0);
+  private schedule(record: Awaited<ReturnType<PrototypeImportsService['owned']>>, actor: PrototypeActor, feedback?: string, reuseAnalysis = false) {
+    setTimeout(() => { void this.runAnalysis(record, actor, feedback, reuseAnalysis).catch(() => undefined); }, 0);
   }
-  private async runAnalysis(record: Awaited<ReturnType<PrototypeImportsService['owned']>>, actor: PrototypeActor, feedback?: string) {
+  private async runAnalysis(record: Awaited<ReturnType<PrototypeImportsService['owned']>>, actor: PrototypeActor, feedback?: string, reuseAnalysis = false) {
+    let failureRevision = record.revision;
+    let failureStatus: 'ANALYZING' | 'CONFIRMED' = 'ANALYZING';
     try {
       const executor = this.executors.get(this.invocation.normalizeAiProvider(record.aiProvider));
       if (!executor.analyzePrototype) throw new Error('PROTOTYPE_ANALYSIS_UNAVAILABLE');
-      const material = await this.archive.context(record.id, record.materialRevision);
+      const material = reuseAnalysis ? '' : await this.archive.context(record.id, record.materialRevision);
       const context = await this.invocation.resolveInvocationContext(record.aiProvider, { flowxUserId: actor.user.id, displayName: actor.user.displayName, flowxOrganizationId: actor.organization!.id });
       const previous = record.analysis ? assertPrototypeAnalysis(record.analysis) : undefined;
-      const raw = await executor.analyzePrototype({ goal: record.goal, material, previous, feedback, answers: (record.answers ?? {}) as Record<string, string> }, context);
+      const raw = reuseAnalysis && previous ? previous : await executor.analyzePrototype({ goal: record.goal, material, previous, feedback, answers: (record.answers ?? {}) as Record<string, string> }, context);
       const manifest = record.manifest as unknown as PrototypeManifest;
       const analysis = assertPrototypeAnalysis(raw, manifest.files.map((file) => file.path));
       const oldAnswers = (record.answers ?? {}) as Record<string, string>;
       // 只有问题 ID 和正文都相同才沿用旧答案，避免 AI 复用 ID 后把回答套到另一个问题。
       const answers = Object.fromEntries(analysis.clarifications.filter((item) => previous?.clarifications.some((old) => old.id === item.id && old.question === item.question) && oldAnswers[item.id]).map((item) => [item.id, oldAnswers[item.id]]));
-      await this.prisma.prototypeImport.updateMany({ where: { id: record.id, revision: record.revision, status: 'ANALYZING' }, data: { status: 'WAITING_CONFIRMATION', analysis: json(analysis), answers, errorMessage: null } });
+      const imported = reuseAnalysis && record.confirmedAt ? analysis : confirmedPrototypeAnalysis(analysis, answers);
+      assertPrototypeAnalysis(imported);
+      const applied = await this.prisma.$transaction(async (tx) => {
+        const changed = await tx.prototypeImport.updateMany({ where: { id: record.id, revision: record.revision, status: 'ANALYZING' }, data: { status: 'CONFIRMED', revision: { increment: 1 }, analysis: json(imported), answers, errorMessage: null, confirmedBy: null, confirmedAt: new Date() } });
+        if (changed.count !== 1) return false;
+        await tx.requirement.update({ where: { id: record.requirementId }, data: { title: imported.title, description: imported.description, acceptanceCriteria: imported.acceptanceCriteria.map((text) => `- ${text}`).join('\n'), ideationStatus: 'FINALIZED' } });
+        // 失败重试复用同一需求，替换导入产物而不是不断追加副本。
+        await tx.ideationArtifact.deleteMany({ where: { requirementId: record.requirementId, type: { in: ['BRAINSTORM_BRIEF', 'DESIGN_SPEC'] } } });
+        await tx.ideationArtifact.createMany({ data: [{ requirementId: record.requirementId, type: 'BRAINSTORM_BRIEF', content: json(imported.brief) }, { requirementId: record.requirementId, type: 'DESIGN_SPEC', content: json(imported.design) }] });
+        return true;
+      });
+      if (!applied) return;
+      failureRevision += 1;
+      failureStatus = 'CONFIRMED';
+      const existing = await this.prisma.workflowRun.findFirst({ where: { requirementId: record.requirementId, status: { notIn: ['DONE', 'FAILED'] } } });
+      if (!existing) await this.workflows.createWorkflowRun({ requirementId: record.requirementId, aiProvider: this.invocation.normalizeAiProvider(record.aiProvider) });
     } catch {
-      await this.prisma.prototypeImport.updateMany({ where: { id: record.id, revision: record.revision, status: 'ANALYZING' }, data: { status: 'FAILED', errorMessage: 'AI 整理未完成，材料和已有草稿已保留。请检查组织 AI 配置后重试，或补充更完整的原型包。' } });
+      await this.prisma.prototypeImport.updateMany({ where: { id: record.id, revision: failureRevision, status: failureStatus }, data: { status: 'FAILED', errorMessage: failureStatus === 'CONFIRMED' ? '原型已整理，但接入研发流程失败。请检查项目工作区的代码仓库与访问配置后重试，材料已保留。' : 'AI 整理失败，原材料已保留。请检查组织 AI 配置后重试，或上传更完整的原型包。' } });
     }
   }
 }

@@ -246,7 +246,7 @@ export function RequirementsPage() {
       setPrototypeError(null);
       try {
         const imported = await api.createPrototypeImport({ projectId: createDraft.projectId, goal: prototypeGoal.trim(), aiProvider: prototypeProvider }, prototypeFile);
-        navigate(`/requirements/${imported.requirementId}`);
+        navigate(`/requirements/${imported.requirementId}?importing=1`);
       } catch (error) {
         setPrototypeError(error instanceof Error ? error.message : '上传原型失败，请重试');
       } finally {
@@ -575,7 +575,7 @@ export function RequirementsPage() {
                   setPrototypeError(file && (!/\.zip$/i.test(file.name) || file.size > 20 * 1024 * 1024) ? '请选择不超过 20 MiB 的 ZIP 文件' : null);
                 }} />
               </label>
-              <p className="text-xs text-muted-foreground">上传 HTML 原型、图片、说明或源码。AI 整理需求并提出必要问题，确认后进入技术方案阶段。</p>
+              <p className="text-xs text-muted-foreground">上传 HTML 原型、图片、说明或源码。AI 自动整理需求与设计并接入研发流程，无需逐项确认。</p>
               <label className="flex flex-col gap-2 text-sm">一句话目标（可选）<Textarea aria-label="一句话目标" value={prototypeGoal} onChange={(event) => setPrototypeGoal(event.target.value)} /></label>
               <div className="flex flex-col gap-2 text-sm"><label>默认 AI 执行器</label><Select value={prototypeProvider} onValueChange={(value: 'codex' | 'cursor') => setPrototypeProvider(value)}><SelectTrigger aria-label="原型整理执行器"><SelectValue /></SelectTrigger><SelectContent>{availableAiProviders.map((provider) => <SelectItem key={provider.id} value={provider.id}>{provider.label}</SelectItem>)}</SelectContent></Select></div>
               {prototypeError && <p role="alert" className="text-sm text-danger">{prototypeError}</p>}
@@ -698,7 +698,7 @@ export function RequirementsPage() {
                       <Badge variant="outline">{formatPlanningStatus(item.planningStatus)}</Badge>
                       <Badge variant="outline">{formatPriority(item.priority)}</Badge>
                       {item.prototypeImport && item.prototypeImport.status !== 'CONFIRMED' ? (
-                        <Badge variant="warning">待确认原型</Badge>
+                        <Badge variant="warning">{item.prototypeImport.status === 'FAILED' ? '导入失败' : '原型导入中'}</Badge>
                       ) : null}
                     </>
                   }
@@ -721,7 +721,7 @@ export function RequirementsPage() {
                           setLaunchRepositoryIds([]);
                         }}
                       >
-                        {item.prototypeImport && item.prototypeImport.status !== 'CONFIRMED' ? '确认原型' : '启动工作流'}
+                        {item.prototypeImport && item.prototypeImport.status !== 'CONFIRMED' ? '查看导入' : '启动工作流'}
                       </UiButton>
                       <UiButton variant="outline" onClick={() => navigate(`/workflow-runs?requirementId=${item.id}`)}>
                         查看流程

@@ -40,7 +40,7 @@ beforeAll(async () => {
   workspace = (await prisma.workspace.create({ data: { name: '工作区', organizationId: org } })).id;
   project = (await prisma.project.create({ data: { name: '项目', workspaceId: workspace } })).id;
   const requirements = { create: async (dto: { title: string; description: string; acceptanceCriteria: string; projectId: string }) => prisma.requirement.create({ data: { ...dto, workspaceId: workspace } }) };
-  service = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveInvocationContext: async () => ({}) } as never);
+  service = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: async () => { throw new Error('仓库未配置'); } } as never);
   Object.assign(service, { archive });
   app = await NestFactory.create(TestModule, { logger: false });
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
@@ -50,7 +50,10 @@ beforeAll(async () => {
 afterAll(async () => { await app?.close(); await prisma.$disconnect(); rmSync(directory, { recursive: true, force: true }); });
 async function create() {
   const result = await service.create({ projectId: project, goal: '管理事项' }, Buffer.from('zip'), 'prototype.zip', actor());
-  await vi.waitFor(async () => expect((await service.get(result.id, actor())).status).toBe('WAITING_CONFIRMATION'));
+  await vi.waitFor(async () => expect((await service.get(result.id, actor())).status).not.toBe('ANALYZING'));
+  await prisma.ideationArtifact.deleteMany({ where: { requirementId: result.requirementId } });
+  // 旧确认接口的兼容性测试使用显式旧记录。
+  await prisma.prototypeImport.update({ where: { id: result.id }, data: { status: 'WAITING_CONFIRMATION', analysis: JSON.parse(JSON.stringify(analysis)), errorMessage: null, confirmedAt: null, confirmedBy: null } });
   return service.get(result.id, actor());
 }
 describe('原型导入到确认', () => {
@@ -81,7 +84,7 @@ describe('原型导入到确认', () => {
     const result = await response.json() as { id: string; requirementId: string };
     expect(await prisma.requirement.findUniqueOrThrow({ where: { id: result.requirementId } })).toMatchObject({ title: '原型快捷标题', versionId: selected.id });
     expect((await service.get(result.id, actor())).goal).toBe('原型快捷标题');
-    await vi.waitFor(async () => expect((await service.get(result.id, actor())).status).toBe('WAITING_CONFIRMATION'));
+    await vi.waitFor(async () => expect((await service.get(result.id, actor())).status).not.toBe('ANALYZING'));
     await prisma.project.update({ where: { id: project }, data: { currentVersionId: null } });
   });
 
@@ -138,7 +141,7 @@ describe('原型导入到确认', () => {
     expect(failed.analysis).toEqual(analysis);
     expect(failed.errorMessage).not.toContain('secret');
     const supplemented = await service.supplement(result.id, { revision: running.revision }, Buffer.from('newzip'), 'more.zip', actor());
-    await vi.waitFor(async () => expect((await service.get(result.id, actor())).status).toBe('WAITING_CONFIRMATION'));
+    await vi.waitFor(async () => expect((await service.get(result.id, actor())).status).not.toBe('ANALYZING'));
     expect(supplemented.materialRevision).toBeGreaterThan(result.materialRevision);
     expect(archive.save).toHaveBeenLastCalledWith(result.id, supplemented.materialRevision, expect.any(Buffer), 'more.zip', result.materialRevision);
   });
@@ -162,7 +165,7 @@ describe('原型确认后的真实工作流接续', () => {
   it('未确认时API也不可启动；确认后无仓库不重复确认', async () => {
     const result = await create();
     const workflow = workflowService();
-    await expect(workflow.createWorkflowRun({ requirementId: result.requirementId })).rejects.toThrow(/确认/);
+    await expect(workflow.createWorkflowRun({ requirementId: result.requirementId })).rejects.toThrow(/导入/);
     await service.confirm(result.id, { revision: result.revision, answers: { permission: '创建人' } }, actor());
     await expect(workflow.createWorkflowRun({ requirementId: result.requirementId })).rejects.toThrow(/仓库/);
     expect((await service.get(result.id, actor())).status).toBe('CONFIRMED');
@@ -175,7 +178,7 @@ describe('原型确认后的真实工作流接续', () => {
     const workflow = await workflowService().createWorkflowRun({ requirementId: result.requirementId });
     await vi.waitFor(async () => expect((await prisma.workflowRun.findUniqueOrThrow({ where: { id: workflow.id } })).status).toBe('SPEC_PLAN_PENDING'));
     const stages = await prisma.stageExecution.findMany({ where: { workflowRunId: workflow.id } });
-    expect(stages.find((stage) => stage.stage === 'REQUIREMENT_INTAKE')?.output).toMatchObject({ source: 'prototype-import', importId: result.id, revision: 2 });
+    expect(stages.find((stage) => stage.stage === 'REQUIREMENT_INTAKE')?.output).toMatchObject({ source: 'prototype-import', importId: result.id, revision: result.revision + 1 });
     expect(stages.find((stage) => stage.stage === 'BRAINSTORM')?.status).toBe('SKIPPED');
     expect(stages.find((stage) => stage.stage === 'DESIGN')).toMatchObject({ status: 'COMPLETED', output: { design: { overview: analysis.design.overview, designRationale: expect.stringContaining('创建人') }, source: 'prototype-import' } });
     expect(stages.find((stage) => stage.stage === 'SPEC_PLAN')?.status).toBe('PENDING');
@@ -191,7 +194,7 @@ describe('原型导入 HTTP 边界', () => {
     const response = await fetch(`${baseUrl}/prototype-imports`, { method: 'POST', headers: { 'x-org-id': org }, body: form() });
     expect(response.status).toBe(201);
     const result = await response.json() as { id: string };
-    await vi.waitFor(async () => expect((await service.get(result.id, actor())).status).toBe('WAITING_CONFIRMATION'));
+    await vi.waitFor(async () => expect((await service.get(result.id, actor())).status).not.toBe('ANALYZING'));
     expect((await fetch(`${baseUrl}/prototype-imports/${result.id}/preview?path=index.html`, { headers: { 'x-org-id': 'other' } })).status).toBe(404);
   });
   it('拒绝缺少文件、无效revision和非法答案格式', async () => {
@@ -201,5 +204,100 @@ describe('原型导入 HTTP 边界', () => {
     for (const input of [{ revision: 0 }, { revision: result.revision, answers: 'bad' }]) {
       expect((await fetch(`${baseUrl}/prototype-imports/${result.id}/confirm`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-org-id': org }, body: JSON.stringify(input) })).status).toBe(400);
     }
+  });
+});
+
+
+describe('快速导入自动接续', () => {
+  it('补传新材料分析失败后，重试必须重新分析新包，不能套用旧结果', async () => {
+    const start = vi.fn().mockRejectedValue(new Error('仓库暂不可用'));
+    const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: start } as never);
+    Object.assign(automatic, { archive });
+    const imported = await automatic.create({ projectId: project }, Buffer.from('zip'), 'old.zip', actor());
+    await vi.waitFor(async () => expect((await automatic.get(imported.id, actor())).status).toBe('FAILED'));
+    const failed = await automatic.get(imported.id, actor());
+    executor.analyzePrototype.mockRejectedValueOnce(new Error('新材料整理失败'));
+    await automatic.supplement(imported.id, { revision: failed.revision }, Buffer.from('new'), 'new.zip', actor());
+    await vi.waitFor(async () => expect((await automatic.get(imported.id, actor())).status).toBe('FAILED'));
+    const newFailure = await automatic.get(imported.id, actor());
+    const calls = executor.analyzePrototype.mock.calls.length;
+    executor.analyzePrototype.mockResolvedValueOnce({ ...structuredClone(analysis), title: '新材料结果' });
+    await automatic.analyze(imported.id, { revision: newFailure.revision }, actor());
+    await vi.waitFor(async () => expect((await automatic.get(imported.id, actor())).analysis?.title).toBe('新材料结果'));
+    expect(executor.analyzePrototype).toHaveBeenCalledTimes(calls + 1);
+    await vi.waitFor(async () => expect((await automatic.get(imported.id, actor())).status).toBe('FAILED'));
+  });
+
+  it('仓库准备时重启，清理未完成的 CREATED 后可重新接入，不永久等待', async () => {
+    const imported = await create();
+    await prisma.prototypeImport.update({ where: { id: imported.id }, data: { status: 'CONFIRMED', confirmedAt: new Date() } });
+    const incomplete = await prisma.workflowRun.create({ data: { requirementId: imported.requirementId, status: 'CREATED' } });
+    const start = vi.fn(async (dto: { requirementId: string }) => prisma.workflowRun.create({ data: { requirementId: dto.requirementId, status: 'REPOSITORY_GROUNDING_PENDING', stageExecutions: { create: { stage: 'REPOSITORY_GROUNDING', status: 'RUNNING', attempt: 1 } } } }));
+    const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: start } as never);
+    Object.assign(automatic, { archive });
+    await automatic.onModuleInit();
+    expect((await prisma.workflowRun.findUniqueOrThrow({ where: { id: incomplete.id } })).status).toBe('FAILED');
+    const failed = await automatic.get(imported.id, actor());
+    expect(failed.status).toBe('FAILED');
+    await automatic.analyze(imported.id, { revision: failed.revision }, actor());
+    await vi.waitFor(async () => expect(await automatic.get(imported.id, actor())).toMatchObject({ status: 'CONFIRMED', workflowRunId: expect.any(String) }));
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it('接续失败明确报错，重试复用整理结果且只保留一份产物', async () => {
+    const start = vi.fn();
+    start.mockRejectedValueOnce(new Error('secret repository credential')).mockImplementationOnce(async (dto: { requirementId: string }) => prisma.workflowRun.create({ data: { requirementId: dto.requirementId, status: 'REPOSITORY_GROUNDING_PENDING', stageExecutions: { create: { stage: 'REPOSITORY_GROUNDING', status: 'RUNNING', attempt: 1 } } } }));
+    const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: start } as never);
+    Object.assign(automatic, { archive });
+    const imported = await automatic.create({ projectId: project }, Buffer.from('zip'), 'retry.zip', actor());
+    await vi.waitFor(async () => expect((await automatic.get(imported.id, actor())).status).toBe('FAILED'));
+    const failed = await automatic.get(imported.id, actor());
+    expect(failed.workflowRunId).toBeNull();
+    expect(failed.errorMessage).toContain('接入研发流程失败');
+    expect(failed.errorMessage).not.toContain('secret');
+    const calls = executor.analyzePrototype.mock.calls.length;
+    await automatic.analyze(imported.id, { revision: failed.revision }, actor());
+    await vi.waitFor(async () => expect(await automatic.get(imported.id, actor())).toMatchObject({ status: 'CONFIRMED', workflowRunId: expect.any(String) }));
+    expect(executor.analyzePrototype).toHaveBeenCalledTimes(calls);
+    expect(await prisma.ideationArtifact.count({ where: { requirementId: imported.requirementId } })).toBe(2);
+    expect(await prisma.workflowRun.count({ where: { requirementId: imported.requirementId } })).toBe(1);
+  });
+
+  it('旧等待确认记录接续复用已保存的整理，不再请求用户或重跑 AI', async () => {
+    const imported = await create();
+    const start = vi.fn(async (dto: { requirementId: string }) => prisma.workflowRun.create({ data: { requirementId: dto.requirementId, status: 'REPOSITORY_GROUNDING_PENDING', stageExecutions: { create: { stage: 'REPOSITORY_GROUNDING', status: 'RUNNING', attempt: 1 } } } }));
+    const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: start } as never);
+    Object.assign(automatic, { archive });
+    const calls = executor.analyzePrototype.mock.calls.length;
+    await automatic.analyze(imported.id, { revision: imported.revision }, actor());
+    await vi.waitFor(async () => expect(await automatic.get(imported.id, actor())).toMatchObject({ status: 'CONFIRMED', workflowRunId: expect.any(String) }));
+    expect(executor.analyzePrototype).toHaveBeenCalledTimes(calls);
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it('无需回答关键问题，成功自动落库并接入真实工作流，未回答内容保留为待澄清', async () => {
+    const workflow = new WorkflowService(prisma as never, new WorkflowStateMachine(), {
+      syncWorkspaceRepositories: async () => undefined,
+      prepareWorkflowRepositories: async () => undefined,
+      generateWorkflowRepositoryGrounding: async () => undefined,
+      buildWorkflowRepositoryPath: () => '/tmp/flowx-prototype-test',
+    } as never, {} as never, { normalizeAiProvider: () => 'codex' } as never, {} as never, {} as never, {} as never);
+    const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveInvocationContext: async () => ({}) } as never, workflow);
+    Object.assign(automatic, { archive });
+    const surfaces = vi.spyOn(PrototypeArchive.prototype, 'surfaces').mockResolvedValue([]);
+    try {
+      const imported = await automatic.create({ projectId: project }, Buffer.from('zip'), 'auto.zip', actor());
+      await vi.waitFor(async () => expect(await automatic.get(imported.id, actor())).toMatchObject({ status: 'CONFIRMED', workflowRunId: expect.any(String) }));
+      const completed = await automatic.get(imported.id, actor());
+      expect(completed.confirmedBy).toBeNull();
+      expect(completed.answers).toEqual({});
+      expect(completed.analysis?.brief.openQuestions).toContain('谁可以删除事项？');
+      const req = await prisma.requirement.findUniqueOrThrow({ where: { id: imported.requirementId }, include: { ideationArtifacts: true, workflowRuns: true } });
+      expect(req.ideationStatus).toBe('FINALIZED');
+      expect(req.ideationArtifacts).toHaveLength(2);
+      expect(req.workflowRuns).toHaveLength(1);
+      await vi.waitFor(async () => expect((await prisma.workflowRun.findUniqueOrThrow({ where: { id: req.workflowRuns[0].id } })).status).toBe('SPEC_PLAN_PENDING'));
+      await expect(automatic.analyze(imported.id, { revision: completed.revision }, actor())).rejects.toMatchObject({ status: 409 });
+    } finally { surfaces.mockRestore(); }
   });
 });

@@ -61,7 +61,7 @@ flowchart LR
 | `workspaces` | 工作区、Repository 登记、同步和本地副本 | 项目管理中心 / AI 上下文中心 |
 | `projects` | 项目基础信息、发布版本清单与当前版本 | 项目管理中心 |
 | `requirements` | 需求、ideation 与设计编排 | 项目管理中心 / 研发流程中心 |
-| `prototype-imports` | 原型 ZIP 私有存储、AI 整理、草稿版本与一次确认 | 项目管理中心 / 研发流程中心 |
+| `prototype-imports` | 原型 ZIP 私有存储、AI 整理、自动落库与流程接续 | 项目管理中心 / 研发流程中心 |
 | `workflow` | 工作流状态机、阶段执行、本地/云端执行和审查 | 研发流程中心 |
 | `ai`、`prompts` | Executor、Prompt 和输出 schema | AI 上下文中心 |
 | `schedule` | 需求排期与成员分配 | 项目管理中心 |
@@ -79,7 +79,7 @@ flowchart LR
 
 `POST /requirements` 由 `projectId` 指定归属，业务必填为非空白 `title` 和有效发布版本。`description`、`acceptanceCriteria` 选填，省略或为空时保存为空字符串；字符串统一去除首尾空白。显式 `versionId` 必须属于该项目；省略时兼容使用项目当前版本，显式 `null` 或没有当前版本返回 400，不创建无版本普通需求。历史记录、更新接口的版本清空语义和原型导入草稿契约保持兼容。
 
-Web 普通表单默认当前版本、折叠选填字段；项目详情快捷弹窗只输入标题，并显式提交弹窗显示的当前版本 ID，成功刷新并筛选到该版本。快捷弹窗另支持选传原型 ZIP，复用 `POST /prototype-imports` 与既有确认页，显式提交标题和显示版本；不先创建普通需求。导入接口可选 `title`、`versionId`，校验版本归属后再保存材料，省略版本保持原导入行为。没有当前版本时引导版本管理。两入口均防重复提交，失败保留输入。本地 MCP 同步允许省略描述和验收标准，拒绝显式空版本；Skill 不再生成占位验收内容。
+Web 普通表单默认当前版本、折叠选填字段；项目详情快捷弹窗只输入标题，并显式提交弹窗显示的当前版本 ID，成功刷新并筛选到该版本。快捷弹窗另支持选传原型 ZIP，复用 `POST /prototype-imports` 与自动导入状态页，显式提交标题和显示版本；不先创建普通需求。导入接口可选 `title`、`versionId`，校验版本归属后再保存材料，省略版本保持原导入行为。没有当前版本时引导版本管理。两入口均防重复提交，失败保留输入。本地 MCP 同步允许省略描述和验收标准，拒绝显式空版本；Skill 不再生成占位验收内容。
 
 ### 3.2 前端
 
@@ -135,13 +135,13 @@ Workspace
 
 `POST /workflow-runs/:id/design/submit-local` 仅供尚未使用本地设计会话的旧集成使用，必须提供登录身份并记录产物和阶段执行人、锁定工作流版本。流程一旦存在本地设计会话，该兼容入口返回 `409` 并引导当前会话的专用回传，避免已取消任务绕过晚到结果校验。
 
-### 原型 ZIP 导入与确认快照
+### 原型 ZIP 自动导入与流程快照
 
-`PrototypeImport` 与 Requirement 一对一关联，保存 `ANALYZING / WAITING_CONFIRMATION / FAILED / CONFIRMED` 状态、CAS `revision`、独立材料版本 `materialRevision`、文件清单、AI 分析、答案及确认人/时间。所有读取、下载、预览和写入经需求项目的 Workspace 校验组织。上传先私有保存原包，再事务创建临时需求；异步分析采用现有 AI invocation 的组织凭据上下文。当前任务为单进程后台执行，重启将分析中记录标为可重试失败，保留材料。
+`PrototypeImport` 与 Requirement 一对一关联，保留 `ANALYZING / WAITING_CONFIRMATION / FAILED / CONFIRMED` 状态、CAS `revision`、独立材料版本、文件清单、分析及历史答案。所有访问经需求项目的 Workspace 校验组织。上传私有保存原包，事务创建需求，后台通过现有 AI invocation 组织凭据整理。新导入不经过人工确认；历史等待确认记录打开后自动接续。
 
-Codex / Cursor 的 `analyzePrototype` 共用 `prototype-analysis.output.schema.json`，运行时按同一 schema 校验需求、简报、设计、澄清、来源与推断。分析上下文整体有界，材料被标记为非指令，来源路径必须属于材料清单；不支持的 executor 明确失败。图片未做视觉理解、PDF/Word 未提取正文。保存/补传/重试/确认均比较 revision；Web 编辑基线不随刷新偷换，服务端拒绝旧版本。确认前校验必答项，事务更新 Requirement 和 ideation Artifact 并锁定确认稿。
+Codex / Cursor 的 `analyzePrototype` 共用 `prototype-analysis.output.schema.json`。分析上下文有界，材料为非指令，来源路径必须属于材料清单；不支持的 executor 明确失败。AI 输出校验后事务保存 Requirement、简报和设计产物，`CONFIRMED` 表示资料落库完成，自动导入 `confirmedBy=null`，不伪造人工确认；未答问题仍作为 `brief.openQuestions`，建议不会擅自生效。失败重试按 revision 比较，过期任务不能覆盖新结果；流程接续失败复用整理结果并替换同类导入产物。
 
-工作流创建读取已确认导入，未确认阻断，`REQUIREMENT_INTAKE` 保存不可变确认快照。grounding 后使用快照简报和原型页面，记录 BRAINSTORM 为复用跳过、DESIGN 为已确认完成，再经现有状态机到 `SPEC_PLAN_PENDING`。设计稿保持原页面 ID，但持久化文件名采用短摘要，兼容中文长路径；后续重试不重做导入确认。
+资料落库后由服务端 WorkflowService 自动创建工作流。`REQUIREMENT_INTAKE` 保存不可变导入快照，grounding 后复用简报与原型页面，记录 BRAINSTORM 为跳过、DESIGN 为完成，再经现有状态机到 `SPEC_PLAN_PENDING`。查询导入返回 `workflowRunId`；浏览器轮询仅更新状态，成功自动跳转，原型预览和下载按需展开。接续失败变为 `FAILED`，保留材料；重启中断记录可重试。无需用户打开页面才能执行后台接续。后续技术方案、开发与验收保留现有流程。
 
 原型存储在 API 工作目录 `.flowx-data/prototype-imports/{id}/{materialRevision}`，保存各次原包与合并材料。预览静态内联包内资源，不安装依赖或执行构建命令。HTML 置于可信外壳的 sandbox iframe（无 same-origin）中；外壳 CSP 的 `frame-src 'none'` 阻止内部原型自身外部导航，原型 CSP 限制请求、资源与表单。包内导航经消息源校验及清单校验转发；新窗口同样保留可信外壳。它是原型预览环境，不是完整应用运行环境。完整接口、限制与备份见 [原型导入](prototype-import.md)。
 

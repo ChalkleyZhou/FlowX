@@ -134,7 +134,7 @@ export function RequirementDetailPage() {
         <ContextPanel
           eyebrow="Workflow"
           title={activeWorkflows.length > 1 ? '选择要继续的工作流' : '当前工作流'}
-          description={activeWorkflows.length > 0 ? '按仓库范围继续已有流程；需要并行推进其他仓库时，可另行启动。' : requirement.prototypeImport?.status !== undefined && requirement.prototypeImport.status !== 'CONFIRMED' ? '请先完成原型与需求确认。' : '当前没有活跃工作流，可以选择仓库和执行器后启动。'}
+          description={activeWorkflows.length > 0 ? '按仓库范围继续已有流程；需要并行推进其他仓库时，可另行启动。' : requirement.prototypeImport?.status !== undefined && requirement.prototypeImport.status !== 'CONFIRMED' ? '原型导入完成后自动接入研发流程，失败可在上方重试。' : '当前没有活跃工作流，可以选择仓库和执行器后启动。'}
         >
           <div className="flex flex-col gap-3">
             {activeWorkflows.map((run) => (
