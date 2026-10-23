@@ -11,6 +11,7 @@ import { RequirementDetailPage } from './RequirementDetailPage';
 vi.mock('../api', () => ({ api: { getRequirement: vi.fn(), createWorkflowRun: vi.fn() } }));
 vi.mock('../components/PrototypeImportPanel', () => ({ PrototypeImportPanel: ({ importId, existingWorkflowId }: { importId: string; existingWorkflowId?: string }) => <div data-import={importId} data-workflow={existingWorkflowId}>原型导入面板</div> }));
 vi.mock('../components/RequirementSchedulingPanel', () => ({ RequirementSchedulingPanel: () => null }));
+vi.mock('../components/RequirementChangesPanel', () => ({ RequirementChangesPanel: ({ requirementId }: { requirementId: string }) => <section data-changes-requirement={requirementId}>需求变更入口</section> }));
 
 const requirement: Requirement = {
   id: 'requirement-1', title: '需求接续', description: '保留已有研发流程', acceptanceCriteria: '可以继续流程',
@@ -63,6 +64,11 @@ describe('RequirementDetailPage 流程接续', () => {
     expect(api.createWorkflowRun).not.toHaveBeenCalled();
   });
 
+  it('需求详情提供属于当前需求的共享变更入口', async () => {
+    await renderPage();
+    expect(container.querySelector('[data-changes-requirement="requirement-1"]')).toBeTruthy();
+  });
+
   it('多条活跃流逐条选择，不能静默将第一条设为当前流程', async () => {
     vi.mocked(api.getRequirement).mockResolvedValue({ ...requirement, workflowRuns: [run('run-web', 'EXECUTION_RUNNING', 'flowx-web'), run('run-api', 'DESIGN_PENDING', 'flowx-api')] });
     await renderPage();
@@ -96,6 +102,13 @@ describe('RequirementDetailPage 流程接续', () => {
     await act(async () => { (launch as HTMLElement).click(); });
     expect(container.textContent).toBe('/requirements?projectId=project-1&launchRequirementId=requirement-1');
     expect(api.createWorkflowRun).not.toHaveBeenCalled();
+  });
+
+  it('被需求变更替代的旧轮展示明确原因并保留历史入口', async () => {
+    vi.mocked(api.getRequirement).mockResolvedValue({ ...requirement, workflowRuns: [{ ...run('run-old', 'FAILED', 'web'), supersededByChangeId: 'change-1' }] });
+    await renderPage();
+    expect(container.textContent).toContain('已由需求变更替代');
+    expect(container.querySelector('a[href="/workflow-runs/run-old"]')?.textContent).toBe('查看历史');
   });
 
   it('加载失败显示原因和重试入口，重试后恢复详情', async () => {

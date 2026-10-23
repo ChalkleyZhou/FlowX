@@ -176,6 +176,7 @@ describe('WorkflowService SpecPlan lifecycle', () => {
     const service = makeServiceWithPrisma({});
     const workflow = {
       id: 'run-sp',
+      updatedAt: new Date(),
       status: 'SPEC_PLAN_PENDING',
       aiProvider: 'mock',
       requirement: {
@@ -204,6 +205,7 @@ describe('WorkflowService SpecPlan lifecycle', () => {
         }),
       },
       workflowRun: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         update: vi.fn().mockImplementation(async ({ data }: { data: { status: string } }) => {
           workflowStatus = data.status;
           return { id: 'run-sp', status: data.status };
@@ -250,6 +252,7 @@ describe('WorkflowService SpecPlan lifecycle', () => {
     const service = makeServiceWithPrisma({});
     const workflow = {
       id: 'run-sp-failed',
+      updatedAt: new Date(),
       status: 'FAILED',
       currentStage: 'SPEC_PLAN',
       aiProvider: 'mock',
@@ -273,6 +276,7 @@ describe('WorkflowService SpecPlan lifecycle', () => {
         update: vi.fn(),
       },
       workflowRun: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         update: vi.fn().mockImplementation(async ({ data }: { data: { status: string } }) => {
           workflowStatus = data.status;
           return { id: workflow.id, status: data.status };
@@ -422,6 +426,7 @@ describe('WorkflowService review-finding execution flow', () => {
     const { service } = createService();
     const workflow = {
       id: 'run-review',
+      updatedAt: new Date(),
       status: 'REVIEW_PENDING',
       aiProvider: 'cursor',
       codeExecution: { patchSummary: 'done', changedFiles: [], codeChanges: [], diffArtifacts: [] },
@@ -437,7 +442,7 @@ describe('WorkflowService review-finding execution flow', () => {
     Object.assign(service, {
       prisma: {
         $transaction: (callback: (tx: object) => Promise<unknown>) => callback({
-          workflowRun: { findUniqueOrThrow: vi.fn().mockResolvedValue(workflow) },
+          workflowRun: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), findUniqueOrThrow: vi.fn().mockResolvedValue(workflow) },
         }),
       },
       aiInvocationContextService: {

@@ -8,6 +8,7 @@ import { DesignArtifactPreview } from '../components/DesignArtifactPreview';
 import { BriefingMarkdownView } from '../components/BriefingMarkdownView';
 import { WorkflowCollaborationPanel } from '../components/WorkflowCollaborationPanel';
 import { WorkflowCodeDeliveryPanel } from '../components/WorkflowCodeDeliveryPanel';
+import { RequirementChangesPanel } from '../components/RequirementChangesPanel';
 import { DiffFileListPanel } from '../components/DiffFileListPanel';
 import { DiffViewerPanel } from '../components/DiffViewerPanel';
 import { EmptyState } from '../components/EmptyState';
@@ -586,11 +587,12 @@ function WorkflowRunDetailContent() {
   const hasBlockingRunningStage = workflowRun?.stageExecutions.some((item) => item.status === 'RUNNING' && !isCodeDeliveryStage(item)) ?? false;
   const canRollbackToPreviousStage = Boolean(
     workflowRun &&
+      !workflowRun.supersededByChangeId &&
       !hasBlockingRunningStage &&
       workflowRun.status !== 'CREATED' &&
       workflowRun.status !== 'REPOSITORY_GROUNDING_PENDING',
   );
-  const stageActionsLocked = busyStage !== null || hasRunningStage;
+  const stageActionsLocked = busyStage !== null || hasRunningStage || !!workflowRun?.supersededByChangeId;
   const localInstallCurl = `curl -fsSL ${window.location.origin}/install | bash`;
   const localInstallPs1 = `irm ${window.location.origin}/install.ps1 | iex`;
   const latestExecutionStage = workflowRun ? getStage(workflowRun, 'EXECUTION') : undefined;
@@ -2228,20 +2230,20 @@ function WorkflowRunDetailContent() {
                 variant: 'outline',
               },
               { key: 'id', label: workflowRun.id, variant: 'outline' },
-              { key: 'status', label: formatWorkflowStatus(workflowRun.status), variant: 'secondary' },
+              { key: 'status', label: workflowRun.supersededByChangeId ? '已由需求变更替代' : formatWorkflowStatus(workflowRun.status), variant: 'secondary' },
             ]}
             actions={
               <>
-                <UiButton
+                {!workflowRun.supersededByChangeId && <UiButton
                   variant="outline"
                   disabled={!canRollbackToPreviousStage || rollingBack}
                   onClick={() => void handleRollbackToPreviousStage()}
                 >
                   {rollingBack ? '回退中...' : '回退到上一阶段'}
-                </UiButton>
-                <UiButton variant="destructive" disabled={deleting || hasRunningStage} onClick={() => void handleDeleteWorkflow()}>
+                </UiButton>}
+                {!workflowRun.supersededByChangeId && <UiButton variant="destructive" disabled={deleting || hasRunningStage} onClick={() => void handleDeleteWorkflow()}>
                   {deleting ? '删除中...' : '删除工作流'}
-                </UiButton>
+                </UiButton>}
                 {workflowRun.fixForBug?.id ? (
                   <UiButton variant="outline" asChild>
                     <Link to={`/bugs/${workflowRun.fixForBug.id}`}>查看关联缺陷</Link>
@@ -2254,7 +2256,14 @@ function WorkflowRunDetailContent() {
             }
           />
 
-          <WorkflowCollaborationPanel
+          <RequirementChangesPanel
+            requirementId={workflowRun.requirement.id}
+            workflowRunId={workflowRun.id}
+            refreshKey={`${workflowRun.status}:${getStage(workflowRun, inferFocusedStage(workflowRun))?.id ?? ''}:${getStage(workflowRun, inferFocusedStage(workflowRun))?.status ?? ''}`}
+            onChanged={async () => { await refresh({ silent: true }); }}
+          />
+
+          {workflowRun.supersededByChangeId ? <p role="status" className="rounded-md border border-border bg-muted px-4 py-3 text-sm">此轮已由需求变更替代，保留历史产物供查看。请从上方变更记录进入新流程。</p> : <WorkflowCollaborationPanel
             workflowRunId={workflowRun.id}
             workflowStatus={workflowRun.status}
             currentStage={inferFocusedStage(workflowRun)}
@@ -2266,7 +2275,7 @@ function WorkflowRunDetailContent() {
               return input && typeof input === 'object' && 'executor' in input && typeof input.executor === 'string' ? input.executor : undefined;
             })()}
             onReleased={() => refresh({ silent: true })}
-          />
+          />}
           {loadError ? <div role="alert" className="flex items-center gap-3 text-sm text-destructive"><span>{loadError}</span><UiButton variant="outline" size="sm" onClick={() => void refresh({ silent: true })}>重新加载工作流</UiButton></div> : null}
 
           <Card className="rounded-md border-border bg-card">
@@ -2310,7 +2319,7 @@ function WorkflowRunDetailContent() {
               }}
             />
           ) : null}
-          <div className="grid items-start gap-5 min-[1281px]:grid-cols-[minmax(0,1.5fr)_360px] max-[1280px]:grid-cols-1">
+          <div className="grid min-w-0 items-start gap-5 min-[1281px]:grid-cols-[minmax(0,1.5fr)_360px] max-[1280px]:grid-cols-1">
             {/* Left: main content */}
             <div className="flex flex-col gap-5">
               {selectedStageContent ? (
@@ -2351,7 +2360,7 @@ function WorkflowRunDetailContent() {
                       ? '结构化产物请查看下方 Spec & Plan 文档。'
                       : selectedStageContent.output}
                   actions={
-                    selectedStage === 'SPEC_PLAN' && selectedStageContent.status === 'FAILED'
+                    workflowRun.supersededByChangeId ? [] : selectedStage === 'SPEC_PLAN' && selectedStageContent.status === 'FAILED'
                       ? selectedStageContent.actions.filter((action) => action.key === 'run' || action.key === 'claim-local')
                       : workflowWorkspaceConfig
                         ? []
@@ -2508,7 +2517,7 @@ function WorkflowRunDetailContent() {
                       </Link>
                     </UiButton>
                   </div>
-                  <ExecutionControlActions
+                  {!workflowRun.supersededByChangeId && <ExecutionControlActions
                     key={executionSession.id}
                     session={{ ...executionSession, evidence: executionEvidence, syncEvents: executionEvents }}
                     loading={executionSessionLoading}
@@ -2517,7 +2526,7 @@ function WorkflowRunDetailContent() {
                       await refreshExecutionSession();
                       await refresh({ silent: true });
                     }}
-                  />
+                  />}
                 </div>
               ) : null}
 
@@ -2669,7 +2678,7 @@ function WorkflowRunDetailContent() {
                           status={finding.status}
                           description={finding.description}
                           impactScope={finding.impactScope}
-                          actions={[
+                          actions={workflowRun.supersededByChangeId ? [] : [
                             {
                               key: 'fix',
                               label: busyFindingId === finding.id ? '处理中...' : '立即修复',
@@ -2761,7 +2770,7 @@ function WorkflowRunDetailContent() {
               data-testid="workflow-review-sidebar-shell"
               className="flex flex-col gap-5 self-start min-[1281px]:sticky min-[1281px]:top-6"
             >
-              {isDesignFeedbackVisible ? (
+              {isDesignFeedbackVisible && !workflowRun.supersededByChangeId ? (
                 <Card className="border-border">
                   <CardContent className="flex flex-col gap-4 p-5">
                     <div className="space-y-1">
@@ -2802,7 +2811,7 @@ function WorkflowRunDetailContent() {
                   </CardContent>
                 </Card>
               ) : null}
-              {workflowWorkspaceConfig ? (
+              {workflowWorkspaceConfig && !workflowRun.supersededByChangeId ? (
                 <details open={selectedStage !== 'EXECUTION' || localExecutionActive} className="space-y-3" key={selectedStage}>
                   <summary className={selectedStage === 'EXECUTION' ? 'cursor-pointer rounded-md border border-border p-4 text-sm font-semibold' : 'sr-only'}>{selectedStage === 'EXECUTION' ? '其他执行方式与反馈' : '阶段操作与反馈'}</summary>
                   <WorkflowReviewSidebar
@@ -2862,7 +2871,7 @@ function WorkflowRunDetailContent() {
             <div className="grid gap-5 md:grid-cols-4">
               <MetricCard
                 label="当前状态"
-                value={formatWorkflowStatus(workflowRun.status)}
+                value={workflowRun.supersededByChangeId ? '已由需求变更替代' : formatWorkflowStatus(workflowRun.status)}
                 helpText="阶段状态由平台记录，本地运行情况请查看当前任务回报。"
               />
               <MetricCard

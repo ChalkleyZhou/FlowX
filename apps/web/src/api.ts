@@ -42,6 +42,9 @@ import type {
   ProjectCodeReviewConfig,
   ProjectVersionSummary,
   RequirementAssignment,
+  RequirementChange,
+  RequirementChangePayload,
+  RequirementChanges,
   Repository,
   Requirement,
   ReviewFinding,
@@ -668,6 +671,12 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   getRequirement: (id: string) => request<Requirement>(`/requirements/${id}`),
+  getRequirementChanges: (id: string, workflowRunId?: string) =>
+    request<RequirementChanges>(`/requirements/${id}/changes${workflowRunId ? `?${new URLSearchParams({ workflowRunId })}` : ''}`),
+  createRequirementChange: (id: string, payload: RequirementChangePayload) =>
+    request<RequirementChange>(`/requirements/${id}/changes`, { method: 'POST', body: JSON.stringify(payload) }),
+  restartRequirementChange: (id: string, changeId: string) =>
+    request<RequirementChange>(`/requirements/${id}/changes/${changeId}/restart`, { method: 'POST' }),
   updateRequirement: (
     id: string,
     payload: { priority?: string; planningStatus?: string; versionId?: string | null },

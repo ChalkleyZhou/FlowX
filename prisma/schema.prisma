@@ -28,6 +28,8 @@ model Requirement {
   ideationSessions        IdeationSession[]
   ideationArtifacts       IdeationArtifact[]
   workflowRuns            WorkflowRun[]
+  revision                Int                     @default(0)
+  changes                 RequirementChange[]
   testRequestLinks        TestRequestRequirement[]
   testDesignLinks         TestDesignRequirement[]
   issues                  Issue[]
@@ -38,6 +40,30 @@ model Requirement {
 
   @@index([projectId, createdAt])
   @@index([projectId, versionId])
+}
+
+model RequirementChange {
+  id                    String       @id @default(cuid())
+  requirementId         String
+  requirement           Requirement  @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  revision              Int
+  content               String
+  mode                  String
+  requestId             String
+  createdByUserId       String
+  createdByName         String
+  sourceWorkflowRunId   String?
+  sourceWorkflowRun     WorkflowRun? @relation("ChangeSource", fields: [sourceWorkflowRunId], references: [id], onDelete: SetNull)
+  restartWorkflowRun    WorkflowRun? @relation("ChangeRestart")
+  supersededWorkflows   WorkflowRun[] @relation("ChangeSuperseded")
+  restartStatus         String       @default("NOT_REQUESTED")
+  errorMessage          String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  @@unique([requirementId, requestId])
+  @@unique([requirementId, revision])
+  @@index([requirementId, createdAt])
 }
 
 model RequirementAssignment {
@@ -629,6 +655,11 @@ model WorkflowRun {
   aiProvider           String               @default("codex")
   requirementId        String
   requirement          Requirement          @relation(fields: [requirementId], references: [id])
+  supersededByChangeId String?
+  supersededByChange   RequirementChange?   @relation("ChangeSuperseded", fields: [supersededByChangeId], references: [id], onDelete: SetNull)
+  sourceChangeId       String?              @unique
+  sourceChange         RequirementChange?   @relation("ChangeRestart", fields: [sourceChangeId], references: [id], onDelete: SetNull)
+  sourcedChanges       RequirementChange[]  @relation("ChangeSource")
   fixForBug            Bug?                 @relation("BugFixWorkflow")
   codeBranchSubmissions CodeBranchSubmission[]
   stageExecutions      StageExecution[]

@@ -103,7 +103,7 @@ describe('WorkflowService rollback DESIGN to BRAINSTORM', () => {
     expect(result.status).toBe('BRAINSTORM_PENDING');
     expect(tx.workflowRun.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'workflow-rb-1' },
+        where: { id: 'workflow-rb-1', supersededByChangeId: null },
         data: expect.objectContaining({
           status: 'BRAINSTORM_PENDING',
           currentStage: 'BRAINSTORM',

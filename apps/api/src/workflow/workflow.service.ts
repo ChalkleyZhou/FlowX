@@ -1,3 +1,4 @@
+import { effectiveRequirementDescription, readRequirementRevision } from '../requirements/requirement-change-context';
 import { PrototypeArchive } from '../prototype-imports/prototype-archive';
 import { buildPrototypeWorkflowSnapshot, readPrototypeWorkflowSnapshot } from './workflow-prototype-import';
 import { codeDeliveryReviewRepositories, codeDeliverySourceStage } from './workflow-code-delivery-review';
@@ -168,6 +169,49 @@ export class WorkflowService {
     return this.createRequirementWorkflowRun(dto, WorkflowRunType.FULL);
   }
 
+  /** 每条正式变更只关联一轮，启动失败后复用已创建的轮次。 */
+  async restartFromRequirementChange(changeId: string) {
+    const change = await this.prisma.requirementChange.findUniqueOrThrow({
+      where: { id: changeId }, include: { sourceWorkflowRun: { include: { workflowRepositories: true } }, restartWorkflowRun: true },
+    });
+    if (change.restartWorkflowRun) {
+      const existing = await this.getWorkflowOrThrow(change.restartWorkflowRun.id);
+      if (existing.status !== 'FAILED' && existing.status !== 'CREATED') return existing;
+      if (existing.currentStage && existing.currentStage !== 'REPOSITORY_GROUNDING') return existing;
+      const repositoryIds = existing.workflowRepositories.flatMap((repo) => repo.repositoryId ? [repo.repositoryId] : []);
+      await this.assertChangeRestartAvailable(this.prisma, change.requirementId, repositoryIds, change.id, existing.id);
+      return this.startPreparedRequirementWorkflow(existing.id, existing.workflowRepositories, { requirementId: change.requirementId, repositoryIds, changeId: change.id });
+    }
+    const sourceIds = change.sourceWorkflowRun?.workflowRepositories.flatMap((repo) => repo.repositoryId ? [repo.repositoryId] : []);
+    return this.createRequirementWorkflowRun({ requirementId: change.requirementId, repositoryIds: sourceIds?.length ? sourceIds : undefined, aiProvider: change.sourceWorkflowRun?.aiProvider }, WorkflowRunType.FULL, change.id);
+  }
+
+  private async assertChangeRestartAvailable(
+    tx: Prisma.TransactionClient, requirementId: string, repositoryIds: string[], changeId: string,
+    excludeWorkflowId?: string, supersede = false,
+  ) {
+    const conflicts = await tx.workflowRun.findMany({ where: {
+      ...(excludeWorkflowId ? { id: { not: excludeWorkflowId } } : {}),
+      status: { notIn: ['DONE', 'FAILED'] },
+      OR: [{ requirementId }, ...(repositoryIds.length ? [{ workflowRepositories: { some: { repositoryId: { in: repositoryIds } } } }] : [])],
+    }, include: { stageExecutions: true, executionSessions: true, workflowRepositories: true } });
+    for (const workflow of conflicts) {
+      const overlaps = !repositoryIds.length || workflow.workflowRepositories.some((repo) => repo.repositoryId && repositoryIds.includes(repo.repositoryId));
+      if (!overlaps) continue;
+      const running = workflow.status === 'CREATED' || workflow.stageExecutions.some((stage) => stage.status === 'RUNNING' && !this.isCodeDeliveryStage(stage)) || workflow.executionSessions.some((session) => ACTIVE_EXECUTION_SESSION_STATUSES.includes(session.status as never));
+      if (running) {
+        throw new ConflictException('所选仓库仍有活跃任务，请结束当前任务后重试。');
+      }
+      if (supersede && workflow.requirementId === requirementId) {
+        const locked = await tx.workflowRun.updateMany({ where: { id: workflow.id, status: workflow.status, updatedAt: workflow.updatedAt }, data: { status: 'FAILED', supersededByChangeId: changeId } });
+        if (locked.count !== 1) throw new ConflictException('旧流程状态已变化，请结束活跃任务后重试。');
+        const collectingStageIds = workflow.stageExecutions.filter((stage) => stage.status === 'RUNNING' && this.isCodeDeliveryStage(stage)).map((stage) => stage.id);
+        if (collectingStageIds.length) await tx.stageExecution.updateMany({ where: { id: { in: collectingStageIds } }, data: { status: 'FAILED', statusMessage: `已由需求变更 ${changeId} 取代，保留本次分支提交历史`, finishedAt: new Date() } });
+        await tx.stageExecution.updateMany({ where: { workflowRunId: workflow.id, status: 'PENDING' }, data: { status: 'SKIPPED', statusMessage: `已由需求变更 ${changeId} 发起的新一轮流程取代`, finishedAt: new Date() } });
+      }
+    }
+  }
+
   async createLocalChatWorkflowRun(dto: CreateWorkflowRunDto) {
     return this.createRequirementWorkflowRun(dto, WorkflowRunType.LOCAL_CHAT);
   }
@@ -224,7 +268,7 @@ export class WorkflowService {
     return workflow;
   }
 
-  private async createRequirementWorkflowRun(dto: CreateWorkflowRunDto, runType: WorkflowRunType) {
+  private async createRequirementWorkflowRun(dto: CreateWorkflowRunDto, runType: WorkflowRunType, sourceChangeId?: string) {
     const aiProvider = this.aiInvocationContextService.normalizeAiProvider(dto.aiProvider);
     const requirement = await this.prisma.requirement.findFirstOrThrow({
       where: {
@@ -257,13 +301,13 @@ export class WorkflowService {
         },
       },
     });
-    const prototypeSnapshot = requirement.prototypeImport
+    const prototypeSnapshot = !sourceChangeId && requirement.prototypeImport
       ? buildPrototypeWorkflowSnapshot(requirement.prototypeImport)
       : null;
     const requestedRepositoryIds = Array.from(
       new Set((dto.repositoryIds ?? []).map((value) => value.trim()).filter(Boolean)),
     );
-    const workspaceRepositories = requirement.workspace?.repositories ?? [];
+    const workspaceRepositories = requirement.workspace?.repositories ?? requirement.project.workspace.repositories ?? [];
     const workspaceRepositoryMap = new Map(
       workspaceRepositories.map((repository) => [repository.id, repository]),
     );
@@ -307,20 +351,27 @@ export class WorkflowService {
       ),
     );
 
-    if (conflictingWorkflow) {
+    if (conflictingWorkflow && !sourceChangeId) {
       throw new BadRequestException(
         `该需求已有进行中的工作流 ${conflictingWorkflow.id} 与当前仓库范围冲突，请调整本次仓库选择后再启动。`,
       );
     }
 
+    if (sourceChangeId) {
+      await this.assertChangeRestartAvailable(this.prisma, requirement.id, [...selectedRepositoryIds], sourceChangeId);
+    }
     if (requirement.workspaceId) {
       await this.repositorySyncService.syncWorkspaceRepositories(requirement.workspaceId);
     }
 
     const workflow = await this.prisma.$transaction(async (tx) => {
+      if (sourceChangeId) {
+        await this.assertChangeRestartAvailable(tx, requirement.id, [...selectedRepositoryIds], sourceChangeId, undefined, true);
+      }
       const workflow = await tx.workflowRun.create({
         data: {
           requirementId: dto.requirementId,
+          sourceChangeId,
           status: 'CREATED',
           runType,
           aiProvider,
@@ -382,28 +433,43 @@ export class WorkflowService {
       return workflow;
     });
 
+    return this.startPreparedRequirementWorkflow(workflow.id, selectedRepositories, sourceChangeId ? { requirementId: requirement.id, repositoryIds: [...selectedRepositoryIds], changeId: sourceChangeId } : undefined);
+  }
+
+  private async startPreparedRequirementWorkflow(workflowId: string, repositories: Array<{ id: string; name: string; url: string }>, restartScope?: { requirementId: string; repositoryIds: string[]; changeId: string }) {
+    const before = await this.prisma.workflowRun.findUniqueOrThrow({ where: { id: workflowId } });
+    if (!['CREATED', 'FAILED'].includes(before.status) || before.supersededByChangeId || (before.currentStage && before.currentStage !== 'REPOSITORY_GROUNDING')) {
+      throw new ConflictException('工作流状态已变化，请刷新后继续。');
+    }
+    const lockedAt = new Date(Math.max(Date.now(), before.updatedAt.getTime() + 1));
+    const claim = await this.prisma.$transaction(async (tx) => {
+      if (restartScope) await this.assertChangeRestartAvailable(tx, restartScope.requirementId, restartScope.repositoryIds, restartScope.changeId, workflowId);
+      return tx.workflowRun.updateMany({ where: { id: workflowId, status: before.status, updatedAt: before.updatedAt, supersededByChangeId: null }, data: { status: 'CREATED', currentStage: null, updatedAt: lockedAt } });
+    });
+    if (claim.count !== 1) throw new ConflictException('工作流已由其他操作启动，请刷新后继续。');
     try {
-      await this.repositorySyncService.prepareWorkflowRepositories(workflow.id);
+      await this.repositorySyncService.prepareWorkflowRepositories(workflowId);
     } catch (error) {
-      await this.prisma.workflowRun.update({
-        where: { id: workflow.id },
-        data: {
-          status: 'FAILED',
-        },
+      await this.prisma.workflowRun.updateMany({
+        where: { id: workflowId, status: 'CREATED', updatedAt: lockedAt, supersededByChangeId: null },
+        data: { status: 'FAILED' },
       });
       throw error;
     }
 
     const startedWorkflow = await this.prisma.$transaction(async (tx) => {
-      await this.transitionWorkflow(tx, workflow.id, WorkflowRunStatus.CREATED, {
+      if (restartScope) await this.assertChangeRestartAvailable(tx, restartScope.requirementId, restartScope.repositoryIds, restartScope.changeId, workflowId, true);
+      const locked = await tx.workflowRun.updateMany({ where: { id: workflowId, status: 'CREATED', updatedAt: lockedAt, supersededByChangeId: null }, data: { updatedAt: new Date(Math.max(Date.now(), lockedAt.getTime() + 1)) } });
+      if (locked.count !== 1) throw new ConflictException('准备期间流程状态已变化，请刷新后继续。');
+      await this.transitionWorkflow(tx, workflowId, WorkflowRunStatus.CREATED, {
         to: WorkflowRunStatus.REPOSITORY_GROUNDING_PENDING,
         stage: StageType.REPOSITORY_GROUNDING,
       });
 
-      await this.createStageExecution(tx, workflow.id, StageType.REPOSITORY_GROUNDING, {
+      await this.createStageExecution(tx, workflowId, StageType.REPOSITORY_GROUNDING, {
         input: {
-          workflowRunId: workflow.id,
-          repositories: selectedRepositories.map((repository) => ({
+          workflowRunId: workflowId,
+          repositories: repositories.map((repository) => ({
             id: repository.id,
             name: repository.name,
             url: repository.url,
@@ -415,12 +481,16 @@ export class WorkflowService {
       });
 
       return tx.workflowRun.findUniqueOrThrow({
-        where: { id: workflow.id },
+        where: { id: workflowId },
         include: this.workflowInclude(),
       });
+    }).catch(async (error: unknown) => {
+      // 准备期间出现新的活跃任务时，释放本轮 CREATED 占位，保留原轮供后续重试。
+      await this.prisma.workflowRun.updateMany({ where: { id: workflowId, status: 'CREATED', updatedAt: lockedAt, supersededByChangeId: null }, data: { status: 'FAILED' } });
+      throw error;
     });
 
-    this.startRepositoryGroundingJob(workflow.id);
+    this.startRepositoryGroundingJob(workflowId);
 
     return startedWorkflow;
   }
@@ -651,11 +721,11 @@ export class WorkflowService {
   }
 
   async findOne(id: string) {
-    return this.getWorkflowOrThrow(id);
+    return this.getWorkflowOrThrow(id, true);
   }
 
   async readExecutionArtifactHtml(id: string): Promise<string> {
-    await this.getWorkflowOrThrow(id);
+    await this.getWorkflowOrThrow(id, true);
     const html = await this.workflowArtifactService.readExecutionHtml(id);
     if (!html) {
       throw new NotFoundException('Execution artifact not found.');
@@ -704,6 +774,7 @@ export class WorkflowService {
 
       const stageExecution = await this.createStageExecution(tx, id, StageType.EXECUTION, {
         input: {
+          requirementRevision: workflow.requirement.revision ?? 0,
           executor: 'LOCAL',
           claimedAt,
           claimedByUserId: recipient?.flowxUserId ?? null,
@@ -1096,7 +1167,7 @@ export class WorkflowService {
   }
 
   async getHistory(id: string) {
-    const workflow = await this.getWorkflowOrThrow(id);
+    const workflow = await this.getWorkflowOrThrow(id, true);
     return workflow.stageExecutions;
   }
 
@@ -1114,7 +1185,7 @@ export class WorkflowService {
     }
 
     const recipient = this.toNotificationRecipient(notifyRecipient);
-    const startedWorkflow = await this.prisma.$transaction(async (tx) => {
+    const startedWorkflow = await this.claimLocalStageTransaction(workflow, async (tx) => {
       const existingStage = await this.getOrCreateRunnableSkippableStageExecution(
         tx,
         id,
@@ -1122,6 +1193,7 @@ export class WorkflowService {
       );
       await this.updateStageExecution(tx, existingStage.id, StageExecutionStatus.RUNNING, {
         input: {
+          requirementRevision: workflow.requirement.revision ?? 0,
           requirement: workflow.requirement,
           notifier: recipient,
         },
@@ -1144,7 +1216,7 @@ export class WorkflowService {
         const output = await aiExecutor.brainstorm(
           {
             requirementTitle: workflow.requirement.title,
-            requirementDescription: workflow.requirement.description,
+            requirementDescription: effectiveRequirementDescription(workflow.requirement),
             workspaceContext: workflow.requirement.workspace?.name ?? undefined,
           },
           invocationContext,
@@ -1235,7 +1307,7 @@ export class WorkflowService {
     }
 
     const recipient = this.toNotificationRecipient(notifyRecipient);
-    const startedWorkflow = await this.prisma.$transaction(async (tx) => {
+    const startedWorkflow = await this.claimLocalStageTransaction(workflow, async (tx) => {
       if (workflowStatus === WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION && humanFeedback?.trim()) {
         await this.transitionWorkflow(tx, id, WorkflowRunStatus.DESIGN_WAITING_CONFIRMATION, {
           to: WorkflowRunStatus.DESIGN_PENDING,
@@ -1250,6 +1322,7 @@ export class WorkflowService {
       );
       await this.updateStageExecution(tx, stageExecution.id, StageExecutionStatus.RUNNING, {
         input: {
+          requirementRevision: workflow.requirement.revision ?? 0,
           requirement: workflow.requirement,
           humanFeedback: humanFeedback ?? null,
           notifier: recipient,
@@ -1284,8 +1357,8 @@ export class WorkflowService {
         const designResult = await aiExecutor.generateDesign(
           {
             requirementTitle: wf.requirement.title,
-            requirementDescription: wf.requirement.description,
-            confirmedBrief: this.getWorkflowBriefContext(wf),
+            requirementDescription: effectiveRequirementDescription(workflow.requirement),
+            confirmedBrief: this.getWorkflowBriefContext(wf, effectiveRequirementDescription(workflow.requirement)),
             previousDesigns: previousDesigns.length > 0 ? previousDesigns : undefined,
             humanFeedback: humanFeedback?.trim(),
             repositoryComponentContext: repositoryComponentContext ?? undefined,
@@ -1376,6 +1449,8 @@ export class WorkflowService {
       );
       await this.updateStageExecution(tx, designStage.id, StageExecutionStatus.RUNNING, {
         input: {
+          requirementSnapshot: { id: workflow.requirement.id, title: workflow.requirement.title, description: effectiveRequirementDescription(workflow.requirement), acceptanceCriteria: workflow.requirement.acceptanceCriteria },
+          requirementRevision: workflow.requirement.revision ?? 0,
           source: 'LOCAL_OPENDESIGN',
           claimedByUserId: recipient?.flowxUserId ?? null,
           claimedAt: new Date().toISOString(),
@@ -1452,6 +1527,8 @@ export class WorkflowService {
       );
       await this.updateStageExecution(tx, brainstormStage.id, StageExecutionStatus.RUNNING, {
         input: {
+          requirementSnapshot: { id: workflow.requirement.id, title: workflow.requirement.title, description: effectiveRequirementDescription(workflow.requirement), acceptanceCriteria: workflow.requirement.acceptanceCriteria },
+          requirementRevision: workflow.requirement.revision ?? 0,
           source: 'LOCAL_OPENDESIGN',
           claimedByUserId: recipient?.flowxUserId ?? null,
           claimedAt: new Date().toISOString(),
@@ -1576,6 +1653,8 @@ export class WorkflowService {
       );
       await this.updateStageExecution(tx, stage.id, StageExecutionStatus.RUNNING, {
         input: {
+          requirementSnapshot: { id: workflow.requirement.id, title: workflow.requirement.title, description: effectiveRequirementDescription(workflow.requirement), acceptanceCriteria: workflow.requirement.acceptanceCriteria },
+          requirementRevision: workflow.requirement.revision ?? 0,
           source: 'LOCAL_SPEC_PLAN',
           sourceFingerprint: sessionRef.sourceFingerprint,
           claimedByUserId: recipient?.flowxUserId ?? null,
@@ -2256,7 +2335,7 @@ export class WorkflowService {
       workflowStatus === WorkflowRunStatus.SPEC_PLAN_WAITING_CONFIRMATION
         ? this.getLatestStageOrThrow(workflow, StageType.SPEC_PLAN)
         : null;
-    const startedWorkflow = await this.prisma.$transaction(async (tx) => {
+    const startedWorkflow = await this.claimLocalStageTransaction(workflow, async (tx) => {
       if (retryingFailedSpecPlan) {
         await this.transitionWorkflow(tx, id, WorkflowRunStatus.FAILED, {
           to: WorkflowRunStatus.SPEC_PLAN_PENDING,
@@ -2272,6 +2351,7 @@ export class WorkflowService {
 
       await this.createStageExecution(tx, id, StageType.SPEC_PLAN, {
         input: {
+          requirementRevision: workflow.requirement.revision ?? 0,
           requirement,
           humanFeedback: humanFeedback ?? null,
           notifier: recipient,
@@ -2299,7 +2379,7 @@ export class WorkflowService {
             requirement: {
               id: requirement.id,
               title: requirement.title,
-              description: requirement.description,
+              description: effectiveRequirementDescription(requirement),
               acceptanceCriteria: requirement.acceptanceCriteria,
             },
             workspace: this.buildWorkspaceContext(workflow.requirement.workspace, workflow.workflowRepositories),
@@ -2596,6 +2676,7 @@ export class WorkflowService {
       const executionStage = await this.createStageExecution(tx, id, StageType.EXECUTION, {
         input: {
           ...(sourceDeliveryStage ? { sourceDeliveryStageExecutionId: sourceDeliveryStage.id } : {}),
+          requirementRevision: workflow.requirement.revision ?? 0,
           requirement: workflow.requirement,
           specPlan: confirmedSpecPlan,
           humanFeedback: humanFeedback ?? null,
@@ -2659,7 +2740,7 @@ export class WorkflowService {
             requirement: {
               id: workflow.requirement.id,
               title: workflow.requirement.title,
-              description: workflow.requirement.description,
+              description: effectiveRequirementDescription(workflow.requirement),
               acceptanceCriteria: workflow.requirement.acceptanceCriteria,
             },
             specPlan: confirmedSpecPlan,
@@ -2711,7 +2792,7 @@ export class WorkflowService {
       workflow.status === 'HUMAN_REVIEW_PENDING' || workflow.status === 'DONE'
         ? this.getLatestStageOrThrow(workflow, StageType.AI_REVIEW)
         : null;
-    const startedWorkflow = await this.prisma.$transaction(async (tx) => {
+    const startedWorkflow = await this.claimLocalStageTransaction(workflow, async (tx) => {
       if (workflow.status === 'HUMAN_REVIEW_PENDING') {
         await this.transitionWorkflow(tx, id, WorkflowRunStatus.HUMAN_REVIEW_PENDING, {
           to: WorkflowRunStatus.REVIEW_PENDING,
@@ -2726,6 +2807,7 @@ export class WorkflowService {
 
       const reviewStage = await this.createStageExecution(tx, id, StageType.AI_REVIEW, {
         input: {
+          requirementRevision: workflow.requirement.revision ?? 0,
           specPlan: confirmedSpecPlan,
           execution: workflow.codeExecution,
           aiProvider,
@@ -2754,7 +2836,7 @@ export class WorkflowService {
             requirement: {
               id: workflow.requirement.id,
               title: workflow.requirement.title,
-              description: workflow.requirement.description,
+              description: effectiveRequirementDescription(workflow.requirement),
               acceptanceCriteria: workflow.requirement.acceptanceCriteria,
             },
             specPlan: confirmedSpecPlan,
@@ -3205,6 +3287,7 @@ export class WorkflowService {
     return {
       requirement: {
         include: {
+          changes: { orderBy: { revision: 'asc' as const } },
           project: {
             include: {
               workspace: true,
@@ -3298,6 +3381,21 @@ export class WorkflowService {
     };
   }
 
+  private localRequirementDescription(workflow: WorkflowPayload, stage: string) {
+    const latest = workflow.stageExecutions.filter((item) => item.stage === stage).sort((a, b) => b.attempt - a.attempt)[0];
+    if (latest?.status === 'RUNNING') {
+      const input = latest.input && typeof latest.input === 'object' && !Array.isArray(latest.input) ? latest.input as Record<string, unknown> : {};
+      const snapshot = input.requirementSnapshot as { description?: unknown } | undefined;
+      if (typeof snapshot?.description === 'string') return snapshot.description;
+      const handoff = input.handoffSnapshot as { requirement?: { description?: unknown } } | undefined;
+      if (typeof handoff?.requirement?.description === 'string') return handoff.requirement.description;
+      // 历史领取没有快照时，只合成其实际读取修订内的变更，缺省修订为 0。
+      const revision = readRequirementRevision(input);
+      return effectiveRequirementDescription({ ...workflow.requirement, changes: (workflow.requirement.changes ?? []).filter((change) => change.revision <= revision) });
+    }
+    return effectiveRequirementDescription(workflow.requirement);
+  }
+
   private async buildLocalHandoffForWorkflow(
     workflow: WorkflowPayload,
     status: string,
@@ -3316,7 +3414,7 @@ export class WorkflowService {
       requirement: {
         id: workflow.requirement.id,
         title: workflow.requirement.title,
-        description: workflow.requirement.description,
+        description: this.localRequirementDescription(workflow, 'EXECUTION'),
         acceptanceCriteria: workflow.requirement.acceptanceCriteria,
       },
       specPlan,
@@ -3342,7 +3440,7 @@ export class WorkflowService {
       requirement: {
         id: workflow.requirement.id,
         title: workflow.requirement.title,
-        description: workflow.requirement.description,
+        description: this.localRequirementDescription(workflow, 'DESIGN'),
         acceptanceCriteria: workflow.requirement.acceptanceCriteria,
       },
       repositories: workflow.workflowRepositories.map((repository) => ({
@@ -3401,7 +3499,7 @@ export class WorkflowService {
       requirement: {
         id: workflow.requirement.id,
         title: workflow.requirement.title,
-        description: workflow.requirement.description,
+        description: this.localRequirementDescription(workflow, 'SPEC_PLAN'),
         acceptanceCriteria: workflow.requirement.acceptanceCriteria,
       },
       repositories: workflow.workflowRepositories.map((repository) => ({
@@ -3412,8 +3510,8 @@ export class WorkflowService {
         baseBranch: repository.baseBranch,
         workingBranch: repository.workingBranch,
       })),
-      brainstormContext: this.getWorkflowBriefContext(workflow),
-      designContext: this.getWorkflowDesignContext(workflow),
+      brainstormContext: this.getWorkflowBriefContext(workflow, this.localRequirementDescription(workflow, 'SPEC_PLAN')),
+      designContext: this.getWorkflowDesignContext(workflow, this.localRequirementDescription(workflow, 'SPEC_PLAN')),
       outputContract: {
         resultFileName: 'spec-plan.json',
         specFileName: 'spec.md',
@@ -3438,7 +3536,7 @@ export class WorkflowService {
           requirement: {
             id: workflow.requirement.id,
             title: workflow.requirement.title,
-            description: workflow.requirement.description,
+            description: effectiveRequirementDescription(workflow.requirement),
             acceptanceCriteria: workflow.requirement.acceptanceCriteria,
           },
           repositories: workflow.workflowRepositories.map((repository) => ({
@@ -3554,7 +3652,7 @@ export class WorkflowService {
       requirement: {
         id: workflow.requirement.id,
         title: workflow.requirement.title,
-        description: workflow.requirement.description,
+        description: this.localRequirementDescription(workflow, 'BRAINSTORM'),
         acceptanceCriteria: workflow.requirement.acceptanceCriteria,
       },
       repositories: workflow.workflowRepositories.map((repository) => ({
@@ -4125,11 +4223,13 @@ export class WorkflowService {
     return text.split(sep).join('/');
   }
 
-  private async getWorkflowOrThrow(id: string) {
-    return this.prisma.workflowRun.findUniqueOrThrow({
+  private async getWorkflowOrThrow(id: string, allowSuperseded = false) {
+    const workflow = await this.prisma.workflowRun.findUniqueOrThrow({
       where: { id },
       include: this.workflowInclude(),
     });
+    if (workflow.supersededByChangeId && !allowSuperseded) throw new ConflictException('此流程已由正式需求变更取代，请进入新一轮流程继续操作。');
+    return workflow;
   }
 
   private getLatestStageOrThrow(workflow: WorkflowPayload, stage: StageType) {
@@ -4544,7 +4644,7 @@ export class WorkflowService {
   async listWorkflowDesignArtifacts(
     id: string,
   ): Promise<{ surfaces: DesignSurfaceInventory[] }> {
-    const workflow = await this.getWorkflowOrThrow(id);
+    const workflow = await this.getWorkflowOrThrow(id, true);
     return { surfaces: this.getDesignSurfaceInventory(workflow) };
   }
 
@@ -4559,7 +4659,7 @@ export class WorkflowService {
     pageId?: string;
     generatedAt?: string;
   }> {
-    const workflow = await this.getWorkflowOrThrow(id);
+    const workflow = await this.getWorkflowOrThrow(id, true);
     const surface = this.getDesignSurfaceInventory(workflow).find((item) => item.id === surfaceId);
     const page = surface?.pages.find((item) => item.id === pageId);
     if (!page?.relPath) {
@@ -4626,7 +4726,10 @@ export class WorkflowService {
     return null;
   }
 
-  private getWorkflowBriefContext(workflow: WorkflowPayload): BrainstormBrief {
+  private getWorkflowBriefContext(
+    workflow: WorkflowPayload,
+    fallbackDescription = effectiveRequirementDescription(workflow.requirement),
+  ): BrainstormBrief {
     const imported = readPrototypeWorkflowSnapshot(this.getLatestCompletedStageOutput(workflow, StageType.REQUIREMENT_INTAKE));
     if (imported) return imported.analysis.brief;
     const stage = this.getLatestCompletedStageOutput(workflow, StageType.BRAINSTORM);
@@ -4635,7 +4738,7 @@ export class WorkflowService {
     }
 
     return {
-      expandedDescription: workflow.requirement.description?.trim() || workflow.requirement.title,
+      expandedDescription: fallbackDescription?.trim() || workflow.requirement.title,
       userStories: [],
       edgeCases: [],
       successMetrics: [],
@@ -4660,14 +4763,17 @@ export class WorkflowService {
       .filter((item): item is DesignSpec => Boolean(item));
   }
 
-  private getWorkflowDesignContext(workflow: WorkflowPayload): DesignSpec {
+  private getWorkflowDesignContext(
+    workflow: WorkflowPayload,
+    fallbackDescription = effectiveRequirementDescription(workflow.requirement),
+  ): DesignSpec {
     const previousDesigns = this.getWorkflowPreviousDesigns(workflow);
     if (previousDesigns.length > 0) {
       return previousDesigns[previousDesigns.length - 1];
     }
 
     return {
-      overview: workflow.requirement.description?.trim() || workflow.requirement.title,
+      overview: fallbackDescription?.trim() || workflow.requirement.title,
       pages: [],
       demoScenario: workflow.requirement.title,
       designRationale: 'Generated directly from requirement context without a confirmed design stage.',
@@ -4722,7 +4828,7 @@ export class WorkflowService {
             },
           );
 
-          const localDesign = groundedWorkflow.runType === WorkflowRunType.LOCAL_DESIGN;
+          const localDesign = !groundedWorkflow.sourceChangeId && groundedWorkflow.runType === WorkflowRunType.LOCAL_DESIGN;
           await this.transitionWorkflow(
             tx,
             workflowId,
@@ -4815,7 +4921,7 @@ export class WorkflowService {
         const message = error instanceof Error ? error.message : 'Repository grounding failed';
         const failedWorkflow = await this.prisma.workflowRun.findUnique({
           where: { id: workflowId },
-          select: { runType: true },
+          select: { runType: true, sourceChangeId: true },
         });
         await this.prisma.$transaction(async (tx) => {
           const groundingStage = await tx.stageExecution.findFirst({
@@ -4842,6 +4948,12 @@ export class WorkflowService {
               currentStage: stageTypeMap[StageType.REPOSITORY_GROUNDING],
             },
           });
+
+          if (failedWorkflow?.sourceChangeId) {
+            await tx.requirementChange.updateMany({ where: { id: failedWorkflow.sourceChangeId, restartStatus: { in: ['STARTING', 'STARTED'] } }, data: {
+              restartStatus: 'FAILED', errorMessage: '仓库上下文准备失败，请检查仓库连接和服务状态后点击“继续启动流程”。',
+            } });
+          }
 
           if (failedWorkflow?.runType === WorkflowRunType.BUG_FIX) {
             await tx.bug.updateMany({
@@ -4983,7 +5095,7 @@ export class WorkflowService {
   ) {
     this.stateMachine.assertWorkflowTransition(from, transition.to);
     await tx.workflowRun.update({
-      where: { id: workflowId },
+      where: { id: workflowId, supersededByChangeId: null },
       data: {
         status: workflowStatusMap[transition.to],
         currentStage: transition.stage ? stageTypeMap[transition.stage] : undefined,
@@ -5655,6 +5767,7 @@ export type WorkflowPayload = Prisma.WorkflowRunGetPayload<{
   include: {
     requirement: {
       include: {
+        changes: true;
         project: {
           include: {
             workspace: true;

@@ -738,3 +738,7 @@ DINGTALK_APPID
 本次增加 `CodeBranchSubmission` 表与关联索引，对应 migration 为 `20261022070000_add_code_branch_submissions`。升级前备份 SQLite 与持久化目录；容器沿用现有启动脚本执行 schema 同步，无新增环境变量。非 Docker 环境先执行 `pnpm prisma:generate`，再按当前数据库管理方式应用 migration 或运行 `pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma`；不要对未纳入 migration 历史的旧库盲目执行全量 `migrate deploy`。
 
 分支确认需要 API 宿主机可执行 Git 并读取所选仓库，沿用已有 Git 凭据配置。实际差异在系统临时目录的隔离 bare 仓库中读取，完成或失败后清理；不会在工作区仓库 checkout。读取过大差异或超时会提示失败并保留流程，不降级为没有真实 diff 的已确认交付。
+
+## 需求变更版本升级
+
+本次增加 `RequirementChange` 表、需求 `revision` 和工作流的新旧轮次关联，对应 migration 为 `20261023160000_add_requirement_changes`。升级前备份 SQLite，容器继续使用现有启动脚本同步 schema，无新增环境变量。非 Docker 环境重新生成 Prisma client，再按当前数据库管理方式应用本次 migration 或运行上述 `prisma db push`，随后重启 API。既有需求的修订从 0 开始，原始描述、流程与产物保留；上线前已领取的本地任务仍按原修订读取上下文。

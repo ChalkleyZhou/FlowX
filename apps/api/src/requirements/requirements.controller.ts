@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { CreateRequirementDto } from './dto/create-requirement.dto';
 import {
   ReviseBrainstormDto,
@@ -9,6 +9,8 @@ import {
 import { UpdateRequirementDto } from './dto/update-requirement.dto';
 import { UpsertRequirementAssignmentDto } from './dto/upsert-requirement-assignment.dto';
 import { RequirementAssignmentsService } from './requirement-assignments.service';
+import { RequirementChangesService } from './requirement-changes.service';
+import { CreateRequirementChangeDto } from './dto/create-requirement-change.dto';
 import { RequirementsService } from './requirements.service';
 
 @Controller('requirements')
@@ -16,6 +18,7 @@ export class RequirementsController {
   constructor(
     private readonly requirementsService: RequirementsService,
     private readonly requirementAssignmentsService: RequirementAssignmentsService,
+    private readonly requirementChangesService: RequirementChangesService,
   ) {}
 
   @Post()
@@ -36,6 +39,21 @@ export class RequirementsController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateRequirementDto) {
     return this.requirementsService.update(id, dto);
+  }
+
+  @Get(':id/changes')
+  listChanges(@Param('id') id: string, @Query('workflowRunId') workflowRunId?: string) {
+    return this.requirementChangesService.list(id, workflowRunId);
+  }
+
+  @Post(':id/changes')
+  createChange(@Param('id') id: string, @Body() dto: CreateRequirementChangeDto, @Req() req: RequirementsRequest) {
+    return this.requirementChangesService.create(id, dto, req.authSession);
+  }
+
+  @Post(':id/changes/:changeId/restart')
+  restartChange(@Param('id') id: string, @Param('changeId') changeId: string) {
+    return this.requirementChangesService.restart(id, changeId);
   }
 
   @Get(':id/assignments')

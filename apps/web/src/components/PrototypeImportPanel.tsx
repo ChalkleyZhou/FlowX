@@ -12,7 +12,7 @@ interface Props {
 }
 const MAX_ZIP_BYTES = 20 * 1024 * 1024;
 
-export function PrototypeImportPanel({ importId, onConfirmed }: Props) {
+export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const autoEnter = useRef(false);
@@ -156,7 +156,7 @@ export function PrototypeImportPanel({ importId, onConfirmed }: Props) {
         {file && <Button variant="outline" disabled={busy || !!invalidFile} onClick={() => void run(() => api.supplementPrototypeImport(importId, record.revision, file))}>上传并重试</Button>}
       </div>}
       {processing && error && <Button variant="outline" disabled={busy || loading} onClick={() => { resumed.current = false; void refresh(); }}>重试接续</Button>}
-      {succeeded && <Button asChild><Link to={`/workflow-runs/${workflowId}`}>进入工作流</Link></Button>}
+      {succeeded && <Button asChild><Link to={`/workflow-runs/${existingWorkflowId ?? workflowId}`}>进入工作流</Link></Button>}
       <div><Button variant="ghost" aria-expanded={expanded} onClick={() => setExpanded((current) => !current)}>{expanded ? '收起原型与材料' : '查看原型与材料'}</Button></div>
       {expanded && <div className="flex flex-col gap-3">
         {record.manifest.warnings.length > 0 && <ul className="list-disc pl-5 text-sm text-muted-foreground">{record.manifest.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}

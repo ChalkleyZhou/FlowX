@@ -22,6 +22,18 @@ class LocalStorageMock {
 }
 
 describe('api helpers', () => {
+  it('需求变更查询携带当前流程，提交与重试使用需求下的正式接口', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ revision: 1, changes: [] }) });
+    vi.stubGlobal('fetch', fetchMock);
+    await api.getRequirementChanges('req-1', 'run-1');
+    await api.createRequirementChange('req-1', { content: '导出增加 Excel 格式', mode: 'SUPPLEMENT', requestId: 'request-1', sourceWorkflowRunId: 'run-1' });
+    await api.restartRequirementChange('req-1', 'change-1');
+    expect(fetchMock.mock.calls[0][0]).toContain('/requirements/req-1/changes?workflowRunId=run-1');
+    expect(fetchMock.mock.calls[1][1].method).toBe('POST');
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ content: '导出增加 Excel 格式', mode: 'SUPPLEMENT', requestId: 'request-1', sourceWorkflowRunId: 'run-1' });
+    expect(fetchMock.mock.calls[2][0]).toContain('/requirements/req-1/changes/change-1/restart');
+    expect(fetchMock.mock.calls[2][1].method).toBe('POST');
+  });
   it('passes the selected AI provider to review endpoints', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'run-1' }) });
     vi.stubGlobal('fetch', fetchMock);

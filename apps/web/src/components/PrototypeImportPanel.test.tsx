@@ -100,6 +100,13 @@ describe('原型快速导入', () => {
     expect(container.textContent).toContain('正在导入');
     expect(container.textContent).not.toContain('导入成功');
   });
+  it('需求变更重走流程后，已完成导入入口跟随当前轮次', async () => {
+    vi.mocked(api.getPrototypeImport).mockResolvedValue({ ...record, status: 'CONFIRMED', workflowRunId: 'run-original' });
+    await act(async () => { root.render(<MemoryRouter><PrototypeImportPanel importId="import-1" existingWorkflowId="run-restarted" onConfirmed={vi.fn()} /></MemoryRouter>); });
+    expect(container.querySelector('a[href="/workflow-runs/run-restarted"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/workflow-runs/run-original"]')).toBeNull();
+    expect(navigate).not.toHaveBeenCalled();
+  });
   it('材料按需展开预览，预览失败不阻断导入', async () => {
     await render();
     expect(api.previewPrototypeImport).not.toHaveBeenCalled();

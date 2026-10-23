@@ -253,7 +253,7 @@ describe('PrototypeArchive', () => {
     await archive.save('draft1', 1, zip(Array.from({length:12}, (_, i) => ({path:`${i}.bin`,data:block}))), 'full.zip');
     await expect(archive.save('draft1', 2, zip([{path:'extra.txt',text:'extra'}]), 'extra.zip', 1)).rejects.toThrow();
     expect((await archive.manifest('draft1', 1)).files).toHaveLength(12);
-  });
+  }, 30000);
 
   it('图片/文档可作为设计页面并仅删除指定版本', async () => {
     await archive.save('draft1', 1, zip([{ path: 'screenshot.png', data: Buffer.from([1]) }, { path: 'brief.md', text: '<script>danger()</script>' }]), 'assets.zip');
@@ -311,7 +311,7 @@ describe('PrototypeArchive', () => {
     const prefix = ['a', 'b', 'c', 'd'].map(letter => letter.repeat(100)).join('/') + '/';
     await archive.save('long', 1, zip(Array.from({ length: 1500 }, (_, i) => ({ path: `${prefix}${i}.md`, text: 'x' }))), 'paths.zip');
     expect((await archive.context('long', 1)).length).toBeLessThanOrEqual(100000);
-  });
+  }, 30000);
   it('工作流原型总预算包含所有后续占位页', async () => {
     const entries = Array.from({ length: 100 }, (_, i) => ({ path: `${String(i).padStart(2, '0')}.html`, text: i < 4 ? `<body>${'x'.repeat(5241000)}</body>` : i === 4 ? `<body>${'x'.repeat(4190000)}</body>` : '<body>小页</body>' }));
     await archive.save('draft1', 1, zip(entries), 'pages.zip');

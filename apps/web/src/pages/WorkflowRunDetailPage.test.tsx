@@ -9,6 +9,8 @@ import { api } from '../api';
 import { ConfirmProvider } from '../components/ConfirmDialog';
 import type { SpecPlanOutput, WorkflowRun } from '../types';
 
+vi.mock('../components/RequirementChangesPanel', () => ({ RequirementChangesPanel: ({ requirementId, workflowRunId }: { requirementId: string; workflowRunId: string }) => <section data-changes-requirement={requirementId} data-changes-workflow={workflowRunId}>需求变更入口</section> }));
+
 vi.mock('../api', () => ({
   api: {
     getWorkflowRun: vi.fn(),
@@ -191,6 +193,21 @@ describe('WorkflowRunDetailPage', () => {
     document.body.appendChild(container);
     root = createRoot(container);
     vi.mocked(api.getWorkflowCollaboration).mockResolvedValue({ workflowRunId: 'workflow-1', currentStage: 'SPEC_PLAN', sessions: [] });
+  });
+
+  it('工作流详情变更入口携带当前需求与来源流程', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun());
+    await renderPage();
+    expect(container.querySelector('[data-changes-requirement="req-1"][data-changes-workflow="workflow-1"]')).toBeTruthy();
+  });
+
+  it('被变更替代的旧流程仅供查看，不能再回退或执行', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({ status: 'FAILED', supersededByChangeId: 'change-1' }));
+    await renderPage();
+    expect(container.textContent).toContain('已由需求变更替代');
+    expect(Array.from(container.querySelectorAll('button')).find(node => node.textContent?.includes('回退到上一阶段'))).toBeUndefined();
+    expect(container.querySelector('fieldset[disabled]')).toBeNull();
+    expect(container.textContent).not.toContain('工作流反馈区');
   });
 
   afterEach(() => {

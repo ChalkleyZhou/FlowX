@@ -6,14 +6,17 @@ import { WorkspacesModule } from '../workspaces/workspaces.module';
 import { IdeationRecoveryService } from './ideation-recovery.service';
 import { IdeationSessionEventsRepository } from './ideation-session-events.repository';
 import { RequirementAssignmentsService } from './requirement-assignments.service';
+import { WorkflowModule } from '../workflow/workflow.module';
+import { RequirementChangesService } from './requirement-changes.service';
 import { RequirementsController } from './requirements.controller';
 import { RequirementsService } from './requirements.service';
 
 @Module({
-  imports: [PrismaModule, AiModule, DevPreviewModule, WorkspacesModule],
+  imports: [WorkflowModule, PrismaModule, AiModule, DevPreviewModule, WorkspacesModule],
   controllers: [RequirementsController],
   providers: [
     RequirementsService,
+    RequirementChangesService,
     RequirementAssignmentsService,
     IdeationRecoveryService,
     IdeationSessionEventsRepository,

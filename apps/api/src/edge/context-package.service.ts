@@ -1,3 +1,4 @@
+import { effectiveRequirementDescription } from '../requirements/requirement-change-context';
 import { Injectable } from '@nestjs/common';
 import {
   FLOWX_PROTOCOL_VERSION,
@@ -25,6 +26,7 @@ export class ContextPackageService {
       return this.prisma.requirement.findUniqueOrThrow({
         where: { id },
         include: {
+          changes: { orderBy: { revision: 'asc' } },
           requirementRepositories: { include: { repository: true } },
         },
       });
@@ -43,6 +45,8 @@ export class ContextPackageService {
         title: string;
         description: string;
         acceptanceCriteria: string;
+        changes?: Array<{ revision: number; content: string }>;
+        revision?: number;
         requirementRepositories: Array<{
           repository: { id: string; name: string; url: string | null; defaultBranch?: string | null };
         }>;
@@ -53,9 +57,10 @@ export class ContextPackageService {
           type,
           id: requirement.id,
           title: requirement.title,
-          description: requirement.description,
+          description: effectiveRequirementDescription(requirement),
           acceptanceCriteria: requirement.acceptanceCriteria,
         },
+        metadata: { requirementRevision: requirement.revision ?? 0 },
         repositories: requirement.requirementRepositories.map(({ repository }) => ({
           repositoryId: repository.id,
           name: repository.name,

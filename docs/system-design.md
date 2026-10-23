@@ -145,6 +145,18 @@ Codex / Cursor 的 `analyzePrototype` 共用 `prototype-analysis.output.schema.j
 
 原型存储在 API 工作目录 `.flowx-data/prototype-imports/{id}/{materialRevision}`，保存各次原包与合并材料。预览静态内联包内资源，不安装依赖或执行构建命令。HTML 置于可信外壳的 sandbox iframe（无 same-origin）中；外壳 CSP 的 `frame-src 'none'` 阻止内部原型自身外部导航，原型 CSP 限制请求、资源与表单。包内导航经消息源校验及清单校验转发；新窗口同样保留可信外壳。它是原型预览环境，不是完整应用运行环境。完整接口、限制与备份见 [原型导入](prototype-import.md)。
 
+### 正式需求变更与流程重启
+
+需求详情与工作流详情复用变更入口。变更以独立 `RequirementChange` 保存，需求修订递增，记录提交者、原文、来源流程和重启结果；原始需求描述及历史产物不被增量直接覆盖。提交请求使用 `requestId` 幂等，所有查询和写入遵循组织归属校验。
+
+`GET /requirements/:id/changes` 返回修订与正式变更记录，可带 `workflowRunId` 查询当前研发上下文读取修订及待同步状态；`POST /requirements/:id/changes` 接受一句话 `content`、`SUPPLEMENT | RESTART` 模式、`requestId` 和可选来源流程。`POST /requirements/:id/changes/:changeId/restart` 接续保存过的重启请求，重试不重复建立流程。
+
+统一上下文渲染将正式变更按修订顺序附在原始需求之后，供后续云端生成和本地领取使用；阶段输入记录读取修订，查询不把旧任务改写成已同步。变更不新增审批门禁，也不声称运行中的 IDE 已实时收到新要求。
+
+重新走流程绑定来源变更和旧流程，复用仓库准备与工作流状态机，明确重做构思、设计和方案，不能因原型已导入就复用过时的已确认结果跳过。没有实际运行任务的旧轮可被取代，保留历史；实际运行任务冲突时保存待启动记录，后续显式重试。创建副作用与数据库幂等写入分离，启动失败和中断可恢复。
+
+其他需求仅待执行时可以继续排队，不被本次重启替代。首建与失败重试在仓库准备前后都复查实际运行任务，准备中的流程也参与互斥。
+
 ### 多仓分支交付
 
 `CodeBranchSubmission` 关联 WorkflowRun、StageExecution、WorkflowRepository 与 User。同阶段、同仓库、同分支、同提交人的记录唯一，重复提交更新本人 headSha。它表示代码来源，不表示任务指派或执行会话。组织隔离同步纳入 Prisma scope。

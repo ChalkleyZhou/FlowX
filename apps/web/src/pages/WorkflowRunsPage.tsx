@@ -277,7 +277,7 @@ export function WorkflowRunsPage() {
                   title={<div className="text-base font-semibold leading-6 text-foreground">{item.requirement.title}</div>}
                   badges={
                     <>
-                      <Badge variant="default">{formatWorkflowStatus(item.status)}</Badge>
+                      <Badge variant="default">{item.supersededByChangeId ? '已由需求变更替代' : formatWorkflowStatus(item.status)}</Badge>
                       {item.runType === 'BUG_FIX' ? (
                         <Badge variant="secondary">{formatWorkflowRunType(item.runType)}</Badge>
                       ) : null}

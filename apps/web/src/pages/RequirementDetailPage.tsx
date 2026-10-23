@@ -5,6 +5,7 @@ import { ContextPanel } from '../components/ContextPanel';
 import { DetailHeader } from '../components/DetailHeader';
 import { PrototypeImportPanel } from '../components/PrototypeImportPanel';
 import { RequirementSchedulingPanel } from '../components/RequirementSchedulingPanel';
+import { RequirementChangesPanel } from '../components/RequirementChangesPanel';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Spinner } from '../components/ui/spinner';
@@ -130,6 +131,8 @@ export function RequirementDetailPage() {
         onConfirmed={() => fetchRequirement({ silent: true })}
       />}
 
+      <RequirementChangesPanel requirementId={requirement.id} onChanged={() => fetchRequirement({ silent: true })} />
+
       <section id="active-workflows" className="scroll-mt-5">
         <ContextPanel
           eyebrow="Workflow"
@@ -140,7 +143,7 @@ export function RequirementDetailPage() {
             {activeWorkflows.map((run) => (
               <div key={run.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-3">
                 <div>
-                  <p className="text-sm font-medium">{formatWorkflowStatus(run.status)} · {run.id.slice(-6)}</p>
+                  <p className="text-sm font-medium">{run.supersededByChangeId ? '已由需求变更替代' : formatWorkflowStatus(run.status)} · {run.id.slice(-6)}</p>
                   <p className="mt-1 text-sm text-muted-foreground">仓库范围：{formatRequirementWorkflowScope(run)}</p>
                 </div>
                 <Button variant="outline" asChild><Link to={`/workflow-runs/${run.id}`}>继续此工作流</Link></Button>
@@ -156,7 +159,7 @@ export function RequirementDetailPage() {
             {historicalWorkflows.map((run) => (
               <div key={run.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-3">
                 <div>
-                  <p className="text-sm font-medium">{formatWorkflowStatus(run.status)} · {run.id.slice(-6)}</p>
+                  <p className="text-sm font-medium">{run.supersededByChangeId ? '已由需求变更替代' : formatWorkflowStatus(run.status)} · {run.id.slice(-6)}</p>
                   <p className="mt-1 text-sm text-muted-foreground">仓库范围：{formatRequirementWorkflowScope(run)}</p>
                 </div>
                 <Button variant="outline" asChild><Link to={`/workflow-runs/${run.id}`}>查看历史</Link></Button>

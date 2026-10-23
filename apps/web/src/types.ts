@@ -270,6 +270,34 @@ export interface LocalDevPreviewStatus {
   lastError?: string;
 }
 
+export interface RequirementChange {
+  id: string;
+  requirementId: string;
+  revision: number;
+  content: string;
+  mode: 'SUPPLEMENT' | 'RESTART';
+  createdByName: string;
+  createdAt: string;
+  sourceWorkflowRunId: string | null;
+  restartWorkflowRunId: string | null;
+  restartStatus: 'NOT_REQUESTED' | 'PENDING' | 'STARTING' | 'STARTED' | 'FAILED';
+  errorMessage: string | null;
+}
+
+export interface RequirementChanges {
+  revision: number;
+  changes: RequirementChange[];
+  contextRevision?: number;
+  hasPendingChanges?: boolean;
+}
+
+export interface RequirementChangePayload {
+  content: string;
+  mode: RequirementChange['mode'];
+  requestId: string;
+  sourceWorkflowRunId?: string;
+}
+
 export interface Requirement {
   id: string;
   title: string;
@@ -287,6 +315,7 @@ export interface Requirement {
   workflowRuns?: Array<{
     id: string;
     status: string;
+    supersededByChangeId?: string | null;
     workflowRepositories?: Array<{
       id: string;
       name: string;
@@ -363,6 +392,8 @@ export interface WorkflowDesignArtifactPage {
 export interface WorkflowRun {
   id: string;
   status: string;
+  supersededByChangeId?: string | null;
+  sourceChangeId?: string | null;
   currentStage?: string | null;
   runType?: string;
   aiProvider: 'codex' | 'cursor';

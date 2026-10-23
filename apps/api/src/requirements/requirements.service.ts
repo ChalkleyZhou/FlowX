@@ -1,3 +1,4 @@
+import { effectiveRequirementDescription } from './requirement-change-context';
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   AI_EXECUTOR_REGISTRY,
@@ -274,6 +275,7 @@ export class RequirementsService {
     const requirement = await this.prisma.requirement.findUniqueOrThrow({
       where: { id },
       include: {
+        changes: { orderBy: { revision: 'asc' } },
         project: {
           include: {
             workspace: {
@@ -357,7 +359,7 @@ export class RequirementsService {
         stage: 'BRAINSTORM',
         attempt: previousAttemptCount + 1,
         status: ideationSessionStatusMap[IdeationSessionStatus.RUNNING],
-        input: { requirementTitle: requirement.title, requirementDescription: requirement.description, humanHint: hint },
+        input: { requirementRevision: requirement.revision ?? 0, requirementTitle: requirement.title, requirementDescription: effectiveRequirementDescription(requirement), humanHint: hint },
         startedAt: new Date(),
       },
     });
@@ -376,7 +378,7 @@ export class RequirementsService {
       const result = await executor.brainstorm(
         {
           requirementTitle: requirement.title,
-          requirementDescription: requirement.description,
+          requirementDescription: effectiveRequirementDescription(requirement),
           previousBriefs: previousBriefs.length > 0 ? previousBriefs : undefined,
           humanFeedback: hint || undefined,
           workspaceContext: requirement.workspace?.name || undefined,
@@ -441,7 +443,7 @@ export class RequirementsService {
         stage: 'BRAINSTORM',
         attempt: previousBriefs.length + 1,
         status: ideationSessionStatusMap[IdeationSessionStatus.RUNNING],
-        input: { feedback },
+        input: { requirementRevision: requirement.revision ?? 0, feedback },
         startedAt: new Date(),
       },
     });
@@ -460,7 +462,7 @@ export class RequirementsService {
       const result = await executor.brainstorm(
         {
           requirementTitle: requirement.title,
-          requirementDescription: requirement.description,
+          requirementDescription: effectiveRequirementDescription(requirement),
           previousBriefs,
           humanFeedback: feedback,
           workspaceContext: requirement.workspace?.name || undefined,
@@ -582,7 +584,7 @@ export class RequirementsService {
         stage: 'DESIGN',
         attempt: previousDesigns.length + 1,
         status: ideationSessionStatusMap[IdeationSessionStatus.RUNNING],
-        input: { humanHint: hint },
+        input: { requirementRevision: requirement.revision ?? 0, humanHint: hint },
         startedAt: new Date(),
       },
     });
@@ -606,7 +608,7 @@ export class RequirementsService {
       const rawResult = await executor.generateDesign(
         {
           requirementTitle: requirement.title,
-          requirementDescription: requirement.description,
+          requirementDescription: effectiveRequirementDescription(requirement),
           confirmedBrief,
           previousDesigns: previousDesigns.length > 0 ? previousDesigns : undefined,
           humanFeedback: hint || undefined,
@@ -690,7 +692,7 @@ export class RequirementsService {
         stage: 'DESIGN',
         attempt: previousDesigns.length + 1,
         status: ideationSessionStatusMap[IdeationSessionStatus.RUNNING],
-        input: { feedback },
+        input: { requirementRevision: requirement.revision ?? 0, feedback },
         startedAt: new Date(),
       },
     });
@@ -714,7 +716,7 @@ export class RequirementsService {
       const rawResult = await executor.generateDesign(
         {
           requirementTitle: requirement.title,
-          requirementDescription: requirement.description,
+          requirementDescription: effectiveRequirementDescription(requirement),
           confirmedBrief,
           previousDesigns,
           humanFeedback: feedback,
@@ -728,7 +730,7 @@ export class RequirementsService {
         const retryRawResult = await executor.generateDesign(
           {
             requirementTitle: requirement.title,
-            requirementDescription: requirement.description,
+            requirementDescription: effectiveRequirementDescription(requirement),
             confirmedBrief,
             previousDesigns,
             humanFeedback: `${feedback}\n\n请确保本次修订与上一版有明确可见差异：至少调整 2 个页面的布局、关键组件或交互说明，并在 designRationale 开头总结本次具体变更点。`,
