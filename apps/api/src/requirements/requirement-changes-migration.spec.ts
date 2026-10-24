@@ -30,6 +30,10 @@ it('需求变更迁移保留原始需求、旧轮及方案，并可重复 db pus
     const stage = await prisma.stageExecution.create({ data: { workflowRunId: 'legacy-run', stage: 'SPEC_PLAN', status: 'COMPLETED', output: { original: '历史方案' } } });
     const migration = readFileSync(resolve('../../prisma/migrations/20261023160000_add_requirement_changes/migration.sql'), 'utf8');
     execFileSync(process.execPath, [cli, 'db', 'execute', '--url', url, '--stdin'], { env, input: migration });
+    await prisma.$executeRaw`INSERT INTO RequirementChange (id,requirementId,revision,content,mode,requestId,createdByUserId,createdByName,updatedAt) VALUES ('legacy-change','legacy-req',1,'历史变更','SUPPLEMENT','old-request','author','产品',CURRENT_TIMESTAMP)`;
+    const prototypeMigration = readFileSync(resolve('../../prisma/migrations/20261023180000_requirement_change_prototype/migration.sql'), 'utf8');
+    execFileSync(process.execPath, [cli, 'db', 'execute', '--url', url, '--stdin'], { env, input: prototypeMigration });
+    expect(await prisma.requirementChange.findUniqueOrThrow({ where: { id: 'legacy-change' } })).toMatchObject({ content: '历史变更', prototype: null });
     for (let index = 0; index < 2; index++) execFileSync(process.execPath, [cli, 'db', 'push', '--schema', schemaPath, '--skip-generate'], { env });
     expect(await prisma.requirement.findUniqueOrThrow({ where: { id: 'legacy-req' } })).toMatchObject({ title: '原始标题', description: '原始描述', revision: 0 });
     expect(await prisma.workflowRun.findUniqueOrThrow({ where: { id: 'legacy-run' } })).toMatchObject({ status: 'DONE', sourceChangeId: null, supersededByChangeId: null });

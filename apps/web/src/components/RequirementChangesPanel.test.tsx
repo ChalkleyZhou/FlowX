@@ -9,7 +9,7 @@ import { RequirementChangesPanel } from './RequirementChangesPanel';
 
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }));
 vi.mock('react-router-dom', async original => ({ ...await original<typeof import('react-router-dom')>(), useNavigate: () => navigate }));
-vi.mock('../api', () => ({ api: { getRequirementChanges: vi.fn(), createRequirementChange: vi.fn(), restartRequirementChange: vi.fn() } }));
+vi.mock('../api', () => ({ api: { getRequirementChanges: vi.fn(), createRequirementChange: vi.fn(), createPrototypeRequirementChange: vi.fn(), downloadRequirementChangePrototype: vi.fn(), restartRequirementChange: vi.fn() } }));
 
 const change = (overrides: Partial<RequirementChange> = {}): RequirementChange => ({
   id: 'change-1', requirementId: 'req-1', revision: 1, content: '导出增加 Excel 格式', mode: 'SUPPLEMENT',
@@ -156,6 +156,42 @@ describe('需求变更最小闭环', () => {
     expect(container.textContent).not.toContain('旧需求的变更');
   });
 
+  it('选 ZIP 后只能重新走流程，说明可选，切换 AI 后直接提交且可移除文件', async () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    vi.mocked(api.createPrototypeRequirementChange).mockResolvedValue(change({ mode: 'RESTART', restartStatus: 'STARTING', prototype: { name: 'new.zip', aiProvider: 'cursor' } }));
+    await render(); await click('需求变更');
+    const file = new File(['zip'], 'new.zip');
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    expect(button('提交变更')?.disabled).toBe(true);
+    expect(button('重新走流程')?.disabled).toBe(false);
+    await act(async () => { container.querySelector('[aria-label="变更使用的 AI"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); });
+    await act(async () => { (Array.from(document.querySelectorAll('[role="option"]')).find(item => item.textContent === 'Cursor CLI') as HTMLElement).click(); });
+    await click('重新走流程');
+    expect(api.createPrototypeRequirementChange).toHaveBeenCalledWith('req-1', expect.objectContaining({ mode: 'RESTART', content: '更新原型：new.zip', aiProvider: 'cursor', requestId: expect.any(String) }), file);
+    expect(api.createRequirementChange).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('new.zip');
+  });
+  it('无效 ZIP 阻止启动，撤销后恢复一句话变更；请求失败保留 ZIP 与幂等键', async () => {
+    vi.mocked(api.createPrototypeRequirementChange).mockRejectedValue(new Error('网络中断'));
+    await render(); await click('需求变更'); await fill('变更说明');
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [new File(['bad'], 'bad.txt')], configurable: true });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    expect(button('重新走流程')?.disabled).toBe(true);
+    await click('移除 ZIP');
+    expect(button('提交变更')?.disabled).toBe(false);
+    const nextInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['zip'], 'new.zip');
+    Object.defineProperty(nextInput, 'files', { value: [file] });
+    await act(async () => { nextInput.dispatchEvent(new Event('change', { bubbles: true })); });
+    await click('重新走流程'); await click('重新走流程');
+    expect(container.textContent).toContain('网络中断');
+    expect(container.textContent).toContain('new.zip');
+    const calls = vi.mocked(api.createPrototypeRequirementChange).mock.calls;
+    expect(calls[0][1].requestId).toBe(calls[1][1].requestId);
+  });
   it('后台启动轮询保留历史与输入，启动完成后停止且不重复请求', async () => {
     vi.useFakeTimers();
     vi.mocked(api.getRequirementChanges).mockResolvedValue(snapshot([change({ mode: 'RESTART', restartStatus: 'STARTING' })]));

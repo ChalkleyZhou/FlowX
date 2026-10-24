@@ -93,11 +93,15 @@ export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId
       const next = await action();
       if (version === epoch.current) { apply(next); setFile(null); }
     } catch (err) {
-      if (version === epoch.current) setError(err instanceof Error ? err.message : '导入失败，请重试');
+      if (version === epoch.current) {
+        setError(err instanceof Error ? err.message : '导入失败，请重试');
+        // 换包失败也可能已推进修订；保留选择并同步服务端版本，允许直接再试。
+        try { const latest = await api.getPrototypeImport(importId); if (version === epoch.current) apply(latest); } catch { /* 保留原始提交错误 */ }
+      }
     } finally {
       if (version === epoch.current) { operation.current = false; setBusy(false); }
     }
-  }, [apply]);
+  }, [apply, importId]);
 
   useEffect(() => {
     if (record?.status !== 'WAITING_CONFIRMATION' || resumed.current) return;
@@ -148,21 +152,25 @@ export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId
       {(error || record.errorMessage) && <p role="alert" className="text-sm text-danger">{error ?? record.errorMessage}</p>}
       {failed && <div className="flex flex-col gap-3">
         <div className="flex max-w-xs flex-col gap-2">
-          <label className="text-sm" htmlFor={`prototype-retry-provider-${importId}`}>重试使用的 AI</label>
+          <label className="text-sm" htmlFor={`prototype-retry-provider-${importId}`}>使用的 AI</label>
           <Select value={retryProvider ?? record.aiProvider} onValueChange={(value: PrototypeImport['aiProvider']) => setRetryProvider(value)} disabled={busy}>
-            <SelectTrigger id={`prototype-retry-provider-${importId}`} aria-label="重试使用的 AI"><SelectValue /></SelectTrigger>
+            <SelectTrigger id={`prototype-retry-provider-${importId}`} aria-label="使用的 AI"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="codex">Codex</SelectItem><SelectItem value="cursor">Cursor CLI</SelectItem></SelectContent>
           </Select>
         </div>
+        <p className="text-sm text-muted-foreground">当前 ZIP：{record.manifest.sources.at(-1)?.name ?? '已保存的原型包'}</p>
+        <label className="flex flex-col gap-2 text-sm">更换 ZIP（可选，最大 20 MiB）
+          <Input key={file ? 'selected' : 'empty'} type="file" accept=".zip,application/zip" aria-label="更换原型 ZIP" disabled={busy} onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+        </label>
+        {file ? <div className="flex flex-wrap items-center gap-2 text-sm"><span>将使用：{file.name}</span><Button variant="ghost" size="sm" disabled={busy} onClick={() => setFile(null)}>移除新 ZIP</Button></div> : null}
+        <p className="text-xs text-muted-foreground">不换包则沿用当前材料；更换后以新 ZIP 完整重新分析，旧包保留在历史中。</p>
+        {invalidFile && <p role="alert" className="text-sm text-danger">请选择不超过 20 MiB 的 ZIP 文件</p>}
         <div className="flex gap-2">
-          <Button disabled={busy} onClick={() => void run(() => api.analyzePrototypeImport(importId, { revision: record.revision, aiProvider: retryProvider ?? record.aiProvider }))}>{busy ? '重试中…' : '重试导入'}</Button>
+          <Button disabled={busy || !!invalidFile} onClick={() => void run(() => file
+            ? api.supplementPrototypeImport(importId, record.revision, file, retryProvider ?? record.aiProvider, true)
+            : api.analyzePrototypeImport(importId, { revision: record.revision, aiProvider: retryProvider ?? record.aiProvider }))}>{busy ? '正在提交…' : '重新导入'}</Button>
           <Button variant="outline" disabled={busy || loading} onClick={() => void refresh()}>刷新状态</Button>
         </div>
-        <label className="flex flex-col gap-2 text-sm">更换或补充 ZIP（可选，最大 20 MiB）
-          <Input type="file" accept=".zip,application/zip" aria-label="补传原型 ZIP" disabled={busy} onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-        </label>
-        {invalidFile && <p role="alert" className="text-sm text-danger">请选择不超过 20 MiB 的 ZIP 文件</p>}
-        {file && <Button variant="outline" disabled={busy || !!invalidFile} onClick={() => void run(() => api.supplementPrototypeImport(importId, record.revision, file, retryProvider ?? record.aiProvider))}>上传并重试</Button>}
       </div>}
       {processing && error && <Button variant="outline" disabled={busy || loading} onClick={() => { resumed.current = false; void refresh(); }}>重试接续</Button>}
       {succeeded && <Button asChild><Link to={`/workflow-runs/${existingWorkflowId ?? workflowId}`}>进入工作流</Link></Button>}

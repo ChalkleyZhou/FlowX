@@ -1,6 +1,7 @@
+import { readChangePrototype } from '../requirements/requirement-change-prototype';
 import { effectiveRequirementDescription, readRequirementRevision } from '../requirements/requirement-change-context';
 import { PrototypeArchive } from '../prototype-imports/prototype-archive';
-import { buildPrototypeWorkflowSnapshot, readPrototypeWorkflowSnapshot } from './workflow-prototype-import';
+import { buildPrototypeWorkflowSnapshot, readPrototypeWorkflowSnapshot, type PrototypeWorkflowSnapshot } from './workflow-prototype-import';
 import { codeDeliveryReviewRepositories, codeDeliverySourceStage } from './workflow-code-delivery-review';
 import {
   BadRequestException,
@@ -182,8 +183,10 @@ export class WorkflowService {
       await this.assertChangeRestartAvailable(this.prisma, change.requirementId, repositoryIds, change.id, existing.id);
       return this.startPreparedRequirementWorkflow(existing.id, existing.workflowRepositories, { requirementId: change.requirementId, repositoryIds, changeId: change.id });
     }
+    const prototype = readChangePrototype(change.prototype);
+    if (prototype && !prototype.snapshot) throw new BadRequestException('请先完成新原型整理再启动流程。');
     const sourceIds = change.sourceWorkflowRun?.workflowRepositories.flatMap((repo) => repo.repositoryId ? [repo.repositoryId] : []);
-    return this.createRequirementWorkflowRun({ requirementId: change.requirementId, repositoryIds: sourceIds?.length ? sourceIds : undefined, aiProvider: change.sourceWorkflowRun?.aiProvider }, WorkflowRunType.FULL, change.id);
+    return this.createRequirementWorkflowRun({ requirementId: change.requirementId, repositoryIds: sourceIds?.length ? sourceIds : undefined, aiProvider: prototype?.aiProvider ?? change.sourceWorkflowRun?.aiProvider }, WorkflowRunType.FULL, change.id, prototype?.snapshot);
   }
 
   private async assertChangeRestartAvailable(
@@ -268,7 +271,7 @@ export class WorkflowService {
     return workflow;
   }
 
-  private async createRequirementWorkflowRun(dto: CreateWorkflowRunDto, runType: WorkflowRunType, sourceChangeId?: string) {
+  private async createRequirementWorkflowRun(dto: CreateWorkflowRunDto, runType: WorkflowRunType, sourceChangeId?: string, changePrototypeSnapshot?: PrototypeWorkflowSnapshot) {
     const aiProvider = this.aiInvocationContextService.normalizeAiProvider(dto.aiProvider);
     const requirement = await this.prisma.requirement.findFirstOrThrow({
       where: {
@@ -301,7 +304,7 @@ export class WorkflowService {
         },
       },
     });
-    const prototypeSnapshot = !sourceChangeId && requirement.prototypeImport
+    const prototypeSnapshot = sourceChangeId ? changePrototypeSnapshot ?? null : requirement.prototypeImport
       ? buildPrototypeWorkflowSnapshot(requirement.prototypeImport)
       : null;
     const requestedRepositoryIds = Array.from(

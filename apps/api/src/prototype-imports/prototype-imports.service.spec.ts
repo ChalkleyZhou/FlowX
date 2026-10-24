@@ -134,6 +134,21 @@ describe('原型导入到确认', () => {
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(await prisma.ideationArtifact.count({ where: { requirementId: result.requirementId } })).toBe(2);
   });
+  it('整包替换清除旧分析和答案，读取失败不丢失原材料且可用最新修订再试', async () => {
+    const imported = await create();
+    await prisma.prototypeImport.update({ where: { id: imported.id }, data: { answers: { permission: '旧规则' } } });
+    const schedule = vi.spyOn(service as never, 'schedule' as never).mockImplementation(() => undefined);
+    try {
+      archive.save.mockRejectedValueOnce(new Error('损坏 ZIP'));
+      await expect(service.supplement(imported.id, { revision: imported.revision, replace: true }, Buffer.from('bad'), 'new.zip', actor())).rejects.toMatchObject({ status: 400 });
+      const failed = await service.get(imported.id, actor());
+      expect(failed.materialRevision).toBe(imported.materialRevision);
+      const next = await service.supplement(imported.id, { revision: failed.revision, replace: true, aiProvider: 'cursor' }, Buffer.from('new'), 'new.zip', actor());
+      expect(next).toMatchObject({ status: 'ANALYZING', analysis: null, answers: {}, aiProvider: 'cursor' });
+      expect(archive.save).toHaveBeenLastCalledWith(imported.id, next.materialRevision, expect.any(Buffer), 'new.zip', imported.materialRevision, true);
+    } finally { schedule.mockRestore(); }
+  });
+
   it('失败保留旧整理结果，可重试和补传，旧分析不能覆盖新版本', async () => {
     const result = await create();
     executor.analyzePrototype.mockRejectedValueOnce(new Error('secret upstream token'));

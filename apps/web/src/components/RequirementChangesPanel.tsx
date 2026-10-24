@@ -4,6 +4,8 @@ import { api } from '../api';
 import type { RequirementChange, RequirementChanges } from '../types';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
+import { Input } from './ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
 
 interface Props {
@@ -26,6 +28,11 @@ function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged }: P
   const [open, setOpen] = useState(false);
   const [content, setContent] = useState('');
   const [busy, setBusy] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [aiProvider, setAiProvider] = useState<'inherit' | 'codex' | 'cursor' | null>(null);
+  const pendingNavigate = useRef<string | null>(null);
+  const invalidFile = file && (!/\.zip$/i.test(file.name) || file.size > 20 * 1024 * 1024);
+
   const generation = useRef(0);
   const readVersion = useRef(0);
   const reading = useRef(false);
@@ -83,6 +90,11 @@ function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged }: P
     return () => window.clearInterval(timer);
   }, [starting, load]);
 
+  useEffect(() => {
+    const completed = data?.changes.find(record => record.id === pendingNavigate.current && record.restartStatus === 'STARTED' && record.restartWorkflowRunId);
+    if (completed) { pendingNavigate.current = null; navigate(`/workflow-runs/${completed.restartWorkflowRunId}`); }
+  }, [data, navigate]);
+
   const apply = (record: RequirementChange) => {
     // 丢弃先前的列表请求，避免成功提交后被旧快照覆盖。
     readVersion.current += 1;
@@ -95,32 +107,35 @@ function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged }: P
     if (reading.current) reloadPending.current = true;
     else void load({ silent: true });
     void Promise.resolve(onChanged?.()).catch(() => undefined);
+    pendingNavigate.current = record.restartStatus === 'STARTING' ? record.id : null;
     if (record.restartStatus === 'STARTED' && record.restartWorkflowRunId) {
       navigate(`/workflow-runs/${record.restartWorkflowRunId}`);
     }
   };
 
   const submit = async (mode: RequirementChange['mode']) => {
-    const text = content.trim();
-    if (!text || writing.current) return;
+    const text = content.trim() || (file ? `更新原型：${file.name}` : '');
+    if (!text || writing.current || invalidFile || (file && mode !== 'RESTART')) return;
     const currentGeneration = generation.current;
     writing.current = true;
     setBusy(true);
     setWriteError(null);
     try {
-      const signature = JSON.stringify([text, mode]);
+      const provider = aiProvider ?? data?.aiProvider ?? 'inherit';
+      const signature = JSON.stringify([text, mode, provider, file?.name, file?.size, file?.lastModified]);
       if (draftRequest.current?.signature !== signature) {
         const id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
           ? crypto.randomUUID() : `change-${Date.now()}-${Math.random().toString(16).slice(2)}`;
         draftRequest.current = { signature, id };
       }
-      const record = await api.createRequirementChange(requirementId, {
+      const payload = {
         content: text, mode, requestId: draftRequest.current.id,
         ...(workflowRunId ? { sourceWorkflowRunId: workflowRunId } : {}),
-      });
+      };
+      const record = file ? await api.createPrototypeRequirementChange(requirementId, { ...payload, ...(provider === 'inherit' ? {} : { aiProvider: provider }) }, file) : await api.createRequirementChange(requirementId, payload);
       if (generation.current !== currentGeneration) return;
       apply(record);
-      setContent('');
+      setContent(''); setFile(null); setAiProvider(null);
       setOpen(false);
       draftRequest.current = null;
     } catch (error) {
@@ -146,15 +161,25 @@ function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged }: P
     }
   };
 
+  const download = async (record: RequirementChange) => {
+    try {
+      const blob = await api.downloadRequirementChangePrototype(requirementId, record.id);
+      const url = URL.createObjectURL(blob); const anchor = document.createElement('a');
+      anchor.href = url; anchor.download = record.prototype?.name ?? 'prototype.zip'; document.body.appendChild(anchor);
+      try { anchor.click(); } finally { anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 0); }
+    } catch (error) { setWriteError(error instanceof Error ? error.message : '原型下载失败'); }
+  };
+
   const renderRecord = (record: RequirementChange) => (
     <article key={record.id} className="space-y-2 border-t border-border py-3 first:border-t-0">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <span>第 {record.revision} 次变更</span>
         <span>{record.createdByName}</span>
         <time dateTime={record.createdAt}>{new Date(record.createdAt).toLocaleString('zh-CN', { hour12: false })}</time>
-        <span>{record.mode === 'SUPPLEMENT' ? '补充变更' : ({ NOT_REQUESTED: '重新走流程', PENDING: '待启动', STARTING: '正在启动流程', STARTED: '已启动新流程', FAILED: '启动失败' })[record.restartStatus]}</span>
+        <span>{record.mode === 'SUPPLEMENT' ? '补充变更' : ({ NOT_REQUESTED: '重新走流程', PENDING: '待启动', STARTING: record.prototype ? '正在整理原型并启动流程' : '正在启动流程', STARTED: '已启动新流程', FAILED: '启动失败' })[record.restartStatus]}</span>
       </div>
       <p className="whitespace-pre-wrap break-words text-sm leading-6">{record.content}</p>
+      {record.prototype && <Button size="sm" variant="ghost" onClick={() => void download(record)}>下载 {record.prototype.name}</Button>}
       {record.errorMessage && <p className="text-sm text-muted-foreground">{record.errorMessage}</p>}
       <div className="flex flex-wrap items-center gap-3">
         {record.mode === 'RESTART' && ['PENDING', 'FAILED'].includes(record.restartStatus) && (
@@ -183,11 +208,20 @@ function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged }: P
         </div>
         {data?.hasPendingChanges && <p role="status" className="rounded-md bg-muted px-3 py-2 text-sm">当前任务尚未读取最新变更。后续生成或重新领取将带上变更；正在运行的本地任务需先结束再重新领取。</p>}
         {open && <form className="space-y-3" onSubmit={event => { event.preventDefault(); void submit('SUPPLEMENT'); }}>
-          <label className="block space-y-2 text-sm"><span>变更说明</span><Textarea autoFocus value={content} onChange={event => setContent(event.target.value)} placeholder="一句话说明要改什么，例如：导出增加 Excel 格式" required maxLength={10000} disabled={busy} rows={3} /></label>
+          <label className="block space-y-2 text-sm"><span>变更说明</span><Textarea autoFocus value={content} onChange={event => setContent(event.target.value)} placeholder="一句话说明要改什么，例如：导出增加 Excel 格式" required={!file} maxLength={10000} disabled={busy} rows={3} /></label>
+          <label className="block space-y-2 text-sm"><span>更新原型 ZIP（可选，最大 20 MiB）</span><Input key={file ? 'selected' : 'empty'} type="file" accept=".zip,application/zip" aria-label="变更原型 ZIP" disabled={busy} onChange={event => { setFile(event.target.files?.[0] ?? null); draftRequest.current = null; }} /></label>
+          {file && <>
+            <div className="flex flex-wrap items-center gap-2 text-sm"><span>{file.name}</span><Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => { setFile(null); draftRequest.current = null; }}>移除 ZIP</Button></div>
+            <div className="max-w-xs space-y-2"><label className="text-sm" htmlFor={`change-ai-${requirementId}`}>使用的 AI</label><Select value={aiProvider ?? data?.aiProvider ?? 'inherit'} onValueChange={(value: 'inherit' | 'codex' | 'cursor') => setAiProvider(value)} disabled={busy}>
+              <SelectTrigger id={`change-ai-${requirementId}`} aria-label="变更使用的 AI"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="inherit">沿用当前 AI</SelectItem><SelectItem value="codex">Codex</SelectItem><SelectItem value="cursor">Cursor CLI</SelectItem></SelectContent>
+            </Select></div>
+            <p className="text-xs text-muted-foreground">以新 ZIP 重新整理需求与设计并启动新一轮流程，旧流程和材料保留。变更说明可留空。</p>
+          </>}
+          {invalidFile && <p role="alert" className="text-sm text-destructive">请选择不超过 20 MiB 的 ZIP 文件</p>}
           <p className="text-xs leading-5 text-muted-foreground">提交后继续当前流程；较大调整可重新走澄清、设计和研发流程，旧流程与产物保留。</p>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" type="submit" disabled={busy || !content.trim()}>{busy ? '正在提交…' : '提交变更'}</Button>
-            <Button size="sm" type="button" variant="outline" disabled={busy || !content.trim()} onClick={() => void submit('RESTART')}>重新走流程</Button>
+            <Button size="sm" type="submit" disabled={busy || !!file || !content.trim()}>{busy ? '正在提交…' : '提交变更'}</Button>
+            <Button size="sm" type="button" variant="outline" disabled={busy || !!invalidFile || (!content.trim() && !file)} onClick={() => void submit('RESTART')}>重新走流程</Button>
             <Button size="sm" type="button" variant="ghost" disabled={busy} onClick={() => setOpen(false)}>收起</Button>
           </div>
         </form>}

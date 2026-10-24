@@ -34,6 +34,18 @@ describe('api helpers', () => {
     expect(fetchMock.mock.calls[2][0]).toContain('/requirements/req-1/changes/change-1/restart');
     expect(fetchMock.mock.calls[2][1].method).toBe('POST');
   });
+  it('重新导入换包显式整体替换，正式变更通过 multipart 传递 ZIP 与 AI', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal('fetch', fetchMock);
+    const file = new File(['zip'], 'new.zip');
+    await api.supplementPrototypeImport('import-1', 3, file, 'cursor', true);
+    const retry = fetchMock.mock.calls[0][1].body as FormData;
+    expect(retry.get('replace')).toBe('true'); expect(retry.get('revision')).toBe('3'); expect(retry.get('aiProvider')).toBe('cursor');
+    await api.createPrototypeRequirementChange('req-1', { content: '更新原型', mode: 'RESTART', requestId: 'zip-request', sourceWorkflowRunId: 'old-run', aiProvider: 'cursor' }, file);
+    expect(fetchMock.mock.calls[1][0]).toContain('/requirements/req-1/changes/prototype');
+    const change = fetchMock.mock.calls[1][1].body as FormData;
+    expect(change.get('file')).toBe(file); expect(change.get('mode')).toBe('RESTART'); expect(change.get('requestId')).toBe('zip-request'); expect(change.get('sourceWorkflowRunId')).toBe('old-run'); expect(change.get('aiProvider')).toBe('cursor');
+  });
   it('passes the selected AI provider to review endpoints', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'run-1' }) });
     vi.stubGlobal('fetch', fetchMock);

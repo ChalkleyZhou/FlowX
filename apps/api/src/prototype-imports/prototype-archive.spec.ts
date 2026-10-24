@@ -126,6 +126,18 @@ describe('PrototypeArchive', () => {
     expect(context).toContain('非指令'); expect(context).toContain('需求说明'); expect(context).toContain('不代表视觉理解');
   });
 
+  it('整包替换不残留旧文件，仍能下载每次原始 ZIP', async () => {
+    const old = zip([{ path: 'index.html', text: '旧首页' }, { path: 'deleted.html', text: '已删除页面' }]);
+    const incoming = zip([{ path: 'index.html', text: '新首页' }]);
+    await archive.save('replace1', 1, old, 'old.zip');
+    const next = await archive.save('replace1', 2, incoming, 'new.zip', 1, true);
+    expect(next.files.map(file => file.path)).toEqual(['index.html']);
+    expect(next.sources).toEqual([{ name: 'old.zip', revision: 1 }, { name: 'new.zip', revision: 2 }]);
+    expect(await archive.context('replace1', 2)).not.toContain('已删除页面');
+    expect(await archive.download('replace1', 1)).toEqual(old);
+    expect(await archive.download('replace1', 2)).toEqual(incoming);
+  });
+
   it('补传合并旧文件、覆盖同名文件且保留每版来源和 ZIP', async () => {
     const original = zip([{ path: 'index.html', text: '<h1>旧页</h1>' }, { path: 'old.css', text: 'body{color:red}' }]);
     await archive.save('draft1', 1, original, 'first.zip');

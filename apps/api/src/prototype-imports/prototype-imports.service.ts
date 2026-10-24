@@ -132,16 +132,18 @@ export class PrototypeImportsService implements OnModuleInit {
     const claimed = await this.prisma.prototypeImport.updateMany({ where: { id, revision: dto.revision, status: record.status }, data: { status: 'ANALYZING', revision: { increment: 1 }, errorMessage: null, confirmedAt: null, confirmedBy: null, ...(dto.aiProvider !== undefined ? { aiProvider: dto.aiProvider } : {}) } });
     if (claimed.count !== 1) throw new ConflictException('材料已变化，请刷新。');
     try {
-      const manifest = await this.archive.save(id, materialRevision, zip, name, record.materialRevision);
-      const changed = await this.prisma.prototypeImport.updateMany({ where: { id, revision: materialRevision, status: 'ANALYZING' }, data: { manifest: json(manifest), materialRevision } });
+      const manifest = dto.replace
+        ? await this.archive.save(id, materialRevision, zip, name, record.materialRevision, true)
+        : await this.archive.save(id, materialRevision, zip, name, record.materialRevision);
+      const changed = await this.prisma.prototypeImport.updateMany({ where: { id, revision: materialRevision, status: 'ANALYZING' }, data: { manifest: json(manifest), materialRevision, ...(dto.replace ? { analysis: Prisma.JsonNull, answers: {}, goal: '' } : {}) } });
       if (changed.count !== 1) throw new ConflictException('材料版本已变化。');
       const next = await this.owned(id, actor);
       this.schedule(next, actor!);
       return this.view(next);
     } catch {
       await this.archive.remove(id, materialRevision);
-      await this.prisma.prototypeImport.updateMany({ where: { id, revision: materialRevision, status: 'ANALYZING' }, data: { status: 'FAILED', errorMessage: '补传包读取失败，原有材料已保留。请检查 ZIP 格式、路径与大小限制。' } });
-      throw new BadRequestException('补传包读取失败，原有材料已保留。');
+      await this.prisma.prototypeImport.updateMany({ where: { id, revision: materialRevision, status: 'ANALYZING' }, data: { status: 'FAILED', errorMessage: '原型包读取失败，原有材料已保留。请检查 ZIP 格式、路径与大小限制。' } });
+      throw new BadRequestException('原型包读取失败，原有材料已保留。');
     }
   }
   async confirm(id: string, dto: UpdatePrototypeImportDto, actor?: PrototypeActor) {
