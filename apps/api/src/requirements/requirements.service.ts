@@ -74,7 +74,8 @@ export class RequirementsService {
     private readonly localDevPreviewService: LocalDevPreviewService,
     private readonly ideationSessionEventsRepository: IdeationSessionEventsRepository,
     private readonly repositorySyncService: RepositorySyncService,
-    private readonly workflowService: Pick<WorkflowService, 'deleteWorkflowRun'>,
+    // Pick 等类型别名会被装饰器元数据记成 Object，Nest 无法注入，必须显式指定 WorkflowService。
+    @Inject(WorkflowService) private readonly workflowService: WorkflowService,
   ) {}
 
   async create(dto: CreateRequirementDto, author?: { user: { id: string; displayName: string } }) {
