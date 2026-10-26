@@ -109,4 +109,16 @@ describe('DesignArtifactPreview', () => {
     expect(api.getWorkflowDesignArtifactPage).toHaveBeenLastCalledWith('run-1', 'prototype', 'detail.html');
   });
 
+  it('规范端名称的导入原型也支持包内页面跳转', async () => {
+    vi.mocked(api.listWorkflowDesignArtifacts).mockResolvedValue({ surfaces: [{ id: '手机端', pages: [
+      { id: '手机端/首页.html', relPath: 'mobile.html', bytes: 10, generatedAt: '2026-10-22T00:00:00Z' },
+      { id: '手机端/详情.html', relPath: 'detail.html', bytes: 10, generatedAt: '2026-10-22T00:00:00Z' },
+    ] }] });
+    vi.mocked(api.getWorkflowDesignArtifactPage).mockResolvedValue({ exists: true, html: '<p>手机端</p>', surfaceId: '手机端', pageId: '手机端/首页.html' });
+    await act(async () => { root?.render(<DesignArtifactPreview workflowRunId="run-3" />); });
+    const iframe = container.querySelector('iframe')!;
+    await act(async () => { window.dispatchEvent(new MessageEvent('message', { source: iframe.contentWindow, data: { type: 'flowx-prototype-navigate', path: '手机端/详情.html' } })); });
+    expect(api.getWorkflowDesignArtifactPage).toHaveBeenLastCalledWith('run-3', '手机端', '手机端/详情.html');
+  });
+
 });

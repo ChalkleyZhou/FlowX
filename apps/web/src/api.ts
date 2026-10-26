@@ -909,7 +909,7 @@ export const api = {
     request<WorkflowDesignArtifactsList>(`/workflow-runs/${id}/design-artifacts`),
   getWorkflowDesignArtifactPage: (id: string, surfaceId: string, pageId: string) =>
     request<WorkflowDesignArtifactPage>(
-      `/workflow-runs/${id}/design-artifacts/${encodeURIComponent(surfaceId)}/${encodeURIComponent(pageId)}`,
+      `/workflow-runs/${id}/design-artifacts/page${queryString({ surfaceId, pageId })}`,
     ),
   startOpenDesignHandoff: (requirementId: string, repositoryIds?: string[]) =>
     request<OpenDesignHandoffResponse>('/edge/design-handoffs', {

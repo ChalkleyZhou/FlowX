@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -57,6 +58,19 @@ export class WorkflowController {
   @Get(':id/design-artifacts')
   listDesignArtifacts(@Param('id') id: string) {
     return this.workflowService.listWorkflowDesignArtifacts(id);
+  }
+
+  @Get(':id/design-artifacts/page')
+  getDesignArtifactPageByQuery(
+    @Param('id') id: string,
+    @Query() query: { surfaceId?: unknown; pageId?: unknown },
+  ) {
+    const { surfaceId, pageId } = query;
+    if (typeof surfaceId !== 'string' || !surfaceId.trim() || typeof pageId !== 'string' || !pageId.trim()) {
+      throw new BadRequestException('请选择设计端与页面。');
+    }
+    // ZIP 内路径仅作为页面标识传递，避免反向代理解码斜杠后破坏路由。
+    return this.workflowService.getWorkflowDesignArtifactPage(id, surfaceId, pageId);
   }
 
   @Get(':id/design-artifacts/:surfaceId/:pageId')

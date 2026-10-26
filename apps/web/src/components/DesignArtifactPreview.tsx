@@ -86,7 +86,7 @@ export function DesignArtifactPreview({ workflowRunId, reloadKey }: Props) {
 
   useEffect(() => {
     const handleNavigate = (event: MessageEvent<unknown>) => {
-      if (selectedSurface?.id !== 'prototype' || event.source !== iframe.current?.contentWindow || !event.data || typeof event.data !== 'object') return;
+      if (!selectedSurface || event.source !== iframe.current?.contentWindow || !event.data || typeof event.data !== 'object') return;
       const message = event.data as { type?: unknown; path?: unknown };
       if (message.type === 'flowx-prototype-navigate' && typeof message.path === 'string' && selectedSurface.pages.some((item) => item.id === message.path)) setSelectedPageId(message.path);
     };
@@ -114,7 +114,7 @@ export function DesignArtifactPreview({ workflowRunId, reloadKey }: Props) {
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Sparkles className="h-4 w-4 text-primary" aria-hidden />
-          {selectedSurface?.id === 'prototype' ? '已导入原型' : 'OpenDesign 高保真设计稿'}
+          {selectedSurface ? `${selectedSurface.id}设计稿` : '设计稿预览'}
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={() => void loadInventory()} disabled={loading} aria-label="刷新设计稿">

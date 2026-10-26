@@ -22,6 +22,18 @@ class LocalStorageMock {
 }
 
 describe('api helpers', () => {
+  it.each([
+    ['prototype', '巡逻防控_V1.3_地址与处置改造/01_巡逻防控任务.html'],
+    ['Web%20端', 'pages/nested/100%2F +?#.html'],
+  ])('设计页面标识通过查询参数传输，避免代理解码路径：%s %s', async (surfaceId, pageId) => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ exists: true, html: '<p>设计</p>' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    await api.getWorkflowDesignArtifactPage('run-1', surfaceId, pageId);
+    const url = new URL(fetchMock.mock.calls[0][0]);
+    expect(url.pathname).toBe('/workflow-runs/run-1/design-artifacts/page');
+    expect(Object.fromEntries(url.searchParams)).toEqual({ surfaceId, pageId });
+  });
+
   it('需求变更查询携带当前流程，提交与重试使用需求下的正式接口', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ revision: 1, changes: [] }) });
     vi.stubGlobal('fetch', fetchMock);

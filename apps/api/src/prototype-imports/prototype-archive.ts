@@ -13,6 +13,49 @@ export interface PrototypeManifest {
   sources: Array<{ name: string; revision: number }>;
 }
 
+/** FlowX 导入原型的固定端分类；原始 ZIP 路径仍作为 page id 保留。 */
+export const PROTOTYPE_SURFACES = ['平台端', '手机端', '眼镜端'] as const;
+export type PrototypeSurfaceId = (typeof PROTOTYPE_SURFACES)[number];
+
+const surfaceRules: Array<{ id: PrototypeSurfaceId; terms: string[] }> = [
+  { id: '眼镜端', terms: ['眼镜端', '智能眼镜', '眼镜', 'glasses', 'smartglasses', 'wearable', 'hud', 'ar端', 'vr端'] },
+  { id: '手机端', terms: ['手机端', '手机', '移动端', '移动', 'mobile', 'smartphone', 'phone', 'h5', 'app端', 'android', 'ios', '平板', 'tablet'] },
+  { id: '平台端', terms: ['平台端', '管理后台', '运营后台', '后台', '管理端', 'web端', 'pc端', '桌面端', 'portal', 'admin', 'console', 'web', 'platform', 'desktop', 'pc'] },
+];
+
+function normalizedSurfaceText(value: string): string {
+  return value.normalize('NFKC').toLowerCase();
+}
+
+function hasSurfaceTerm(text: string, term: string): boolean {
+  const normalizedTerm = normalizedSurfaceText(term);
+  // 中文端标识允许出现在复合目录名中；英文别名按 token 匹配，避免把
+  // `glass` 误判为 `glasses` 或把 `web` 命中到无关单词内部。
+  if (/[\u3400-\u9fff]/u.test(normalizedTerm)) return text.includes(normalizedTerm);
+  const escaped = normalizedTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:$|[^a-z0-9])`, 'i').test(text);
+}
+
+/**
+ * 根据路径和页面标题识别平台规范端。
+ * 路径权重高于标题，未识别时默认平台端，避免导入页面丢失。
+ */
+export function classifyPrototypeSurface(path: string, pageTitle = ''): PrototypeSurfaceId {
+  const pathText = normalizedSurfaceText(path);
+  const titleText = normalizedSurfaceText(pageTitle);
+  let best: { id: PrototypeSurfaceId; score: number; termLength: number } | undefined;
+  for (const rule of surfaceRules) {
+    for (const term of rule.terms) {
+      const normalizedTerm = normalizedSurfaceText(term);
+      const score = (hasSurfaceTerm(pathText, normalizedTerm) ? 3 : 0) + (hasSurfaceTerm(titleText, normalizedTerm) ? 1 : 0);
+      if (!score) continue;
+      const candidate = { id: rule.id, score, termLength: normalizedTerm.length };
+      if (!best || candidate.score > best.score || (candidate.score === best.score && candidate.termLength > best.termLength)) best = candidate;
+    }
+  }
+  return best?.id ?? '平台端';
+}
+
 const MiB = 1024 * 1024;
 const MAX_FILE = 5 * MiB;
 const MAX_TOTAL = 60 * MiB;
@@ -114,7 +157,10 @@ export class PrototypeArchive {
       files: entries.map(([path, bytes]) => ({ path, bytes: bytes.length, kind: kind(path) })),
       pages: entries.filter(([path]) => ['html', 'image', 'document'].includes(kind(path))).sort(([left], [right]) => pagePriority(left) - pagePriority(right)).map(([path, bytes]) => ({ path, title: kind(path) === 'html' ? title(bytes.toString('utf8'), path) : path })),
       kinds: [...new Set(entries.map(([path]) => kind(path)))],
-      warnings: ['预览在隔离环境中保留原始材料；联网资源、后端 API 和运行时加载可能不可用。'],
+      warnings: [
+        '预览在隔离环境中保留原始材料；联网资源、后端 API 和运行时加载可能不可用。',
+        '页面按路径和标题归一到平台端、手机端、眼镜端；未标明端的页面默认归入平台端。',
+      ],
       sources: [...sources, { name: name.slice(0, 255), revision }],
     };
     await mkdir(join(this.root, id), { recursive: true, mode: 0o700 });
@@ -149,8 +195,9 @@ export class PrototypeArchive {
     const append = (value: string) => { output += value.slice(0, Math.max(0, limit - output.length)); };
     // 路径、清单和分隔符一起计入预算，避免长文件名使 prompt 膨胀。
     const inventoryLimit = Math.min(limit, output.length + 20000);
+    const pageTitles = new Map(manifest.pages.map((page) => [page.path, page.title]));
     for (const file of ordered) {
-      const line = JSON.stringify(file) + '\n';
+      const line = `${JSON.stringify({ ...file, surface: classifyPrototypeSurface(file.path, pageTitles.get(file.path)) })}\n`;
       if (output.length + line.length > inventoryLimit) { append('文件清单已截断。\n'); break; }
       append(line);
     }
@@ -329,10 +376,11 @@ export class PrototypeArchive {
 
   async surfaces(id: string, revision: number): Promise<Array<{ id: string; pages: Array<{ id: string; title?: string; html: string }> }>> {
     const manifest = await this.manifest(id, revision);
-    const pages: Array<{ id: string; title?: string; html: string }> = []; let bytes = 0;
+    let bytes = 0;
     const files = manifest.files.filter(file => ['html', 'image', 'document'].includes(file.kind)).sort((left, right) => pagePriority(left.path) - pagePriority(right.path));
     const placeholders = files.map(file => this.wrap(`<h1>${escapeHtml(file.path)}</h1><p>此页资源较大，请在需求详情预览或下载原包。</p>`));
     let reserved = placeholders.reduce((total, html) => total + Buffer.byteLength(html), 0);
+    const pagesBySurface = new Map<PrototypeSurfaceId, Array<{ id: string; title?: string; html: string }>>();
     for (const [index, file] of files.entries()) {
       const placeholder = placeholders[index];
       reserved -= Buffer.byteLength(placeholder);
@@ -342,8 +390,14 @@ export class PrototypeArchive {
       const size = Buffer.byteLength(html);
       if (size > 5 * MiB || bytes + size + reserved > 24 * MiB) html = placeholder;
       bytes += Buffer.byteLength(html);
-      pages.push({ id: file.path, title: manifest.pages.find(page => page.path === file.path)?.title ?? file.path, html });
+      const page = { id: file.path, title: manifest.pages.find(item => item.path === file.path)?.title ?? file.path, html };
+      const surface = classifyPrototypeSurface(file.path, page.title);
+      const grouped = pagesBySurface.get(surface) ?? [];
+      grouped.push(page);
+      pagesBySurface.set(surface, grouped);
     }
-    return [{ id: 'prototype', pages }];
+    return PROTOTYPE_SURFACES
+      .filter(id => pagesBySurface.has(id))
+      .map(id => ({ id, pages: pagesBySurface.get(id)! }));
   }
 }
