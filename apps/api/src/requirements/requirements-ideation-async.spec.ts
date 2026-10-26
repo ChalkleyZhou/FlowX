@@ -15,7 +15,7 @@ function setup() {
     prisma as never,
     { get: () => executor } as never,
     { normalizeAiProvider: () => 'codex', resolveInvocationContext: vi.fn().mockResolvedValue({}) } as never,
-    {} as never, {} as never, {} as never,
+    {} as never, {} as never, {} as never, {} as never,
   );
   vi.spyOn(service, 'findOne').mockResolvedValue({
     id: 'req-1', title: '登录', description: '支持登录', ideationStatus: 'NONE', ideationSessions: [],

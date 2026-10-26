@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
+import { useConfirm } from '../components/ConfirmDialog';
 import { ContextPanel } from '../components/ContextPanel';
 import { DetailHeader } from '../components/DetailHeader';
 import { PrototypeImportPanel } from '../components/PrototypeImportPanel';
@@ -10,6 +11,7 @@ import { RequirementChangesPanel } from '../components/RequirementChangesPanel';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Spinner } from '../components/ui/spinner';
+import { useToast } from '../components/ui/toast';
 import type { ProjectVersionSummary, Requirement } from '../types';
 import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
 import { formatRequirementWorkflowScope, getActiveRequirementWorkflows, isActiveRequirementWorkflow } from '../utils/requirement-workflows';
@@ -34,8 +36,12 @@ function RequirementDetailField({ label, value }: { label: string; value?: strin
 
 export function RequirementDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [requirement, setRequirement] = useState<Requirement | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editVersions, setEditVersions] = useState<ProjectVersionSummary[]>([]);
@@ -84,6 +90,26 @@ export function RequirementDetailPage() {
       setEditVersions(requirement.version ? [requirement.version] : []);
     }
     setEditOpen(true);
+  }
+
+  async function handleDelete() {
+    if (!requirement || deleting) return;
+    const confirmed = await confirm({
+      title: '删除需求',
+      description: `删除后将移除「${requirement.title}」及其工作流、构思记录、排期和原型材料。关联的缺陷与问题会保留，但不再指向这条需求。已纳入测试设计或提测时需要先解除关联。确认删除吗？`,
+      confirmLabel: '删除需求',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    setDeleting(true);
+    try {
+      await api.deleteRequirement(requirement.id);
+      toast.success('需求已删除');
+      navigate('/requirements');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '删除需求失败');
+      setDeleting(false);
+    }
   }
 
   if (loading) {
@@ -140,6 +166,9 @@ export function RequirementDetailPage() {
               <Link to="/requirements">返回列表</Link>
             </Button>
             <Button variant="outline" type="button" onClick={() => void openEdit()}>编辑</Button>
+            <Button variant="outline" type="button" disabled={deleting} onClick={() => void handleDelete()}>
+              {deleting ? '删除中...' : '删除需求'}
+            </Button>
             <Button variant="outline" asChild>
               <Link to={`/requirements/${requirement.id}#scheduling`}>排期</Link>
             </Button>

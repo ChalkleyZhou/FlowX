@@ -8,9 +8,10 @@ import { api } from '../api';
 import type { Requirement } from '../types';
 import { RequirementsPage } from './RequirementsPage';
 
-const { successToast, errorToast } = vi.hoisted(() => ({
+const { successToast, errorToast, confirmDialog } = vi.hoisted(() => ({
   successToast: vi.fn(),
   errorToast: vi.fn(),
+  confirmDialog: vi.fn(async () => true),
 }));
 
 vi.mock('../api', () => ({
@@ -21,6 +22,7 @@ vi.mock('../api', () => ({
     getWorkflowProviders: vi.fn(),
     createRequirement: vi.fn(),
     updateRequirement: vi.fn(),
+    deleteRequirement: vi.fn(),
     createPrototypeImport: vi.fn(),
     createWorkflowRun: vi.fn(),
   },
@@ -28,6 +30,10 @@ vi.mock('../api', () => ({
 
 vi.mock('../components/ui/toast', () => ({
   useToast: () => ({ success: successToast, error: errorToast }),
+}));
+
+vi.mock('../components/ConfirmDialog', () => ({
+  useConfirm: () => confirmDialog,
 }));
 
 function LocationProbe() {
@@ -133,6 +139,7 @@ describe('RequirementsPage', () => {
     const actions = container.querySelector('tbody tr')?.lastElementChild?.textContent ?? '';
     expect(actions).toContain('详情');
     expect(actions).toContain('编辑');
+    expect(actions).toContain('删除');
     expect(actions).toContain('排期');
     expect(actions).not.toContain('启动工作流');
     expect(actions).not.toContain('查看流程');
@@ -580,6 +587,24 @@ describe('RequirementsPage', () => {
     expect(container.textContent).toContain('新备注');
     expect(container.textContent).toContain('产品甲');
     expect(successToast).toHaveBeenCalledWith('需求已更新');
+  });
+
+  it('确认后删除需求并刷新列表，取消时不请求', async () => {
+    confirmDialog.mockResolvedValueOnce(false);
+    await act(async () => {
+      root?.render(<MemoryRouter initialEntries={['/requirements']}><RequirementsPage /></MemoryRouter>);
+    });
+    const deleteButton = () => container.querySelector('button[aria-label="删除需求：端云设计闭环"]') as HTMLButtonElement;
+    await act(async () => { deleteButton().click(); });
+    expect(api.deleteRequirement).not.toHaveBeenCalled();
+
+    confirmDialog.mockResolvedValueOnce(true);
+    vi.mocked(api.deleteRequirement).mockResolvedValue({ success: true });
+    vi.mocked(api.getRequirements).mockResolvedValueOnce([]);
+    await act(async () => { deleteButton().click(); });
+    expect(api.deleteRequirement).toHaveBeenCalledWith('requirement-1');
+    expect(successToast).toHaveBeenCalledWith('需求已删除');
+    expect(container.textContent).not.toContain('端云设计闭环');
   });
 
 });

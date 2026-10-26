@@ -1,5 +1,5 @@
 import { effectiveRequirementDescription } from './requirement-change-context';
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   AI_EXECUTOR_REGISTRY,
   type AIExecutor,
@@ -20,7 +20,9 @@ import {
   RepositoryComponentContext,
 } from '../common/types';
 import { LocalDevPreviewService } from '../dev-preview/local-dev-preview.service';
+import { PrototypeArchive } from '../prototype-imports/prototype-archive';
 import { PrismaService } from '../prisma/prisma.service';
+import { WorkflowService } from '../workflow/workflow.service';
 import { RepositorySyncService } from '../workspaces/repository-sync.service';
 import { CreateRequirementDto } from './dto/create-requirement.dto';
 import { UpdateRequirementDto } from './dto/update-requirement.dto';
@@ -72,6 +74,7 @@ export class RequirementsService {
     private readonly localDevPreviewService: LocalDevPreviewService,
     private readonly ideationSessionEventsRepository: IdeationSessionEventsRepository,
     private readonly repositorySyncService: RepositorySyncService,
+    private readonly workflowService: Pick<WorkflowService, 'deleteWorkflowRun'>,
   ) {}
 
   async create(dto: CreateRequirementDto, author?: { user: { id: string; displayName: string } }) {
@@ -238,6 +241,99 @@ export class RequirementsService {
       },
     });
     return this.enrichRequirement(updated);
+  }
+
+  async remove(id: string) {
+    const requirement = await this.prisma.requirement.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        prototypeImport: { select: { id: true, materialRevision: true } },
+        changes: { select: { prototype: true } },
+        workflowRuns: {
+          select: {
+            id: true,
+            stageExecutions: { select: { status: true } },
+          },
+        },
+      },
+    });
+    if (!requirement) {
+      throw new NotFoundException('需求不存在。');
+    }
+
+    if (requirement.workflowRuns.some((workflow) => workflow.stageExecutions.some((stage) => stage.status === 'RUNNING'))) {
+      throw new BadRequestException('当前需求仍有工作流阶段在执行中，请等待完成后再删除。');
+    }
+
+    const workflowIds = requirement.workflowRuns.map((workflow) => workflow.id);
+    const [testDesignCount, testRequestCount, designWorkflowCount, requestWorkflowCount] = await Promise.all([
+      this.prisma.testDesignRequirement.count({ where: { requirementId: id } }),
+      this.prisma.testRequestRequirement.count({ where: { requirementId: id } }),
+      workflowIds.length === 0
+        ? Promise.resolve(0)
+        : this.prisma.testDesignWorkflowRun.count({ where: { workflowRunId: { in: workflowIds } } }),
+      workflowIds.length === 0
+        ? Promise.resolve(0)
+        : this.prisma.testRequestWorkflowRun.count({ where: { workflowRunId: { in: workflowIds } } }),
+    ]);
+    if (testDesignCount > 0 || testRequestCount > 0 || designWorkflowCount > 0 || requestWorkflowCount > 0) {
+      throw new ConflictException('该需求或它的工作流已关联测试设计或提测，请先解除关联后再删除。');
+    }
+
+    // 修复工作流外键没有级联，必须先解开，工作流删除才能成功。
+    if (workflowIds.length > 0) {
+      await this.prisma.bug.updateMany({
+        where: { fixWorkflowRunId: { in: workflowIds } },
+        data: { fixWorkflowRunId: null },
+      });
+    }
+    for (const workflowId of workflowIds) {
+      await this.workflowService.deleteWorkflowRun(workflowId);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.issue.updateMany({ where: { requirementId: id }, data: { requirementId: null } });
+      await tx.bug.updateMany({ where: { requirementId: id }, data: { requirementId: null } });
+      await tx.bug.updateMany({ where: { fixRequirementId: id }, data: { fixRequirementId: null } });
+      await tx.requirementRepository.deleteMany({ where: { requirementId: id } });
+      await tx.requirement.delete({ where: { id } });
+    });
+    await this.removePrototypeFiles(requirement);
+
+    return { success: true };
+  }
+
+  private async removePrototypeFiles(requirement: {
+    prototypeImport: { id: string; materialRevision: number } | null;
+    changes: Array<{ prototype: unknown }>;
+  }) {
+    const archive = new PrototypeArchive();
+    const revisions = requirement.prototypeImport
+      ? Array.from({ length: Math.max(requirement.prototypeImport.materialRevision, 1) }, (_, index) => index + 1)
+      : [];
+    const jobs = [
+      ...revisions.map((revision) => archive.remove(requirement.prototypeImport!.id, revision)),
+      ...requirement.changes.flatMap((change) => {
+        const archiveId = this.prototypeArchiveId(change.prototype);
+        return archiveId ? [archive.remove(archiveId, 1)] : [];
+      }),
+    ];
+    await Promise.all(jobs.map(async (job) => {
+      try {
+        await job;
+      } catch (error) {
+        this.logger.warn(`删除需求原型材料失败: ${error instanceof Error ? error.message : 'unknown'}`);
+      }
+    }));
+  }
+
+  private prototypeArchiveId(value: unknown) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+    const archiveId = (value as { archiveId?: unknown }).archiveId;
+    return typeof archiveId === 'string' && /^[a-zA-Z0-9_-]{1,120}$/.test(archiveId) ? archiveId : null;
   }
 
   async findAll() {

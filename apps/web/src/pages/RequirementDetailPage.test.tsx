@@ -8,7 +8,15 @@ import { api } from '../api';
 import type { Requirement } from '../types';
 import { RequirementDetailPage } from './RequirementDetailPage';
 
-vi.mock('../api', () => ({ api: { getRequirement: vi.fn(), getProject: vi.fn(), updateRequirement: vi.fn(), createWorkflowRun: vi.fn() } }));
+const { successToast, errorToast, confirmDialog } = vi.hoisted(() => ({
+  successToast: vi.fn(),
+  errorToast: vi.fn(),
+  confirmDialog: vi.fn(async () => true),
+}));
+
+vi.mock('../api', () => ({ api: { getRequirement: vi.fn(), getProject: vi.fn(), updateRequirement: vi.fn(), createWorkflowRun: vi.fn(), deleteRequirement: vi.fn() } }));
+vi.mock('../components/ui/toast', () => ({ useToast: () => ({ success: successToast, error: errorToast }) }));
+vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => confirmDialog }));
 vi.mock('../components/PrototypeImportPanel', () => ({ PrototypeImportPanel: ({ importId, existingWorkflowId }: { importId: string; existingWorkflowId?: string }) => <div data-import={importId} data-workflow={existingWorkflowId}>原型导入面板</div> }));
 vi.mock('../components/RequirementSchedulingPanel', () => ({ RequirementSchedulingPanel: () => null }));
 vi.mock('../components/RequirementChangesPanel', () => ({ RequirementChangesPanel: ({ requirementId }: { requirementId: string }) => <section data-changes-requirement={requirementId}>需求变更入口</section> }));
@@ -37,6 +45,7 @@ describe('RequirementDetailPage 流程接续', () => {
     document.body.appendChild(container);
     root = createRoot(container);
     vi.mocked(api.getRequirement).mockResolvedValue(requirement);
+    confirmDialog.mockResolvedValue(true);
   });
   afterEach(() => {
     act(() => root.unmount());
@@ -218,6 +227,27 @@ describe('RequirementDetailPage 流程接续', () => {
     expect(container.textContent).toContain('新的描述');
     expect(container.textContent).toContain('登录');
     expect(container.textContent).toContain('影响已登录会话');
+  });
+
+  it('确认后删除需求并回到列表，取消或失败时留在详情', async () => {
+    await renderPage();
+    const deleteButton = () => Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '删除需求') as HTMLButtonElement;
+    confirmDialog.mockResolvedValueOnce(false);
+    await act(async () => { deleteButton().click(); });
+    expect(api.deleteRequirement).not.toHaveBeenCalled();
+    expect(container.querySelector('output')?.textContent ?? '').not.toBe('/requirements');
+
+    confirmDialog.mockResolvedValueOnce(true);
+    vi.mocked(api.deleteRequirement).mockRejectedValueOnce(new Error('该需求或它的工作流已关联测试设计或提测，请先解除关联后再删除。'));
+    await act(async () => { deleteButton().click(); });
+    expect(errorToast).toHaveBeenCalledWith('该需求或它的工作流已关联测试设计或提测，请先解除关联后再删除。');
+    expect(container.textContent).toContain('需求接续');
+
+    vi.mocked(api.deleteRequirement).mockResolvedValueOnce({ success: true });
+    await act(async () => { deleteButton().click(); });
+    expect(api.deleteRequirement).toHaveBeenCalledWith('requirement-1');
+    expect(successToast).toHaveBeenCalledWith('需求已删除');
+    expect(container.querySelector('output')?.textContent).toBe('/requirements');
   });
 
 });

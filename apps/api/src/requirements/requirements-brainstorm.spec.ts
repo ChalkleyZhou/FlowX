@@ -3,7 +3,7 @@ import { RequirementsService } from './requirements.service';
 
 describe('RequirementsService brainstorm output normalization', () => {
   const createService = () =>
-    new RequirementsService({} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
+    new RequirementsService({} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
 
   it('accepts wrapped brainstorm output with brief field', () => {
     const service = createService();
@@ -47,7 +47,7 @@ describe('RequirementsService confirmBrainstorm session selection', () => {
       ideationSession: { update: vi.fn().mockResolvedValue({}) },
       requirement: { update: vi.fn().mockResolvedValue({}) },
     } as any;
-    const service = new RequirementsService(prisma, {} as any, {} as any, {} as any, {} as any, {} as any);
+    const service = new RequirementsService(prisma, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
 
     vi.spyOn(service, 'findOne').mockResolvedValue({
       id: 'req-1',
@@ -118,6 +118,7 @@ describe('RequirementsService repository readiness for ideation', () => {
       {} as any,
       {} as any,
       repositorySyncService,
+      {} as any,
     );
 
     const initialRequirement = {
@@ -191,6 +192,7 @@ describe('RequirementsService repository readiness for ideation', () => {
       {} as any,
       {} as any,
       repositorySyncService,
+      {} as any,
     );
 
     const initialRequirement = {

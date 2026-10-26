@@ -11,7 +11,7 @@ const directory = mkdtempSync(join(tmpdir(), 'flowx-requirement-read-'));
 const url = `file:${join(directory, 'test.db')}`;
 const prisma = new PrismaClient({ datasources: { db: { url } } });
 const service = new RequirementsService(
-  prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never,
+  prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never,
 );
 const importedRequirements: Array<{ id: string; prototypeImport: { id: string; status: string } }> = [];
 let ordinaryRequirementId: string;

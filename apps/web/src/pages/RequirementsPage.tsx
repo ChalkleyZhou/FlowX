@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
+import { useConfirm } from '../components/ConfirmDialog';
 import { EmptyState } from '../components/EmptyState';
 import { RequirementEditDialog } from '../components/RequirementEditDialog';
 import { ListToolbar } from '../components/ListToolbar';
@@ -84,6 +85,7 @@ export function RequirementsPage() {
   const [hasLoaded, setHasLoaded] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingRequirement, setEditingRequirement] = useState<Requirement | null>(null);
+  const [deletingRequirementId, setDeletingRequirementId] = useState<string | null>(null);
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const createInFlight = useRef(false);
   const [launchModalRequirement, setLaunchModalRequirement] = useState<Requirement | null>(null);
@@ -104,6 +106,7 @@ export function RequirementsPage() {
   const [prototypeSubmitting, setPrototypeSubmitting] = useState(false);
   const prototypeInFlight = useRef(false);
   const toast = useToast();
+  const confirm = useConfirm();
   const selectedProjectId = searchParams.get('projectId') ?? undefined;
   const selectedVersionId = searchParams.get('versionId') ?? undefined;
   const selectedPlanningStatus = searchParams.get('planningStatus') ?? undefined;
@@ -189,6 +192,28 @@ export function RequirementsPage() {
       toast.error(error instanceof Error ? error.message : '加载需求失败');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleDeleteRequirement(item: Requirement) {
+    const confirmed = await confirm({
+      title: '删除需求',
+      description: `删除后将移除「${item.title}」及其工作流、构思记录、排期和原型材料。关联的缺陷与问题会保留，但不再指向这条需求。已纳入测试设计或提测时需要先解除关联。确认删除吗？`,
+      confirmLabel: '删除需求',
+      destructive: true,
+    });
+    if (!confirmed) {
+      return;
+    }
+    setDeletingRequirementId(item.id);
+    try {
+      await api.deleteRequirement(item.id);
+      toast.success('需求已删除');
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '删除需求失败');
+    } finally {
+      setDeletingRequirementId(null);
     }
   }
 
@@ -882,6 +907,16 @@ export function RequirementsPage() {
                           </UiButton>
                           <UiButton variant="outline" size="sm" type="button" onClick={() => setEditingRequirement(item)}>
                             编辑
+                          </UiButton>
+                          <UiButton
+                            variant="outline"
+                            size="sm"
+                            type="button"
+                            aria-label={`删除需求：${item.title}`}
+                            disabled={deletingRequirementId === item.id}
+                            onClick={() => void handleDeleteRequirement(item)}
+                          >
+                            {deletingRequirementId === item.id ? '删除中...' : '删除'}
                           </UiButton>
                           <UiButton variant="outline" size="sm" asChild>
                             <Link to={`/requirements/${item.id}#scheduling`}>排期</Link>

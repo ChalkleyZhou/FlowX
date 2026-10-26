@@ -13,7 +13,7 @@ import { RequirementsService } from './requirements.service';
 const directory = mkdtempSync(join(tmpdir(), 'flowx-requirement-create-'));
 const url = `file:${join(directory, 'test.db')}`;
 const prisma = new PrismaClient({ datasources: { db: { url } } });
-const service = new RequirementsService(prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never);
+const service = new RequirementsService(prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never);
 let projectId: string;
 let versionId: string;
 let otherVersionId: string;

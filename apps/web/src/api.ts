@@ -693,6 +693,8 @@ export const api = {
     request<Blob>(`/requirements/${id}/changes/${changeId}/source`, undefined, 'blob'),
   restartRequirementChange: (id: string, changeId: string) =>
     request<RequirementChange>(`/requirements/${id}/changes/${changeId}/restart`, { method: 'POST' }),
+  deleteRequirement: (id: string) =>
+    request<{ success: boolean }>(`/requirements/${id}`, { method: 'DELETE' }),
   updateRequirement: (
     id: string,
     payload: {

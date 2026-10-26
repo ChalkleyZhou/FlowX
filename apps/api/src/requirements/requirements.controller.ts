@@ -42,6 +42,11 @@ export class RequirementsController {
     return this.requirementsService.update(id, dto);
   }
 
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.requirementsService.remove(id);
+  }
+
   @Get(':id/changes')
   listChanges(@Param('id') id: string, @Query('workflowRunId') workflowRunId: string | undefined, @Req() req: RequirementsRequest) {
     if (!req.authSession) throw new ForbiddenException('请登录后查看需求变更。');
