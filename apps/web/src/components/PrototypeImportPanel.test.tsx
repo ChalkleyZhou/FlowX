@@ -8,7 +8,7 @@ import type { PrototypeImport } from '../types';
 import { PrototypeImportPanel } from './PrototypeImportPanel';
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }));
 vi.mock('react-router-dom', async (original) => ({ ...await original<typeof import('react-router-dom')>(), useNavigate: () => navigate }));
-vi.mock('../api', () => ({ api: { getPrototypeImport: vi.fn(), previewPrototypeImport: vi.fn(), analyzePrototypeImport: vi.fn(), supplementPrototypeImport: vi.fn(), downloadPrototypeImport: vi.fn(), confirmPrototypeImport: vi.fn(), createWorkflowRun: vi.fn() } }));
+vi.mock('../api', () => ({ api: { getPrototypeImport: vi.fn(), previewPrototypeImport: vi.fn(), analyzePrototypeImport: vi.fn(), supplementPrototypeImport: vi.fn(), downloadPrototypeImport: vi.fn(), confirmPrototypeImport: vi.fn(), createWorkflowRun: vi.fn(), createPrototypeRequirementChange: vi.fn() } }));
 const record: PrototypeImport = { id: 'import-1', requirementId: 'req-1', status: 'ANALYZING', revision: 1, materialRevision: 1, aiProvider: 'codex', goal: '', manifest: { files: [], pages: [{ path: 'index.html', title: '看板' }], kinds: ['html'], sources: [{ name: '原型.zip', revision: 1 }], warnings: [] }, analysis: null, answers: {}, errorMessage: null };
 describe('原型快速导入', () => {
   let container: HTMLDivElement, root: Root;
@@ -153,11 +153,19 @@ describe('原型快速导入', () => {
     expect(navigate).toHaveBeenCalledWith('/workflow-runs/run-new', { replace: true });
     expect(navigate).not.toHaveBeenCalledWith('/workflow-runs/run-old', expect.anything());
   });
-  it('稍后从需求详情查看已完成导入时保留详情，不强制跳走', async () => {
-    vi.mocked(api.getPrototypeImport).mockResolvedValue({ ...record, status: 'CONFIRMED', workflowRunId: 'run-existing' });
+  it('稍后从需求详情查看已完成导入时只保留重新分析和下载，不强制跳走', async () => {
+    URL.createObjectURL = vi.fn(() => 'blob:pkg');
+    URL.revokeObjectURL = vi.fn();
+    vi.mocked(api.downloadPrototypeImport).mockResolvedValue(new Blob(['zip']));
+    vi.mocked(api.getPrototypeImport).mockResolvedValue({ ...record, status: 'CONFIRMED', workflowRunId: 'run-existing', manifest: { ...record.manifest, sources: [{ name: '原型.zip', revision: 2 }] } });
     await act(async () => { root.render(<MemoryRouter><PrototypeImportPanel importId="import-1" onConfirmed={vi.fn()} /></MemoryRouter>); });
     expect(navigate).not.toHaveBeenCalled();
-    expect(container.querySelector('a[href="/workflow-runs/run-existing"]')).toBeTruthy();
+    expect(container.textContent).not.toContain('导入成功');
+    expect(container.textContent).not.toContain('查看原型与材料');
+    expect(container.querySelector('iframe')).toBeNull();
+    expect(container.querySelector('a[href="/workflow-runs/run-existing"]')).toBeNull();
+    await act(async () => { button('下载包')?.click(); });
+    expect(api.downloadPrototypeImport).toHaveBeenCalledWith('import-1', 2);
   });
   it('父页面已有 CREATED 流程不能绕过导入接续状态', async () => {
     vi.mocked(api.getPrototypeImport).mockResolvedValue({ ...record, status: 'CONFIRMED', workflowRunId: null });
@@ -166,12 +174,28 @@ describe('原型快速导入', () => {
     expect(container.textContent).toContain('正在导入');
     expect(container.textContent).not.toContain('导入成功');
   });
-  it('需求变更重走流程后，已完成导入入口跟随当前轮次', async () => {
+  it('已完成导入按当前轮次重新分析，未选包不能提交', async () => {
+    const onConfirmed = vi.fn();
     vi.mocked(api.getPrototypeImport).mockResolvedValue({ ...record, status: 'CONFIRMED', workflowRunId: 'run-original' });
-    await act(async () => { root.render(<MemoryRouter><PrototypeImportPanel importId="import-1" existingWorkflowId="run-restarted" onConfirmed={vi.fn()} /></MemoryRouter>); });
-    expect(container.querySelector('a[href="/workflow-runs/run-restarted"]')).toBeTruthy();
-    expect(container.querySelector('a[href="/workflow-runs/run-original"]')).toBeNull();
+    vi.mocked(api.createPrototypeRequirementChange).mockResolvedValue({ id: 'change-1' } as never);
+    await act(async () => { root.render(<MemoryRouter><PrototypeImportPanel importId="import-1" existingWorkflowId="run-restarted" onConfirmed={onConfirmed} /></MemoryRouter>); });
     expect(navigate).not.toHaveBeenCalled();
+    await act(async () => { button('重新分析')?.click(); });
+    expect(button('重新分析')).toBeTruthy();
+    expect(button('重新分析')?.hasAttribute('disabled')).toBe(true);
+    const file = new File(['zip'], 'next.zip');
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [file] });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await act(async () => { button('重新分析')?.click(); });
+    expect(api.createPrototypeRequirementChange).toHaveBeenCalledWith('req-1', expect.objectContaining({
+      mode: 'RESTART',
+      content: '更新原型：next.zip',
+      sourceWorkflowRunId: 'run-restarted',
+      aiProvider: 'codex',
+    }), file);
+    expect(onConfirmed).toHaveBeenCalled();
+    expect(container.querySelector('input[type="file"]')).toBeNull();
   });
   it('材料按需展开预览，预览失败不阻断导入', async () => {
     await render();

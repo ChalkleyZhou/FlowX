@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import type { PrototypeImport } from '../types';
 import { Button } from './ui/button';
@@ -34,6 +34,8 @@ export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId
   const operation = useRef(false);
   const completed = useRef<string | null>(null);
   const resumed = useRef(false);
+  const reanalyzeRequest = useRef<{ signature: string; id: string } | null>(null);
+  const [reanalyzeOpen, setReanalyzeOpen] = useState(false);
 
   const apply = useCallback((next: PrototypeImport) => {
     if (next.status === 'ANALYZING' || next.status === 'WAITING_CONFIRMATION' || (next.status === 'CONFIRMED' && !next.workflowRunId)) autoEnter.current = true;
@@ -61,7 +63,7 @@ export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId
     epoch.current += 1;
     autoEnter.current = new URLSearchParams(location.search).get('importing') === '1';
     request.current = null; operation.current = false; completed.current = null; resumed.current = false;
-    setRecord(null); setError(null); setBusy(false); setRetryProvider(null); setExpanded(false); setFile(null); setSelectedPath(''); setPreview(null);
+    setRecord(null); setError(null); setBusy(false); setRetryProvider(null); setExpanded(false); setReanalyzeOpen(false); setFile(null); setSelectedPath(''); setPreview(null); reanalyzeRequest.current = null;
     void refresh();
     return () => { epoch.current += 1; request.current = null; };
   }, [refresh, location.search]);
@@ -91,7 +93,7 @@ export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId
     setBusy(true); setError(null);
     try {
       const next = await action();
-      if (version === epoch.current) { apply(next); setFile(null); }
+      if (version === epoch.current) { apply(next); setFile(null); setReanalyzeOpen(false); reanalyzeRequest.current = null; }
     } catch (err) {
       if (version === epoch.current) {
         setError(err instanceof Error ? err.message : '导入失败，请重试');
@@ -145,10 +147,62 @@ export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId
   if (!record) return <div role="alert">{error ?? '原型未找到'}<Button onClick={() => void refresh()}>重试</Button></div>;
   const failed = record.status === 'FAILED';
   const invalidFile = file && (!/\.zip$/i.test(file.name) || file.size > MAX_ZIP_BYTES);
+  const currentPackage = record.manifest.sources.at(-1);
+  async function submitReanalyze() {
+    if (!file || invalidFile) return;
+    const provider = retryProvider ?? record!.aiProvider;
+    const signature = JSON.stringify([file.name, file.size, file.lastModified, provider]);
+    if (reanalyzeRequest.current?.signature !== signature) {
+      const id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `reanalyze-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      reanalyzeRequest.current = { signature, id };
+    }
+    const sourceWorkflowRunId = existingWorkflowId ?? record!.workflowRunId ?? undefined;
+    const requestId = reanalyzeRequest.current.id;
+    await run(async () => {
+      await api.createPrototypeRequirementChange(record!.requirementId, {
+        content: `更新原型：${file.name}`,
+        mode: 'RESTART',
+        requestId,
+        ...(sourceWorkflowRunId ? { sourceWorkflowRunId } : {}),
+        aiProvider: provider,
+      }, file);
+      await Promise.resolve(onConfirmed());
+      return record!;
+    });
+  }
+  if (succeeded) {
+    return (
+      <div className="flex flex-col gap-3" aria-label="原型材料">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" size="sm" aria-expanded={reanalyzeOpen} disabled={busy} onClick={() => setReanalyzeOpen((current) => !current)}>{reanalyzeOpen ? '收起' : '重新分析'}</Button>
+          <Button type="button" variant="outline" size="sm" disabled={busy || !currentPackage} onClick={() => { if (currentPackage) void download(currentPackage.name, currentPackage.revision); }}>下载包</Button>
+        </div>
+        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+        {reanalyzeOpen && <div className="flex max-w-md flex-col gap-3">
+          <div className="flex max-w-xs flex-col gap-2">
+            <label className="text-sm" htmlFor={`prototype-reanalyze-provider-${importId}`}>使用的 AI</label>
+            <Select value={retryProvider ?? record.aiProvider} onValueChange={(value: PrototypeImport['aiProvider']) => setRetryProvider(value)} disabled={busy}>
+              <SelectTrigger id={`prototype-reanalyze-provider-${importId}`} aria-label="重新分析使用的 AI"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="codex">Codex</SelectItem><SelectItem value="cursor">Cursor CLI</SelectItem></SelectContent>
+            </Select>
+          </div>
+          <label className="flex flex-col gap-2 text-sm">新的原型 ZIP（最大 20 MiB）
+            <Input key={file ? 'selected' : 'empty'} type="file" accept=".zip,application/zip" aria-label="重新分析原型 ZIP" disabled={busy} onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+          </label>
+          {file ? <div className="flex flex-wrap items-center gap-2 text-sm"><span>{file.name}</span><Button variant="ghost" size="sm" disabled={busy} onClick={() => setFile(null)}>移除 ZIP</Button></div> : null}
+          <p className="text-xs text-muted-foreground">上传新包后重新整理，并启动新一轮流程。旧流程和当前包保留。</p>
+          {invalidFile && <p role="alert" className="text-sm text-danger">请选择不超过 20 MiB 的 ZIP 文件</p>}
+          <Button size="sm" disabled={busy || !file || !!invalidFile} onClick={() => void submitReanalyze()}>{busy ? '正在提交…' : '重新分析'}</Button>
+        </div>}
+      </div>
+    );
+  }
   return (
     <section className="flex flex-col gap-3 rounded-md border border-border bg-card p-5" aria-label="原型快速导入">
-      <h2 className="text-lg font-semibold" role="status">{failed ? '导入失败' : succeeded ? '导入成功' : '正在导入'}</h2>
-      <p className="text-sm text-muted-foreground">{failed ? '原材料已保留，处理后可直接重试。' : succeeded ? '已接入研发流程。' : 'AI 正在整理需求与设计，完成后自动进入研发流程，无需确认。可离开页面，稍后回来查看。'}</p>
+      <h2 className="text-lg font-semibold" role="status">{failed ? '导入失败' : '正在导入'}</h2>
+      <p className="text-sm text-muted-foreground">{failed ? '原材料已保留，处理后可直接重试。' : 'AI 正在整理需求与设计，完成后自动进入研发流程，无需确认。可离开页面，稍后回来查看。'}</p>
       {(error || record.errorMessage) && <p role="alert" className="text-sm text-danger">{error ?? record.errorMessage}</p>}
       {failed && <div className="flex flex-col gap-3">
         <div className="flex max-w-xs flex-col gap-2">
@@ -173,7 +227,6 @@ export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId
         </div>
       </div>}
       {processing && error && <Button variant="outline" disabled={busy || loading} onClick={() => { resumed.current = false; void refresh(); }}>重试接续</Button>}
-      {succeeded && <Button asChild><Link to={`/workflow-runs/${existingWorkflowId ?? workflowId}`}>进入工作流</Link></Button>}
       <div><Button variant="ghost" aria-expanded={expanded} onClick={() => setExpanded((current) => !current)}>{expanded ? '收起原型与材料' : '查看原型与材料'}</Button></div>
       {expanded && <div className="flex flex-col gap-3">
         {record.manifest.warnings.length > 0 && <ul className="list-disc pl-5 text-sm text-muted-foreground">{record.manifest.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}

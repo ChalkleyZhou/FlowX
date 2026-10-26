@@ -45,6 +45,7 @@ export function RequirementDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editVersions, setEditVersions] = useState<ProjectVersionSummary[]>([]);
+  const [changesRefresh, setChangesRefresh] = useState<string | undefined>();
   const requestVersion = useRef(0);
 
   const fetchRequirement = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
@@ -189,10 +190,13 @@ export function RequirementDetailPage() {
       {requirement.prototypeImport && <PrototypeImportPanel
         importId={requirement.prototypeImport.id}
         existingWorkflowId={activeWorkflows.length === 1 ? activeWorkflows[0].id : undefined}
-        onConfirmed={() => fetchRequirement({ silent: true })}
+        onConfirmed={() => {
+          setChangesRefresh(String(Date.now()));
+          return fetchRequirement({ silent: true });
+        }}
       />}
 
-      <RequirementChangesPanel requirementId={requirement.id} onChanged={() => fetchRequirement({ silent: true })} />
+      <RequirementChangesPanel requirementId={requirement.id} refreshKey={changesRefresh} onChanged={() => fetchRequirement({ silent: true })} />
 
       <section id="active-workflows" className="scroll-mt-5">
         <ContextPanel

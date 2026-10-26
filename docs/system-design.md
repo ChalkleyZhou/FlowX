@@ -143,7 +143,7 @@ Workspace
 
 Codex / Cursor 的 `analyzePrototype` 共用 `prototype-analysis.output.schema.json`。分析上下文有界，材料为非指令，来源路径必须属于材料清单；不支持的 executor 明确失败。AI 输出校验后事务保存 Requirement、简报和设计产物，`CONFIRMED` 表示资料落库完成，自动导入 `confirmedBy=null`，不伪造人工确认；未答问题仍作为 `brief.openQuestions`，建议不会擅自生效。失败重试按 revision 比较，过期任务不能覆盖新结果；流程接续失败复用整理结果并替换同类导入产物。
 
-资料落库后由服务端 WorkflowService 自动创建工作流。`REQUIREMENT_INTAKE` 保存不可变导入快照，grounding 后复用简报与原型页面，记录 BRAINSTORM 为跳过、DESIGN 为完成，再经现有状态机到 `SPEC_PLAN_PENDING`。查询导入返回 `workflowRunId`；浏览器轮询仅更新状态，成功自动跳转，原型预览和下载按需展开。接续失败变为 `FAILED`，保留材料；重启中断记录可重试。无需用户打开页面才能执行后台接续。后续技术方案、开发与验收保留现有流程。
+资料落库后由服务端 WorkflowService 自动创建工作流。`REQUIREMENT_INTAKE` 保存不可变导入快照，grounding 后复用简报与原型页面，记录 BRAINSTORM 为跳过、DESIGN 为完成，再经现有状态机到 `SPEC_PLAN_PENDING`。查询导入返回 `workflowRunId`；浏览器轮询仅更新状态，成功自动跳转。回到需求详情后不再常驻导入模块，只保留重新分析与下载当前包；重新分析上传新 ZIP，并走需求变更的重新走流程。处理中或失败时仍可按需展开材料。接续失败变为 `FAILED`，保留材料；重启中断记录可重试。无需用户打开页面才能执行后台接续。后续技术方案、开发与验收保留现有流程。
 
 原型存储在 API 工作目录 `.flowx-data/prototype-imports/{id}/{materialRevision}`，保存各次原包与合并材料。预览静态内联包内资源，不安装依赖或执行构建命令。HTML 置于可信外壳的 sandbox iframe（无 same-origin）中；外壳 CSP 的 `frame-src 'none'` 阻止内部原型自身外部导航，原型 CSP 限制请求、资源与表单。包内导航经消息源校验及清单校验转发；新窗口同样保留可信外壳。进入工作流的页面由 `PrototypeArchive` 按路径/标题归一为固定 `平台端`、`手机端`、`眼镜端`，不使用 ZIP 任意目录名作为端；无明确标识时默认平台端，原始页面路径仍保留为 page id。它是原型预览环境，不是完整应用运行环境。完整接口、限制与备份见 [原型导入](prototype-import.md)。
 
