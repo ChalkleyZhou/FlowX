@@ -8,7 +8,7 @@ import { api } from '../api';
 import type { Requirement } from '../types';
 import { RequirementDetailPage } from './RequirementDetailPage';
 
-vi.mock('../api', () => ({ api: { getRequirement: vi.fn(), createWorkflowRun: vi.fn() } }));
+vi.mock('../api', () => ({ api: { getRequirement: vi.fn(), getProject: vi.fn(), updateRequirement: vi.fn(), createWorkflowRun: vi.fn() } }));
 vi.mock('../components/PrototypeImportPanel', () => ({ PrototypeImportPanel: ({ importId, existingWorkflowId }: { importId: string; existingWorkflowId?: string }) => <div data-import={importId} data-workflow={existingWorkflowId}>原型导入面板</div> }));
 vi.mock('../components/RequirementSchedulingPanel', () => ({ RequirementSchedulingPanel: () => null }));
 vi.mock('../components/RequirementChangesPanel', () => ({ RequirementChangesPanel: ({ requirementId }: { requirementId: string }) => <section data-changes-requirement={requirementId}>需求变更入口</section> }));
@@ -62,6 +62,25 @@ describe('RequirementDetailPage 流程接续', () => {
     expect(container.textContent).toContain('flowx-web');
     expect(container.textContent).not.toContain('正在执行');
     expect(api.createWorkflowRun).not.toHaveBeenCalled();
+  });
+
+  it('详情展示功能模块、风险与影响、产品需求文档和备注，空值显示未填写', async () => {
+    vi.mocked(api.getRequirement).mockResolvedValue({
+      ...requirement,
+      functionalModule: '登录',
+      riskImpact: '影响已登录会话',
+      productRequirementDocument: 'https://example.com/prd',
+      remark: '',
+    });
+    await renderPage();
+    expect(container.textContent).toContain('功能模块');
+    expect(container.textContent).toContain('登录');
+    expect(container.textContent).toContain('风险&影响');
+    expect(container.textContent).toContain('影响已登录会话');
+    expect(container.textContent).toContain('产品需求文档');
+    expect(container.textContent).toContain('https://example.com/prd');
+    expect(container.textContent).toContain('备注');
+    expect(container.textContent).toContain('未填写');
   });
 
   it('需求详情提供属于当前需求的共享变更入口', async () => {
@@ -155,6 +174,50 @@ describe('RequirementDetailPage 流程接续', () => {
     vi.mocked(api.getRequirement).mockResolvedValue({ ...requirement, prototypeImport: { id: 'import-1', status: 'CONFIRMED' }, workflowRuns: [run('run-existing', 'SPEC_PLAN_RUNNING', 'web')] });
     await renderPage();
     expect(container.querySelector('[data-import="import-1"]')?.getAttribute('data-workflow')).toBe('run-existing');
+  });
+
+  it('详情可以编辑需求名称、描述和补充档案', async () => {
+    vi.mocked(api.getProject).mockResolvedValue({
+      ...requirement.project,
+      versions: [{ id: 'ver-1', name: '2.6.0' }],
+    });
+    vi.mocked(api.updateRequirement).mockImplementation(async (_id, payload) => ({
+      ...requirement,
+      ...payload,
+      title: payload.title ?? requirement.title,
+      description: payload.description ?? requirement.description,
+      acceptanceCriteria: payload.acceptanceCriteria ?? requirement.acceptanceCriteria,
+    }));
+    await renderPage();
+    await act(async () => {
+      Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '编辑')?.click();
+    });
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain('编辑需求');
+    const setValue = (selector: string, value: string) => {
+      const field = dialog.querySelector(selector) as HTMLInputElement | HTMLTextAreaElement;
+      const prototype = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(field, value);
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    await act(async () => {
+      setValue('#edit-requirement-title', '改后的名称');
+      setValue('#edit-requirement-description', '新的描述');
+      setValue('#edit-requirement-module', '登录');
+      setValue('#edit-requirement-risk', '影响已登录会话');
+    });
+    await act(async () => { dialog.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    expect(api.updateRequirement).toHaveBeenCalledWith('requirement-1', expect.objectContaining({
+      title: '改后的名称',
+      description: '新的描述',
+      functionalModule: '登录',
+      riskImpact: '影响已登录会话',
+    }));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(container.textContent).toContain('改后的名称');
+    expect(container.textContent).toContain('新的描述');
+    expect(container.textContent).toContain('登录');
+    expect(container.textContent).toContain('影响已登录会话');
   });
 
 });

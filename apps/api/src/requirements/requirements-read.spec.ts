@@ -50,6 +50,17 @@ describe('RequirementsService 原型导入读取契约', () => {
     expect(rows.find((row) => row.id === ordinaryRequirementId)).toHaveProperty('prototypeImport', null);
   });
 
+  it('列表给出最近一次需求变更时间，不返回变更正文', async () => {
+    await prisma.requirementChange.create({ data: { requirementId: ordinaryRequirementId, revision: 1, content: '较早变更', mode: 'SUPPLEMENT', requestId: 'older', createdByUserId: 'author', createdByName: '产品', createdAt: new Date('2026-10-20T00:00:00.000Z') } });
+    await prisma.requirementChange.create({ data: { requirementId: ordinaryRequirementId, revision: 2, content: '最新变更正文', mode: 'SUPPLEMENT', requestId: 'newer', createdByUserId: 'author', createdByName: '产品', createdAt: new Date('2026-10-26T09:30:00.000Z') } });
+    const rows = await service.findAll();
+    const ordinary = rows.find((row) => row.id === ordinaryRequirementId);
+    expect(ordinary).toMatchObject({ latestChangeAt: new Date('2026-10-26T09:30:00.000Z') });
+    expect(ordinary).not.toHaveProperty('changes');
+    expect(JSON.stringify(ordinary)).not.toContain('最新变更正文');
+    expect(rows.find((row) => row.id === importedRequirements[0].id)).toMatchObject({ latestChangeAt: null });
+  });
+
   it('详情与列表使用相同的最小导入摘要契约', async () => {
     for (const requirement of importedRequirements) {
       const detail = await service.findOne(requirement.id);

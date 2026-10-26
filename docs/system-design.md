@@ -77,7 +77,7 @@ flowchart LR
 
 ### 需求最小创建契约（2026-10-23）
 
-`POST /requirements` 由 `projectId` 指定归属，业务必填为非空白 `title` 和有效发布版本。`description`、`acceptanceCriteria` 选填，省略或为空时保存为空字符串；字符串统一去除首尾空白。显式 `versionId` 必须属于该项目；省略时兼容使用项目当前版本，显式 `null` 或没有当前版本返回 400，不创建无版本普通需求。历史记录、更新接口的版本清空语义和原型导入草稿契约保持兼容。
+`POST /requirements` 由 `projectId` 指定归属，业务必填为非空白 `title` 和有效发布版本。`priority` 取 `URGENT`、`HIGH`、`MEDIUM`、`LOW`，省略时保存为 `MEDIUM`。`description`、`acceptanceCriteria`、`functionalModule`、`riskImpact`、`productRequirementDocument`、`remark` 选填，省略或为空时保存为空字符串；字符串统一去除首尾空白。`functionalModule` 与 `remark` 同时出现在需求列表；`riskImpact` 与 `productRequirementDocument` 只在需求详情展示。列表额外返回 `latestChangeAt`，取最近一条正式需求变更的创建时间，没有变更时为 `null`，不附带变更正文。已登录创建时写入 `createdByUserId` 与 `createdByName`；历史记录和无法识别用户的系统创建保持为空。显式 `versionId` 必须属于该项目；省略时兼容使用项目当前版本，显式 `null` 或没有当前版本返回 400，不创建无版本普通需求。历史记录和原型导入草稿契约保持兼容。`PATCH /requirements/:id` 可更新 `title`、`description`、`acceptanceCriteria`、`functionalModule`、`riskImpact`、`productRequirementDocument`、`remark`、`priority`、`planningStatus` 和 `versionId`。字符串去除首尾空白，空白 `title` 返回 400；未出现的字段保持原值。`priority` 取 `URGENT`、`HIGH`、`MEDIUM`、`LOW`。`versionId` 为 `null` 时清空版本，非空时必须属于该需求所在项目。创建人与创建时间不随编辑改变。
 
 Web 普通表单默认当前版本、折叠选填字段；项目详情快捷弹窗只输入标题，并显式提交弹窗显示的当前版本 ID，成功刷新并筛选到该版本。快捷弹窗另支持选传原型 ZIP，复用 `POST /prototype-imports` 与自动导入状态页，显式提交标题和显示版本；不先创建普通需求。导入接口可选 `title`、`versionId`，校验版本归属后再保存材料，省略版本保持原导入行为。没有当前版本时引导版本管理。两入口均防重复提交，失败保留输入。本地 MCP 同步允许省略描述和验收标准，拒绝显式空版本；Skill 不再生成占位验收内容。
 

@@ -65,7 +65,7 @@ export class PrototypeImportsService implements OnModuleInit {
     catch { throw new BadRequestException('无法读取原型包，请检查 ZIP 格式、文件路径与大小限制。'); }
     try {
       const record = await this.prisma.$transaction(async (tx) => {
-        const requirement = await tx.requirement.create({ data: { projectId: project.id, workspaceId: project.workspaceId, versionId, title: dto.title?.trim() || name.replace(/\.zip$/i, '') || '导入原型', description: dto.goal?.trim() || '正在根据原型整理需求', acceptanceCriteria: '正在根据原型整理验收标准' } });
+        const requirement = await tx.requirement.create({ data: { projectId: project.id, workspaceId: project.workspaceId, versionId, title: dto.title?.trim() || name.replace(/\.zip$/i, '') || '导入原型', description: dto.goal?.trim() || '正在根据原型整理需求', acceptanceCriteria: '正在根据原型整理验收标准', createdByUserId: actor?.user.id, createdByName: actor?.user.displayName } });
         return tx.prototypeImport.create({ data: { id, requirementId: requirement.id, aiProvider, goal: dto.goal?.trim() || dto.title?.trim() || '', manifest: json(manifest), answers: {} } });
       });
       this.schedule(record, actor!);

@@ -23,8 +23,8 @@ export class RequirementsController {
   ) {}
 
   @Post()
-  create(@Body() dto: CreateRequirementDto) {
-    return this.requirementsService.create(dto);
+  create(@Body() dto: CreateRequirementDto, @Req() req: RequirementsRequest) {
+    return this.requirementsService.create(dto, req.authSession);
   }
 
   @Get()

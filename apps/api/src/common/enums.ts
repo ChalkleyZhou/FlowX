@@ -95,6 +95,7 @@ export enum RequirementPriority {
   LOW = 'LOW',
   MEDIUM = 'MEDIUM',
   HIGH = 'HIGH',
+  URGENT = 'URGENT',
 }
 
 export enum RequirementPlanningStatus {

@@ -4,21 +4,41 @@ import { api } from '../api';
 import { ContextPanel } from '../components/ContextPanel';
 import { DetailHeader } from '../components/DetailHeader';
 import { PrototypeImportPanel } from '../components/PrototypeImportPanel';
+import { RequirementEditDialog } from '../components/RequirementEditDialog';
 import { RequirementSchedulingPanel } from '../components/RequirementSchedulingPanel';
 import { RequirementChangesPanel } from '../components/RequirementChangesPanel';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Spinner } from '../components/ui/spinner';
-import type { Requirement } from '../types';
+import type { ProjectVersionSummary, Requirement } from '../types';
 import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
 import { formatRequirementWorkflowScope, getActiveRequirementWorkflows, isActiveRequirementWorkflow } from '../utils/requirement-workflows';
 import { formatWorkflowStatus } from '../utils/workflow-ui';
+
+function RequirementDetailField({ label, value }: { label: string; value?: string | null }) {
+  const text = value?.trim() ?? '';
+  const url = /^https?:\/\/\S+$/i.test(text) ? text : null;
+  return (
+    <div>
+      <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </div>
+      {url ? (
+        <a className="break-all text-sm leading-6 text-primary underline" href={url} target="_blank" rel="noreferrer">{url}</a>
+      ) : (
+        <p className="whitespace-pre-line text-sm leading-6 text-foreground">{text || '未填写'}</p>
+      )}
+    </div>
+  );
+}
 
 export function RequirementDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [requirement, setRequirement] = useState<Requirement | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editVersions, setEditVersions] = useState<ProjectVersionSummary[]>([]);
   const requestVersion = useRef(0);
 
   const fetchRequirement = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
@@ -54,6 +74,17 @@ export function RequirementDetailPage() {
       document.getElementById('scheduling')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [requirement, loading]);
+
+  async function openEdit() {
+    if (!requirement) return;
+    try {
+      const project = await api.getProject(requirement.project.id);
+      setEditVersions(project.versions ?? []);
+    } catch {
+      setEditVersions(requirement.version ? [requirement.version] : []);
+    }
+    setEditOpen(true);
+  }
 
   if (loading) {
     return (
@@ -108,6 +139,7 @@ export function RequirementDetailPage() {
             <Button variant="outline" asChild>
               <Link to="/requirements">返回列表</Link>
             </Button>
+            <Button variant="outline" type="button" onClick={() => void openEdit()}>编辑</Button>
             <Button variant="outline" asChild>
               <Link to={`/requirements/${requirement.id}#scheduling`}>排期</Link>
             </Button>
@@ -172,21 +204,28 @@ export function RequirementDetailPage() {
       <ContextPanel
         eyebrow="Requirement"
         title="需求详情"
-        description="需求描述、验收标准与人员排期。"
+        description="验收标准与创建时补充的档案。风险与影响、产品需求文档只在这里查看。"
       >
         <div className="flex flex-col gap-4">
-          <div>
-            <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-              验收标准
-            </div>
-            <p className="whitespace-pre-line text-sm leading-6 text-foreground">
-              {requirement.acceptanceCriteria}
-            </p>
-          </div>
+          <RequirementDetailField label="验收标准" value={requirement.acceptanceCriteria} />
+          <RequirementDetailField label="功能模块" value={requirement.functionalModule} />
+          <RequirementDetailField label="风险&影响" value={requirement.riskImpact} />
+          <RequirementDetailField label="产品需求文档" value={requirement.productRequirementDocument} />
+          <RequirementDetailField label="备注" value={requirement.remark} />
         </div>
       </ContextPanel>
 
       <RequirementSchedulingPanel requirement={requirement} onChanged={() => fetchRequirement()} />
+      <RequirementEditDialog
+        requirement={requirement}
+        versions={editVersions}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSaved={(updated) => {
+          setRequirement((current) => (current ? { ...current, ...updated } : updated));
+          setEditOpen(false);
+        }}
+      />
     </div>
   );
 }

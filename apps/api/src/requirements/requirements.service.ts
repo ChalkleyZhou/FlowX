@@ -11,7 +11,7 @@ import {
 } from '../ai/ai-invocation-context.service';
 import { assertStrictGenerateDesignOutput } from '../ai/design-output-validate';
 import { MockAiExecutor } from '../ai/mock-ai.executor';
-import { IdeationSessionStatus, IdeationStatus } from '../common/enums';
+import { IdeationSessionStatus, IdeationStatus, RequirementPriority } from '../common/enums';
 import {
   BrainstormBrief,
   BrainstormOutput,
@@ -74,7 +74,7 @@ export class RequirementsService {
     private readonly repositorySyncService: RepositorySyncService,
   ) {}
 
-  async create(dto: CreateRequirementDto) {
+  async create(dto: CreateRequirementDto, author?: { user: { id: string; displayName: string } }) {
     const title = dto.title.trim();
     if (!title) {
       throw new BadRequestException('请填写需求标题');
@@ -128,8 +128,16 @@ export class RequirementsService {
         title,
         description: dto.description?.trim() ?? '',
         acceptanceCriteria: dto.acceptanceCriteria?.trim() ?? '',
+        functionalModule: dto.functionalModule?.trim() ?? '',
+        riskImpact: dto.riskImpact?.trim() ?? '',
+        productRequirementDocument: dto.productRequirementDocument?.trim() ?? '',
+        remark: dto.remark?.trim() ?? '',
+        priority: dto.priority ?? RequirementPriority.MEDIUM,
         workspaceId: project.workspaceId,
         versionId,
+        ...(author?.user.id
+          ? { createdByUserId: author.user.id, createdByName: author.user.displayName }
+          : {}),
         requirementRepositories:
           requestedRepositoryIds.length > 0
             ? {
@@ -190,9 +198,21 @@ export class RequirementsService {
     if (Object.prototype.hasOwnProperty.call(dto, 'versionId') && dto.versionId) {
       await this.assertVersionOwned(existing.project.id, dto.versionId);
     }
+    const title = dto.title?.trim();
+    if (dto.title !== undefined && !title) {
+      throw new BadRequestException('请填写需求名称');
+    }
+    const text = (value: string) => value.trim();
     const updated = await this.prisma.requirement.update({
       where: { id },
       data: {
+        ...(title ? { title } : {}),
+        ...(dto.description !== undefined ? { description: text(dto.description) } : {}),
+        ...(dto.acceptanceCriteria !== undefined ? { acceptanceCriteria: text(dto.acceptanceCriteria) } : {}),
+        ...(dto.functionalModule !== undefined ? { functionalModule: text(dto.functionalModule) } : {}),
+        ...(dto.riskImpact !== undefined ? { riskImpact: text(dto.riskImpact) } : {}),
+        ...(dto.productRequirementDocument !== undefined ? { productRequirementDocument: text(dto.productRequirementDocument) } : {}),
+        ...(dto.remark !== undefined ? { remark: text(dto.remark) } : {}),
         ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
         ...(dto.planningStatus !== undefined ? { planningStatus: dto.planningStatus } : {}),
         ...(Object.prototype.hasOwnProperty.call(dto, 'versionId') ? { versionId: dto.versionId ?? null } : {}),
@@ -266,9 +286,20 @@ export class RequirementsService {
             createdAt: 'asc',
           },
         },
+        changes: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { createdAt: true },
+        },
       },
     });
-    return rows.map((row) => this.enrichRequirement(row));
+    return rows.map((row) => {
+      const { changes, ...rest } = row;
+      return {
+        ...this.enrichRequirement(rest),
+        latestChangeAt: changes[0]?.createdAt ?? null,
+      };
+    });
   }
 
   async findOne(id: string) {

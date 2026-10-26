@@ -13,6 +13,10 @@ model Requirement {
   title                   String
   description             String
   acceptanceCriteria      String
+  functionalModule           String               @default("")
+  riskImpact                 String               @default("")
+  productRequirementDocument String               @default("")
+  remark                     String               @default("")
   priority                String                  @default("MEDIUM")
   planningStatus          String                  @default("UNSCHEDULED")
   projectId               String
@@ -29,6 +33,8 @@ model Requirement {
   ideationArtifacts       IdeationArtifact[]
   workflowRuns            WorkflowRun[]
   revision                Int                     @default(0)
+  createdByUserId         String?
+  createdByName           String?
   changes                 RequirementChange[]
   testRequestLinks        TestRequestRequirement[]
   testDesignLinks         TestDesignRequirement[]

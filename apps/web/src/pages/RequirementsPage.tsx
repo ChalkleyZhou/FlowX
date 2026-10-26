@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { EmptyState } from '../components/EmptyState';
+import { RequirementEditDialog } from '../components/RequirementEditDialog';
 import { ListToolbar } from '../components/ListToolbar';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
-import { RecordListItem } from '../components/RecordListItem';
 import { SectionHeader } from '../components/SectionHeader';
 import {
   Dialog,
@@ -28,7 +28,7 @@ import {
 import { Spinner } from '../components/ui/spinner';
 import { Textarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
-import type { Project, Requirement, Workspace } from '../types';
+import type { Project, Requirement } from '../types';
 import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
 import { formatRequirementWorkflowScope, getActiveRequirementWorkflows } from '../utils/requirement-workflows';
 import { formatWorkflowStatus } from '../utils/workflow-ui';
@@ -36,8 +36,13 @@ import { formatWorkflowStatus } from '../utils/workflow-ui';
 const emptyCreateDraft = {
   projectId: '',
   title: '',
+  priority: 'MEDIUM',
   description: '',
   acceptanceCriteria: '',
+  functionalModule: '',
+  riskImpact: '',
+  productRequirementDocument: '',
+  remark: '',
   repositoryIds: [] as string[],
   versionId: '',
 };
@@ -52,6 +57,17 @@ const planningStatusOptions = [
   { id: 'DONE', label: '已完成' },
 ] as const;
 
+function formatRequirementCreatedAt(value?: string | null) {
+  if (!value) return '未记录';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '未记录';
+  return date.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+}
+
 const priorityOptions = [
   { id: 'URGENT', label: '紧急' },
   { id: 'HIGH', label: '高' },
@@ -62,12 +78,12 @@ const priorityOptions = [
 export function RequirementsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [editingRequirement, setEditingRequirement] = useState<Requirement | null>(null);
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const createInFlight = useRef(false);
   const [launchModalRequirement, setLaunchModalRequirement] = useState<Requirement | null>(null);
@@ -88,13 +104,12 @@ export function RequirementsPage() {
   const [prototypeSubmitting, setPrototypeSubmitting] = useState(false);
   const prototypeInFlight = useRef(false);
   const toast = useToast();
-  const selectedWorkspaceId = searchParams.get('workspaceId') ?? undefined;
   const selectedProjectId = searchParams.get('projectId') ?? undefined;
   const selectedVersionId = searchParams.get('versionId') ?? undefined;
   const selectedPlanningStatus = searchParams.get('planningStatus') ?? undefined;
   const selectedPriority = searchParams.get('priority') ?? undefined;
   const hasActiveFilters = Boolean(
-    selectedWorkspaceId || selectedProjectId || selectedVersionId || selectedPlanningStatus || selectedPriority,
+    selectedProjectId || selectedVersionId || selectedPlanningStatus || selectedPriority,
   );
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === createDraft.projectId) ?? null,
@@ -102,15 +117,9 @@ export function RequirementsPage() {
   );
   const availableRepositories = selectedProject?.workspace.repositories ?? [];
 
-  const filteredProjects = useMemo(
-    () => projects.filter((project) => !selectedWorkspaceId || project.workspace.id === selectedWorkspaceId),
-    [projects, selectedWorkspaceId],
-  );
-
   const versionOptions = useMemo(() => {
     const seen = new Set<string>();
     return projects
-      .filter((project) => !selectedWorkspaceId || project.workspace.id === selectedWorkspaceId)
       .filter((project) => !selectedProjectId || project.id === selectedProjectId)
       .flatMap((project) => (project.versions ?? []).map((version) => ({
         id: version.id,
@@ -121,14 +130,11 @@ export function RequirementsPage() {
         seen.add(version.id);
         return true;
       });
-  }, [projects, selectedProjectId, selectedWorkspaceId]);
+  }, [projects, selectedProjectId]);
 
   const filteredRequirements = useMemo(
     () =>
       requirements.filter((item) => {
-        if (selectedWorkspaceId && item.project.workspace.id !== selectedWorkspaceId) {
-          return false;
-        }
         if (selectedProjectId && item.project.id !== selectedProjectId) {
           return false;
         }
@@ -143,7 +149,7 @@ export function RequirementsPage() {
         }
         return true;
       }),
-    [requirements, selectedPlanningStatus, selectedPriority, selectedProjectId, selectedVersionId, selectedWorkspaceId],
+    [requirements, selectedPlanningStatus, selectedPriority, selectedProjectId, selectedVersionId],
   );
 
   const requirementSummary = useMemo(() => {
@@ -160,13 +166,11 @@ export function RequirementsPage() {
   async function refresh() {
     setLoading(true);
     try {
-      const [workspaceList, projectList, requirementList, workflowProviderConfig] = await Promise.all([
-        api.getWorkspaces(),
+      const [projectList, requirementList, workflowProviderConfig] = await Promise.all([
         api.getProjects(),
         api.getRequirements(),
         api.getWorkflowProviders(),
       ]);
-      setWorkspaces(workspaceList);
       setProjects(projectList);
       setRequirements(requirementList);
       setHasLoaded(true);
@@ -217,8 +221,8 @@ export function RequirementsPage() {
     }
     const selectedProject = projects.find((project) => project.id === selectedProjectId);
     const invalidKeys = [
-      selectedWorkspaceId && !workspaces.some((workspace) => workspace.id === selectedWorkspaceId) ? 'workspaceId' : null,
-      selectedProjectId && (!selectedProject || (selectedWorkspaceId && selectedProject.workspace.id !== selectedWorkspaceId)) ? 'projectId' : null,
+      searchParams.has('workspaceId') ? 'workspaceId' : null,
+      selectedProjectId && !selectedProject ? 'projectId' : null,
       selectedVersionId && !versionOptions.some((version) => version.id === selectedVersionId) ? 'versionId' : null,
       selectedPlanningStatus && !planningStatusOptions.some((option) => option.id === selectedPlanningStatus) ? 'planningStatus' : null,
       selectedPriority && !priorityOptions.some((option) => option.id === selectedPriority) ? 'priority' : null,
@@ -228,7 +232,7 @@ export function RequirementsPage() {
       invalidKeys.forEach((key) => nextParams.delete(key));
       setSearchParams(nextParams, { replace: true });
     }
-  }, [hasLoaded, projects, searchParams, selectedPlanningStatus, selectedPriority, selectedProjectId, selectedVersionId, selectedWorkspaceId, versionOptions, workspaces]);
+  }, [hasLoaded, projects, searchParams, selectedPlanningStatus, selectedPriority, selectedProjectId, selectedVersionId, versionOptions]);
 
   useEffect(() => {
     const requirementId = searchParams.get('launchRequirementId');
@@ -253,8 +257,13 @@ export function RequirementsPage() {
   async function createRequirement(values: {
     projectId: string;
     title: string;
+    priority: string;
     description: string;
     acceptanceCriteria: string;
+    functionalModule: string;
+    riskImpact: string;
+    productRequirementDocument: string;
+    remark: string;
     repositoryIds: string[];
     versionId: string;
   }) {
@@ -265,8 +274,7 @@ export function RequirementsPage() {
       await api.createRequirement(values);
       setCreateDraft(emptyCreateDraft);
       setCreateModalOpen(false);
-      const project = projects.find((item) => item.id === values.projectId);
-      updateFilterQuery({ workspaceId: project?.workspace.id, projectId: values.projectId });
+      updateFilterQuery({ projectId: values.projectId });
       await refresh();
       toast.success('需求创建成功');
     } catch (error) {
@@ -339,8 +347,13 @@ export function RequirementsPage() {
     await createRequirement({
       projectId: createDraft.projectId,
       title: createDraft.title.trim(),
+      priority: createDraft.priority,
       description: createDraft.description.trim(),
       acceptanceCriteria: createDraft.acceptanceCriteria.trim(),
+      functionalModule: createDraft.functionalModule.trim(),
+      riskImpact: createDraft.riskImpact.trim(),
+      productRequirementDocument: createDraft.productRequirementDocument.trim(),
+      remark: createDraft.remark.trim(),
       repositoryIds: createDraft.repositoryIds,
       versionId: createDraft.versionId,
     });
@@ -582,6 +595,22 @@ export function RequirementsPage() {
                 placeholder="AI研发调度系统 MVP"
               />
             </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-foreground">优先级（必填）</label>
+              <Select
+                value={createDraft.priority}
+                onValueChange={(value) => setCreateDraft((current) => ({ ...current, priority: value }))}
+              >
+                <SelectTrigger aria-label="优先级" aria-required="true">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {priorityOptions.map((option) => (
+                    <SelectItem key={option.id} value={option.id}>{option.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <details className="rounded-md border border-border p-3">
               <summary className="cursor-pointer text-sm font-medium">补充信息（选填）</summary>
               <div className="mt-4 flex flex-col gap-4">
@@ -603,6 +632,45 @@ export function RequirementsPage() {
                 value={createDraft.acceptanceCriteria}
                 onChange={(event) => setCreateDraft((current) => ({ ...current, acceptanceCriteria: event.target.value }))}
                 placeholder="列出本次迭代必须满足的验收检查点。"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-foreground" htmlFor="requirement-module">功能模块（选填）</label>
+              <UiInput
+                id="requirement-module"
+                value={createDraft.functionalModule}
+                onChange={(event) => setCreateDraft((current) => ({ ...current, functionalModule: event.target.value }))}
+                placeholder="例如：登录"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-foreground" htmlFor="requirement-risk">风险&影响（选填）</label>
+              <Textarea
+                id="requirement-risk"
+                rows={3}
+                value={createDraft.riskImpact}
+                onChange={(event) => setCreateDraft((current) => ({ ...current, riskImpact: event.target.value }))}
+                placeholder="说明业务影响和波及范围。"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-foreground" htmlFor="requirement-prd">产品需求文档（选填）</label>
+              <Textarea
+                id="requirement-prd"
+                rows={3}
+                value={createDraft.productRequirementDocument}
+                onChange={(event) => setCreateDraft((current) => ({ ...current, productRequirementDocument: event.target.value }))}
+                placeholder="粘贴文档链接或摘要。"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-foreground" htmlFor="requirement-remark">备注（选填）</label>
+              <Textarea
+                id="requirement-remark"
+                rows={3}
+                value={createDraft.remark}
+                onChange={(event) => setCreateDraft((current) => ({ ...current, remark: event.target.value }))}
+                placeholder="内部协同备忘，不进入研发上下文。"
               />
             </div>
             <div className="flex flex-col gap-3">
@@ -658,6 +726,19 @@ export function RequirementsPage() {
           </form>
         </DialogContent>
       </Dialog>
+      {editingRequirement ? (
+        <RequirementEditDialog
+          requirement={editingRequirement}
+          versions={projects.find((project) => project.id === editingRequirement.project.id)?.versions ?? []}
+          open
+          onOpenChange={(open) => { if (!open) setEditingRequirement(null); }}
+          onSaved={(updated) => {
+            setRequirements((current) => current.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
+            setEditingRequirement(null);
+            toast.success('需求已更新');
+          }}
+        />
+      ) : null}
       <PageHeader
         eyebrow="Requirements"
         title="需求"
@@ -693,22 +774,6 @@ export function RequirementsPage() {
             filters={(
               <>
                 <Select
-                  value={selectedWorkspaceId ?? ALL_FILTER_VALUE}
-                  onValueChange={(value) => updateFilterQuery({ workspaceId: value === ALL_FILTER_VALUE ? undefined : value }, ['projectId', 'versionId'])}
-                >
-                  <SelectTrigger className="w-[220px]" aria-label="按工作区筛选">
-                    <SelectValue placeholder="按工作区筛选" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ALL_FILTER_VALUE}>全部工作区</SelectItem>
-                    {workspaces.map((workspace) => (
-                      <SelectItem key={workspace.id} value={workspace.id}>
-                        {workspace.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
                   value={selectedProjectId ?? ALL_FILTER_VALUE}
                   onValueChange={(value) => updateFilterQuery({ projectId: value === ALL_FILTER_VALUE ? undefined : value }, ['versionId'])}
                 >
@@ -717,7 +782,7 @@ export function RequirementsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={ALL_FILTER_VALUE}>全部项目</SelectItem>
-                    {filteredProjects.map((project) => (
+                    {projects.map((project) => (
                       <SelectItem key={project.id} value={project.id}>
                         {project.name}
                       </SelectItem>
@@ -781,58 +846,52 @@ export function RequirementsPage() {
               <Spinner className="h-7 w-7" />
             </div>
           ) : filteredRequirements.length > 0 ? (
-            <div className="flex flex-col gap-3.5">
-              {filteredRequirements.map((item) => (
-                <RecordListItem
-                  key={item.id}
-                  title={(
-                    <Link
-                      to={`/requirements/${item.id}`}
-                      className="text-base font-semibold leading-6 text-foreground no-underline hover:text-primary"
-                    >
-                      {item.title}
-                    </Link>
-                  )}
-                  interactive
-                  badges={
-                    <>
-                      <Badge variant="secondary">{item.project.name}</Badge>
-                      {item.version ? <Badge variant="outline">版本 {item.version.name}</Badge> : null}
-                      <Badge variant="outline">{formatPlanningStatus(item.planningStatus)}</Badge>
-                      <Badge variant="outline">{formatPriority(item.priority)}</Badge>
-                      {item.prototypeImport && item.prototypeImport.status !== 'CONFIRMED' ? (
-                        <Badge variant="warning">{item.prototypeImport.status === 'FAILED' ? '导入失败' : '原型导入中'}</Badge>
-                      ) : null}
-                    </>
-                  }
-                  actions={
-                    <>
-                      <UiButton variant="default" asChild>
-                        <Link to={`/requirements/${item.id}`}>详情</Link>
-                      </UiButton>
-                      <UiButton variant="outline" asChild>
-                        <Link to={`/requirements/${item.id}#scheduling`}>排期</Link>
-                      </UiButton>
-                      <UiButton
-                        variant="outline"
-                        onClick={() => {
-                          if (item.prototypeImport && item.prototypeImport.status !== 'CONFIRMED') {
-                            navigate(`/requirements/${item.id}`);
-                            return;
-                          }
-                          setLaunchModalRequirement(item);
-                          setLaunchRepositoryIds([]);
-                        }}
-                      >
-                        {item.prototypeImport && item.prototypeImport.status !== 'CONFIRMED' ? '查看导入' : '启动工作流'}
-                      </UiButton>
-                      <UiButton variant="outline" onClick={() => navigate(`/workflow-runs?requirementId=${item.id}`)}>
-                        查看流程
-                      </UiButton>
-                    </>
-                  }
-                />
-              ))}
+            <div className="overflow-x-auto rounded-md border border-border">
+              <table className="w-max min-w-full text-sm">
+                <thead className="bg-muted/40 text-left text-muted-foreground">
+                  <tr>
+                    {['所属项目', '发布版本', '需求名称', '优先级', '规划状态', '功能模块', '备注', '创建人', '创建时间', '需求变更时间', '操作'].map((label) => (
+                      <th key={label} className="whitespace-nowrap px-4 py-3 font-medium">{label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRequirements.map((item) => (
+                    <tr key={item.id} className="border-t border-border">
+                      <td className="whitespace-nowrap px-4 py-3">{item.project.name}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{item.version?.name ?? '未挂版本'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 font-medium">
+                        <div className="flex items-center gap-2">
+                          <Link to={`/requirements/${item.id}`} className="text-foreground no-underline hover:text-primary">{item.title}</Link>
+                          {item.prototypeImport && item.prototypeImport.status !== 'CONFIRMED' ? (
+                            <Badge variant="warning">{item.prototypeImport.status === 'FAILED' ? '导入失败' : '原型导入中'}</Badge>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">{formatPriority(item.priority)}</td>
+                      <td className="whitespace-nowrap px-4 py-3">{formatPlanningStatus(item.planningStatus)}</td>
+                      <td className="whitespace-nowrap px-4 py-3">{item.functionalModule?.trim() || '未填写'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{item.remark?.trim() || '未填写'}</td>
+                      <td className="whitespace-nowrap px-4 py-3">{item.createdByName?.trim() || '未记录'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground"><time dateTime={item.createdAt ?? undefined}>{formatRequirementCreatedAt(item.createdAt)}</time></td>
+                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{item.latestChangeAt ? <time dateTime={item.latestChangeAt}>{formatRequirementCreatedAt(item.latestChangeAt)}</time> : '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <div className="flex flex-nowrap gap-2">
+                          <UiButton variant="default" size="sm" asChild>
+                            <Link to={`/requirements/${item.id}`}>详情</Link>
+                          </UiButton>
+                          <UiButton variant="outline" size="sm" type="button" onClick={() => setEditingRequirement(item)}>
+                            编辑
+                          </UiButton>
+                          <UiButton variant="outline" size="sm" asChild>
+                            <Link to={`/requirements/${item.id}#scheduling`}>排期</Link>
+                          </UiButton>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : (
             <EmptyState description={hasActiveFilters ? '当前筛选条件下没有需求，请调整筛选或清除条件' : '还没有录入任何需求，先创建一条需求开始推进。'} />

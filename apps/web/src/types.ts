@@ -305,6 +305,10 @@ export interface Requirement {
   title: string;
   description: string;
   acceptanceCriteria: string;
+  functionalModule?: string | null;
+  riskImpact?: string | null;
+  productRequirementDocument?: string | null;
+  remark?: string | null;
   priority?: string;
   planningStatus?: string;
   ideationStatus: string;
@@ -331,6 +335,9 @@ export interface Requirement {
   }>;
   versionId?: string | null;
   version?: ProjectVersionSummary | null;
+  createdByName?: string | null;
+  createdAt?: string | null;
+  latestChangeAt?: string | null;
 }
 
 export interface Repository {

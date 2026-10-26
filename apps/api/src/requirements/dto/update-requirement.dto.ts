@@ -3,6 +3,35 @@ import { RequirementPlanningStatus, RequirementPriority } from '../../common/enu
 
 export class UpdateRequirementDto {
   @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  acceptanceCriteria?: string;
+
+  @IsOptional()
+  @IsString()
+  functionalModule?: string;
+
+  @IsOptional()
+  @IsString()
+  riskImpact?: string;
+
+  @IsOptional()
+  @IsString()
+  productRequirementDocument?: string;
+
+  @IsOptional()
+  @IsString()
+  remark?: string;
+
+  @IsOptional()
   @IsIn(Object.values(RequirementPriority))
   priority?: RequirementPriority;
 

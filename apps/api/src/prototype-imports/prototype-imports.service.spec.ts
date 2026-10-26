@@ -73,6 +73,7 @@ describe('原型导入到确认', () => {
     expect(result.analysis).toEqual(analysis);
     expect(result.manifest).toEqual(manifest);
     expect(result.requirementId).toBeTruthy();
+    expect(await prisma.requirement.findUnique({ where: { id: result.requirementId } })).toMatchObject({ createdByUserId: 'user-a', createdByName: '用户' });
     expect(executor.analyzePrototype).toHaveBeenCalled();
   });
 

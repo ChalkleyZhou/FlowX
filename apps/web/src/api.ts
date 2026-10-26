@@ -96,8 +96,13 @@ function buildApiUrl(path: string) {
 interface RequirementPayload {
   projectId: string;
   title: string;
+  priority?: string;
   description?: string;
   acceptanceCriteria?: string;
+  functionalModule?: string;
+  riskImpact?: string;
+  productRequirementDocument?: string;
+  remark?: string;
   repositoryIds?: string[];
   versionId?: string;
 }
@@ -690,7 +695,18 @@ export const api = {
     request<RequirementChange>(`/requirements/${id}/changes/${changeId}/restart`, { method: 'POST' }),
   updateRequirement: (
     id: string,
-    payload: { priority?: string; planningStatus?: string; versionId?: string | null },
+    payload: {
+      title?: string;
+      description?: string;
+      acceptanceCriteria?: string;
+      functionalModule?: string;
+      riskImpact?: string;
+      productRequirementDocument?: string;
+      remark?: string;
+      priority?: string;
+      planningStatus?: string;
+      versionId?: string | null;
+    },
   ) =>
     request<Requirement>(`/requirements/${id}`, {
       method: 'PATCH',

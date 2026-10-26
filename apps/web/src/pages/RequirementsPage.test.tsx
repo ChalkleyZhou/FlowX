@@ -20,6 +20,7 @@ vi.mock('../api', () => ({
     getRequirements: vi.fn(),
     getWorkflowProviders: vi.fn(),
     createRequirement: vi.fn(),
+    updateRequirement: vi.fn(),
     createPrototypeImport: vi.fn(),
     createWorkflowRun: vi.fn(),
   },
@@ -58,8 +59,15 @@ describe('RequirementsPage', () => {
         ],
       },
     },
+    priority: 'HIGH',
     versionId: 'ver-1',
     version: { id: 'ver-1', name: '2.6.0' },
+    createdByName: '产品甲',
+    createdAt: '2026-10-26T08:00:00.000Z',
+    functionalModule: '登录模块',
+    riskImpact: '影响已登录会话',
+    productRequirementDocument: 'https://example.com/prd',
+    remark: '内部备忘不进列表',
     workflowRuns: [],
     requirementRepositories: [
       {
@@ -122,7 +130,12 @@ describe('RequirementsPage', () => {
       (element) => element.textContent?.trim() === 'OpenDesign 设计',
     );
     expect(button).toBeUndefined();
-    expect(container.textContent).toContain('启动工作流');
+    const actions = container.querySelector('tbody tr')?.lastElementChild?.textContent ?? '';
+    expect(actions).toContain('详情');
+    expect(actions).toContain('编辑');
+    expect(actions).toContain('排期');
+    expect(actions).not.toContain('启动工作流');
+    expect(actions).not.toContain('查看流程');
   });
 
   it('keeps only web create as the requirements page CTA', async () => {
@@ -153,7 +166,7 @@ describe('RequirementsPage', () => {
     ).toBe(false);
   });
 
-  it('需求列表只保留标题和关键状态，详细内容在详情页查看', async () => {
+  it('需求列表展示项目、版本、名称、描述、优先级、创建人和创建时间', async () => {
     await act(async () => {
       root?.render(
         <MemoryRouter initialEntries={['/requirements']}>
@@ -166,12 +179,39 @@ describe('RequirementsPage', () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain('端云设计闭环');
-    expect(container.textContent).toContain('FlowX');
+    const headers = Array.from(container.querySelectorAll('th')).map((cell) => cell.textContent);
+    expect(headers).toEqual(['所属项目', '发布版本', '需求名称', '优先级', '规划状态', '功能模块', '备注', '创建人', '创建时间', '需求变更时间', '操作']);
+    const cells = Array.from(container.querySelectorAll('tbody td')).map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim());
+    expect(cells.slice(0, 10)).toEqual([
+      'FlowX',
+      '2.6.0',
+      '端云设计闭环',
+      '高',
+      '未排期',
+      requirement.functionalModule,
+      requirement.remark,
+      '产品甲',
+      new Date(requirement.createdAt!).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }),
+      '—',
+    ]);
     expect(container.textContent).not.toContain(requirement.description);
+    expect(container.querySelector('table')?.className).toContain('w-max');
     expect(container.textContent).not.toContain(requirement.acceptanceCriteria);
+    expect(container.textContent).not.toContain(requirement.riskImpact);
+    expect(container.textContent).not.toContain(requirement.productRequirementDocument);
     expect(container.textContent).not.toContain('人员排期：');
     expect(container.textContent).not.toContain('并行占用：');
+  });
+
+  it('有需求变更时列表展示最近变更时间', async () => {
+    const latestChangeAt = '2026-10-26T09:30:00.000Z';
+    vi.mocked(api.getRequirements).mockResolvedValue([{ ...requirement, latestChangeAt }]);
+    await act(async () => {
+      root?.render(<MemoryRouter initialEntries={['/requirements']}><RequirementsPage /></MemoryRouter>);
+    });
+    const changeCell = container.querySelectorAll('tbody td')[9];
+    expect(changeCell?.textContent).toBe(new Date(latestChangeAt).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }));
+    expect(container.textContent).not.toContain('最新变更正文');
   });
 
   it('按版本、规划状态和优先级从 URL 恢复组合筛选', async () => {
@@ -208,6 +248,7 @@ describe('RequirementsPage', () => {
 
     expect(container.textContent).toContain('匹配的 2.7.0 需求');
     expect(container.textContent).not.toContain('不匹配的需求');
+    expect(container.querySelector('[aria-label="按工作区筛选"]')).toBeNull();
     expect(container.querySelector('[aria-label="按发布版本"]')?.textContent).toContain('2.7.0');
     expect(container.querySelector('[aria-label="按规划状态"]')?.textContent).toContain('进行中');
     expect(container.querySelector('[aria-label="按优先级"]')?.textContent).toContain('高');
@@ -280,13 +321,11 @@ describe('RequirementsPage', () => {
     }]);
     vi.mocked(api.createWorkflowRun).mockResolvedValue({ id: 'run-new' } as Awaited<ReturnType<typeof api.createWorkflowRun>>);
     await act(async () => {
-      root?.render(<MemoryRouter initialEntries={['/requirements']}><Routes>
+      root?.render(<MemoryRouter initialEntries={['/requirements?launchRequirementId=requirement-1']}><Routes>
         <Route path="/requirements" element={<RequirementsPage />} />
         <Route path="/workflow-runs/:id" element={<LocationProbe />} />
       </Routes></MemoryRouter>);
     });
-    const launch = Array.from(container.querySelectorAll('button')).find((item) => item.textContent === '启动工作流');
-    await act(async () => { launch?.click(); });
     const dialog = document.querySelector('[role="dialog"]');
     expect(dialog?.textContent).toContain('已有活跃工作流');
     expect(dialog?.textContent).toContain('flowx-web');
@@ -410,6 +449,7 @@ describe('RequirementsPage', () => {
     await act(async () => { Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '创建需求')?.click(); });
     const dialog = document.querySelector('[role="dialog"]')!;
     expect(dialog.textContent).toContain('2.6.0');
+    expect(dialog.querySelector('[aria-label="优先级"]')?.textContent).toBe('中');
     expect(dialog.textContent).not.toContain('不挂版本');
     const title = dialog.querySelector('#requirement-title') as HTMLInputElement;
     await act(async () => {
@@ -417,8 +457,40 @@ describe('RequirementsPage', () => {
       title.dispatchEvent(new Event('input', { bubbles: true }));
     });
     await act(async () => { dialog.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
-    expect(api.createRequirement).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', title: '快捷需求', versionId: 'ver-1', description: '', acceptanceCriteria: '' }));
+    expect(api.createRequirement).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', title: '快捷需求', versionId: 'ver-1', priority: 'MEDIUM', description: '', acceptanceCriteria: '', functionalModule: '', riskImpact: '', productRequirementDocument: '', remark: '' }));
     expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it('普通创建可填写功能模块、风险与影响、产品需求文档和备注', async () => {
+    vi.mocked(api.createRequirement).mockResolvedValue(requirement);
+    await act(async () => { root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1']}><RequirementsPage /></MemoryRouter>); });
+    await act(async () => { Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '创建需求')?.click(); });
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const setValue = (selector: string, value: string) => {
+      const field = dialog.querySelector(selector) as HTMLInputElement | HTMLTextAreaElement;
+      const prototype = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(field, value);
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const priority = dialog.querySelector('[aria-label="优先级"]')!;
+    await act(async () => { priority.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); });
+    await act(async () => { (Array.from(document.querySelectorAll('[role="option"]')).find((item) => item.textContent === '紧急') as HTMLElement).click(); });
+    await act(async () => {
+      setValue('#requirement-title', '补充档案');
+      setValue('#requirement-module', '  登录  ');
+      setValue('#requirement-risk', '  影响已登录会话  ');
+      setValue('#requirement-prd', '  https://example.com/prd  ');
+      setValue('#requirement-remark', '  内部备忘  ');
+    });
+    await act(async () => { dialog.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    expect(api.createRequirement).toHaveBeenCalledWith(expect.objectContaining({
+      title: '补充档案',
+      priority: 'URGENT',
+      functionalModule: '登录',
+      riskImpact: '影响已登录会话',
+      productRequirementDocument: 'https://example.com/prd',
+      remark: '内部备忘',
+    }));
   });
 
   it('普通创建无版本时提示先设置，不能提交', async () => {
@@ -460,6 +532,54 @@ describe('RequirementsPage', () => {
     expect(document.querySelector('[role="dialog"]')).toBeTruthy();
     await act(async () => { resolveCreate(requirement); });
     expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it('列表可以编辑需求名称和补充档案，空白名称不提交', async () => {
+    vi.mocked(api.updateRequirement).mockImplementation(async (_id, payload) => ({
+      ...requirement,
+      ...payload,
+      description: payload.description ?? requirement.description,
+      acceptanceCriteria: payload.acceptanceCriteria ?? requirement.acceptanceCriteria,
+    }));
+    await act(async () => {
+      root?.render(<MemoryRouter initialEntries={['/requirements']}><RequirementsPage /></MemoryRouter>);
+    });
+    await act(async () => {
+      Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '编辑')?.click();
+    });
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain('编辑需求');
+    const setValue = (selector: string, value: string) => {
+      const field = dialog.querySelector(selector) as HTMLInputElement | HTMLTextAreaElement;
+      const prototype = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(field, value);
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    await act(async () => { setValue('#edit-requirement-title', '   '); });
+    await act(async () => { dialog.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    expect(dialog.textContent).toContain('请填写需求名称');
+    expect(api.updateRequirement).not.toHaveBeenCalled();
+    await act(async () => {
+      setValue('#edit-requirement-title', '  改后的名称  ');
+      setValue('#edit-requirement-description', '  新的描述  ');
+      setValue('#edit-requirement-module', '  订单  ');
+      setValue('#edit-requirement-remark', '  新备注  ');
+    });
+    await act(async () => { dialog.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    expect(api.updateRequirement).toHaveBeenCalledWith('requirement-1', expect.objectContaining({
+      title: '改后的名称',
+      description: '新的描述',
+      functionalModule: '订单',
+      remark: '新备注',
+      priority: 'HIGH',
+      versionId: 'ver-1',
+    }));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(container.textContent).toContain('改后的名称');
+    expect(container.textContent).toContain('订单');
+    expect(container.textContent).toContain('新备注');
+    expect(container.textContent).toContain('产品甲');
+    expect(successToast).toHaveBeenCalledWith('需求已更新');
   });
 
 });
