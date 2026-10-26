@@ -43,6 +43,21 @@ const emptyCreateDraft = {
 };
 
 const AI_PROVIDER_STORAGE_KEY = 'flowx-default-ai-provider';
+const ALL_FILTER_VALUE = '__all__';
+
+const planningStatusOptions = [
+  { id: 'UNSCHEDULED', label: '未排期' },
+  { id: 'SCHEDULED', label: '已排期' },
+  { id: 'IN_PROGRESS', label: '进行中' },
+  { id: 'DONE', label: '已完成' },
+] as const;
+
+const priorityOptions = [
+  { id: 'URGENT', label: '紧急' },
+  { id: 'HIGH', label: '高' },
+  { id: 'MEDIUM', label: '中' },
+  { id: 'LOW', label: '低' },
+] as const;
 
 export function RequirementsPage() {
   const navigate = useNavigate();
@@ -50,8 +65,6 @@ export function RequirementsPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>();
-  const [selectedProjectId, setSelectedProjectId] = useState<string>();
   const [loading, setLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -75,6 +88,14 @@ export function RequirementsPage() {
   const [prototypeSubmitting, setPrototypeSubmitting] = useState(false);
   const prototypeInFlight = useRef(false);
   const toast = useToast();
+  const selectedWorkspaceId = searchParams.get('workspaceId') ?? undefined;
+  const selectedProjectId = searchParams.get('projectId') ?? undefined;
+  const selectedVersionId = searchParams.get('versionId') ?? undefined;
+  const selectedPlanningStatus = searchParams.get('planningStatus') ?? undefined;
+  const selectedPriority = searchParams.get('priority') ?? undefined;
+  const hasActiveFilters = Boolean(
+    selectedWorkspaceId || selectedProjectId || selectedVersionId || selectedPlanningStatus || selectedPriority,
+  );
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === createDraft.projectId) ?? null,
     [createDraft.projectId, projects],
@@ -86,6 +107,22 @@ export function RequirementsPage() {
     [projects, selectedWorkspaceId],
   );
 
+  const versionOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return projects
+      .filter((project) => !selectedWorkspaceId || project.workspace.id === selectedWorkspaceId)
+      .filter((project) => !selectedProjectId || project.id === selectedProjectId)
+      .flatMap((project) => (project.versions ?? []).map((version) => ({
+        id: version.id,
+        label: selectedProjectId ? version.name : `${project.name} · ${version.name}`,
+      })))
+      .filter((version) => {
+        if (seen.has(version.id)) return false;
+        seen.add(version.id);
+        return true;
+      });
+  }, [projects, selectedProjectId, selectedWorkspaceId]);
+
   const filteredRequirements = useMemo(
     () =>
       requirements.filter((item) => {
@@ -95,9 +132,18 @@ export function RequirementsPage() {
         if (selectedProjectId && item.project.id !== selectedProjectId) {
           return false;
         }
+        if (selectedVersionId && item.versionId !== selectedVersionId) {
+          return false;
+        }
+        if (selectedPlanningStatus && item.planningStatus !== selectedPlanningStatus) {
+          return false;
+        }
+        if (selectedPriority && item.priority !== selectedPriority) {
+          return false;
+        }
         return true;
       }),
-    [requirements, selectedProjectId, selectedWorkspaceId],
+    [requirements, selectedPlanningStatus, selectedPriority, selectedProjectId, selectedVersionId, selectedWorkspaceId],
   );
 
   const requirementSummary = useMemo(() => {
@@ -142,16 +188,47 @@ export function RequirementsPage() {
     }
   }
 
+  function updateFilterQuery(updates: Record<string, string | undefined>, clearKeys: string[] = []) {
+    const nextParams = new URLSearchParams(searchParams);
+    clearKeys.forEach((key) => nextParams.delete(key));
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value) {
+        nextParams.set(key, value);
+      } else {
+        nextParams.delete(key);
+      }
+    });
+    setSearchParams(nextParams, { replace: true });
+  }
+
+  function clearFilters() {
+    const nextParams = new URLSearchParams(searchParams);
+    ['workspaceId', 'projectId', 'versionId', 'planningStatus', 'priority'].forEach((key) => nextParams.delete(key));
+    setSearchParams(nextParams, { replace: true });
+  }
+
   useEffect(() => {
     void refresh();
   }, []);
 
   useEffect(() => {
-    const projectId = searchParams.get('projectId');
-    if (projectId) {
-      setSelectedProjectId(projectId);
+    if (!hasLoaded) {
+      return;
     }
-  }, [searchParams]);
+    const selectedProject = projects.find((project) => project.id === selectedProjectId);
+    const invalidKeys = [
+      selectedWorkspaceId && !workspaces.some((workspace) => workspace.id === selectedWorkspaceId) ? 'workspaceId' : null,
+      selectedProjectId && (!selectedProject || (selectedWorkspaceId && selectedProject.workspace.id !== selectedWorkspaceId)) ? 'projectId' : null,
+      selectedVersionId && !versionOptions.some((version) => version.id === selectedVersionId) ? 'versionId' : null,
+      selectedPlanningStatus && !planningStatusOptions.some((option) => option.id === selectedPlanningStatus) ? 'planningStatus' : null,
+      selectedPriority && !priorityOptions.some((option) => option.id === selectedPriority) ? 'priority' : null,
+    ].filter((key): key is string => Boolean(key));
+    if (invalidKeys.length > 0) {
+      const nextParams = new URLSearchParams(searchParams);
+      invalidKeys.forEach((key) => nextParams.delete(key));
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [hasLoaded, projects, searchParams, selectedPlanningStatus, selectedPriority, selectedProjectId, selectedVersionId, selectedWorkspaceId, versionOptions, workspaces]);
 
   useEffect(() => {
     const requirementId = searchParams.get('launchRequirementId');
@@ -188,7 +265,8 @@ export function RequirementsPage() {
       await api.createRequirement(values);
       setCreateDraft(emptyCreateDraft);
       setCreateModalOpen(false);
-      setSelectedProjectId(values.projectId);
+      const project = projects.find((item) => item.id === values.projectId);
+      updateFilterQuery({ workspaceId: project?.workspace.id, projectId: values.projectId });
       await refresh();
       toast.success('需求创建成功');
     } catch (error) {
@@ -216,14 +294,6 @@ export function RequirementsPage() {
       toast.error(error instanceof Error ? error.message : '启动工作流失败');
     } finally {
       setLaunchSubmitting(false);
-    }
-  }
-
-  function updateDefaultAiProvider(nextProvider: 'codex' | 'cursor') {
-    setDefaultAiProvider(nextProvider);
-    setLaunchAiProvider(nextProvider);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(AI_PROVIDER_STORAGE_KEY, nextProvider);
     }
   }
 
@@ -623,32 +693,14 @@ export function RequirementsPage() {
             filters={(
               <>
                 <Select
-                  value={defaultAiProvider}
-                  onValueChange={(value: 'codex' | 'cursor') => updateDefaultAiProvider(value)}
+                  value={selectedWorkspaceId ?? ALL_FILTER_VALUE}
+                  onValueChange={(value) => updateFilterQuery({ workspaceId: value === ALL_FILTER_VALUE ? undefined : value }, ['projectId', 'versionId'])}
                 >
-                  <SelectTrigger className="w-[220px]">
-                    <SelectValue placeholder="默认执行器" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableAiProviders.map((provider) => (
-                      <SelectItem key={provider.id} value={provider.id}>
-                        默认执行器：{provider.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={selectedWorkspaceId ?? '__all__'}
-                  onValueChange={(value) => {
-                    setSelectedWorkspaceId(value === '__all__' ? undefined : value);
-                    setSelectedProjectId(undefined);
-                  }}
-                >
-                  <SelectTrigger className="w-[220px]">
+                  <SelectTrigger className="w-[220px]" aria-label="按工作区筛选">
                     <SelectValue placeholder="按工作区筛选" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__all__">全部工作区</SelectItem>
+                    <SelectItem value={ALL_FILTER_VALUE}>全部工作区</SelectItem>
                     {workspaces.map((workspace) => (
                       <SelectItem key={workspace.id} value={workspace.id}>
                         {workspace.name}
@@ -657,14 +709,14 @@ export function RequirementsPage() {
                   </SelectContent>
                 </Select>
                 <Select
-                  value={selectedProjectId ?? '__all__'}
-                  onValueChange={(value) => setSelectedProjectId(value === '__all__' ? undefined : value)}
+                  value={selectedProjectId ?? ALL_FILTER_VALUE}
+                  onValueChange={(value) => updateFilterQuery({ projectId: value === ALL_FILTER_VALUE ? undefined : value }, ['versionId'])}
                 >
-                  <SelectTrigger className="w-[220px]">
+                  <SelectTrigger className="w-[220px]" aria-label="按项目筛选">
                     <SelectValue placeholder="按项目筛选" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__all__">全部项目</SelectItem>
+                    <SelectItem value={ALL_FILTER_VALUE}>全部项目</SelectItem>
                     {filteredProjects.map((project) => (
                       <SelectItem key={project.id} value={project.id}>
                         {project.name}
@@ -672,6 +724,55 @@ export function RequirementsPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <Select
+                  value={selectedVersionId ?? ALL_FILTER_VALUE}
+                  onValueChange={(value) => updateFilterQuery({ versionId: value === ALL_FILTER_VALUE ? undefined : value })}
+                >
+                  <SelectTrigger className="w-[220px]" aria-label="按发布版本">
+                    <SelectValue placeholder="按发布版本" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_FILTER_VALUE}>全部版本</SelectItem>
+                    {versionOptions.map((version) => (
+                      <SelectItem key={version.id} value={version.id}>
+                        {version.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={selectedPlanningStatus ?? ALL_FILTER_VALUE}
+                  onValueChange={(value) => updateFilterQuery({ planningStatus: value === ALL_FILTER_VALUE ? undefined : value })}
+                >
+                  <SelectTrigger className="w-[180px]" aria-label="按规划状态">
+                    <SelectValue placeholder="按规划状态" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_FILTER_VALUE}>全部规划状态</SelectItem>
+                    {planningStatusOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={selectedPriority ?? ALL_FILTER_VALUE}
+                  onValueChange={(value) => updateFilterQuery({ priority: value === ALL_FILTER_VALUE ? undefined : value })}
+                >
+                  <SelectTrigger className="w-[160px]" aria-label="按优先级">
+                    <SelectValue placeholder="按优先级" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_FILTER_VALUE}>全部优先级</SelectItem>
+                    {priorityOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {hasActiveFilters ? (
+                  <UiButton type="button" variant="outline" size="sm" onClick={clearFilters}>
+                    清除筛选
+                  </UiButton>
+                ) : null}
               </>
             )}
           />
@@ -696,6 +797,7 @@ export function RequirementsPage() {
                   badges={
                     <>
                       <Badge variant="secondary">{item.project.name}</Badge>
+                      {item.version ? <Badge variant="outline">版本 {item.version.name}</Badge> : null}
                       <Badge variant="outline">{formatPlanningStatus(item.planningStatus)}</Badge>
                       <Badge variant="outline">{formatPriority(item.priority)}</Badge>
                       {item.prototypeImport && item.prototypeImport.status !== 'CONFIRMED' ? (
@@ -733,7 +835,7 @@ export function RequirementsPage() {
               ))}
             </div>
           ) : (
-            <EmptyState description="还没有录入任何需求，先创建一条需求开始推进。" />
+            <EmptyState description={hasActiveFilters ? '当前筛选条件下没有需求，请调整筛选或清除条件' : '还没有录入任何需求，先创建一条需求开始推进。'} />
           )}
         </CardContent>
       </Card>

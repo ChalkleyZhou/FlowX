@@ -81,6 +81,9 @@ describe('RequirementsPage', () => {
     root = createRoot(container);
     successToast.mockReset();
     errorToast.mockReset();
+    if (!Element.prototype.scrollIntoView) {
+      Element.prototype.scrollIntoView = vi.fn();
+    }
 
     vi.mocked(api.getWorkspaces).mockResolvedValue([requirement.project.workspace]);
     vi.mocked(api.getProjects).mockResolvedValue([requirement.project]);
@@ -137,7 +140,6 @@ describe('RequirementsPage', () => {
 
     expect(container.textContent).toContain('创建需求');
     expect(container.textContent).not.toContain('用 Cursor / Codex 发起');
-    expect(container.textContent).not.toContain('2.6.0');
     expect(container.textContent).toContain('本页可直接创建需求');
 
     const webCreate = Array.from(container.querySelectorAll('button')).find(
@@ -170,6 +172,82 @@ describe('RequirementsPage', () => {
     expect(container.textContent).not.toContain(requirement.acceptanceCriteria);
     expect(container.textContent).not.toContain('人员排期：');
     expect(container.textContent).not.toContain('并行占用：');
+  });
+
+  it('按版本、规划状态和优先级从 URL 恢复组合筛选', async () => {
+    const project = {
+      ...requirement.project,
+      versions: [{ id: 'ver-1', name: '2.6.0' }, { id: 'ver-2', name: '2.7.0' }],
+    };
+    const matchingRequirement: Requirement = {
+      ...requirement,
+      id: 'requirement-matching',
+      title: '匹配的 2.7.0 需求',
+      project,
+      versionId: 'ver-2',
+      version: { id: 'ver-2', name: '2.7.0' },
+      planningStatus: 'IN_PROGRESS',
+      priority: 'HIGH',
+    };
+    const otherRequirement: Requirement = {
+      ...requirement,
+      id: 'requirement-other',
+      title: '不匹配的需求',
+      project,
+      planningStatus: 'DONE',
+      priority: 'LOW',
+    };
+    vi.mocked(api.getProjects).mockResolvedValue([project]);
+    vi.mocked(api.getRequirements).mockResolvedValue([matchingRequirement, otherRequirement]);
+
+    await act(async () => {
+      root?.render(<MemoryRouter initialEntries={['/requirements?workspaceId=workspace-1&projectId=project-1&versionId=ver-2&planningStatus=IN_PROGRESS&priority=HIGH']}>
+        <RequirementsPage />
+      </MemoryRouter>);
+    });
+
+    expect(container.textContent).toContain('匹配的 2.7.0 需求');
+    expect(container.textContent).not.toContain('不匹配的需求');
+    expect(container.querySelector('[aria-label="按发布版本"]')?.textContent).toContain('2.7.0');
+    expect(container.querySelector('[aria-label="按规划状态"]')?.textContent).toContain('进行中');
+    expect(container.querySelector('[aria-label="按优先级"]')?.textContent).toContain('高');
+    expect(container.textContent).not.toContain('默认执行器：Codex');
+  });
+
+  it('切换项目时清除不再适用的版本筛选', async () => {
+    const secondProject: Requirement['project'] = {
+      ...requirement.project,
+      id: 'project-2',
+      name: '另一个项目',
+      currentVersionId: 'ver-3',
+      currentVersion: { id: 'ver-3', name: '3.0.0' },
+      versions: [{ id: 'ver-3', name: '3.0.0' }],
+    };
+    vi.mocked(api.getProjects).mockResolvedValue([requirement.project, secondProject]);
+
+    await act(async () => {
+      root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1&versionId=ver-1']}>
+        <RequirementsPage /><LocationProbe />
+      </MemoryRouter>);
+    });
+    const projectSelect = container.querySelector('[aria-label="按项目筛选"]') as HTMLElement;
+    await act(async () => { projectSelect.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); });
+    await act(async () => { (Array.from(document.querySelectorAll('[role="option"]')).find((item) => item.textContent === '另一个项目') as HTMLElement).click(); });
+
+    expect(container.querySelector('output')?.textContent).toBe('/requirements?projectId=project-2');
+  });
+
+  it('清除筛选后恢复全量需求并在空结果时给出调整提示', async () => {
+    vi.mocked(api.getRequirements).mockResolvedValue([{ ...requirement, planningStatus: 'DONE', priority: 'LOW' }]);
+    await act(async () => {
+      root?.render(<MemoryRouter initialEntries={['/requirements?planningStatus=IN_PROGRESS']}>
+        <RequirementsPage /><LocationProbe />
+      </MemoryRouter>);
+    });
+    expect(container.textContent).toContain('当前筛选条件下没有需求，请调整筛选或清除条件');
+    await act(async () => { (Array.from(container.querySelectorAll('button')).find((item) => item.textContent === '清除筛选') as HTMLElement).click(); });
+    expect(container.querySelector('output')?.textContent).toBe('/requirements');
+    expect(container.textContent).toContain('端云设计闭环');
   });
 
   it('消费详情启动链接并保留 projectId，取消或刷新后不重复弹出', async () => {
