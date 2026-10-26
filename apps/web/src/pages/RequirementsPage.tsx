@@ -918,9 +918,6 @@ export function RequirementsPage() {
                           >
                             {deletingRequirementId === item.id ? '删除中...' : '删除'}
                           </UiButton>
-                          <UiButton variant="outline" size="sm" asChild>
-                            <Link to={`/requirements/${item.id}#scheduling`}>排期</Link>
-                          </UiButton>
                         </div>
                       </td>
                     </tr>

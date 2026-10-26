@@ -140,7 +140,7 @@ describe('RequirementsPage', () => {
     expect(actions).toContain('详情');
     expect(actions).toContain('编辑');
     expect(actions).toContain('删除');
-    expect(actions).toContain('排期');
+    expect(actions).not.toContain('排期');
     expect(actions).not.toContain('启动工作流');
     expect(actions).not.toContain('查看流程');
   });
