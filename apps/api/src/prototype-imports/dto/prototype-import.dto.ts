@@ -1,5 +1,5 @@
-import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength, Min, ValidateIf } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength, Min, ValidateIf } from 'class-validator';
 
 export class CreatePrototypeImportDto {
   @IsString() @IsNotEmpty() projectId!: string;
@@ -15,4 +15,12 @@ export class UpdatePrototypeImportDto extends PrototypeRevisionDto {
   @IsOptional() @IsString() @MaxLength(10000) feedback?: string;
   @IsOptional() @IsObject() analysis?: Record<string, unknown>;
   @IsOptional() @IsObject() answers?: Record<string, string>;
+}
+export class AnalyzePrototypeImportDto extends UpdatePrototypeImportDto {
+  @ValidateIf((_, value) => value !== undefined) @IsIn(['codex', 'cursor']) aiProvider?: 'codex' | 'cursor';
+}
+export class SupplementPrototypeImportDto extends PrototypeRevisionDto {
+  @Transform(({ value }) => value === 'true' ? true : value === 'false' ? false : value)
+  @ValidateIf((_, value) => value !== undefined) @IsBoolean() replace?: boolean;
+  @ValidateIf((_, value) => value !== undefined) @IsIn(['codex', 'cursor']) aiProvider?: 'codex' | 'cursor';
 }

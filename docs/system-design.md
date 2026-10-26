@@ -137,6 +137,8 @@ Workspace
 
 ### 原型 ZIP 自动导入与流程快照
 
+失败导入统一通过重新导入入口处理：不选新包时调用 `POST /prototype-imports/:id/analyze`，选择新包时调用 `POST /prototype-imports/:id/files` 并传 `replace=true`；两者都可传 `aiProvider`（`codex` / `cursor`）。执行器与重试状态、修订通过同一次 CAS 更新；换包使用完整材料替换但保留历史 ZIP。后台读取新记录解析对应组织凭证，并传递给后续工作流。认证错误返回固定提示，日志仅记录导入 ID、执行器、修订与错误分类，不直接输出上游异常。
+
 `PrototypeImport` 与 Requirement 一对一关联，保留 `ANALYZING / WAITING_CONFIRMATION / FAILED / CONFIRMED` 状态、CAS `revision`、独立材料版本、文件清单、分析及历史答案。所有访问经需求项目的 Workspace 校验组织。上传私有保存原包，事务创建需求，后台通过现有 AI invocation 组织凭据整理。新导入不经过人工确认；历史等待确认记录打开后自动接续。
 
 Codex / Cursor 的 `analyzePrototype` 共用 `prototype-analysis.output.schema.json`。分析上下文有界，材料为非指令，来源路径必须属于材料清单；不支持的 executor 明确失败。AI 输出校验后事务保存 Requirement、简报和设计产物，`CONFIRMED` 表示资料落库完成，自动导入 `confirmedBy=null`，不伪造人工确认；未答问题仍作为 `brief.openQuestions`，建议不会擅自生效。失败重试按 revision 比较，过期任务不能覆盖新结果；流程接续失败复用整理结果并替换同类导入产物。
@@ -144,6 +146,8 @@ Codex / Cursor 的 `analyzePrototype` 共用 `prototype-analysis.output.schema.j
 资料落库后由服务端 WorkflowService 自动创建工作流。`REQUIREMENT_INTAKE` 保存不可变导入快照，grounding 后复用简报与原型页面，记录 BRAINSTORM 为跳过、DESIGN 为完成，再经现有状态机到 `SPEC_PLAN_PENDING`。查询导入返回 `workflowRunId`；浏览器轮询仅更新状态，成功自动跳转，原型预览和下载按需展开。接续失败变为 `FAILED`，保留材料；重启中断记录可重试。无需用户打开页面才能执行后台接续。后续技术方案、开发与验收保留现有流程。
 
 原型存储在 API 工作目录 `.flowx-data/prototype-imports/{id}/{materialRevision}`，保存各次原包与合并材料。预览静态内联包内资源，不安装依赖或执行构建命令。HTML 置于可信外壳的 sandbox iframe（无 same-origin）中；外壳 CSP 的 `frame-src 'none'` 阻止内部原型自身外部导航，原型 CSP 限制请求、资源与表单。包内导航经消息源校验及清单校验转发；新窗口同样保留可信外壳。它是原型预览环境，不是完整应用运行环境。完整接口、限制与备份见 [原型导入](prototype-import.md)。
+
+需求变更可携带新的原型 ZIP。`RequirementChange.prototype` 保存材料归档 ID、SHA-256、AI、清单和分析快照；新流程只读取该不可变快照，旧 `PrototypeImport`、旧流程和产物不被覆盖。变更 ZIP 的下载使用需求组织权限，后台分析失败和工作流启动失败分别保留可重试状态。
 
 ### 正式需求变更与流程重启
 

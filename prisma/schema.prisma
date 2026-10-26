@@ -58,6 +58,7 @@ model RequirementChange {
   supersededWorkflows   WorkflowRun[] @relation("ChangeSuperseded")
   restartStatus         String       @default("NOT_REQUESTED")
   errorMessage          String?
+  prototype             Json?
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
 

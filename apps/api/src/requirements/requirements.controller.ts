@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { CreateRequirementDto } from './dto/create-requirement.dto';
 import {
   ReviseBrainstormDto,
@@ -10,7 +10,8 @@ import { UpdateRequirementDto } from './dto/update-requirement.dto';
 import { UpsertRequirementAssignmentDto } from './dto/upsert-requirement-assignment.dto';
 import { RequirementAssignmentsService } from './requirement-assignments.service';
 import { RequirementChangesService } from './requirement-changes.service';
-import { CreateRequirementChangeDto } from './dto/create-requirement-change.dto';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { CreatePrototypeRequirementChangeDto, CreateRequirementChangeDto } from './dto/create-requirement-change.dto';
 import { RequirementsService } from './requirements.service';
 
 @Controller('requirements')
@@ -42,8 +43,9 @@ export class RequirementsController {
   }
 
   @Get(':id/changes')
-  listChanges(@Param('id') id: string, @Query('workflowRunId') workflowRunId?: string) {
-    return this.requirementChangesService.list(id, workflowRunId);
+  listChanges(@Param('id') id: string, @Query('workflowRunId') workflowRunId: string | undefined, @Req() req: RequirementsRequest) {
+    if (!req.authSession) throw new ForbiddenException('请登录后查看需求变更。');
+    return this.requirementChangesService.list(id, workflowRunId, req.authSession);
   }
 
   @Post(':id/changes')
@@ -51,9 +53,26 @@ export class RequirementsController {
     return this.requirementChangesService.create(id, dto, req.authSession);
   }
 
+  @Post(':id/changes/prototype')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024, files: 1, fields: 5, fieldSize: 20000 } }))
+  createPrototypeChange(@Param('id') id: string, @Body() dto: CreatePrototypeRequirementChangeDto,
+    @UploadedFile() uploaded: { buffer: Buffer; originalname: string } | undefined, @Req() req: RequirementsRequest) {
+    if (!uploaded?.buffer?.length) throw new BadRequestException('请选择原型 ZIP 包。');
+    const original = /[\u0080-\u00ff]/.test(uploaded.originalname) ? Buffer.from(uploaded.originalname, 'latin1').toString('utf8') : uploaded.originalname;
+    const name = original.replace(/[\\/\r\n]/g, '_').slice(0, 200);
+    return this.requirementChangesService.createWithPrototype(id, dto, uploaded.buffer, name, req.authSession);
+  }
+
+  @Get(':id/changes/:changeId/source')
+  async downloadChangePrototype(@Param('id') id: string, @Param('changeId') changeId: string, @Req() req: RequirementsRequest) {
+    const buffer = await this.requirementChangesService.downloadPrototype(id, changeId, req.authSession);
+    return new StreamableFile(buffer, { type: 'application/zip', disposition: 'attachment; filename="prototype.zip"', length: buffer.length });
+  }
+
   @Post(':id/changes/:changeId/restart')
-  restartChange(@Param('id') id: string, @Param('changeId') changeId: string) {
-    return this.requirementChangesService.restart(id, changeId);
+  restartChange(@Param('id') id: string, @Param('changeId') changeId: string, @Req() req: RequirementsRequest) {
+    if (!req.authSession) throw new ForbiddenException('请登录后继续启动流程。');
+    return this.requirementChangesService.restart(id, changeId, req.authSession);
   }
 
   @Get(':id/assignments')

@@ -98,14 +98,14 @@ export class PrototypeArchive {
     });
   }
 
-  async save(id: string, revision: number, zip: Buffer, name: string, previousRevision?: number): Promise<PrototypeManifest> {
+  async save(id: string, revision: number, zip: Buffer, name: string, previousRevision?: number, replace = false): Promise<PrototypeManifest> {
     const directory = this.directory(id, revision);
     if (previousRevision !== undefined && previousRevision >= revision) throw new Error('补传必须基于更早版本');
     const incoming = await this.extract(zip);
     const files = new Map<string, Buffer>(); let sources: PrototypeManifest['sources'] = [];
     if (previousRevision !== undefined) {
       const previous = await this.manifest(id, previousRevision); sources = previous.sources;
-      for (const file of previous.files) files.set(file.path, await this.file(id, previousRevision, file.path));
+      if (!replace) for (const file of previous.files) files.set(file.path, await this.file(id, previousRevision, file.path));
     }
     for (const [path, bytes] of incoming) files.set(path, bytes);
     if (files.size > 1500 || [...files.values()].reduce((sum, value) => sum + value.length, 0) > MAX_TOTAL) throw new Error('合并后的原型超过 1500 文件或 60 MiB');

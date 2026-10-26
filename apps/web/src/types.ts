@@ -280,11 +280,13 @@ export interface RequirementChange {
   createdAt: string;
   sourceWorkflowRunId: string | null;
   restartWorkflowRunId: string | null;
+  prototype?: { name: string; aiProvider: 'codex' | 'cursor' } | null;
   restartStatus: 'NOT_REQUESTED' | 'PENDING' | 'STARTING' | 'STARTED' | 'FAILED';
   errorMessage: string | null;
 }
 
 export interface RequirementChanges {
+  aiProvider?: 'codex' | 'cursor';
   revision: number;
   changes: RequirementChange[];
   contextRevision?: number;

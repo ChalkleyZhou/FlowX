@@ -1,4 +1,4 @@
-import { IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
 
 export class CreateRequirementChangeDto {
   @IsString()
@@ -18,4 +18,16 @@ export class CreateRequirementChangeDto {
   @IsString()
   @IsNotEmpty()
   sourceWorkflowRunId?: string;
+}
+
+export class CreatePrototypeRequirementChangeDto extends CreateRequirementChangeDto {
+  @IsOptional()
+  content!: string;
+
+  @IsIn(['RESTART'])
+  mode!: 'RESTART';
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsIn(['codex', 'cursor'])
+  aiProvider?: 'codex' | 'cursor';
 }

@@ -8,6 +8,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { WorkflowService } from './workflow.service';
 import { WorkflowStateMachine } from '../common/workflow-state-machine';
 import { RequirementChangesService } from '../requirements/requirement-changes.service';
+import { PrototypeArchive } from '../prototype-imports/prototype-archive';
+import { analysis } from '../prototype-imports/prototype-test-fixture';
 import { ContextPackageService } from '../edge/context-package.service';
 const directory = mkdtempSync(join(tmpdir(), 'flowx-workflow-changes-'));
 const url = `file:${join(directory, 'test.db')}`;
@@ -17,7 +19,7 @@ const stopAfterContext = () => vi.fn(async (_input: unknown) => { throw new Erro
 const generateDesign = stopAfterContext(), generateSpecPlan = stopAfterContext(), executeTask = stopAfterContext(), reviewCode = stopAfterContext();
 const brainstorm = vi.fn(async (_input: unknown) => ({ problemStatement: '导出', targetUsers: [], goals: [], nonGoals: [], userStories: [], constraints: [], openQuestions: [] }));
 const workflow = new WorkflowService(prisma as never, new WorkflowStateMachine(), sync as never, {} as never,
-  { normalizeAiProvider: () => 'codex', resolveInvocationContext: async () => ({}) } as never,
+  { normalizeAiProvider: (value?: string) => value ?? 'codex', resolveInvocationContext: async () => ({}) } as never,
   { get: () => ({ brainstorm, generateDesign, generateSpecPlan, executeTask, reviewCode }) } as never, {} as never, {} as never);
 const jobs = new Map<string, () => Promise<void>>();
 vi.spyOn(workflow as never, 'runInBackground' as never).mockImplementation(((key: string, job: () => Promise<void>) => jobs.set(key, job)) as never);
@@ -245,7 +247,7 @@ describe('需求变更工作流与上下文', () => {
     const resumeTx = new Promise<void>((resolve) => { resume = resolve; });
     const delayedDb = { workflowRun: prisma.workflowRun, $transaction: async (callback: Parameters<typeof prisma.$transaction>[0]) => { entered(); await resumeTx; return prisma.$transaction(callback as never); } };
     const delayed = new WorkflowService(delayedDb as never, new WorkflowStateMachine(), sync as never, {} as never,
-      { normalizeAiProvider: () => 'codex' } as never, { get: () => ({ brainstorm, generateDesign, generateSpecPlan, executeTask, reviewCode }) } as never, {} as never, {} as never);
+      { normalizeAiProvider: (value?: string) => value ?? 'codex' } as never, { get: () => ({ brainstorm, generateDesign, generateSpecPlan, executeTask, reviewCode }) } as never, {} as never, {} as never);
     const background = vi.spyOn(delayed as never, 'runInBackground' as never).mockImplementation((() => undefined) as never);
     const pending = delayed[method](run.id);
     await enteredTx;
@@ -323,6 +325,29 @@ describe('需求变更工作流与上下文', () => {
     expect(description).not.toContain('上线后的新变更');
     if (revision) expect(description).toContain('领取时已知补充');
     expect(await changes.list(req.id, run.id)).toMatchObject({ contextRevision: revision, hasPendingChanges: true });
+  });
+
+  it('原型变更新轮读取独立快照和所选 AI，原需求与旧轮产物保持原样', async () => {
+    const req = await fixture();
+    const repository = await prisma.repository.create({ data: { workspaceId, name: '原型变更仓库', url: 'https://example.com/change-prototype.git', defaultBranch: 'main' } });
+    const old = await prisma.workflowRun.create({ data: { requirementId: req.id, status: 'DONE', aiProvider: 'codex' } });
+    await prisma.workflowRepository.create({ data: { workflowRunId: old.id, repositoryId: repository.id, name: repository.name, url: repository.url, baseBranch: 'main', workingBranch: 'old', status: 'READY' } });
+    const oldStage = await prisma.stageExecution.create({ data: { workflowRunId: old.id, stage: 'DESIGN', status: 'COMPLETED', output: { legacy: '旧原型产物' } } });
+    const snapshot = { source: 'prototype-import', importId: 'new-change-archive', materialRevision: 1, revision: 1, confirmedAt: new Date().toISOString(), confirmedBy: null, analysis };
+    const surfaces = vi.spyOn(PrototypeArchive.prototype, 'surfaces').mockResolvedValue([]);
+    try {
+      const change = await changes.create(req.id, { content: '使用新 ZIP', mode: 'RESTART', requestId: 'prototype-snapshot', sourceWorkflowRunId: old.id }, author,
+        { archiveId: 'new-change-archive', name: 'new.zip', sha256: 'hash', aiProvider: 'cursor', manifest: { files: [], pages: [], kinds: [], sources: [], warnings: [] }, snapshot } as never);
+      await vi.waitFor(async () => expect((await changes.list(req.id)).changes[0].restartStatus).toBe('STARTED'));
+      const next = (await changes.list(req.id)).changes[0];
+      await jobs.get(`grounding:${next.restartWorkflowRunId}`)?.();
+      const run = await workflow.findOne(next.restartWorkflowRunId!);
+      expect(run).toMatchObject({ aiProvider: 'cursor', status: 'SPEC_PLAN_PENDING' });
+      expect(run.stageExecutions.find(stage => stage.stage === 'REQUIREMENT_INTAKE')?.output).toMatchObject(snapshot);
+      expect(surfaces).toHaveBeenCalledWith('new-change-archive', 1);
+      expect(await prisma.stageExecution.findUniqueOrThrow({ where: { id: oldStage.id } })).toEqual(oldStage);
+      expect(await prisma.requirement.findUniqueOrThrow({ where: { id: req.id } })).toMatchObject({ title: req.title, description: req.description });
+    } finally { surfaces.mockRestore(); }
   });
 
 });

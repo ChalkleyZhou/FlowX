@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Module, ValidationPipe, type INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { CreatePrototypeImportDto, UpdatePrototypeImportDto } from './dto/prototype-import.dto';
+import { AnalyzePrototypeImportDto, CreatePrototypeImportDto, SupplementPrototypeImportDto, UpdatePrototypeImportDto } from './dto/prototype-import.dto';
 import { PrototypeImportsController } from './prototype-imports.controller';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { WorkflowService } from '../workflow/workflow.service';
 import { WorkflowStateMachine } from '../common/workflow-state-machine';
@@ -30,6 +30,8 @@ class TestModule {}
 Reflect.defineMetadata('design:paramtypes', [PrototypeImportsService], PrototypeImportsController);
 Reflect.defineMetadata('design:paramtypes', [CreatePrototypeImportDto, Object, Object], PrototypeImportsController.prototype, 'create');
 Reflect.defineMetadata('design:paramtypes', [String, UpdatePrototypeImportDto, Object], PrototypeImportsController.prototype, 'confirm');
+Reflect.defineMetadata('design:paramtypes', [String, AnalyzePrototypeImportDto, Object], PrototypeImportsController.prototype, 'analyze');
+Reflect.defineMetadata('design:paramtypes', [String, SupplementPrototypeImportDto, Object, Object], PrototypeImportsController.prototype, 'supplement');
 const actor = () => ({ user: { id: 'user-a', displayName: '用户' }, organization: { id: org } });
 beforeAll(async () => {
   const cli = createRequire(import.meta.url).resolve('prisma/build/index.js');
@@ -132,6 +134,21 @@ describe('原型导入到确认', () => {
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(await prisma.ideationArtifact.count({ where: { requirementId: result.requirementId } })).toBe(2);
   });
+  it('整包替换清除旧分析和答案，读取失败不丢失原材料且可用最新修订再试', async () => {
+    const imported = await create();
+    await prisma.prototypeImport.update({ where: { id: imported.id }, data: { answers: { permission: '旧规则' } } });
+    const schedule = vi.spyOn(service as never, 'schedule' as never).mockImplementation(() => undefined);
+    try {
+      archive.save.mockRejectedValueOnce(new Error('损坏 ZIP'));
+      await expect(service.supplement(imported.id, { revision: imported.revision, replace: true }, Buffer.from('bad'), 'new.zip', actor())).rejects.toMatchObject({ status: 400 });
+      const failed = await service.get(imported.id, actor());
+      expect(failed.materialRevision).toBe(imported.materialRevision);
+      const next = await service.supplement(imported.id, { revision: failed.revision, replace: true, aiProvider: 'cursor' }, Buffer.from('new'), 'new.zip', actor());
+      expect(next).toMatchObject({ status: 'ANALYZING', analysis: null, answers: {}, aiProvider: 'cursor' });
+      expect(archive.save).toHaveBeenLastCalledWith(imported.id, next.materialRevision, expect.any(Buffer), 'new.zip', imported.materialRevision, true);
+    } finally { schedule.mockRestore(); }
+  });
+
   it('失败保留旧整理结果，可重试和补传，旧分析不能覆盖新版本', async () => {
     const result = await create();
     executor.analyzePrototype.mockRejectedValueOnce(new Error('secret upstream token'));
@@ -187,6 +204,42 @@ describe('原型确认后的真实工作流接续', () => {
 });
 
 describe('原型导入 HTTP 边界', () => {
+  it('补传接受所选 AI，非法执行器在保存材料之前拒绝', async () => {
+    const imported = await create();
+    const saves = archive.save.mock.calls.length;
+    function form(aiProvider: string) {
+      const body = new FormData(); body.append('file', new Blob(['zip']), 'more.zip'); body.append('revision', String(imported.revision)); body.append('aiProvider', aiProvider); return body;
+    }
+    const endpoint = `${baseUrl}/prototype-imports/${imported.id}/files`;
+    expect((await fetch(endpoint, { method: 'POST', headers: { 'x-org-id': org }, body: form('unknown') })).status).toBe(400);
+    expect(archive.save).toHaveBeenCalledTimes(saves);
+    expect((await service.get(imported.id, actor())).revision).toBe(imported.revision);
+    const response = await fetch(endpoint, { method: 'POST', headers: { 'x-org-id': org }, body: form('cursor') });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ aiProvider: 'cursor', materialRevision: imported.revision + 1 });
+    await vi.waitFor(async () => expect((await service.get(imported.id, actor())).status).not.toBe('ANALYZING'));
+  });
+  it('切换重试 AI 校验执行器、组织权限和修订，未指定时沿用已保存的 AI', async () => {
+    const imported = await create();
+    await prisma.prototypeImport.update({ where: { id: imported.id }, data: { status: 'FAILED', analysis: Prisma.JsonNull } });
+    const post = (body: unknown, organizationId?: string) => fetch(`${baseUrl}/prototype-imports/${imported.id}/analyze`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(organizationId ? { 'x-org-id': organizationId } : {}) }, body: JSON.stringify(body) });
+    for (const aiProvider of ['unknown', '', null, 123]) {
+      expect((await post({ revision: imported.revision, aiProvider }, org)).status).toBe(400);
+    }
+    expect((await post({ revision: imported.revision, aiProvider: 'cursor' })).status).toBe(403);
+    expect((await post({ revision: imported.revision, aiProvider: 'cursor' }, 'other')).status).toBe(404);
+    expect((await post({ revision: imported.revision - 1, aiProvider: 'cursor' }, org)).status).toBe(409);
+    expect(await service.get(imported.id, actor())).toMatchObject({ aiProvider: 'codex', status: 'FAILED', revision: imported.revision });
+    const response = await post({ revision: imported.revision, aiProvider: 'cursor' }, org);
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ aiProvider: 'cursor', status: 'ANALYZING' });
+    await vi.waitFor(async () => expect((await service.get(imported.id, actor())).status).toBe('FAILED'));
+    const failed = await service.get(imported.id, actor());
+    const retry = await post({ revision: failed.revision }, org);
+    expect(retry.status).toBe(201);
+    expect(await retry.json()).toMatchObject({ aiProvider: 'cursor' });
+    await vi.waitFor(async () => expect((await service.get(imported.id, actor())).status).not.toBe('ANALYZING'));
+  });
   it('multipart无需标题即可创建，未登录或跨组织禁止创建', async () => {
     function form() { const body = new FormData(); body.append('projectId', project); body.append('file', new Blob(['zip']), '原型.zip'); return body; }
     expect((await fetch(`${baseUrl}/prototype-imports`, { method: 'POST', body: form() })).status).toBe(403);
@@ -209,6 +262,44 @@ describe('原型导入 HTTP 边界', () => {
 
 
 describe('快速导入自动接续', () => {
+  it('已识别的凭证错误明确提示可切换 AI，且不泄露上游内容', async () => {
+    for (const code of ['CODEX_AUTH_INVALID_ORG_KEY', 'CURSOR_AUTH_MISSING', 'CODEX_ORGANIZATION_CREDENTIAL_REQUIRED', 'CURSOR_CREDENTIAL_DECRYPT_FAILED']) {
+      const imported = await create();
+      executor.analyzePrototype.mockRejectedValueOnce(new Error(`${code}: secret-upstream-token`));
+      await service.analyze(imported.id, { revision: imported.revision, feedback: '重新整理' }, actor());
+      await vi.waitFor(async () => expect((await service.get(imported.id, actor())).status).toBe('FAILED'));
+      const failed = await service.get(imported.id, actor());
+      expect(failed.errorMessage).toContain('认证失败或凭证不可用');
+      expect(failed.errorMessage).toContain('切换其他 AI');
+      expect(failed.errorMessage).not.toContain('secret-upstream-token');
+    }
+  });
+  it.each(['analyze', 'supplement'] as const)('%s 失败后可切换执行器，凭据和后续工作流使用新 AI，保留原需求与材料', async (method) => {
+    const codex = { analyzePrototype: vi.fn().mockRejectedValue(new Error('CODEX_AUTH_REQUIRED')) };
+    const cursor = { analyzePrototype: vi.fn().mockResolvedValue(structuredClone(analysis)) };
+    const registry = { get: vi.fn((provider: string) => provider === 'cursor' ? cursor : codex) };
+    const invocation = { normalizeAiProvider: (provider?: string) => provider ?? 'codex', resolveInvocationContext: vi.fn(async (provider: string) => ({ requestUserId: 'user-a', source: provider })) };
+    const start = vi.fn(async (dto: { requirementId: string }) => prisma.workflowRun.create({ data: { requirementId: dto.requirementId, status: 'REPOSITORY_GROUNDING_PENDING', stageExecutions: { create: { stage: 'REPOSITORY_GROUNDING', status: 'RUNNING', attempt: 1 } } } }));
+    const automatic = new PrototypeImportsService(prisma as never, registry as never, invocation as never, { createWorkflowRun: start } as never);
+    Object.assign(automatic, { archive });
+    const imported = await automatic.create({ projectId: project, aiProvider: 'codex' }, Buffer.from('zip'), 'retry.zip', actor());
+    await vi.waitFor(async () => expect((await automatic.get(imported.id, actor())).status).toBe('FAILED'));
+    const failed = await automatic.get(imported.id, actor());
+    const saves = archive.save.mock.calls.length;
+    const retry = { revision: failed.revision, aiProvider: 'cursor' as const };
+    const running = method === 'analyze'
+      ? await automatic.analyze(imported.id, retry, actor())
+      : await automatic.supplement(imported.id, retry, Buffer.from('newzip'), 'more.zip', actor());
+    expect(running).toMatchObject({ aiProvider: 'cursor', status: 'ANALYZING', requirementId: imported.requirementId, materialRevision: method === 'analyze' ? imported.materialRevision : imported.materialRevision + 1 });
+    await expect(automatic.analyze(imported.id, retry, actor())).rejects.toMatchObject({ status: 409 });
+    await vi.waitFor(async () => expect(await automatic.get(imported.id, actor())).toMatchObject({ status: 'CONFIRMED', workflowRunId: expect.any(String) }));
+    expect(cursor.analyzePrototype).toHaveBeenCalledTimes(1);
+    expect(codex.analyzePrototype).toHaveBeenCalledTimes(1);
+    expect(invocation.resolveInvocationContext).toHaveBeenLastCalledWith('cursor', expect.objectContaining({ flowxOrganizationId: org, flowxUserId: 'user-a' }));
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ requirementId: imported.requirementId, aiProvider: 'cursor' }));
+    expect(archive.save).toHaveBeenCalledTimes(saves + (method === 'analyze' ? 0 : 1));
+  });
+
   it('补传新材料分析失败后，重试必须重新分析新包，不能套用旧结果', async () => {
     const start = vi.fn().mockRejectedValue(new Error('仓库暂不可用'));
     const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: start } as never);

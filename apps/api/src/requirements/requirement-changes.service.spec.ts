@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -5,8 +6,17 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { Module, ValidationPipe, type INestApplication } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { RequirementsController } from './requirements.controller';
+import { RequirementsService } from './requirements.service';
+import { RequirementAssignmentsService } from './requirement-assignments.service';
+import { CreatePrototypeRequirementChangeDto } from './dto/create-requirement-change.dto';
+import { RequirementChangePrototypeService } from './requirement-change-prototype.service';
+import { PrototypeArchive } from '../prototype-imports/prototype-archive';
 import { RequirementChangesService } from './requirement-changes.service';
 import { effectiveRequirementDescription } from './requirement-change-context';
+import { analysis } from '../prototype-imports/prototype-test-fixture';
 import { applyOrganizationScope } from '../prisma/organization-scope';
 
 const directory = mkdtempSync(join(tmpdir(), 'flowx-changes-'));
@@ -29,6 +39,14 @@ afterAll(async () => { await prisma.$disconnect(); rmSync(directory, { recursive
 async function requirement() { return prisma.requirement.create({ data: { title: '导出', description: '原始描述', acceptanceCriteria: '', projectId } }); }
 
 describe('正式需求变更', () => {
+  it('列表和重启按组织隔离，其他组织不能触发流程或读取原型元数据', async () => {
+    const req = await requirement();
+    const change = await service.create(req.id, { content: '隔离检查', mode: 'RESTART', requestId: 'scope-check' }, author);
+    const other = { ...author, organization: { id: 'other' } };
+    await expect(service.list(req.id, undefined, other)).rejects.toMatchObject({ status: 404 });
+    await expect(service.restart(req.id, change.id, other)).rejects.toMatchObject({ status: 404 });
+  });
+
   it('拒绝空内容与未认证作者，不产生修订', async () => {
     const req = await requirement();
     await expect(service.create(req.id, { content: '  ', mode: 'SUPPLEMENT', requestId: 'blank' }, author)).rejects.toMatchObject({ status: 400 });
@@ -147,5 +165,121 @@ describe('正式需求变更', () => {
     expect(effectiveRequirementDescription(latest)).toContain('增加 Excel');
     expect(effectiveRequirementDescription(latest)).toContain('最新变更');
     expect(effectiveRequirementDescription(latest)).toContain('原始描述');
+  });
+});
+
+
+describe('正式变更上传原型', () => {
+  const prototype = { archiveId: 'archive-1', name: 'new.zip', sha256: 'hash', aiProvider: 'cursor', manifest: { files: [{ path: 'index.html' }], sources: [{ name: 'new.zip', revision: 1 }] } };
+  const snapshot = { source: 'prototype-import', importId: 'archive-1', revision: 1, materialRevision: 1, confirmedAt: new Date().toISOString(), confirmedBy: null, analysis };
+  function setup() {
+    const prototypes = { store: vi.fn(async () => structuredClone(prototype)), analyze: vi.fn(async () => snapshot), remove: vi.fn(), download: vi.fn(async () => Buffer.from('zip')) };
+    const instance = new RequirementChangesService(prisma as never, workflow as never, prototypes as never);
+    return { instance, prototypes };
+  }
+  it('上传后后台分析，保留原描述和旧产物，幂等重试只保存一次且拒绝同键换包', async () => {
+    const req = await requirement(); const { instance, prototypes } = setup();
+    const dto = { content: '新原型', mode: 'RESTART' as const, requestId: 'zip-one', aiProvider: 'cursor' as const };
+    workflow.restartFromRequirementChange.mockResolvedValue({});
+    const first = await instance.createWithPrototype(req.id, dto, Buffer.from('zip'), 'new.zip', author);
+    expect(first).toMatchObject({ restartStatus: 'STARTING', prototype: { name: 'new.zip', aiProvider: 'cursor' } });
+    await vi.waitFor(async () => expect((await instance.list(req.id)).changes[0].restartStatus).toBe('STARTED'));
+    const row = await prisma.requirementChange.findUniqueOrThrow({ where: { id: first.id } });
+    expect(row.prototype).toMatchObject({ snapshot });
+    expect((await prisma.requirement.findUniqueOrThrow({ where: { id: req.id } })).description).toBe('原始描述');
+    expect(effectiveRequirementDescription({ description: '原始描述', changes: [row] })).toContain(analysis.description);
+    expect((await instance.createWithPrototype(req.id, dto, Buffer.from('zip'), 'new.zip', author)).id).toBe(first.id);
+    expect(prototypes.store).toHaveBeenCalledTimes(1);
+    await expect(instance.createWithPrototype(req.id, dto, Buffer.from('different'), 'new.zip', author)).rejects.toMatchObject({ status: 409 });
+    expect(await instance.downloadPrototype(req.id, first.id, author)).toEqual(Buffer.from('zip'));
+  });
+  it('拒绝匿名、跨组织、补充模式和已被文本占用的提交键，不保存 ZIP', async () => {
+    const req = await requirement(); const { instance, prototypes } = setup();
+    const dto = { content: '新原型', mode: 'RESTART' as const, requestId: 'security' };
+    await expect(instance.createWithPrototype(req.id, dto, Buffer.from('zip'), 'new.zip')).rejects.toMatchObject({ status: 403 });
+    await expect(instance.createWithPrototype(req.id, dto, Buffer.from('zip'), 'new.zip', { ...author, organization: { id: 'other' } })).rejects.toMatchObject({ status: 404 });
+    await expect(instance.createWithPrototype(req.id, { ...dto, mode: 'SUPPLEMENT' }, Buffer.from('zip'), 'new.zip', author)).rejects.toMatchObject({ status: 400 });
+    await service.create(req.id, { ...dto, mode: 'SUPPLEMENT' }, author);
+    await expect(instance.createWithPrototype(req.id, dto, Buffer.from('zip'), 'new.zip', author)).rejects.toMatchObject({ status: 409 });
+    expect(prototypes.store).not.toHaveBeenCalled();
+  });
+  it('AI 失败保留文件且脱敏，重试成功后启动失败也不重复分析', async () => {
+    const req = await requirement(); const { instance, prototypes } = setup();
+    prototypes.analyze.mockRejectedValueOnce(new Error('CODEX_AUTH_EXPIRED secret-token'));
+    const first = await instance.createWithPrototype(req.id, { content: '', mode: 'RESTART', requestId: 'zip-fail' }, Buffer.from('zip'), 'new.zip', author);
+    await vi.waitFor(async () => expect((await instance.list(req.id)).changes[0].restartStatus).toBe('FAILED'));
+    expect((await instance.list(req.id)).changes[0].errorMessage).not.toContain('secret-token');
+    workflow.restartFromRequirementChange.mockRejectedValueOnce(new Error('repository unavailable'));
+    await instance.restart(req.id, first.id);
+    await vi.waitFor(async () => expect((await instance.list(req.id)).changes[0].restartStatus).toBe('FAILED'));
+    expect(prototypes.analyze).toHaveBeenCalledTimes(2);
+    workflow.restartFromRequirementChange.mockResolvedValueOnce({});
+    await instance.restart(req.id, first.id);
+    await vi.waitFor(async () => expect((await instance.list(req.id)).changes[0].restartStatus).toBe('STARTED'));
+    expect(prototypes.analyze).toHaveBeenCalledTimes(2);
+    expect(prototypes.store).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+const validZip = Buffer.from('UEsDBBQAAAAIABySV11zzTvYFwAAABUAAAAKAAAAaW5kZXguaHRtbLPJMLR7Nm3D886Op33zn87rttEHCgAAUEsBAhQDFAAAAAgAHJJXXXPNO9gXAAAAFQAAAAoAAAAAAAAAAAAAAIABAAAAAGluZGV4Lmh0bWxQSwUGAAAAAAEAAQA4AAAAPwAAAAAA', 'base64');
+const analyzePrototype = vi.fn(async () => structuredClone(analysis));
+const resolveInvocationContext = vi.fn(async () => ({}));
+const prototypeHandler = new RequirementChangePrototypeService({ get: () => ({ analyzePrototype }) } as never,
+  { normalizeAiProvider: (value?: string) => value ?? 'codex', resolveInvocationContext } as never);
+Object.assign(prototypeHandler, { archive: new PrototypeArchive(join(directory, 'materials')) });
+const httpService = new RequirementChangesService(prisma as never, workflow as never, prototypeHandler);
+@Module({ controllers: [RequirementsController], providers: [
+  { provide: RequirementsService, useValue: {} }, { provide: RequirementAssignmentsService, useValue: {} },
+  { provide: RequirementChangesService, useValue: httpService },
+] })
+class PrototypeChangeTestModule {}
+Reflect.defineMetadata('design:paramtypes', [RequirementsService, RequirementAssignmentsService, RequirementChangesService], RequirementsController);
+Reflect.defineMetadata('design:paramtypes', [String, CreatePrototypeRequirementChangeDto, Object, Object], RequirementsController.prototype, 'createPrototypeChange');
+let app: INestApplication, baseUrl: string;
+beforeAll(async () => {
+  app = await NestFactory.create(PrototypeChangeTestModule, { logger: false });
+  app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
+  app.use((req: { headers: Record<string, string>; authSession?: unknown }, _res: unknown, next: () => void) => {
+    if (req.headers['x-org']) req.authSession = { ...author, organization: { id: req.headers['x-org'] } };
+    next();
+  });
+  await app.listen(0, '127.0.0.1'); baseUrl = await app.getUrl();
+});
+afterAll(async () => { await app?.close(); });
+
+describe('原型变更 HTTP 与真实归档', () => {
+  function form(overrides: Record<string, string> = {}, file = validZip) {
+    const body = new FormData();
+    Object.entries({ mode: 'RESTART', requestId: 'http-zip', ...overrides }).forEach(([key, value]) => body.append(key, value));
+    body.append('file', new Blob([file]), '原型.zip'); return body;
+  }
+  it('multipart 省略说明可提交，真实保存原包、组织 AI 分析与下载，无需确认', async () => {
+    const req = await requirement();
+    const source = await prisma.workflowRun.create({ data: { requirementId: req.id, status: 'DONE', aiProvider: 'cursor' } });
+    workflow.restartFromRequirementChange.mockResolvedValue({});
+    expect(await httpService.list(req.id, source.id)).toMatchObject({ aiProvider: 'cursor' });
+    const response = await fetch(`${baseUrl}/requirements/${req.id}/changes/prototype`, { method: 'POST', headers: { 'x-org': 'org' }, body: form() });
+    expect(response.status).toBe(201);
+    const change = await response.json() as { id: string; content: string };
+    expect(change.content).toBe('更新原型：原型.zip');
+    await vi.waitFor(async () => expect((await httpService.list(req.id)).changes[0].restartStatus).toBe('STARTED'));
+    expect(resolveInvocationContext).toHaveBeenLastCalledWith('cursor', expect.objectContaining({ flowxOrganizationId: 'org', flowxUserId: 'author' }));
+    expect(analyzePrototype).toHaveBeenLastCalledWith(expect.objectContaining({ material: expect.stringContaining('新版原型'), answers: {} }), {});
+    expect(analyzePrototype.mock.calls.at(-1)?.[0]).not.toHaveProperty('previous');
+    const download = await fetch(`${baseUrl}/requirements/${req.id}/changes/${change.id}/source`, { headers: { 'x-org': 'org' } });
+    expect(download.status).toBe(200); expect(Buffer.from(await download.arrayBuffer())).toEqual(validZip);
+    expect((await fetch(`${baseUrl}/requirements/${req.id}/changes/${change.id}/source`, { headers: { 'x-org': 'other' } })).status).toBe(404);
+    expect((await fetch(`${baseUrl}/requirements/${req.id}/changes/${change.id}/source`)).status).toBe(403);
+  });
+  it('非法 AI、补充模式、缺失幂等键与损坏 ZIP 均不产生变更或影响旧轮', async () => {
+    const req = await requirement();
+    const endpoint = `${baseUrl}/requirements/${req.id}/changes/prototype`;
+    for (const values of [{ aiProvider: 'unknown' }, { mode: 'SUPPLEMENT' }, { requestId: '' }]) {
+      expect((await fetch(endpoint, { method: 'POST', headers: { 'x-org': 'org' }, body: form(values) })).status).toBe(400);
+    }
+    expect((await fetch(endpoint, { method: 'POST', headers: { 'x-org': 'org' }, body: form({}, Buffer.from('broken')) })).status).toBe(400);
+    expect((await fetch(endpoint, { method: 'POST', headers: { 'x-org': 'other' }, body: form() })).status).toBe(404);
+    expect((await httpService.list(req.id)).revision).toBe(0);
   });
 });

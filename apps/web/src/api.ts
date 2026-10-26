@@ -252,10 +252,12 @@ export const api = {
   },
   getPrototypeImport: (id: string) => request<PrototypeImport>(`/prototype-imports/${id}`),
   savePrototypeImport: (id: string, payload: PrototypeImportUpdate) => request<PrototypeImport>(`/prototype-imports/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  analyzePrototypeImport: (id: string, payload: PrototypeImportUpdate) => request<PrototypeImport>(`/prototype-imports/${id}/analyze`, { method: 'POST', body: JSON.stringify(payload) }),
+  analyzePrototypeImport: (id: string, payload: PrototypeImportUpdate & { aiProvider?: PrototypeImport['aiProvider'] }) => request<PrototypeImport>(`/prototype-imports/${id}/analyze`, { method: 'POST', body: JSON.stringify(payload) }),
   confirmPrototypeImport: (id: string, payload: PrototypeImportUpdate) => request<PrototypeImport>(`/prototype-imports/${id}/confirm`, { method: 'POST', body: JSON.stringify(payload) }),
-  supplementPrototypeImport: (id: string, revision: number, file: File) => {
+  supplementPrototypeImport: (id: string, revision: number, file: File, aiProvider?: PrototypeImport['aiProvider'], replace = false) => {
     const body = new FormData(); body.append('file', file); body.append('revision', String(revision));
+    if (aiProvider !== undefined) body.append('aiProvider', aiProvider);
+    if (replace) body.append('replace', 'true');
     return request<PrototypeImport>(`/prototype-imports/${id}/files`, { method: 'POST', body });
   },
   previewPrototypeImport: (id: string, path: string) => request<{ html: string; warnings: string[] }>(`/prototype-imports/${id}/preview?path=${encodeURIComponent(path)}`),
@@ -675,6 +677,15 @@ export const api = {
     request<RequirementChanges>(`/requirements/${id}/changes${workflowRunId ? `?${new URLSearchParams({ workflowRunId })}` : ''}`),
   createRequirementChange: (id: string, payload: RequirementChangePayload) =>
     request<RequirementChange>(`/requirements/${id}/changes`, { method: 'POST', body: JSON.stringify(payload) }),
+  createPrototypeRequirementChange: (id: string, payload: RequirementChangePayload & { aiProvider?: 'codex' | 'cursor' }, file: File) => {
+    const body = new FormData(); body.append('file', file);
+    body.append('content', payload.content); body.append('mode', payload.mode); body.append('requestId', payload.requestId);
+    if (payload.sourceWorkflowRunId) body.append('sourceWorkflowRunId', payload.sourceWorkflowRunId);
+    if (payload.aiProvider) body.append('aiProvider', payload.aiProvider);
+    return request<RequirementChange>(`/requirements/${id}/changes/prototype`, { method: 'POST', body });
+  },
+  downloadRequirementChangePrototype: (id: string, changeId: string) =>
+    request<Blob>(`/requirements/${id}/changes/${changeId}/source`, undefined, 'blob'),
   restartRequirementChange: (id: string, changeId: string) =>
     request<RequirementChange>(`/requirements/${id}/changes/${changeId}/restart`, { method: 'POST' }),
   updateRequirement: (
