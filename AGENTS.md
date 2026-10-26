@@ -96,6 +96,18 @@ pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma
 - 保持 diff 小而聚焦，不混入无关格式化、重命名或重构。
 - 不手动编辑 `dist/`、生成的 Prisma client 或其他生成物。
 
+## AI 功能开发与本地工具适配
+
+- 每次新增或修改功能，编码前必须评估 Web、API、`flowx-local`、MCP、CLI、Skill/Adapter 和 `@flowx-ai/protocol` 的影响。不能仅因需求来自 Web 页面就跳过本地消费者；具体评估方法见 `docs/architecture/ai-maintainability.md`。
+- 在当前方案或交付说明中记录本地适配结论：`需要适配`、`复用现有能力` 或 `不适用`，列出受影响入口及依据。需要适配的能力应在同一变更中交付；分期时明确未支持范围、兼容行为和后续工作，不得宣称全链路完成。
+- 需求、上下文、阶段状态、领取/回传、Artifact/Evidence、权限和执行控制变化，必须检查本地调用链。纯视觉、布局或仅供网页操作的能力可以不新增 MCP tool，但仍须确认既有本地流程不受影响。
+- 本地 Agent 需要使用的能力应通过受支持的 API 和 MCP/CLI/Adapter 暴露；不能要求 Agent 直接操作数据库、解析网页 DOM 或依赖人工复制页面内容完成核心流程。
+- MCP/CLI/Adapter 保持薄桥接，复用 API 的业务服务、权限和状态机，不在本地复制业务规则。新增工具前优先复用现有工具；FlowX MCP 统一维护在 `packages/flowx-local/src/mcp.ts`。
+- 修改字段、枚举、默认值、必填性或错误语义时，同步检查 API DTO、共享协议、MCP 输入 schema、请求映射、返回解析、Skill 模板和 Web 消费者；既要确认 schema 可接收，也要确认字段实际透传到 API、结果可被消费。
+- 服务端与本地 npm 包可能分别升级。契约优先向后兼容；破坏性变更必须说明旧客户端行为、版本/能力识别、升级或迁移路径，不允许静默丢字段、误推进状态或绕过权限及人工确认。
+- 验证覆盖真实工具入口到 API 契约的请求和响应，以及受影响的权限、失败和重试路径。新增或修改 MCP tool 时检查工具发现、schema 与调用；协议变更同时验证消费者，不能仅凭类型检查或 Web 测试宣称本地适配完成。
+- 工具描述、发布的 Skill 模板、安装/升级说明和本地 Agent 手册必须与实际能力一致；交付说明列出适配结论、兼容策略、验证结果及未完成项。
+
 ## 工作流程与安全边界
 
 - 开始前运行 `git status --short`，识别并保留用户已有修改。
@@ -140,3 +152,4 @@ cmp -s docs/local-agent-guide.md apps/web/public/local-agent-guide.md
 1. 变更范围和用户已有修改均已核对。
 2. 用户可见行为对应的 README、专题文档和使用手册已同步。
 3. 必要测试、构建和文档一致性检查已完成，或已明确记录未执行项。
+4. 已记录本地工具适配结论；需要适配的 MCP/CLI/Skill/协议及兼容、验证和文档已同步，未支持范围已明确。

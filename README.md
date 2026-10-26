@@ -97,6 +97,7 @@ flowchart LR
 
 - Agent rules: `AGENTS.md`
 - AI maintainability guide: `docs/architecture/ai-maintainability.md`
+- 功能开发必须评估本地 MCP、CLI、Skill/Adapter 和共享协议的适配，同步交付必要变更、兼容策略与验证证据；详见 [AI 功能开发与本地工具适配规范](docs/architecture/ai-maintainability.md#功能开发与本地工具适配)。
 - Validation command: `pnpm check`
 
 ## Structure

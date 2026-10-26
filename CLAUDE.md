@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 统一开发规范
+
+开发前必须读取并遵守根目录 `AGENTS.md` 和目标目录的具体规则。功能开发必须执行其中的“AI 功能开发与本地工具适配”要求，编码前评估 MCP、CLI、Skill/Adapter 和共享协议的影响，并在交付时记录适配结论与验证证据。详细方法见 [AI 可维护性指南](docs/architecture/ai-maintainability.md)。
+
 ## Project overview
 
 FlowX is a staged, interruptible, human-confirmable AI R&D orchestration system. Users create requirements, launch workflows, and confirm/reject AI output at each stage: Task Split → Technical Plan → Execution → AI Review → Human Review.
