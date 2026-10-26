@@ -226,7 +226,7 @@ const validZip = Buffer.from('UEsDBBQAAAAIABySV11zzTvYFwAAABUAAAAKAAAAaW5kZXguaH
 const analyzePrototype = vi.fn(async () => structuredClone(analysis));
 const resolveInvocationContext = vi.fn(async () => ({}));
 const prototypeHandler = new RequirementChangePrototypeService({ get: () => ({ analyzePrototype }) } as never,
-  { normalizeAiProvider: (value?: string) => value ?? 'codex', resolveInvocationContext } as never);
+  { normalizeAiProvider: (value?: string) => value ?? 'codex', resolveOnlineProvider: async (_organizationId?: string, value?: string) => value ?? 'codex', resolveInvocationContext } as never);
 Object.assign(prototypeHandler, { archive: new PrototypeArchive(join(directory, 'materials')) });
 const httpService = new RequirementChangesService(prisma as never, workflow as never, prototypeHandler);
 @Module({ controllers: [RequirementsController], providers: [

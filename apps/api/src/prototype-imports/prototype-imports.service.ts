@@ -59,7 +59,7 @@ export class PrototypeImportsService implements OnModuleInit {
       throw new BadRequestException('发布版本不存在或不属于当前项目。');
     }
     const id = randomUUID();
-    const aiProvider = this.invocation.normalizeAiProvider(dto.aiProvider);
+    const aiProvider = await this.invocation.resolveOnlineProvider(organizationId, dto.aiProvider);
     let manifest: PrototypeManifest;
     try { manifest = await this.archive.save(id, 1, zip, name); }
     catch { throw new BadRequestException('无法读取原型包，请检查 ZIP 格式、文件路径与大小限制。'); }

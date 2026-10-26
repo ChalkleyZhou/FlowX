@@ -1002,6 +1002,24 @@ export interface AiCredentialStatus {
   updatedAt?: string;
 }
 
+export interface OnlineAiProviders {
+  defaultProvider: 'codex' | 'cursor' | null;
+  onlineAvailable: boolean;
+  providers: Array<{ id: 'codex' | 'cursor'; label: string }>;
+}
+
+export interface OnlineAiPolicy {
+  preferredProvider: 'codex' | 'cursor' | null;
+  defaultProvider: 'codex' | 'cursor' | null;
+  onlineAvailable: boolean;
+  providers: Array<{
+    id: 'codex' | 'cursor';
+    label: string;
+    configured: boolean;
+    updatedAt?: string;
+  }>;
+}
+
 export interface PersonalApiTokenMeta {
   id: string;
   name: string;

@@ -476,7 +476,7 @@ export class CursorAiExecutor extends CodexAiExecutor {
     if (context?.cursorCredentialSource === 'instance') {
       return 'CURSOR_AUTH_INVALID_INSTANCE_KEY: Cursor authentication failed for instance CURSOR_API_KEY. Please rotate server credential.';
     }
-    return 'CURSOR_AUTH_MISSING: Cursor authentication failed. Re-run `agent login` (or `cursor agent login`) on the server, or provide CURSOR_API_KEY.';
+    return 'CURSOR_AUTH_MISSING: Cursor authentication failed. 当前组织未配置可用的 Cursor 凭据，在线 AI 不可用。';
   }
 
   private stripMarkdownJsonFence(text: string): string {

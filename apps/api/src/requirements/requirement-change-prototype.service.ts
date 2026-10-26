@@ -16,8 +16,8 @@ export class RequirementChangePrototypeService {
     private readonly invocation: AiInvocationContextService,
   ) {}
 
-  async store(zip: Buffer, name: string, aiProvider?: string): Promise<ChangePrototype> {
-    const provider = this.invocation.normalizeAiProvider(aiProvider);
+  async store(zip: Buffer, name: string, organizationId: string, aiProvider?: string): Promise<ChangePrototype> {
+    const provider = await this.invocation.resolveOnlineProvider(organizationId, aiProvider);
     if (provider !== 'codex' && provider !== 'cursor') throw new BadRequestException('请选择 Codex 或 Cursor。');
     const archiveId = randomUUID();
     let manifest: PrototypeManifest;

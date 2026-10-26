@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api, getBugScreenshotUrl } from '../api';
+import { ONLINE_AI_UNAVAILABLE_MESSAGE, useOnlineAiProviders } from '../online-ai';
 import { AuthenticatedImage } from '../components/AuthenticatedImage';
 import { ImageAttachmentPicker } from '../components/ImageAttachmentPicker';
 import { ContextPanel } from '../components/ContextPanel';
@@ -44,8 +45,6 @@ import {
   formatSeverityLabel,
 } from '../utils/label-utils';
 
-const AI_PROVIDER_STORAGE_KEY = 'flowx-default-ai-provider';
-
 export function BugDetailPage() {
   const { bugId = '' } = useParams();
   const navigate = useNavigate();
@@ -54,7 +53,8 @@ export function BugDetailPage() {
   const [fixModalOpen, setFixModalOpen] = useState(false);
   const [fixSubmitting, setFixSubmitting] = useState(false);
   const [fixRepositoryIds, setFixRepositoryIds] = useState<string[]>([]);
-  const [fixAiProvider, setFixAiProvider] = useState<'codex' | 'cursor'>('codex');
+  const onlineAi = useOnlineAiProviders();
+  const [fixAiProvider, setFixAiProvider] = useState<'codex' | 'cursor' | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<{
@@ -121,20 +121,7 @@ export function BugDetailPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const [workspaceList, providerConfig] = await Promise.all([
-          api.getWorkspaces(),
-          api.getWorkflowProviders(),
-        ]);
-        setWorkspaces(workspaceList);
-        const storedProvider =
-          typeof window !== 'undefined'
-            ? window.localStorage.getItem(AI_PROVIDER_STORAGE_KEY)
-            : null;
-        setFixAiProvider(
-          storedProvider === 'cursor' || storedProvider === 'codex'
-            ? storedProvider
-            : providerConfig.defaultProvider,
-        );
+        setWorkspaces(await api.getWorkspaces());
       } catch {
         // ignore — fix dialog can still open with defaults
       }
@@ -150,8 +137,15 @@ export function BugDetailPage() {
     );
   }, [availableRepositories, fixModalOpen]);
 
+  useEffect(() => {
+    if (onlineAi?.defaultProvider) {
+      setFixAiProvider(onlineAi.defaultProvider);
+    }
+  }, [onlineAi?.defaultProvider]);
+
   async function handleStartFixWorkflow() {
-    if (!bugId) {
+    if (!bugId || !fixAiProvider) {
+      toast.error(ONLINE_AI_UNAVAILABLE_MESSAGE);
       return;
     }
     setFixSubmitting(true);
@@ -543,18 +537,21 @@ export function BugDetailPage() {
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-foreground">AI 执行器</label>
-              <Select
-                value={fixAiProvider}
+              {onlineAi && !onlineAi.onlineAvailable ? <p role="status" className="text-sm text-muted-foreground">{ONLINE_AI_UNAVAILABLE_MESSAGE}</p> : <Select
+                value={fixAiProvider ?? undefined}
                 onValueChange={(value) => setFixAiProvider(value as 'codex' | 'cursor')}
+                disabled={onlineAi !== null && !onlineAi.onlineAvailable}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="codex">Codex</SelectItem>
-                  <SelectItem value="cursor">Cursor CLI</SelectItem>
+                  {(onlineAi?.providers.length ? onlineAi.providers : [
+                    { id: 'codex' as const, label: 'Codex' },
+                    { id: 'cursor' as const, label: 'Cursor CLI' },
+                  ]).map((provider) => <SelectItem key={provider.id} value={provider.id}>{provider.label}</SelectItem>)}
                 </SelectContent>
-              </Select>
+              </Select>}
             </div>
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-foreground">目标仓库</label>
@@ -584,7 +581,7 @@ export function BugDetailPage() {
               </div>
             </div>
             <UiButton
-              disabled={fixSubmitting || fixRepositoryIds.length === 0}
+              disabled={fixSubmitting || fixRepositoryIds.length === 0 || !fixAiProvider || (onlineAi !== null && !onlineAi.onlineAvailable)}
               onClick={() => void handleStartFixWorkflow()}
             >
               {fixSubmitting ? '发起中...' : '确认并自动开始修复'}

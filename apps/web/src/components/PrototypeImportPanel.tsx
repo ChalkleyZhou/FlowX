@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import { ONLINE_AI_UNAVAILABLE_MESSAGE, useOnlineAiProviders } from '../online-ai';
 import type { PrototypeImport } from '../types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -22,6 +23,13 @@ export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [retryProvider, setRetryProvider] = useState<PrototypeImport['aiProvider'] | null>(null);
+  const onlineAi = useOnlineAiProviders();
+  const providerOptions = onlineAi?.onlineAvailable === false
+    ? []
+    : onlineAi?.providers.length
+      ? onlineAi.providers
+      : [{ id: 'codex' as const, label: 'Codex' }, { id: 'cursor' as const, label: 'Cursor CLI' }];
+  const onlineBlocked = onlineAi !== null && !onlineAi.onlineAvailable;
   const [expanded, setExpanded] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [selectedPath, setSelectedPath] = useState('');
@@ -147,10 +155,15 @@ export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId
   if (!record) return <div role="alert">{error ?? '原型未找到'}<Button onClick={() => void refresh()}>重试</Button></div>;
   const failed = record.status === 'FAILED';
   const invalidFile = file && (!/\.zip$/i.test(file.name) || file.size > MAX_ZIP_BYTES);
+  const selectedProvider = providerOptions.some((item) => item.id === retryProvider)
+    ? retryProvider!
+    : providerOptions.some((item) => item.id === record.aiProvider)
+      ? record.aiProvider
+      : onlineAi?.defaultProvider ?? record.aiProvider;
   const currentPackage = record.manifest.sources.at(-1);
   async function submitReanalyze() {
     if (!file || invalidFile) return;
-    const provider = retryProvider ?? record!.aiProvider;
+    const provider = selectedProvider;
     const signature = JSON.stringify([file.name, file.size, file.lastModified, provider]);
     if (reanalyzeRequest.current?.signature !== signature) {
       const id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -183,9 +196,9 @@ export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId
         {reanalyzeOpen && <div className="flex max-w-md flex-col gap-3">
           <div className="flex max-w-xs flex-col gap-2">
             <label className="text-sm" htmlFor={`prototype-reanalyze-provider-${importId}`}>使用的 AI</label>
-            <Select value={retryProvider ?? record.aiProvider} onValueChange={(value: PrototypeImport['aiProvider']) => setRetryProvider(value)} disabled={busy}>
+            <Select value={selectedProvider} onValueChange={(value: PrototypeImport['aiProvider']) => setRetryProvider(value)} disabled={busy || onlineBlocked}>
               <SelectTrigger id={`prototype-reanalyze-provider-${importId}`} aria-label="重新分析使用的 AI"><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="codex">Codex</SelectItem><SelectItem value="cursor">Cursor CLI</SelectItem></SelectContent>
+              <SelectContent>{providerOptions.map((provider) => <SelectItem key={provider.id} value={provider.id}>{provider.label}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <label className="flex flex-col gap-2 text-sm">新的原型 ZIP（最大 20 MiB）
@@ -194,7 +207,8 @@ export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId
           {file ? <div className="flex flex-wrap items-center gap-2 text-sm"><span>{file.name}</span><Button variant="ghost" size="sm" disabled={busy} onClick={() => setFile(null)}>移除 ZIP</Button></div> : null}
           <p className="text-xs text-muted-foreground">上传新包后重新整理，并启动新一轮流程。旧流程和当前包保留。</p>
           {invalidFile && <p role="alert" className="text-sm text-danger">请选择不超过 20 MiB 的 ZIP 文件</p>}
-          <Button size="sm" disabled={busy || !file || !!invalidFile} onClick={() => void submitReanalyze()}>{busy ? '正在提交…' : '重新分析'}</Button>
+          {onlineBlocked ? <p role="status" className="text-sm text-muted-foreground">{ONLINE_AI_UNAVAILABLE_MESSAGE}</p> : null}
+          <Button size="sm" disabled={busy || onlineBlocked || !file || !!invalidFile} onClick={() => void submitReanalyze()}>{busy ? '正在提交…' : '重新分析'}</Button>
         </div>}
       </div>
     );
@@ -207,9 +221,9 @@ export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId
       {failed && <div className="flex flex-col gap-3">
         <div className="flex max-w-xs flex-col gap-2">
           <label className="text-sm" htmlFor={`prototype-retry-provider-${importId}`}>使用的 AI</label>
-          <Select value={retryProvider ?? record.aiProvider} onValueChange={(value: PrototypeImport['aiProvider']) => setRetryProvider(value)} disabled={busy}>
+          <Select value={selectedProvider} onValueChange={(value: PrototypeImport['aiProvider']) => setRetryProvider(value)} disabled={busy || onlineBlocked}>
             <SelectTrigger id={`prototype-retry-provider-${importId}`} aria-label="使用的 AI"><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="codex">Codex</SelectItem><SelectItem value="cursor">Cursor CLI</SelectItem></SelectContent>
+            <SelectContent>{providerOptions.map((provider) => <SelectItem key={provider.id} value={provider.id}>{provider.label}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         <p className="text-sm text-muted-foreground">当前 ZIP：{record.manifest.sources.at(-1)?.name ?? '已保存的原型包'}</p>
@@ -219,10 +233,11 @@ export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId
         {file ? <div className="flex flex-wrap items-center gap-2 text-sm"><span>将使用：{file.name}</span><Button variant="ghost" size="sm" disabled={busy} onClick={() => setFile(null)}>移除新 ZIP</Button></div> : null}
         <p className="text-xs text-muted-foreground">不换包则沿用当前材料；更换后以新 ZIP 完整重新分析，旧包保留在历史中。</p>
         {invalidFile && <p role="alert" className="text-sm text-danger">请选择不超过 20 MiB 的 ZIP 文件</p>}
+        {onlineBlocked ? <p role="status" className="text-sm text-muted-foreground">{ONLINE_AI_UNAVAILABLE_MESSAGE}</p> : null}
         <div className="flex gap-2">
-          <Button disabled={busy || !!invalidFile} onClick={() => void run(() => file
-            ? api.supplementPrototypeImport(importId, record.revision, file, retryProvider ?? record.aiProvider, true)
-            : api.analyzePrototypeImport(importId, { revision: record.revision, aiProvider: retryProvider ?? record.aiProvider }))}>{busy ? '正在提交…' : '重新导入'}</Button>
+          <Button disabled={busy || onlineBlocked || !!invalidFile} onClick={() => void run(() => file
+            ? api.supplementPrototypeImport(importId, record.revision, file, selectedProvider, true)
+            : api.analyzePrototypeImport(importId, { revision: record.revision, aiProvider: selectedProvider }))}>{busy ? '正在提交…' : '重新导入'}</Button>
           <Button variant="outline" disabled={busy || loading} onClick={() => void refresh()}>刷新状态</Button>
         </div>
       </div>}

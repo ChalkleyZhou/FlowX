@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, Logger, Put, Req, UnauthorizedException } from '@nestjs/common';
 import { AiCredentialsService } from './ai-credentials.service';
+import { SetPreferredAiProviderDto } from './dto/set-preferred-ai-provider.dto';
 import { UpsertCursorCredentialDto } from './dto/upsert-cursor-credential.dto';
 
 @Controller('auth/ai-credentials')
@@ -7,6 +8,16 @@ export class AiCredentialsController {
   private readonly logger = new Logger(AiCredentialsController.name);
 
   constructor(private readonly aiCredentialsService: AiCredentialsService) {}
+
+  @Get('policy')
+  getOnlineAiPolicy(@Req() req: AuthenticatedRequest) {
+    return this.aiCredentialsService.getOnlineAiPolicy(this.getOrganizationId(req));
+  }
+
+  @Put('preference')
+  setPreferredProvider(@Req() req: AuthenticatedRequest, @Body() dto: SetPreferredAiProviderDto) {
+    return this.aiCredentialsService.setPreferredProvider(this.getOrganizationId(req), dto.provider);
+  }
 
   @Get('cursor')
   getCursorCredentialStatus(@Req() req: AuthenticatedRequest) {

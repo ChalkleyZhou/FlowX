@@ -1802,6 +1802,6 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     if (context?.codexCredentialSource === 'instance') {
       return 'CODEX_AUTH_INVALID_INSTANCE_KEY: Codex authentication failed for instance OPENAI_API_KEY. Please rotate server credential.';
     }
-    return 'CODEX_AUTH_MISSING: Codex authentication failed. Re-run `codex login` on the server, or provide OPENAI_API_KEY.';
+    return 'CODEX_AUTH_MISSING: Codex authentication failed. 当前组织未配置可用的 Codex 凭据，在线 AI 不可用。';
   }
 }

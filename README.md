@@ -177,8 +177,7 @@ docker run -d \
   -e WEB_PORT=4173 \
   -e DATABASE_URL="file:/data/dev.db" \
   -e AI_EXECUTOR_PROVIDER="mock" \
-  -e OPENAI_API_KEY="your_openai_api_key" \
-  -e CODEX_HOME="/data/.codex" \
+  -e FLOWX_CREDENTIAL_MASTER_KEY="replace-with-a-long-random-string" \
   -e DINGTALK_APP_ID="your_app_id" \
   -e DINGTALK_APP_SECRET="your_app_secret" \
   -e DINGTALK_AGENT_ID="your_agent_id" \
@@ -200,49 +199,14 @@ Notes:
 - The container startup script will run `prisma db push` automatically before starting services
 - Before `db push`, it also applies idempotent SQLite pre-migrations (including assigning existing workspaces to an organization, adding Yunxiao integration indexes safely, and dropping obsolete `Task`/`Plan` and deploy integration tables)
 - The runtime image now installs both Codex CLI and Cursor CLI
-- Codex login state is stored under `/data/.codex` by default, so mounting `/data` will persist `codex login`
-- `AI_EXECUTOR_DEFAULT_PROVIDER` can be set to `codex` or `cursor` as the default provider for new workflows
-- If you want to use `AI_EXECUTOR_PROVIDER="codex"`, set `OPENAI_API_KEY` in the container
-- If you want to use Cursor on the server, set `CURSOR_API_KEY` in the container and choose `Cursor CLI` when starting a workflow
-- If you want each user to use their own Cursor API Key, set `FLOWX_CREDENTIAL_MASTER_KEY` and let users configure credentials in `AI 凭据` page
-- If you want to enforce user-only Cursor credentials (no instance fallback), set `FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL=true`
-- If you want each user to use their own Codex/OpenAI API Key, set `FLOWX_CREDENTIAL_MASTER_KEY` and let users configure credentials in `AI 凭据` page
-- If you want to enforce user-only Codex credentials (no instance fallback), set `FLOWX_CODEX_REQUIRE_USER_CREDENTIAL=true`
+- Online AI uses only the current organization's credentials from the `AI 凭据` page. Set `FLOWX_CREDENTIAL_MASTER_KEY` so those keys can be encrypted. Choose the preferred provider on that page; if neither Cursor nor Codex is configured, online AI is unavailable.
+- `AI_EXECUTOR_DEFAULT_PROVIDER` and instance `OPENAI_API_KEY` / `CURSOR_API_KEY` no longer select or authorize online AI. Local Cursor, Codex, and WorkBuddy launches do not use these organization keys.
 - If you want workflow `提交并推送到远程` to work, the container must have:
   - reachable git remote credentials (SSH key or HTTPS token)
   - git identity configured, e.g. `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL`
-- `AI_EXECUTOR_PROVIDER="codex"` still requires valid Codex authentication in the container; in server environments the simplest way is `OPENAI_API_KEY`
+- Online Codex and Cursor calls require the matching organization API key. Server `OPENAI_API_KEY`, `CURSOR_API_KEY`, and CLI login state are not used as a fallback.
 - If Docker/host kernel blocks Codex `read-only` sandbox with `bwrap: No permissions to create a new namespace`, set `CODEX_READ_SANDBOX="danger-full-access"`
 - OpenDesign 推荐通过设计师本机的 `flowx-local` Adapter 接入；API 主机上的 `OPENDESIGN_MCP_ENABLED` 仅保留为旧服务端 AI 设计链路的兼容能力。见 [docs/opendesign-design-stage.md](/Users/chalkley/workspace/FlowX/docs/opendesign-design-stage.md)
-
-### Using manual `codex login` in Docker
-
-If you are still in a personal-use stage and prefer logging into Codex manually instead of configuring `OPENAI_API_KEY`, you can:
-
-1. Start the container with `AI_EXECUTOR_PROVIDER="codex"` and mount `/data`
-2. Enter the container once and run `codex login`
-3. Keep using the same `/data` volume so `/data/.codex` persists across restarts
-
-Example:
-
-```bash
-docker run -d \
-  --name flowx \
-  -p 3000:3000 \
-  -p 4173:4173 \
-  -e PORT=3000 \
-  -e WEB_PORT=4173 \
-  -e DATABASE_URL="file:/data/dev.db" \
-  -e AI_EXECUTOR_PROVIDER="codex" \
-  -e CODEX_HOME="/data/.codex" \
-  -v flowx-data:/data \
-  flowx:latest
-
-docker exec -it flowx sh
-codex login
-```
-
-After login succeeds once, the Codex auth state will stay in the mounted volume.
 
 ### Deploy behind Nginx
 
@@ -267,13 +231,6 @@ This setup will:
 - expose only `80`
 - proxy `/api/*` to the API container
 - proxy all other paths to the web app
-
-If you are using manual `codex login`, run it once after the containers start:
-
-```bash
-docker exec -it flowx sh
-codex login
-```
 
 ## Auth
 

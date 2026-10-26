@@ -272,7 +272,6 @@ export class WorkflowService {
   }
 
   private async createRequirementWorkflowRun(dto: CreateWorkflowRunDto, runType: WorkflowRunType, sourceChangeId?: string, changePrototypeSnapshot?: PrototypeWorkflowSnapshot) {
-    const aiProvider = this.aiInvocationContextService.normalizeAiProvider(dto.aiProvider);
     const requirement = await this.prisma.requirement.findFirstOrThrow({
       where: {
         id: dto.requirementId,
@@ -366,6 +365,8 @@ export class WorkflowService {
     if (requirement.workspaceId) {
       await this.repositorySyncService.syncWorkspaceRepositories(requirement.workspaceId);
     }
+    const organizationId = requirement.workspace?.organizationId ?? requirement.project.workspace.organizationId;
+    const aiProvider = await this.aiInvocationContextService.resolveOnlineProvider(organizationId, dto.aiProvider);
 
     const workflow = await this.prisma.$transaction(async (tx) => {
       if (sourceChangeId) {
@@ -527,7 +528,6 @@ export class WorkflowService {
       throw new BadRequestException('该缺陷已有进行中的修复工作流。');
     }
 
-    const aiProvider = this.aiInvocationContextService.normalizeAiProvider(dto.aiProvider);
     const requirement = await this.ensureBugFixRequirement(bug);
     const requestedRepositoryIds = Array.from(
       new Set((dto.repositoryIds ?? []).map((value) => value.trim()).filter(Boolean)),
@@ -556,6 +556,10 @@ export class WorkflowService {
     if (selectedRepositories.length === 0) {
       throw new BadRequestException('当前工作区没有可用仓库，无法发起修复工作流。');
     }
+    const aiProvider = await this.aiInvocationContextService.resolveOnlineProvider(
+      bug.workspace.organizationId,
+      dto.aiProvider,
+    );
 
     const selectedRepositoryIds = new Set(selectedRepositories.map((repository) => repository.id));
     const existingActiveWorkflows = await this.prisma.workflowRun.findMany({
@@ -705,14 +709,8 @@ export class WorkflowService {
     };
   }
 
-  listAiProviders() {
-    return {
-      defaultProvider: this.aiInvocationContextService.getConfiguredDefaultProvider(),
-      providers: this.aiExecutorRegistry.list().map((provider) => ({
-        id: provider,
-        label: provider === 'cursor' ? 'Cursor CLI' : 'Codex',
-      })),
-    };
+  listAiProviders(organizationId: string) {
+    return this.aiInvocationContextService.listOnlineProviders(organizationId);
   }
 
   async findAll(filters?: { runType?: string }) {
@@ -2777,7 +2775,12 @@ export class WorkflowService {
     reviewProvider?: AIExecutorProvider,
   ) {
     const workflow = await this.getWorkflowOrThrow(id);
-    const aiProvider = reviewProvider ?? this.aiInvocationContextService.normalizeAiProvider(workflow.aiProvider);
+    const organizationId = workflow.requirement.workspace?.organizationId
+      ?? workflow.requirement.project?.workspace?.organizationId;
+    const aiProvider = await this.aiInvocationContextService.resolveOnlineProvider(
+      organizationId,
+      reviewProvider ?? workflow.aiProvider,
+    );
     const aiExecutor = this.resolveAiExecutor(aiProvider);
     const aiProviderLabel = this.getAiProviderLabel(aiProvider);
     this.assertStageNotRunning(workflow, StageType.AI_REVIEW);

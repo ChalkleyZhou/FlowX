@@ -35,8 +35,12 @@ export class WorkflowController {
   }
 
   @Get('providers')
-  listProviders() {
-    return this.workflowService.listAiProviders();
+  listProviders(@Req() req: { authSession?: { organization?: { id?: string } | null } }) {
+    const organizationId = req.authSession?.organization?.id?.trim();
+    if (!organizationId) {
+      throw new BadRequestException('请先加入或选择组织后再使用在线 AI。');
+    }
+    return this.workflowService.listAiProviders(organizationId);
   }
 
   @Get()

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check, Minus, Play, RefreshCw } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { api } from '../../api';
+import { ONLINE_AI_UNAVAILABLE_MESSAGE, useOnlineAiProviders } from '../../online-ai';
 import { EmptyState } from '../../components/EmptyState';
 import { PageHeader } from '../../components/PageHeader';
 import { Badge } from '../../components/ui/badge';
@@ -60,6 +61,7 @@ function changedReuse(candidate: TestDesignCandidate) {
 export function QualityTestDesignPage() {
   const { id } = useParams<{ id: string }>();
   const toast = useToast();
+  const onlineAi = useOnlineAiProviders();
   const [design, setDesign] = useState<TestDesign | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -193,7 +195,8 @@ export function QualityTestDesignPage() {
         actions={(
           <>
             <Button variant="outline" onClick={() => void load()}><RefreshCw className="h-4 w-4" />刷新</Button>
-            <Button onClick={() => void generate()} disabled={busy || design.status === 'GENERATING' || frozen}><Play className="h-4 w-4" />{design.status === 'CONFIRMED' || design.status === 'STALE' ? '刷新影响分析' : '生成候选'}</Button>
+            {onlineAi && !onlineAi.onlineAvailable ? <p role="status" className="text-sm text-muted-foreground">{ONLINE_AI_UNAVAILABLE_MESSAGE}</p> : null}
+            <Button onClick={() => void generate()} disabled={busy || design.status === 'GENERATING' || frozen || (onlineAi !== null && !onlineAi.onlineAvailable)}><Play className="h-4 w-4" />{design.status === 'CONFIRMED' || design.status === 'STALE' ? '刷新影响分析' : '生成候选'}</Button>
           </>
         )}
       />

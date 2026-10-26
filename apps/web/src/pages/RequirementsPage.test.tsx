@@ -104,6 +104,7 @@ describe('RequirementsPage', () => {
     vi.mocked(api.getRequirements).mockResolvedValue([requirement]);
     vi.mocked(api.getWorkflowProviders).mockResolvedValue({
       defaultProvider: 'codex',
+      onlineAvailable: true,
       providers: [
         { id: 'codex', label: 'Codex' },
         { id: 'cursor', label: 'Cursor CLI' },

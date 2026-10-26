@@ -42,7 +42,7 @@ beforeAll(async () => {
   workspace = (await prisma.workspace.create({ data: { name: '工作区', organizationId: org } })).id;
   project = (await prisma.project.create({ data: { name: '项目', workspaceId: workspace } })).id;
   const requirements = { create: async (dto: { title: string; description: string; acceptanceCriteria: string; projectId: string }) => prisma.requirement.create({ data: { ...dto, workspaceId: workspace } }) };
-  service = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: async () => { throw new Error('仓库未配置'); } } as never);
+  service = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveOnlineProvider: async () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: async () => { throw new Error('仓库未配置'); } } as never);
   Object.assign(service, { archive });
   app = await NestFactory.create(TestModule, { logger: false });
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
@@ -178,7 +178,7 @@ describe('原型确认后的真实工作流接续', () => {
       prepareWorkflowRepositories: async () => undefined,
       generateWorkflowRepositoryGrounding: async () => undefined,
       buildWorkflowRepositoryPath: () => '/tmp/flowx-prototype-test',
-    } as never, {} as never, { normalizeAiProvider: () => 'codex' } as never, {} as never, {} as never, {} as never);
+    } as never, {} as never, { normalizeAiProvider: () => 'codex', resolveOnlineProvider: async () => 'codex' } as never, {} as never, {} as never, {} as never);
   }
   it('未确认时API也不可启动；确认后无仓库不重复确认', async () => {
     const result = await create();
@@ -279,7 +279,7 @@ describe('快速导入自动接续', () => {
     const codex = { analyzePrototype: vi.fn().mockRejectedValue(new Error('CODEX_AUTH_REQUIRED')) };
     const cursor = { analyzePrototype: vi.fn().mockResolvedValue(structuredClone(analysis)) };
     const registry = { get: vi.fn((provider: string) => provider === 'cursor' ? cursor : codex) };
-    const invocation = { normalizeAiProvider: (provider?: string) => provider ?? 'codex', resolveInvocationContext: vi.fn(async (provider: string) => ({ requestUserId: 'user-a', source: provider })) };
+    const invocation = { normalizeAiProvider: (provider?: string) => provider ?? 'codex', resolveOnlineProvider: async (_organizationId?: string, provider?: string) => provider ?? 'codex', resolveInvocationContext: vi.fn(async (provider: string) => ({ requestUserId: 'user-a', source: provider })) };
     const start = vi.fn(async (dto: { requirementId: string }) => prisma.workflowRun.create({ data: { requirementId: dto.requirementId, status: 'REPOSITORY_GROUNDING_PENDING', stageExecutions: { create: { stage: 'REPOSITORY_GROUNDING', status: 'RUNNING', attempt: 1 } } } }));
     const automatic = new PrototypeImportsService(prisma as never, registry as never, invocation as never, { createWorkflowRun: start } as never);
     Object.assign(automatic, { archive });
@@ -303,7 +303,7 @@ describe('快速导入自动接续', () => {
 
   it('补传新材料分析失败后，重试必须重新分析新包，不能套用旧结果', async () => {
     const start = vi.fn().mockRejectedValue(new Error('仓库暂不可用'));
-    const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: start } as never);
+    const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveOnlineProvider: async () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: start } as never);
     Object.assign(automatic, { archive });
     const imported = await automatic.create({ projectId: project }, Buffer.from('zip'), 'old.zip', actor());
     await vi.waitFor(async () => expect((await automatic.get(imported.id, actor())).status).toBe('FAILED'));
@@ -325,7 +325,7 @@ describe('快速导入自动接续', () => {
     await prisma.prototypeImport.update({ where: { id: imported.id }, data: { status: 'CONFIRMED', confirmedAt: new Date() } });
     const incomplete = await prisma.workflowRun.create({ data: { requirementId: imported.requirementId, status: 'CREATED' } });
     const start = vi.fn(async (dto: { requirementId: string }) => prisma.workflowRun.create({ data: { requirementId: dto.requirementId, status: 'REPOSITORY_GROUNDING_PENDING', stageExecutions: { create: { stage: 'REPOSITORY_GROUNDING', status: 'RUNNING', attempt: 1 } } } }));
-    const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: start } as never);
+    const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveOnlineProvider: async () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: start } as never);
     Object.assign(automatic, { archive });
     await automatic.onModuleInit();
     expect((await prisma.workflowRun.findUniqueOrThrow({ where: { id: incomplete.id } })).status).toBe('FAILED');
@@ -339,7 +339,7 @@ describe('快速导入自动接续', () => {
   it('接续失败明确报错，重试复用整理结果且只保留一份产物', async () => {
     const start = vi.fn();
     start.mockRejectedValueOnce(new Error('secret repository credential')).mockImplementationOnce(async (dto: { requirementId: string }) => prisma.workflowRun.create({ data: { requirementId: dto.requirementId, status: 'REPOSITORY_GROUNDING_PENDING', stageExecutions: { create: { stage: 'REPOSITORY_GROUNDING', status: 'RUNNING', attempt: 1 } } } }));
-    const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: start } as never);
+    const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveOnlineProvider: async () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: start } as never);
     Object.assign(automatic, { archive });
     const imported = await automatic.create({ projectId: project }, Buffer.from('zip'), 'retry.zip', actor());
     await vi.waitFor(async () => expect((await automatic.get(imported.id, actor())).status).toBe('FAILED'));
@@ -358,7 +358,7 @@ describe('快速导入自动接续', () => {
   it('旧等待确认记录接续复用已保存的整理，不再请求用户或重跑 AI', async () => {
     const imported = await create();
     const start = vi.fn(async (dto: { requirementId: string }) => prisma.workflowRun.create({ data: { requirementId: dto.requirementId, status: 'REPOSITORY_GROUNDING_PENDING', stageExecutions: { create: { stage: 'REPOSITORY_GROUNDING', status: 'RUNNING', attempt: 1 } } } }));
-    const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: start } as never);
+    const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveOnlineProvider: async () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: start } as never);
     Object.assign(automatic, { archive });
     const calls = executor.analyzePrototype.mock.calls.length;
     await automatic.analyze(imported.id, { revision: imported.revision }, actor());
@@ -373,8 +373,8 @@ describe('快速导入自动接续', () => {
       prepareWorkflowRepositories: async () => undefined,
       generateWorkflowRepositoryGrounding: async () => undefined,
       buildWorkflowRepositoryPath: () => '/tmp/flowx-prototype-test',
-    } as never, {} as never, { normalizeAiProvider: () => 'codex' } as never, {} as never, {} as never, {} as never);
-    const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveInvocationContext: async () => ({}) } as never, workflow);
+    } as never, {} as never, { normalizeAiProvider: () => 'codex', resolveOnlineProvider: async () => 'codex' } as never, {} as never, {} as never, {} as never);
+    const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveOnlineProvider: async () => 'codex', resolveInvocationContext: async () => ({}) } as never, workflow);
     Object.assign(automatic, { archive });
     const surfaces = vi.spyOn(PrototypeArchive.prototype, 'surfaces').mockResolvedValue([]);
     try {

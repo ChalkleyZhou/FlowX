@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ClipboardCheck, Send } from 'lucide-react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api, getFlowxApiBaseUrl } from '../api';
+import { ONLINE_AI_UNAVAILABLE_MESSAGE, useOnlineAiProviders } from '../online-ai';
 import { ContextPanel } from '../components/ContextPanel';
 import { OpenDesignLaunchGuideDialog } from '../components/OpenDesignLaunchGuideDialog';
 import { DesignArtifactPreview } from '../components/DesignArtifactPreview';
@@ -399,6 +400,7 @@ export function WorkflowRunDetailPage() {
 
 function WorkflowRunDetailContent() {
   const { workflowRunId = '' } = useParams();
+  const onlineAi = useOnlineAiProviders();
   const navigate = useNavigate();
   const [workflowRun, setWorkflowRun] = useState<WorkflowRun | null>(null);
   const [loading, setLoading] = useState(false);
@@ -2078,24 +2080,28 @@ function WorkflowRunDetailContent() {
             <DialogDescription>选择本次审查使用的 AI 工具。</DialogDescription>
           </DialogHeader>
           <div className="flex gap-3">
-            {(['codex', 'cursor'] as const).map((provider) => (
+            {(onlineAi?.onlineAvailable === false ? [] : onlineAi?.providers.length ? onlineAi.providers : [
+              { id: 'codex' as const, label: 'Codex' },
+              { id: 'cursor' as const, label: 'Cursor CLI' },
+            ]).map((provider) => (
               <UiButton
-                key={provider}
+                key={provider.id}
                 type="button"
                 className="flex-1"
-                variant={reviewProvider === provider ? 'default' : 'outline'}
+                variant={(reviewProviderOverride ?? onlineAi?.defaultProvider ?? reviewProvider) === provider.id ? 'default' : 'outline'}
                 disabled={stageActionsLocked}
                 onClick={() => {
                   if (!workflowRun) return;
-                  setReviewProviderOverride(provider);
+                  setReviewProviderOverride(provider.id);
                   setReviewLaunchOpen(false);
-                  void runAction('AI_REVIEW', () => api.runReview(workflowRun.id, provider), 'AI 审查已启动');
+                  void runAction('AI_REVIEW', () => api.runReview(workflowRun.id, provider.id), 'AI 审查已启动');
                 }}
               >
-                {provider === 'codex' ? 'Codex' : 'Cursor CLI'}
+                {provider.label}
               </UiButton>
             ))}
           </div>
+          {onlineAi && !onlineAi.onlineAvailable ? <p role="status" className="text-sm text-muted-foreground">{ONLINE_AI_UNAVAILABLE_MESSAGE}</p> : null}
         </DialogContent>
       </Dialog>
 

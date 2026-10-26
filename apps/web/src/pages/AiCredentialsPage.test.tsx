@@ -12,6 +12,8 @@ const { errorToastSpy } = vi.hoisted(() => ({
 
 vi.mock('../api', () => ({
   api: {
+    getOnlineAiPolicy: vi.fn(),
+    setPreferredAiProvider: vi.fn(),
     getCursorCredentialStatus: vi.fn(),
     getCodexCredentialStatus: vi.fn(),
     upsertCursorCredential: vi.fn(),
@@ -35,8 +37,15 @@ describe('AiCredentialsPage', () => {
   beforeEach(async () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     const { api } = await import('../api');
-    vi.mocked(api.getCursorCredentialStatus).mockResolvedValue({ provider: 'cursor', configured: false });
-    vi.mocked(api.getCodexCredentialStatus).mockResolvedValue({ provider: 'codex', configured: false });
+    vi.mocked(api.getOnlineAiPolicy).mockResolvedValue({
+      preferredProvider: null,
+      defaultProvider: null,
+      onlineAvailable: false,
+      providers: [
+        { id: 'cursor', label: 'Cursor CLI', configured: false },
+        { id: 'codex', label: 'Codex', configured: false },
+      ],
+    });
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);

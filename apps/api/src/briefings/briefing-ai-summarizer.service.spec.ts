@@ -38,6 +38,7 @@ describe('BriefingAiSummarizerService', () => {
   const cursorRunStructuredJsonStage = vi.fn();
   const executorRegistryGet = vi.fn();
   const resolveInvocationContext = vi.fn();
+  const resolveOnlineProvider = vi.fn();
   const getConfiguredDefaultProvider = vi.fn();
   const originalDisabled = process.env.FLOWX_BRIEFING_AI_DISABLED;
   const originalBriefingProvider = process.env.FLOWX_BRIEFING_AI_PROVIDER;
@@ -49,6 +50,7 @@ describe('BriefingAiSummarizerService', () => {
     delete process.env.FLOWX_BRIEFING_AI_PROVIDER;
     delete process.env.FLOWX_BRIEFING_AI_TIMEOUT_MS;
     getConfiguredDefaultProvider.mockReturnValue('codex');
+    resolveOnlineProvider.mockResolvedValue('codex');
     resolveInvocationContext.mockResolvedValue({ codexCredentialSource: 'instance' });
     codexRunStructuredJsonStage.mockResolvedValue(aiOutput);
     cursorRunStructuredJsonStage.mockResolvedValue(aiOutput);
@@ -83,6 +85,7 @@ describe('BriefingAiSummarizerService', () => {
       { get: executorRegistryGet } as never,
       {
         resolveInvocationContext,
+        resolveOnlineProvider,
         getConfiguredDefaultProvider,
       } as never,
     );
@@ -115,8 +118,8 @@ describe('BriefingAiSummarizerService', () => {
     ]);
   });
 
-  it('uses Cursor when FLOWX_BRIEFING_AI_PROVIDER=cursor', async () => {
-    process.env.FLOWX_BRIEFING_AI_PROVIDER = 'cursor';
+  it('uses the organization preferred online provider', async () => {
+    resolveOnlineProvider.mockResolvedValue('cursor');
 
     const summary = await createService().summarize({
       period: 'DAILY',

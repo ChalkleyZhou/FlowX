@@ -258,7 +258,7 @@ export class TestDesignsService {
     recipient?: AiInvocationRecipient | null,
   ) {
     try {
-      const provider = this.aiInvocationContextService.getConfiguredDefaultProvider();
+      const provider = await this.aiInvocationContextService.resolveOnlineProvider(recipient?.flowxOrganizationId);
       const context = await this.aiInvocationContextService.resolveInvocationContext(provider, recipient);
       const output: TestDesignGenerationOutput = await this.aiExecutor.generateTestDesign(input, context);
       validateGeneratedOutput(output, new Set(existingCaseIds));

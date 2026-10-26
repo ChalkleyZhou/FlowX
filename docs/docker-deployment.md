@@ -5,7 +5,7 @@
 - 直接暴露前端 `4173` 和 API `3000`
 - 使用 Nginx 反向代理，只暴露 `80`
 - 使用 `mock` 执行器快速启动
-- 使用 `codex` 执行器，并通过手动 `codex login` 持久化登录态
+- 在组织「AI 凭据」中保存密钥后使用在线 Codex / Cursor；未配置时在线 AI 不可用
 
 ## 1. 部署前准备
 
@@ -53,7 +53,7 @@ FlowX 容器内部包含两个服务：
 | `WEB_PORT`                             | 前端静态服务端口，默认 `4173`                                                               | 否              |
 | `DATABASE_URL`                         | SQLite 数据库路径                                                                     | 是              |
 | `AI_EXECUTOR_PROVIDER`                 | `mock`、`codex` 或 `cursor`                                                        | 是              |
-| `AI_EXECUTOR_DEFAULT_PROVIDER`         | 新工作流默认执行器，`codex` 或 `cursor`                                                     | 否              |
+| `AI_EXECUTOR_DEFAULT_PROVIDER`         | 不再决定在线 AI。在线默认执行器由组织「AI 凭据」里的优先项决定                                      | 否              |
 | `CODEX_HOME`                           | Codex CLI 登录态目录                                                                  | `codex` 时建议设置  |
 | `CODEX_READ_SANDBOX`                   | Codex 只读阶段沙箱模式，默认 `read-only`；仅在 Docker 内核不支持 `bwrap` 时临时改为 `danger-full-access` | 否              |
 | `CODEX_WRITE_SANDBOX`                  | Codex 写入阶段沙箱模式，默认 `workspace-write`                                              | 否              |
@@ -63,8 +63,8 @@ FlowX 容器内部包含两个服务：
 | `CURSOR_NO_PROGRESS_TIMEOUT_MS`        | Cursor 进程无输出/无进展判定超时（毫秒）；设 `0` 关闭该判定                                            | 否，默认 `0`       |
 | `FLOWX_IDEATION_STALE_HEARTBEAT_MS`    | 启动恢复时判定 RUNNING 会话“心跳过期”的阈值（毫秒）                                                | 否，默认 `120000`  |
 | `FLOWX_CREDENTIAL_MASTER_KEY`          | 用户级 Cursor 凭据加密主密钥（BYO 模式）                                                       | 启用用户自有凭据时必填    |
-| `FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL` | 是否强制仅允许用户级 Cursor 凭据（禁用实例级/登录态回退）                                                | 否，默认 `false`   |
-| `FLOWX_CODEX_REQUIRE_USER_CREDENTIAL`  | 是否强制仅允许用户级 Codex 凭据（禁用实例级/登录态回退）                                                 | 否，默认 `false`   |
+| `FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL` | 已不再控制在线 AI。在线调用始终要求组织 Cursor 凭据                                              | 否              |
+| `FLOWX_CODEX_REQUIRE_USER_CREDENTIAL`  | 已不再控制在线 AI。在线调用始终要求组织 Codex 凭据                                               | 否              |
 | `FRONTEND_BUILD_MODE`                  | 前端构建模式：`nginx`、`direct`、`auto`                                                   | 建议填写           |
 | `DIRECT_API_BASE_URL`                  | 直连模式下前端访问 API 的地址                                                                | `direct` 时建议填写 |
 | `DINGTALK_APP_ID`                      | 钉钉登录 App ID                                                                      | 仅钉钉登录时必填       |
@@ -85,10 +85,8 @@ FlowX 容器内部包含两个服务：
 - 钉钉变量是 `DINGTALK_APP_ID`，不是 `DINGTALK_APPID`
 - 如果你现在只是自己使用，可以先不配置钉钉登录
 - 使用“同步钉钉用户”前，还需在钉钉开放平台为应用开通通讯录部门和用户读取权限（至少包括 `qyapi_get_department_member`）；FlowX 只同步用户，不保存部门结构
-- 如果你要用手动 `codex login`，可以不填 `OPENAI_API_KEY`
-- 如果要启用“每个用户使用自己的 Cursor API Key”，必须设置 `FLOWX_CREDENTIAL_MASTER_KEY`，用于服务端加密存储用户凭据
-- 若希望彻底禁用共享身份回退，可设置 `FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL=true`
-- 若希望 Codex 也彻底禁用共享身份回退，可设置 `FLOWX_CODEX_REQUIRE_USER_CREDENTIAL=true`
+- 在线 AI 只读取「AI 凭据」页保存的当前组织密钥，必须设置 `FLOWX_CREDENTIAL_MASTER_KEY`。未配置凭据时在线 AI 不可用
+- 服务器上的 `OPENAI_API_KEY`、`CURSOR_API_KEY` 和 CLI 登录态不会再作为在线调用的回退
 - `FRONTEND_BUILD_MODE=nginx` 表示前端走同源 `/api` 代理，不在构建时写死完整 API 域名
 - `FRONTEND_BUILD_MODE=direct` 表示前端直接请求 `DIRECT_API_BASE_URL`
 - 要让设计阶段接入 OpenDesign，需在运行 API 的同一环境安装 `od` CLI、对所用 agent 执行 `od mcp install codex|cursor`，并设置 `OPENDESIGN_MCP_ENABLED=1` 后重启；详见 [docs/opendesign-design-stage.md](opendesign-design-stage.md)
@@ -157,9 +155,9 @@ docker run -d \
 - Web：`http://YOUR_SERVER_IP:4173`
 - API：`http://YOUR_SERVER_IP:3000`
 
-### 5.2 使用 codex 执行器，并手动登录
+### 5.2 启用在线 AI
 
-如果你当前仍是个人使用阶段，最简单的是手动登录一次 Codex：
+在线 AI 只使用组织「AI 凭据」页保存的密钥。容器环境变量 `OPENAI_API_KEY`、`CURSOR_API_KEY` 和 `codex login` 不会让在线 AI 可用。启动前设置 `FLOWX_CREDENTIAL_MASTER_KEY`，用来加密这些组织密钥：
 
 ```bash
 docker run -d \
@@ -169,47 +167,19 @@ docker run -d \
   -e PORT=3000 \
   -e WEB_PORT=4173 \
   -e DATABASE_URL="file:/data/dev-current.db" \
-  -e AI_EXECUTOR_PROVIDER="codex" \
-  -e CODEX_HOME="/data/.codex" \
+  -e FLOWX_CREDENTIAL_MASTER_KEY="replace-with-a-long-random-string" \
   -e GIT_AUTHOR_NAME="FlowX Bot" \
   -e GIT_AUTHOR_EMAIL="flowx@example.com" \
   -v flowx-data:/data \
   flowx:latest
 ```
 
-容器启动后，进入容器执行：
-
-```bash
-docker exec -it flowx sh
-codex login
-```
+容器启动后登录 Web，进入「AI 凭据」，保存 Cursor 和/或 Codex API Key，并选择优先使用的在线 AI。没有配置任何凭据时，在线 AI 不可用。本地 Cursor、Codex 和 WorkBuddy 不使用这组密钥。
 
 注意：
 
-- 登录态默认保存在 `/data/.codex`
-- 只要 `flowx-data` 卷还在，重启容器后登录态仍会保留
-- 如果你删除了容器和数据卷，就需要重新登录
-
-### 5.3 使用 codex 执行器，并通过 API Key
-
-如果你后面不想再手动登录，也可以改为：
-
-```bash
-docker run -d \
-  --name flowx \
-  -p 3000:3000 \
-  -p 4173:4173 \
-  -e PORT=3000 \
-  -e WEB_PORT=4173 \
-  -e DATABASE_URL="file:/data/dev-current.db" \
-  -e AI_EXECUTOR_PROVIDER="codex" \
-  -e OPENAI_API_KEY="your_openai_api_key" \
-  -e CODEX_HOME="/data/.codex" \
-  -e GIT_AUTHOR_NAME="FlowX Bot" \
-  -e GIT_AUTHOR_EMAIL="flowx@example.com" \
-  -v flowx-data:/data \
-  flowx:latest
-```
+- 更换 `FLOWX_CREDENTIAL_MASTER_KEY` 后，已保存的组织密钥无法解密，需要重新保存
+- `CODEX_READ_SANDBOX` 和 `CODEX_WRITE_SANDBOX` 仍作用于 Codex CLI 沙箱
 
 ## 6. 方案二：Nginx 反向代理部署
 
@@ -306,23 +276,9 @@ irm http://<host>/install.ps1 | iex
 
 脚本会优先使用公网 `PUBLIC_API_BASE_URL`；若写成内网 IP / `127.0.0.1` 则忽略，改用当前请求的站点 origin + `/api`。Nginx 部署时请在 `.env.docker` 中设置与对外访问一致的地址，例如 `PUBLIC_API_BASE_URL=https://flowx.example.com/api`（见 §4.2）。
 
-### 6.3 配置 Codex 登录
+### 6.3 在线 AI 不使用服务器登录态
 
-如果 `docker-compose.nginx.yml` 中使用的是：
-
-```yaml
-AI_EXECUTOR_PROVIDER: "codex"
-CODEX_HOME: "/data/.codex"
-CODEX_READ_SANDBOX: "read-only"
-CODEX_WRITE_SANDBOX: "workspace-write"
-```
-
-那么启动之后，执行一次：
-
-```bash
-docker exec -it flowx sh
-codex login
-```
+`AI_EXECUTOR_PROVIDER`、`CODEX_HOME` 和容器里的 `codex login` 不会启用在线 AI。在线调用只读取组织「AI 凭据」页保存的密钥，配置方式见下一节。`CODEX_READ_SANDBOX` 和 `CODEX_WRITE_SANDBOX` 仍作用于 Codex CLI 沙箱。本地 Cursor、Codex 和 WorkBuddy 由开发者本机 IDE 执行，不使用这组组织密钥。
 
 钉钉登录回调地址也应配置为：
 
@@ -336,43 +292,15 @@ http://YOUR_SERVER_HOST/api/auth/dingtalk/callback
 - `.env.docker` 用来给容器注入运行时环境变量
 - 如果 `.env.docker` 不存在，Compose 替换变量时会退回到文件里写的默认值
 
-### 6.4 启用用户自有 Cursor 凭据（BYO）
+### 6.4 配置组织 AI 凭据
 
-如果你希望每个登录用户都使用自己的 Cursor API Key（而不是共享服务端 `CURSOR_API_KEY`）：
+在线 AI 使用当前组织在「AI 凭据」页保存的密钥，不使用服务器实例密钥或 CLI 登录态。
 
 1. 在 `.env.docker` 中设置 `FLOWX_CREDENTIAL_MASTER_KEY`（建议使用高强度随机字符串）
 2. 重启服务
-3. 用户登录后进入“AI 凭据”页面，配置个人 Cursor API Key
+3. 登录后进入「AI 凭据」，保存 Cursor 和/或 Codex API Key，并选择优先使用的在线 AI
 
-执行优先级为：
-
-- 用户凭据
-- 实例级 `CURSOR_API_KEY`
-- 容器内 `agent login` / `cursor agent login` 登录态
-
-若设置 `FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL=true`：
-
-- 未配置用户凭据的请求会直接失败（返回 `CURSOR_USER_CREDENTIAL_REQUIRED`）
-- 不再回退实例级 `CURSOR_API_KEY` 或登录态
-
-### 6.5 启用用户自有 Codex 凭据（BYO）
-
-如果你希望每个登录用户都使用自己的 Codex/OpenAI API Key（而不是共享服务端 `OPENAI_API_KEY`）：
-
-1. 在 `.env.docker` 中设置 `FLOWX_CREDENTIAL_MASTER_KEY`（与 Cursor 共用加密主密钥）
-2. 重启服务
-3. 用户登录后进入“AI 凭据”页面，配置个人 Codex/OpenAI API Key
-
-执行优先级为：
-
-- 用户凭据
-- 实例级 `OPENAI_API_KEY`
-- 容器内 `codex login` 登录态
-
-若设置 `FLOWX_CODEX_REQUIRE_USER_CREDENTIAL=true`：
-
-- 未配置用户凭据的请求会直接失败（返回 `CODEX_USER_CREDENTIAL_REQUIRED`）
-- 不再回退实例级 `OPENAI_API_KEY` 或登录态
+没有配置任何凭据时，在线 AI 不可用。本地 Cursor、Codex 和 WorkBuddy 不走这组密钥。
 
 ## 7. 数据库说明
 
@@ -702,9 +630,8 @@ docker logs -f flowx
 
 优先检查：
 
-- 是否已经执行过 `codex login`
-- `CODEX_HOME` 是否持久化到了 `/data/.codex`
-- 是否误删了 volume
+- 当前组织是否已在「AI 凭据」保存 Codex 密钥，且该密钥仍有效
+- `FLOWX_CREDENTIAL_MASTER_KEY` 是否与保存密钥时一致
 - 是否有可访问 Git 仓库的凭证
 
 ### 11.4 钉钉登录不可用
@@ -727,8 +654,8 @@ DINGTALK_APPID
 如果你现在还是自己使用阶段，建议按这个顺序：
 
 1. 先用 `mock` 模式把 Docker 跑通
-2. 再切到 `codex`，并手动执行一次 `codex login`
-3. 确认工作流 AI 阶段能正常执行
+2. 设置 `FLOWX_CREDENTIAL_MASTER_KEY`，在「AI 凭据」保存 Codex 或 Cursor 密钥并选择优先项
+3. 确认工作流在线 AI 阶段能正常执行
 4. 最后再启用 Nginx，对外只暴露 `80`
 
 这样排障最清晰，不会把 Docker、Nginx、Codex、鉴权问题混在一起。

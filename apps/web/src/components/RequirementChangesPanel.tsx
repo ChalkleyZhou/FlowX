@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import { ONLINE_AI_UNAVAILABLE_MESSAGE, useOnlineAiProviders } from '../online-ai';
 import type { RequirementChange, RequirementChanges } from '../types';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
@@ -30,6 +31,13 @@ function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged }: P
   const [busy, setBusy] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [aiProvider, setAiProvider] = useState<'inherit' | 'codex' | 'cursor' | null>(null);
+  const onlineAi = useOnlineAiProviders();
+  const providerOptions = onlineAi?.onlineAvailable === false
+    ? []
+    : onlineAi?.providers.length
+      ? onlineAi.providers
+      : [{ id: 'codex' as const, label: 'Codex' }, { id: 'cursor' as const, label: 'Cursor CLI' }];
+  const onlineBlocked = onlineAi !== null && !onlineAi.onlineAvailable;
   const pendingNavigate = useRef<string | null>(null);
   const invalidFile = file && (!/\.zip$/i.test(file.name) || file.size > 20 * 1024 * 1024);
 
@@ -121,7 +129,7 @@ function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged }: P
     setBusy(true);
     setWriteError(null);
     try {
-      const provider = aiProvider ?? data?.aiProvider ?? 'inherit';
+      const provider = aiProvider ?? onlineAi?.defaultProvider ?? data?.aiProvider ?? 'inherit';
       const signature = JSON.stringify([text, mode, provider, file?.name, file?.size, file?.lastModified]);
       if (draftRequest.current?.signature !== signature) {
         const id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -212,16 +220,16 @@ function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged }: P
           <label className="block space-y-2 text-sm"><span>更新原型 ZIP（可选，最大 20 MiB）</span><Input key={file ? 'selected' : 'empty'} type="file" accept=".zip,application/zip" aria-label="变更原型 ZIP" disabled={busy} onChange={event => { setFile(event.target.files?.[0] ?? null); draftRequest.current = null; }} /></label>
           {file && <>
             <div className="flex flex-wrap items-center gap-2 text-sm"><span>{file.name}</span><Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => { setFile(null); draftRequest.current = null; }}>移除 ZIP</Button></div>
-            <div className="max-w-xs space-y-2"><label className="text-sm" htmlFor={`change-ai-${requirementId}`}>使用的 AI</label><Select value={aiProvider ?? data?.aiProvider ?? 'inherit'} onValueChange={(value: 'inherit' | 'codex' | 'cursor') => setAiProvider(value)} disabled={busy}>
-              <SelectTrigger id={`change-ai-${requirementId}`} aria-label="变更使用的 AI"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="inherit">沿用当前 AI</SelectItem><SelectItem value="codex">Codex</SelectItem><SelectItem value="cursor">Cursor CLI</SelectItem></SelectContent>
-            </Select></div>
+            <div className="max-w-xs space-y-2"><label className="text-sm" htmlFor={`change-ai-${requirementId}`}>使用的 AI</label><Select value={aiProvider ?? onlineAi?.defaultProvider ?? 'inherit'} onValueChange={(value: 'inherit' | 'codex' | 'cursor') => setAiProvider(value)} disabled={busy || onlineBlocked}>
+              <SelectTrigger id={`change-ai-${requirementId}`} aria-label="变更使用的 AI"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="inherit">沿用当前 AI</SelectItem>{providerOptions.map((provider) => <SelectItem key={provider.id} value={provider.id}>{provider.label}</SelectItem>)}</SelectContent>
+            </Select>{onlineBlocked ? <p role="status" className="text-sm text-muted-foreground">{ONLINE_AI_UNAVAILABLE_MESSAGE}</p> : null}</div>
             <p className="text-xs text-muted-foreground">以新 ZIP 重新整理需求与设计并启动新一轮流程，旧流程和材料保留。变更说明可留空。</p>
           </>}
           {invalidFile && <p role="alert" className="text-sm text-destructive">请选择不超过 20 MiB 的 ZIP 文件</p>}
           <p className="text-xs leading-5 text-muted-foreground">提交后继续当前流程；较大调整可重新走澄清、设计和研发流程，旧流程与产物保留。</p>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" type="submit" disabled={busy || !!file || !content.trim()}>{busy ? '正在提交…' : '提交变更'}</Button>
-            <Button size="sm" type="button" variant="outline" disabled={busy || !!invalidFile || (!content.trim() && !file)} onClick={() => void submit('RESTART')}>重新走流程</Button>
+            <Button size="sm" type="button" variant="outline" disabled={busy || !!invalidFile || (!content.trim() && !file) || (!!file && onlineBlocked)} onClick={() => void submit('RESTART')}>重新走流程</Button>
             <Button size="sm" type="button" variant="ghost" disabled={busy} onClick={() => setOpen(false)}>收起</Button>
           </div>
         </form>}

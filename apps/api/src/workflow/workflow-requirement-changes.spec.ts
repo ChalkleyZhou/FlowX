@@ -19,7 +19,7 @@ const stopAfterContext = () => vi.fn(async (_input: unknown) => { throw new Erro
 const generateDesign = stopAfterContext(), generateSpecPlan = stopAfterContext(), executeTask = stopAfterContext(), reviewCode = stopAfterContext();
 const brainstorm = vi.fn(async (_input: unknown) => ({ problemStatement: '导出', targetUsers: [], goals: [], nonGoals: [], userStories: [], constraints: [], openQuestions: [] }));
 const workflow = new WorkflowService(prisma as never, new WorkflowStateMachine(), sync as never, {} as never,
-  { normalizeAiProvider: (value?: string) => value ?? 'codex', resolveInvocationContext: async () => ({}) } as never,
+  { normalizeAiProvider: (value?: string) => value ?? 'codex', resolveOnlineProvider: async (_organizationId?: string | null, value?: string | null) => value === 'cursor' ? 'cursor' : 'codex', resolveInvocationContext: async () => ({}) } as never,
   { get: () => ({ brainstorm, generateDesign, generateSpecPlan, executeTask, reviewCode }) } as never, {} as never, {} as never);
 const jobs = new Map<string, () => Promise<void>>();
 vi.spyOn(workflow as never, 'runInBackground' as never).mockImplementation(((key: string, job: () => Promise<void>) => jobs.set(key, job)) as never);
@@ -247,7 +247,7 @@ describe('需求变更工作流与上下文', () => {
     const resumeTx = new Promise<void>((resolve) => { resume = resolve; });
     const delayedDb = { workflowRun: prisma.workflowRun, $transaction: async (callback: Parameters<typeof prisma.$transaction>[0]) => { entered(); await resumeTx; return prisma.$transaction(callback as never); } };
     const delayed = new WorkflowService(delayedDb as never, new WorkflowStateMachine(), sync as never, {} as never,
-      { normalizeAiProvider: (value?: string) => value ?? 'codex' } as never, { get: () => ({ brainstorm, generateDesign, generateSpecPlan, executeTask, reviewCode }) } as never, {} as never, {} as never);
+      { normalizeAiProvider: (value?: string) => value ?? 'codex', resolveOnlineProvider: async (_organizationId?: string | null, value?: string | null) => value === 'cursor' ? 'cursor' : 'codex' } as never, { get: () => ({ brainstorm, generateDesign, generateSpecPlan, executeTask, reviewCode }) } as never, {} as never, {} as never);
     const background = vi.spyOn(delayed as never, 'runInBackground' as never).mockImplementation((() => undefined) as never);
     const pending = delayed[method](run.id);
     await enteredTx;

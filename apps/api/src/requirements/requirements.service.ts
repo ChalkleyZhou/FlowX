@@ -480,7 +480,8 @@ export class RequirementsService {
 
     const previousBriefs = await this.getPreviousBriefs(requirementId);
     const previousAttemptCount = previousBriefs.length;
-    const executor = this.resolveIdeationExecutor();
+    const online = await this.resolveIdeationOnline(authSession);
+    const executor = online.executor;
     const session = await this.prisma.ideationSession.create({
       data: {
         requirementId,
@@ -500,8 +501,8 @@ export class RequirementsService {
     this.runIdeationInBackground(`brainstorm:${session.id}`, async () => {
     try {
       const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
-        undefined,
-        this.toAiInvocationRecipient(authSession),
+        online.provider,
+        online.recipient,
       );
       const result = await executor.brainstorm(
         {
@@ -563,7 +564,8 @@ export class RequirementsService {
       );
     }
 
-    const executor = this.resolveIdeationExecutor();
+    const online = await this.resolveIdeationOnline(authSession);
+    const executor = online.executor;
     const previousBriefs = await this.getPreviousBriefs(requirementId);
     const session = await this.prisma.ideationSession.create({
       data: {
@@ -584,8 +586,8 @@ export class RequirementsService {
     this.runIdeationInBackground(`brainstorm-revise:${session.id}`, async () => {
     try {
       const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
-        undefined,
-        this.toAiInvocationRecipient(authSession),
+        online.provider,
+        online.recipient,
       );
       const result = await executor.brainstorm(
         {
@@ -705,7 +707,8 @@ export class RequirementsService {
     requirement = await this.ensureIdeationRepositoriesReady(requirement);
 
     const previousDesigns = await this.getPreviousDesigns(requirementId);
-    const executor = this.resolveIdeationExecutor();
+    const online = await this.resolveIdeationOnline(authSession);
+    const executor = online.executor;
     const session = await this.prisma.ideationSession.create({
       data: {
         requirementId,
@@ -725,8 +728,8 @@ export class RequirementsService {
     this.runIdeationInBackground(`design:${session.id}`, async () => {
     try {
       const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
-        undefined,
-        this.toAiInvocationRecipient(authSession),
+        online.provider,
+        online.recipient,
       );
       const readyRepos = this.resolveReadyRepositories(requirement);
       this.logger.log(
@@ -813,7 +816,8 @@ export class RequirementsService {
     const previousLatestDesign = this.extractDesignSpecFromSessionOutput(
       latestDesignSessionWithOutput?.output,
     );
-    const executor = this.resolveIdeationExecutor();
+    const online = await this.resolveIdeationOnline(authSession);
+    const executor = online.executor;
     const session = await this.prisma.ideationSession.create({
       data: {
         requirementId,
@@ -833,8 +837,8 @@ export class RequirementsService {
     this.runIdeationInBackground(`design-revise:${session.id}`, async () => {
     try {
       const invocationContext = await this.aiInvocationContextService.resolveInvocationContext(
-        undefined,
-        this.toAiInvocationRecipient(authSession),
+        online.provider,
+        online.recipient,
       );
       const readyRepos = this.resolveReadyRepositories(requirement);
       this.logger.log(
@@ -1027,8 +1031,10 @@ export class RequirementsService {
 
   // ── Ideation helpers ──
 
-  private resolveIdeationExecutor(): AIExecutor {
-    return this.executorRegistry.get(this.aiInvocationContextService.normalizeAiProvider(undefined));
+  private async resolveIdeationOnline(authSession?: IdeationAuthSession) {
+    const recipient = this.toAiInvocationRecipient(authSession);
+    const provider = await this.aiInvocationContextService.resolveOnlineProvider(recipient?.flowxOrganizationId);
+    return { recipient, provider, executor: this.executorRegistry.get(provider) };
   }
 
   private runIdeationInBackground(taskName: string, job: () => Promise<void>) {

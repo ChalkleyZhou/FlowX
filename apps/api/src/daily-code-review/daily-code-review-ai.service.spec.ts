@@ -8,6 +8,7 @@ import * as reviewSkillDiscovery from './review-skill-discovery';
 describe('DailyCodeReviewAiService', () => {
   const reviewDailyChanges = vi.fn();
   const resolveInvocationContext = vi.fn();
+  const resolveOnlineProvider = vi.fn();
   const getConfiguredDefaultProvider = vi.fn();
   let repoWithSkill: string;
 
@@ -19,6 +20,7 @@ describe('DailyCodeReviewAiService', () => {
     delete process.env.FLOWX_BRIEFING_AI_ENABLED;
     delete process.env.FLOWX_DAILY_CODE_REVIEW_AI_PROVIDER;
     getConfiguredDefaultProvider.mockReturnValue('mock');
+    resolveOnlineProvider.mockResolvedValue('codex');
     resolveInvocationContext.mockResolvedValue({ provider: 'mock' });
 
     repoWithSkill = mkdtempSync(join(tmpdir(), 'flowx-daily-cr-ai-'));
@@ -43,6 +45,7 @@ describe('DailyCodeReviewAiService', () => {
       } as never,
       {
         resolveInvocationContext,
+        resolveOnlineProvider,
         getConfiguredDefaultProvider,
       } as never,
     );

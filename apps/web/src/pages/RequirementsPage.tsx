@@ -33,6 +33,7 @@ import type { Project, Requirement } from '../types';
 import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
 import { formatRequirementWorkflowScope, getActiveRequirementWorkflows } from '../utils/requirement-workflows';
 import { formatWorkflowStatus } from '../utils/workflow-ui';
+import { normalizeOnlineAiProviders, ONLINE_AI_UNAVAILABLE_MESSAGE } from '../online-ai';
 
 const emptyCreateDraft = {
   projectId: '',
@@ -48,7 +49,6 @@ const emptyCreateDraft = {
   versionId: '',
 };
 
-const AI_PROVIDER_STORAGE_KEY = 'flowx-default-ai-provider';
 const ALL_FILTER_VALUE = '__all__';
 
 const planningStatusOptions = [
@@ -90,18 +90,16 @@ export function RequirementsPage() {
   const createInFlight = useRef(false);
   const [launchModalRequirement, setLaunchModalRequirement] = useState<Requirement | null>(null);
   const [launchRepositoryIds, setLaunchRepositoryIds] = useState<string[]>([]);
-  const [launchAiProvider, setLaunchAiProvider] = useState<'codex' | 'cursor'>('codex');
-  const [defaultAiProvider, setDefaultAiProvider] = useState<'codex' | 'cursor'>('codex');
-  const [availableAiProviders, setAvailableAiProviders] = useState<Array<{ id: 'codex' | 'cursor'; label: string }>>([
-    { id: 'codex', label: 'Codex' },
-    { id: 'cursor', label: 'Cursor CLI' },
-  ]);
+  const [launchAiProvider, setLaunchAiProvider] = useState<'codex' | 'cursor' | null>(null);
+  const [defaultAiProvider, setDefaultAiProvider] = useState<'codex' | 'cursor' | null>(null);
+  const [onlineAiAvailable, setOnlineAiAvailable] = useState(false);
+  const [availableAiProviders, setAvailableAiProviders] = useState<Array<{ id: 'codex' | 'cursor'; label: string }>>([]);
   const [launchSubmitting, setLaunchSubmitting] = useState(false);
   const [createDraft, setCreateDraft] = useState(emptyCreateDraft);
   const [createMode, setCreateMode] = useState<'manual' | 'prototype'>('manual');
   const [prototypeFile, setPrototypeFile] = useState<File | null>(null);
   const [prototypeGoal, setPrototypeGoal] = useState('');
-  const [prototypeProvider, setPrototypeProvider] = useState<'codex' | 'cursor'>('codex');
+  const [prototypeProvider, setPrototypeProvider] = useState<'codex' | 'cursor' | null>(null);
   const [prototypeError, setPrototypeError] = useState<string | null>(null);
   const [prototypeSubmitting, setPrototypeSubmitting] = useState(false);
   const prototypeInFlight = useRef(false);
@@ -177,17 +175,12 @@ export function RequirementsPage() {
       setProjects(projectList);
       setRequirements(requirementList);
       setHasLoaded(true);
-      setAvailableAiProviders(workflowProviderConfig.providers);
-      const storedProvider =
-        typeof window !== 'undefined'
-          ? window.localStorage.getItem(AI_PROVIDER_STORAGE_KEY)
-          : null;
-      const preferredProvider =
-        storedProvider === 'cursor' || storedProvider === 'codex'
-          ? storedProvider
-          : workflowProviderConfig.defaultProvider;
-      setDefaultAiProvider(preferredProvider);
-      setLaunchAiProvider(preferredProvider);
+      const policy = normalizeOnlineAiProviders(workflowProviderConfig);
+      setAvailableAiProviders(policy.providers);
+      setOnlineAiAvailable(policy.onlineAvailable);
+      setDefaultAiProvider(policy.defaultProvider);
+      setLaunchAiProvider(policy.defaultProvider);
+      setPrototypeProvider(policy.defaultProvider);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '加载需求失败');
     } finally {
@@ -311,6 +304,10 @@ export function RequirementsPage() {
   }
 
   async function startWorkflow(requirementId: string) {
+    if (!launchAiProvider) {
+      toast.error(ONLINE_AI_UNAVAILABLE_MESSAGE);
+      return;
+    }
     setLaunchSubmitting(true);
     try {
       const run = await api.createWorkflowRun(
@@ -345,6 +342,10 @@ export function RequirementsPage() {
 
     if (createMode === 'prototype') {
       if (prototypeInFlight.current) return;
+      if (!onlineAiAvailable || !prototypeProvider) {
+        setPrototypeError(ONLINE_AI_UNAVAILABLE_MESSAGE);
+        return;
+      }
       if (!prototypeFile || !/\.zip$/i.test(prototypeFile.name) || prototypeFile.size > 20 * 1024 * 1024) {
         setPrototypeError('请选择不超过 20 MiB 的 ZIP 文件');
         return;
@@ -478,8 +479,9 @@ export function RequirementsPage() {
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-semibold text-foreground">默认 AI 执行器</label>
                   <Select
-                    value={launchAiProvider}
+                    value={launchAiProvider ?? undefined}
                     onValueChange={(value: 'codex' | 'cursor') => setLaunchAiProvider(value)}
+                    disabled={!onlineAiAvailable}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="选择执行器" />
@@ -493,7 +495,9 @@ export function RequirementsPage() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs leading-5 text-muted-foreground">
-                    平台生成与开发执行使用此默认工具；AI 审查可在该阶段单独选择。
+                    {onlineAiAvailable
+                      ? '默认使用组织优先的在线 AI。平台生成与开发执行使用此工具；AI 审查可在该阶段单独选择。'
+                      : ONLINE_AI_UNAVAILABLE_MESSAGE}
                   </p>
                 </div>
                 <div className="flex items-center justify-between gap-3">
@@ -530,7 +534,7 @@ export function RequirementsPage() {
                 </UiButton>
                 <UiButton
                   onClick={() => void startWorkflow(launchModalRequirement.id)}
-                  disabled={launchSubmitting}
+                  disabled={launchSubmitting || !onlineAiAvailable || !launchAiProvider}
                 >
                   {launchSubmitting ? '启动中...' : '确认启动'}
                 </UiButton>
@@ -741,10 +745,10 @@ export function RequirementsPage() {
               </label>
               <p className="text-xs text-muted-foreground">上传 HTML 原型、图片、说明或源码。AI 自动整理需求与设计并接入研发流程，无需逐项确认。</p>
               <label className="flex flex-col gap-2 text-sm">一句话目标（可选）<Textarea aria-label="一句话目标" value={prototypeGoal} onChange={(event) => setPrototypeGoal(event.target.value)} /></label>
-              <div className="flex flex-col gap-2 text-sm"><label>默认 AI 执行器</label><Select value={prototypeProvider} onValueChange={(value: 'codex' | 'cursor') => setPrototypeProvider(value)}><SelectTrigger aria-label="原型整理执行器"><SelectValue /></SelectTrigger><SelectContent>{availableAiProviders.map((provider) => <SelectItem key={provider.id} value={provider.id}>{provider.label}</SelectItem>)}</SelectContent></Select></div>
+              <div className="flex flex-col gap-2 text-sm"><label>默认 AI 执行器</label>{onlineAiAvailable ? <Select value={prototypeProvider ?? undefined} onValueChange={(value: 'codex' | 'cursor') => setPrototypeProvider(value)}><SelectTrigger aria-label="原型整理执行器"><SelectValue /></SelectTrigger><SelectContent>{availableAiProviders.map((provider) => <SelectItem key={provider.id} value={provider.id}>{provider.label}</SelectItem>)}</SelectContent></Select> : <p role="status" className="text-sm leading-6 text-muted-foreground">{ONLINE_AI_UNAVAILABLE_MESSAGE}</p>}</div>
               {prototypeError && <p role="alert" className="text-sm text-danger">{prototypeError}</p>}
             </>}
-            <UiButton type="submit" className="mt-2" disabled={prototypeSubmitting || createSubmitting}>
+            <UiButton type="submit" className="mt-2" disabled={prototypeSubmitting || createSubmitting || (createMode === 'prototype' && !onlineAiAvailable)}>
               {createMode === 'prototype' ? prototypeSubmitting ? '上传整理中…' : '上传原型，AI 整理' : createSubmitting ? '创建中…' : '创建需求'}
             </UiButton>
             </fieldset>

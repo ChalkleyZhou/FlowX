@@ -36,7 +36,7 @@ export class RequirementChangesService {
     if (!this.prototypes) throw new BadRequestException('原型导入服务暂不可用。');
     const source = await this.prisma.workflowRun.findFirst({ where: { requirementId, ...(dto.sourceWorkflowRunId ? { id: dto.sourceWorkflowRunId } : {}) }, orderBy: { createdAt: 'desc' } });
     const base = await this.prisma.prototypeImport.findUnique({ where: { requirementId } });
-    const prototype = { ...await this.prototypes.store(zip, name, dto.aiProvider ?? source?.aiProvider ?? base?.aiProvider ?? undefined), sha256 };
+    const prototype = { ...await this.prototypes.store(zip, name, author.organization.id, dto.aiProvider ?? source?.aiProvider ?? base?.aiProvider ?? undefined), sha256 };
     try {
       return await this.create(requirement.id, { ...dto, content }, author, prototype);
     } finally {

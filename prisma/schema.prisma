@@ -487,6 +487,7 @@ model Organization {
   providerOrganizationId String
   name                   String
   logoUrl                String?
+  preferredAiProvider    String?
   aiCredentials          OrganizationAiCredential[]
   gitCredentials         OrganizationGitCredential[]
   memberships            UserOrganization[]

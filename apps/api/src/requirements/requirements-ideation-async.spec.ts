@@ -14,7 +14,7 @@ function setup() {
   const service = new RequirementsService(
     prisma as never,
     { get: () => executor } as never,
-    { normalizeAiProvider: () => 'codex', resolveInvocationContext: vi.fn().mockResolvedValue({}) } as never,
+    { normalizeAiProvider: () => 'codex', resolveOnlineProvider: async () => 'codex', resolveInvocationContext: vi.fn().mockResolvedValue({}) } as never,
     {} as never, {} as never, {} as never, {} as never,
   );
   vi.spyOn(service, 'findOne').mockResolvedValue({

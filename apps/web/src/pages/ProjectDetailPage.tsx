@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
+import { ONLINE_AI_UNAVAILABLE_MESSAGE, useOnlineAiProviders } from '../online-ai';
 import { PageHeader } from '../components/PageHeader';
 import { ProjectBriefingConfigPanel } from '../components/ProjectBriefingConfigPanel';
 import { ProjectCodeReviewConfigPanel } from '../components/ProjectCodeReviewConfigPanel';
@@ -39,6 +40,7 @@ export function ProjectDetailPage() {
   const [createError, setCreateError] = useState<string | null>(null);
   const createFileInput = useRef<HTMLInputElement>(null);
   const createInFlight = useRef(false);
+  const onlineAi = useOnlineAiProviders();
 
   async function createRequirement(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -57,10 +59,13 @@ export function ProjectDetailPage() {
     setCreateError(null);
     try {
       if (createFile) {
-        const storedProvider = window.localStorage.getItem('flowx-default-ai-provider');
+        if (onlineAi && !onlineAi.onlineAvailable) {
+          setCreateError(ONLINE_AI_UNAVAILABLE_MESSAGE);
+          return;
+        }
         const imported = await api.createPrototypeImport({
           projectId, title, versionId: createVersion.id,
-          ...(storedProvider === 'codex' || storedProvider === 'cursor' ? { aiProvider: storedProvider } : {}),
+          ...(onlineAi?.defaultProvider ? { aiProvider: onlineAi.defaultProvider } : {}),
         }, createFile);
         navigate(`/requirements/${imported.requirementId}?importing=1`);
         return;
@@ -157,7 +162,8 @@ export function ProjectDetailPage() {
             {createError && <p role="alert" className="text-sm text-danger">{createError}</p>}
             <div className="flex justify-end gap-2">
               {!createVersion && <Button variant="outline" asChild><a href="#project-versions" onClick={() => setCreateOpen(false)}>去设置当前版本</a></Button>}
-              <Button type="submit" disabled={creating || !createVersion}>{creating ? createFile ? '上传整理中…' : '创建中…' : createFile ? '上传原型，AI 整理' : '创建需求'}</Button>
+              {createFile && onlineAi && !onlineAi.onlineAvailable ? <p role="status" className="text-sm text-muted-foreground">{ONLINE_AI_UNAVAILABLE_MESSAGE}</p> : null}
+              <Button type="submit" disabled={creating || !createVersion || (!!createFile && onlineAi !== null && !onlineAi.onlineAvailable)}>{creating ? createFile ? '上传整理中…' : '创建中…' : createFile ? '上传原型，AI 整理' : '创建需求'}</Button>
             </div>
           </form>
         </DialogContent>

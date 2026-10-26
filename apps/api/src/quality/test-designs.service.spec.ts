@@ -30,6 +30,7 @@ function setup() {
   const aiExecutor = { generateTestDesign: vi.fn() };
   const invocationContext = {
     getConfiguredDefaultProvider: vi.fn().mockReturnValue('codex'),
+    resolveOnlineProvider: vi.fn().mockResolvedValue('codex'),
     resolveInvocationContext: vi.fn().mockResolvedValue({ codexCredentialSource: 'organization' }),
   };
   const service = new TestDesignsService(prisma as never, aiExecutor as never, invocationContext as never);

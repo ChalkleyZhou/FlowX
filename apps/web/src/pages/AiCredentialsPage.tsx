@@ -6,9 +6,10 @@ import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { useToast } from '../components/ui/toast';
 import { useConfirm } from '../components/ConfirmDialog';
-import type { AiCredentialStatus } from '../types';
+import type { AiCredentialStatus, OnlineAiPolicy } from '../types';
 
 export function AiCredentialsPage() {
   const toast = useToast();
@@ -20,18 +21,22 @@ export function AiCredentialsPage() {
   const [codexApiKey, setCodexApiKey] = useState('');
   const [cursorStatus, setCursorStatus] = useState<AiCredentialStatus | null>(null);
   const [codexStatus, setCodexStatus] = useState<AiCredentialStatus | null>(null);
+  const [policy, setPolicy] = useState<OnlineAiPolicy | null>(null);
+
+  function applyPolicy(next: OnlineAiPolicy) {
+    setPolicy(next);
+    const cursor = next.providers.find((item) => item.id === 'cursor');
+    const codex = next.providers.find((item) => item.id === 'codex');
+    setCursorStatus({ provider: 'cursor', configured: cursor?.configured ?? false, updatedAt: cursor?.updatedAt });
+    setCodexStatus({ provider: 'codex', configured: codex?.configured ?? false, updatedAt: codex?.updatedAt });
+  }
 
   async function refreshStatus() {
     setLoading(true);
     try {
-      const [nextCursorStatus, nextCodexStatus] = await Promise.all([
-        api.getCursorCredentialStatus(),
-        api.getCodexCredentialStatus(),
-      ]);
-      setCursorStatus(nextCursorStatus);
-      setCodexStatus(nextCodexStatus);
+      applyPolicy(await api.getOnlineAiPolicy());
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载 Cursor 凭据状态失败');
+      toast.error(error instanceof Error ? error.message : '加载 AI 凭据状态失败');
     } finally {
       setLoading(false);
     }
@@ -45,9 +50,9 @@ export function AiCredentialsPage() {
     event.preventDefault();
     setSaving(true);
     try {
-      const next = await api.upsertCursorCredential({ apiKey: cursorApiKey });
-      setCursorStatus(next);
+      await api.upsertCursorCredential({ apiKey: cursorApiKey });
       setCursorApiKey('');
+      applyPolicy(await api.getOnlineAiPolicy());
       toast.success('已保存组织 Cursor API Key（服务端加密存储）');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '保存 Cursor API Key 失败');
@@ -66,8 +71,8 @@ export function AiCredentialsPage() {
     }
     setDeleting(true);
     try {
-      const next = await api.deleteCursorCredential();
-      setCursorStatus(next);
+      await api.deleteCursorCredential();
+      applyPolicy(await api.getOnlineAiPolicy());
       toast.success('已删除组织 Cursor API Key');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '删除 Cursor API Key 失败');
@@ -80,9 +85,9 @@ export function AiCredentialsPage() {
     event.preventDefault();
     setSaving(true);
     try {
-      const next = await api.upsertCodexCredential({ apiKey: codexApiKey });
-      setCodexStatus(next);
+      await api.upsertCodexCredential({ apiKey: codexApiKey });
       setCodexApiKey('');
+      applyPolicy(await api.getOnlineAiPolicy());
       toast.success('已保存组织 Codex/OpenAI API Key（服务端加密存储）');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '保存 Codex/OpenAI API Key 失败');
@@ -101,8 +106,8 @@ export function AiCredentialsPage() {
     }
     setDeleting(true);
     try {
-      const next = await api.deleteCodexCredential();
-      setCodexStatus(next);
+      await api.deleteCodexCredential();
+      applyPolicy(await api.getOnlineAiPolicy());
       toast.success('已删除组织 Codex/OpenAI API Key');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '删除 Codex/OpenAI API Key 失败');
@@ -116,7 +121,7 @@ export function AiCredentialsPage() {
       <PageHeader
         eyebrow="Credentials"
         title="AI 凭据设置"
-        description="为当前组织配置共享的 Cursor 与 Codex 凭据。工作流执行将使用组织级凭据。"
+        description="为当前组织配置共享的 Cursor 与 Codex 凭据，并指定在线 AI 优先使用哪一个。未配置任何凭据时，在线 AI 不可用。"
         actions={(
           <Dialog>
             <DialogTrigger asChild>
@@ -171,6 +176,45 @@ export function AiCredentialsPage() {
           </Dialog>
         )}
       />
+      <Card className="rounded-md border border-border bg-card">
+        <CardHeader className="space-y-2">
+          <p className="text-sm font-medium text-foreground">优先使用的在线 AI</p>
+          <p className="text-sm text-muted-foreground">
+            {loading
+              ? '加载中...'
+              : policy?.onlineAvailable
+                ? '启动工作流、原型整理、审查和测试设计会默认选中这项。仍可在单次操作中改用其他已配置的凭据。'
+                : '当前组织还没有可用凭据，在线 AI 不可用。本地 Cursor、Codex 和 WorkBuddy 不受影响。'}
+          </p>
+        </CardHeader>
+        <CardContent>
+          {policy?.onlineAvailable ? (
+            <Select
+              value={policy.preferredProvider ?? policy.defaultProvider ?? undefined}
+              onValueChange={(value: 'cursor' | 'codex') => {
+                void api.setPreferredAiProvider(value).then((next) => {
+                  applyPolicy(next);
+                  toast.success('已更新在线 AI 优先项');
+                }).catch((error: unknown) => {
+                  toast.error(error instanceof Error ? error.message : '更新优先项失败');
+                });
+              }}
+              disabled={policy.providers.filter((item) => item.configured).length < 2}
+            >
+              <SelectTrigger aria-label="优先使用的在线 AI">
+                <SelectValue placeholder="选择优先 AI" />
+              </SelectTrigger>
+              <SelectContent>
+                {policy.providers.filter((item) => item.configured).map((item) => (
+                  <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <p role="status" className="text-sm text-muted-foreground">保存至少一项凭据后，即可指定优先使用的在线 AI。</p>
+          )}
+        </CardContent>
+      </Card>
       <Card className="rounded-md border border-border bg-card">
         <CardHeader className="space-y-2">
           <p className="text-sm font-medium text-foreground">Cursor API Key</p>

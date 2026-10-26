@@ -46,7 +46,7 @@ function cloud() {
   const executeTask = vi.fn(async (input: { workspace: { repositories: Array<{ localPath: string }> } }) => ({ patchSummary: '修复完成', changedFiles: [join(input.workspace.repositories[0].localPath, 'delivered.txt')], codeChanges: [], diffArtifacts: [] }));
   const reviewCode = vi.fn(async (_input: { workspace: { repositories: Array<{ localPath: string }> } }) => ({ issues: [], bugs: [], missingTests: [], suggestions: [], impactScope: [] }));
   const service = new WorkflowService(prisma as never, new WorkflowStateMachine(), sync, {} as never,
-    { normalizeAiProvider: () => 'codex', resolveInvocationContext: async () => ({}) } as never,
+    { normalizeAiProvider: () => 'codex', resolveOnlineProvider: async () => 'codex', resolveInvocationContext: async () => ({}) } as never,
     { get: () => ({ executeTask, reviewCode }) } as never, {} as never, {} as never);
   let job: (() => Promise<void>) | undefined;
   const background = vi.spyOn(service as never, 'runInBackground' as never).mockImplementation(((_key: string, task: () => Promise<void>) => { job = task; }) as never);

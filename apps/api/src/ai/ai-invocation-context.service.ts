@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { AiCredentialsService } from '../auth/ai-credentials.service';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { AiCredentialsService, parseAiCredentialProvider } from '../auth/ai-credentials.service';
 import type { AIExecutorProvider, AIInvocationContext } from './ai-executor';
+
+export const ONLINE_AI_UNAVAILABLE_MESSAGE = '当前组织未配置 AI 凭据，在线 AI 不可用。';
 
 function parseAiExecutorProvider(provider?: string | null): AIExecutorProvider | null {
   const candidate = provider?.trim().toLowerCase();
@@ -31,12 +33,6 @@ export type AiInvocationRecipient = {
 export class AiInvocationContextService {
   private readonly logger = new Logger(AiInvocationContextService.name);
   private readonly configuredDefaultAiProvider = resolveConfiguredDefaultAiProviderFromEnv();
-  private readonly requireUserCursorCredential = this.parseBooleanEnv(
-    process.env.FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL,
-  );
-  private readonly requireUserCodexCredential = this.parseBooleanEnv(
-    process.env.FLOWX_CODEX_REQUIRE_USER_CREDENTIAL,
-  );
 
   constructor(private readonly aiCredentialsService: AiCredentialsService) {}
 
@@ -52,6 +48,43 @@ export class AiInvocationContextService {
     return this.configuredDefaultAiProvider ?? 'codex';
   }
 
+  async listOnlineProviders(organizationId: string) {
+    const policy = await this.aiCredentialsService.getOnlineAiPolicy(organizationId);
+    return {
+      defaultProvider: policy.defaultProvider,
+      onlineAvailable: policy.onlineAvailable,
+      providers: policy.providers
+        .filter((provider) => provider.configured)
+        .map((provider) => ({ id: provider.id, label: provider.label })),
+    };
+  }
+
+  async resolveOnlineProvider(
+    organizationId?: string | null,
+    requested?: string | null,
+  ): Promise<AIExecutorProvider> {
+    const orgId = organizationId?.trim();
+    if (!orgId) {
+      throw new BadRequestException(ONLINE_AI_UNAVAILABLE_MESSAGE);
+    }
+    const policy = await this.aiCredentialsService.getOnlineAiPolicy(orgId);
+    const explicit = parseAiCredentialProvider(requested);
+    if (explicit) {
+      if (!policy.providers.some((provider) => provider.id === explicit && provider.configured)) {
+        throw new BadRequestException(
+          explicit === 'cursor'
+            ? '当前组织未配置 Cursor 凭据，在线 AI 不可用。'
+            : '当前组织未配置 Codex 凭据，在线 AI 不可用。',
+        );
+      }
+      return explicit;
+    }
+    if (!policy.defaultProvider) {
+      throw new BadRequestException(ONLINE_AI_UNAVAILABLE_MESSAGE);
+    }
+    return policy.defaultProvider;
+  }
+
   async resolveInvocationContext(
     provider: string | null | undefined,
     recipient?: AiInvocationRecipient | null,
@@ -61,119 +94,61 @@ export class AiInvocationContextService {
       requestUserDisplayName: recipient?.displayName,
     };
 
-    const normalizedProvider = this.normalizeAiProvider(provider);
+    const normalizedProvider = parseAiExecutorProvider(provider);
+    if (!normalizedProvider) {
+      throw new BadRequestException(ONLINE_AI_UNAVAILABLE_MESSAGE);
+    }
     if (normalizedProvider === 'codex') {
       return this.resolveCodexInvocationContext(context, recipient);
     }
 
-    if (normalizedProvider !== 'cursor') {
-      return context;
+    const organizationId = recipient?.flowxOrganizationId?.trim();
+    if (!organizationId) {
+      throw new BadRequestException('当前组织未配置 Cursor 凭据，在线 AI 不可用。');
     }
-
-    if (recipient?.flowxOrganizationId) {
-      try {
-        const organizationApiKey = await this.aiCredentialsService.getCursorApiKeyForOrganization(
-          recipient.flowxOrganizationId,
-        );
-        if (organizationApiKey) {
-          context.cursorApiKey = organizationApiKey;
-          context.cursorCredentialSource = 'organization';
-          this.logger.log(
-            `Cursor credential source=organization for organization ${recipient.flowxOrganizationId}.`,
-          );
-          return context;
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(
-          `CURSOR_CREDENTIAL_DECRYPT_FAILED organization=${recipient.flowxOrganizationId} message=${message}`,
-        );
-        throw new Error(
-          'CURSOR_CREDENTIAL_DECRYPT_FAILED: Failed to decrypt organization Cursor credential.',
-        );
+    try {
+      const organizationApiKey = await this.aiCredentialsService.getCursorApiKeyForOrganization(organizationId);
+      if (!organizationApiKey) {
+        throw new BadRequestException('当前组织未配置 Cursor 凭据，在线 AI 不可用。');
       }
-    }
-
-    if (this.requireUserCursorCredential) {
-      const organizationId = recipient?.flowxOrganizationId ?? 'unknown';
-      this.logger.warn(`CURSOR_ORGANIZATION_CREDENTIAL_REQUIRED organization=${organizationId}`);
-      throw new Error(
-        'CURSOR_ORGANIZATION_CREDENTIAL_REQUIRED: This workspace requires organization-level Cursor credentials. Please configure your organization Cursor API Key first.',
-      );
-    }
-
-    if (process.env.CURSOR_API_KEY?.trim()) {
-      context.cursorCredentialSource = 'instance';
-      this.logger.log(
-        `Cursor credential source=instance for organization ${recipient?.flowxOrganizationId ?? 'unknown'}.`,
-      );
+      context.cursorApiKey = organizationApiKey;
+      context.cursorCredentialSource = 'organization';
+      this.logger.log(`Cursor credential source=organization for organization ${organizationId}.`);
       return context;
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`CURSOR_CREDENTIAL_DECRYPT_FAILED organization=${organizationId} message=${message}`);
+      throw new Error('CURSOR_CREDENTIAL_DECRYPT_FAILED: Failed to decrypt organization Cursor credential.');
     }
-
-    context.cursorCredentialSource = 'login-state';
-    this.logger.log(
-      `Cursor credential source=login-state for organization ${recipient?.flowxOrganizationId ?? 'unknown'}.`,
-    );
-    return context;
   }
 
   private async resolveCodexInvocationContext(
     context: AIInvocationContext,
     recipient?: AiInvocationRecipient | null,
   ): Promise<AIInvocationContext> {
-    if (recipient?.flowxOrganizationId) {
-      try {
-        const organizationApiKey = await this.aiCredentialsService.getCodexApiKeyForOrganization(
-          recipient.flowxOrganizationId,
-        );
-        if (organizationApiKey) {
-          context.codexApiKey = organizationApiKey;
-          context.codexCredentialSource = 'organization';
-          this.logger.log(
-            `Codex credential source=organization for organization ${recipient.flowxOrganizationId}.`,
-          );
-          return context;
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(
-          `CODEX_CREDENTIAL_DECRYPT_FAILED organization=${recipient.flowxOrganizationId} message=${message}`,
-        );
-        throw new Error(
-          'CODEX_CREDENTIAL_DECRYPT_FAILED: Failed to decrypt organization Codex credential.',
-        );
+    const organizationId = recipient?.flowxOrganizationId?.trim();
+    if (!organizationId) {
+      throw new BadRequestException('当前组织未配置 Codex 凭据，在线 AI 不可用。');
+    }
+    try {
+      const organizationApiKey = await this.aiCredentialsService.getCodexApiKeyForOrganization(organizationId);
+      if (!organizationApiKey) {
+        throw new BadRequestException('当前组织未配置 Codex 凭据，在线 AI 不可用。');
       }
-    }
-
-    if (this.requireUserCodexCredential) {
-      const organizationId = recipient?.flowxOrganizationId ?? 'unknown';
-      this.logger.warn(`CODEX_ORGANIZATION_CREDENTIAL_REQUIRED organization=${organizationId}`);
-      throw new Error(
-        'CODEX_ORGANIZATION_CREDENTIAL_REQUIRED: This workspace requires organization-level Codex credentials. Please configure your organization OpenAI API Key first.',
-      );
-    }
-
-    if (process.env.OPENAI_API_KEY?.trim()) {
-      context.codexCredentialSource = 'instance';
-      this.logger.log(
-        `Codex credential source=instance for organization ${recipient?.flowxOrganizationId ?? 'unknown'}.`,
-      );
+      context.codexApiKey = organizationApiKey;
+      context.codexCredentialSource = 'organization';
+      this.logger.log(`Codex credential source=organization for organization ${organizationId}.`);
       return context;
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`CODEX_CREDENTIAL_DECRYPT_FAILED organization=${organizationId} message=${message}`);
+      throw new Error('CODEX_CREDENTIAL_DECRYPT_FAILED: Failed to decrypt organization Codex credential.');
     }
-
-    context.codexCredentialSource = 'login-state';
-    this.logger.log(
-      `Codex credential source=login-state for organization ${recipient?.flowxOrganizationId ?? 'unknown'}.`,
-    );
-    return context;
-  }
-
-  private parseBooleanEnv(value?: string | null) {
-    if (!value) {
-      return false;
-    }
-
-    const normalized = value.trim().toLowerCase();
-    return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
   }
 }

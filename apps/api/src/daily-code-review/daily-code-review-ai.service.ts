@@ -1,7 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   AI_EXECUTOR_REGISTRY,
-  type AIExecutorProvider,
   type AIExecutorRegistry,
 } from '../ai/ai-executor';
 import { AiInvocationContextService } from '../ai/ai-invocation-context.service';
@@ -48,7 +47,9 @@ export class DailyCodeReviewAiService {
         return this.buildSkippedNoSkillOutput(DEFAULT_SKILL_HINT);
       }
 
-      const provider = this.resolveProvider();
+      const provider = await this.aiInvocationContextService.resolveOnlineProvider(
+        input.recipient?.flowxOrganizationId,
+      );
       const context = await this.aiInvocationContextService.resolveInvocationContext(
         provider,
         input.recipient ?? null,
@@ -142,11 +143,4 @@ export class DailyCodeReviewAiService {
     return enabled !== 'false';
   }
 
-  private resolveProvider(): AIExecutorProvider {
-    const override = process.env.FLOWX_DAILY_CODE_REVIEW_AI_PROVIDER?.trim().toLowerCase();
-    if (override === 'cursor' || override === 'codex') {
-      return override;
-    }
-    return this.aiInvocationContextService.getConfiguredDefaultProvider();
-  }
 }

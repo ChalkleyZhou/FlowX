@@ -447,6 +447,8 @@ describe('WorkflowService review-finding execution flow', () => {
       },
       aiInvocationContextService: {
         normalizeAiProvider: (provider: string) => provider,
+        resolveOnlineProvider: async (_organizationId: string | null | undefined, requested?: string | null) =>
+          requested === 'cursor' ? 'cursor' : 'codex',
         resolveInvocationContext,
       },
     });
@@ -924,90 +926,73 @@ describe('WorkflowService design artifact persistence', () => {
 function createInvocationContextService(overrides?: {
   getCursorApiKeyForOrganization?: (organizationId: string) => Promise<string | null>;
   getCodexApiKeyForOrganization?: (organizationId: string) => Promise<string | null>;
+  getOnlineAiPolicy?: AiCredentialsService['getOnlineAiPolicy'];
 }) {
   const aiCredentialsService = {
     getCursorApiKeyForOrganization: overrides?.getCursorApiKeyForOrganization ?? (async () => null),
     getCodexApiKeyForOrganization: overrides?.getCodexApiKeyForOrganization ?? (async () => null),
+    getOnlineAiPolicy: overrides?.getOnlineAiPolicy ?? (async () => ({
+      preferredProvider: null,
+      defaultProvider: null,
+      onlineAvailable: false,
+      providers: [
+        { id: 'cursor' as const, label: 'Cursor CLI', configured: false },
+        { id: 'codex' as const, label: 'Codex', configured: false },
+      ],
+    })),
   } as AiCredentialsService;
   return new AiInvocationContextService(aiCredentialsService);
 }
 
 describe('WorkflowService cursor credential policy', () => {
-  const originalRequireUserCredential = process.env.FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL;
-  const originalRequireUserCodexCredential = process.env.FLOWX_CODEX_REQUIRE_USER_CREDENTIAL;
-  const originalCursorApiKey = process.env.CURSOR_API_KEY;
-  const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
-
-  afterEach(() => {
-    if (originalRequireUserCredential === undefined) {
-      delete process.env.FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL;
-    } else {
-      process.env.FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL = originalRequireUserCredential;
-    }
-
-    if (originalCursorApiKey === undefined) {
-      delete process.env.CURSOR_API_KEY;
-    } else {
-      process.env.CURSOR_API_KEY = originalCursorApiKey;
-    }
-
-    if (originalRequireUserCodexCredential === undefined) {
-      delete process.env.FLOWX_CODEX_REQUIRE_USER_CREDENTIAL;
-    } else {
-      process.env.FLOWX_CODEX_REQUIRE_USER_CREDENTIAL = originalRequireUserCodexCredential;
-    }
-
-    if (originalOpenAiApiKey === undefined) {
-      delete process.env.OPENAI_API_KEY;
-    } else {
-      process.env.OPENAI_API_KEY = originalOpenAiApiKey;
-    }
-  });
-
-  it('blocks cursor execution when user credential is required but missing', async () => {
-    process.env.FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL = 'true';
-    delete process.env.CURSOR_API_KEY;
+  it('rejects online cursor when the organization has no cursor credential', async () => {
     const service = createInvocationContextService({
       getCursorApiKeyForOrganization: async () => null,
     });
 
     await expect(
-      service.resolveInvocationContext('cursor', { flowxUserId: 'user-1', displayName: 'User' }),
-    ).rejects.toThrow(/CURSOR_ORGANIZATION_CREDENTIAL_REQUIRED/);
+      service.resolveInvocationContext('cursor', {
+        flowxUserId: 'user-1',
+        flowxOrganizationId: 'org-1',
+        displayName: 'User',
+      }),
+    ).rejects.toThrow(/未配置 Cursor 凭据/);
   });
 
-  it('keeps compatibility fallback when strict mode is disabled', async () => {
-    process.env.FLOWX_CURSOR_REQUIRE_USER_CREDENTIAL = 'false';
+  it('does not use an instance cursor key when the organization credential is missing', async () => {
     process.env.CURSOR_API_KEY = 'instance-key';
     const service = createInvocationContextService({
       getCursorApiKeyForOrganization: async () => null,
     });
 
     await expect(
-      service.resolveInvocationContext('cursor', { flowxUserId: 'user-1', displayName: 'User' }),
-    ).resolves.toMatchObject({
-      cursorCredentialSource: 'instance',
-    });
+      service.resolveInvocationContext('cursor', {
+        flowxUserId: 'user-1',
+        flowxOrganizationId: 'org-1',
+        displayName: 'User',
+      }),
+    ).rejects.toThrow(/未配置 Cursor 凭据/);
+    delete process.env.CURSOR_API_KEY;
   });
 
-  it('blocks codex execution when user credential is required but missing', async () => {
-    process.env.FLOWX_CODEX_REQUIRE_USER_CREDENTIAL = 'true';
-    delete process.env.OPENAI_API_KEY;
+  it('rejects online codex when the organization has no codex credential', async () => {
+    process.env.OPENAI_API_KEY = 'instance-openai-key';
     const service = createInvocationContextService({
-      getCursorApiKeyForOrganization: async () => null,
       getCodexApiKeyForOrganization: async () => null,
     });
 
     await expect(
-      service.resolveInvocationContext('codex', { flowxUserId: 'user-1', displayName: 'User' }),
-    ).rejects.toThrow(/CODEX_ORGANIZATION_CREDENTIAL_REQUIRED/);
+      service.resolveInvocationContext('codex', {
+        flowxUserId: 'user-1',
+        flowxOrganizationId: 'org-1',
+        displayName: 'User',
+      }),
+    ).rejects.toThrow(/未配置 Codex 凭据/);
+    delete process.env.OPENAI_API_KEY;
   });
 
-  it('uses codex organization credential before instance fallback', async () => {
-    process.env.FLOWX_CODEX_REQUIRE_USER_CREDENTIAL = 'false';
-    process.env.OPENAI_API_KEY = 'instance-openai-key';
+  it('uses the organization codex credential', async () => {
     const service = createInvocationContextService({
-      getCursorApiKeyForOrganization: async () => null,
       getCodexApiKeyForOrganization: async () => 'org-openai-key',
     });
 
@@ -1021,6 +1006,24 @@ describe('WorkflowService cursor credential policy', () => {
       codexApiKey: 'org-openai-key',
       codexCredentialSource: 'organization',
     });
+  });
+
+  it('defaults online selection to the organization preference and rejects an unconfigured provider', async () => {
+    const service = createInvocationContextService({
+      getOnlineAiPolicy: async () => ({
+        preferredProvider: 'cursor',
+        defaultProvider: 'cursor',
+        onlineAvailable: true,
+        providers: [
+          { id: 'cursor', label: 'Cursor CLI', configured: true },
+          { id: 'codex', label: 'Codex', configured: false },
+        ],
+      }),
+    });
+
+    await expect(service.resolveOnlineProvider('org-1')).resolves.toBe('cursor');
+    await expect(service.resolveOnlineProvider('org-1', 'codex')).rejects.toThrow(/未配置 Codex/);
+    await expect(service.resolveOnlineProvider(null)).rejects.toThrow(/在线 AI 不可用/);
   });
 });
 

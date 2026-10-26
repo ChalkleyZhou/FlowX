@@ -3,6 +3,8 @@ import type {
   AuthOrganization,
   AuthSession,
   AiCredentialStatus,
+  OnlineAiPolicy,
+  OnlineAiProviders,
   GitCredentialStatus,
   Briefing,
   BriefingPeriod,
@@ -267,11 +269,7 @@ export const api = {
   },
   previewPrototypeImport: (id: string, path: string) => request<{ html: string; warnings: string[] }>(`/prototype-imports/${id}/preview?path=${encodeURIComponent(path)}`),
   downloadPrototypeImport: (id: string, revision: number) => request<Blob>(`/prototype-imports/${id}/source?revision=${revision}`, undefined, 'blob'),
-  getWorkflowProviders: () =>
-    request<{
-      defaultProvider: 'codex' | 'cursor';
-      providers: Array<{ id: 'codex' | 'cursor'; label: string }>;
-    }>('/workflow-runs/providers'),
+  getWorkflowProviders: () => request<OnlineAiProviders>('/workflow-runs/providers'),
   getAuthProviders: () => request<Array<{ name: string }>>('/auth/providers'),
   getDingTalkAuthorizeUrl: (redirectUri: string) =>
     request<{ provider: string; state: string; url: string }>(
@@ -616,6 +614,12 @@ export const api = {
     request<YunxiaoIntegrationStatus>('/integrations/yunxiao', {
       method: 'PATCH',
       body: JSON.stringify(payload),
+    }),
+  getOnlineAiPolicy: () => request<OnlineAiPolicy>('/auth/ai-credentials/policy'),
+  setPreferredAiProvider: (provider: 'codex' | 'cursor') =>
+    request<OnlineAiPolicy>('/auth/ai-credentials/preference', {
+      method: 'PUT',
+      body: JSON.stringify({ provider }),
     }),
   getCursorCredentialStatus: () =>
     request<AiCredentialStatus>('/auth/ai-credentials/cursor'),

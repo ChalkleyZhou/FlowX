@@ -73,7 +73,7 @@ export class BriefingAiSummarizerService {
     }
 
     try {
-      const provider = this.resolveProvider();
+      const provider = await this.aiInvocationContextService.resolveOnlineProvider(input.recipient?.flowxOrganizationId);
       const context = await this.aiInvocationContextService.resolveInvocationContext(
         provider,
         input.recipient ?? null,
@@ -115,14 +115,6 @@ export class BriefingAiSummarizerService {
       );
     }
     return this.executorRegistry.get(provider) as CodexAiExecutor;
-  }
-
-  private resolveProvider(): AIExecutorProvider {
-    const override = process.env.FLOWX_BRIEFING_AI_PROVIDER?.trim().toLowerCase();
-    if (override === 'cursor' || override === 'codex') {
-      return override;
-    }
-    return this.aiInvocationContextService.getConfiguredDefaultProvider();
   }
 
   private isAiEnabled() {
