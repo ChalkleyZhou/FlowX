@@ -175,7 +175,7 @@ describe('RequirementsPage', () => {
     ).toBe(false);
   });
 
-  it('需求列表展示项目、版本、名称、描述、优先级、创建人和创建时间', async () => {
+  it('需求列表展示标题、描述、优先级、创建人、时间和变更，不展示项目、版本和排期', async () => {
     await act(async () => {
       root?.render(
         <MemoryRouter initialEntries={['/requirements']}>
@@ -189,24 +189,25 @@ describe('RequirementsPage', () => {
     });
 
     const headers = Array.from(container.querySelectorAll('th')).map((cell) => cell.textContent);
-    expect(headers).toEqual(['所属项目', '发布版本', '需求名称', '优先级', '规划状态', '功能模块', '备注', '创建人', '创建时间', '需求变更时间', '操作']);
+    expect(headers).toEqual(['需求标题', '需求描述', '优先级', '创建人', '创建时间', '需求变更时间', '最新变更内容', '备注', '操作']);
     expect(container.querySelector('th:last-child')?.className).toContain('sticky');
     expect(container.querySelector('th:last-child')?.className).toContain('right-0');
     expect(container.querySelector('tbody td:last-child')?.className).toContain('sticky');
     const cells = Array.from(container.querySelectorAll('tbody td')).map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim());
-    expect(cells.slice(0, 10)).toEqual([
-      'FlowX',
-      '2.6.0',
+    expect(cells.slice(0, 8)).toEqual([
       '端云设计闭环',
+      requirement.description,
       '高',
-      '未排期',
-      requirement.functionalModule,
-      requirement.remark,
       '产品甲',
       new Date(requirement.createdAt!).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }),
       '—',
+      '—',
+      requirement.remark,
     ]);
-    expect(container.textContent).not.toContain(requirement.description);
+    const body = container.querySelector('tbody')?.textContent ?? '';
+    expect(body).not.toContain('2.6.0');
+    expect(body).not.toContain('未排期');
+    expect(body).not.toContain(requirement.functionalModule ?? '');
     expect(container.querySelector('table')?.className).toContain('w-max');
     expect(container.textContent).not.toContain(requirement.acceptanceCriteria);
     expect(container.textContent).not.toContain(requirement.riskImpact);
@@ -215,15 +216,15 @@ describe('RequirementsPage', () => {
     expect(container.textContent).not.toContain('并行占用：');
   });
 
-  it('有需求变更时列表展示最近变更时间', async () => {
+  it('有需求变更时列表展示最近变更时间和正文', async () => {
     const latestChangeAt = '2026-10-26T09:30:00.000Z';
-    vi.mocked(api.getRequirements).mockResolvedValue([{ ...requirement, latestChangeAt }]);
+    vi.mocked(api.getRequirements).mockResolvedValue([{ ...requirement, latestChangeAt, latestChangeContent: '最新变更正文' }]);
     await act(async () => {
       root?.render(<MemoryRouter initialEntries={['/requirements']}><RequirementsPage /></MemoryRouter>);
     });
-    const changeCell = container.querySelectorAll('tbody td')[9];
-    expect(changeCell?.textContent).toBe(new Date(latestChangeAt).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }));
-    expect(container.textContent).not.toContain('最新变更正文');
+    const cells = container.querySelectorAll('tbody td');
+    expect(cells[5]?.textContent).toBe(new Date(latestChangeAt).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }));
+    expect(cells[6]?.textContent).toBe('最新变更正文');
   });
 
   it('按版本、规划状态和优先级从 URL 恢复组合筛选', async () => {
@@ -588,7 +589,8 @@ describe('RequirementsPage', () => {
     }));
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(container.textContent).toContain('改后的名称');
-    expect(container.textContent).toContain('订单');
+    expect(container.textContent).toContain('新的描述');
+    expect(container.querySelector('tbody')?.textContent).not.toContain('订单');
     expect(container.textContent).toContain('新备注');
     expect(container.textContent).toContain('产品甲');
     expect(successToast).toHaveBeenCalledWith('需求已更新');

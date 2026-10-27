@@ -338,6 +338,7 @@ export interface Requirement {
   createdByName?: string | null;
   createdAt?: string | null;
   latestChangeAt?: string | null;
+  latestChangeContent?: string | null;
 }
 
 export interface Repository {

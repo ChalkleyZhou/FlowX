@@ -881,7 +881,7 @@ export function RequirementsPage() {
               <table className="w-max min-w-full text-sm">
                 <thead className="bg-muted/40 text-left text-muted-foreground">
                   <tr>
-                    {['所属项目', '发布版本', '需求名称', '优先级', '规划状态', '功能模块', '备注', '创建人', '创建时间', '需求变更时间', '操作'].map((label) => (
+                    {['需求标题', '需求描述', '优先级', '创建人', '创建时间', '需求变更时间', '最新变更内容', '备注', '操作'].map((label) => (
                       <th
                         key={label}
                         className={label === '操作'
@@ -896,8 +896,6 @@ export function RequirementsPage() {
                 <tbody>
                   {filteredRequirements.map((item) => (
                     <tr key={item.id} className="border-t border-border">
-                      <td className="whitespace-nowrap px-4 py-3">{item.project.name}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{item.version?.name ?? '未挂版本'}</td>
                       <td className="whitespace-nowrap px-4 py-3 font-medium">
                         <div className="flex items-center gap-2">
                           <Link to={`/requirements/${item.id}`} className="text-foreground no-underline hover:text-primary">{item.title}</Link>
@@ -906,13 +904,13 @@ export function RequirementsPage() {
                           ) : null}
                         </div>
                       </td>
+                      <td className="max-w-md whitespace-normal break-words px-4 py-3 text-muted-foreground">{item.description.trim() || '未填写'}</td>
                       <td className="whitespace-nowrap px-4 py-3">{formatPriority(item.priority)}</td>
-                      <td className="whitespace-nowrap px-4 py-3">{formatPlanningStatus(item.planningStatus)}</td>
-                      <td className="whitespace-nowrap px-4 py-3">{item.functionalModule?.trim() || '未填写'}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{item.remark?.trim() || '未填写'}</td>
                       <td className="whitespace-nowrap px-4 py-3">{item.createdByName?.trim() || '未记录'}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-muted-foreground"><time dateTime={item.createdAt ?? undefined}>{formatRequirementCreatedAt(item.createdAt)}</time></td>
                       <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{item.latestChangeAt ? <time dateTime={item.latestChangeAt}>{formatRequirementCreatedAt(item.latestChangeAt)}</time> : '—'}</td>
+                      <td className="max-w-md whitespace-normal break-words px-4 py-3 text-muted-foreground">{item.latestChangeContent?.trim() || '—'}</td>
+                      <td className="max-w-xs whitespace-normal break-words px-4 py-3 text-muted-foreground">{item.remark?.trim() || '未填写'}</td>
                       <td className="sticky right-0 z-10 whitespace-nowrap border-l border-t border-border bg-card px-4 py-3">
                         <div className="flex flex-nowrap gap-2">
                           <UiButton variant="default" size="sm" asChild>

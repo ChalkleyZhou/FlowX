@@ -386,7 +386,7 @@ export class RequirementsService {
         changes: {
           orderBy: { createdAt: 'desc' },
           take: 1,
-          select: { createdAt: true },
+          select: { createdAt: true, content: true },
         },
       },
     });
@@ -395,6 +395,7 @@ export class RequirementsService {
       return {
         ...this.enrichRequirement(rest),
         latestChangeAt: changes[0]?.createdAt ?? null,
+        latestChangeContent: changes[0]?.content ?? null,
       };
     });
   }
