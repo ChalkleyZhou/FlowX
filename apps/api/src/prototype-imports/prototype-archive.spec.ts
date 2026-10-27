@@ -290,6 +290,11 @@ describe('PrototypeArchive', () => {
     const manifest = await archive.save('draft1', 1, zip([{ path: 'screen.png', data: Buffer.from([1]) }, { path: 'brief.md', text: '# 需求' }]), 'materials.zip');
     expect(manifest.pages.map(page => page.path)).toEqual(['screen.png', 'brief.md']);
   });
+  it('读取需求文档正文，图片没有正文', async () => {
+    await archive.save('draft1', 1, zip([{ path: 'prd.md', text: '# 需求说明' }, { path: 'screen.png', data: Buffer.from([1, 2, 3]) }]), 'docs.zip');
+    expect(await archive.readText('draft1', 1, 'prd.md')).toBe('# 需求说明');
+    expect(await archive.readText('draft1', 1, 'screen.png')).toBeNull();
+  });
   it.each(['screen#1.png', 'screen?size=1.png', 'screen%.png', 'assets/screen%23literal.png'])('独立图片预览按原始文件路径读取特殊字符文件名 %s', async path => {
     const image = Buffer.from([1, 2, 3]);
     await archive.save('draft1', 1, zip([{ path, data: image }]), 'special-names.zip');

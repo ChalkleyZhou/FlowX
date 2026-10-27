@@ -202,6 +202,30 @@ describe('原型确认后的真实工作流接续', () => {
     expect(stages.find((stage) => stage.stage === 'SPEC_PLAN')?.status).toBe('PENDING');
     surfaces.mockRestore();
   });
+  it('包内有需求文档时完成产品构思，且不把该文档放进设计稿', async () => {
+    const result = await create();
+    const files = [...manifest.files, { path: 'prd.md', bytes: 24, kind: 'document' as const }];
+    await prisma.prototypeImport.update({ where: { id: result.id }, data: { manifest: { ...manifest, files, pages: [...manifest.pages, { path: 'prd.md', title: 'prd.md' }], kinds: ['html', 'document'] } } });
+    const current = await service.get(result.id, actor());
+    await service.confirm(result.id, { revision: current.revision, analysis: { ...analysis, requirementDocuments: ['prd.md'] }, answers: { permission: '创建人' } }, actor());
+    await prisma.repository.create({ data: { workspaceId: workspace, name: 'docs', url: 'https://example.com/docs.git', defaultBranch: 'main' } });
+    const surfaces = vi.spyOn(PrototypeArchive.prototype, 'surfaces').mockResolvedValue([{ id: '平台端', pages: [{ id: 'index.html', title: '看板', html: '<p>看板</p>' }, { id: 'prd.md', title: 'prd.md', html: '<pre># 需求</pre>' }] }]);
+    const readText = vi.spyOn(PrototypeArchive.prototype, 'readText').mockResolvedValue('# 巡逻需求\n\n用户可以创建事项');
+    try {
+      const workflow = await workflowService().createWorkflowRun({ requirementId: result.requirementId });
+      await vi.waitFor(async () => expect((await prisma.workflowRun.findUniqueOrThrow({ where: { id: workflow.id } })).status).toBe('SPEC_PLAN_PENDING'));
+      const stages = await prisma.stageExecution.findMany({ where: { workflowRunId: workflow.id } });
+      const brainstorm = stages.find((stage) => stage.stage === 'BRAINSTORM');
+      expect(brainstorm?.status).toBe('COMPLETED');
+      expect(brainstorm?.output).toMatchObject({ source: 'prototype-import', requirementDocuments: ['prd.md'] });
+      expect(JSON.stringify(brainstorm?.output)).toContain('用户可以创建事项');
+      const design = stages.find((stage) => stage.stage === 'DESIGN')?.output as { surfaces?: Array<{ pages: Array<{ id: string }> }> };
+      expect(design.surfaces?.flatMap((surface) => surface.pages.map((page) => page.id))).toEqual(['index.html']);
+    } finally {
+      surfaces.mockRestore();
+      readText.mockRestore();
+    }
+  });
 });
 
 describe('原型导入 HTTP 边界', () => {

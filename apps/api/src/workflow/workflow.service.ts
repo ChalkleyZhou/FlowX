@@ -4806,11 +4806,24 @@ export class WorkflowService {
         const groundingOutput = this.buildGroundingStageOutput(groundedWorkflow.workflowRepositories);
         const prototypeSnapshot = readPrototypeWorkflowSnapshot(this.getLatestCompletedStageOutput(groundedWorkflow, StageType.REQUIREMENT_INTAKE));
         let importedDesignOutput: Record<string, unknown> | null = null;
+        let importedBrainstormOutput: Record<string, unknown> | null = null;
         if (prototypeSnapshot) {
           const { analysis } = prototypeSnapshot;
+          const requirementDocuments = analysis.requirementDocuments ?? [];
+          const archive = new PrototypeArchive();
+          const prototypeSurfaces = (await archive.surfaces(prototypeSnapshot.importId, prototypeSnapshot.materialRevision))
+            .map((surface) => ({ ...surface, pages: surface.pages.filter((page) => !requirementDocuments.includes(page.id)) }))
+            .filter((surface) => surface.pages.length > 0);
+          const surfaces = await this.persistAndMergeDesignSurfaces(workflowId, [], prototypeSurfaces);
           const demo: DemoArtifact = { summary: analysis.description, flows: [], scope: { included: analysis.acceptanceCriteria, excluded: analysis.brief.outOfScope }, knownGaps: analysis.inferences };
-          const surfaces = await this.persistAndMergeDesignSurfaces(workflowId, [], await new PrototypeArchive().surfaces(prototypeSnapshot.importId, prototypeSnapshot.materialRevision));
           importedDesignOutput = { ...this.toPersistedDesignStageOutput(buildDesignMarkdownFromStructured(analysis.design, demo), { design: analysis.design, demo }, surfaces), source: 'prototype-import', importId: prototypeSnapshot.importId, importRevision: prototypeSnapshot.revision };
+          if (requirementDocuments.length > 0) {
+            const sections = await Promise.all(requirementDocuments.map(async (path) => {
+              const text = await archive.readText(prototypeSnapshot.importId, prototypeSnapshot.materialRevision, path);
+              return text?.trim() ? `## ${path}\n\n${text.trim()}` : `未能读取需求文档正文：${path}`;
+            }));
+            importedBrainstormOutput = { format: 'markdown', markdown: sections.join('\n\n'), source: 'prototype-import', importId: prototypeSnapshot.importId, requirementDocuments, brief: analysis.brief };
+          }
         }
 
         await this.prisma.$transaction(async (tx) => {
@@ -4848,10 +4861,15 @@ export class WorkflowService {
           );
 
           if (prototypeSnapshot && importedDesignOutput) {
-            await this.createStageExecution(tx, workflowId, StageType.BRAINSTORM, {
-              input: { source: 'prototype-import', importId: prototypeSnapshot.importId },
-              status: StageExecutionStatus.SKIPPED, statusMessage: '已从用户原型整理需求，无需重复构思', finishedAt: new Date(),
-            });
+            await this.createStageExecution(tx, workflowId, StageType.BRAINSTORM, importedBrainstormOutput
+              ? {
+                input: { source: 'prototype-import', importId: prototypeSnapshot.importId }, output: importedBrainstormOutput,
+                status: StageExecutionStatus.COMPLETED, statusMessage: '已使用导入包中的需求文档作为产品构思', finishedAt: new Date(),
+              }
+              : {
+                input: { source: 'prototype-import', importId: prototypeSnapshot.importId },
+                status: StageExecutionStatus.SKIPPED, statusMessage: '包内只有原型，无需重复构思', finishedAt: new Date(),
+              });
             await this.createStageExecution(tx, workflowId, StageType.DESIGN, {
               input: { source: 'prototype-import', importId: prototypeSnapshot.importId }, output: importedDesignOutput,
               status: StageExecutionStatus.COMPLETED, statusMessage: '复用导入原型与设计说明，未重新生成设计', finishedAt: new Date(),

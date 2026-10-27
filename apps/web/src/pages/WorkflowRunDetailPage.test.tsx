@@ -1162,6 +1162,36 @@ describe('WorkflowRunDetailPage', () => {
     expect(api.runDesign).toHaveBeenCalledWith('workflow-1');
   });
 
+  it('shows imported requirement markdown as the brainstorm document', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(
+      createWorkflowRun({
+        status: 'SPEC_PLAN_PENDING',
+        currentStage: 'SPEC_PLAN',
+        stageExecutions: [
+          {
+            id: 'brainstorm-1',
+            stage: 'BRAINSTORM',
+            status: 'COMPLETED',
+            attempt: 1,
+            output: {
+              markdown: '# 需求说明\n\n用户可以创建事项',
+              brief: { expandedDescription: '结构化简报（不应显示）' },
+              source: 'prototype-import',
+            },
+          },
+          { id: 'spec-1', stage: 'SPEC_PLAN', status: 'PENDING', attempt: 1, output: null },
+        ],
+      }),
+    );
+
+    await renderPage();
+    await selectBrainstormStep();
+
+    const text = container.textContent ?? '';
+    expect(text).toContain('用户可以创建事项');
+    expect(text).not.toContain('结构化简报（不应显示）');
+  });
+
   it('shows design markdown without the structured design field tree', async () => {
     vi.mocked(api.getWorkflowRun).mockResolvedValue(
       createWorkflowRun({

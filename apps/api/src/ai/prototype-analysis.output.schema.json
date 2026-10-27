@@ -9,7 +9,8 @@
     "design",
     "clarifications",
     "evidence",
-    "inferences"
+    "inferences",
+    "requirementDocuments"
   ],
   "properties": {
     "title": {
@@ -254,6 +255,16 @@
         "type": "string",
         "minLength": 1,
         "maxLength": 2000
+      }
+    },
+    "requirementDocuments": {
+      "type": "array",
+      "maxItems": 20,
+      "description": "材料中属于需求文档的真实路径。没有需求文档时为空数组。原型页面、图片、样式和源码不要列入。",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
       }
     }
   },

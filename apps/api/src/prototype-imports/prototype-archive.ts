@@ -179,6 +179,14 @@ export class PrototypeArchive {
   }
 
   async manifest(id: string, revision: number): Promise<PrototypeManifest> { return JSON.parse(await readFile(join(this.directory(id, revision), 'manifest.json'), 'utf8')) as PrototypeManifest; }
+  async readText(id: string, revision: number, path: string): Promise<string | null> {
+    safePath(path);
+    const manifest = await this.manifest(id, revision);
+    if (!manifest.files.some((file) => file.path === path)) return null;
+    const fileKind = kind(path);
+    if (fileKind === 'image' || fileKind === 'asset' || fileKind === 'source' || /\.(pdf|docx?)$/i.test(path)) return null;
+    return (await this.file(id, revision, path)).toString('utf8').slice(0, 100_000);
+  }
   private async file(id: string, revision: number, path: string): Promise<Buffer> { return readFile(join(this.directory(id, revision), 'files', safePath(path))); }
   async download(id: string, revision: number): Promise<Buffer> { return readFile(join(this.directory(id, revision), 'original.zip')); }
   async remove(id: string, revision: number): Promise<void> { await rm(this.directory(id, revision), { recursive: true, force: true }); }

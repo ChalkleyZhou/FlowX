@@ -111,7 +111,7 @@ export class CodexAiExecutor implements AIExecutor {
     const output = await this.runStructuredJsonStage<unknown>(
       'prototype-analysis.output.schema.json', buildPrototypeAnalysisPrompt(input), 'prototype analysis', context,
     );
-    return assertPrototypeAnalysis(output);
+    return assertPrototypeAnalysis(output, undefined, { requireRequirementDocuments: true });
   }
 
   async brainstorm(input: BrainstormInput, context?: AIInvocationContext): Promise<BrainstormOutput> {

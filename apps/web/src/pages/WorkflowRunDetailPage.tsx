@@ -236,6 +236,12 @@ function getStepVisualStatus(stageStatus?: string): 'wait' | 'process' | 'finish
   }
 }
 
+function stageDocumentMarkdown(output: unknown): string | null {
+  if (!output || typeof output !== 'object' || Array.isArray(output) || !('markdown' in output)) return null;
+  const markdown = output.markdown;
+  return typeof markdown === 'string' && markdown.trim() ? markdown : null;
+}
+
 function getStepDescription(stage?: { status?: string; statusMessage?: string | null }) {
   if (!stage?.status) {
     return '尚未开始';
@@ -2362,9 +2368,11 @@ function WorkflowRunDetailContent() {
                   ]}
                   output={selectedStage === 'DESIGN'
                     ? '设计产物请查看下方设计文档与设计稿预览。'
-                    : selectedStage === 'SPEC_PLAN' && selectedSpecPlanOutput
-                      ? '结构化产物请查看下方 Spec & Plan 文档。'
-                      : selectedStageContent.output}
+                    : selectedStage === 'BRAINSTORM' && stageDocumentMarkdown(getStage(workflowRun, 'BRAINSTORM')?.output)
+                      ? '需求文档请查看下方产品构思。'
+                      : selectedStage === 'SPEC_PLAN' && selectedSpecPlanOutput
+                        ? '结构化产物请查看下方 Spec & Plan 文档。'
+                        : selectedStageContent.output}
                   actions={
                     workflowRun.supersededByChangeId ? [] : selectedStage === 'SPEC_PLAN' && selectedStageContent.status === 'FAILED'
                       ? selectedStageContent.actions.filter((action) => action.key === 'run' || action.key === 'claim-local')
@@ -2380,6 +2388,15 @@ function WorkflowRunDetailContent() {
                   </CardContent>
                 </Card>
               )}
+
+              {selectedStage === 'BRAINSTORM' && workflowRun && stageDocumentMarkdown(getStage(workflowRun, 'BRAINSTORM')?.output) ? (
+                <Card className="rounded-md border-border bg-card">
+                  <CardHeader className="p-5 pb-0"><SectionHeader eyebrow="Product Brief" title="产品构思" /></CardHeader>
+                  <CardContent className="p-5 pt-4">
+                    <BriefingMarkdownView markdown={stageDocumentMarkdown(getStage(workflowRun, 'BRAINSTORM')?.output) ?? ''} />
+                  </CardContent>
+                </Card>
+              ) : null}
 
               {selectedStage === 'DESIGN' && workflowRun ? (
                 <Card className="rounded-md border-border bg-card">
