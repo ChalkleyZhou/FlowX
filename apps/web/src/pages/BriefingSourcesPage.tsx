@@ -14,6 +14,7 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { cn } from '../lib/utils';
 import { copyToClipboard } from '../lib/clipboard';
 import type { BriefingSource, Repository, Workspace } from '../types';
+import { readStoredListFilters, writeStoredListFilters } from '../utils/list-filter-storage';
 
 type RepositoryBinding = {
   provider: 'github' | 'gitlab';
@@ -118,7 +119,7 @@ function WebhookSetupGuide({
 export function BriefingSourcesPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [sources, setSources] = useState<BriefingSource[]>([]);
-  const [workspaceId, setWorkspaceId] = useState('');
+  const [workspaceId, setWorkspaceId] = useState(() => readStoredListFilters('briefing-sources').workspaceId ?? '');
   const [repositoryId, setRepositoryId] = useState('');
   const [binding, setBinding] = useState<RepositoryBinding | null>(null);
   const [bindingError, setBindingError] = useState('');
@@ -146,9 +147,12 @@ export function BriefingSourcesPage() {
     api.getWorkspaces()
       .then(async (workspaceList) => {
         setWorkspaces(workspaceList);
-        const firstWorkspaceId = workspaceId || workspaceList[0]?.id || '';
+        const storedWorkspaceId = readStoredListFilters('briefing-sources').workspaceId;
+        const preferredWorkspace = workspaceList.find((workspace) => workspace.id === storedWorkspaceId) ?? workspaceList[0];
+        const firstWorkspaceId = preferredWorkspace?.id || '';
         setWorkspaceId(firstWorkspaceId);
-        const firstRepositoryId = workspaceList[0]?.repositories[0]?.id ?? '';
+        writeStoredListFilters('briefing-sources', firstWorkspaceId ? { workspaceId: firstWorkspaceId } : {});
+        const firstRepositoryId = preferredWorkspace?.repositories[0]?.id ?? '';
         setRepositoryId(firstRepositoryId);
         if (firstWorkspaceId) {
           setSources(await api.getBriefingSources({ workspaceId: firstWorkspaceId }));
@@ -257,6 +261,7 @@ export function BriefingSourcesPage() {
               value={workspaceId || ''}
               onValueChange={(value) => {
                 setWorkspaceId(value);
+                writeStoredListFilters('briefing-sources', value ? { workspaceId: value } : {});
                 setRepositoryId('');
                 void refresh(value);
               }}

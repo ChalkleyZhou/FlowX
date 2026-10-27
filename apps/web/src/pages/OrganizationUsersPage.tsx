@@ -31,6 +31,7 @@ import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
 import { useConfirm } from '../components/ConfirmDialog';
 import type { OrganizationMember } from '../types';
+import { useStoredListFilters } from '../utils/list-filter-storage';
 
 type MemberDraft = {
   account: string;
@@ -66,7 +67,8 @@ export function OrganizationUsersPage() {
   const confirm = useConfirm();
   const [loading, setLoading] = useState(false);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
-  const [search, setSearch] = useState('');
+  const [filters, setFilter] = useStoredListFilters('organization-users');
+  const search = filters.q ?? '';
   const [createOpen, setCreateOpen] = useState(false);
   const [editMember, setEditMember] = useState<OrganizationMember | null>(null);
   const [createDraft, setCreateDraft] = useState<MemberDraft>(emptyDraft);
@@ -331,7 +333,7 @@ export function OrganizationUsersPage() {
               <Input
                 placeholder="搜索姓名、账号或邮箱"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => setFilter('q', event.target.value || undefined)}
               />
             )}
           />

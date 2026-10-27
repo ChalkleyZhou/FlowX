@@ -26,6 +26,7 @@ describe('项目页快捷创建需求', () => {
   let container: HTMLDivElement;
   let root: Root;
   beforeEach(() => {
+    window.localStorage.clear();
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     vi.resetAllMocks();
     vi.mocked(api.getProject).mockResolvedValue(project);

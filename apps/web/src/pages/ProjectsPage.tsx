@@ -22,12 +22,14 @@ import {
 import { Spinner } from '../components/ui/spinner';
 import { Textarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
+import { useStoredListFilters } from '../utils/list-filter-storage';
 import type { Project, Workspace } from '../types';
 
 export function ProjectsPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>();
+  const [filters, setFilter] = useStoredListFilters('projects');
+  const selectedWorkspaceId = filters.workspaceId;
   const [loading, setLoading] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createDraft, setCreateDraft] = useState({
@@ -93,7 +95,7 @@ export function ProjectsPage() {
         description: createDraft.description.trim() || undefined,
       });
       setCreateDraft({ workspaceId: '', name: '', code: '', description: '' });
-      setSelectedWorkspaceId(createDraft.workspaceId);
+      setFilter('workspaceId', createDraft.workspaceId);
       setCreateModalOpen(false);
       await refresh();
       toast.success('项目创建成功');
@@ -194,7 +196,7 @@ export function ProjectsPage() {
             filters={(
               <Select
                 value={selectedWorkspaceId ?? '__all__'}
-                onValueChange={(value) => setSelectedWorkspaceId(value === '__all__' ? undefined : value)}
+                onValueChange={(value) => setFilter('workspaceId', value === '__all__' ? undefined : value)}
               >
                 <SelectTrigger className="w-[220px]">
                   <SelectValue placeholder="按工作区筛选" />

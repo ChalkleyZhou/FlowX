@@ -88,6 +88,7 @@ describe('RequirementsPage', () => {
   };
 
   beforeEach(() => {
+    window.localStorage.clear();
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
       .IS_REACT_ACT_ENVIRONMENT = true;
     container = document.createElement('div');
@@ -189,6 +190,9 @@ describe('RequirementsPage', () => {
 
     const headers = Array.from(container.querySelectorAll('th')).map((cell) => cell.textContent);
     expect(headers).toEqual(['所属项目', '发布版本', '需求名称', '优先级', '规划状态', '功能模块', '备注', '创建人', '创建时间', '需求变更时间', '操作']);
+    expect(container.querySelector('th:last-child')?.className).toContain('sticky');
+    expect(container.querySelector('th:last-child')?.className).toContain('right-0');
+    expect(container.querySelector('tbody td:last-child')?.className).toContain('sticky');
     const cells = Array.from(container.querySelectorAll('tbody td')).map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim());
     expect(cells.slice(0, 10)).toEqual([
       'FlowX',

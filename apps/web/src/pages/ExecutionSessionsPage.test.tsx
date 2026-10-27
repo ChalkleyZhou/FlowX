@@ -22,6 +22,7 @@ const row: ExecutionSessionDetail = {
 let root: Root;
 let container: HTMLDivElement;
 beforeEach(() => {
+  window.localStorage.clear();
   vi.resetAllMocks();
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   HTMLElement.prototype.scrollIntoView = vi.fn();

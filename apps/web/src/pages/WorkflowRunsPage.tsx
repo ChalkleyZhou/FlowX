@@ -21,11 +21,13 @@ import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
 import { useConfirm } from '../components/ConfirmDialog';
 import type { Project, Requirement, WorkflowRun, Workspace } from '../types';
+import { useRememberedSearchFilters } from '../utils/list-filter-storage';
 import { formatWorkflowRunType, formatWorkflowStatus } from '../utils/workflow-ui';
 
 export function WorkflowRunsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  useRememberedSearchFilters('workflow-runs', ['workspaceId', 'projectId', 'requirementId', 'runType']);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);

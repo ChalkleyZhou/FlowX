@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Eye, FolderTree, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
+import { useRememberedSearchFilters } from '../../utils/list-filter-storage';
 import { api } from '../../api';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { EmptyState } from '../../components/EmptyState';
@@ -42,6 +43,7 @@ export function QualityCasesPage() {
   const toast = useToast();
   const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
+  useRememberedSearchFilters('quality-cases', ['workspaceId', 'projectId', 'libraryId', 'priority', 'q']);
   const [metaLoading, setMetaLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -85,10 +87,14 @@ export function QualityCasesPage() {
         const [workspaceList, projectList] = await Promise.all([api.getWorkspaces(), api.getProjects()]);
         setWorkspaces(workspaceList);
         setProjects(projectList);
-        if (!workspaceId && workspaceList[0]?.id) {
-          const next = new URLSearchParams(searchParams);
-          next.set('workspaceId', workspaceList[0].id);
-          setSearchParams(next, { replace: true });
+        if (workspaceList[0]?.id) {
+          const fallbackWorkspaceId = workspaceList[0].id;
+          setSearchParams((current) => {
+            if (current.get('workspaceId')) return current;
+            const next = new URLSearchParams(current);
+            next.set('workspaceId', fallbackWorkspaceId);
+            return next;
+          }, { replace: true });
         }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : '加载用例库范围失败');

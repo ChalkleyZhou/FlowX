@@ -10,11 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
 import type { CodeReviewSource, Repository, Workspace } from '../types';
+import { readStoredListFilters, writeStoredListFilters } from '../utils/list-filter-storage';
 
 export function CodeReviewSourcesPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [sources, setSources] = useState<CodeReviewSource[]>([]);
-  const [workspaceId, setWorkspaceId] = useState('');
+  const [workspaceId, setWorkspaceId] = useState(() => readStoredListFilters('code-review-sources').workspaceId ?? '');
   const [loading, setLoading] = useState(false);
   const [pendingRepositoryId, setPendingRepositoryId] = useState<string | null>(null);
   const toast = useToast();
@@ -50,8 +51,10 @@ export function CodeReviewSourcesPage() {
       .getWorkspaces()
       .then(async (workspaceList) => {
         setWorkspaces(workspaceList);
-        const firstWorkspaceId = workspaceId || workspaceList[0]?.id || '';
+        const storedWorkspaceId = readStoredListFilters('code-review-sources').workspaceId;
+        const firstWorkspaceId = workspaceList.find((workspace) => workspace.id === storedWorkspaceId)?.id || workspaceList[0]?.id || '';
         setWorkspaceId(firstWorkspaceId);
+        writeStoredListFilters('code-review-sources', firstWorkspaceId ? { workspaceId: firstWorkspaceId } : {});
         if (firstWorkspaceId) {
           setSources(await api.getCodeReviewSources({ workspaceId: firstWorkspaceId }));
         }
@@ -119,6 +122,7 @@ export function CodeReviewSourcesPage() {
             value={workspaceId || ''}
             onValueChange={(value) => {
               setWorkspaceId(value);
+              writeStoredListFilters('code-review-sources', value ? { workspaceId: value } : {});
               void refresh(value);
             }}
           >

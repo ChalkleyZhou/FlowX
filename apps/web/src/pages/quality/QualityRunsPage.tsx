@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useRememberedSearchFilters } from '../../utils/list-filter-storage';
 import { api } from '../../api';
 import { EmptyState } from '../../components/EmptyState';
 import { ListToolbar } from '../../components/ListToolbar';
@@ -39,6 +40,7 @@ interface RunRow {
 export function QualityRunsPage() {
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
+  useRememberedSearchFilters('quality-runs', ['projectId', 'runType', 'status', 'q']);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);

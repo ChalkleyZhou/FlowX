@@ -44,6 +44,7 @@ describe('OrganizationUsersPage', () => {
   let root: Root | null = null;
 
   beforeEach(() => {
+    window.localStorage.clear();
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     Object.defineProperty(window, 'matchMedia', {
       writable: true,

@@ -28,9 +28,18 @@ import {
 } from '../utils/schedule-filters';
 import { monthRange, shiftMonth } from '../utils/gantt-range';
 import { cn } from '../lib/utils';
+import { useRememberedSearchFilters } from '../utils/list-filter-storage';
 
 export function ScheduleHubPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  useRememberedSearchFilters('schedule', ['projectId', 'requirementId', 'role', 'onlyMe', 'from', 'to'], (params) => {
+    if (params.get('from') && params.get('to')) return params;
+    const next = new URLSearchParams(params);
+    const fallback = defaultScheduleRange();
+    if (!next.get('from')) next.set('from', fallback.from);
+    if (!next.get('to')) next.set('to', fallback.to);
+    return next;
+  });
   const { session } = useAuth();
   const toast = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -44,16 +53,6 @@ export function ScheduleHubPage() {
   const role = searchParams.get('role') ?? '';
   const onlyMe = searchParams.get('onlyMe') === '1' || searchParams.get('onlyMe') === 'true';
   const { from, to } = parseScheduleRange(searchParams);
-
-  useEffect(() => {
-    if (!searchParams.get('from') || !searchParams.get('to')) {
-      const fallback = defaultScheduleRange();
-      const next = new URLSearchParams(searchParams);
-      next.set('from', fallback.from);
-      next.set('to', fallback.to);
-      setSearchParams(next, { replace: true });
-    }
-  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     void (async () => {

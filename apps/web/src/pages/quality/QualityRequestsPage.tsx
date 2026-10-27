@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { useRememberedSearchFilters } from '../../utils/list-filter-storage';
 import { api } from '../../api';
 import { EmptyState } from '../../components/EmptyState';
 import { ListToolbar } from '../../components/ListToolbar';
@@ -37,6 +38,7 @@ const PAGE_SIZE = 8;
 export function QualityRequestsPage() {
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
+  useRememberedSearchFilters('quality-requests', ['projectId', 'status', 'q']);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);

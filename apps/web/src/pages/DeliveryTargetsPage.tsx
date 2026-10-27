@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { useToast } from '../components/ui/toast';
 import { useConfirm } from '../components/ConfirmDialog';
 import type { DeliveryTarget, OrganizationMember, Project, Workspace } from '../types';
+import { readStoredListFilters, writeStoredListFilters } from '../utils/list-filter-storage';
 
 const MANUAL_MEMBER_VALUE = '__manual__';
 
@@ -19,7 +20,7 @@ export function DeliveryTargetsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [targets, setTargets] = useState<DeliveryTarget[]>([]);
-  const [workspaceId, setWorkspaceId] = useState('');
+  const [workspaceId, setWorkspaceId] = useState(() => readStoredListFilters('delivery-targets').workspaceId ?? '');
   const [projectId, setProjectId] = useState('');
   const [type, setType] = useState('DINGTALK_APP');
   const [name, setName] = useState('');
@@ -54,8 +55,10 @@ export function DeliveryTargetsPage() {
         setWorkspaces(workspaceList);
         setProjects(projectList);
         setMembers(memberList);
-        const firstWorkspaceId = workspaceList[0]?.id ?? '';
+        const storedWorkspaceId = readStoredListFilters('delivery-targets').workspaceId;
+        const firstWorkspaceId = workspaceList.find((workspace) => workspace.id === storedWorkspaceId)?.id ?? workspaceList[0]?.id ?? '';
         setWorkspaceId(firstWorkspaceId);
+        writeStoredListFilters('delivery-targets', firstWorkspaceId ? { workspaceId: firstWorkspaceId } : {});
         const firstProjectId =
           projectList.find((project) => project.workspace.id === firstWorkspaceId)?.id ?? '';
         setProjectId(firstProjectId);
@@ -68,6 +71,7 @@ export function DeliveryTargetsPage() {
 
   function handleWorkspaceChange(nextWorkspaceId: string) {
     setWorkspaceId(nextWorkspaceId);
+    writeStoredListFilters('delivery-targets', nextWorkspaceId ? { workspaceId: nextWorkspaceId } : {});
     const nextProjectId =
       projects.find((project) => project.workspace.id === nextWorkspaceId)?.id ?? '';
     setProjectId(nextProjectId);

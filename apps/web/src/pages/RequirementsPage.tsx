@@ -31,6 +31,7 @@ import { Textarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
 import type { Project, Requirement } from '../types';
 import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
+import { useRememberedSearchFilters } from '../utils/list-filter-storage';
 import { formatRequirementWorkflowScope, getActiveRequirementWorkflows } from '../utils/requirement-workflows';
 import { formatWorkflowStatus } from '../utils/workflow-ui';
 import { normalizeOnlineAiProviders, ONLINE_AI_UNAVAILABLE_MESSAGE } from '../online-ai';
@@ -79,6 +80,7 @@ const priorityOptions = [
 export function RequirementsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  useRememberedSearchFilters('requirements', ['projectId', 'versionId', 'planningStatus', 'priority']);
   const [projects, setProjects] = useState<Project[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [loading, setLoading] = useState(false);
@@ -880,7 +882,14 @@ export function RequirementsPage() {
                 <thead className="bg-muted/40 text-left text-muted-foreground">
                   <tr>
                     {['所属项目', '发布版本', '需求名称', '优先级', '规划状态', '功能模块', '备注', '创建人', '创建时间', '需求变更时间', '操作'].map((label) => (
-                      <th key={label} className="whitespace-nowrap px-4 py-3 font-medium">{label}</th>
+                      <th
+                        key={label}
+                        className={label === '操作'
+                          ? 'sticky right-0 z-20 whitespace-nowrap border-l border-border bg-muted px-4 py-3 font-medium'
+                          : 'whitespace-nowrap px-4 py-3 font-medium'}
+                      >
+                        {label}
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -904,7 +913,7 @@ export function RequirementsPage() {
                       <td className="whitespace-nowrap px-4 py-3">{item.createdByName?.trim() || '未记录'}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-muted-foreground"><time dateTime={item.createdAt ?? undefined}>{formatRequirementCreatedAt(item.createdAt)}</time></td>
                       <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{item.latestChangeAt ? <time dateTime={item.latestChangeAt}>{formatRequirementCreatedAt(item.latestChangeAt)}</time> : '—'}</td>
-                      <td className="whitespace-nowrap px-4 py-3">
+                      <td className="sticky right-0 z-10 whitespace-nowrap border-l border-t border-border bg-card px-4 py-3">
                         <div className="flex flex-nowrap gap-2">
                           <UiButton variant="default" size="sm" asChild>
                             <Link to={`/requirements/${item.id}`}>详情</Link>

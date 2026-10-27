@@ -42,6 +42,7 @@ import {
   formatSeverity,
   formatSeverityLabel,
 } from '../utils/label-utils';
+import { useStoredListFilters } from '../utils/list-filter-storage';
 
 export function BugsPage() {
   const [bugs, setBugs] = useState<Bug[]>([]);
@@ -61,11 +62,12 @@ export function BugsPage() {
     actualBehavior: '',
     reproductionSteps: '',
   });
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>();
-  const [selectedStatus, setSelectedStatus] = useState<string>();
-  const [selectedSeverity, setSelectedSeverity] = useState<string>();
-  const [selectedPriority, setSelectedPriority] = useState<string>();
-  const [keyword, setKeyword] = useState('');
+  const [filters, setFilter] = useStoredListFilters('bugs');
+  const selectedWorkspaceId = filters.workspaceId;
+  const selectedStatus = filters.status;
+  const selectedSeverity = filters.severity;
+  const selectedPriority = filters.priority;
+  const keyword = filters.keyword ?? '';
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const toast = useToast();
@@ -376,14 +378,14 @@ export function BugsPage() {
                   <UiInput
                     placeholder="搜索标题、描述、需求、工作区"
                     value={keyword}
-                    onChange={(event) => setKeyword(event.target.value)}
+                    onChange={(event) => setFilter('keyword', event.target.value || undefined)}
                   />
                 )}
                 filters={(
                   <>
                     <Select
                       value={selectedWorkspaceId ?? '__all__'}
-                      onValueChange={(value) => setSelectedWorkspaceId(value === '__all__' ? undefined : value)}
+                      onValueChange={(value) => setFilter('workspaceId', value === '__all__' ? undefined : value)}
                     >
                       <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="按工作区筛选" />
@@ -399,7 +401,7 @@ export function BugsPage() {
                     </Select>
                     <Select
                       value={selectedStatus ?? '__all__'}
-                      onValueChange={(value) => setSelectedStatus(value === '__all__' ? undefined : value)}
+                      onValueChange={(value) => setFilter('status', value === '__all__' ? undefined : value)}
                     >
                       <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="按状态筛选" />
@@ -417,7 +419,7 @@ export function BugsPage() {
                     </Select>
                     <Select
                       value={selectedSeverity ?? '__all__'}
-                      onValueChange={(value) => setSelectedSeverity(value === '__all__' ? undefined : value)}
+                      onValueChange={(value) => setFilter('severity', value === '__all__' ? undefined : value)}
                     >
                       <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="按严重级别筛选" />
@@ -432,7 +434,7 @@ export function BugsPage() {
                     </Select>
                     <Select
                       value={selectedPriority ?? '__all__'}
-                      onValueChange={(value) => setSelectedPriority(value === '__all__' ? undefined : value)}
+                      onValueChange={(value) => setFilter('priority', value === '__all__' ? undefined : value)}
                     >
                       <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="按优先级筛选" />

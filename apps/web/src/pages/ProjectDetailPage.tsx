@@ -23,6 +23,7 @@ import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
 import type { Project, ProjectVersionSummary } from '../types';
 import { formatAssignmentSummary, formatScheduleRange } from '../utils/business-days';
+import { useStoredListFilters } from '../utils/list-filter-storage';
 import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
 
 export function ProjectDetailPage() {
@@ -31,7 +32,8 @@ export function ProjectDetailPage() {
   const toast = useToast();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
-  const [versionFilter, setVersionFilter] = useState('__all__');
+  const [filters, setFilter] = useStoredListFilters(`project-detail:${projectId ?? ''}`);
+  const versionFilter = filters.versionId || '__all__';
   const [createOpen, setCreateOpen] = useState(false);
   const [createTitle, setCreateTitle] = useState('');
   const [createVersion, setCreateVersion] = useState<ProjectVersionSummary | null>(null);
@@ -73,7 +75,7 @@ export function ProjectDetailPage() {
       await api.createRequirement({ projectId, title, versionId: createVersion.id });
       setCreateOpen(false);
       setCreateTitle('');
-      setVersionFilter(createVersion.id);
+      setFilter('versionId', createVersion.id);
       await refresh();
       toast.success('需求创建成功');
     } catch (error) {
@@ -209,7 +211,7 @@ export function ProjectDetailPage() {
           <div className="flex flex-wrap items-end justify-between gap-3">
             <SectionHeader eyebrow="Requirements" title="需求列表" />
             <div className="flex flex-wrap items-center gap-2">
-              <Select value={versionFilter} onValueChange={setVersionFilter}>
+              <Select value={versionFilter} onValueChange={(value) => setFilter('versionId', value === '__all__' ? undefined : value)}>
                 <SelectTrigger className="w-44" aria-label="按版本筛选">
                   <SelectValue placeholder="全部版本" />
                 </SelectTrigger>

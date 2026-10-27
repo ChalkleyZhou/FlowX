@@ -11,6 +11,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import type { ExecutionSessionDetail, ExecutionSessionStatus, ExecutionSessionView, OrganizationMember, Project, SourceTool } from '../types';
+import { useRememberedSearchFilters } from '../utils/list-filter-storage';
 
 const statuses: Array<[ExecutionSessionStatus, string]> = [
   ['CREATED', '待启动'], ['CLAIMED', '已领取'], ['RUNNING', '执行中'], ['BLOCKED', '等待处理'],
@@ -28,6 +29,7 @@ function Filter({ label, value, allLabel, items, onChange }: {
 
 export function ExecutionSessionsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  useRememberedSearchFilters('execution-sessions', ['projectId', 'status', 'sourceTool', 'claimedByUserId', 'search', 'view']);
   const [projects, setProjects] = useState<Project[]>([]);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [optionsError, setOptionsError] = useState(false);
