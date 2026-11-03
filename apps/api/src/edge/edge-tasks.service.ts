@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { WorkflowRunStatus, WorkflowRunType } from '../common/enums';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { RequirementPlanningStatus, RequirementPriority, WorkflowRunStatus, WorkflowRunType } from '../common/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import { ACTIVE_EXECUTION_SESSION_STATUSES } from '../execution-sessions/execution-session-state';
 import {
@@ -76,14 +76,36 @@ export class EdgeTasksService {
 
   async listTasks(filters: {
     workspaceId?: string;
+    projectId?: string;
+    versionId?: string;
+    planningStatus?: string;
+    priority?: string;
     session?: EdgeWorkflowSession;
   }): Promise<EdgeTaskItem[]> {
-    const workspaceFilter = filters.workspaceId?.trim()
-      ? { workspaceId: filters.workspaceId.trim() }
-      : {};
+    const workspaceId = filters.workspaceId?.trim() || undefined;
+    const projectId = filters.projectId?.trim() || undefined;
+    const versionId = filters.versionId?.trim() || undefined;
+    const planningStatus = filters.planningStatus?.trim() || undefined;
+    const priority = filters.priority?.trim() || undefined;
+    if (priority && !Object.values(RequirementPriority).includes(priority as RequirementPriority)) {
+      throw new BadRequestException('优先级无效。');
+    }
+    if (planningStatus && !Object.values(RequirementPlanningStatus).includes(planningStatus as RequirementPlanningStatus)) {
+      throw new BadRequestException('规划状态无效。');
+    }
+    const workspaceFilter = workspaceId ? { workspaceId } : {};
+    const requirementWhere = {
+      status: 'ACTIVE',
+      ...workspaceFilter,
+      ...(projectId ? { projectId } : {}),
+      ...(versionId ? { versionId } : {}),
+      ...(planningStatus ? { planningStatus } : {}),
+      ...(priority ? { priority } : {}),
+    };
+    const includeBugs = !versionId && !planningStatus;
     const [requirements, bugs] = await Promise.all([
       this.prisma.requirement.findMany({
-        where: { status: 'ACTIVE', ...workspaceFilter },
+        where: requirementWhere,
         include: {
           requirementRepositories: {
             include: { repository: true },
@@ -101,11 +123,16 @@ export class EdgeTasksService {
         },
         orderBy: { updatedAt: 'desc' },
       }),
-      this.prisma.bug.findMany({
-        where: { status: { in: ['OPEN', 'CONFIRMED'] }, ...workspaceFilter },
+      includeBugs ? this.prisma.bug.findMany({
+        where: {
+          status: { in: ['OPEN', 'CONFIRMED'] },
+          ...workspaceFilter,
+          ...(projectId ? { projectId } : {}),
+          ...(priority ? { priority } : {}),
+        },
         include: { repository: true, fixWorkflowRun: true },
         orderBy: { updatedAt: 'desc' },
-      }),
+      }) : Promise.resolve([]),
     ]);
 
     return [

@@ -1,5 +1,6 @@
 import { readChangePrototype } from '../requirements/requirement-change-prototype';
 import { effectiveRequirementDescription, readRequirementRevision } from '../requirements/requirement-change-context';
+import { requirementProfileFields } from '../requirements/requirement-profile';
 import { PrototypeArchive } from '../prototype-imports/prototype-archive';
 import { buildPrototypeWorkflowSnapshot, readPrototypeWorkflowSnapshot, type PrototypeWorkflowSnapshot } from './workflow-prototype-import';
 import { codeDeliveryReviewRepositories, codeDeliverySourceStage } from './workflow-code-delivery-review';
@@ -3422,6 +3423,7 @@ export class WorkflowService {
         title: workflow.requirement.title,
         description: this.localRequirementDescription(workflow, 'EXECUTION'),
         acceptanceCriteria: workflow.requirement.acceptanceCriteria,
+        ...requirementProfileFields(workflow.requirement),
       },
       specPlan,
       workflowRepositories: workflow.workflowRepositories,
@@ -3448,6 +3450,7 @@ export class WorkflowService {
         title: workflow.requirement.title,
         description: this.localRequirementDescription(workflow, 'DESIGN'),
         acceptanceCriteria: workflow.requirement.acceptanceCriteria,
+        ...requirementProfileFields(workflow.requirement),
       },
       repositories: workflow.workflowRepositories.map((repository) => ({
         repositoryId: repository.repositoryId ?? repository.id,
@@ -3507,6 +3510,7 @@ export class WorkflowService {
         title: workflow.requirement.title,
         description: this.localRequirementDescription(workflow, 'SPEC_PLAN'),
         acceptanceCriteria: workflow.requirement.acceptanceCriteria,
+        ...requirementProfileFields(workflow.requirement),
       },
       repositories: workflow.workflowRepositories.map((repository) => ({
         repositoryId: repository.repositoryId ?? repository.id,
@@ -3660,6 +3664,7 @@ export class WorkflowService {
         title: workflow.requirement.title,
         description: this.localRequirementDescription(workflow, 'BRAINSTORM'),
         acceptanceCriteria: workflow.requirement.acceptanceCriteria,
+        ...requirementProfileFields(workflow.requirement),
       },
       repositories: workflow.workflowRepositories.map((repository) => ({
         repositoryId: repository.repositoryId ?? repository.id,

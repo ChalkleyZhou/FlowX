@@ -40,6 +40,7 @@ description: 仅在用户明确要求把事项新建、登记或发起到 FlowX 
 3. **收齐字段**
    - 必填：`title`；`versionId` 使用上一步确认的有效版本
    - `description`、`acceptanceCriteria`：选填；用户未提供就留空，不编造占位内容，后续构思中完善
+   - `priority`、`functionalModule`、`riskImpact`、`productRequirementDocument`、`remark`：选填。用户没说优先级就不要传，服务端默认中。不要编造模块、风险、文档或备注
    - `repositoryIds`：可选；不选则继承平台默认
 
 4. **创建**
@@ -74,6 +75,17 @@ description: 仅在用户明确要求把事项新建、登记或发起到 FlowX 
 - 在本 Skill 内提交 `prd.md` / `design.md`
 - 启动失败时宣称已启动
 - 自动删除已创建但未启动的需求
+- 用户没有明确要求时调用 `flowx_update_requirement`、`flowx_delete_requirement` 或需求变更工具
+
+## 修改、删除与正式变更
+
+这些操作不属于创建流程。只有用户明确要求时才调用，并先说明将要写入的内容。
+
+- 编辑：`flowx_update_requirement`，只传用户要改的字段。创建人和创建时间不能改。
+- 删除：先说明会移除工作流、构思、排期和原型材料，关联缺陷与问题会保留但解除关联。用户确认后才传 `userConfirmedDelete: true`。执行中，或已纳入测试设计、提测时，服务端会拒绝。
+- 文字变更：`flowx_submit_requirement_change`。`SUPPLEMENT` 继续当前流程，`RESTART` 重新走一轮。确认原文和方式后才传 `userConfirmedChange: true`。同一次提交重试时复用同一个 `requestId`。
+- 换包重走：`flowx_submit_requirement_prototype_change`，传入用户确认的本地 `.zip` 路径，不超过 20 MiB。说明可留空。
+- 变更已保存但新流程还没启动：用户确认后调用 `flowx_retry_requirement_change`，不要再创建一条变更。
 
 ## 失败处理
 

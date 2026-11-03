@@ -14,6 +14,12 @@ const workflow = {
     title: 'Export page',
     description: 'Design an export experience',
     acceptanceCriteria: 'Covers loading, empty and error states',
+    priority: 'HIGH',
+    functionalModule: '导出',
+    riskImpact: '影响下载',
+    productRequirementDocument: '见 PRD',
+    remark: '先做 CSV',
+    createdByName: 'Ada',
     workspaceId: 'workspace-1',
     projectId: 'project-1',
     project: { workspaceId: 'workspace-1' },
@@ -92,6 +98,14 @@ describe('WorkflowService local OpenDesign', () => {
       }),
     );
     expect(result.handoff.contextPackage.requirement.id).toBe('req-1');
+    expect(result.handoff.contextPackage.requirement).toMatchObject({
+      priority: 'HIGH',
+      functionalModule: '导出',
+      riskImpact: '影响下载',
+      productRequirementDocument: '见 PRD',
+      remark: '先做 CSV',
+      createdByName: 'Ada',
+    });
     expect(result.handoff.contextPackage.outputContract.resultFileName).toBe('result.json');
     expect(result.handoff.contextPackage.outputContract.markdownFileName).toBe('design.md');
   });

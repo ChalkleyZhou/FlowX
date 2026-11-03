@@ -1,4 +1,5 @@
 import { effectiveRequirementDescription } from '../requirements/requirement-change-context';
+import { requirementProfileFields } from '../requirements/requirement-profile';
 import { Injectable } from '@nestjs/common';
 import {
   FLOWX_PROTOCOL_VERSION,
@@ -45,6 +46,12 @@ export class ContextPackageService {
         title: string;
         description: string;
         acceptanceCriteria: string;
+        priority?: string | null;
+        functionalModule?: string | null;
+        riskImpact?: string | null;
+        productRequirementDocument?: string | null;
+        remark?: string | null;
+        createdByName?: string | null;
         changes?: Array<{ revision: number; content: string }>;
         revision?: number;
         requirementRepositories: Array<{
@@ -59,6 +66,7 @@ export class ContextPackageService {
           title: requirement.title,
           description: effectiveRequirementDescription(requirement),
           acceptanceCriteria: requirement.acceptanceCriteria,
+          ...requirementProfileFields(requirement),
         },
         metadata: { requirementRevision: requirement.revision ?? 0 },
         repositories: requirement.requirementRepositories.map(({ repository }) => ({
@@ -124,6 +132,7 @@ export class ContextPackageService {
           input.taskType === 'requirement'
             ? handoff.requirement.acceptanceCriteria
             : undefined,
+        ...(input.taskType === 'requirement' ? requirementProfileFields(handoff.requirement) : {}),
         expectedBehavior: bugContext?.expectedBehavior,
         actualBehavior: bugContext?.actualBehavior,
         reproductionSteps: Array.isArray(bugContext?.reproductionSteps)

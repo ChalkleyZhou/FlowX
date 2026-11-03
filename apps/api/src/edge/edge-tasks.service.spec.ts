@@ -48,6 +48,31 @@ describe('EdgeTasksService', () => {
     );
   });
 
+  it('filters requirements and omits bugs when version or planning status is set', async () => {
+    const { service, prisma } = createService();
+    prisma.requirement.findMany.mockResolvedValue([]);
+    prisma.bug.findMany.mockResolvedValue([]);
+
+    await service.listTasks({
+      projectId: 'project-1',
+      versionId: 'version-1',
+      planningStatus: 'SCHEDULED',
+      priority: 'HIGH',
+    });
+
+    expect(prisma.requirement.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        status: 'ACTIVE',
+        projectId: 'project-1',
+        versionId: 'version-1',
+        planningStatus: 'SCHEDULED',
+        priority: 'HIGH',
+      },
+    }));
+    expect(prisma.bug.findMany).not.toHaveBeenCalled();
+    await expect(service.listTasks({ priority: 'P0' })).rejects.toThrow('优先级无效');
+  });
+
   it('exposes only running LOCAL_CHAT workflows as reportable', async () => {
     const { service, prisma } = createService();
     prisma.requirement.findMany.mockResolvedValue([

@@ -1,3 +1,4 @@
+import type { RequirementProfileFields } from '@flowx-ai/protocol';
 import type { SpecPlanOutput } from '../common/types';
 
 export interface LocalHandoffCheckoutHints {
@@ -29,7 +30,7 @@ export interface LocalHandoffPayload {
     title: string;
     description: string;
     acceptanceCriteria: string;
-  };
+  } & RequirementProfileFields;
   specPlan: SpecPlanOutput;
   repositories: LocalHandoffRepository[];
   artifacts: {

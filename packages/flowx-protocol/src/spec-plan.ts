@@ -1,4 +1,4 @@
-import type { ContextRepository } from './context-package.js';
+import type { ContextRepository, RequirementProfileFields } from './context-package.js';
 
 export interface SpecPlanSpec {
   goal: string;
@@ -41,7 +41,7 @@ export interface LocalSpecPlanContextPackage {
     title: string;
     description: string;
     acceptanceCriteria: string;
-  };
+  } & RequirementProfileFields;
   repositories: ContextRepository[];
   brainstormContext?: unknown;
   designContext?: unknown;

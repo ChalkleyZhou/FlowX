@@ -87,6 +87,11 @@ describe('flowx-local MCP server', () => {
       'flowx_list_projects',
       'flowx_create_project_version',
       'flowx_create_requirement',
+      'flowx_update_requirement',
+      'flowx_delete_requirement',
+      'flowx_submit_requirement_change',
+      'flowx_retry_requirement_change',
+      'flowx_submit_requirement_prototype_change',
       'flowx_start_workflow',
       'flowx_get_workflow_position',
       'flowx_list_tasks',
@@ -557,6 +562,135 @@ describe('flowx-local MCP server', () => {
     await server.close();
   });
 
+  it('forwards requirement profile fields, edits, deletion and formal changes', async () => {
+    const homeDir = makeHome();
+    delete process.env.FLOWX_API_TOKEN;
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      if (url.endsWith('/requirements') && init?.method === 'POST') {
+        expect(body).toMatchObject({
+          projectId: 'proj_1',
+          title: '本地发起',
+          priority: 'HIGH',
+          functionalModule: '导出',
+          remark: '先做 CSV',
+        });
+        return new Response(JSON.stringify({ id: 'req_1' }), { status: 201 });
+      }
+      if (url.endsWith('/requirements/req_1') && init?.method === 'PATCH') {
+        expect(body).toEqual({ priority: 'LOW', remark: '' });
+        return new Response(JSON.stringify({ id: 'req_1', priority: 'LOW' }), { status: 200 });
+      }
+      if (url.endsWith('/requirements/req_1') && init?.method === 'DELETE') {
+        return new Response(JSON.stringify({ success: true }), { status: 200 });
+      }
+      if (url.endsWith('/requirements/req_1/changes') && init?.method === 'POST') {
+        expect(body).toEqual({ content: '增加 Excel', mode: 'SUPPLEMENT', requestId: 'change-1' });
+        return new Response(JSON.stringify({ id: 'change_1', mode: 'SUPPLEMENT' }), { status: 201 });
+      }
+      if (url.endsWith('/requirements/req_1/changes/change_1/restart') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ id: 'change_1', restartStatus: 'STARTED' }), { status: 200 });
+      }
+      throw new Error(`unexpected url: ${url} ${init?.method}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { client, server } = await connectClient(homeDir);
+
+    const created = await client.callTool({
+      name: 'flowx_create_requirement',
+      arguments: {
+        projectId: 'proj_1',
+        title: '本地发起',
+        priority: 'HIGH',
+        functionalModule: '导出',
+        remark: '先做 CSV',
+      },
+    });
+    expect(created.isError).toBeUndefined();
+
+    const updated = await client.callTool({
+      name: 'flowx_update_requirement',
+      arguments: { requirementId: 'req_1', priority: 'LOW', remark: '' },
+    });
+    expect(updated.isError).toBeUndefined();
+
+    const denied = await client.callTool({
+      name: 'flowx_delete_requirement',
+      arguments: { requirementId: 'req_1', userConfirmedDelete: false },
+    });
+    expect(denied.isError).toBe(true);
+
+    const deleted = await client.callTool({
+      name: 'flowx_delete_requirement',
+      arguments: { requirementId: 'req_1', userConfirmedDelete: true },
+    });
+    expect(deleted.isError).toBeUndefined();
+
+    const unconfirmed = await client.callTool({
+      name: 'flowx_submit_requirement_change',
+      arguments: { requirementId: 'req_1', content: '增加 Excel', mode: 'SUPPLEMENT', requestId: 'change-1', userConfirmedChange: false },
+    });
+    expect(unconfirmed.isError).toBe(true);
+
+    const changed = await client.callTool({
+      name: 'flowx_submit_requirement_change',
+      arguments: { requirementId: 'req_1', content: '增加 Excel', mode: 'SUPPLEMENT', requestId: 'change-1', userConfirmedChange: true },
+    });
+    expect(changed.isError).toBeUndefined();
+
+    const retried = await client.callTool({
+      name: 'flowx_retry_requirement_change',
+      arguments: { requirementId: 'req_1', changeId: 'change_1', userConfirmedRetry: true },
+    });
+    expect(retried.isError).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+
+    await client.close();
+    await server.close();
+  });
+
+  it('uploads a local prototype zip when the user confirmed the change', async () => {
+    const homeDir = makeHome();
+    const zipPath = join(homeDir, 'prototype.zip');
+    writeFileSync(zipPath, 'PK');
+    delete process.env.FLOWX_API_TOKEN;
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      expect(url).toContain('/requirements/req_1/changes/prototype');
+      expect(init?.method).toBe('POST');
+      expect(init?.body).toBeInstanceOf(FormData);
+      const form = init?.body as FormData;
+      expect(form.get('mode')).toBe('RESTART');
+      expect(form.get('requestId')).toBe('zip-1');
+      expect(form.get('aiProvider')).toBe('cursor');
+      expect(form.get('file')).toBeInstanceOf(Blob);
+      const headers = new Headers(init?.headers);
+      expect(headers.get('content-type')).toBeNull();
+      return new Response(JSON.stringify({ id: 'change_zip', restartStatus: 'STARTING' }), { status: 201 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { client, server } = await connectClient(homeDir);
+
+    const denied = await client.callTool({
+      name: 'flowx_submit_requirement_prototype_change',
+      arguments: { requirementId: 'req_1', zipPath, requestId: 'zip-1', userConfirmedChange: false },
+    });
+    expect(denied.isError).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const submitted = await client.callTool({
+      name: 'flowx_submit_requirement_prototype_change',
+      arguments: { requirementId: 'req_1', zipPath, requestId: 'zip-1', aiProvider: 'cursor', userConfirmedChange: true },
+    });
+    expect(submitted.isError).toBeUndefined();
+
+    await client.close();
+    await server.close();
+  });
+
   it('rejects start_workflow without userConfirmedStart and starts when confirmed', async () => {
     const homeDir = makeHome();
     delete process.env.FLOWX_API_TOKEN;
@@ -648,7 +782,7 @@ describe('flowx-local MCP server', () => {
     await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
-      if (url.endsWith('/cursor-local/tasks?workspaceId=ws-1')) {
+      if (url.includes('/cursor-local/tasks?') && url.includes('workspaceId=ws-1') && url.includes('projectId=proj-1') && url.includes('priority=HIGH')) {
         return new Response(JSON.stringify([{ id: 'req-1', type: 'requirement' }]), { status: 200 });
       }
       if (url.endsWith('/cursor-local/opendesign-tasks?workspaceId=ws-1')) {
@@ -673,7 +807,7 @@ describe('flowx-local MCP server', () => {
 
     const result = await client.callTool({
       name: 'flowx_list_tasks',
-      arguments: { workspaceId: 'ws-1' },
+      arguments: { workspaceId: 'ws-1', projectId: 'proj-1', priority: 'HIGH' },
     });
     expect(result.isError).toBeUndefined();
     expect(JSON.parse(String((result.content as Array<{ text: string }>)[0].text))).toEqual({

@@ -19,7 +19,14 @@ export class CursorLocalService {
     private readonly contextPackageService: ContextPackageService,
   ) {}
 
-  listTasks(filters: { workspaceId?: string; session?: EdgeWorkflowSession }) {
+  listTasks(filters: {
+    workspaceId?: string;
+    projectId?: string;
+    versionId?: string;
+    planningStatus?: string;
+    priority?: string;
+    session?: EdgeWorkflowSession;
+  }) {
     return this.edgeTasksService.listTasks(filters);
   }
 

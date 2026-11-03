@@ -10,7 +10,7 @@ import {
   type SpecPlanCompletionReport,
 } from '@flowx-ai/protocol';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { z } from 'zod';
 import { readActiveDesignSession } from './active-design-session.js';
@@ -65,6 +65,37 @@ class LocalFlowXApiClient {
       body,
     });
   }
+
+  async requestForm(path: string, form: FormData) {
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method: 'POST',
+      headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
+      body: form,
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(`FlowX API request failed (${response.status}): ${message || response.statusText}`);
+    }
+    return response.json();
+  }
+}
+
+const requirementPrioritySchema = z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']);
+
+function requirementProfileBody(input: {
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  functionalModule?: string;
+  riskImpact?: string;
+  productRequirementDocument?: string;
+  remark?: string;
+}) {
+  return {
+    ...(input.priority !== undefined ? { priority: input.priority } : {}),
+    ...(input.functionalModule !== undefined ? { functionalModule: input.functionalModule } : {}),
+    ...(input.riskImpact !== undefined ? { riskImpact: input.riskImpact } : {}),
+    ...(input.productRequirementDocument !== undefined ? { productRequirementDocument: input.productRequirementDocument } : {}),
+    ...(input.remark !== undefined ? { remark: input.remark } : {}),
+  };
 }
 
 const designReportSchema = z.object({
@@ -826,12 +857,17 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     {
       title: 'Create FlowX Requirement',
       description:
-        'Create a requirement on FlowX only after the user explicitly asked to create/register the item in FlowX or confirmed that choice. Never interpret ordinary code changes, current-project feature work, or requirement discussion as authorization to create FlowX data. Requires projectId and title; description and acceptanceCriteria are optional. Confirm the release version with the user first and pass a valid versionId; if omitted the server uses the project current version. A version is required and null is rejected.',
+        'Create a requirement on FlowX only after the user explicitly asked to create/register the item in FlowX or confirmed that choice. Never interpret ordinary code changes, current-project feature work, or requirement discussion as authorization to create FlowX data. Requires projectId and title; description, acceptanceCriteria, priority, functionalModule, riskImpact, productRequirementDocument and remark are optional. Omit priority to keep the server default MEDIUM. Confirm the release version with the user first and pass a valid versionId; if omitted the server uses the project current version. A version is required and null is rejected.',
       inputSchema: z.object({
         projectId: z.string().min(1),
         title: z.string().trim().min(1),
         description: z.string().optional(),
         acceptanceCriteria: z.string().optional(),
+        priority: requirementPrioritySchema.optional(),
+        functionalModule: z.string().optional(),
+        riskImpact: z.string().optional(),
+        productRequirementDocument: z.string().optional(),
+        remark: z.string().optional(),
         repositoryIds: z.array(z.string()).optional(),
         versionId: z.string().min(1).optional(),
       }),
@@ -846,10 +882,184 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
             title: input.title,
             description: input.description,
             acceptanceCriteria: input.acceptanceCriteria,
+            ...requirementProfileBody(input),
             ...(input.repositoryIds?.length ? { repositoryIds: input.repositoryIds } : {}),
             ...(input.versionId !== undefined ? { versionId: input.versionId } : {}),
           }),
         }),
+      );
+    },
+  );
+
+  server.registerTool(
+    'flowx_update_requirement',
+    {
+      title: 'Update FlowX Requirement',
+      description:
+        'Update an existing FlowX requirement only after the user explicitly asked to edit it. Send only the fields the user wants to change. Creator and created time stay unchanged. Does not start or restart a workflow.',
+      inputSchema: z.object({
+        requirementId: z.string().min(1),
+        title: z.string().trim().min(1).optional(),
+        description: z.string().optional(),
+        acceptanceCriteria: z.string().optional(),
+        priority: requirementPrioritySchema.optional(),
+        functionalModule: z.string().optional(),
+        riskImpact: z.string().optional(),
+        productRequirementDocument: z.string().optional(),
+        remark: z.string().optional(),
+        versionId: z.string().min(1).optional(),
+      }),
+    },
+    async (input) => {
+      const { requirementId, versionId, ...profile } = input;
+      const { client } = await resolveSession(options.homeDir);
+      return runRequest(() =>
+        client.request(`/requirements/${encodeURIComponent(requirementId)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            ...(profile.title !== undefined ? { title: profile.title } : {}),
+            ...(profile.description !== undefined ? { description: profile.description } : {}),
+            ...(profile.acceptanceCriteria !== undefined ? { acceptanceCriteria: profile.acceptanceCriteria } : {}),
+            ...requirementProfileBody(profile),
+            ...(versionId !== undefined ? { versionId } : {}),
+          }),
+        }),
+      );
+    },
+  );
+
+  server.registerTool(
+    'flowx_delete_requirement',
+    {
+      title: 'Delete FlowX Requirement',
+      description:
+        'Delete a FlowX requirement only after showing the user that workflows, ideation, schedule and prototype materials will be removed, while linked bugs and issues stay unlinked. Pass userConfirmedDelete=true only after explicit confirmation. The server rejects deletion while a stage is still running or the requirement is already in test design or a test request.',
+      inputSchema: z.object({
+        requirementId: z.string().min(1),
+        userConfirmedDelete: z.boolean(),
+      }),
+    },
+    async (input) => {
+      if (input.userConfirmedDelete !== true) {
+        return textResult(
+          'Refusing to delete requirement: userConfirmedDelete must be true after the user explicitly confirmed deletion.',
+          true,
+        );
+      }
+      const { client } = await resolveSession(options.homeDir);
+      return runRequest(() =>
+        client.request(`/requirements/${encodeURIComponent(input.requirementId)}`, { method: 'DELETE' }),
+      );
+    },
+  );
+
+  server.registerTool(
+    'flowx_submit_requirement_change',
+    {
+      title: 'Submit FlowX Requirement Change',
+      description:
+        'Record a formal requirement change only after the user confirmed the exact text and mode. SUPPLEMENT keeps the current workflow and is included in later handoffs. RESTART starts a new round and keeps old outputs. Pass userConfirmedChange=true only after that confirmation. Reuse the same requestId when retrying the identical submission.',
+      inputSchema: z.object({
+        requirementId: z.string().min(1),
+        content: z.string().trim().min(1).max(20000),
+        mode: z.enum(['SUPPLEMENT', 'RESTART']),
+        requestId: z.string().trim().min(1).max(128),
+        sourceWorkflowRunId: z.string().min(1).optional(),
+        userConfirmedChange: z.boolean(),
+      }),
+    },
+    async (input) => {
+      if (input.userConfirmedChange !== true) {
+        return textResult(
+          'Refusing to submit requirement change: userConfirmedChange must be true after the user explicitly confirmed the text and mode.',
+          true,
+        );
+      }
+      const { client } = await resolveSession(options.homeDir);
+      return runRequest(() =>
+        client.request(`/requirements/${encodeURIComponent(input.requirementId)}/changes`, {
+          method: 'POST',
+          body: JSON.stringify({
+            content: input.content,
+            mode: input.mode,
+            requestId: input.requestId,
+            ...(input.sourceWorkflowRunId ? { sourceWorkflowRunId: input.sourceWorkflowRunId } : {}),
+          }),
+        }),
+      );
+    },
+  );
+
+  server.registerTool(
+    'flowx_retry_requirement_change',
+    {
+      title: 'Retry FlowX Requirement Change',
+      description:
+        'Continue a requirement change whose new workflow is still pending or failed. Use this after the user ended the blocking task or asked to retry. Pass userConfirmedRetry=true only after explicit confirmation. Does not create another change.',
+      inputSchema: z.object({
+        requirementId: z.string().min(1),
+        changeId: z.string().min(1),
+        userConfirmedRetry: z.boolean(),
+      }),
+    },
+    async (input) => {
+      if (input.userConfirmedRetry !== true) {
+        return textResult(
+          'Refusing to retry requirement change: userConfirmedRetry must be true after the user explicitly confirmed.',
+          true,
+        );
+      }
+      const { client } = await resolveSession(options.homeDir);
+      return runRequest(() =>
+        client.request(
+          `/requirements/${encodeURIComponent(input.requirementId)}/changes/${encodeURIComponent(input.changeId)}/restart`,
+          { method: 'POST' },
+        ),
+      );
+    },
+  );
+
+  server.registerTool(
+    'flowx_submit_requirement_prototype_change',
+    {
+      title: 'Submit FlowX Prototype Change',
+      description:
+        'Replace the prototype for a requirement change and restart the workflow. Only after the user confirmed a local .zip path of at most 20 MiB. Content may be omitted. Pass userConfirmedChange=true only after that confirmation. Reuse the same requestId when retrying the identical package.',
+      inputSchema: z.object({
+        requirementId: z.string().min(1),
+        zipPath: z.string().min(1),
+        requestId: z.string().trim().min(1).max(128),
+        content: z.string().max(20000).optional(),
+        aiProvider: z.enum(['codex', 'cursor']).optional(),
+        sourceWorkflowRunId: z.string().min(1).optional(),
+        userConfirmedChange: z.boolean(),
+      }),
+    },
+    async (input) => {
+      if (input.userConfirmedChange !== true) {
+        return textResult(
+          'Refusing to submit prototype change: userConfirmedChange must be true after the user explicitly confirmed the zip and restart.',
+          true,
+        );
+      }
+      const filePath = resolve(input.zipPath);
+      const info = await stat(filePath).catch(() => null);
+      if (!info?.isFile() || !filePath.toLowerCase().endsWith('.zip') || info.size > 20 * 1024 * 1024 || info.size < 1) {
+        return textResult('请提供不超过 20 MiB 的本地 .zip 原型包路径。', true);
+      }
+      const bytes = await readFile(filePath);
+      const body = new Uint8Array(bytes.byteLength);
+      body.set(bytes);
+      const form = new FormData();
+      form.append('file', new Blob([body], { type: 'application/zip' }), basename(filePath));
+      form.append('mode', 'RESTART');
+      form.append('requestId', input.requestId);
+      if (input.content?.trim()) form.append('content', input.content.trim());
+      if (input.aiProvider) form.append('aiProvider', input.aiProvider);
+      if (input.sourceWorkflowRunId) form.append('sourceWorkflowRunId', input.sourceWorkflowRunId);
+      const { client } = await resolveSession(options.homeDir);
+      return runRequest(() =>
+        client.requestForm(`/requirements/${encodeURIComponent(input.requirementId)}/changes/prototype`, form),
       );
     },
   );
@@ -916,16 +1126,31 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     {
       title: 'List FlowX Tasks',
       description:
-        'List FlowX requirements/bugs and OpenDesign brainstorm/design candidate workflows. Confirm a workflow with the user, then call flowx_bind_workflow.',
-      inputSchema: z.object({ workspaceId: z.string().optional() }),
+        'List FlowX requirements/bugs and OpenDesign brainstorm/design candidate workflows. Optional projectId, versionId, planningStatus and priority filter the task list. versionId and planningStatus apply to requirements only and omit bugs. OpenDesign candidates are not filtered. Confirm a workflow with the user, then call flowx_bind_workflow.',
+      inputSchema: z.object({
+        workspaceId: z.string().optional(),
+        projectId: z.string().optional(),
+        versionId: z.string().optional(),
+        planningStatus: z.enum(['UNSCHEDULED', 'SCHEDULED', 'IN_PROGRESS', 'DONE']).optional(),
+        priority: requirementPrioritySchema.optional(),
+      }),
     },
-    async ({ workspaceId }) => {
+    async ({ workspaceId, projectId, versionId, planningStatus, priority }) => {
       const { client } = await resolveSession(options.homeDir);
-      const query = workspaceId?.trim() ? `?workspaceId=${encodeURIComponent(workspaceId.trim())}` : '';
+      const params = new URLSearchParams();
+      if (workspaceId?.trim()) params.set('workspaceId', workspaceId.trim());
+      if (projectId?.trim()) params.set('projectId', projectId.trim());
+      if (versionId?.trim()) params.set('versionId', versionId.trim());
+      if (planningStatus) params.set('planningStatus', planningStatus);
+      if (priority) params.set('priority', priority);
+      const query = params.toString();
+      const openDesignParams = new URLSearchParams();
+      if (workspaceId?.trim()) openDesignParams.set('workspaceId', workspaceId.trim());
+      const openDesignQuery = openDesignParams.toString();
       return runRequest(async () => {
         const [tasks, openDesignWorkflows] = await Promise.all([
-          client.request(`/cursor-local/tasks${query}`),
-          client.request(`/cursor-local/opendesign-tasks${query}`),
+          client.request(`/cursor-local/tasks${query ? `?${query}` : ''}`),
+          client.request(`/cursor-local/opendesign-tasks${openDesignQuery ? `?${openDesignQuery}` : ''}`),
         ]);
         return { tasks, openDesignWorkflows };
       });

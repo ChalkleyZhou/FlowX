@@ -7,8 +7,22 @@ export class CursorLocalController {
   constructor(private readonly cursorLocalService: CursorLocalService) {}
 
   @Get('tasks')
-  listTasks(@Query('workspaceId') workspaceId: string | undefined, @Req() req: CursorLocalRequest) {
-    return this.cursorLocalService.listTasks({ workspaceId, session: req.authSession });
+  listTasks(
+    @Query('workspaceId') workspaceId: string | undefined,
+    @Query('projectId') projectId: string | undefined,
+    @Query('versionId') versionId: string | undefined,
+    @Query('planningStatus') planningStatus: string | undefined,
+    @Query('priority') priority: string | undefined,
+    @Req() req: CursorLocalRequest,
+  ) {
+    return this.cursorLocalService.listTasks({
+      workspaceId,
+      projectId,
+      versionId,
+      planningStatus,
+      priority,
+      session: req.authSession,
+    });
   }
 
   @Get('workflow-position')
