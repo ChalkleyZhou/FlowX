@@ -11,7 +11,7 @@ export type InstallScriptInput = {
 };
 
 /** 安装脚本钉死的 @flowx-ai/local 版本；发布新包后同步更新。 */
-export const FLOWX_LOCAL_INSTALL_VERSION = '0.6.0';
+export const FLOWX_LOCAL_INSTALL_VERSION = '0.7.0';
 
 /** 无系统 Node 时由安装器下载的固定 LTS runtime。 */
 export const FLOWX_NODE_RUNTIME_VERSION = 'v22.14.0';
