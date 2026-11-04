@@ -51,6 +51,7 @@ const emptyCreateDraft = {
 };
 
 const ALL_FILTER_VALUE = '__all__';
+const REQUIREMENT_PAGE_SIZE = 20;
 
 const planningStatusOptions = [
   { id: 'UNSCHEDULED', label: '未排期' },
@@ -84,6 +85,7 @@ export function RequirementsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingRequirement, setEditingRequirement] = useState<Requirement | null>(null);
@@ -153,6 +155,12 @@ export function RequirementsPage() {
         return true;
       }),
     [requirements, selectedPlanningStatus, selectedPriority, selectedProjectId, selectedVersionId],
+  );
+  const totalPages = Math.max(1, Math.ceil(filteredRequirements.length / REQUIREMENT_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageRequirements = filteredRequirements.slice(
+    (currentPage - 1) * REQUIREMENT_PAGE_SIZE,
+    currentPage * REQUIREMENT_PAGE_SIZE,
   );
 
   const requirementSummary = useMemo(() => {
@@ -234,6 +242,10 @@ export function RequirementsPage() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [selectedProjectId, selectedVersionId, selectedPlanningStatus, selectedPriority]);
 
   useEffect(() => {
     if (!hasLoaded) {
@@ -877,6 +889,7 @@ export function RequirementsPage() {
               <Spinner className="h-7 w-7" />
             </div>
           ) : filteredRequirements.length > 0 ? (
+            <>
             <div className="overflow-x-auto rounded-md border border-border">
               <table className="w-max min-w-full text-sm">
                 <thead className="bg-muted/40 text-left text-muted-foreground">
@@ -894,7 +907,7 @@ export function RequirementsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRequirements.map((item) => (
+                  {pageRequirements.map((item) => (
                     <tr key={item.id} className="border-t border-border">
                       <td className="whitespace-nowrap px-4 py-3 font-medium">
                         <div className="flex items-center gap-2">
@@ -936,6 +949,19 @@ export function RequirementsPage() {
                 </tbody>
               </table>
             </div>
+            <nav className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4" aria-label="需求列表分页">
+              <span className="text-sm text-muted-foreground">共 {filteredRequirements.length} 条</span>
+              <div className="flex items-center gap-2.5">
+                <UiButton variant="outline" size="sm" type="button" onClick={() => setPage(Math.max(1, currentPage - 1))} disabled={currentPage <= 1}>
+                  上一页
+                </UiButton>
+                <span className="text-sm text-muted-foreground">第 {currentPage} / {totalPages} 页</span>
+                <UiButton variant="outline" size="sm" type="button" onClick={() => setPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage >= totalPages}>
+                  下一页
+                </UiButton>
+              </div>
+            </nav>
+            </>
           ) : (
             <EmptyState description={hasActiveFilters ? '当前筛选条件下没有需求，请调整筛选或清除条件' : '还没有录入任何需求，先创建一条需求开始推进。'} />
           )}

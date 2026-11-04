@@ -216,6 +216,34 @@ describe('RequirementsPage', () => {
     expect(container.textContent).not.toContain('并行占用：');
   });
 
+  it('需求列表在表格下方分页，筛选变化后回到第一页', async () => {
+    const many = Array.from({ length: 21 }, (_, index) => ({
+      ...requirement,
+      id: `requirement-${index + 1}`,
+      title: `需求 ${String(index + 1).padStart(2, '0')}`,
+      priority: 'HIGH',
+    }));
+    vi.mocked(api.getRequirements).mockResolvedValue(many);
+    await act(async () => {
+      root?.render(<MemoryRouter initialEntries={['/requirements?priority=HIGH']}><RequirementsPage /></MemoryRouter>);
+    });
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(20);
+    expect(container.textContent).toContain('共 21 条');
+    expect(container.textContent).toContain('第 1 / 2 页');
+    expect(container.textContent).toContain('需求 01');
+    expect(container.textContent).not.toContain('需求 21');
+    const next = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '下一页');
+    await act(async () => { next?.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(1);
+    expect(container.textContent).toContain('需求 21');
+    expect(container.textContent).not.toContain('需求 01');
+    const clear = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '清除筛选');
+    await act(async () => { clear?.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(container.textContent).toContain('第 1 / 2 页');
+    expect(container.textContent).toContain('需求 01');
+    expect(container.textContent).not.toContain('需求 21');
+  });
+
   it('有需求变更时列表展示最近变更时间和正文', async () => {
     const latestChangeAt = '2026-10-26T09:30:00.000Z';
     vi.mocked(api.getRequirements).mockResolvedValue([{ ...requirement, latestChangeAt, latestChangeContent: '最新变更正文' }]);
