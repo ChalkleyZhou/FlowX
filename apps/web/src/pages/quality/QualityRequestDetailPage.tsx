@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, Download, Plus } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../../api';
 import { EmptyState } from '../../components/EmptyState';
 import { MetricCard } from '../../components/MetricCard';
@@ -17,6 +17,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { QualityCreateRunDialog } from './QualityCreateRunDialog';
+import { QualityReportsPanel } from './QualityReportsPanel';
 import { Input } from '../../components/ui/input';
 import { useToast } from '../../components/ui/toast';
 import { LoadingState, RefreshButton, runStatusLabels, statusBadgeVariant } from './quality-ui';
@@ -34,32 +37,34 @@ function useDetailResource<T>(id: string, fetcher: (id: string) => Promise<T>) {
   const [loading, setLoading] = useState(true);
   const sequence = useRef(0);
   const mounted = useRef(false);
+  const pending = useRef(false);
 
   // 刷新保留已加载数据；只接受当前组件最新一次请求的结果。
-  const reload = useCallback(async () => {
-    if (!mounted.current) return;
+  const reload = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!mounted.current || pending.current) return;
+    pending.current = true;
     const current = ++sequence.current;
-    setLoading(true);
-    setError(null);
+    if (!silent) { setLoading(true); setError(null); }
     try {
       const result = await fetcher(id);
       if (mounted.current && current === sequence.current) setData(result);
     } catch (cause) {
-      if (mounted.current && current === sequence.current) {
+      if (!silent && mounted.current && current === sequence.current) {
         setError(cause instanceof Error ? cause : new Error('请求失败，请重试'));
       }
     } finally {
-      if (mounted.current && current === sequence.current) setLoading(false);
+      if (mounted.current && current === sequence.current) { setLoading(false); pending.current = false; }
     }
   }, [id, fetcher]);
 
   useEffect(() => {
     mounted.current = true;
+    pending.current = false;
     void reload();
     return () => { mounted.current = false; sequence.current += 1; };
   }, [reload]);
 
-  return { data, error, loading, reload };
+  return { data, error, loading, reload, setData };
 }
 
 function LoadError({ error, retained, loading, label, retry }: {
@@ -79,22 +84,34 @@ export function QualityRequestDetailPage() {
 
 function QualityRequestDetailContent({ id }: { id: string }) {
   const toast = useToast();
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') ?? 'overview';
   const detail = useDetailResource(id, api.getTestRequest);
   const smoke = useDetailResource(id, api.getLocalSmokeRuns);
+  const formal = useDetailResource(id, api.getTestRuns);
   const submission = useDetailResource(id, api.getSubmissionReport);
   const request = detail.data;
   const runs = smoke.data ?? [];
   const report = submission.data;
   const refreshing = detail.loading || smoke.loading || submission.loading;
+  const [formalDialog, setFormalDialog] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [creating, setCreating] = useState(false);
   const [finalizingId, setFinalizingId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [runName, setRunName] = useState('本地冒烟');
   const [selectedTargets, setSelectedTargets] = useState<string[]>(['web', 'api']);
 
-  async function refresh() {
-    await Promise.all([detail.reload(), smoke.reload(), submission.reload()]);
+  async function refresh(options: { silent?: boolean } = {}) {
+    await Promise.all([detail.reload(options), smoke.reload(options), submission.reload(options), formal.reload(options)]);
   }
+  const active = (formal.data ?? []).some(run => run.status === 'ACTIVE') || runs.some(run => run.status === 'ACTIVE');
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setInterval(() => { void refresh({ silent: true }); }, 5000);
+    return () => window.clearInterval(timer);
+  }, [active, detail.reload, smoke.reload, submission.reload, formal.reload]);
 
   const totals = useMemo(() => {
     const cases = runs.flatMap((run) => run.cases ?? []);
@@ -105,6 +122,18 @@ function QualityRequestDetailContent({ id }: { id: string }) {
       executions: runs.flatMap((run) => run.executions ?? []).length,
     };
   }, [runs]);
+
+  async function prepare() {
+    if (!request) return;
+    setPreparing(true);
+    try {
+      const prepared = await api.prepareTestRequest(id, { scopeRevision: request.scopeRevision });
+      detail.setData(prepared);
+      toast.success(prepared.status === 'DRAFT' ? '冻结范围已确认，请继续完成冒烟门禁' : '提测准备已完成，可以创建功能测试轮次');
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : '提测准备失败，请检查已确认设计和研发交付');
+    } finally { setPreparing(false); }
+  }
 
   async function createRun() {
     if (!selectedTargets.length) {
@@ -172,6 +201,10 @@ function QualityRequestDetailContent({ id }: { id: string }) {
     )} />;
   }
 
+  const canCreateFormal = request.testPlan?.status === 'READY' && request.scopeGenerationStatus === 'COMPLETED'
+    && ['READY', 'IN_TEST', 'PASSED', 'FAILED', 'BLOCKED'].includes(request.status)
+    && request.testPlan.snapshots.some(snapshot => snapshot.kind !== 'SMOKE');
+
   return (
     <>
       <PageHeader
@@ -189,13 +222,23 @@ function QualityRequestDetailContent({ id }: { id: string }) {
                 <Download aria-hidden="true" className="h-4 w-4" />下载报告
               </Button>
             ) : null}
-            <Button onClick={() => setDialogOpen(true)}>
+            <Button disabled={!canCreateFormal} onClick={() => setFormalDialog(true)}>创建功能测试轮次</Button>
+            <Button variant="outline" disabled={!['DRAFT', 'READY'].includes(request.status) || !request.testPlan?.snapshots.some(snapshot => snapshot.kind === 'SMOKE')} onClick={() => setDialogOpen(true)}>
               <Plus aria-hidden="true" className="h-4 w-4" />创建冒烟轮次
             </Button>
           </>
         )}
       />
 
+      <Tabs value={['overview', 'scope', 'runs', 'bugs', 'reports'].includes(tab) ? tab : 'overview'} onValueChange={value => setParams(current => { const next = new URLSearchParams(current); next.set('tab', value); return next; }, { replace: true })}>
+        <TabsList aria-label="提测详情页签"><TabsTrigger value="overview">概览</TabsTrigger><TabsTrigger value="scope">测试范围</TabsTrigger><TabsTrigger value="runs">执行轮次</TabsTrigger><TabsTrigger value="bugs">缺陷</TabsTrigger><TabsTrigger value="reports">测试报告</TabsTrigger></TabsList>
+        <TabsContent value="overview"><section className="rounded-md border p-4 space-y-3"><h2 className="font-semibold">下一步</h2><p className="text-sm">{request.scopeGenerationStatus !== 'COMPLETED' ? '先确认测试设计，完成测试范围。' : request.status === 'DRAFT' ? '冻结范围已确认，完成本地冒烟并汇总通过门禁后可创建正式功能测试轮次。' : !(formal.data ?? []).some(run => run.runType !== 'LOCAL_SMOKE') ? '范围已冻结，创建功能测试轮次并明确适用端。' : active ? '进入执行轮次查看逐例进度与待回传范围。' : '执行已结束，可生成轮次或任务汇总报告。'}</p><div className="flex flex-wrap gap-2">{request.scopeGenerationStatus !== 'COMPLETED' ? <Button size="sm" disabled={preparing || !request.testDesignId} onClick={() => void prepare()}>确认冻结范围并完成提测准备</Button> : null}{request.testDesignId ? <Button variant="outline" size="sm" asChild><Link to={`/quality/test-designs/${request.testDesignId}`}>查看测试设计</Link></Button> : null}{request.requirementLinks.map(link => <Button key={link.requirement.id} variant="outline" size="sm" asChild><Link to={`/requirements/${link.requirement.id}`}>{link.requirement.title}</Link></Button>)}</div><p className="text-xs text-muted-foreground">范围 {request.testPlan?.snapshots.filter(snapshot => snapshot.kind !== 'SMOKE').length ?? 0} 条功能用例 · 正式轮次 {(formal.data ?? []).filter(run => run.runType !== 'LOCAL_SMOKE').length} 个。冒烟门禁与正式测试结论分别记录。</p></section></TabsContent>
+        <TabsContent value="scope"><section className="space-y-3"><h2 className="font-semibold">已冻结的测试范围</h2>{request.testPlan?.snapshots.map(snapshot => <article key={snapshot.id} className="rounded-md border p-4 space-y-2"><p className="font-medium">{snapshot.title} <Badge variant="outline">{snapshot.kind === 'SMOKE' ? '冒烟' : '功能'} · {snapshot.priority}</Badge></p><p className="text-sm">适用端：{snapshot.targetKeys?.join('、') || '未确认，创建轮次时需明确选择'}</p><p className="text-xs text-muted-foreground">{snapshot.selectionReason || snapshot.selectedBy} · 来源版本 {snapshot.sourceVersion ?? '生成用例'}</p><ol className="list-decimal pl-5 text-sm">{snapshot.steps.map((step, index) => <li key={index}>{step}</li>)}</ol><p className="text-sm">预期：{snapshot.expected}</p></article>)}{!request.testPlan?.snapshots.length ? <p className="text-sm text-muted-foreground">暂无冻结快照，请先确认测试设计。</p> : null}</section></TabsContent>
+        <TabsContent value="runs"><section className="space-y-3"><h2 className="font-semibold">功能测试与回归轮次</h2>{formal.error ? <LoadError error={formal.error} retained={Boolean(formal.data)} loading={formal.loading} label="正式轮次" retry={() => void formal.reload()} /> : null}{(formal.data ?? request.testPlan?.runs ?? []).filter(run => run.runType !== 'LOCAL_SMOKE').map(run => <article className="rounded-md border p-4" key={run.id}><div className="flex justify-between gap-3"><Link className="font-medium text-primary hover:underline" to={`/quality/test-runs/${run.id}`}>{run.name}</Link><Badge variant={statusBadgeVariant(run.status)}>{runStatusLabels[run.status] ?? run.status}</Badge></div><p className="mt-2 text-sm text-muted-foreground">{run.runType === 'REGRESSION' ? '缺陷回归' : '功能初测'} · {run.executionMode === 'LOCAL' ? '本地执行' : '历史执行'} · {run.cases?.filter(row => row.result).length ?? 0}/{run.cases?.length ?? 0} 项已回传</p></article>)}</section></TabsContent>
+        <TabsContent value="bugs"><section className="space-y-3"><h2 className="font-semibold">失败、阻塞项与关联缺陷</h2>{(formal.data ?? []).flatMap(run => (run.cases ?? []).filter(row => ['FAILED', 'BLOCKED'].includes(row.result?.result ?? '')).map(row => <article className="rounded-md border p-4 space-y-2" key={row.id}><p className="font-medium">{row.snapshot.title}</p><p className="text-sm text-muted-foreground">{row.result?.actualResult || '未记录实际结果'}</p>{row.result?.bug ? <Link className="text-sm text-primary underline" to={`/bugs/${row.result.bug.id}`}>{row.result.bug.title}</Link> : <p className="text-sm">尚未关联缺陷</p>}<p><Link className="text-sm text-primary underline" to={`/quality/test-runs/${run.id}`}>进入执行详情关联缺陷或创建独立回归</Link></p></article>))}{!(formal.data ?? []).some(run => run.cases?.some(row => ['FAILED', 'BLOCKED'].includes(row.result?.result ?? ''))) ? <p className="text-sm text-muted-foreground">暂无失败或阻塞项，异常用例将在此集中展示。</p> : null}</section></TabsContent>
+        <TabsContent value="reports"><QualityReportsPanel requestId={id} runs={formal.data ?? []} /></TabsContent>
+      </Tabs>
+      {tab === 'overview' || tab === 'runs' ? <>
       {detail.error ? <LoadError error={detail.error} retained loading={detail.loading} label="详情" retry={() => void detail.reload()} /> : null}
       {submission.error ? <LoadError error={submission.error} retained={submission.data !== undefined} loading={submission.loading} label="报告" retry={() => void submission.reload()} /> : null}
       {!submission.error && !report ? <p role="status" className="text-sm text-muted-foreground">{submission.loading ? '报告加载中…' : '暂无提测报告，完成冒烟后可汇总生成。'}</p> : null}
@@ -221,6 +264,7 @@ function QualityRequestDetailContent({ id }: { id: string }) {
                   description={`报告版本 ${run.reportRevision ?? 0} · ${run.executions?.length ?? 0} 次执行`}
                 />
                 <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" asChild><Link to={`/quality/test-runs/${run.id}`}>执行详情</Link></Button>
                   <Badge variant={statusBadgeVariant(run.status)}>{runStatusLabels[run.status] ?? run.status}</Badge>
                   {run.status === 'ACTIVE' ? (
                     <Button
@@ -295,6 +339,8 @@ function QualityRequestDetailContent({ id }: { id: string }) {
 
       </> : null}
 
+      </> : null}
+      <QualityCreateRunDialog open={formalDialog} onOpenChange={setFormalDialog} request={request} onCreated={run => navigate(`/quality/test-runs/${run.id}`)} />
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>

@@ -137,6 +137,13 @@ export class TestCaseCoverageDto {
 
 export class CreateTestCaseDefinitionDto {
   @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  targetKeys?: string[];
+
+  @IsOptional()
   @IsString()
   @MinLength(1)
   moduleId?: string;
@@ -188,6 +195,13 @@ export class CreateTestCaseDefinitionDto {
 }
 
 export class UpdateTestCaseDefinitionDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  targetKeys?: string[];
+
   @IsOptional()
   @IsString()
   @MinLength(1)
@@ -247,6 +261,13 @@ export class UpdateTestCaseDefinitionDto {
 }
 
 export class ImportTestCaseRowDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  targetKeys?: string[];
+
   @IsOptional()
   @IsString()
   @MaxLength(200)

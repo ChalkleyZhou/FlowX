@@ -56,6 +56,11 @@ import type {
   TestCaseLibrary,
   TestCaseModule,
   TestCasePage,
+  QualityCaseSelection,
+  CreateLocalTestRunInput,
+  QualityTestReport,
+  QualityReportInput,
+  QualityRequestReportInput,
   TestDesign,
   TestDesignCandidate,
   TestRequest,
@@ -1184,6 +1189,7 @@ export const api = {
       priority?: string;
       precondition?: string;
       testData?: string;
+      targetKeys?: string[];
       steps: string[];
       expected: string;
       tags?: string[];
@@ -1203,6 +1209,7 @@ export const api = {
       priority?: string;
       precondition?: string | null;
       testData?: string | null;
+      targetKeys?: string[];
       steps?: string[];
       expected?: string;
       tags?: string[];
@@ -1236,8 +1243,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  prepareTestRequest: (id: string, payload: { scopeRevision: number }) =>
+    request<TestRequest>(`/quality/test-requests/${id}/prepare`, { method: 'POST', body: JSON.stringify(payload) }),
   getTestRequest: (id: string) => request<TestRequest>(`/quality/test-requests/${id}`),
   createTestDesign: (payload: {
+    caseSelection?: QualityCaseSelection;
     workspaceId: string;
     projectId: string;
     projectVersionId: string;
@@ -1255,6 +1265,27 @@ export const api = {
     request<TestDesign>(`/quality/test-designs/${id}/smoke`, { method: 'PATCH', body: JSON.stringify(payload) }),
   confirmTestDesign: (id: string, payload: Record<string, unknown>) =>
     request<TestDesign>(`/quality/test-designs/${id}/confirm`, { method: 'POST', body: JSON.stringify(payload) }),
+  updateQualitySelection: (id: string, payload: { revision: number; caseSelection: QualityCaseSelection }) =>
+    request<TestDesign>(`/quality/test-designs/${id}/selection`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  addQualityCandidates: (id: string, payload: { revision: number; definitionIds: string[] }) =>
+    request<TestDesign>(`/quality/test-designs/${id}/candidates`, { method: 'POST', body: JSON.stringify(payload) }),
+  getTestRun: (id: string) => request<TestRun>(`/quality/test-runs/${id}`),
+  getQualityCapabilities: () => request<{ capabilities: string[] }>('/quality/capabilities'),
+  createLocalTestRun: (requestId: string, payload: CreateLocalTestRunInput) =>
+    request<TestRun>(`/quality/test-requests/${requestId}/local-test-runs`, { method: 'POST', body: JSON.stringify(payload) }),
+  issueQualityLocalLaunchTicket: (id: string, payload: { targetId: string; caseIds?: string[]; preferredIde?: 'cursor' | 'codex' | 'workbuddy' }) =>
+    request<{ ticket: string; expiresAt: string; loopbackPort: number }>(`/quality/test-runs/${id}/local-launch`, { method: 'POST', body: JSON.stringify(payload) }),
+  finishQualityRun: (id: string, payload: { revision: number; reason?: string }) =>
+    request<TestRun>(`/quality/test-runs/${id}/finish`, { method: 'POST', body: JSON.stringify(payload) }),
+  controlQualityExecution: (sessionId: string, action: 'heartbeat' | 'release' | 'cancel', payload: { leaseSeconds?: number; reason?: string }) =>
+    request<{ status: string; deviceStopped?: boolean; leaseExpiresAt?: string }>(`/execution-sessions/${sessionId}/quality/${action}`, { method: 'POST', body: JSON.stringify(payload) }),
+  linkQualityCaseBug: (id: string, caseId: string, bugId: string) =>
+    request<NonNullable<TestRun['cases']>[number]>(`/quality/test-runs/${id}/cases/${caseId}/bug`, { method: 'POST', body: JSON.stringify({ bugId }) }),
+  getQualityReports: (requestId: string) => request<QualityTestReport[]>(`/quality/test-requests/${requestId}/reports`),
+  createQualityRunReport: (runId: string, payload: QualityReportInput) =>
+    request<QualityTestReport>(`/quality/test-runs/${runId}/reports`, { method: 'POST', body: JSON.stringify(payload) }),
+  createQualityRequestReport: (requestId: string, payload: QualityRequestReportInput) =>
+    request<QualityTestReport>(`/quality/test-requests/${requestId}/reports`, { method: 'POST', body: JSON.stringify(payload) }),
   getTestRuns: (testRequestId: string) =>
     request<TestRun[]>(`/quality/test-requests/${testRequestId}/runs`),
   getLocalSmokeRuns: (testRequestId: string) =>

@@ -35,7 +35,7 @@ describe('本地阶段执行归属', () => {
     const service = Object.create(LocalSmokeService.prototype) as LocalSmokeService;
     Object.assign(service, { prisma: { executionSession: { findUnique: vi.fn().mockResolvedValue({
       id: 'session-a', stageExecutionId: 'stage-1', claimedByUserId: 'user-a', organizationId: 'org-1', status: 'RUNNING',
-      sourceTool: 'flowx-local', testExecution: {}, testRun: { status: 'ACTIVE' },
+      sourceTool: 'flowx-local', testExecution: {}, testRun: { status: 'ACTIVE', runType: 'LOCAL_SMOKE' },
     }) } } });
     await expect(service.complete('session-a', {} as never, {
       organizationId: 'org-1', userId: 'user-b',

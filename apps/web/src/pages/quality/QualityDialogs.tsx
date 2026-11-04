@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { QualityTargetKeysField } from './QualityTargetKeysField';
 import { api } from '../../api';
 import {
   Dialog,
@@ -98,11 +100,15 @@ export function CreateRequestDialog({
       setTestDesignId('');
       return;
     }
+    let active = true;
+    setTestDesigns([]);
+    setTestDesignId('');
     void api.getTestDesigns({ projectId, projectVersionId: versionId, status: 'CONFIRMED' })
       .then((items) => {
-        setTestDesigns(items);
+        if (active) setTestDesigns(items);
       })
-      .catch((error) => toast.error(error instanceof Error ? error.message : '加载测试设计失败'));
+      .catch((error) => { if (active) toast.error(error instanceof Error ? error.message : '加载测试设计失败'); });
+    return () => { active = false; };
   }, [open, projectId, versionId]);
 
   useEffect(() => {
@@ -149,8 +155,9 @@ export function CreateRequestDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>发起提测</DialogTitle>
-          <DialogDescription>关联已完成的研发工作流，创建测试范围草稿。</DialogDescription>
+          <DialogDescription>确认需求与设计，再关联已完成的研发工作流，冻结本次测试范围。</DialogDescription>
         </DialogHeader>
+        <ol className="grid grid-cols-3 gap-2 rounded-md border p-3 text-xs"><li>1 选择项目版本与工作流</li><li>2 确认测试设计</li><li>3 冻结范围并提测</li></ol>
         <div className="grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="项目">
@@ -196,7 +203,7 @@ export function CreateRequestDialog({
                 {compatibleTestDesigns.map((item) => <SelectItem key={item.id} value={item.id}>第 {item.revision} 版 · {item.candidates.length} 条功能用例 / {item.smokeCases.length} 条冒烟</SelectItem>)}
               </SelectContent>
             </Select>
-            {designAvailabilityMessage ? <p className="mt-1 text-xs text-muted-foreground">{designAvailabilityMessage}</p> : null}
+            {designAvailabilityMessage ? <div className="space-y-2"><p className="mt-1 text-xs text-muted-foreground">{designAvailabilityMessage}</p><Link className="text-xs text-primary underline" to={eligibleRuns.find(run => selectedRunIds.includes(run.id)) ? `/quality/test-designs/new?${new URLSearchParams({ requirementId: eligibleRuns.find(run => selectedRunIds.includes(run.id))!.requirement.id, projectId, projectVersionId: versionId })}` : '/requirements'}>去准备或修复测试设计</Link></div> : null}
           </Field>
           <Field label="说明（可选）">
             <Textarea rows={2} value={description} onChange={(event) => setDescription(event.target.value)} />
@@ -308,6 +315,7 @@ export function CreateCaseDialog({
   const [priority, setPriority] = useState('P2');
   const [precondition, setPrecondition] = useState('');
   const [testData, setTestData] = useState('');
+  const [targetKeys, setTargetKeys] = useState<string[]>([]);
   const [steps, setSteps] = useState('');
   const [expected, setExpected] = useState('');
   const [tags, setTags] = useState('');
@@ -352,6 +360,7 @@ export function CreateCaseDialog({
         priority,
         precondition: precondition.trim() || undefined,
         testData: testData.trim() || undefined,
+        targetKeys,
         steps: stepList,
         expected: expected.trim(),
         tags: tags.split(',').map((item) => item.trim()).filter(Boolean),
@@ -360,6 +369,7 @@ export function CreateCaseDialog({
       setTitle('');
       setPrecondition('');
       setTestData('');
+      setTargetKeys([]);
       setSteps('');
       setExpected('');
       setTags('');
@@ -418,6 +428,7 @@ export function CreateCaseDialog({
           <Field label="标题"><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field>
           <Field label="前置条件（可选）"><Input value={precondition} onChange={(event) => setPrecondition(event.target.value)} /></Field>
           <Field label="测试数据（可选）"><Textarea rows={2} value={testData} onChange={(event) => setTestData(event.target.value)} /></Field>
+          <QualityTargetKeysField value={targetKeys} onChange={setTargetKeys} disabled={saving} />
           <Field label="执行步骤">
             <Textarea rows={4} placeholder="每行一个步骤" value={steps} onChange={(event) => setSteps(event.target.value)} />
           </Field>

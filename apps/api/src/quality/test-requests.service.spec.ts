@@ -4,7 +4,7 @@ import { TestRequestsService } from './test-requests.service';
 
 function createService() {
   const transaction = {
-    testRequest: { create: vi.fn(), update: vi.fn() },
+    testRequest: { create: vi.fn(), update: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     testPlan: { upsert: vi.fn(), update: vi.fn(), create: vi.fn() },
     testCaseSnapshot: { upsert: vi.fn() },
   };
@@ -14,7 +14,7 @@ function createService() {
     requirement: { findMany: vi.fn() },
     workflowRun: { findMany: vi.fn() },
     artifact: { findMany: vi.fn() },
-    testRequest: { findUnique: vi.fn(), update: vi.fn(), create: vi.fn() },
+    testRequest: { findUnique: transaction.testRequest.findUnique, update: vi.fn(), create: vi.fn() },
     testCaseDefinition: { findMany: vi.fn() },
     testDesign: { findUnique: vi.fn() },
     testPlan: { update: vi.fn() },
@@ -32,6 +32,12 @@ const requestInput = {
   requirementIds: ['requirement-1'],
   workflowRunIds: ['workflow-1'],
   artifactIds: [],
+};
+
+const scopeRequestBase = {
+  workspaceId: 'workspace-1', projectId: 'project-1', projectVersionId: 'version-1',
+  testDesignId: 'design-1', scopeRevision: 2, scopeGenerationStatus: 'NOT_STARTED',
+  testDesign: { id: 'design-1', status: 'CONFIRMED', workspaceId: 'workspace-1', projectId: 'project-1', projectVersionId: 'version-1' },
 };
 
 describe('TestRequestsService', () => {
@@ -70,7 +76,11 @@ describe('TestRequestsService', () => {
     await expect(service.createRequest(requestInput, 'user-1')).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('freezes confirmed functional and smoke design cases when creating a request', async () => {
+  it.each([
+    { name: '候选元数据优先', proposed: { testData: '新测试账号', targetKeys: ['android'] }, expectedData: '新测试账号', expectedTargets: ['android'] },
+    { name: '显式清空保留', proposed: { testData: null, targetKeys: [] }, expectedData: null, expectedTargets: [] },
+    { name: '旧候选回退来源', proposed: {}, expectedData: '原测试账号', expectedTargets: ['web'] },
+  ])('freezes confirmed functional and smoke design cases when creating a request: $name', async ({ proposed, expectedData, expectedTargets }) => {
     const { service, prisma, transaction, testDesigns } = createService();
     prisma.project.findFirst.mockResolvedValue({ id: 'project-1' });
     prisma.projectVersion.findFirst.mockResolvedValue({ id: 'version-1' });
@@ -91,7 +101,8 @@ describe('TestRequestsService', () => {
         sourceDefinitionId: 'case-1',
         sourceVersion: 2,
         matchReason: '覆盖主流程',
-        proposedCase: { title: '登录成功', priority: 'P1', steps: ['登录'], expected: '进入首页' },
+        proposedCase: { title: '登录成功', priority: 'P1', steps: ['登录'], expected: '进入首页', ...proposed },
+        sourceDefinition: { testData: '原测试账号', targetKeys: ['web'] },
       }],
       smokeCases: [{
         resolution: 'ACCEPTED',
@@ -116,7 +127,7 @@ describe('TestRequestsService', () => {
       data: expect.objectContaining({
         testDesignId: 'design-1',
         snapshots: { create: expect.arrayContaining([
-          expect.objectContaining({ title: '登录成功', kind: 'FUNCTIONAL' }),
+          expect.objectContaining({ title: '登录成功', kind: 'FUNCTIONAL', testData: expectedData, targetKeys: expectedTargets }),
           expect.objectContaining({
             title: '登录冒烟',
             kind: 'SMOKE',
@@ -132,6 +143,7 @@ describe('TestRequestsService', () => {
     prisma.testRequest.findUnique.mockResolvedValue({
       id: 'request-1',
       status: 'DRAFT',
+      scopeRevision: 1, scopeGenerationStatus: 'NOT_STARTED',
       workspaceId: 'workspace-1',
       projectId: 'project-1',
       testPlan: null,
@@ -194,8 +206,9 @@ describe('TestRequestsService', () => {
     const { service, prisma } = createService();
     prisma.testRequest.findUnique.mockResolvedValue({
       id: 'request-1',
+      ...scopeRequestBase,
       status: 'DRAFT',
-      testPlan: { id: 'plan-1', _count: { snapshots: 2 } },
+      testPlan: { id: 'plan-1', testDesignId: 'design-1', status: 'DRAFT', snapshots: [{ id: 'snapshot-1', kind: 'FUNCTIONAL' }] },
       workflowLinks: [{ workflowRun: { status: 'done' } }],
     });
 
@@ -213,8 +226,9 @@ describe('TestRequestsService', () => {
     const { service, prisma, transaction } = createService();
     prisma.testRequest.findUnique.mockResolvedValue({
       id: 'request-1',
+      ...scopeRequestBase,
       status: 'DRAFT',
-      testPlan: { id: 'plan-1', _count: { snapshots: 2 } },
+      testPlan: { id: 'plan-1', testDesignId: 'design-1', status: 'DRAFT', snapshots: [{ id: 'snapshot-1', kind: 'FUNCTIONAL' }] },
       workflowLinks: [{ workflowRun: { status: 'DONE' } }],
     });
     transaction.testRequest.update.mockResolvedValue({ id: 'request-1', status: 'READY' });
@@ -229,9 +243,9 @@ describe('TestRequestsService', () => {
       where: { id: 'plan-1' },
       data: { status: 'READY' },
     });
-    expect(transaction.testRequest.update).toHaveBeenCalledWith(
+    expect(transaction.testRequest.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'request-1' },
+        where: expect.objectContaining({ id: 'request-1', status: 'DRAFT', scopeRevision: 2 }),
         data: expect.objectContaining({ status: 'READY', scopeGenerationStatus: 'COMPLETED' }),
       }),
     );
@@ -241,10 +255,11 @@ describe('TestRequestsService', () => {
     const { service, prisma, transaction } = createService();
     prisma.testRequest.findUnique.mockResolvedValue({
       id: 'request-1',
+      ...scopeRequestBase,
       status: 'DRAFT',
       testPlan: {
-        id: 'plan-1',
-        _count: { snapshots: 2 },
+        id: 'plan-1', testDesignId: 'design-1', status: 'DRAFT',
+        snapshots: [{ id: 'snapshot-1', kind: 'SMOKE' }],
         runs: [{ id: 'smoke-run-1', status: 'ACTIVE' }],
       },
       workflowLinks: [{ workflowRun: { status: 'DONE' } }],
@@ -257,10 +272,20 @@ describe('TestRequestsService', () => {
       excludedScopes: [],
     });
 
-    expect(transaction.testRequest.update).toHaveBeenCalledWith(
+    expect(transaction.testRequest.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ status: 'DRAFT', scopeGenerationStatus: 'COMPLETED' }),
       }),
     );
   });
+});
+it('补选未完成范围先CAS递增scopeRevision，竞争失败不写快照', async () => {
+  const { service, prisma, transaction } = createService();
+  prisma.testRequest.findUnique.mockResolvedValue({ id: 'request-1', status: 'DRAFT', scopeRevision: 4, scopeGenerationStatus: 'NOT_STARTED', workspaceId: 'workspace-1', projectId: 'project-1', testPlan: null });
+  prisma.testCaseDefinition.findMany.mockResolvedValue([{ id: 'case-1' }]);
+  transaction.testRequest.updateMany.mockResolvedValue({ count: 0 });
+  await expect(service.addScopeCases('request-1', { selections: [{ caseId: 'case-1', reason: '调整范围', impactLevel: 'HIGH' }] })).rejects.toMatchObject({ status: 409 });
+  expect(transaction.testRequest.updateMany).toHaveBeenCalledWith({ where: { id: 'request-1', status: 'DRAFT', scopeRevision: 4, scopeGenerationStatus: { not: 'COMPLETED' } }, data: { scopeRevision: { increment: 1 }, scopeGenerationStatus: 'NOT_STARTED' } });
+  expect(transaction.testPlan.upsert).not.toHaveBeenCalled();
+  expect(transaction.testCaseSnapshot.upsert).not.toHaveBeenCalled();
 });

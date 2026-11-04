@@ -178,6 +178,7 @@ export class CaseLibrariesService {
         priority: dto.priority ?? 'P2',
         precondition: dto.precondition?.trim() || null,
         testData: dto.testData?.trim() || null,
+        targetKeys: dto.targetKeys,
         steps: dto.steps as Prisma.InputJsonValue,
         expected: dto.expected.trim(),
         tags: dto.tags as Prisma.InputJsonValue | undefined,
@@ -263,6 +264,7 @@ export class CaseLibrariesService {
           priority: item.priority ?? 'P2',
           precondition: item.precondition ?? null,
           testData: item.testData ?? null,
+          targetKeys: item.targetKeys,
           steps: item.steps as Prisma.InputJsonValue,
           expected: item.expected,
           tags: item.tags?.length
@@ -379,6 +381,7 @@ export class CaseLibrariesService {
         ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
         ...(dto.precondition !== undefined ? { precondition: dto.precondition?.trim() || null } : {}),
         ...(dto.testData !== undefined ? { testData: dto.testData?.trim() || null } : {}),
+        ...(dto.targetKeys !== undefined ? { targetKeys: dto.targetKeys } : {}),
         ...(dto.steps !== undefined ? { steps: steps as Prisma.InputJsonValue } : {}),
         ...(dto.expected !== undefined ? { expected } : {}),
         ...(dto.tags !== undefined

@@ -62,6 +62,14 @@ describe('RequirementDetailPage 流程接续', () => {
     });
   }
 
+  it('测试准备入口携带当前项目版本和需求', async () => {
+    vi.mocked(api.getRequirement).mockResolvedValue({ ...requirement, versionId: 'version-1' });
+    await renderPage();
+    const link = Array.from(container.querySelectorAll('a')).find(item => item.textContent === '准备测试');
+    const url = new URL(link?.getAttribute('href') ?? '/', 'http://localhost');
+    expect(url.pathname).toBe('/quality/test-designs/new');
+    expect(Object.fromEntries(url.searchParams)).toEqual({ projectId: 'project-1', projectVersionId: 'version-1', requirementId: 'requirement-1' });
+  });
   it('单条活跃流作为主操作，并显示真实状态与仓库范围', async () => {
     vi.mocked(api.getRequirement).mockResolvedValue({ ...requirement, workflowRuns: [run('run-web', 'SPEC_PLAN_WAITING_CONFIRMATION', 'flowx-web')] });
     await renderPage();

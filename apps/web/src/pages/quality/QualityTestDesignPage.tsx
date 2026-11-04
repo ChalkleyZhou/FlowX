@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Check, Minus, Play, RefreshCw } from 'lucide-react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { api } from '../../api';
 import { ONLINE_AI_UNAVAILABLE_MESSAGE, useOnlineAiProviders } from '../../online-ai';
 import { EmptyState } from '../../components/EmptyState';
@@ -11,6 +11,8 @@ import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { useToast } from '../../components/ui/toast';
 import type { TestCaseDefinition, TestDesign, TestDesignCandidate } from '../../types';
+import { QualityScopePanel } from './QualityScopePanel';
+import { useQualityResource } from './use-quality-resource';
 import { LoadingState, statusBadgeVariant } from './quality-ui';
 
 const statusLabels: Record<string, string> = {
@@ -35,6 +37,8 @@ function sourceCaseDraft(source: TestCaseDefinition): TestDesignCandidate['propo
     title: source.title,
     priority: source.priority,
     precondition: source.precondition ?? null,
+    ...(source.testData != null ? { testData: source.testData } : {}),
+    ...(source.targetKeys ? { targetKeys: source.targetKeys } : {}),
     steps: source.steps,
     expected: source.expected,
     tags: source.tags ?? [],
@@ -46,6 +50,8 @@ function comparableCase(value: TestDesignCandidate['proposedCase']) {
     title: value.title.trim(),
     priority: value.priority || 'P2',
     precondition: value.precondition?.trim() || null,
+    testData: value.testData?.trim() || null,
+    targetKeys: [...(value.targetKeys ?? [])].sort(),
     steps: value.steps.map((step) => step.trim()).filter(Boolean),
     expected: value.expected.trim(),
     tags: value.tags ?? [],
@@ -59,40 +65,34 @@ function changedReuse(candidate: TestDesignCandidate) {
 }
 
 export function QualityTestDesignPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id = '' } = useParams<{ id: string }>();
+  return <QualityTestDesignContent key={id} id={id} />;
+}
+function QualityTestDesignContent({ id }: { id: string }) {
   const toast = useToast();
   const onlineAi = useOnlineAiProviders();
-  const [design, setDesign] = useState<TestDesign | null>(null);
-  const [loading, setLoading] = useState(true);
+  const resource = useQualityResource(id, api.getTestDesign, design => design.status === 'GENERATING', 2000);
+  const design = resource.data;
+  const setDesign = resource.setData;
+  const loading = resource.loading;
+  const load = resource.reload;
   const [busy, setBusy] = useState(false);
   const [noSmokeReason, setNoSmokeReason] = useState('');
   const [noCaseReason, setNoCaseReason] = useState('');
-
-  async function load(options?: { silent?: boolean }) {
-    if (!id) return;
-    if (!options?.silent) {
-      setLoading(true);
-    }
+  const [checked, setChecked] = useState<string[]>([]);
+  async function bulkExclude() {
+    if (!design) return;
+    setBusy(true);
     try {
-      setDesign(await api.getTestDesign(id));
-    } catch (error) {
-      if (!options?.silent) {
-        toast.error(error instanceof Error ? error.message : '加载测试设计失败');
+      let revision = design.revision;
+      for (const candidateId of checked) {
+        await api.updateTestDesignCandidate(id, candidateId, { revision, resolution: 'REJECTED' });
+        revision = (await api.getTestDesign(id)).revision;
       }
-    } finally {
-      if (!options?.silent) {
-        setLoading(false);
-      }
-    }
+      setChecked([]); await load({ silent: true });
+    } catch (cause) { toast.error(cause instanceof Error ? cause.message : '批量排除失败，请刷新后重试'); }
+    finally { setBusy(false); }
   }
-
-  useEffect(() => { void load(); }, [id]);
-
-  useEffect(() => {
-    if (!id || design?.status !== 'GENERATING') return;
-    const timer = window.setInterval(() => void load({ silent: true }), 2000);
-    return () => window.clearInterval(timer);
-  }, [design?.status, id]);
 
   async function generate() {
     if (!id) return;
@@ -201,6 +201,10 @@ export function QualityTestDesignPage() {
         )}
       />
 
+      <ol className="grid gap-2 rounded-md border p-4 text-sm sm:grid-cols-4"><li>1 选择用例库</li><li className="font-medium text-primary">2 处理建议与补选</li><li>3 确认并提测</li><li>4 执行与报告</li></ol>
+      {design.status === 'CONFIRMED' ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-4"><p className="text-sm">测试设计已确认，下一步关联已完成研发的工作流发起提测。</p><Button asChild><Link to={design.testRequest ? `/quality/test-requests/${design.testRequest.id}` : `/quality/test-requests?${new URLSearchParams({ create: '1', projectId: design.projectId, projectVersionId: design.projectVersionId, ...(design.workflowRuns?.[0] ? { workflowRunId: design.workflowRuns[0].workflowRun.id } : {}) })}`}>{design.testRequest ? '查看提测详情' : '继续发起提测'}</Link></Button></div> : null}
+      <QualityScopePanel workspaceId={design.workspaceId} projectId={design.projectId} design={design} onDesignChange={setDesign} />
+      {design.uncoveredItems?.length ? <section className="rounded-md border border-amber-500/40 p-4"><h2 className="font-medium">尚未覆盖的验收点</h2><ul className="mt-2 list-disc pl-5 text-sm">{design.uncoveredItems.map((item, index) => <li key={index}>{item}</li>)}</ul><p className="mt-2 text-xs text-muted-foreground">可从用例库补选；确认设计时会保留这些未覆盖项。</p></section> : null}
       {design.status === 'GENERATION_FAILED' ? (
         <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {design.generationError ?? '本次失败未记录原因。请重新生成；若再次失败，页面会显示诊断信息。'}
@@ -218,7 +222,7 @@ export function QualityTestDesignPage() {
         </CardHeader>
         <CardContent className="space-y-6">
           <section aria-label="功能测试候选" className="space-y-3">
-            <h2 className="text-base font-semibold">功能测试候选</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-base font-semibold">功能测试候选</h2><Button size="sm" variant="outline" disabled={busy || !checked.length || !reviewable} onClick={() => void bulkExclude()}>批量排除</Button></div>
             {design.candidates.length ? design.candidates.map((candidate) => {
               const sourceDefinition = candidate.sourceDefinition;
               const reuseContentChanged = candidate.resolution !== 'REJECTED' && changedReuse(candidate);
@@ -226,7 +230,7 @@ export function QualityTestDesignPage() {
               <article key={candidate.id} className="min-w-0 space-y-3 rounded-md border border-border p-4 [overflow-wrap:anywhere]">
                 <header className="flex items-start justify-between gap-3">
                   <div className="min-w-0 space-y-2">
-                    <h3 className="font-medium">{candidate.proposedCase.title}</h3>
+                    <label className="flex items-center gap-2 font-medium">{reviewable ? <input type="checkbox" aria-label={`选择候选 ${candidate.proposedCase.title}`} checked={checked.includes(candidate.id)} onChange={e => setChecked(ids => e.target.checked ? [...ids, candidate.id] : ids.filter(id => id !== candidate.id))} /> : null}<span>{candidate.proposedCase.title}</span></label>
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="outline">{candidate.action === 'EXCLUDE' && candidate.resolution === 'PENDING' ? 'AI 建议本次不测' : actionLabels[candidate.action]}</Badge>
                       {candidate.sourceDefinition?.library ? <Badge variant="secondary">{candidate.sourceDefinition.library.projectId ? '项目库' : 'Workspace 共享库'}</Badge> : null}
@@ -284,13 +288,15 @@ function CaseSummary({
   testCase,
 }: {
   label: string;
-  testCase: { title: string; precondition?: string | null; steps: string[]; expected: string };
+  testCase: { title: string; precondition?: string | null; testData?: string | null; targetKeys?: string[]; steps: string[]; expected: string };
 }) {
   return (
     <div className="min-w-0 border-l-2 border-border pl-3">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="mt-1 font-medium">{testCase.title}</p>
       {testCase.precondition ? <p className="mt-1 text-muted-foreground">前置：{testCase.precondition}</p> : null}
+      {testCase.testData ? <p className="mt-1 text-muted-foreground">测试数据：{testCase.testData}</p> : null}
+      <p className="mt-1 text-muted-foreground">适用端：{testCase.targetKeys?.join('、') || '未确认'}</p>
       <ol className="mt-1 list-decimal space-y-1 pl-5 text-muted-foreground">
         {testCase.steps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}
       </ol>

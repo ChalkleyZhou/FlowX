@@ -20,6 +20,7 @@ import {
 import { Textarea } from '../../components/ui/textarea';
 import { useToast } from '../../components/ui/toast';
 import type { TestCaseDefinition, TestCaseLibrary, TestCaseModule } from '../../types';
+import { QualityTargetKeysField } from './QualityTargetKeysField';
 import { Field } from './quality-ui';
 
 const NO_MODULE = '__none__';
@@ -46,6 +47,7 @@ export function QualityCaseEditDialog({
   const [priority, setPriority] = useState<TestCaseDefinition['priority']>('P2');
   const [precondition, setPrecondition] = useState('');
   const [testData, setTestData] = useState('');
+  const [targetKeys, setTargetKeys] = useState<string[]>([]);
   const [steps, setSteps] = useState('');
   const [expected, setExpected] = useState('');
   const [tags, setTags] = useState('');
@@ -60,6 +62,7 @@ export function QualityCaseEditDialog({
     setPriority(testCase.priority);
     setPrecondition(testCase.precondition ?? '');
     setTestData(testCase.testData ?? '');
+    setTargetKeys(testCase.targetKeys ?? []);
     setSteps(testCase.steps.join('\n'));
     setExpected(testCase.expected);
     setTags(testCase.tags?.join(', ') ?? '');
@@ -101,6 +104,7 @@ export function QualityCaseEditDialog({
         priority,
         precondition: precondition.trim() || null,
         testData: testData.trim() || null,
+        targetKeys,
         steps: stepList,
         expected: expected.trim(),
         tags: tags.split(',').map((item) => item.trim()).filter(Boolean),
@@ -170,6 +174,7 @@ export function QualityCaseEditDialog({
           <Field label="测试数据（可选）">
             <Textarea aria-label="编辑测试数据" rows={2} value={testData} disabled={saving} onChange={(event) => setTestData(event.target.value)} />
           </Field>
+          <QualityTargetKeysField value={targetKeys} onChange={setTargetKeys} disabled={saving} />
           <Field label="执行步骤">
             <Textarea aria-label="编辑执行步骤" rows={5} value={steps} disabled={saving} onChange={(event) => setSteps(event.target.value)} />
           </Field>

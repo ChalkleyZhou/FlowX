@@ -100,3 +100,14 @@ describe('WorkBuddyAdapter', () => {
     expect(openIde).toHaveBeenCalledWith('workbuddy', '/repo', 'Do work');
   });
 });
+it('质量测试使用独立测试身份写入交接并把短期身份传给 MCP', async () => {
+  const ensureProject = vi.fn();
+  const writePromptFile = vi.fn(() => '/repo/prompt.md');
+  const adapter = new CodexAdapter({ ensureProject, writePromptFile, openIde: vi.fn(async () => ({ opened: true, prefilled: true })) });
+  const { workflowRunId, ...common } = baseInput;
+  const result = await adapter.launch({ ...common, testRunId: 'test-1', stage: 'quality-test' });
+  expect(result).toMatchObject({ testRunId: 'test-1', purpose: 'quality-test' });
+  expect(result).not.toHaveProperty('workflowRunId');
+  expect(ensureProject).toHaveBeenCalledWith('/repo', expect.objectContaining({ testRunId: 'test-1', executionSessionId: 'session-1' }));
+  expect(writePromptFile).toHaveBeenCalledWith('/repo', 'test-1', 'Do work');
+});

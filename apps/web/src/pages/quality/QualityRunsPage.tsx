@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useRememberedSearchFilters } from '../../utils/list-filter-storage';
 import { api } from '../../api';
 import { EmptyState } from '../../components/EmptyState';
@@ -179,7 +179,7 @@ export function QualityRunsPage() {
                 {pageRows.map(({ request, run }) => (
                   <RecordListItem
                     key={run.id}
-                    title={run.name}
+                    title={<Link className="hover:text-primary hover:underline" to={`/quality/test-runs/${run.id}`}>{run.name}</Link>}
                     badges={(
                       <>
                         <Badge variant={run.runType === 'REGRESSION' ? 'warning' : 'outline'}>

@@ -181,6 +181,14 @@ Codex / Cursor 的 `analyzePrototype` 共用 `prototype-analysis.output.schema.j
 
 提测报告读取在尚无报告时明确返回 HTTP 200、JSON `null`，避免空响应导致 JSON 解析失败。提测详情的基本信息、报告和冒烟轮次独立加载，局部失败保留已有信息并单独重试；主请求区分 `403`、`404` 与网络错误，不从空数据推断记录不存在。
 
+### 正式质量执行与报告
+
+质量域新增指定库/模块的选例和冻结适用端，`TestRun.executionMode` 将本地功能/回归与旧人工轮次区分。正式本地会话为 `QUALITY_TEST`，与 `LOCAL_SMOKE` 入口隔离；复用执行会话、Artifact、租约、组织和原领取人边界。分批回传以独立 `QualityProgressEvent` 记录幂等，事务内写入逐例事实和聚合结果；续租/释放/取消不会伪造设备停止。
+
+质量 IDE 交接复用一次性短期票据与本地桥接，验证当前组织成员和任务项目，兑换时领取，完成仓库映射与基线检查后才打开 IDE；失败释放范围。MCP 保持薄桥接，查询设计、选例、正式轮次、进度、结束和报告统一复用质量 API。旧包/旧服务端不支持时明确返回能力错误，旧冒烟继续兼容。
+
+`QualityTestReport` 保存不可变快照与独立 Artifact。轮次报告独立于冒烟通过门禁，失败也可归档；最终报告要求轮次终态且无有效租约。任务报告按真实仓库身份、明确基线和显式 Bug 回归替代计算有效组合，未替代的不同版本结果不能宣称当前版本已测。统一状态聚合检查活动正式轮次、功能快照覆盖及有效报告事实指纹，避免单个轮次覆盖整个提测。详细 API、统计与兼容见 `docs/quality-foundation.md`。
+
 ### 并行开发进展查询
 
 Web 的默认首页“研发看板”（`/dashboard`）使用 `GET /execution-sessions` 的页码模式，聚合当前组织下 `executorType=LOCAL`、阶段为 `EXECUTION` 的会话。传入 `page` 或 `view` 启用该模式；`view` 支持 `active`、`attention`、`completed`、`all`，Web 默认 `active`。保留 `projectId`、`workflowRunId`、`status`、`sourceTool`、`since`、`until`，新增 `claimedByUserId` 和 `search`（需求名称包含匹配）。`take` 默认 20、最大 100；`page` 为 1～1000000 的整数，不能与 `cursor` 混用。

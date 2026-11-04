@@ -2,6 +2,8 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsDefined,
+  IsObject,
   IsBoolean,
   IsIn,
   IsInt,
@@ -13,7 +15,35 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+export class QualityCaseSelectionDto {
+  @IsArray() @ArrayMinSize(1) @IsString({ each: true })
+  libraryIds!: string[];
+  @IsOptional() @IsArray() @IsString({ each: true })
+  moduleIds?: string[];
+  @IsOptional() @IsArray() @IsIn(['P0', 'P1', 'P2', 'P3'], { each: true })
+  priorities?: string[];
+  @IsOptional() @IsArray() @IsString({ each: true })
+  tags?: string[];
+  @IsOptional() @IsArray() @IsString({ each: true })
+  targetKeys?: string[];
+}
+export class UpdateQualitySelectionDto {
+  @IsInt() @Min(1)
+  revision!: number;
+  @IsDefined() @IsObject() @ValidateNested() @Type(() => QualityCaseSelectionDto)
+  caseSelection!: QualityCaseSelectionDto;
+}
+export class AddQualityCandidatesDto {
+  @IsInt() @Min(1)
+  revision!: number;
+  @IsArray() @ArrayMinSize(1) @IsString({ each: true })
+  definitionIds!: string[];
+}
+
 export class CreateTestDesignDto {
+  @IsOptional() @ValidateNested() @Type(() => QualityCaseSelectionDto)
+  caseSelection?: QualityCaseSelectionDto;
+
   @IsString()
   @MinLength(1)
   workspaceId!: string;
@@ -41,6 +71,32 @@ export class CreateTestDesignDto {
   changeSummary?: string;
 }
 
+export class TestDesignCaseDraftDto {
+  @IsString() @MinLength(1)
+  title!: string;
+
+  @IsString()
+  priority!: string;
+
+  @IsOptional() @IsString()
+  precondition?: string | null;
+
+  @IsArray() @IsString({ each: true })
+  steps!: string[];
+
+  @IsString() @MinLength(1)
+  expected!: string;
+
+  @IsOptional() @IsArray() @IsString({ each: true })
+  tags?: string[];
+
+  @IsOptional() @IsString()
+  testData?: string | null;
+
+  @IsOptional() @IsArray() @IsString({ each: true })
+  targetKeys?: string[];
+}
+
 export class UpdateTestDesignCandidateDto {
   @IsInt()
   @Min(1)
@@ -63,14 +119,10 @@ export class UpdateTestDesignCandidateDto {
   decisionNote?: string;
 
   @IsOptional()
-  proposedCase?: {
-    title: string;
-    priority: string;
-    precondition?: string | null;
-    steps: string[];
-    expected: string;
-    tags?: string[];
-  };
+  @IsObject()
+  @ValidateNested()
+  @Type(() => TestDesignCaseDraftDto)
+  proposedCase?: TestDesignCaseDraftDto;
 }
 
 export class SmokeCaseDto {

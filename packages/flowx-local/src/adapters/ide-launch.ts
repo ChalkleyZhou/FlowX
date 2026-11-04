@@ -4,12 +4,14 @@ import { openIde, type Ide } from '../open-ide.js';
 export type IdeLaunchInput = {
   ide: Ide;
   gitRoot: string;
-  workflowRunId: string;
+  workflowRunId?: string;
+  testRunId?: string;
+  purpose?: 'quality-test';
   executionSessionId: string;
   chatPrompt: string;
   apiBaseUrl: string;
   mcpToken: string;
-  stage?: 'execution' | 'spec-plan';
+  stage?: 'execution' | 'spec-plan' | 'quality-test';
 };
 
 export type IdeLaunchResult = {
@@ -20,7 +22,9 @@ export type IdeLaunchResult = {
   prefilled: boolean;
   promptPath: string;
   executionSessionId: string;
-  workflowRunId: string;
+  workflowRunId?: string;
+  testRunId?: string;
+  purpose?: 'quality-test';
 };
 
 export type IdeAdapterLaunchInput = Omit<IdeLaunchInput, 'ide'>;
@@ -35,8 +39,8 @@ export async function launchIde(
   input: IdeLaunchInput,
   deps: IdeAdapterDeps = {},
 ): Promise<IdeLaunchResult> {
-  if (!input.workflowRunId?.trim()) {
-    throw new Error('workflowRunId is required');
+  if (!input.workflowRunId?.trim() && !input.testRunId?.trim()) {
+    throw new Error('workflowRunId or testRunId is required');
   }
   if (!input.executionSessionId?.trim()) {
     throw new Error('executionSessionId is required');
@@ -47,10 +51,11 @@ export async function launchIde(
     mcpToken: input.mcpToken,
     ide: input.ide,
     ...(input.stage ? { stage: input.stage } : {}),
+    ...(input.testRunId ? { testRunId: input.testRunId, executionSessionId: input.executionSessionId } : {}),
   });
   const promptPath = (deps.writePromptFile ?? writePromptFile)(
     input.gitRoot,
-    input.workflowRunId,
+    input.testRunId ?? input.workflowRunId!,
     input.chatPrompt,
   );
   const opened = await (deps.openIde ?? openIde)(input.ide, input.gitRoot, input.chatPrompt);
@@ -63,6 +68,6 @@ export async function launchIde(
     prefilled: opened.prefilled,
     promptPath,
     executionSessionId: input.executionSessionId,
-    workflowRunId: input.workflowRunId,
+    ...(input.testRunId ? { testRunId: input.testRunId, purpose: 'quality-test' as const } : { workflowRunId: input.workflowRunId }),
   };
 }

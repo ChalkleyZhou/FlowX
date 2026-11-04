@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
-import { AddTestScopeCasesDto, CompleteTestScopeDto, CreateTestRequestDto } from './dto/test-request.dto';
+import { AddTestScopeCasesDto, CompleteTestScopeDto, CreateTestRequestDto, PrepareTestRequestDto } from './dto/test-request.dto';
 import { TestRequestsService } from './test-requests.service';
 
 @Controller('quality/test-requests')
@@ -23,6 +23,11 @@ export class TestRequestsController {
   @Get(':id')
   get(@Param('id') id: string) {
     return this.requests.getRequest(id);
+  }
+
+  @Post(':id/prepare')
+  prepare(@Param('id') id: string, @Body() dto: PrepareTestRequestDto) {
+    return this.requests.prepare(id, dto);
   }
 
   @Post(':id/scope/cases')

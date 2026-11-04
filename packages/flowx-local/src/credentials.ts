@@ -104,6 +104,11 @@ export async function resolveApiAuth(homeDir = homedir()): Promise<ResolvedApiAu
     return normalizeBaseUrl(DEFAULT_LOCAL_CONFIG.apiBaseUrl);
   };
 
+  // 质量测试的会话必须沿用启动票据的原领取人，不能被本机其他登录身份覆盖。
+  if (process.env.FLOWX_QUALITY_EXECUTION_SESSION_ID?.trim() && envToken && envBaseUrl) {
+    return { apiBaseUrl: envBaseUrl, apiToken: envToken, source: 'env' };
+  }
+
   // 长期 Personal Token（env）优先，便于手动覆盖。
   if (envToken.startsWith('fxpat_')) {
     return {

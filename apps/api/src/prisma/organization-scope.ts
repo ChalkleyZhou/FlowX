@@ -110,6 +110,10 @@ const scopeFactories: Record<string, (organizationId: string) => Record<string, 
   TestDesignSmokeCase: (organizationId) => ({
     testDesign: { workspace: workspaceScope(organizationId) },
   }),
+  QualityTestReport: (organizationId) => ({ testRequest: { workspace: workspaceScope(organizationId) } }),
+  QualityProgressEvent: (organizationId) => ({ testExecution: {
+    testRun: { testPlan: { testRequest: { workspace: workspaceScope(organizationId) } } },
+  } }),
   TestRequest: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
   TestRequestRequirement: (organizationId) => ({
     testRequest: { workspace: workspaceScope(organizationId) },

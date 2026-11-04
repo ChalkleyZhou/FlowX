@@ -29,8 +29,8 @@ const RESULT_PRIORITY: Record<LocalSmokeResult, number> = {
 @Injectable()
 export class LocalSmokeService {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly artifacts: ArtifactsService,
+    protected readonly prisma: PrismaService,
+    protected readonly artifacts: ArtifactsService,
   ) {}
 
   async createRun(testRequestId: string, dto: CreateLocalSmokeRunDto, userId?: string) {
@@ -132,6 +132,8 @@ export class LocalSmokeService {
     });
   }
 
+  protected supportsLocalRun(run: { runType: string; executionMode?: string }) { return run.runType === 'LOCAL_SMOKE'; }
+
   async getTasks(runId: string) {
     const run = await this.prisma.testRun.findUnique({
       where: { id: runId },
@@ -147,7 +149,7 @@ export class LocalSmokeService {
         },
       },
     });
-    if (!run || run.runType !== 'LOCAL_SMOKE') {
+    if (!run || !this.supportsLocalRun(run)) {
       throw new NotFoundException('Local smoke run not found.');
     }
     return run;
@@ -164,7 +166,7 @@ export class LocalSmokeService {
         },
       },
     });
-    if (!run || run.runType !== 'LOCAL_SMOKE') {
+    if (!run || !this.supportsLocalRun(run)) {
       throw new NotFoundException('Local smoke run not found.');
     }
     if (run.status !== 'ACTIVE' || !run.sourceFingerprint) {
@@ -172,7 +174,7 @@ export class LocalSmokeService {
     }
     const target = await this.prisma.testRunTarget.findFirst({
       where: { id: dto.targetId, testRunId: runId },
-      include: { cases: { include: { snapshot: true }, orderBy: { sortOrder: 'asc' } } },
+      include: { cases: { include: { snapshot: true, result: true }, orderBy: { sortOrder: 'asc' } } },
     });
     if (!target) throw new NotFoundException('Local smoke target not found.');
     const now = new Date();
@@ -193,9 +195,9 @@ export class LocalSmokeService {
     }
     const claimedCases = requested.length
       ? target.cases.filter((item) => requested.includes(item.id))
-      : target.cases.filter((item) => !occupied.has(item.id));
+      : target.cases.filter((item) => !occupied.has(item.id) && (run.executionMode !== 'LOCAL' || !item.result));
     if (!claimedCases.length) {
-      throw new ConflictException('No unclaimed smoke cases are available for this target.');
+      throw new ConflictException(run.executionMode === 'LOCAL' ? '该目标端没有可领取的未完成用例。' : 'No unclaimed smoke cases are available for this target.');
     }
     const sessionId = randomUUID();
     const executionId = randomUUID();
@@ -203,6 +205,10 @@ export class LocalSmokeService {
     const request = run.testPlan.testRequest;
     try {
       await this.prisma.$transaction(async (tx) => {
+        if (run.executionMode === 'LOCAL') {
+          const locked = await tx.testRun.updateMany({ where: { id: run.id, status: 'ACTIVE' }, data: { revision: { increment: 1 } } });
+          if (locked.count !== 1) throw new ConflictException('测试轮次已结束。');
+        }
         await tx.executionSession.create({
           data: {
             id: sessionId,
@@ -221,7 +227,8 @@ export class LocalSmokeService {
             startedAt: now,
             lastHeartbeatAt: now,
             metadata: {
-              purpose: 'LOCAL_SMOKE',
+              purpose: run.executionMode === 'LOCAL' ? 'QUALITY_TEST' : 'LOCAL_SMOKE',
+              ...(run.executionMode === 'LOCAL' ? { testRunRevision: run.revision } : {}),
               targetId: target.id,
               sourceFingerprint: run.sourceFingerprint,
             },
@@ -268,7 +275,8 @@ export class LocalSmokeService {
       leaseExpiresAt,
       target,
       cases: claimedCases,
-      completionEndpoint: `/execution-sessions/${sessionId}/local-smoke/complete`,
+      testRunRevision: run.revision ?? 0,
+      completionEndpoint: `/execution-sessions/${sessionId}/${run.executionMode === 'LOCAL' ? 'quality' : 'local-smoke'}/complete`,
     };
   }
 
@@ -284,7 +292,7 @@ export class LocalSmokeService {
         testRun: { include: { testPlan: { include: { testRequest: true } } } },
       },
     });
-    if (!session?.testExecution || !session.testRun || session.sourceTool !== 'flowx-local') {
+    if (!session?.testExecution || !session.testRun || session.sourceTool !== 'flowx-local' || session.testRun.runType !== 'LOCAL_SMOKE' || session.testRun.executionMode === 'LOCAL' || readMetadataString(session.metadata, 'purpose') === 'QUALITY_TEST') {
       throw new NotFoundException('Local smoke execution session not found.');
     }
     if (session.testRun.status !== 'ACTIVE') {
@@ -596,7 +604,7 @@ export class LocalSmokeService {
     await this.prisma.testRunTarget.update({ where: { id: targetId }, data: { status } });
   }
 
-  private async resolveExpectedRevisions(workflowRunIds: string[]) {
+  protected async resolveExpectedRevisions(workflowRunIds: string[]) {
     if (!workflowRunIds.length) return [];
     const stages = await this.prisma.stageExecution.findMany({
       where: { workflowRunId: { in: workflowRunIds }, stage: 'EXECUTION' },
@@ -644,7 +652,7 @@ export class LocalSmokeService {
     return normalizeRevisions([...revisions.values()]);
   }
 
-  private resolveTargetRevisions(requested: TestedRevision[] | undefined, current: TestedRevision[]) {
+  protected resolveTargetRevisions(requested: TestedRevision[] | undefined, current: TestedRevision[]) {
     const normalized = normalizeRevisions(requested);
     if (!normalized.length) {
       if (!current.length) {

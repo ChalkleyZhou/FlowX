@@ -701,6 +701,21 @@ export interface TestCaseModule {
   _count?: { cases: number; children: number };
 }
 
+export interface QualityCaseSelection {
+  libraryIds: string[];
+  moduleIds?: string[];
+  priorities?: string[];
+  tags?: string[];
+  targetKeys?: string[];
+}
+
+export interface QualityRetrievalSummary {
+  eligibleCount: number;
+  matchedCount: number;
+  suppliedCount: number;
+  truncated: boolean;
+}
+
 export interface TestCaseDefinition {
   id: string;
   libraryId: string;
@@ -712,6 +727,7 @@ export interface TestCaseDefinition {
   priority: 'P0' | 'P1' | 'P2' | 'P3';
   precondition?: string | null;
   testData?: string | null;
+  targetKeys?: string[];
   steps: string[];
   expected: string;
   tags?: string[] | null;
@@ -745,6 +761,7 @@ export interface TestCaseImportRow {
   parentModuleName?: string;
   precondition?: string;
   testData?: string;
+  targetKeys?: string[];
   steps: string[];
   expected: string;
   tags?: string[];
@@ -758,6 +775,7 @@ export interface TestCaseSnapshot {
   priority: string;
   precondition?: string | null;
   testData?: string | null;
+  targetKeys?: string[];
   steps: string[];
   expected: string;
   selectedBy: string;
@@ -771,12 +789,15 @@ export interface TestRun {
   id: string;
   name: string;
   runType: 'INITIAL' | 'SMOKE' | 'REGRESSION' | 'LOCAL_SMOKE';
+  executionMode?: 'LOCAL' | 'MANUAL';
+  revision?: number;
+  testPlan?: { testRequest: { id: string; title: string; projectId: string; workspaceId: string } };
   status: string;
   sourceFingerprint?: string | null;
   reportRevision?: number;
   startedAt?: string | null;
   completedAt?: string | null;
-  sourceBug?: { id: string; title: string } | null;
+  sourceBug?: QualityBugReference | null;
   cases?: Array<{
     id: string;
     targetId?: string | null;
@@ -784,10 +805,66 @@ export interface TestRun {
     blocking?: boolean;
     snapshot: TestCaseSnapshot;
     assignedToUser?: { id: string; displayName: string } | null;
-    result?: { id: string; result: string; actualResult?: string | null } | null;
+    activeLease?: { leaseExpiresAt: string; testExecutionId: string } | null;
+    result?: {
+      id: string; result: string; actualResult?: string | null; remark?: string | null;
+      evidence?: { artifactIds?: string[] } | null; executedAt?: string | null;
+      bugId?: string | null; bug?: QualityBugReference | null;
+    } | null;
   }>;
   targets?: TestRunTarget[];
   executions?: TestExecution[];
+}
+
+export interface QualityBugReference {
+  id: string;
+  title: string;
+  fixWorkflowRun?: { id?: string; status: string } | null;
+}
+
+export interface CreateLocalTestRunInput {
+  name: string;
+  runType: 'INITIAL' | 'REGRESSION';
+  sourceBugId?: string;
+  targets: Array<{ key: string; name: string; required?: boolean; expectedRevisions: TestedRepositoryRevision[] }>;
+  cases: Array<{ snapshotId: string; targetKeys: string[] }>;
+}
+
+export interface QualityReportSummary {
+  total: number; passed: number; failed: number; blocked: number; skipped: number; pending: number;
+  completionRate: number | null; passRate: number | null;
+  conclusion: 'PASSED' | 'FAILED' | 'BLOCKED';
+}
+
+export interface QualitySupersession {
+  previousRunId: string;
+  regressionRunId: string;
+  testRunCaseIds: string[];
+}
+
+export interface QualityTestReport {
+  id: string;
+  requestId: string;
+  runId?: string | null;
+  kind: 'RUN' | 'REQUEST';
+  revision: number;
+  artifactId: string;
+  createdAt: string;
+  artifact?: ArtifactSummary;
+  snapshot: {
+    mode: 'PROGRESS' | 'FINAL';
+    summary: QualityReportSummary;
+    baseline?: TestedRepositoryRevision[];
+    supersessions?: QualitySupersession[];
+    runs: Array<{ id: string; name: string; targets: Array<{ key: string; name: string; expectedRevisions: TestedRepositoryRevision[] }> }>;
+  };
+}
+
+export interface QualityReportInput { idempotencyKey: string; mode: 'PROGRESS' | 'FINAL' }
+export interface QualityRequestReportInput extends QualityReportInput {
+  runIds: string[];
+  baseline: TestedRepositoryRevision[];
+  supersessions?: QualitySupersession[];
 }
 
 export interface TestedRepositoryRevision {
@@ -807,6 +884,9 @@ export interface TestRunTarget {
 
 export interface TestExecution {
   id: string;
+  executionSessionId?: string | null;
+  environment?: Record<string, unknown> | null;
+  testedRevisions?: TestedRepositoryRevision[] | null;
   claimedCaseIds?: string[];
   leaseExpiresAt?: string | null;
   status: string;
@@ -877,6 +957,8 @@ export interface TestDesignCandidate {
     title: string;
     priority: string;
     precondition?: string | null;
+    testData?: string | null;
+    targetKeys?: string[];
     steps: string[];
     expected: string;
     tags?: string[];
@@ -906,6 +988,8 @@ export interface TestDesign {
   revision: number;
   sourceFingerprint: string;
   sourceSummary: Record<string, unknown>;
+  caseSelection?: QualityCaseSelection | null;
+  retrievalSummary?: QualityRetrievalSummary | null;
   coverageSummary?: Record<string, unknown> | null;
   coverageChecks?: Array<{ key: string; passed: boolean; detail?: string }> | null;
   uncoveredItems?: string[] | null;

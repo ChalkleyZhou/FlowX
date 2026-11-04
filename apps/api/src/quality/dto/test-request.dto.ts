@@ -4,9 +4,11 @@ import {
   IsArray,
   IsBoolean,
   IsIn,
+  IsInt,
   IsOptional,
   IsString,
   MinLength,
+  Min,
   ValidateNested,
 } from 'class-validator';
 
@@ -86,7 +88,18 @@ export class CoverageCheckDto {
   detail?: string;
 }
 
+export class PrepareTestRequestDto {
+  @IsInt()
+  @Min(0)
+  scopeRevision!: number;
+}
+
 export class CompleteTestScopeDto {
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  scopeRevision?: number;
+
   @IsString()
   @MinLength(1)
   summary!: string;

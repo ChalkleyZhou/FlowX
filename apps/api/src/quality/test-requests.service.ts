@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import type { AddTestScopeCasesDto, CompleteTestScopeDto, CreateTestRequestDto } from './dto/test-request.dto';
+import type { AddTestScopeCasesDto, CompleteTestScopeDto, CreateTestRequestDto, PrepareTestRequestDto } from './dto/test-request.dto';
 import { TestRequestStatus, assertTestRequestTransition } from './quality-status';
 import { TestDesignsService } from './test-designs.service';
 
@@ -139,10 +139,12 @@ export class TestRequestsService {
                     title: proposed.title,
                     priority: proposed.priority,
                     precondition: proposed.precondition,
+                    testData: proposed.testData !== undefined ? proposed.testData : candidate.sourceDefinition?.testData ?? null,
+                    targetKeys: proposed.targetKeys !== undefined ? proposed.targetKeys : candidate.sourceDefinition?.targetKeys ?? Prisma.DbNull,
                     steps: proposed.steps as Prisma.InputJsonValue,
                     expected: proposed.expected,
-                    metadata: { kind: 'FUNCTIONAL', origin: candidate.action === 'CREATE' ? 'GENERATED' : 'LIBRARY', selectionReason: candidate.matchReason },
-                    selectedBy: 'AI',
+                    metadata: { kind: 'FUNCTIONAL', origin: candidate.action === 'CREATE' ? 'GENERATED' : 'LIBRARY', selectionReason: candidate.matchReason, coverageKeys: candidate.coverageKeys },
+                    selectedBy: candidate.matchReason === '测试人员手工补选' ? 'MANUAL' : 'AI',
                     selectionReason: candidate.matchReason,
                     impactLevel: 'HIGH',
                     kind: 'FUNCTIONAL',
@@ -213,6 +215,10 @@ export class TestRequestsService {
       throw new BadRequestException('Test scope can only be changed while the request is in DRAFT.');
     }
 
+    if (request.scopeGenerationStatus === 'COMPLETED' || request.testPlan?.status === 'READY') {
+      throw new ConflictException('测试范围已完成并冻结，不能在等待冒烟或执行期间修改快照。');
+    }
+
     const selections = dedupeSelections(dto.selections);
     const caseIds = selections.map((selection) => selection.caseId);
     const definitions = await this.prisma.testCaseDefinition.findMany({
@@ -230,6 +236,11 @@ export class TestRequestsService {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      const changed = await tx.testRequest.updateMany({
+        where: { id, status: TestRequestStatus.DRAFT, scopeRevision: request.scopeRevision, scopeGenerationStatus: { not: 'COMPLETED' } },
+        data: { scopeRevision: { increment: 1 }, scopeGenerationStatus: 'NOT_STARTED' },
+      });
+      if (changed.count !== 1) throw new ConflictException('测试范围或状态已变化，请刷新后重试。');
       const plan = await tx.testPlan.upsert({
         where: { testRequestId: id },
         update: {},
@@ -244,6 +255,7 @@ export class TestRequestsService {
             priority: definition.priority,
             precondition: definition.precondition,
             testData: definition.testData,
+            targetKeys: definition.targetKeys ?? Prisma.DbNull,
             steps: definition.steps as unknown as Prisma.InputJsonValue,
             expected: definition.expected,
             metadata: definition.metadata ?? Prisma.JsonNull,
@@ -274,65 +286,64 @@ export class TestRequestsService {
     return this.getRequest(id);
   }
 
-  async completeScope(id: string, dto: CompleteTestScopeDto) {
-    const request = await this.prisma.testRequest.findUnique({
-      where: { id },
-      include: {
-        testPlan: {
-          include: {
-            _count: { select: { snapshots: true } },
-            runs: {
-              where: { runType: 'LOCAL_SMOKE' },
-              select: { id: true, status: true },
-              orderBy: { createdAt: 'desc' },
-            },
-          },
-        },
-        workflowLinks: { include: { workflowRun: { select: { status: true } } } },
-      },
-    });
-    if (!request) {
-      throw new NotFoundException('Test request not found.');
-    }
-    assertTestRequestTransition(request.status as TestRequestStatus, TestRequestStatus.READY);
-    if (!request.testPlan?._count.snapshots) {
-      throw new BadRequestException('At least one test case snapshot is required.');
-    }
-    if (request.workflowLinks.some((link) => link.workflowRun.status.toLowerCase() !== 'done')) {
-      throw new BadRequestException('A linked development workflow is no longer completed.');
-    }
-    const failedChecks = dto.coverageChecks.filter((check) => !check.passed);
-    if (failedChecks.length) {
-      throw new BadRequestException({
-        code: 'TEST_SCOPE_INCOMPLETE',
-        message: 'Test scope coverage checks are incomplete.',
-        failedChecks,
-      });
-    }
+  async prepare(id: string, dto: PrepareTestRequestDto) {
+    if (!Number.isInteger(dto.scopeRevision) || dto.scopeRevision < 0) throw new BadRequestException('scopeRevision 必须为非负整数。');
+    return this.completeScope(id, { scopeRevision: dto.scopeRevision, summary: '', coverageChecks: [], excludedScopes: [] }, { useConfirmedDesign: true });
+  }
 
-    const localSmokeRuns = request.testPlan.runs ?? [];
-    const waitsForLocalSmoke =
-      localSmokeRuns.length > 0 && !localSmokeRuns.some((run) => run.status === 'PASSED');
-
-    return this.prisma.$transaction(async (tx) => {
-      await tx.testPlan.update({
-        where: { id: request.testPlan!.id },
-        data: { status: 'READY' },
-      });
-      return tx.testRequest.update({
+  async completeScope(id: string, dto: CompleteTestScopeDto, options: { useConfirmedDesign?: boolean } = {}) {
+    await this.prisma.$transaction(async (tx) => {
+      const request = await tx.testRequest.findUnique({
         where: { id },
+        include: {
+          testDesign: true,
+          testPlan: { include: {
+            snapshots: { select: { id: true, kind: true } },
+            runs: { where: { runType: 'LOCAL_SMOKE' }, select: { id: true, status: true }, orderBy: { createdAt: 'desc' } },
+          } },
+          workflowLinks: { include: { workflowRun: { select: { status: true } } } },
+        },
+      });
+      if (!request) throw new NotFoundException('Test request not found.');
+      if (![TestRequestStatus.DRAFT, TestRequestStatus.READY].includes(request.status as TestRequestStatus)) throw new ConflictException('提测单已开始执行或结束，不能重复准备。');
+      const design = request.testDesign;
+      if (!design || design.status !== 'CONFIRMED' || design.id !== request.testDesignId || design.workspaceId !== request.workspaceId || design.projectId !== request.projectId || design.projectVersionId !== request.projectVersionId) throw new BadRequestException('请先确认当前项目与版本的测试设计。');
+      if (!request.testPlan?.snapshots.length || request.testPlan.testDesignId !== design.id) throw new BadRequestException('当前确认设计尚未冻结有效测试快照。');
+      if (!request.workflowLinks.length || request.workflowLinks.some(link => link.workflowRun.status.toLowerCase() !== 'done')) throw new BadRequestException('所有关联研发工作流必须完成后才能准备提测。');
+
+      const scope = options.useConfirmedDesign ? {
+        summary: '已按确认测试设计准备测试范围。',
+        coverageChecks: confirmedCoverageChecks(design.coverageChecks),
+        excludedScopes: confirmedUncoveredItems(design.uncoveredItems),
+      } : dto;
+      const failedChecks = scope.coverageChecks.filter(check => !check.passed);
+      if (failedChecks.length) throw new BadRequestException({ code: 'TEST_SCOPE_INCOMPLETE', message: 'Test scope coverage checks are incomplete.', failedChecks });
+      const revision = dto.scopeRevision ?? request.scopeRevision;
+      const completed = request.scopeGenerationStatus === 'COMPLETED' && request.testPlan.status === 'READY';
+      if (completed) {
+        // 已完成范围的原请求重试和读取当前版本均幂等，不能覆盖检查或推进执行状态。
+        if (revision !== request.scopeRevision && revision !== request.scopeRevision - 1) throw new ConflictException('测试范围版本已变化，请刷新后重试。');
+        return;
+      }
+      if (revision !== request.scopeRevision) throw new ConflictException('测试范围版本已变化，请刷新后重试。');
+      assertTestRequestTransition(request.status as TestRequestStatus, TestRequestStatus.READY);
+      const hasSmoke = request.testPlan.snapshots.some(snapshot => snapshot.kind === 'SMOKE');
+      const waitsForLocalSmoke = hasSmoke && !request.testPlan.runs.some(run => run.status === 'PASSED');
+      const changed = await tx.testRequest.updateMany({
+        where: { id, status: request.status, scopeRevision: request.scopeRevision, scopeGenerationStatus: request.scopeGenerationStatus },
         data: {
           status: waitsForLocalSmoke ? TestRequestStatus.DRAFT : TestRequestStatus.READY,
-          scopeGenerationStatus: 'COMPLETED',
-          scopeSummary: dto.summary.trim(),
-          scopeRevision: { increment: 1 },
-          scopeChecks: dto.coverageChecks as unknown as Prisma.InputJsonValue,
-          excludedScopes: dto.excludedScopes as Prisma.InputJsonValue,
+          scopeGenerationStatus: 'COMPLETED', scopeSummary: scope.summary.trim(), scopeRevision: { increment: 1 },
+          scopeChecks: scope.coverageChecks as unknown as Prisma.InputJsonValue,
+          excludedScopes: scope.excludedScopes as Prisma.InputJsonValue,
         },
-        include: requestInclude,
       });
+      if (changed.count !== 1) throw new ConflictException('测试范围或状态已变化，请刷新后重试。');
+      await tx.testPlan.update({ where: { id: request.testPlan.id }, data: { status: 'READY' } });
     });
+    return this.getRequest(id);
   }
+
 }
 
 function unique(values: string[]) {
@@ -353,6 +364,8 @@ function asCaseRecord(value: Prisma.JsonValue): {
   precondition: string | null;
   steps: string[];
   expected: string;
+  testData?: string | null;
+  targetKeys?: string[];
 } {
   const item = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, Prisma.JsonValue> : {};
   return {
@@ -361,5 +374,19 @@ function asCaseRecord(value: Prisma.JsonValue): {
     precondition: typeof item.precondition === 'string' ? item.precondition : null,
     steps: Array.isArray(item.steps) ? item.steps.filter((step): step is string => typeof step === 'string') : [],
     expected: typeof item.expected === 'string' ? item.expected : '结果符合预期',
+    ...(typeof item.testData === 'string' || item.testData === null ? { testData: item.testData } : {}),
+    ...(Array.isArray(item.targetKeys) ? { targetKeys: item.targetKeys.filter((key): key is string => typeof key === 'string') } : {}),
   };
+}
+
+function confirmedCoverageChecks(value: Prisma.JsonValue): CompleteTestScopeDto['coverageChecks'] {
+  if (!Array.isArray(value)) throw new BadRequestException('确认设计缺少覆盖检查。');
+  return value.map(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item) || typeof item.key !== 'string' || !item.key.trim() || typeof item.passed !== 'boolean') throw new BadRequestException('确认设计覆盖检查格式无效。');
+    return { key: item.key, passed: item.passed, ...(typeof item.detail === 'string' ? { detail: item.detail } : {}) };
+  });
+}
+function confirmedUncoveredItems(value: Prisma.JsonValue): string[] {
+  if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) throw new BadRequestException('确认设计未覆盖范围格式无效。');
+  return value as string[];
 }

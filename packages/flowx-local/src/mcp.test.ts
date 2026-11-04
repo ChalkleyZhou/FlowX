@@ -82,6 +82,27 @@ describe('flowx-local MCP server', () => {
       'flowx_list_smoke_tasks',
       'flowx_claim_smoke_task',
       'flowx_submit_smoke_report',
+      'flowx_list_case_libraries',
+      'flowx_list_case_modules',
+      'flowx_list_test_cases',
+      'flowx_generate_test_design',
+      'flowx_update_test_candidate',
+      'flowx_update_test_smoke',
+      'flowx_confirm_test_design',
+      'flowx_finish_test_run',
+      'flowx_link_test_bug',
+      'flowx_test_requests',
+      'flowx_create_test_run',
+      'flowx_list_test_tasks',
+      'flowx_claim_test_task',
+      'flowx_report_test_progress',
+      'flowx_submit_test_report',
+      'flowx_control_test_execution',
+      'flowx_create_test_design',
+      'flowx_get_test_design',
+      'flowx_update_test_selection',
+      'flowx_add_test_candidates',
+      'flowx_test_reports',
       'flowx_submit_design',
       'flowx_submit_brainstorm',
       'flowx_list_projects',
@@ -1166,4 +1187,143 @@ it('完成报告包含已提交变更，使用原会话并在取消后拒绝再�
   expect((await client.callTool({ name: 'flowx_report_completion', arguments: args })).isError).toBe(true);
   expect(posted).toHaveLength(1);
   await client.close(); await server.close();
+});
+
+it('通过真实 MCP discovery 和调用透传通用测试范围、进度与报告参数', async () => {
+  process.env.FLOWX_API_BASE_URL = 'https://flowx.example/api';
+  process.env.FLOWX_API_TOKEN = 'test-token';
+  const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : {} });
+    return new Response(JSON.stringify(String(url).endsWith('/quality/capabilities') ? { capabilities: ['local-test-runs', 'quality-progress', 'test-reports', 'case-selection'] } : { ok: true }), { status: 200 });
+  });
+  const { client, server } = await connectClient(makeHome());
+  try {
+    expect((await client.listTools()).tools.map(item => item.name)).toContain('flowx_create_test_run');
+    const created = await client.callTool({ name: 'flowx_create_test_run', arguments: { testRequestId: 'request-1', name: '功能初测', runType: 'INITIAL', targets: [{ key: 'web', name: 'Web' }], cases: [{ snapshotId: 'snapshot-1', targetKeys: ['web'] }] } });
+    expect(created.isError).not.toBe(true);
+    const report = { idempotencyKey: 'batch-1', sourceFingerprint: 'fp', testRunRevision: 2, testedRevisions: [{ workflowRepositoryId: 'repo', branch: 'main', headSha: 'abc' }], caseResults: [{ testRunCaseId: 'case-1', result: 'FAILED', artifactIds: ['log-1'] }] };
+    expect((await client.callTool({ name: 'flowx_report_test_progress', arguments: { executionSessionId: 's1', report } })).isError).not.toBe(true);
+    expect(calls).toContainEqual({ url: 'https://flowx.example/api/execution-sessions/s1/quality/progress', body: report });
+    expect(calls.find(item => item.url.endsWith('/local-test-runs'))?.body).toMatchObject({ runType: 'INITIAL', cases: [{ snapshotId: 'snapshot-1', targetKeys: ['web'] }] });
+    expect((await client.callTool({ name: 'flowx_control_test_execution', arguments: { executionSessionId: 's1', action: 'release', reason: '停止执行' } })).isError).not.toBe(true);
+    expect(calls.find(item => item.url.endsWith('/quality/release'))?.body).toEqual({ reason: '停止执行' });
+  } finally { await client.close(); await server.close(); }
+});
+
+it('质量工具发现用例库与模块、过滤用例、生成确认设计、结束轮次、生成汇总报告和关联缺陷', async () => {
+  process.env.FLOWX_API_BASE_URL = 'https://flowx.example/api';
+  process.env.FLOWX_API_TOKEN = 'test-token';
+  const calls: Array<{ url: string; method?: string; body: unknown }> = [];
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    calls.push({ url: String(url), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : {} });
+    return new Response(JSON.stringify(String(url).endsWith('/quality/capabilities') ? { capabilities: ['local-test-runs'] } : { id: 'saved' }), { status: 200 });
+  });
+  const { client, server } = await connectClient(makeHome());
+  try {
+    const names = (await client.listTools()).tools.map(item => item.name);
+    expect(names).toEqual(expect.arrayContaining(['flowx_list_case_libraries', 'flowx_list_case_modules', 'flowx_list_test_cases', 'flowx_generate_test_design', 'flowx_confirm_test_design', 'flowx_finish_test_run', 'flowx_link_test_bug']));
+    const inputs = [
+      { name: 'flowx_list_case_libraries', arguments: { workspaceId: 'ws', projectId: 'p' } },
+      { name: 'flowx_list_case_modules', arguments: { libraryId: 'lib/1' } },
+      { name: 'flowx_list_test_cases', arguments: { workspaceId: 'ws', libraryId: 'lib', moduleId: 'module', priority: 'P1', q: '登录', page: 2, pageSize: 50 } },
+      { name: 'flowx_generate_test_design', arguments: { testDesignId: 'design' } },
+      { name: 'flowx_confirm_test_design', arguments: { testDesignId: 'design', revision: 3, coverageChecks: [{ key: 'AC-1', passed: true, detail: '覆盖' }], uncoveredItems: [], noSmokeReason: '不需要' } },
+      { name: 'flowx_finish_test_run', arguments: { testRunId: 'run', revision: 4, reason: '全部执行完毕' } },
+      { name: 'flowx_test_reports', arguments: { action: 'request', testRequestId: 'req', idempotencyKey: 'report-1', mode: 'FINAL', runIds: ['initial', 'regression'], baseline: [{ workflowRepositoryId: 'wr', branch: 'fix', headSha: 'abc' }], supersessions: [{ previousRunId: 'initial', regressionRunId: 'regression', testRunCaseIds: ['case-1'] }] } },
+      { name: 'flowx_link_test_bug', arguments: { testRunId: 'run', testRunCaseId: 'case', bugId: 'bug' } },
+    ];
+    for (const input of inputs) expect((await client.callTool(input)).isError).not.toBe(true);
+    expect(calls).toContainEqual(expect.objectContaining({ url: 'https://flowx.example/api/quality/case-libraries?workspaceId=ws&projectId=p' }));
+    expect(calls).toContainEqual(expect.objectContaining({ url: 'https://flowx.example/api/quality/case-libraries/lib%2F1/modules' }));
+    expect(calls).toContainEqual(expect.objectContaining({ url: 'https://flowx.example/api/quality/test-cases?workspaceId=ws&libraryId=lib&moduleId=module&priority=P1&q=%E7%99%BB%E5%BD%95&page=2&pageSize=50' }));
+    expect(calls).toContainEqual(expect.objectContaining({ url: 'https://flowx.example/api/quality/test-designs/design/confirm', body: { revision: 3, coverageChecks: [{ key: 'AC-1', passed: true, detail: '覆盖' }], uncoveredItems: [], noSmokeReason: '不需要' } }));
+    expect(calls).toContainEqual(expect.objectContaining({ url: 'https://flowx.example/api/quality/test-runs/run/finish', body: { revision: 4, reason: '全部执行完毕' } }));
+    const { action, testRequestId, ...requestReport } = inputs[6]!.arguments;
+    expect(calls).toContainEqual(expect.objectContaining({ url: 'https://flowx.example/api/quality/test-requests/req/reports', body: requestReport }));
+    expect(calls).toContainEqual(expect.objectContaining({ url: 'https://flowx.example/api/quality/test-runs/run/cases/case/bug', body: { bugId: 'bug' } }));
+    expect((await client.callTool({ name: 'flowx_finish_test_run', arguments: { testRunId: 'run', revision: -1 } })).isError).toBe(true);
+    expect((await client.callTool({ name: 'flowx_list_test_cases', arguments: { workspaceId: 'ws', priority: 'unknown' } })).isError).toBe(true);
+  } finally { await client.close(); await server.close(); }
+});
+it('质量工具拒绝不支持服务端和上游权限失败，不降级到旧冒烟入口', async () => {
+  process.env.FLOWX_API_BASE_URL = 'https://flowx.example/api';
+  process.env.FLOWX_API_TOKEN = 'test-token';
+  let supported = false;
+  const paths: string[] = [];
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+    const path = String(url); paths.push(path);
+    if (path.endsWith('/quality/capabilities')) return new Response(JSON.stringify({ capabilities: supported ? ['local-test-runs'] : [] }), { status: 200 });
+    return new Response(JSON.stringify({ message: 'Forbidden' }), { status: 403 });
+  });
+  const { client, server } = await connectClient(makeHome());
+  try {
+    const args = { name: 'flowx_list_case_libraries', arguments: { workspaceId: 'ws' } };
+    const unsupported = await client.callTool(args);
+    expect(unsupported.isError).toBe(true);
+    expect(JSON.stringify(unsupported.content)).toContain('QUALITY_NOT_SUPPORTED');
+    expect(paths).toHaveLength(1);
+    supported = true;
+    expect((await client.callTool(args)).isError).toBe(true);
+    expect(paths.some(path => path.includes('/local-smoke'))).toBe(false);
+  } finally { await client.close(); await server.close(); }
+});
+it('通过真实 MCP 编辑测试候选和冒烟范围，仅透传 DTO 可写字段并保留 null 前置条件', async () => {
+  process.env.FLOWX_API_BASE_URL = 'https://flowx.example/api';
+  process.env.FLOWX_API_TOKEN = 'test-token';
+  const calls: Array<{ url: string; method?: string; body: unknown }> = [];
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    calls.push({ url: String(url), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : {} });
+    return new Response(JSON.stringify(String(url).endsWith('/quality/capabilities') ? { capabilities: ['local-test-runs'] } : { revision: 4 }), { status: 200 });
+  });
+  const { client, server } = await connectClient(makeHome());
+  try {
+    const tools = (await client.listTools()).tools;
+    expect(tools.map(tool => tool.name)).toEqual(expect.arrayContaining(['flowx_update_test_candidate', 'flowx_update_test_smoke']));
+    const proposedCase = { title: '调整登录用例', priority: 'P1', precondition: null, steps: ['输入账号'], expected: '登录成功', tags: ['登录'] };
+    const candidate = { testDesignId: 'design/1', candidateId: 'candidate/1', revision: 3, action: 'OPTIMIZE', resolution: 'ACCEPTED', matchScore: 0.9, decisionNote: '用户已确认调整', proposedCase };
+    expect((await client.callTool({ name: 'flowx_update_test_candidate', arguments: candidate })).isError).not.toBe(true);
+    expect(calls).toContainEqual({ url: 'https://flowx.example/api/quality/test-designs/design%2F1/candidates/candidate%2F1', method: 'PATCH', body: { revision: 3, action: 'OPTIMIZE', resolution: 'ACCEPTED', matchScore: 0.9, decisionNote: '用户已确认调整', proposedCase } });
+    const smoke = { id: 'smoke-1', title: '登录冒烟', priority: 'P0', precondition: null, steps: ['打开登录'], expected: '可访问', blocking: true, coverageKeys: ['AC-1'], resolution: 'ACCEPTED' };
+    expect((await client.callTool({ name: 'flowx_update_test_smoke', arguments: { testDesignId: 'design/1', revision: 4, cases: [{ ...smoke, testDesignId: 'readonly-design', sortOrder: 7, createdAt: 'readonly', updatedAt: 'readonly', testData: '非冒烟 DTO 字段', targetKeys: ['web'] }], noSmokeReason: '' } })).isError).not.toBe(true);
+    expect(calls).toContainEqual({ url: 'https://flowx.example/api/quality/test-designs/design%2F1/smoke', method: 'PATCH', body: { revision: 4, cases: [smoke], noSmokeReason: '' } });
+    expect((await client.callTool({ name: 'flowx_update_test_smoke', arguments: { testDesignId: 'design/1', revision: 5, cases: [], noSmokeReason: '用户确认无需冒烟' } })).isError).not.toBe(true);
+    const beforeInvalid = calls.length;
+    expect((await client.callTool({ name: 'flowx_update_test_candidate', arguments: { testDesignId: 'design', candidateId: 'candidate', revision: 0, resolution: 'AUTO_APPROVED' } })).isError).toBe(true);
+    expect((await client.callTool({ name: 'flowx_update_test_smoke', arguments: { testDesignId: 'design', revision: 1, cases: [{ ...smoke, blocking: 'true' }] } })).isError).toBe(true);
+    expect(calls).toHaveLength(beforeInvalid);
+    expect(calls.some(call => call.url.endsWith('/confirm'))).toBe(false);
+  } finally { await client.close(); await server.close(); }
+});
+it('提测单工具按动作透传发现、创建与显式准备，候选保留测试数据和适用端', async () => {
+  process.env.FLOWX_API_BASE_URL = 'https://flowx.example/api';
+  process.env.FLOWX_API_TOKEN = 'test-token';
+  const calls: Array<{ url: string; method?: string; body: unknown }> = [];
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    calls.push({ url: String(url), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : {} });
+    return new Response(JSON.stringify(String(url).endsWith('/quality/capabilities') ? { capabilities: ['local-test-runs'] } : { id: 'request-1' }), { status: 200 });
+  });
+  const { client, server } = await connectClient(makeHome());
+  try {
+    expect((await client.listTools()).tools.map(tool => tool.name)).toContain('flowx_test_requests');
+    expect((await client.callTool({ name: 'flowx_test_requests', arguments: { action: 'list', projectId: 'p/1', projectVersionId: 'v1', status: 'DRAFT' } })).isError).not.toBe(true);
+    expect((await client.callTool({ name: 'flowx_test_requests', arguments: { action: 'get', testRequestId: 'request/1' } })).isError).not.toBe(true);
+    const request = { workspaceId: 'ws', projectId: 'p', projectVersionId: 'v', title: '功能提测', description: '已确认范围', requirementIds: ['req'], workflowRunIds: ['workflow'], artifactIds: ['artifact'], testDesignId: 'design' };
+    expect((await client.callTool({ name: 'flowx_test_requests', arguments: { action: 'create', request } })).isError).not.toBe(true);
+    expect(calls.some(call => call.url.endsWith('/prepare'))).toBe(false);
+    expect((await client.callTool({ name: 'flowx_test_requests', arguments: { action: 'prepare', testRequestId: 'request/1', scopeRevision: 2 } })).isError).not.toBe(true);
+    expect(calls).toContainEqual(expect.objectContaining({ url: 'https://flowx.example/api/quality/test-requests?projectId=p%2F1&projectVersionId=v1&status=DRAFT' }));
+    expect(calls).toContainEqual(expect.objectContaining({ url: 'https://flowx.example/api/quality/test-requests/request%2F1', body: {} }));
+    expect(calls).toContainEqual({ url: 'https://flowx.example/api/quality/test-requests', method: 'POST', body: request });
+    expect(calls).toContainEqual({ url: 'https://flowx.example/api/quality/test-requests/request%2F1/prepare', method: 'POST', body: { scopeRevision: 2 } });
+    const proposedCase = { title: '原始用例', priority: 'P1', steps: ['执行'], expected: '成功', testData: '账号：用户甲', targetKeys: ['web', 'android'] };
+    expect((await client.callTool({ name: 'flowx_update_test_candidate', arguments: { testDesignId: 'design', candidateId: 'candidate', revision: 3, proposedCase } })).isError).not.toBe(true);
+    expect(calls).toContainEqual({ url: 'https://flowx.example/api/quality/test-designs/design/candidates/candidate', method: 'PATCH', body: { revision: 3, proposedCase } });
+    expect((await client.callTool({ name: 'flowx_update_test_candidate', arguments: { testDesignId: 'design', candidateId: 'candidate', revision: 4, proposedCase: { ...proposedCase, testData: null } } })).isError).not.toBe(true);
+    const beforeInvalid = calls.length;
+    for (const args of [{ action: 'prepare', testRequestId: 'request/1' }, { action: 'get' }, { action: 'create', request: { ...request, requirementIds: [] } }, { action: 'list', scopeRevision: 1 }, { action: 'create', request: { ...request, status: 'READY' } }]) {
+      expect((await client.callTool({ name: 'flowx_test_requests', arguments: args })).isError).toBe(true);
+    }
+    expect(calls).toHaveLength(beforeInvalid);
+  } finally { await client.close(); await server.close(); }
 });

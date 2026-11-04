@@ -134,3 +134,9 @@ describe('writePromptFile', () => {
     expect(readFileSync(promptPath, 'utf8')).toBe('Implement the feature.\n');
   });
 });
+it('质量启动把独立执行身份写入 MCP 环境', () => {
+  const gitRoot = makeProject();
+  ensureProject(gitRoot, { apiBaseUrl: 'https://flowx.example', mcpToken: 'quality-token', stage: 'quality-test', testRunId: 'test-1', executionSessionId: 'session-1' });
+  const config = JSON.parse(readFileSync(join(gitRoot, '.cursor', 'mcp.json'), 'utf8'));
+  expect(config.mcpServers.flowx.env).toMatchObject({ FLOWX_QUALITY_TEST_RUN_ID: 'test-1', FLOWX_QUALITY_EXECUTION_SESSION_ID: 'session-1' });
+});

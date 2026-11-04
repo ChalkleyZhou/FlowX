@@ -181,3 +181,17 @@ describe('resolveApiAuth', () => {
     );
   });
 });
+it('质量交接必须使用票据原领取人的短期身份，不能被另一用户已登录凭据覆盖', async () => {
+  const home = makeHome();
+  await writeCredentials({ apiBaseUrl: 'https://other.example', apiToken: 'fxpat_other-user' }, home);
+  process.env.FLOWX_API_TOKEN = 'quality-short-token';
+  process.env.FLOWX_API_BASE_URL = 'https://flowx.example/';
+  const previous = process.env.FLOWX_QUALITY_EXECUTION_SESSION_ID;
+  process.env.FLOWX_QUALITY_EXECUTION_SESSION_ID = 'session-quality';
+  try {
+    expect(await resolveApiAuth(home)).toEqual({ apiBaseUrl: 'https://flowx.example', apiToken: 'quality-short-token', source: 'env' });
+  } finally {
+    if (previous === undefined) delete process.env.FLOWX_QUALITY_EXECUTION_SESSION_ID;
+    else process.env.FLOWX_QUALITY_EXECUTION_SESSION_ID = previous;
+  }
+});

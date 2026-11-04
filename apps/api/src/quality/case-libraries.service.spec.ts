@@ -64,6 +64,16 @@ describe('CaseLibrariesService', () => {
     );
   });
 
+  it('创建与编辑用例时保存显式适用端，空数组表示未确认', async () => {
+    const { service, prisma } = createService();
+    prisma.testCaseLibrary.findUnique.mockResolvedValue({ id: 'library-1', status: 'ACTIVE' });
+    await service.createCase('library-1', { title: '登录', steps: ['登录'], expected: '成功', targetKeys: ['web', 'ios'] });
+    expect(prisma.testCaseDefinition.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ targetKeys: ['web', 'ios'] }) }));
+    prisma.testCaseDefinition.findFirst.mockResolvedValue({ id: 'case-1', libraryId: 'library-1' });
+    await service.updateCase('case-1', { targetKeys: [] });
+    expect(prisma.testCaseDefinition.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ targetKeys: [] }) }));
+  });
+
   it('does not allow a module from another library to be assigned to a case', async () => {
     const { service, prisma } = createService();
     prisma.testCaseLibrary.findUnique.mockResolvedValue({ id: 'library-1', status: 'ACTIVE' });

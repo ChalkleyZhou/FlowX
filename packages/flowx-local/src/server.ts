@@ -113,12 +113,13 @@ export function createLocalServer(options: StartServerOptions = {}): Server {
           typeof body.ticket !== 'string' ||
           typeof body.ide !== 'string' ||
           !isLocalIde(body.ide) ||
-          typeof body.apiBaseUrl !== 'string'
+          typeof body.apiBaseUrl !== 'string' ||
+          (body.purpose !== undefined && body.purpose !== 'quality-test')
         ) {
           sendJson(res, 400, { ok: false, error: 'ticket, ide, and apiBaseUrl are required' }, true);
           return;
         }
-        sendJson(res, 200, await launch(body as LaunchRequest), true);
+        sendJson(res, 200, await launch(body as LaunchRequest, { homeDir: options.homeDir, deviceId: config.deviceId }), true);
       } catch (error) {
         const code =
           error && typeof error === 'object' && 'code' in error

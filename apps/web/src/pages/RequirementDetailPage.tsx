@@ -166,6 +166,9 @@ export function RequirementDetailPage() {
             <Button variant="outline" asChild>
               <Link to="/requirements">返回列表</Link>
             </Button>
+            <Button variant="outline" asChild>
+              <Link to={`/quality/test-designs/new?${new URLSearchParams({ projectId: requirement.project.id, projectVersionId: requirement.versionId ?? '', requirementId: requirement.id })}`}>准备测试</Link>
+            </Button>
             <Button variant="outline" type="button" onClick={() => void openEdit()}>编辑</Button>
             <Button variant="outline" type="button" disabled={deleting} onClick={() => void handleDelete()}>
               {deleting ? '删除中...' : '删除需求'}

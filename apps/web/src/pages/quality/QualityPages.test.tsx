@@ -45,6 +45,9 @@ vi.mock('../../api', async (importOriginal) => ({
     updateTestCase: vi.fn(),
     deleteTestCase: vi.fn(),
     getTestRequest: vi.fn(),
+    prepareTestRequest: vi.fn(),
+    getTestRuns: vi.fn(),
+    getQualityReports: vi.fn(),
     getLocalSmokeRuns: vi.fn(),
     getSubmissionReport: vi.fn(),
     createLocalSmokeRun: vi.fn(),
@@ -156,6 +159,8 @@ describe('Quality pages', () => {
     vi.mocked(api.getTestRequests).mockResolvedValue([testRequest]);
     vi.mocked(api.getTestDesigns).mockResolvedValue([]);
     vi.mocked(api.getTestRequest).mockResolvedValue(testRequest);
+    vi.mocked(api.getTestRuns).mockResolvedValue(testRequest.testPlan?.runs ?? []);
+    vi.mocked(api.getQualityReports).mockResolvedValue([]);
     vi.mocked(api.getLocalSmokeRuns).mockResolvedValue([]);
     vi.mocked(api.getSubmissionReport).mockResolvedValue(null);
     vi.mocked(api.getTestCaseLibraries).mockResolvedValue([library]);
@@ -217,6 +222,24 @@ describe('Quality pages', () => {
     });
   }
 
+  it('DRAFT提测先确认冻结范围，服务端准备完成后才开放功能测试轮次', async () => {
+    const snapshot = { id: 'snapshot-1', title: '功能测试', priority: 'P0', kind: 'FUNCTIONAL' as const, steps: ['登录'], expected: '成功', selectedBy: 'MANUAL' };
+    const draft: TestRequest = { ...testRequest, status: 'DRAFT', testDesignId: 'design-1', scopeGenerationStatus: 'NOT_STARTED', testPlan: { id: 'plan-1', status: 'DRAFT', snapshots: [snapshot], runs: [] } };
+    const ready: TestRequest = { ...draft, status: 'READY', scopeGenerationStatus: 'COMPLETED', scopeRevision: 2, testPlan: { ...draft.testPlan!, status: 'READY' } };
+    vi.mocked(api.getTestRequest).mockResolvedValue(draft);
+    vi.mocked(api.prepareTestRequest).mockResolvedValue(ready);
+    await act(async () => root?.render(<MemoryRouter initialEntries={['/quality/test-requests/request-1']}><Routes><Route path="/quality/test-requests/:id" element={<QualityRequestDetailPage />} /></Routes></MemoryRouter>));
+    const formalButton = () => Array.from(container.querySelectorAll('button')).find(button => button.textContent === '创建功能测试轮次');
+    expect(formalButton()?.disabled).toBe(true);
+    await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent === '确认冻结范围并完成提测准备')?.click());
+    expect(api.prepareTestRequest).toHaveBeenCalledWith('request-1', { scopeRevision: 1 });
+    expect(formalButton()?.disabled).toBe(false);
+  });
+  it('提测详情以URL保存五个页签，并链接独立执行详情', async () => {
+    await act(async () => root?.render(<MemoryRouter initialEntries={['/quality/test-requests/request-1?tab=runs']}><Routes><Route path="/quality/test-requests/:id" element={<QualityRequestDetailPage />} /></Routes></MemoryRouter>));
+    expect(Array.from(container.querySelectorAll('[role="tab"]')).map(item => item.textContent)).toEqual(['概览', '测试范围', '执行轮次', '缺陷', '测试报告']);
+    expect(container.querySelector('a[href="/quality/test-runs/run-1"]')?.textContent).toContain('缺陷修复回归');
+  });
   it('shows test requests as an independent page without content tabs', async () => {
     await renderPage('/quality/test-requests', <QualityRequestsPage />);
 
@@ -449,6 +472,7 @@ describe('Quality pages', () => {
     expect((document.body.querySelector('input[aria-label="编辑标题"]') as HTMLInputElement).value)
       .toBe('登录后恢复原访问页面');
 
+    await act(async () => (document.querySelector('input[aria-label="适用端 Web"]') as HTMLInputElement).click());
     const saveButton = Array.from(document.body.querySelectorAll('button')).find(
       (button) => button.textContent?.trim() === '保存修改',
     );
@@ -463,6 +487,7 @@ describe('Quality pages', () => {
       moduleId: 'module-1',
       externalId: 'LOGIN-001',
       title: '登录后恢复原访问页面',
+      targetKeys: ['web'],
       steps: ['打开受保护页面', '完成登录'],
       expected: '自动返回登录前页面',
     }));

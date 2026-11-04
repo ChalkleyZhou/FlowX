@@ -6,7 +6,9 @@ export type EnsureProjectOptions = {
   apiBaseUrl: string;
   mcpToken: string;
   ide?: Ide;
-  stage?: 'execution' | 'spec-plan';
+  stage?: 'execution' | 'spec-plan' | 'quality-test';
+  testRunId?: string;
+  executionSessionId?: string;
 };
 
 function mergeFlowxMcp(mcpPath: string, options: EnsureProjectOptions): void {
@@ -27,6 +29,7 @@ function mergeFlowxMcp(mcpPath: string, options: EnsureProjectOptions): void {
         env: {
           FLOWX_API_BASE_URL: options.apiBaseUrl,
           FLOWX_API_TOKEN: options.mcpToken,
+          ...(options.stage === 'quality-test' ? { FLOWX_QUALITY_TEST_RUN_ID: options.testRunId, FLOWX_QUALITY_EXECUTION_SESSION_ID: options.executionSessionId } : {}),
         },
       },
     },

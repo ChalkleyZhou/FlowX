@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import {
   ConfirmTestDesignDto,
+  UpdateQualitySelectionDto,
+  AddQualityCandidatesDto,
   CreateTestDesignDto,
   UpdateTestDesignCandidateDto,
   UpdateTestDesignSmokeDto,
@@ -34,6 +36,16 @@ export class TestDesignsController {
       flowxOrganizationId: session.organization?.id ?? null,
       displayName: session.user.displayName ?? '',
     } : null);
+  }
+
+  @Patch(':id/selection')
+  updateSelection(@Param('id') id: string, @Body() dto: UpdateQualitySelectionDto) {
+    return this.designs.updateSelection(id, dto);
+  }
+
+  @Post(':id/candidates')
+  addCandidates(@Param('id') id: string, @Body() dto: AddQualityCandidatesDto) {
+    return this.designs.addCandidates(id, dto);
   }
 
   @Patch(':id/candidates/:candidateId')

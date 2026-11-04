@@ -1,0 +1,372 @@
+// @vitest-environment jsdom
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { api } from '../../api';
+import { probeFlowxLocal, launchFlowxLocal } from '../../lib/flowx-local-bridge';
+import type { TestRun } from '../../types';
+import { QualityRunDetailPage } from './QualityRunDetailPage';
+import { QualityReportsPanel } from './QualityReportsPanel';
+import { QualityCreateRunDialog } from './QualityCreateRunDialog';
+
+vi.mock('../../api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api')>()),
+  api: {
+    createLocalTestRun: vi.fn(),
+    getTestRun: vi.fn(),
+    getQualityReports: vi.fn(),
+    createQualityRunReport: vi.fn(),
+    createQualityRequestReport: vi.fn(),
+    finishQualityRun: vi.fn(),
+    controlQualityExecution: vi.fn(),
+    fetchArtifactContent: vi.fn(),
+    issueQualityLocalLaunchTicket: vi.fn(),
+    getBugs: vi.fn(),
+    createBug: vi.fn(),
+    linkQualityCaseBug: vi.fn(),
+  },
+}));
+vi.mock('../../lib/flowx-local-bridge', () => ({ probeFlowxLocal: vi.fn(), launchFlowxLocal: vi.fn() }));
+vi.mock('../../components/ui/toast', () => ({ useToast: () => ({ error: vi.fn(), success: vi.fn() }) }));
+
+const run: TestRun = {
+  id: 'run-1',
+  name: '功能初测',
+  runType: 'INITIAL',
+  executionMode: 'LOCAL',
+  revision: 3,
+  status: 'ACTIVE',
+  testPlan: {
+    testRequest: { id: 'request-1', title: '认证提测', projectId: 'project-1', workspaceId: 'workspace-1' },
+  },
+  targets: [
+    {
+      id: 'web-1',
+      key: 'web',
+      name: 'Web',
+      required: true,
+      status: 'ACTIVE',
+      expectedRevisions: [{ workflowRepositoryId: 'repo-1', branch: 'main', headSha: 'abc123' }],
+    },
+  ],
+  cases: [
+    {
+      id: 'row-1',
+      targetId: 'web-1',
+      snapshot: {
+        id: 'snapshot-1',
+        title: '登录恢复',
+        priority: 'P0',
+        steps: ['登录'],
+        expected: '回到原页面',
+        selectedBy: 'MANUAL',
+      },
+      result: {
+        id: 'result-1',
+        result: 'FAILED',
+        actualResult: '跳到了首页',
+        evidence: { artifactIds: ['artifact-1'] },
+      },
+    },
+  ],
+  executions: [
+    {
+      id: 'execution-1',
+      executionSessionId: 'session-1',
+      targetId: 'web-1',
+      claimedCaseIds: ['row-1'],
+      claimedByUser: { displayName: '张三' },
+      environment: { browser: 'Chrome' },
+      testedRevisions: [{ workflowRepositoryId: 'repo-1', branch: 'main', headSha: 'abc123' }],
+      status: 'RUNNING',
+      startedAt: '2026-11-04T01:00:00Z',
+      leaseExpiresAt: '2099-11-04T01:00:00Z',
+    },
+  ],
+};
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+describe('质量执行与报告', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  beforeEach(() => {
+    vi.mocked(probeFlowxLocal).mockResolvedValue(true);
+    vi.mocked(launchFlowxLocal).mockResolvedValue({
+      ok: true,
+      gitRoot: '/repo',
+      ide: 'codex',
+      prefilled: true,
+      promptPath: '/prompt',
+      opened: true,
+    });
+    vi.mocked(api.issueQualityLocalLaunchTicket).mockResolvedValue({
+      ticket: 'ticket-1',
+      loopbackPort: 3920,
+      expiresAt: '2099-01-01',
+    });
+    vi.clearAllMocks();
+    vi.mocked(api.getTestRun).mockResolvedValue(run);
+    vi.mocked(api.getQualityReports).mockResolvedValue([]);
+    vi.mocked(api.getBugs).mockResolvedValue([]);
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
+      true;
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.useRealTimers();
+  });
+  async function renderRun(extra?: React.ReactNode) {
+    await act(async () =>
+      root.render(
+        <MemoryRouter initialEntries={['/quality/test-runs/run-1']}>
+          <Routes>
+            <Route
+              path="/quality/test-runs/:id"
+              element={
+                <>
+                  {extra}
+                  <QualityRunDetailPage />
+                </>
+              }
+            />
+          </Routes>
+        </MemoryRouter>,
+      ),
+    );
+  }
+  it('创建轮次仅提交人工明确选择的快照到目标端映射', async () => {
+    const request = { id: 'request-1', testPlan: { snapshots: [run.cases![0].snapshot] } } as Parameters<
+      typeof QualityCreateRunDialog
+    >[0]['request'];
+    vi.mocked(api.createLocalTestRun).mockResolvedValue(run);
+    await act(async () =>
+      root.render(
+        <MemoryRouter>
+          <QualityCreateRunDialog open onOpenChange={vi.fn()} request={request} onCreated={vi.fn()} />
+        </MemoryRouter>,
+      ),
+    );
+    const web = container.ownerDocument.querySelector(
+      'input[aria-label="登录恢复 适用 Web"]',
+    ) as HTMLInputElement;
+    expect(web.checked).toBe(false);
+    await act(async () => web.click());
+    await act(async () =>
+      Array.from(document.querySelectorAll('button'))
+        .find((item) => item.textContent === '创建本地轮次')
+        ?.click(),
+    );
+    expect(api.createLocalTestRun).toHaveBeenCalledWith(
+      'request-1',
+      expect.objectContaining({
+        runType: 'INITIAL',
+        cases: [{ snapshotId: 'snapshot-1', targetKeys: ['web'] }],
+        targets: [{ key: 'web', name: 'Web', required: true, expectedRevisions: [] }],
+      }),
+    );
+  });
+  it('逐例展示预期、实际、证据、实际版本与执行环境，并使用认证证据请求', async () => {
+    await renderRun();
+    for (const text of ['回到原页面', '跳到了首页', '张三', 'Chrome', 'abc123'])
+      expect(container.textContent).toContain(text);
+    vi.mocked(api.fetchArtifactContent).mockResolvedValue(new Blob(['证据'], { type: 'text/plain' }));
+    await act(async () =>
+      Array.from(container.querySelectorAll('button'))
+        .find((item) => item.textContent?.includes('查看证据'))
+        ?.click(),
+    );
+    expect(api.fetchArtifactContent).toHaveBeenCalledWith('artifact-1');
+  });
+  it('后台轮询保留明细，延迟请求期间不会产生重叠请求', async () => {
+    vi.useFakeTimers();
+    await renderRun();
+    const delayed = deferred<TestRun>();
+    vi.mocked(api.getTestRun).mockReturnValueOnce(delayed.promise);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(container.textContent).toContain('跳到了首页');
+    expect(api.getTestRun).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(api.getTestRun).toHaveBeenCalledTimes(2);
+    await act(async () => delayed.resolve({ ...run, status: 'FAILED' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15000);
+    });
+    expect(api.getTestRun).toHaveBeenCalledTimes(2);
+  });
+  it('切换轮次后忽略旧轮次延迟回包', async () => {
+    const old = deferred<TestRun>();
+    vi.mocked(api.getTestRun).mockReturnValueOnce(old.promise);
+    function Switch() {
+      const navigate = useNavigate();
+      return <button onClick={() => navigate('/quality/test-runs/run-2')}>切换轮次</button>;
+    }
+    await renderRun(<Switch />);
+    vi.mocked(api.getTestRun).mockResolvedValue({ ...run, id: 'run-2', name: '新轮次' });
+    await act(async () =>
+      Array.from(container.querySelectorAll('button'))
+        .find((item) => item.textContent === '切换轮次')
+        ?.click(),
+    );
+    await act(async () => old.resolve(run));
+    expect(container.textContent).toContain('新轮次');
+    expect(container.querySelector('.text-2xl')?.textContent).toBe('新轮次');
+  });
+  async function launch() {
+    const select = container.querySelector('select[aria-label="启动目标端"]') as HTMLSelectElement;
+    await act(async () => {
+      select.value = 'web-1';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await act(async () =>
+      Array.from(container.querySelectorAll('button'))
+        .find((item) => item.textContent === '在本地打开测试任务')
+        ?.click(),
+    );
+  }
+  it('本地未安装时给出安装入口且不签发任务，启动成功只等待回传', async () => {
+    await renderRun();
+    vi.mocked(probeFlowxLocal).mockResolvedValueOnce(false);
+    await launch();
+    expect(container.textContent).toContain('未检测到 flowx-local');
+    expect(api.issueQualityLocalLaunchTicket).not.toHaveBeenCalled();
+    await launch();
+    expect(api.issueQualityLocalLaunchTicket).toHaveBeenCalledWith('run-1', {
+      targetId: 'web-1',
+      preferredIde: 'codex',
+    });
+    expect(launchFlowxLocal).toHaveBeenCalledWith(
+      expect.objectContaining({ ticket: 'ticket-1', ide: 'codex', purpose: 'quality-test' }),
+      3920,
+    );
+    expect(container.textContent).toContain('IDE 已打开，等待实际测试进度回传');
+    expect(api.finishQualityRun).not.toHaveBeenCalled();
+  });
+  it.each(['本地尚未登录', '仓库尚未映射', '代码基线不匹配'])(
+    '启动失败展示真实原因和可执行修复入口：%s',
+    async (message) => {
+      await renderRun();
+      vi.mocked(launchFlowxLocal).mockRejectedValueOnce(new Error(message));
+      await launch();
+      expect(container.textContent).toContain(message);
+      expect(container.querySelector('a[href="/local-agent"]')).not.toBeNull();
+      expect(api.finishQualityRun).not.toHaveBeenCalled();
+    },
+  );
+  it('取消须填写原因，并明确说明设备可能仍在运行', async () => {
+    await renderRun();
+    const input = container.querySelector('input[aria-label="控制原因 execution-1"]') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, '终止旧任务');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    vi.mocked(api.controlQualityExecution).mockResolvedValue({ status: 'CANCELLED', deviceStopped: false });
+    await act(async () =>
+      Array.from(container.querySelectorAll('button'))
+        .find((item) => item.textContent === '取消会话')
+        ?.click(),
+    );
+    expect(api.controlQualityExecution).toHaveBeenCalledWith('session-1', 'cancel', { reason: '终止旧任务' });
+    expect(container.textContent).toContain('设备进程可能仍在运行');
+  });
+  it('失败轮次也能生成阶段报告，生成不会结束轮次', async () => {
+    vi.mocked(api.getTestRun).mockResolvedValue({ ...run, status: 'FAILED' });
+    await renderRun();
+    await act(async () =>
+      Array.from(container.querySelectorAll('button'))
+        .find((item) => item.textContent === '生成阶段报告')
+        ?.click(),
+    );
+    expect(api.createQualityRunReport).toHaveBeenCalledWith(
+      'run-1',
+      expect.objectContaining({ mode: 'PROGRESS', idempotencyKey: expect.any(String) }),
+    );
+    expect(api.finishQualityRun).not.toHaveBeenCalled();
+  });
+  it('任务汇总只提交明确选中的轮次、代码基线和回归替代范围', async () => {
+    const initial: TestRun = { ...run, status: 'FAILED', cases: run.cases!.map(row => ({ ...row, result: { ...row.result!, bugId: 'bug-1' } })) };
+    const regression: TestRun = { ...run, id: 'run-2', name: '独立回归', status: 'PASSED', runType: 'REGRESSION', sourceBug: { id: 'bug-1', title: '跳转错误', fixWorkflowRun: { status: 'DONE' } }, cases: run.cases!.map(row => ({ ...row, id: 'regression-row-1', result: { id: 'regression-result', result: 'PASSED' } })) };
+    await act(async () => root.render(<MemoryRouter><QualityReportsPanel requestId="request-1" runs={[initial, regression]} /></MemoryRouter>));
+    const check = async (prefix: string) => {
+      const label = Array.from(container.querySelectorAll('label')).find(label => label.textContent?.trim().startsWith(prefix));
+      await act(async () => (label?.querySelector('input') as HTMLInputElement).click());
+    };
+    await check('功能初测 · FAILED'); await check('独立回归 · PASSED'); await check('repo-1 · main · abc123');
+    await check('功能初测 / 登录恢复 → 独立回归');
+    await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent === '生成任务汇总报告')?.click());
+    expect(api.createQualityRequestReport).toHaveBeenCalledWith('request-1', {
+      idempotencyKey: expect.any(String), mode: 'PROGRESS', runIds: ['run-1', 'run-2'], baseline: [{ workflowRepositoryId: 'repo-1', branch: 'main', headSha: 'abc123' }],
+      supersessions: [{ previousRunId: 'run-1', regressionRunId: 'run-2', testRunCaseIds: ['row-1'] }],
+    });
+  });
+  it('报告列表区分轮次和任务汇总，并使用认证预览和下载', async () => {
+    vi.mocked(api.getQualityReports).mockResolvedValue([
+      {
+        id: 'report-1',
+        requestId: 'request-1',
+        runId: 'run-1',
+        kind: 'RUN',
+        revision: 2,
+        artifactId: 'artifact-report',
+        createdAt: '2026-11-04T01:00:00Z',
+        snapshot: {
+          mode: 'PROGRESS',
+          summary: {
+            conclusion: 'FAILED',
+            total: 1,
+            passed: 0,
+            failed: 1,
+            blocked: 0,
+            skipped: 0,
+            pending: 0,
+            completionRate: 1,
+            passRate: 0,
+          },
+          runs: [],
+          baseline: [{ workflowRepositoryId: 'repo-1', branch: 'main', headSha: 'abc123' }],
+        },
+        artifact: {
+          id: 'artifact-report',
+          name: 'report.html',
+          artifactType: 'TEST_REPORT',
+          version: '2',
+          createdAt: '2026-11-04T01:00:00Z',
+        },
+      },
+    ]);
+    await act(async () =>
+      root.render(
+        <MemoryRouter>
+          <QualityReportsPanel requestId="request-1" runs={[]} />
+        </MemoryRouter>,
+      ),
+    );
+    expect(container.textContent).toContain('轮次报告');
+    expect(container.textContent).toContain('阶段报告');
+    expect(container.textContent).toContain('abc123');
+    vi.mocked(api.fetchArtifactContent).mockResolvedValue(
+      new Blob(['<h1>测试报告</h1>'], { type: 'text/html' }),
+    );
+    await act(async () =>
+      Array.from(container.querySelectorAll('button'))
+        .find((item) => item.textContent === '在线查看')
+        ?.click(),
+    );
+    expect(api.fetchArtifactContent).toHaveBeenCalledWith('artifact-report');
+  });
+});

@@ -16,6 +16,9 @@ const { errorToast, successToast } = vi.hoisted(() => ({
 vi.mock('../../api', () => ({
   api: {
     getTestDesign: vi.fn(),
+    getTestCaseLibraries: vi.fn(),
+    getTestCaseModules: vi.fn(),
+    getTestCases: vi.fn(),
     generateTestDesign: vi.fn(),
     updateTestDesignCandidate: vi.fn(),
     updateTestDesignSmoke: vi.fn(),
@@ -96,6 +99,9 @@ describe('QualityTestDesignPage', () => {
     document.body.appendChild(container);
     root = createRoot(container);
     vi.mocked(api.getTestDesign).mockResolvedValue(design);
+    vi.mocked(api.getTestCaseLibraries).mockResolvedValue([]);
+    vi.mocked(api.getTestCaseModules).mockResolvedValue([]);
+    vi.mocked(api.getTestCases).mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -119,6 +125,14 @@ describe('QualityTestDesignPage', () => {
     });
   }
 
+  it('展示未覆盖验收点，支持批量明确排除候选', async () => {
+    vi.mocked(api.getTestDesign).mockResolvedValue({ ...design, uncoveredItems: ['未覆盖注销'] });
+    await renderPage();
+    expect(container.textContent).toContain('未覆盖注销');
+    await act(async () => (container.querySelector('input[aria-label="选择候选 登录失败展示明确原因"]') as HTMLInputElement).click());
+    await act(async () => Array.from(container.querySelectorAll('button')).find(item => item.textContent === '批量排除')?.click());
+    expect(api.updateTestDesignCandidate).toHaveBeenCalledWith('design-1', 'candidate-1', { revision: 2, resolution: 'REJECTED' });
+  });
   it('shows library origin and the existing/proposed case comparison', async () => {
     await renderPage();
 

@@ -268,3 +268,5 @@ This setup will:
 提测草稿支持创建 `LOCAL_SMOKE` 轮次并按 Web、API、iOS、Android 等目标端展开用例矩阵。多个开发者可分别使用 `flowx_list_smoke_tasks`、`flowx_claim_smoke_task` 和 `flowx_submit_smoke_report` 认领及回传；服务端保留每次执行明细，按 `FAILED > BLOCKED > SKIPPED > PASSED` 聚合。所有必测阻断项通过且没有有效执行租约后，服务端生成版本化 HTML 提测报告并将草稿推进到 `READY`。
 
 冒烟结果必须由原领取人回传。提测详情分别加载基本信息、报告和轮次；尚无报告时正常提示，局部加载失败可单独重试，权限不足、记录不存在和网络错误分别展示。
+
+完整功能测试与回归使用独立的 `INITIAL` / `REGRESSION` 本地轮次。从需求准备测试设计时可指定库与模块并补选，提测后明确每条快照的适用端；在执行详情交接本地 IDE，真实执行后分批回传结果与证据。失败轮次也可结束并生成测试报告。Bug 修复完成后新建回归，使用修复交付版本，汇总时显式指定替代范围，历史初测及报告保留。新功能通过通用质量 MCP 工具和 `flowx-local-test` 技能提供；旧冒烟继续承担提测前门禁。接口与统计口径见 [测试与质量中心](docs/quality-foundation.md)。新增工具需要更新本地包并重载 IDE MCP；当前源码能力尚未发布到 npm。

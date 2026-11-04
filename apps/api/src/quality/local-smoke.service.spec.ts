@@ -278,6 +278,7 @@ describe('LocalSmokeService', () => {
       },
       testRun: {
         id: 'run-1',
+        runType: 'LOCAL_SMOKE',
         status: 'ACTIVE',
         sourceFingerprint: 'fp-1',
         testPlan: { testRequest: { id: 'request-1' } },
@@ -337,6 +338,7 @@ describe('LocalSmokeService', () => {
       },
       testRun: {
         id: 'run-1',
+        runType: 'LOCAL_SMOKE',
         status: 'ACTIVE',
         sourceFingerprint: 'fp-1',
         testPlan: { testRequest: { id: 'request-1' } },

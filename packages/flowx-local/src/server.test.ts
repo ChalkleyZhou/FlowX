@@ -189,3 +189,15 @@ describe('flowx-local server', () => {
     await expect(submit.json()).resolves.toEqual({ queued: false });
   });
 });
+it('质量启动保留 purpose 并向兑换链路注入本机设备身份', async () => {
+  const inputs: unknown[][] = [];
+  const { server, url } = await startServer({ port: 0, homeDir: makeHome(), runLaunch: async (...args) => {
+    inputs.push(args);
+    return { ok: true, gitRoot: '/repo', ide: 'codex', opened: true, prefilled: false, promptPath: '/prompt', testRunId: 'test-1', executionSessionId: 'session-1' };
+  } });
+  servers.push(server);
+  const response = await fetch(`${url}/launch`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ purpose: 'quality-test', ticket: 'ticket', ide: 'codex', apiBaseUrl: 'https://flowx.example' }) });
+  expect(response.status).toBe(200);
+  expect(inputs[0]?.[0]).toMatchObject({ purpose: 'quality-test' });
+  expect(inputs[0]?.[1]).toMatchObject({ deviceId: expect.any(String) });
+});

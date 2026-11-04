@@ -1,3 +1,5 @@
+import type { QualityCaseSelection } from '@flowx-ai/protocol';
+import { selectQualityCases, stringArray } from './test-case-selection';
 import { createHash } from 'node:crypto';
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -39,6 +41,10 @@ const comparisonCaseSelect = {
   steps: true,
   expected: true,
   tags: true,
+  testData: true,
+  targetKeys: true,
+  moduleId: true,
+  coverageLinks: { select: { targetType: true, targetKey: true } },
   library: { select: { scope: true, projectId: true, name: true } },
 } as const;
 
@@ -53,6 +59,7 @@ export class TestDesignsService {
   ) {}
 
   async createDesign(dto: CreateTestDesignDto) {
+    if (dto.caseSelection) await this.validateSelection(dto.workspaceId, dto.projectId, dto.caseSelection);
     const requirementIds = unique(dto.requirementIds);
     const workflowRunIds = unique(dto.workflowRunIds);
     if (!requirementIds.length || !workflowRunIds.length) {
@@ -112,6 +119,7 @@ export class TestDesignsService {
     const existing = existingDesigns.find((item) => (
       sameIds(item.requirements.map((link) => link.requirementId), requirementIds)
       && sameIds(item.workflowRuns.map((link) => link.workflowRunId), workflowRunIds)
+      && stableStringify(item.caseSelection ?? null) === stableStringify(dto.caseSelection ?? null)
     ));
     if (existing) return existing;
 
@@ -143,12 +151,83 @@ export class TestDesignsService {
         projectVersionId: dto.projectVersionId,
         revision: (latest?.revision ?? 0) + 1,
         sourceFingerprint,
+        ...(dto.caseSelection ? { caseSelection: dto.caseSelection as unknown as Prisma.InputJsonValue } : {}),
         sourceSummary: sourceSummary as Prisma.InputJsonValue,
         requirements: { create: requirementIds.map((requirementId) => ({ requirementId })) },
         workflowRuns: { create: workflowRunIds.map((workflowRunId) => ({ workflowRunId })) },
       },
       include: designInclude,
     });
+  }
+
+  private assertEditable(design: { revision: number; status: string; testRequest: unknown }, revision: number) {
+    assertRevision(design.revision, revision);
+    if (design.testRequest || ['GENERATING', 'CONFIRMED'].includes(design.status)) throw new BadRequestException('测试设计已冻结或正在生成，不能编辑。');
+  }
+
+  private async validateSelection(workspaceId: string, projectId: string, selection: QualityCaseSelection) {
+    const ids = unique(selection.libraryIds);
+    if (!ids.length) throw new BadRequestException('请至少选择一个用例库。');
+    const libraries = await this.prisma.testCaseLibrary.findMany({ where: {
+      id: { in: ids }, status: 'ACTIVE', workspaceId, OR: [{ projectId }, { projectId: null }],
+    }, select: { id: true } });
+    if (libraries.length !== ids.length) throw new BadRequestException('所选用例库不属于当前项目可用范围。');
+    if (!selection.moduleIds?.length) return [];
+    const modules = await this.prisma.testCaseModule.findMany({ where: { libraryId: { in: ids } }, select: { id: true, parentId: true } });
+    const selected = new Set(selection.moduleIds);
+    if ([...selected].some(id => !modules.some(item => item.id === id))) throw new BadRequestException('所选模块不属于所选用例库。');
+    let size = 0;
+    while (size !== selected.size) {
+      size = selected.size;
+      for (const item of modules) if (item.parentId && selected.has(item.parentId)) selected.add(item.id);
+    }
+    return [...selected];
+  }
+
+  async updateSelection(id: string, dto: { revision: number; caseSelection: QualityCaseSelection }) {
+    const design = await this.getDesign(id);
+    this.assertEditable(design, dto.revision);
+    await this.validateSelection(design.workspaceId, design.projectId, dto.caseSelection);
+    await this.prisma.$transaction(async tx => {
+      const changed = await tx.testDesign.updateMany({ where: { id, revision: dto.revision, testRequest: { is: null }, status: { notIn: ['GENERATING', 'CONFIRMED'] } }, data: {
+        caseSelection: dto.caseSelection as unknown as Prisma.InputJsonValue, retrievalSummary: Prisma.DbNull,
+        status: 'NOT_STARTED', revision: { increment: 1 },
+      } });
+      if (changed.count !== 1) throw new BadRequestException('测试设计已变化，请刷新后重试。');
+      await tx.testDesignCandidate.deleteMany({ where: { testDesignId: id } });
+      await tx.testDesignSmokeCase.deleteMany({ where: { testDesignId: id } });
+    });
+    return this.getDesign(id);
+  }
+
+  async addCandidates(id: string, dto: { revision: number; definitionIds: string[] }) {
+    const design = await this.getDesign(id);
+    this.assertEditable(design, dto.revision);
+    if (!['WAITING_REVIEW', 'NOT_STARTED'].includes(design.status)) throw new BadRequestException('当前测试设计不接受补选。');
+    const ids = unique(dto.definitionIds);
+    const selection = design.caseSelection as unknown as QualityCaseSelection | null;
+    const modules = selection ? await this.validateSelection(design.workspaceId, design.projectId, selection) : [];
+    const definitions = await this.prisma.testCaseDefinition.findMany({ where: {
+      id: { in: ids }, status: 'ACTIVE',
+      ...(selection ? { libraryId: { in: selection.libraryIds } } : {}),
+      ...(modules.length ? { moduleId: { in: modules } } : {}),
+      library: { workspaceId: design.workspaceId, OR: [{ projectId: design.projectId }, { projectId: null }] },
+    } });
+    const eligible = selectQualityCases(definitions, { requirementIds: [], text: '', selection, limit: definitions.length });
+    if (!ids.length || definitions.length !== ids.length || eligible.cases.length !== ids.length) throw new BadRequestException('补选用例不属于当前选例范围。');
+    await this.prisma.$transaction(async tx => {
+      const changed = await tx.testDesign.updateMany({ where: { id, revision: dto.revision, status: { in: ['NOT_STARTED', 'WAITING_REVIEW'] }, testRequest: { is: null } }, data: { revision: { increment: 1 }, status: 'WAITING_REVIEW' } });
+      if (changed.count !== 1) throw new BadRequestException('测试设计已变化，请刷新后重试。');
+      for (const [index, item] of definitions.entries()) {
+        if (design.candidates.some(candidate => candidate.sourceDefinitionId === item.id)) continue;
+        await tx.testDesignCandidate.create({ data: {
+          testDesignId: id, sourceDefinitionId: item.id, sourceVersion: item.version,
+          coverageKeys: [], action: 'REUSE', resolution: 'ACCEPTED', matchReason: '测试人员手工补选', sortOrder: design.candidates.length + index,
+          proposedCase: { title: item.title, priority: item.priority, precondition: item.precondition, steps: stringArray(item.steps), expected: item.expected, tags: stringArray(item.tags), testData: item.testData ?? null, targetKeys: stringArray(item.targetKeys) },
+        } });
+      }
+    });
+    return this.getDesign(id);
   }
 
   getDesign(id: string) {
@@ -195,21 +274,31 @@ export class TestDesignsService {
     const sourceSummary = refreshed.sourceSummary;
     const stageOutput = Array.isArray(sourceSummary.specPlans) ? sourceSummary.specPlans[0] : null;
     if (!requirement || !stageOutput) throw new BadRequestException('Test design source is incomplete.');
+    const selection = design.caseSelection as unknown as QualityCaseSelection | null;
+    const selectedModules = selection ? await this.validateSelection(design.workspaceId, design.projectId, selection) : undefined;
+    const selectionWhere = selection ? {
+      libraryId: { in: selection.libraryIds },
+      ...(selectedModules?.length ? { moduleId: { in: selectedModules } } : {}),
+    } : {};
     const [projectCases, workspaceCases] = await Promise.all([
       this.prisma.testCaseDefinition.findMany({
-        where: { status: 'ACTIVE', library: { workspaceId: design.workspaceId, projectId: design.projectId } },
+        where: { status: 'ACTIVE', ...selectionWhere, library: { workspaceId: design.workspaceId, projectId: design.projectId } },
         select: comparisonCaseSelect,
         orderBy: { updatedAt: 'desc' },
-        take: 250,
+
       }),
       this.prisma.testCaseDefinition.findMany({
-        where: { status: 'ACTIVE', library: { workspaceId: design.workspaceId, projectId: null } },
+        where: { status: 'ACTIVE', ...selectionWhere, library: { workspaceId: design.workspaceId, projectId: null } },
         select: comparisonCaseSelect,
         orderBy: { updatedAt: 'desc' },
-        take: 250,
+
       }),
     ]);
-    const existingCases = [...projectCases, ...workspaceCases];
+    const retrieved = selectQualityCases([...projectCases, ...workspaceCases], {
+      requirementIds: requirements.map(item => item.id),
+      text: requirements.map(item => `${item.title} ${item.acceptanceCriteria}`).join(' '), selection,
+    });
+    const existingCases = retrieved.cases;
     const input: GenerateTestDesignInput = {
       requirement: {
         id: requirements.map((item) => item.id).join(','),
@@ -224,6 +313,7 @@ export class TestDesignsService {
         ...item,
         steps: readStringArray(item.steps),
         tags: readStringArray(item.tags),
+        targetKeys: readStringArray(item.targetKeys),
         libraryScope: library.scope,
         libraryProjectId: library.projectId,
         libraryName: library.name,
@@ -231,8 +321,9 @@ export class TestDesignsService {
       changeSummary: typeof sourceSummary.changeSummary === 'string' ? sourceSummary.changeSummary : null,
     };
     const claimed = await this.prisma.testDesign.updateMany({
-      where: { id, status: { not: 'GENERATING' }, testRequest: { is: null } },
+      where: { id, revision: design.revision, status: { not: 'GENERATING' }, testRequest: { is: null } },
       data: {
+        retrievalSummary: retrieved.summary as unknown as Prisma.InputJsonValue,
         status: 'GENERATING',
         sourceFingerprint: refreshed.sourceFingerprint,
         sourceSummary: sourceSummary as Prisma.InputJsonValue,
@@ -244,7 +335,7 @@ export class TestDesignsService {
       throw new BadRequestException('Test design generation is already in progress or linked to a test request.');
     }
     setTimeout(() => {
-      void this.completeGeneration(id, input, existingCases.map((item) => item.id), sourceSummary, recipient)
+      void this.completeGeneration(id, design.revision, input, existingCases.map((item) => item.id), sourceSummary, recipient)
         .catch((error) => this.logger.error(`Test design background generation failed id=${id}: ${describeGenerationError(error)}`));
     }, 0);
     return { ...design, status: 'GENERATING', sourceFingerprint: refreshed.sourceFingerprint, sourceSummary, staleReason: null, generationError: null };
@@ -252,6 +343,7 @@ export class TestDesignsService {
 
   private async completeGeneration(
     id: string,
+    generationRevision: number,
     input: GenerateTestDesignInput,
     existingCaseIds: string[],
     sourceSummary: Record<string, unknown>,
@@ -262,11 +354,12 @@ export class TestDesignsService {
       const context = await this.aiInvocationContextService.resolveInvocationContext(provider, recipient);
       const output: TestDesignGenerationOutput = await this.aiExecutor.generateTestDesign(input, context);
       validateGeneratedOutput(output, new Set(existingCaseIds));
+      const sourceById = new Map(input.existingCases.map((item) => [item.id, item]));
       await this.prisma.$transaction(async (tx) => {
         await tx.testDesignCandidate.deleteMany({ where: { testDesignId: id } });
         await tx.testDesignSmokeCase.deleteMany({ where: { testDesignId: id } });
         await tx.testDesign.update({
-          where: { id },
+          where: { id, revision: generationRevision, status: 'GENERATING' },
           data: {
             status: 'WAITING_REVIEW',
             revision: { increment: 1 },
@@ -288,7 +381,15 @@ export class TestDesignsService {
             matchScore: candidate.matchScore ?? null,
             matchReason: candidate.matchReason ?? null,
             coverageKeys: candidate.coverageKeys as Prisma.InputJsonValue,
-            proposedCase: candidate.proposedCase as unknown as Prisma.InputJsonValue,
+            proposedCase: {
+              ...candidate.proposedCase,
+              testData: candidate.proposedCase.testData === undefined
+                ? sourceById.get(candidate.sourceDefinitionId ?? '')?.testData ?? null
+                : candidate.proposedCase.testData,
+              targetKeys: candidate.proposedCase.targetKeys === undefined
+                ? sourceById.get(candidate.sourceDefinitionId ?? '')?.targetKeys ?? []
+                : candidate.proposedCase.targetKeys,
+            } as unknown as Prisma.InputJsonValue,
             sortOrder: index,
           })),
         });
@@ -309,7 +410,7 @@ export class TestDesignsService {
     } catch (error) {
       this.logger.error(`Test design generation failed id=${id}: ${describeGenerationError(error)} (${error instanceof Error ? error.name : typeof error})`);
       await this.prisma.testDesign.update({
-        where: { id },
+        where: { id, revision: generationRevision, status: 'GENERATING' },
         data: { status: 'GENERATION_FAILED', generationError: describeGenerationError(error) },
       });
     }
@@ -521,6 +622,8 @@ function normalizeCase(value: unknown): TestDesignCaseDraft {
     steps,
     expected,
     tags: readStringArray(item.tags),
+    testData: typeof item.testData === 'string' ? item.testData.trim() || null : null,
+    targetKeys: unique(readStringArray(item.targetKeys)).sort(),
   };
 }
 
@@ -532,6 +635,8 @@ function caseData(value: TestDesignCaseDraft) {
     steps: value.steps as Prisma.InputJsonValue,
     expected: value.expected,
     tags: value.tags as Prisma.InputJsonValue,
+    testData: value.testData ?? null,
+    targetKeys: (value.targetKeys ?? []) as Prisma.InputJsonValue,
   };
 }
 

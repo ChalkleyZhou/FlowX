@@ -74,3 +74,25 @@ flowx-local login
 | 命令与文档不一致 | `flowx-local version`，再重跑当前站点的 `/install` |
 
 不要把 `~/.flowx` 下的凭据或 token 提交到 Git。贡献者排障可用 `pnpm flowx-local serve`。
+
+
+## 完整功能测试与回归
+
+在平台准备测试设计并确认范围后，创建功能初测或 Bug 回归本地轮次。新版 `flowx-local-test` 技能用于完整功能测试与回归；原 `flowx-local-smoke` 继续只负责冒烟门禁。
+
+平台“在本地执行”通过五分钟一次性票据交接本机，绑定原领取人、组织、设备和测试轮次。兑换后本地核对仓库映射、分支、HEAD 和业务工作区；不匹配时拒绝打开 IDE 并释放领取范围。启动失败也释放。需要支持该源码能力的新本地包，并在更新后重载 IDE MCP；本次仓库变更不等于已发布 npm 新版本。
+
+本地 Agent 可使用以下正式工具，不需要解析网页或访问数据库：
+
+- 选例：`flowx_list_test_libraries`、`flowx_list_test_modules`、`flowx_list_test_cases`、`flowx_create_test_design`、`flowx_get_test_design`、`flowx_update_test_selection`、`flowx_add_test_candidates`、`flowx_update_test_candidate`、`flowx_update_test_smoke`、`flowx_generate_test_design`、`flowx_confirm_test_design`。
+- 提测：`flowx_test_requests` 支持 `list/get/create/prepare`，创建后保持草稿；检查真实冻结范围并获得用户确认后显式 `prepare`，传入 `scopeRevision`。存在冒烟快照时仍需通过原门禁。
+- 执行：`flowx_create_test_run`、`flowx_list_test_tasks`、`flowx_claim_test_task`、`flowx_report_test_progress`、`flowx_submit_test_report`、`flowx_control_test_execution`。
+- 闭环：`flowx_link_test_bug`、`flowx_finish_test_run`、`flowx_test_reports`（轮次或提测汇总）；证据复用 `flowx_upload_artifact`。
+
+执行顺序：查询任务 → 领取目标端与用例（平台已交接领取时不再重复领取）→ 核对所有代码版本 → 真实执行 → 上传证据 → 用稳定幂等键分批回传 → 全部领取项回传后完成会话。报告必须携带领取时的 `testRunRevision`、`sourceFingerprint`、实际 `testedRevisions` 和逐例结果。相同内容重试使用同一幂等键；内容变化用新键，已保存事实不能覆盖。生成脚本、IDE 打开或心跳都不等于测试通过。
+
+长时间执行需通过 `flowx_control_test_execution` 的 `heartbeat` 续租；过期后重新领取新会话，旧会话迟到结果被拒绝。中断先停止本地进程，再用 `release` 或 `cancel` 并说明原因；服务端返回 `deviceStopped: false` 表示仍需确认设备已停止。已接受的结果继续保留；省略 `caseIds` 再次领取时只包含未完成项。需要重测时优先创建新轮次，显式选择已有结果的同轮复测继续采用保守聚合，不覆盖原执行事实。
+
+回归必须绑定本项目已完成修复的 Bug，使用修复工作流交付版本。失败结果独立关联缺陷，不能用手工结果入口覆盖本地事实。回归和显式汇总不会改写初测或旧报告。能力查询不支持时返回明确错误，不能改用旧 smoke 工具回传正式功能结果。
+
+质量启动内部注入 `FLOWX_QUALITY_TEST_RUN_ID` 与 `FLOWX_QUALITY_EXECUTION_SESSION_ID`，让 MCP 使用交接的短期身份；无需手工配置。不要记录或分享交接 token。

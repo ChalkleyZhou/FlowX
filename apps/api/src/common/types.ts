@@ -73,6 +73,8 @@ export interface GenerateSpecPlanInput {
 export type TestDesignCandidateAction = 'REUSE' | 'OPTIMIZE' | 'CREATE' | 'EXCLUDE';
 
 export interface TestDesignCaseDraft {
+  testData?: string | null;
+  targetKeys?: string[];
   title: string;
   priority: string;
   precondition?: string | null;
@@ -110,6 +112,8 @@ export interface GenerateTestDesignInput {
   designContext?: unknown | null;
   specPlan: SpecPlanOutput;
   existingCases: Array<{
+    testData?: string | null;
+    targetKeys?: string[];
     id: string;
     version: number;
     title: string;

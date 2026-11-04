@@ -28,6 +28,7 @@ export async function probeFlowxLocal(port?: number): Promise<boolean> {
 }
 
 export type FlowxLocalLaunchBody = {
+  purpose?: 'quality-test';
   ticket: string;
   ide: 'cursor' | 'codex' | 'workbuddy';
   apiBaseUrl: string;

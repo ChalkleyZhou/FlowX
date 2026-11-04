@@ -22,6 +22,27 @@ class LocalStorageMock {
 }
 
 describe('api helpers', () => {
+  it('通用质量接口透传快照目标端、版本控制及报告替代关系', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal('fetch', fetchMock);
+    const mapping = { name: '初测', runType: 'INITIAL' as const, targets: [{ key: 'api', name: 'API', expectedRevisions: [] }], cases: [{ snapshotId: 'snapshot-1', targetKeys: ['api'] }] };
+    await api.createLocalTestRun('request-1', mapping);
+    await api.prepareTestRequest('request-1', { scopeRevision: 2 });
+    await api.finishQualityRun('run-1', { revision: 4, reason: '保留失败结果结束' });
+    const summary = { idempotencyKey: 'report-1', mode: 'FINAL' as const, runIds: ['run-1', 'run-2'], baseline: [{ workflowRepositoryId: 'repo-1', branch: 'main', headSha: 'abc' }], supersessions: [{ previousRunId: 'run-1', regressionRunId: 'run-2', testRunCaseIds: ['case-1'] }] };
+    await api.createQualityRequestReport('request-1', summary);
+    await api.controlQualityExecution('session-1', 'cancel', { reason: '停止' });
+    await api.linkQualityCaseBug('run-1', 'case-1', 'bug-1');
+    expect(fetchMock.mock.calls.map(call => [new URL(call[0]).pathname, call[1].method, JSON.parse(call[1].body)])).toEqual([
+      ['/quality/test-requests/request-1/local-test-runs', 'POST', mapping],
+      ['/quality/test-requests/request-1/prepare', 'POST', { scopeRevision: 2 }],
+      ['/quality/test-runs/run-1/finish', 'POST', { revision: 4, reason: '保留失败结果结束' }],
+      ['/quality/test-requests/request-1/reports', 'POST', summary],
+      ['/execution-sessions/session-1/quality/cancel', 'POST', { reason: '停止' }],
+      ['/quality/test-runs/run-1/cases/case-1/bug', 'POST', { bugId: 'bug-1' }],
+    ]);
+  });
+
   it.each([
     ['prototype', '巡逻防控_V1.3_地址与处置改造/01_巡逻防控任务.html'],
     ['Web%20端', 'pages/nested/100%2F +?#.html'],

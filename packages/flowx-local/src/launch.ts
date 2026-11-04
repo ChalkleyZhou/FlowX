@@ -1,3 +1,4 @@
+import { runQualityLaunch, type RepositoryState } from './quality-launch.js';
 import { ensureProject, writePromptFile } from './ensure-project.js';
 import { CodexAdapter } from './adapters/codex-adapter.js';
 import { CursorAdapter } from './adapters/cursor-adapter.js';
@@ -34,9 +35,13 @@ export type LaunchRequest = {
   ticket: string;
   ide: Ide;
   apiBaseUrl: string;
+  purpose?: 'quality-test';
 };
 
 export type LaunchDependencies = {
+  deviceId?: string;
+  homeDir?: string;
+  collectRepositoryState?: (cwd: string, options?: { testRunId: string }) => Promise<RepositoryState>;
   fetch?: (url: string, init: RequestInit) => Promise<FetchResponse>;
   resolveRepoPath?: (repoUrl: string) => Promise<string>;
   ensureProject?: typeof ensureProject;
@@ -73,6 +78,17 @@ export async function runLaunch(
 ): Promise<IdeLaunchResult> {
   if (!request.ticket?.trim() || !request.apiBaseUrl?.trim()) {
     throw new Error('ticket and apiBaseUrl are required');
+  }
+
+  if (request.purpose === 'quality-test') {
+    return runQualityLaunch(request, {
+      ...dependencies,
+      registry: dependencies.registry ?? defaultIdeRegistry({
+        ensureProject: dependencies.ensureProject,
+        writePromptFile: dependencies.writePromptFile,
+        openIde: dependencies.openIde,
+      }),
+    });
   }
 
   const apiBaseUrl = normalizeApiBaseUrl(request.apiBaseUrl);

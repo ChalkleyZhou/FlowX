@@ -1,7 +1,8 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateTestRunDto, ReportTestResultDto } from './dto/test-run.dto';
+import { refreshTestRequestStatus } from './test-request-state';
 import { TestRequestStatus, assertTestRequestTransition } from './quality-status';
 
 @Injectable()
@@ -16,7 +17,7 @@ export class TestRunsService {
     if (!request?.testPlan) {
       throw new NotFoundException('Ready test plan not found.');
     }
-    assertTestRequestTransition(request.status as TestRequestStatus, TestRequestStatus.IN_TEST);
+    if (request.status !== TestRequestStatus.IN_TEST) assertTestRequestTransition(request.status as TestRequestStatus, TestRequestStatus.IN_TEST);
     if (request.testPlan.status !== 'READY') {
       throw new BadRequestException('Test plan scope is not ready.');
     }
@@ -104,15 +105,18 @@ export class TestRunsService {
     return this.prisma.testRun.findMany({
       where: { testPlanId: request.testPlan.id },
       include: {
-        sourceBug: true,
-        cases: { include: { snapshot: true, assignedToUser: true, result: true } },
+        sourceBug: { include: { fixWorkflowRun: { select: { id: true, status: true } } } },
+        targets: true,
+        executions: { include: { claimedByUser: { select: { id: true, displayName: true } } } },
+        cases: { include: { snapshot: true, target: true, assignedToUser: true, activeLease: true, result: { include: { bug: { include: { fixWorkflowRun: { select: { id: true, status: true } } } } } } } },
       },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   async reportResult(testRunCaseId: string, dto: ReportTestResultDto, userId?: string) {
-    const runCase = await this.prisma.testRunCase.findUnique({
+    return this.prisma.$transaction(async tx => {
+    const runCase = await tx.testRunCase.findUnique({
       where: { id: testRunCaseId },
       include: {
         testRun: {
@@ -123,6 +127,7 @@ export class TestRunsService {
     if (!runCase) {
       throw new NotFoundException('Test run case not found.');
     }
+    if (runCase.testRun.executionMode === 'LOCAL') throw new BadRequestException('本地轮次必须通过领取会话回传，不能手工覆盖。');
     if (runCase.testRun.status !== 'ACTIVE') {
       throw new BadRequestException('Only active test runs accept results.');
     }
@@ -130,7 +135,7 @@ export class TestRunsService {
       throw new ForbiddenException('This test case is assigned to another user.');
     }
     if (dto.bugId) {
-      const bug = await this.prisma.bug.findFirst({
+      const bug = await tx.bug.findFirst({
         where: { id: dto.bugId, projectId: runCase.testRun.testPlan.testRequest.projectId },
       });
       if (!bug) {
@@ -138,7 +143,10 @@ export class TestRunsService {
       }
     }
 
-    const result = await this.prisma.testResult.upsert({
+    const locked = await tx.testRun.updateMany({ where: { id: runCase.testRun.id, status: 'ACTIVE', revision: runCase.testRun.revision }, data: { revision: { increment: 1 } } });
+    if (locked.count !== 1) throw new ConflictException('测试轮次已变化，请刷新后重试。');
+
+    const result = await tx.testResult.upsert({
       where: { testRunCaseId },
       update: {
         result: dto.result,
@@ -160,23 +168,21 @@ export class TestRunsService {
       },
     });
 
-    const runCases = await this.prisma.testRunCase.findMany({
+    const runCases = await tx.testRunCase.findMany({
       where: { testRunId: runCase.testRun.id },
       include: { result: true },
     });
     if (runCases.length && runCases.every((item) => item.result)) {
       const finalStatus = aggregateResult(runCases.map((item) => item.result!.result));
-      await this.prisma.testRun.update({
+      await tx.testRun.update({
         where: { id: runCase.testRun.id },
         data: { status: finalStatus, completedAt: new Date() },
       });
-      await this.prisma.testRequest.update({
-        where: { id: runCase.testRun.testPlan.testRequest.id },
-        data: { status: finalStatus },
-      });
-      return { result, runStatus: finalStatus, testRequestStatus: finalStatus };
+      const testRequestStatus = await refreshTestRequestStatus(tx, runCase.testRun.testPlan.testRequest.id);
+      return { result, runStatus: finalStatus, testRequestStatus };
     }
     return { result, runStatus: 'ACTIVE', testRequestStatus: TestRequestStatus.IN_TEST };
+    });
   }
 }
 

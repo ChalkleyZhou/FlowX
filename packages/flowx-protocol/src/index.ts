@@ -10,3 +10,6 @@ export * from './spec-plan.js';
 export * from './sync-event.js';
 export * from './version.js';
 export * from './execution-control.js';
+
+export * from './quality.js';
+export * from './quality-launch.js';

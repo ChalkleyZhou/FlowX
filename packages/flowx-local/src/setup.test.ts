@@ -79,8 +79,8 @@ describe('flowx-local setup', () => {
     };
 
     const first = await runSetup({ homeDir: home, targets: 'cursor,codex,od', ...extras });
-    // 6 skills × (cursor + agents) = 12 paths; codex/od share agents roots per skill.
-    expect(first.written).toHaveLength(12);
+    // 7 个技能分别写入 cursor 和 agents；codex/od 共享 agents 目录。
+    expect(first.written).toHaveLength(14);
     expect(first.skipped).toEqual([]);
     const cursorPrd = join(home, '.cursor', 'skills', 'flowx-product-prd', 'SKILL.md');
     const agentsPrd = join(home, '.agents', 'skills', 'flowx-product-prd', 'SKILL.md');
@@ -90,6 +90,15 @@ describe('flowx-local setup', () => {
     const agentsSpecPlan = join(home, '.agents', 'skills', 'flowx-spec-plan', 'SKILL.md');
     const cursorSmoke = join(home, '.cursor', 'skills', 'flowx-local-smoke', 'SKILL.md');
     const agentsSmoke = join(home, '.agents', 'skills', 'flowx-local-smoke', 'SKILL.md');
+    const cursorTest = join(home, '.cursor', 'skills', 'flowx-local-test', 'SKILL.md');
+    const agentsTest = join(home, '.agents', 'skills', 'flowx-local-test', 'SKILL.md');
+    expect(readFileSync(cursorTest, 'utf8')).toContain('flowx_report_test_progress');
+    expect(readFileSync(cursorTest, 'utf8')).toContain('flowx_update_test_candidate');
+    expect(readFileSync(cursorTest, 'utf8')).toContain('flowx_update_test_smoke');
+    expect(readFileSync(cursorTest, 'utf8')).toContain('flowx_test_requests');
+    expect(readFileSync(cursorTest, 'utf8')).toContain('创建后不得自动 prepare');
+    expect(readFileSync(cursorTest, 'utf8')).toContain('不得批量自动设为');
+    expect(readFileSync(agentsTest, 'utf8')).toContain('flowx_submit_test_report');
     expect(existsSync(cursorPrd)).toBe(true);
     expect(existsSync(agentsPrd)).toBe(true);
     expect(existsSync(cursorIntake)).toBe(true);
@@ -131,6 +140,7 @@ describe('flowx-local setup', () => {
       cursorSpecPlan,
       cursorExecution,
       cursorSmoke,
+      cursorTest,
     ]);
     expect(readFileSync(cursorPrd, 'utf8')).toBe('# custom\n');
 
@@ -142,6 +152,7 @@ describe('flowx-local setup', () => {
       cursorSpecPlan,
       cursorExecution,
       cursorSmoke,
+      cursorTest,
     ]);
     expect(readFileSync(cursorPrd, 'utf8')).toContain('flowx_submit_brainstorm');
     expect(readFileSync(cursorIntake, 'utf8')).toContain('flowx_create_requirement');

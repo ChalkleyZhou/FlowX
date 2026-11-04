@@ -744,6 +744,140 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     },
   );
 
+  // 新能力先做服务端能力识别；不支持时不能退回冒烟入口误执行。
+  async function qualityRequest(path: string, init?: RequestInit) {
+    const { client } = await resolveSession(options.homeDir);
+    const capabilities = await client.request('/quality/capabilities') as { capabilities?: string[] };
+    if (!capabilities.capabilities?.includes('local-test-runs')) throw new Error('QUALITY_NOT_SUPPORTED: 服务端尚不支持完整本地测试，请升级服务端；旧冒烟入口仍可使用。');
+    return client.request(path, init);
+  }
+  const qualityReportSchema = smokeReportSchema.extend({ testRunRevision: z.number().int().min(0) }).strict();
+  const qualitySelectionSchema = z.object({ libraryIds: z.array(z.string().min(1)).min(1), moduleIds: z.array(z.string()).optional(), priorities: z.array(z.enum(['P0', 'P1', 'P2', 'P3'])).optional(), tags: z.array(z.string()).optional(), targetKeys: z.array(z.string()).optional() }).strict();
+  function qualityQuery(input: Record<string, string | number | undefined>) {
+    return new URLSearchParams(Object.entries(input).filter((entry): entry is [string, string | number] => entry[1] !== undefined).map(([key, value]) => [key, String(value)])).toString();
+  }
+  server.registerTool('flowx_list_case_libraries', {
+    title: '发现测试用例库', description: '查询有权限的工作区及项目用例库，返回 libraryId 供选例使用。',
+    inputSchema: { workspaceId: z.string().min(1), projectId: z.string().min(1).optional() },
+  }, async input => runRequest(() => qualityRequest(`/quality/case-libraries?${qualityQuery(input)}`)));
+  server.registerTool('flowx_list_case_modules', {
+    title: '发现用例库模块', description: '读取所选用例库的模块和层级，返回 moduleId；不修改正式用例库。',
+    inputSchema: { libraryId: z.string().min(1) },
+  }, async ({ libraryId }) => runRequest(() => qualityRequest(`/quality/case-libraries/${encodeURIComponent(libraryId)}/modules`)));
+  server.registerTool('flowx_list_test_cases', {
+    title: '检索正式测试用例', description: '按库、模块、优先级、关键词分页检索正式用例，读取步骤、测试数据和预期。用返回的 definition id 补选候选。',
+    inputSchema: { workspaceId: z.string().min(1), projectId: z.string().min(1).optional(), libraryId: z.string().min(1).optional(), moduleId: z.string().min(1).optional(), priority: z.enum(['P0', 'P1', 'P2', 'P3']).optional(), q: z.string().optional(), page: z.number().int().min(1).optional(), pageSize: z.number().int().min(10).max(100).optional() },
+  }, async input => runRequest(() => qualityRequest(`/quality/test-cases?${qualityQuery(input)}`)));
+  server.registerTool('flowx_generate_test_design', {
+    title: '生成需求测试设计', description: '在已明确用例库与范围后请求服务端生成候选设计。异步生成后读取最新设计；不会自动确认或开始测试。',
+    inputSchema: { testDesignId: z.string().min(1) },
+  }, async ({ testDesignId }) => runRequest(() => qualityRequest(`/quality/test-designs/${encodeURIComponent(testDesignId)}/generate`, { method: 'POST', body: '{}' })));
+  server.registerTool('flowx_update_test_candidate', {
+    title: '处理测试设计候选', description: '按用户决策修改候选动作、处理状态或用例草稿。使用最新 revision；处理候选不会确认整个设计，不能自行批量接受。proposedCase 只含 DTO 支持的可写字段。',
+    inputSchema: {
+      testDesignId: z.string().min(1), candidateId: z.string().min(1), revision: z.number().int().min(1),
+      action: z.enum(['REUSE', 'OPTIMIZE', 'CREATE', 'EXCLUDE']).optional(),
+      resolution: z.enum(['PENDING', 'ACCEPTED', 'REJECTED']).optional(),
+      matchScore: z.number().optional(), decisionNote: z.string().optional(),
+      proposedCase: z.object({ title: z.string().min(1), priority: z.string(), precondition: z.string().nullable().optional(), steps: z.array(z.string()), expected: z.string().min(1), tags: z.array(z.string()).optional(), testData: z.string().nullable().optional(), targetKeys: z.array(z.string()).optional() }).strict().optional(),
+    },
+  }, async ({ testDesignId, candidateId, ...body }) => runRequest(() => qualityRequest(`/quality/test-designs/${encodeURIComponent(testDesignId)}/candidates/${encodeURIComponent(candidateId)}`, { method: 'PATCH', body: JSON.stringify(body) })));
+  server.registerTool('flowx_update_test_smoke', {
+    title: '处理测试设计冒烟范围', description: '按用户决策整体替换未冻结设计的冒烟范围，使用最新 revision；服务端重新生成条目，id 不保证保留。cases 仅透传可写字段，剔除 sortOrder、时间戳、testDesignId 等只读数据；支持 precondition:null。不会自动确认设计，不能自行批量接受。无冒烟时明确传空 cases 和 noSmokeReason。',
+    inputSchema: {
+      testDesignId: z.string().min(1), revision: z.number().int().min(1),
+      cases: z.array(z.object({ id: z.string().optional(), title: z.string().min(1), priority: z.string().optional(), precondition: z.string().nullable().optional(), steps: z.array(z.string()), expected: z.string().min(1), blocking: z.boolean(), coverageKeys: z.array(z.string()), resolution: z.enum(['PENDING', 'ACCEPTED', 'REJECTED']) }).strip()),
+      noSmokeReason: z.string().optional(),
+    },
+  }, async ({ testDesignId, ...body }) => runRequest(() => qualityRequest(`/quality/test-designs/${encodeURIComponent(testDesignId)}/smoke`, { method: 'PATCH', body: JSON.stringify(body) })));
+  server.registerTool('flowx_confirm_test_design', {
+    title: '确认需求测试设计', description: '仅在用户明确确认最终设计后调用。提交最新 revision、逐项覆盖检查及未覆盖项，冻结设计并复用服务端人工确认门禁；不会执行测试。',
+    inputSchema: { testDesignId: z.string().min(1), revision: z.number().int().min(1), coverageChecks: z.array(z.object({ key: z.string().min(1), passed: z.boolean(), detail: z.string().optional() }).strict()), uncoveredItems: z.array(z.string()), noCaseReason: z.string().optional(), noSmokeReason: z.string().optional() },
+  }, async ({ testDesignId, ...body }) => runRequest(() => qualityRequest(`/quality/test-designs/${encodeURIComponent(testDesignId)}/confirm`, { method: 'POST', body: JSON.stringify(body) })));
+  server.registerTool('flowx_finish_test_run', {
+    title: '结束本地测试轮次', description: '用户要求结束轮次且已无有效租约后，用最新 revision 结束轮次。服务端按实际逐例结果计算结论；结束不表示通过，未测项仍为阻塞。',
+    inputSchema: { testRunId: z.string().min(1), revision: z.number().int().min(0), reason: z.string().optional() },
+  }, async ({ testRunId, ...body }) => runRequest(() => qualityRequest(`/quality/test-runs/${encodeURIComponent(testRunId)}/finish`, { method: 'POST', body: JSON.stringify(body) })));
+  server.registerTool('flowx_link_test_bug', {
+    title: '关联失败测试与缺陷', description: '将本项目已有缺陷关联到指定测试用例结果；可在执行完成后补充，服务端校验项目、权限和结果，不改原始测试事实。',
+    inputSchema: { testRunId: z.string().min(1), testRunCaseId: z.string().min(1), bugId: z.string().min(1) },
+  }, async ({ testRunId, testRunCaseId, bugId }) => runRequest(() => qualityRequest(`/quality/test-runs/${encodeURIComponent(testRunId)}/cases/${encodeURIComponent(testRunCaseId)}/bug`, { method: 'POST', body: JSON.stringify({ bugId }) })));
+  const createTestRequestSchema = z.object({
+    workspaceId: z.string().min(1), projectId: z.string().min(1), projectVersionId: z.string().min(1), title: z.string().min(1), description: z.string().optional(),
+    requirementIds: z.array(z.string()).min(1), workflowRunIds: z.array(z.string()).min(1), artifactIds: z.array(z.string()).optional(), testDesignId: z.string().optional(),
+  }).strict();
+  const testRequestActionSchema = z.discriminatedUnion('action', [
+    z.object({ action: z.literal('list'), projectId: z.string().min(1).optional(), projectVersionId: z.string().min(1).optional(), status: z.string().optional() }).strict(),
+    z.object({ action: z.literal('get'), testRequestId: z.string().min(1) }).strict(),
+    z.object({ action: z.literal('create'), request: createTestRequestSchema }).strict(),
+    z.object({ action: z.literal('prepare'), testRequestId: z.string().min(1), scopeRevision: z.number().int().min(0) }).strict(),
+  ]);
+  server.registerTool('flowx_test_requests', {
+    title: '查询、创建或准备提测单', description: 'list 按项目、版本和状态发现提测单；get 读取计划、快照和 scopeRevision；create 只按 request 创建，不自动准备；prepare 必须用户明确要求且传入最新 scopeRevision，由服务端检查设计、工作流和范围门禁。创建或准备不代表执行测试或测试通过。每个 action 只接受对应字段。',
+    inputSchema: z.object({
+      action: z.enum(['list', 'get', 'create', 'prepare']), testRequestId: z.string().min(1).optional(),
+      projectId: z.string().min(1).optional(), projectVersionId: z.string().min(1).optional(), status: z.string().optional(),
+      request: createTestRequestSchema.optional(), scopeRevision: z.number().int().min(0).optional(),
+    }).strict(),
+  }, async input => {
+    const parsed = testRequestActionSchema.safeParse(input);
+    if (!parsed.success) return textResult(`提测单动作参数无效：${parsed.error.message}`, true);
+    const action = parsed.data;
+    if (action.action === 'list') {
+      const { action: _, ...filters } = action;
+      const query = qualityQuery(filters);
+      return runRequest(() => qualityRequest(`/quality/test-requests${query ? `?${query}` : ''}`));
+    }
+    if (action.action === 'get') return runRequest(() => qualityRequest(`/quality/test-requests/${encodeURIComponent(action.testRequestId)}`));
+    if (action.action === 'create') return runRequest(() => qualityRequest('/quality/test-requests', { method: 'POST', body: JSON.stringify(action.request) }));
+    return runRequest(() => qualityRequest(`/quality/test-requests/${encodeURIComponent(action.testRequestId)}/prepare`, { method: 'POST', body: JSON.stringify({ scopeRevision: action.scopeRevision }) }));
+  });
+  server.registerTool('flowx_create_test_run', {
+    title: '创建本地功能测试或回归', description: '从就绪的测试计划创建功能初测或缺陷回归。必须明确用例适用端；回归需修复已完成的 sourceBugId。',
+    inputSchema: { testRequestId: z.string().min(1), name: z.string().min(1), runType: z.enum(['INITIAL', 'REGRESSION']), sourceBugId: z.string().optional(), targets: z.array(smokeTargetSchema).min(1), cases: z.array(z.object({ snapshotId: z.string().min(1), targetKeys: z.array(z.string().min(1)).min(1) }).strict()).min(1) },
+  }, async ({ testRequestId, ...body }) => runRequest(() => qualityRequest(`/quality/test-requests/${encodeURIComponent(testRequestId)}/local-test-runs`, { method: 'POST', body: JSON.stringify(body) })));
+  server.registerTool('flowx_list_test_tasks', {
+    title: '查询本地测试任务', description: '不传 testRunId 时发现有权限的活动测试任务；传入时读取待测快照、目标端、代码基线和领取状态。',
+    inputSchema: { testRunId: z.string().optional(), projectId: z.string().optional(), projectVersionId: z.string().optional(), testRequestId: z.string().optional() },
+  }, async ({ testRunId, ...filters }) => runRequest(() => qualityRequest(testRunId ? `/quality/test-runs/${encodeURIComponent(testRunId)}/tasks` : `/quality/local-test-tasks?${new URLSearchParams(Object.entries(filters).filter((entry): entry is [string, string] => entry[1] !== undefined))}`)));
+  server.registerTool('flowx_claim_test_task', {
+    title: '领取本地测试用例', description: '领取指定目标端与用例，返回会话、稳定任务版本、租约和代码基线。只执行本次实际领取范围。',
+    inputSchema: { testRunId: z.string().min(1), targetId: z.string().min(1), caseIds: z.array(z.string()).optional(), deviceId: z.string().optional(), leaseSeconds: z.number().int().min(60).max(86400).optional() },
+  }, async ({ testRunId, ...body }) => runRequest(() => qualityRequest(`/quality/test-runs/${encodeURIComponent(testRunId)}/claim`, { method: 'POST', body: JSON.stringify(body) })));
+  for (const [name, action, title] of [
+    ['flowx_report_test_progress', 'progress', '分批回传实际测试结果'],
+    ['flowx_submit_test_report', 'complete', '完成本地测试会话'],
+  ] as const) server.registerTool(name, {
+    title, description: '在领取的代码版本上真实执行后回传逐例结果和已上传证据。使用稳定幂等键；同键不能改变内容，失败也是有效测试结论。complete 要求所有领取项已有结果。',
+    inputSchema: { executionSessionId: z.string().min(1), report: qualityReportSchema },
+  }, async ({ executionSessionId, report }) => runRequest(() => qualityRequest(`/execution-sessions/${encodeURIComponent(executionSessionId)}/quality/${action}`, { method: 'POST', body: JSON.stringify(report) })));
+  server.registerTool('flowx_control_test_execution', {
+    title: '续租、释放或取消本地测试', description: '原领取人续租或在设备停止后释放/取消未完成范围。服务端取消不会停止设备进程，已过期租约不能复活。',
+    inputSchema: { executionSessionId: z.string().min(1), action: z.enum(['heartbeat', 'release', 'cancel']), leaseSeconds: z.number().int().min(60).max(86400).optional(), reason: z.string().optional() },
+  }, async ({ executionSessionId, action, ...body }) => runRequest(() => qualityRequest(`/execution-sessions/${encodeURIComponent(executionSessionId)}/quality/${action}`, { method: 'POST', body: JSON.stringify(body) })));
+  server.registerTool('flowx_create_test_design', {
+    title: '准备需求测试设计', description: '从已确认 Spec & Plan 的需求准备测试设计，明确指定用例库；不会自动确认设计或开始测试。',
+    inputSchema: { workspaceId: z.string().min(1), projectId: z.string().min(1), projectVersionId: z.string().min(1), requirementIds: z.array(z.string()).min(1), workflowRunIds: z.array(z.string()).min(1), caseSelection: qualitySelectionSchema.optional(), changeSummary: z.string().optional() },
+  }, async body => runRequest(() => qualityRequest('/quality/test-designs', { method: 'POST', body: JSON.stringify(body) })));
+  server.registerTool('flowx_get_test_design', {
+    title: '读取测试设计与范围', description: '查询用例候选、选例范围、未覆盖项和最新 revision，不自动生成或确认。', inputSchema: { testDesignId: z.string().min(1) },
+  }, async ({ testDesignId }) => runRequest(() => qualityRequest(`/quality/test-designs/${encodeURIComponent(testDesignId)}`)));
+  server.registerTool('flowx_update_test_selection', {
+    title: '选择需求用例库与模块', description: '修改未冻结设计的选例范围，清除旧候选并等待重新生成。使用当前 revision。', inputSchema: { testDesignId: z.string().min(1), revision: z.number().int().min(1), caseSelection: qualitySelectionSchema },
+  }, async ({ testDesignId, ...body }) => runRequest(() => qualityRequest(`/quality/test-designs/${encodeURIComponent(testDesignId)}/selection`, { method: 'PATCH', body: JSON.stringify(body) })));
+  server.registerTool('flowx_add_test_candidates', {
+    title: '手工补选已有测试用例', description: '将所选库中已有用例按原内容纳入当前设计。不会修改正式用例定义，不受 AI 输入截断限制。', inputSchema: { testDesignId: z.string().min(1), revision: z.number().int().min(1), definitionIds: z.array(z.string()).min(1) },
+  }, async ({ testDesignId, ...body }) => runRequest(() => qualityRequest(`/quality/test-designs/${encodeURIComponent(testDesignId)}/candidates`, { method: 'POST', body: JSON.stringify(body) })));
+  server.registerTool('flowx_test_reports', {
+    title: '读取或生成测试报告', description: 'list 查询历史报告；run 生成本轮报告；request 以明确 runIds、baseline 和可选 supersessions 汇总提测报告。失败和阻塞可生成报告；FINAL 要求轮次已结束。不会把测试标记为通过。',
+    inputSchema: { action: z.enum(['list', 'run', 'request']), testRequestId: z.string().min(1).optional(), testRunId: z.string().min(1).optional(), idempotencyKey: z.string().min(1).optional(), mode: z.enum(['PROGRESS', 'FINAL']).optional(), runIds: z.array(z.string().min(1)).min(1).optional(), baseline: z.array(z.object({ workflowRepositoryId: z.string().min(1), branch: z.string().min(1), headSha: z.string().min(1) }).strict()).min(1).optional(), supersessions: z.array(z.object({ previousRunId: z.string().min(1), regressionRunId: z.string().min(1), testRunCaseIds: z.array(z.string().min(1)).min(1) }).strict()).optional() },
+  }, async input => {
+    if (input.action === 'list' && input.testRequestId) return runRequest(() => qualityRequest(`/quality/test-requests/${encodeURIComponent(input.testRequestId!)}/reports`));
+    if (input.action === 'run' && input.testRunId && input.idempotencyKey && input.mode) return runRequest(() => qualityRequest(`/quality/test-runs/${encodeURIComponent(input.testRunId!)}/reports`, { method: 'POST', body: JSON.stringify({ idempotencyKey: input.idempotencyKey, mode: input.mode }) }));
+    if (input.action === 'request' && input.testRequestId && input.idempotencyKey && input.mode && input.runIds && input.baseline) return runRequest(() => qualityRequest(`/quality/test-requests/${encodeURIComponent(input.testRequestId!)}/reports`, { method: 'POST', body: JSON.stringify({ idempotencyKey: input.idempotencyKey, mode: input.mode, runIds: input.runIds, baseline: input.baseline, ...(input.supersessions ? { supersessions: input.supersessions } : {}) }) }));
+    return textResult('请提供对应动作的标识和参数：报告生成需 idempotencyKey、mode；汇总另需 runIds、baseline。', true);
+  });
+
   server.registerTool(
     'flowx_submit_design',
     {

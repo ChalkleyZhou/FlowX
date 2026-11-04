@@ -8,16 +8,17 @@ function createService() {
     testRequest: { update: vi.fn() },
   };
   const prisma = {
-    testRequest: { findUnique: vi.fn(), update: vi.fn() },
+    testRequest: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn().mockResolvedValue({ id: 'request-1', status: 'IN_TEST' }), update: vi.fn() },
     testCaseSnapshot: { findMany: vi.fn() },
     userOrganization: { findMany: vi.fn() },
     bug: { findFirst: vi.fn() },
-    testRun: { update: vi.fn() },
+    testRun: { create: transaction.testRun.create, update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }), findMany: vi.fn().mockResolvedValue([{ id: 'run-1', status: 'BLOCKED', cases: [{ result: { result: 'SKIPPED' } }], targets: [] }]) },
+    qualityTestReport: { findMany: vi.fn().mockResolvedValue([]) },
     testRunCase: { findUnique: vi.fn(), findMany: vi.fn() },
     testResult: { upsert: vi.fn() },
-    $transaction: vi.fn(async (callback: (tx: typeof transaction) => unknown) => callback(transaction)),
+    $transaction: vi.fn(async (callback: (tx: typeof transaction) => unknown) => callback(prisma)),
   };
-  return { service: new TestRunsService(prisma as never), prisma, transaction };
+  return { service: new TestRunsService(prisma as never), prisma, transaction: { ...transaction, testRequest: prisma.testRequest } };
 }
 
 describe('TestRunsService', () => {

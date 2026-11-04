@@ -888,6 +888,7 @@ model Artifact {
   @@index([executionSessionId, artifactType, createdAt])
   @@index([sha256])
   @@index([createdByUserId, createdAt])
+  qualityReports QualityTestReport[]
 }
 
 model Evidence {
@@ -1135,6 +1136,7 @@ model TestCaseDefinition {
   priority        String                 @default("P2")
   precondition    String?
   testData        String?
+  targetKeys      Json?
   steps           Json
   expected        String
   tags            Json?
@@ -1180,6 +1182,8 @@ model TestDesign {
   revision          Int          @default(1)
   sourceFingerprint String
   sourceSummary     Json
+  caseSelection     Json?
+  retrievalSummary  Json?
   coverageSummary   Json?
   coverageChecks    Json?
   uncoveredItems    Json?
@@ -1286,6 +1290,7 @@ model TestRequest {
   scopeChecks           Json?
   excludedScopes        Json?
   traceId               String                   @unique
+  reports               QualityTestReport[]
   createdByUserId       String?
   createdByUser         User?                    @relation("TestRequestCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   requirementLinks      TestRequestRequirement[]
@@ -1358,6 +1363,7 @@ model TestCaseSnapshot {
   priority           String
   precondition       String?
   testData           String?
+  targetKeys         Json?
   steps              Json
   expected           String
   metadata           Json?
@@ -1382,6 +1388,9 @@ model TestRun {
   status          String        @default("ACTIVE")
   sourceFingerprint String?
   reportRevision  Int           @default(0)
+  executionMode   String        @default("MANUAL")
+  revision        Int           @default(0)
+  reports         QualityTestReport[]
   sourceBugId     String?
   sourceBug       Bug?          @relation("BugVerificationRuns", fields: [sourceBugId], references: [id], onDelete: SetNull)
   createdByUserId String?
@@ -1462,6 +1471,7 @@ model TestExecution {
   startedAt          DateTime                  @default(now())
   completedAt        DateTime?
   results            TestExecutionCaseResult[]
+  progressEvents     QualityProgressEvent[]
   caseLeases         TestRunCaseLease[]
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @updatedAt
@@ -1540,4 +1550,40 @@ model PrototypeImport {
   updatedAt        DateTime @updatedAt
 
   @@index([status, updatedAt])
+}
+
+model QualityProgressEvent {
+  id                 String        @id @default(cuid())
+  testExecutionId    String
+  testExecution      TestExecution @relation(fields: [testExecutionId], references: [id], onDelete: Cascade)
+  executionSessionId String
+  idempotencyKey     String
+  action             String
+  payloadHash        String
+  response           Json
+  createdAt          DateTime      @default(now())
+
+  @@unique([executionSessionId, idempotencyKey])
+}
+
+model QualityTestReport {
+  id              String      @id @default(cuid())
+  requestId       String
+  testRequest     TestRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  runId           String?
+  testRun         TestRun?    @relation(fields: [runId], references: [id], onDelete: SetNull)
+  kind            String
+  revision        Int
+  idempotencyKey  String
+  payloadHash     String
+  sourceFingerprint String
+  artifactId      String
+  artifact        Artifact    @relation(fields: [artifactId], references: [id], onDelete: Restrict)
+  snapshot        Json
+  createdByUserId String?
+  createdAt       DateTime    @default(now())
+
+  @@unique([requestId, kind, revision])
+  @@unique([requestId, idempotencyKey])
+  @@index([runId, createdAt])
 }

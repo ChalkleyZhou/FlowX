@@ -8,13 +8,17 @@
 
 **Tech Stack:** NestJS、Prisma/SQLite、React、TypeScript、Vitest、`@flowx-ai/local`、`@flowx-ai/protocol`。
 
-**设计依据：** `docs/superpowers/specs/2026-11-04-quality-execution-design.md`。本计划是尚未执行的代码实施安排，文中的新增文件、接口与工具均为目标契约。
+**设计依据：** `docs/superpowers/specs/2026-11-04-quality-execution-design.md`。本计划已进入实施验收。已落地能力与验证证据见 `docs/quality-execution-verification.md`；含真实浏览器、IDE 和移动设备的验收尚未执行，不因自动化测试通过而视为完成。
 
 ---
 
+## 当前执行状态
+
+2026-11-04：任务 1—10 的功能实现已落地，`pnpm check` 的 1782 项测试与构建已通过，本地包构建和手册一致性检查通过。细项仅勾选已确认的实现或测试；含浏览器、真实 IDE、移动设备及贯穿全部页面的实机验收项继续保留未完成。实现与设计有两项明确细化：质量启动使用独立质量 Controller 复用票据存储；提测准备新增显式 `prepare`，冻结范围后不再允许补选。具体证据与未验证范围见 [验收记录](../../quality-execution-verification.md)。
+
 ## 执行约束与阶段边界
 
-- 开始代码实施前读取目标目录 `AGENTS.md`，检查 `git status --short`。代码实施使用隔离 worktree，保留当前工作区已有改动；本次纯设计文档整理不创建额外 worktree。
+- 开始代码实施前读取目标目录 `AGENTS.md`，检查 `git status --short`。代码实施使用隔离 worktree，保留当前工作区已有改动。此次实现位于 `codex/quality-execution`。
 - 高风险改动执行“先失败测试 → 最小实现 → 定向测试 → 子项目检查”。不要把断言依赖的固定成功 mock 当作端云适配证据。
 - 每次提交只暂存本任务文件，并同步更新 `CHANGELOG.md`；禁止提交本地数据库、`.flowx-data`、凭据和生成物。
 - 阶段 A 交付平台入口和明确选例；阶段 B 交付完整本地执行；阶段 C 交付报告及回归闭环。阶段 A/B 不能宣称全链路已完成。
@@ -132,7 +136,7 @@ expect(JSON.parse(JSON.stringify(selection))).toEqual(selection);
 - [ ] 补服务测试：选定项目库 A 后，即使共享库 B 的标题更匹配也不读取 B；跨项目库/错库模块/显式空库列表返回 400；省略范围保留旧库集合。构造 251 条用例，确保较早更新但关联需求的关键用例能入选。
 - [ ] 补快照测试，断言 `testData`、来源版本、选择理由和 `targetKeys` 实际写入，不只在 DTO 接受。增加人工纳入未进入 AI 上下文的第 251 条用例的用例。
 - [ ] 运行 `pnpm --filter flowx-api test -- src/quality/test-designs.service.spec.ts src/quality/test-requests.service.spec.ts`，确认对应测试失败。
-- [ ] 在独立选择器完成授权过滤、模块后代展开和稳定排序，AI 服务只消费选择器结果。记录候选数和截断信息；prompt/schema 明确完整结果字段，契约变化同步 parser/executor 测试。人工纳入调用现有范围写入能力，必要时增加测试设计候选新增 API，使确认前后都能保留人工来源和覆盖依据。
+- [x] 在独立选择器完成授权过滤、模块后代展开和稳定排序，AI 服务只消费选择器结果。记录候选数和截断信息；prompt/schema 明确完整结果字段，契约变化同步 parser/executor 测试。人工纳入调用现有范围写入能力，必要时增加测试设计候选新增 API，使确认前后都能保留人工来源和覆盖依据。
 - [ ] 定向测试通过后运行完整 API 测试，更新变更记录后提交。验收需同时看到所选库 ID 和实际查询条件，避免只测参数保存。
 
 ### 任务 3：需求入口、连续准备和选例界面
@@ -142,7 +146,7 @@ expect(JSON.parse(JSON.stringify(selection))).toEqual(selection);
 - [ ] 使用现有 React `act`/DOM 测试方式，补用户路径：需求入口带入项目版本和需求；已有设计优先进入，创建时不会重复；项目切换后清除旧库与旧选择；缺少已确认设计提供可点击的创建/修复入口。
 - [ ] 为选例界面补测试：模块筛选、人工纳入、批量排除、原用例与建议差异、截断提示、未覆盖验收点。确认请求断言实际包含所选库和用例 ID，不能只断言按钮可点。
 - [ ] 运行 `pnpm --filter flowx-web test -- src/pages/quality/QualityPages.test.tsx src/pages/quality/QualityTestDesignPage.test.tsx src/pages/RequirementDetailPage.test.tsx`，确认新行为测试失败。
-- [ ] 复用现有 UI 组件实现需求驱动的连续准备步骤及左库/中列表/右摘要。详情以 URL 查询参数 `tab` 保留五个页签，旧链接默认概览。后台刷新采用显式 `{ silent: true }`，保持数据和滚动状态；异步请求用序列或取消机制隔离旧响应。
+- [x] 复用现有 UI 组件实现需求驱动的连续准备步骤及左库/中列表/右摘要。详情以 URL 查询参数 `tab` 保留五个页签，旧链接默认概览。后台刷新采用显式 `{ silent: true }`，保持数据和滚动状态；异步请求用序列或取消机制隔离旧响应。
 - [ ] Web 测试与 build 通过后，用浏览器检查桌面和窄屏、键盘操作、空/错/加载状态。阶段 A 文档明确“功能测试本地执行与综合报告尚未交付”，同步手册与变更记录后提交。
 
 ## 阶段 B：通用本地执行与逐例回传
@@ -154,7 +158,7 @@ expect(JSON.parse(JSON.stringify(selection))).toEqual(selection);
 - [ ] 补服务和 HTTP 测试：功能快照可进入新入口；相同快照只进入显式指定目标端；快照不属于计划、目标端不存在、无适用端映射、跨项目 Bug、修复未完成均拒绝。
 - [ ] 在临时数据库以两个真实并发领取请求验证最多一个成功、另一个 409；验证租约内同用例不可再领、不同用例可并行，过期后重新领取产生新会话。
 - [ ] 运行新 spec，确认新入口不存在或行为未实现导致失败。
-- [ ] 通用服务按目标契约创建 `INITIAL`/`REGRESSION` 本地轮次。抽取既有版本解析、领取事务及归属校验，由旧冒烟服务适配调用；新旧状态前置条件在各自业务入口校验。旧人工 `reportResult` 对 `LOCAL` 模式拒绝，防止绕过租约和会话写入。
+- [x] 通用服务按目标契约创建 `INITIAL`/`REGRESSION` 本地轮次。抽取既有版本解析、领取事务及归属校验，由旧冒烟服务适配调用；新旧状态前置条件在各自业务入口校验。旧人工 `reportResult` 对 `LOCAL` 模式拒绝，防止绕过租约和会话写入。
 - [ ] 运行 API 全部 quality 测试、`workflow-code-delivery.integration.spec.ts` 和原归属测试；新旧请求均通过后更新变更记录并提交。
 
 ### 任务 5：分批结果、续租、释放和取消
@@ -177,19 +181,19 @@ expect(JSON.parse(JSON.stringify(selection))).toEqual(selection);
 | complete 时尚有领取项未报结果 | 400，并返回缺失项 |
 
 - [ ] 运行定向测试确认失败，再实现幂等事件写入、逐例事实、聚合和租约更新的事务；校验顺序为身份/范围/租约/基线/结果/证据，保证拒绝路径无部分写入。
-- [ ] 分批完成保存不可变结果；`complete` 校验所有领取项已有终态结果，CAS 结束会话并释放租约。失败用例仍可完成执行会话，执行成功与测试通过分别表达。
-- [ ] 续租更新 `TestExecution`、`TestRunCaseLease` 和会话活动时间，无法复活过期租约；取消需记录原因与操作者，页面说明设备停止状态，复用已有管理员结束旧任务边界。
+- [x] 分批完成保存不可变结果；`complete` 校验所有领取项已有终态结果，CAS 结束会话并释放租约。失败用例仍可完成执行会话，执行成功与测试通过分别表达。
+- [x] 续租更新 `TestExecution`、`TestRunCaseLease` 和会话活动时间，无法复活过期租约；取消需记录原因与操作者，页面说明设备停止状态，复用已有管理员结束旧任务边界。
 - [ ] API 全部测试通过后提交，变更记录明确旧冒烟完成请求和旧人工录入行为的兼容结果。
 
 ### 任务 6：本地任务发现、MCP 和 IDE 交接
 
 **文件：** `edge-tasks.service.ts`/spec、`local-launch.service.ts`/spec 及 Controller、`packages/flowx-local/src/mcp.ts`/test、`user-mcp.ts`/test、`launch.ts`/test、`server.ts`/test、`setup.ts`/test、新测试 Skill 模板、protocol 能力契约。
 
-- [ ] 先补工具发现测试，确认旧四个 smoke 工具保持 schema 和路径；通用任务查询可返回质量任务且按用户、项目和版本过滤，权限不足的任务不可见。
-- [ ] 按目标 API 提供 `flowx_create_test_run`、`flowx_list_test_tasks`、`flowx_claim_test_task`、`flowx_report_test_progress`、`flowx_submit_test_report`、`flowx_control_test_execution`。最后一个工具使用 action 枚举 `heartbeat/release/cancel` 映射到对应服务端端点；不在 MCP 判断业务状态。
-- [ ] 工具调用测试逐项断言路径、方法和 JSON 字段，特别检查 `runType`、`sourceBugId`、`targetKeys`、`testRunRevision`、幂等键与证据。调用未知能力时返回明确不支持错误，禁止静默退回 smoke 工具。
-- [ ] IDE 交接通过现有短期 ticket 与设备身份流程增加质量任务 purpose；本地完成仓库映射、代码基线检查后绑定服务端领取范围。覆盖启动失败、用户取消和领取后的交接失败，释放未开始的范围；不把“IDE 已打开”写成“用例执行成功”。
-- [ ] 新 Skill 明确先查询/领取，再真实执行、上传证据、分批回报和完成；不把生成脚本视为执行。模板安装时保留用户其他 MCP/Skill，旧冒烟模板继续只做冒烟。
+- [x] 先补工具发现测试，确认旧四个 smoke 工具保持 schema 和路径；通用任务查询可返回质量任务且按用户、项目和版本过滤，权限不足的任务不可见。
+- [x] 按目标 API 提供 `flowx_create_test_run`、`flowx_list_test_tasks`、`flowx_claim_test_task`、`flowx_report_test_progress`、`flowx_submit_test_report`、`flowx_control_test_execution`。最后一个工具使用 action 枚举 `heartbeat/release/cancel` 映射到对应服务端端点；不在 MCP 判断业务状态。
+- [x] 工具调用测试逐项断言路径、方法和 JSON 字段，特别检查 `runType`、`sourceBugId`、`targetKeys`、`testRunRevision`、幂等键与证据。调用未知能力时返回明确不支持错误，禁止静默退回 smoke 工具。
+- [x] IDE 交接通过现有短期 ticket 与设备身份流程增加质量任务 purpose；本地完成仓库映射、代码基线检查后绑定服务端领取范围。覆盖启动失败、用户取消和领取后的交接失败，释放未开始的范围；不把“IDE 已打开”写成“用例执行成功”。
+- [x] 新 Skill 明确先查询/领取，再真实执行、上传证据、分批回报和完成；不把生成脚本视为执行。模板安装时保留用户其他 MCP/Skill，旧冒烟模板继续只做冒烟。
 - [ ] 运行 local test/build、protocol test/build，以及 API 任务和交接相关测试。使用 MCP client 连接真实工具实例检查 discovery 与调用，再通过临时 HTTP 服务执行至少一次真实成功和失败回传。同步本地指南、安装说明和变更记录后提交。
 
 ### 任务 7：平台执行详情与本地启动体验
@@ -198,8 +202,8 @@ expect(JSON.parse(JSON.stringify(selection))).toEqual(selection);
 
 - [ ] 补页面测试：执行列表标题链接到 `/quality/test-runs/:id`；轮次详情展示逐例实际结果、证据、环境和版本；切换项目/轮次后旧请求不覆盖新数据。
 - [ ] 补本地启动测试：未安装、未登录、无仓库映射、代码不匹配分别出现对应可执行引导；启动成功显示等待实际进度，收到服务端进度后才展示执行中。
-- [ ] 新详情页按目标端和结果筛选，突出失败、阻塞、待执行、待回传；以原用户权限预览 Artifact。支持领取范围查看、续租状态、释放和取消，取消设备任务按已有停止协议显示真实状态。
-- [ ] 使用受控轮询并在 effect 清理定时器；保证无重叠请求、首屏错误可重试、后台失败不重复 toast、终态停止轮询。增加 fake timer 与延迟响应测试。
+- [x] 新详情页按目标端和结果筛选，突出失败、阻塞、待执行、待回传；以原用户权限预览 Artifact。支持领取范围查看、续租状态、释放和取消，取消设备任务按已有停止协议显示真实状态。
+- [x] 使用受控轮询并在 effect 清理定时器；保证无重叠请求、首屏错误可重试、后台失败不重复 toast、终态停止轮询。增加 fake timer 与延迟响应测试。
 - [ ] 运行 Web 全部 test/build，浏览器验证真实本地 bridge 的成功与失败引导；更新阶段 B 文档和变更记录后提交，明确综合报告仍待阶段 C。
 
 ## 阶段 C：测试报告与缺陷回归闭环
@@ -208,7 +212,7 @@ expect(JSON.parse(JSON.stringify(selection))).toEqual(selection);
 
 **文件：** 新增报告 DTO/Controller/Service、`test-report-summary.ts`、`test-report.render.ts` 及 spec/HTTP/integration spec，修改质量模块、Artifact 关联和通用轮次服务。
 
-- [ ] 在 `test-report-summary.spec.ts` 建立统计输入和精确结果断言；每项用例代表一个适用的“快照×目标端”组合。
+- [x] 在 `test-report-summary.spec.ts` 建立统计输入和精确结果断言；每项用例代表一个适用的“快照×目标端”组合。
 
 ```ts
 const results = ['PASSED', 'FAILED', 'BLOCKED', 'SKIPPED', null] as const;
@@ -221,19 +225,19 @@ expect(summarizeQualityResults([])).toMatchObject({
 });
 ```
 
-- [ ] 实现该纯函数并直接供渲染器和服务使用：优先级为存在失败 → FAILED，否则存在阻塞/跳过/未测/零范围 → BLOCKED，否则 PASSED。返回比例而非格式化百分数字符串，由展示层格式化。
+- [x] 实现该纯函数并直接供渲染器和服务使用：优先级为存在失败 → FAILED，否则存在阻塞/跳过/未测/零范围 → BLOCKED，否则 PASSED。返回比例而非格式化百分数字符串，由展示层格式化。
 - [ ] 补 HTTP 测试：失败轮次 `PROGRESS` 报告可生成；未结束执行的 `FINAL` 返回冲突；无租约但未测完可显式 `finish` 为 BLOCKED；报告生成不会把任务改成 PASSED，结束轮次不覆盖并行轮次状态。
-- [ ] 事务内固定结果数据和轮次 revision，再生成 Artifact 并关联报告记录；通过 CAS 防止生成期间结果变化导致错误归档，失败清理未关联产物。相同幂等键重复请求返回原报告，payload 变化冲突，历史 snapshot/Artifact 保持不变。
-- [ ] 报告 HTML 复用转义规则，展示需求、基线、统计口径、未测项、缺陷与证据入口；避免直接输出凭据或执行环境中的敏感字段。环境字段使用明确允许展示的键，证据链接经权限 API 访问。
+- [x] 事务内固定结果数据和轮次 revision，再生成 Artifact 并关联报告记录；通过 CAS 防止生成期间结果变化导致错误归档，失败清理未关联产物。相同幂等键重复请求返回原报告，payload 变化冲突，历史 snapshot/Artifact 保持不变。
+- [x] 报告 HTML 复用转义规则，展示需求、基线、统计口径、未测项、缺陷与证据入口；避免直接输出凭据或执行环境中的敏感字段。环境字段使用明确允许展示的键，证据链接经权限 API 访问。
 - [ ] 运行 API 报告、Artifact、quality 全部测试，更新变更记录后提交；旧 `submission-report` 和 smoke `finalize` 的 fixture 均保持通过。
 
 ### 任务 9：多轮汇总、回归替代和统一状态聚合
 
 **文件：** 报告 summary/service 及测试、`test-runs.service.ts`/spec、`quality-status.ts`/spec、通用本地测试服务、新增 `test-request-summary.ts`/spec。
 
-- [ ] 先补五类汇总测试：初测失败且未回归仍失败；合法回归替代后保留历史失败但当前结论可通过；不相关 Bug 回归不能替代；不同代码基线不能合并宣称已测；两个同基线冲突结果未显式处理时阻塞。
-- [ ] 对 `supersessions` 验证当前请求归属、回归源 Bug、完成的修复工作流、替代范围和基线。报告 snapshot 保存有效结果清单与替代关系，提供从汇总结论追溯到每次执行的引用。
-- [ ] 统一普通人工结果、本地执行完成、回归和轮次关闭后的任务聚合：存在活动正式轮次保持 IN_TEST；无活动正式轮次时按当前有效范围汇总；冒烟门禁不直接决定正式测试 PASSED。所有状态变化使用现有状态转换约束。
+- [x] 先补五类汇总测试：初测失败且未回归仍失败；合法回归替代后保留历史失败但当前结论可通过；不相关 Bug 回归不能替代；不同代码基线不能合并宣称已测；两个同基线冲突结果未显式处理时阻塞。
+- [x] 对 `supersessions` 验证当前请求归属、回归源 Bug、完成的修复工作流、替代范围和基线。报告 snapshot 保存有效结果清单与替代关系，提供从汇总结论追溯到每次执行的引用。
+- [x] 统一普通人工结果、本地执行完成、回归和轮次关闭后的任务聚合：存在活动正式轮次保持 IN_TEST；无活动正式轮次时按当前有效范围汇总；冒烟门禁不直接决定正式测试 PASSED。所有状态变化使用现有状态转换约束。
 - [ ] 补并发测试：两个轮次同时完成只产生正确有效范围结论；生成报告期间回传或结束新轮次不会修改旧报告。运行定向测试和 API 全部测试。
 - [ ] 同步技术设计、接口文档与变更记录，提交本任务。禁止以最后完成的一个轮次直接覆盖整个提测状态。
 
@@ -242,14 +246,14 @@ expect(summarizeQualityResults([])).toMatchObject({
 **文件：** 新增 `QualityReportsPanel.tsx`/test，修改质量详情、轮次详情、Web API/types/test、缺陷相关复用组件；更新 README、质量专题、系统设计、用户和本地指南及镜像。
 
 - [ ] 补 Web 测试：失败也可生成报告；阶段报告标记未完成；报告列表显示类型、版本、基线和时间；旧版报告仍可查看；无报告接口返回 JSON null 或空列表而非空 HTTP 响应。
-- [ ] 失败项支持关联已有 Bug/显式创建 Bug，修复未完成时说明回归前置条件；完成后创建新回归轮次并默认带入失败项。测试断言新轮次 ID 和初测历史都保留。
-- [ ] 报告页提供在线查看、HTML 下载、轮次选择与当前基线汇总；证据预览复用现有组件，不另造公开下载入口。任务与轮次报告使用不同类型标识，旧冒烟提测报告继续单独标为冒烟门禁报告。
+- [x] 失败项支持关联已有 Bug/显式创建 Bug，修复未完成时说明回归前置条件；完成后创建新回归轮次并默认带入失败项。测试断言新轮次 ID 和初测历史都保留。
+- [x] 报告页提供在线查看、HTML 下载、轮次选择与当前基线汇总；证据预览复用现有组件，不另造公开下载入口。任务与轮次报告使用不同类型标识，旧冒烟提测报告继续单独标为冒烟门禁报告。
 - [ ] 执行真实闭环：从需求选库选例，在本地分别产生通过、失败、阻塞和跳过结果，分批回传并重试，生成失败报告，完成修复后回归，再生成汇总报告。核对数据库事实、API 返回、页面与下载内容一致；真实设备未覆盖的 iOS/Android 明确记录，不以 Web/API 结果代替。
 - [ ] 更新所有用户可见文档和镜像；运行下方全部交付检查。检查通过后更新 `CHANGELOG.md`、提交并给出本地适配、兼容结果及未验证环境。
 
 ## 最终验证命令与交付证据
 
-按依赖顺序执行，每条必须实际读取退出码和失败明细；这些命令是实施时要求，不表示本次设计整理已运行代码测试。
+按依赖顺序执行，每条必须实际读取退出码和失败明细；具体结果以验收记录为准，不将未执行的实机验收勾选为完成。
 
 ```bash
 pnpm prisma:generate
