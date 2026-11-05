@@ -7,7 +7,6 @@ import { BriefingDetailPage } from './pages/BriefingDetailPage';
 import { DailyCodeReviewDetailPage } from './pages/DailyCodeReviewDetailPage';
 import { BriefingSourcesPage } from './pages/BriefingSourcesPage';
 import { BriefingsPage } from './pages/BriefingsPage';
-import { CodeReviewSourcesPage } from './pages/CodeReviewSourcesPage';
 import { CodeReviewsPage } from './pages/CodeReviewsPage';
 import { DeliveryTargetsPage } from './pages/DeliveryTargetsPage';
 import { IssuesPage } from './pages/IssuesPage';
@@ -102,7 +101,6 @@ export default function App() {
             <Route path="/settings/api-tokens" element={<PersonalApiTokensPage />} />
             <Route path="/settings/users" element={<OrganizationUsersPage />} />
             <Route path="/settings/briefing-sources" element={<BriefingSourcesPage />} />
-            <Route path="/settings/code-review-sources" element={<CodeReviewSourcesPage />} />
             <Route path="/settings/delivery-targets" element={<DeliveryTargetsPage />} />
             {builtInPlugins.map(({ path, component: PluginPage }) => (
               <Route key={path} path={path} element={<PluginPage />} />

@@ -9,8 +9,7 @@ import { ProjectDetailPage } from './ProjectDetailPage';
 
 vi.mock('../api', () => ({ api: { getProject: vi.fn() } }));
 vi.mock('../components/ui/toast', () => ({ useToast: () => ({ success: vi.fn(), error: vi.fn() }) }));
-vi.mock('../components/ProjectBriefingConfigPanel', () => ({ ProjectBriefingConfigPanel: () => null }));
-vi.mock('../components/ProjectCodeReviewConfigPanel', () => ({ ProjectCodeReviewConfigPanel: () => null }));
+vi.mock('../components/ProjectFeedsPanel', () => ({ ProjectFeedsPanel: () => null }));
 vi.mock('../components/ProjectVersionsPanel', () => ({ ProjectVersionsPanel: () => <div>版本管理</div> }));
 
 const project: Project = {

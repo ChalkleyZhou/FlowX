@@ -520,10 +520,11 @@ describe('api helpers', () => {
     });
     await api.updateBriefingSource('source-1', { isActive: false });
     await api.deleteBriefingSource('source-1');
-    await api.getProjectBriefingConfig('project-1');
-    await api.updateProjectBriefingConfig('project-1', { enabled: true, dailyHour: 9 });
+    await api.listBriefingFeeds('project-1');
+    await api.createBriefingFeed('project-1', { name: '前端' });
+    await api.updateBriefingFeed('feed-1', { enabled: true, dailyHour: 9 });
     await api.getProjectBriefings('project-1');
-    await api.generateProjectBriefing('project-1', { date: '2026-06-03' });
+    await api.generateBriefingFeed('feed-1', { date: '2026-06-03' });
     await api.getBriefing('briefing-1');
     await api.sendBriefing('briefing-1');
     await api.getDeliveryTargets({ workspaceId: 'workspace-1' });
@@ -545,10 +546,11 @@ describe('api helpers', () => {
       ['http://localhost:3000/briefing-sources', 'POST'],
       ['http://localhost:3000/briefing-sources/source-1', 'PATCH'],
       ['http://localhost:3000/briefing-sources/source-1', 'DELETE'],
-      ['http://localhost:3000/projects/project-1/briefing-config', 'GET'],
-      ['http://localhost:3000/projects/project-1/briefing-config', 'PUT'],
+      ['http://localhost:3000/projects/project-1/briefing-feeds', 'GET'],
+      ['http://localhost:3000/projects/project-1/briefing-feeds', 'POST'],
+      ['http://localhost:3000/briefing-feeds/feed-1', 'PATCH'],
       ['http://localhost:3000/projects/project-1/briefings', 'GET'],
-      ['http://localhost:3000/projects/project-1/briefings/generate', 'POST'],
+      ['http://localhost:3000/briefing-feeds/feed-1/generate', 'POST'],
       ['http://localhost:3000/briefings/briefing-1', 'GET'],
       ['http://localhost:3000/briefings/briefing-1/send', 'POST'],
       ['http://localhost:3000/delivery-targets?workspaceId=workspace-1', 'GET'],
@@ -624,7 +626,7 @@ describe('api helpers', () => {
     expect(fetchMock).toHaveBeenCalledWith('http://localhost:3000/execution-sessions/session-1/events?take=10&view=progress', expect.any(Object));
   });
 
-  it('calls code review source endpoints with expected methods and payloads', async () => {
+  it('calls code review feed endpoints with expected methods and payloads', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({}),
@@ -632,19 +634,18 @@ describe('api helpers', () => {
 
     vi.stubGlobal('fetch', fetchMock);
 
-    await api.getCodeReviewSources({ workspaceId: 'workspace-1' });
-    await api.createCodeReviewSource({
-      workspaceId: 'workspace-1',
-      repositoryId: 'repo-1',
-    });
-    await api.updateCodeReviewSource('cr-source-1', { isActive: false });
-    await api.deleteCodeReviewSource('cr-source-1');
+    await api.listCodeReviewFeeds('project-1');
+    await api.createCodeReviewFeed('project-1', { name: '后端' });
+    await api.updateCodeReviewFeed('feed-1', { repositoryIds: ['repo-1'] });
+    await api.deleteCodeReviewFeed('feed-1');
+    await api.generateCodeReviewFeed('feed-1', { date: '2026-06-03' });
 
     expect(fetchMock.mock.calls.map((call) => [call[0], call[1]?.method ?? 'GET'])).toEqual([
-      ['http://localhost:3000/code-review-sources?workspaceId=workspace-1', 'GET'],
-      ['http://localhost:3000/code-review-sources', 'POST'],
-      ['http://localhost:3000/code-review-sources/cr-source-1', 'PATCH'],
-      ['http://localhost:3000/code-review-sources/cr-source-1', 'DELETE'],
+      ['http://localhost:3000/projects/project-1/code-review-feeds', 'GET'],
+      ['http://localhost:3000/projects/project-1/code-review-feeds', 'POST'],
+      ['http://localhost:3000/code-review-feeds/feed-1', 'PATCH'],
+      ['http://localhost:3000/code-review-feeds/feed-1', 'DELETE'],
+      ['http://localhost:3000/code-review-feeds/feed-1/generate', 'POST'],
     ]);
   });
   it('协同读取使用纯 GET，显式交接传递确认和原因', async () => {

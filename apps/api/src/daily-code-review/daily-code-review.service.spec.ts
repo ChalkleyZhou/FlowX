@@ -17,9 +17,27 @@ describe('DailyCodeReviewService', () => {
   const buildCommitDiffBundle = vi.fn();
   const collectRecentCommits = vi.fn();
   const collectRecentCommitsFromLocalPath = vi.fn();
+  let stagedProject: { workspace?: { repositories?: Array<{ id: string }> } } | null = null;
+  let stagedHour = 22;
+  let stagedRepositoryIds: string[] | null = null;
+  const resolveProject = findUniqueProject.mockResolvedValue.bind(findUniqueProject);
+  const resolveConfig = findUniqueConfig.mockResolvedValue.bind(findUniqueConfig);
 
   beforeEach(() => {
     vi.clearAllMocks();
+    stagedProject = null;
+    stagedHour = 22;
+    stagedRepositoryIds = null;
+    findUniqueProject.mockResolvedValue = (value) => {
+      stagedProject = value;
+      return resolveProject(value);
+    };
+    findUniqueConfig.mockResolvedValue = (value) => {
+      stagedHour = value && typeof value === 'object' && typeof value.dailyHour === 'number'
+        ? value.dailyHour
+        : 22;
+      return resolveConfig(value);
+    };
     process.env.AI_EXECUTOR_PROVIDER = 'mock';
     buildCommitDiffBundle.mockResolvedValue('diff --git a/file.ts b/file.ts\n+change');
     collectRecentCommits.mockResolvedValue([]);
@@ -36,7 +54,22 @@ describe('DailyCodeReviewService', () => {
     return new DailyCodeReviewService(
       {
         project: { findUnique: findUniqueProject },
-        projectCodeReviewConfig: { findUnique: findUniqueConfig },
+        codeReviewFeed: {
+          findUnique: vi.fn(async () => {
+            if (!stagedProject) {
+              return null;
+            }
+            const repositoryIds = stagedRepositoryIds
+              ?? stagedProject.workspace?.repositories?.map((repository) => repository.id)
+              ?? [];
+            return {
+              id: 'feed-1',
+              dailyHour: stagedHour,
+              repositories: repositoryIds.map((repositoryId) => ({ repositoryId })),
+              project: stagedProject,
+            };
+          }),
+        },
         dailyCodeReview: {
           findFirst: findFirstReview,
           create: createReview,
@@ -46,7 +79,6 @@ describe('DailyCodeReviewService', () => {
         },
         briefingSource: { findMany: findManySources },
         briefingEvent: { findMany: findManyEvents },
-        codeReviewSource: { findMany: findManyCodeReviewSources },
       } as never,
       { reviewUnit } as never,
       { sendDailyCodeReview } as never,
@@ -127,7 +159,7 @@ describe('DailyCodeReviewService', () => {
       ...data,
     }));
 
-    await createService().generateProjectDailyCodeReview('project-1', {
+    await createService().generateFeedDailyCodeReview('project-1', {
       date: '2026-07-07',
       regenerate: true,
     });
@@ -210,7 +242,7 @@ describe('DailyCodeReviewService', () => {
       ...data,
     }));
 
-    await createService().generateProjectDailyCodeReview('project-1', {
+    await createService().generateFeedDailyCodeReview('project-1', {
       date: '2026-07-07',
       regenerate: true,
     });
@@ -255,9 +287,8 @@ describe('DailyCodeReviewService', () => {
     findManyEvents.mockResolvedValue([]);
     createReview.mockImplementation(async ({ data }) => ({ id: 'review-1', ...data }));
 
-    await createService().generateProjectDailyCodeReview('project-1', { date: '2026-07-07' });
+    await createService().generateFeedDailyCodeReview('project-1', { date: '2026-07-07' });
 
-    expect(findUniqueConfig).toHaveBeenCalledWith({ where: { projectId: 'project-1' } });
     expect(createReview).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -280,7 +311,7 @@ describe('DailyCodeReviewService', () => {
     findManyEvents.mockResolvedValue([]);
     createReview.mockImplementation(async ({ data }) => ({ id: 'review-1', ...data }));
 
-    await createService().generateProjectDailyCodeReview('project-1', { date: '2026-07-07' });
+    await createService().generateFeedDailyCodeReview('project-1', { date: '2026-07-07' });
 
     expect(createReview).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -342,7 +373,7 @@ describe('DailyCodeReviewService', () => {
       ...data,
     }));
 
-    await createService().generateProjectDailyCodeReview('project-1', {
+    await createService().generateFeedDailyCodeReview('project-1', {
       date: '2026-07-07',
       regenerate: true,
     });
@@ -415,7 +446,7 @@ describe('DailyCodeReviewService', () => {
       ...data,
     }));
 
-    await createService().generateProjectDailyCodeReview('project-1', {
+    await createService().generateFeedDailyCodeReview('project-1', {
       date: '2026-07-07',
       regenerate: true,
     });
@@ -484,7 +515,7 @@ describe('DailyCodeReviewService', () => {
       });
 
       await expect(
-        createService().generateProjectDailyCodeReview(
+        createService().generateFeedDailyCodeReview(
           'project-1',
           { date: '2026-07-07', regenerate: true },
           undefined,
@@ -562,7 +593,7 @@ describe('DailyCodeReviewService', () => {
       ...data,
     }));
 
-    await createService().generateProjectDailyCodeReview('project-1', {
+    await createService().generateFeedDailyCodeReview('project-1', {
       date: '2026-07-07',
       regenerate: true,
     });
@@ -680,7 +711,7 @@ describe('DailyCodeReviewService', () => {
     });
     createReview.mockImplementation(async ({ data }) => ({ id: 'review-1', ...data }));
 
-    await createService().generateProjectDailyCodeReview('project-1', {
+    await createService().generateFeedDailyCodeReview('project-1', {
       date: '2026-07-07',
       regenerate: true,
     });
@@ -766,7 +797,7 @@ describe('DailyCodeReviewService', () => {
     });
     createReview.mockImplementation(async ({ data }) => ({ id: 'review-1', ...data }));
 
-    await createService().generateProjectDailyCodeReview('project-1', {
+    await createService().generateFeedDailyCodeReview('project-1', {
       date: '2026-07-07',
       regenerate: true,
     });
@@ -867,7 +898,7 @@ describe('DailyCodeReviewService', () => {
     });
     createReview.mockImplementation(async ({ data }) => ({ id: 'review-1', ...data }));
 
-    await createService().generateProjectDailyCodeReview('project-1', {
+    await createService().generateFeedDailyCodeReview('project-1', {
       date: '2026-07-07',
       regenerate: true,
     });
@@ -885,7 +916,7 @@ describe('DailyCodeReviewService', () => {
     );
   });
 
-  it('excludes workspace repositories marked inactive on CodeReviewSource', async () => {
+  it('reviews only repositories selected on the feed and reuses the code review sandbox', async () => {
     findUniqueProject.mockResolvedValue({
       id: 'project-1',
       name: 'FlowX',
@@ -916,10 +947,8 @@ describe('DailyCodeReviewService', () => {
       },
     });
     findUniqueConfig.mockResolvedValue({ dailyHour: 22 });
+    stagedRepositoryIds = ['repo-b'];
     findFirstReview.mockResolvedValue(null);
-    findManyCodeReviewSources.mockResolvedValue([
-      { id: 'cr-exclude-a', repositoryId: 'repo-a', isActive: false },
-    ]);
     findManySources.mockResolvedValue([]);
     findManyEvents.mockResolvedValue([]);
     collectRecentCommitsFromLocalPath.mockResolvedValue([
@@ -940,16 +969,11 @@ describe('DailyCodeReviewService', () => {
     });
     createReview.mockImplementation(async ({ data }) => ({ id: 'review-1', ...data }));
 
-    await createService().generateProjectDailyCodeReview('project-1', {
+    await createService().generateFeedDailyCodeReview('project-1', {
       date: '2026-07-07',
       regenerate: true,
     });
 
-    expect(findManyCodeReviewSources).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ isActive: false }),
-      }),
-    );
     expect(ensureCodeReviewSandbox).toHaveBeenCalledTimes(1);
     expect(ensureCodeReviewSandbox).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'repo-b' }),
@@ -972,6 +996,40 @@ describe('DailyCodeReviewService', () => {
     );
   });
 
+  it('updates the same daily review for a feed and date', async () => {
+    findUniqueProject.mockResolvedValue({
+      id: 'project-1',
+      name: 'FlowX',
+      workspaceId: 'workspace-1',
+      workspace: { id: 'workspace-1', name: '研发平台', repositories: [] },
+    });
+    findUniqueConfig.mockResolvedValue({ dailyHour: 22 });
+    stagedRepositoryIds = [];
+    findFirstReview.mockResolvedValue({ id: 'review-existing' });
+    updateReview.mockResolvedValue({ id: 'review-existing' });
+
+    await createService().generateFeedDailyCodeReview('feed-1', {
+      date: '2026-07-07',
+      regenerate: true,
+    });
+
+    expect(findFirstReview).toHaveBeenCalledWith({
+      where: {
+        feedId: 'feed-1',
+        date: new Date('2026-07-06T16:00:00.000Z'),
+      },
+    });
+    expect(updateReview).toHaveBeenCalledWith({
+      where: { id: 'review-existing' },
+      data: expect.objectContaining({
+        status: 'SKIPPED_NO_CR_SOURCES',
+        sentAt: null,
+      }),
+    });
+    expect(createReview).not.toHaveBeenCalled();
+    expect(ensureRepositoryReadyForReview).not.toHaveBeenCalled();
+  });
+
   it('records an empty-run when the workspace has no repositories', async () => {
     findUniqueProject.mockResolvedValue({
       id: 'project-1',
@@ -988,7 +1046,7 @@ describe('DailyCodeReviewService', () => {
     findManyCodeReviewSources.mockResolvedValue([]);
     createReview.mockImplementation(async ({ data }) => ({ id: 'review-1', ...data }));
 
-    await createService().generateProjectDailyCodeReview('project-1', {
+    await createService().generateFeedDailyCodeReview('project-1', {
       date: '2026-07-07',
       regenerate: true,
     });
@@ -1001,7 +1059,7 @@ describe('DailyCodeReviewService', () => {
         data: expect.objectContaining({
           status: 'SKIPPED_NO_CR_SOURCES',
           unitsJson: [],
-          errorMessage: expect.stringContaining('尚未登记任何代码仓库'),
+          errorMessage: expect.stringContaining('没有选择仓库'),
         }),
       }),
     );
@@ -1047,7 +1105,7 @@ describe('DailyCodeReviewService', () => {
     });
     createReview.mockImplementation(async ({ data }) => ({ id: 'review-1', ...data }));
 
-    await createService().generateProjectDailyCodeReview('project-1', {
+    await createService().generateFeedDailyCodeReview('project-1', {
       date: '2026-07-07',
       regenerate: true,
     });

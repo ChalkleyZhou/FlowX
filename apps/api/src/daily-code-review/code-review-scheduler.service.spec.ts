@@ -14,8 +14,7 @@ import {
 describe('CodeReviewSchedulerService', () => {
   const codeReviewConfigFindMany = vi.fn();
   const codeReviewConfigUpdate = vi.fn();
-  const briefingConfigFindMany = vi.fn();
-  const generateProjectDailyCodeReview = vi.fn();
+  const generateFeedDailyCodeReview = vi.fn();
   const sendDailyCodeReview = vi.fn();
 
   beforeEach(() => {
@@ -34,16 +33,13 @@ describe('CodeReviewSchedulerService', () => {
   function createService() {
     return new CodeReviewSchedulerService(
       {
-        projectCodeReviewConfig: {
+        codeReviewFeed: {
           findMany: codeReviewConfigFindMany,
           update: codeReviewConfigUpdate,
         },
-        projectBriefingConfig: {
-          findMany: briefingConfigFindMany,
-        },
       } as never,
       {
-        generateProjectDailyCodeReview,
+        generateFeedDailyCodeReview,
         sendDailyCodeReview,
       } as never,
     );
@@ -52,6 +48,8 @@ describe('CodeReviewSchedulerService', () => {
   it('generates and sends due code reviews without touching briefing configs', async () => {
     codeReviewConfigFindMany.mockResolvedValue([
       {
+        id: 'feed-1',
+        name: '默认',
         projectId: 'project-1',
         enabled: true,
         dailyHour: 18,
@@ -59,7 +57,7 @@ describe('CodeReviewSchedulerService', () => {
         project: { id: 'project-1', name: 'FlowX' },
       },
     ]);
-    generateProjectDailyCodeReview.mockResolvedValue({ id: 'review-1', sentAt: null });
+    generateFeedDailyCodeReview.mockResolvedValue({ id: 'review-1', sentAt: null });
     sendDailyCodeReview.mockResolvedValue({ successCount: 1, targetCount: 1 });
 
     await expect(
@@ -70,8 +68,8 @@ describe('CodeReviewSchedulerService', () => {
       where: { enabled: true },
       include: { project: true },
     });
-    expect(generateProjectDailyCodeReview).toHaveBeenCalledWith(
-      'project-1',
+    expect(generateFeedDailyCodeReview).toHaveBeenCalledWith(
+      'feed-1',
       {
         date: '2026-06-03',
         regenerate: true,
@@ -82,17 +80,18 @@ describe('CodeReviewSchedulerService', () => {
     );
     expect(sendDailyCodeReview).toHaveBeenCalledWith('review-1');
     expect(codeReviewConfigUpdate).toHaveBeenCalledWith({
-      where: { projectId: 'project-1' },
+      where: { id: 'feed-1' },
       data: expect.objectContaining({
         lastSchedulerSlot: '2026-06-03@18',
       }),
     });
-    expect(briefingConfigFindMany).not.toHaveBeenCalled();
   });
 
   it('skips configs that are not due yet', async () => {
     codeReviewConfigFindMany.mockResolvedValue([
       {
+        id: 'feed-1',
+        name: '默认',
         projectId: 'project-1',
         enabled: true,
         dailyHour: 17,
@@ -105,12 +104,14 @@ describe('CodeReviewSchedulerService', () => {
       createService().runDueCodeReviews(new Date('2026-06-03T10:00:00.000Z')),
     ).resolves.toEqual({ generatedCount: 0 });
 
-    expect(generateProjectDailyCodeReview).not.toHaveBeenCalled();
+    expect(generateFeedDailyCodeReview).not.toHaveBeenCalled();
   });
 
   it('dedupes using ProjectCodeReviewConfig.lastSchedulerSlot, not the briefing slot', async () => {
     codeReviewConfigFindMany.mockResolvedValue([
       {
+        id: 'feed-1',
+        name: '默认',
         projectId: 'project-1',
         enabled: true,
         dailyHour: 18,
@@ -123,12 +124,14 @@ describe('CodeReviewSchedulerService', () => {
       createService().runDueCodeReviews(new Date('2026-06-03T10:00:00.000Z')),
     ).resolves.toEqual({ generatedCount: 0 });
 
-    expect(generateProjectDailyCodeReview).not.toHaveBeenCalled();
+    expect(generateFeedDailyCodeReview).not.toHaveBeenCalled();
   });
 
   it('records a delivery failure without locking the slot', async () => {
     codeReviewConfigFindMany.mockResolvedValue([
       {
+        id: 'feed-1',
+        name: '默认',
         projectId: 'project-1',
         enabled: true,
         dailyHour: 18,
@@ -136,13 +139,13 @@ describe('CodeReviewSchedulerService', () => {
         project: { id: 'project-1', name: 'FlowX' },
       },
     ]);
-    generateProjectDailyCodeReview.mockResolvedValue({ id: 'review-1', sentAt: null });
+    generateFeedDailyCodeReview.mockResolvedValue({ id: 'review-1', sentAt: null });
     sendDailyCodeReview.mockResolvedValue({ successCount: 0, targetCount: 0 });
 
     await createService().runDueCodeReviews(new Date('2026-06-03T10:00:00.000Z'));
 
     expect(codeReviewConfigUpdate).toHaveBeenCalledWith({
-      where: { projectId: 'project-1' },
+      where: { id: 'feed-1' },
       data: expect.objectContaining({
         lastSchedulerMessage: expect.stringContaining('未配置启用的投递目标'),
       }),

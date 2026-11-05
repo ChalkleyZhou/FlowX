@@ -1,11 +1,9 @@
-import { NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BriefingsService } from './briefings.service';
 
 describe('BriefingsService', () => {
   const projectFindUnique = vi.fn();
   const configFindUnique = vi.fn();
-  const configUpsert = vi.fn();
   const sourceFindMany = vi.fn();
   const eventFindMany = vi.fn();
   const briefingFindFirst = vi.fn();
@@ -14,9 +12,27 @@ describe('BriefingsService', () => {
   const briefingUpdate = vi.fn();
   const sendBriefing = vi.fn();
   const summarize = vi.fn();
+  let stagedProject: { id?: string; workspace?: { repositories?: Array<{ id: string }> } } | null = null;
+  let stagedHour = 22;
+  let stagedRepositoryIds: string[] | null = null;
+  const resolveProject = projectFindUnique.mockResolvedValue.bind(projectFindUnique);
+  const resolveConfig = configFindUnique.mockResolvedValue.bind(configFindUnique);
 
   beforeEach(() => {
     vi.clearAllMocks();
+    stagedProject = null;
+    stagedHour = 22;
+    stagedRepositoryIds = null;
+    projectFindUnique.mockResolvedValue = (value) => {
+      stagedProject = value;
+      return resolveProject(value);
+    };
+    configFindUnique.mockResolvedValue = (value) => {
+      stagedHour = value && typeof value === 'object' && typeof value.dailyHour === 'number'
+        ? value.dailyHour
+        : 22;
+      return resolveConfig(value);
+    };
     summarize.mockResolvedValue({
       source: 'fallback',
       headline: '测试摘要',
@@ -30,9 +46,21 @@ describe('BriefingsService', () => {
     return new BriefingsService(
       {
         project: { findUnique: projectFindUnique },
-        projectBriefingConfig: {
-          findUnique: configFindUnique,
-          upsert: configUpsert,
+        briefingFeed: {
+          findUnique: vi.fn(async () => {
+            if (!stagedProject) {
+              return null;
+            }
+            const repositoryIds = stagedRepositoryIds
+              ?? stagedProject.workspace?.repositories?.map((repository) => repository.id)
+              ?? [];
+            return {
+              id: 'feed-1',
+              dailyHour: stagedHour,
+              repositories: repositoryIds.map((repositoryId) => ({ repositoryId })),
+              project: stagedProject,
+            };
+          }),
         },
         briefingSource: { findMany: sourceFindMany },
         briefingEvent: { findMany: eventFindMany },
@@ -47,88 +75,6 @@ describe('BriefingsService', () => {
       { summarize } as never,
     );
   }
-
-  it('returns default project config when no config exists', async () => {
-    projectFindUnique.mockResolvedValue({ id: 'project-1' });
-    configFindUnique.mockResolvedValue(null);
-
-    await expect(createService().getProjectConfig('project-1')).resolves.toEqual({
-      projectId: 'project-1',
-      enabled: false,
-      dailyHour: 22,
-      timezone: 'Asia/Shanghai',
-      autoSend: false,
-      lastSchedulerSlot: null,
-      lastSchedulerRunAt: null,
-      lastSchedulerMessage: null,
-      createdAt: null,
-      updatedAt: null,
-    });
-  });
-
-  it('rejects config lookups for missing projects', async () => {
-    projectFindUnique.mockResolvedValue(null);
-
-    await expect(createService().getProjectConfig('missing')).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
-  });
-
-  it('upserts project config', async () => {
-    projectFindUnique.mockResolvedValue({ id: 'project-1' });
-    configUpsert.mockResolvedValue({ id: 'config-1', enabled: true });
-
-    await expect(
-      createService().upsertProjectConfig('project-1', {
-        enabled: true,
-        dailyHour: 9,
-        autoSend: true,
-      }),
-    ).resolves.toEqual({ id: 'config-1', enabled: true });
-
-    expect(configUpsert).toHaveBeenCalledWith({
-      where: { projectId: 'project-1' },
-      create: {
-        projectId: 'project-1',
-        enabled: true,
-        dailyHour: 9,
-        timezone: 'Asia/Shanghai',
-        autoSend: true,
-      },
-      update: {
-        enabled: true,
-        dailyHour: 9,
-        lastSchedulerSlot: null,
-        timezone: 'Asia/Shanghai',
-        autoSend: true,
-      },
-    });
-  });
-
-  it('preserves dailyHour when toggling enabled without sending hour', async () => {
-    projectFindUnique.mockResolvedValue({ id: 'project-1' });
-    configUpsert.mockResolvedValue({ id: 'config-1', enabled: true, dailyHour: 9 });
-
-    await expect(
-      createService().upsertProjectConfig('project-1', { enabled: true }),
-    ).resolves.toEqual({ id: 'config-1', enabled: true, dailyHour: 9 });
-
-    expect(configUpsert).toHaveBeenCalledWith({
-      where: { projectId: 'project-1' },
-      create: {
-        projectId: 'project-1',
-        enabled: true,
-        dailyHour: 22,
-        timezone: 'Asia/Shanghai',
-        autoSend: false,
-      },
-      update: {
-        enabled: true,
-        autoSend: true,
-        timezone: 'Asia/Shanghai',
-      },
-    });
-  });
 
   it('generates a project briefing from enabled workspace sources', async () => {
     projectFindUnique.mockResolvedValue({
@@ -168,7 +114,7 @@ describe('BriefingsService', () => {
     briefingCreate.mockResolvedValue({ id: 'briefing-1' });
 
     await expect(
-      createService().generateProjectBriefing('project-1', {
+      createService().generateFeedBriefing('project-1', {
         date: '2026-06-03',
       }),
     ).resolves.toEqual({ id: 'briefing-1' });
@@ -217,7 +163,7 @@ describe('BriefingsService', () => {
     eventFindMany.mockResolvedValue([]);
     briefingCreate.mockResolvedValue({ id: 'briefing-1' });
 
-    await createService().generateProjectBriefing(
+    await createService().generateFeedBriefing(
       'project-1',
       { date: '2026-06-03' },
       {
@@ -264,7 +210,7 @@ describe('BriefingsService', () => {
       });
 
       await expect(
-        createService().generateProjectBriefing(
+        createService().generateFeedBriefing(
           'project-1',
           { period: 'WEEKLY', date: '2026-06-17', regenerate: true },
           {
@@ -306,7 +252,7 @@ describe('BriefingsService', () => {
     briefingCreate.mockResolvedValue({ id: 'weekly-briefing' });
 
     await expect(
-      createService().generateProjectBriefing('project-1', {
+      createService().generateFeedBriefing('project-1', {
         period: 'WEEKLY',
         date: '2026-06-17',
       }),
@@ -359,7 +305,7 @@ describe('BriefingsService', () => {
     });
 
     await expect(
-      createService().generateProjectBriefing('project-1', {
+      createService().generateFeedBriefing('project-1', {
         date: '2026-06-03',
         regenerate: true,
       }),
@@ -389,7 +335,7 @@ describe('BriefingsService', () => {
     briefingFindFirst.mockResolvedValue({ id: 'existing-briefing' });
 
     await expect(
-      createService().generateProjectBriefing('project-1', {
+      createService().generateFeedBriefing('project-1', {
         date: '2026-06-03',
       }),
     ).resolves.toEqual({ id: 'existing-briefing' });
@@ -402,6 +348,7 @@ describe('BriefingsService', () => {
       id: 'briefing-1',
       projectId: 'project-1',
       project: { name: 'FlowX' },
+      feed: { deliveryTargets: [{ deliveryTargetId: 'target-1' }] },
       date: new Date('2026-06-03T00:00:00.000Z'),
       markdownContent: '# FlowX · 研发日报 · 2026-06-03',
       htmlContent: '<h1>FlowX · 研发日报 · 2026-06-03</h1>',
@@ -420,6 +367,58 @@ describe('BriefingsService', () => {
       date: new Date('2026-06-03T00:00:00.000Z'),
       markdownContent: '# FlowX · 研发日报 · 2026-06-03',
       htmlContent: '<h1>FlowX · 研发日报 · 2026-06-03</h1>',
+      deliveryTargetIds: ['target-1'],
     });
+  });
+
+  it('aggregates events only from repositories selected on the feed', async () => {
+    projectFindUnique.mockResolvedValue({
+      id: 'project-1',
+      name: 'FlowX',
+      workspaceId: 'workspace-1',
+      workspace: { repositories: [{ id: 'repo-1' }, { id: 'repo-2' }] },
+    });
+    configFindUnique.mockResolvedValue({ dailyHour: 22 });
+    stagedRepositoryIds = ['repo-1'];
+    sourceFindMany.mockResolvedValue([{ id: 'source-1', repositoryId: 'repo-1' }]);
+    briefingFindFirst.mockResolvedValue(null);
+    eventFindMany.mockResolvedValue([]);
+    briefingCreate.mockResolvedValue({ id: 'briefing-1' });
+
+    await createService().generateFeedBriefing('feed-1', { date: '2026-06-03' });
+
+    expect(sourceFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        repositoryId: { in: ['repo-1'] },
+      }),
+    }));
+    expect(briefingFindFirst).toHaveBeenCalledWith({
+      where: {
+        feedId: 'feed-1',
+        date: new Date('2026-06-02T16:00:00.000Z'),
+        period: 'DAILY',
+      },
+    });
+  });
+
+  it('stores an empty briefing when the feed has no repositories', async () => {
+    projectFindUnique.mockResolvedValue({
+      id: 'project-1',
+      name: 'FlowX',
+      workspaceId: 'workspace-1',
+      workspace: { repositories: [{ id: 'repo-1' }] },
+    });
+    configFindUnique.mockResolvedValue({ dailyHour: 22 });
+    stagedRepositoryIds = [];
+    briefingFindFirst.mockResolvedValue(null);
+    briefingCreate.mockResolvedValue({ id: 'briefing-empty' });
+
+    await createService().generateFeedBriefing('feed-1', { date: '2026-06-03' });
+
+    expect(sourceFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ repositoryId: { in: [] } }),
+    }));
+    expect(briefingCreate.mock.calls[0]?.[0].data.eventCount).toBe(0);
+    expect(briefingCreate.mock.calls[0]?.[0].data.feedId).toBe('feed-1');
   });
 });

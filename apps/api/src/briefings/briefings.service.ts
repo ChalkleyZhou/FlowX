@@ -10,11 +10,9 @@ import type { NormalizedBriefingEvent } from './briefing-events';
 import { BriefingAiSummarizerService } from './briefing-ai-summarizer.service';
 import { DeliveryTargetsService } from './delivery-targets.service';
 import { GenerateBriefingDto, type BriefingPeriod } from './dto/generate-briefing.dto';
-import { UpsertProjectBriefingConfigDto } from './dto/upsert-project-briefing-config.dto';
 import {
   briefingDateWindow,
   briefingWeekWindow,
-  BRIEFING_TIMEZONE,
   dateAtBeijingMidnight,
   DEFAULT_BRIEFING_CUTOFF_HOUR,
   resolveBriefingDate,
@@ -25,15 +23,6 @@ import {
 } from './briefing-auth-session';
 
 const DEFAULT_DAILY_HOUR = DEFAULT_BRIEFING_CUTOFF_HOUR;
-
-type ProjectWithWorkspace = {
-  id: string;
-  name: string;
-  workspaceId: string;
-  workspace: {
-    repositories: Array<{ id: string }>;
-  };
-};
 
 interface BriefingPeriodPlan {
   period: BriefingPeriod;
@@ -66,70 +55,13 @@ export class BriefingsService {
     private readonly briefingAiSummarizerService: BriefingAiSummarizerService,
   ) {}
 
-  async getProjectConfig(projectId: string) {
-    await this.ensureProjectExists(projectId);
-    const config = await this.prisma.projectBriefingConfig.findUnique({
-      where: { projectId },
-    });
-
-    return (
-      config ?? {
-        projectId,
-        enabled: false,
-        dailyHour: DEFAULT_DAILY_HOUR,
-        timezone: BRIEFING_TIMEZONE,
-        autoSend: false,
-        lastSchedulerSlot: null,
-        lastSchedulerRunAt: null,
-        lastSchedulerMessage: null,
-        createdAt: null,
-        updatedAt: null,
-      }
-    );
-  }
-
-  async upsertProjectConfig(projectId: string, dto: UpsertProjectBriefingConfigDto) {
-    await this.ensureProjectExists(projectId);
-    const updateData: {
-      enabled?: boolean;
-      dailyHour?: number;
-      timezone: string;
-      autoSend?: boolean;
-      lastSchedulerSlot?: string | null;
-    } = {
-      timezone: BRIEFING_TIMEZONE,
-    };
-    if (dto.enabled !== undefined) {
-      updateData.enabled = dto.enabled;
-      updateData.autoSend = dto.enabled;
-    }
-    if (dto.dailyHour !== undefined) {
-      updateData.dailyHour = dto.dailyHour;
-      updateData.lastSchedulerSlot = null;
-    }
-    if (dto.autoSend !== undefined) {
-      updateData.autoSend = dto.autoSend;
-    }
-
-    return this.prisma.projectBriefingConfig.upsert({
-      where: { projectId },
-      create: {
-        projectId,
-        enabled: dto.enabled ?? false,
-        dailyHour: dto.dailyHour ?? DEFAULT_DAILY_HOUR,
-        timezone: BRIEFING_TIMEZONE,
-        autoSend: dto.autoSend ?? false,
-      },
-      update: updateData,
-    });
-  }
-
   async listProjectBriefings(projectId: string) {
     await this.ensureProjectExists(projectId);
     return this.prisma.briefing.findMany({
       where: { projectId },
       orderBy: { createdAt: 'desc' },
       include: {
+        feed: { select: { id: true, name: true } },
         deliveryLogs: {
           include: { deliveryTarget: true },
           orderBy: { createdAt: 'desc' },
@@ -156,17 +88,33 @@ export class BriefingsService {
     return briefing;
   }
 
-  async generateProjectBriefing(
-    projectId: string,
+  async generateFeedBriefing(
+    feedId: string,
     dto: GenerateBriefingDto,
     authSession?: BriefingAuthSession,
     options?: GenerateBriefingOptions,
   ) {
-    const project = await this.getProjectForBriefing(projectId);
-    const config = await this.prisma.projectBriefingConfig.findUnique({
-      where: { projectId },
+    const feed = await this.prisma.briefingFeed.findUnique({
+      where: { id: feedId },
+      include: {
+        repositories: true,
+        project: {
+          include: {
+            workspace: {
+              include: {
+                repositories: { orderBy: { createdAt: 'asc' } },
+              },
+            },
+          },
+        },
+      },
     });
-    const cutoffHour = config?.dailyHour ?? DEFAULT_DAILY_HOUR;
+    if (!feed) {
+      throw new NotFoundException('简报不存在。');
+    }
+    const project = feed.project;
+    const projectId = project.id;
+    const cutoffHour = feed.dailyHour ?? DEFAULT_DAILY_HOUR;
     const requestedDate =
       dto.date?.trim() || resolveBriefingDate(new Date(), cutoffHour);
     const periodPlan = resolvePeriodPlan({
@@ -174,7 +122,11 @@ export class BriefingsService {
       date: requestedDate,
       cutoffHour,
     });
-    const repositoryIds = project.workspace.repositories.map((repository) => repository.id).sort();
+    const selectedRepositoryIds = new Set(feed.repositories.map((row) => row.repositoryId));
+    const repositoryIds = project.workspace.repositories
+      .map((repository) => repository.id)
+      .filter((repositoryId) => selectedRepositoryIds.has(repositoryId))
+      .sort();
     const sources = await this.prisma.briefingSource.findMany({
       where: {
         workspaceId: project.workspaceId,
@@ -190,6 +142,7 @@ export class BriefingsService {
       rangeLabel: periodPlan.rangeLabel,
       periodStart: periodPlan.windowStart.toISOString(),
       periodEnd: periodPlan.windowEnd.toISOString(),
+      feedId,
       projectId,
       workspaceId: project.workspaceId,
       repositoryIds,
@@ -199,9 +152,9 @@ export class BriefingsService {
     const scopeKey = stableJson(scope);
     const existing = await this.prisma.briefing.findFirst({
       where: {
-        projectId,
+        feedId,
         date: periodPlan.recordDate,
-        scopeKey,
+        period: periodPlan.period,
       },
     });
 
@@ -260,6 +213,7 @@ export class BriefingsService {
           })
         : await this.prisma.briefing.create({
             data: {
+              feedId,
               projectId,
               workspaceId: project.workspaceId,
               date: periodPlan.recordDate,
@@ -303,6 +257,7 @@ export class BriefingsService {
 
     return this.prisma.briefing.create({
       data: {
+        feedId,
         projectId,
         workspaceId: project.workspaceId,
         date: periodPlan.recordDate,
@@ -385,7 +340,10 @@ export class BriefingsService {
   async sendBriefing(briefingId: string) {
     const briefing = await this.prisma.briefing.findUnique({
       where: { id: briefingId },
-      include: { project: { select: { name: true } } },
+      include: {
+        project: { select: { name: true } },
+        feed: { include: { deliveryTargets: true } },
+      },
     });
     if (!briefing) {
       throw new NotFoundException('Briefing not found.');
@@ -397,6 +355,7 @@ export class BriefingsService {
       date: briefing.date,
       markdownContent: briefing.markdownContent,
       htmlContent: briefing.htmlContent,
+      deliveryTargetIds: briefing.feed.deliveryTargets.map((row) => row.deliveryTargetId),
     });
   }
 
@@ -407,24 +366,6 @@ export class BriefingsService {
     }
   }
 
-  private async getProjectForBriefing(projectId: string): Promise<ProjectWithWorkspace> {
-    const project = await this.prisma.project.findUnique({
-      where: { id: projectId },
-      include: {
-        workspace: {
-          include: {
-            repositories: {
-              orderBy: { createdAt: 'asc' },
-            },
-          },
-        },
-      },
-    });
-    if (!project) {
-      throw new NotFoundException('Project not found.');
-    }
-    return project;
-  }
 }
 
 function buildGeneratingSummary(period: BriefingPeriod) {

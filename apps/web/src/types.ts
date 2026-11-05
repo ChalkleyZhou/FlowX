@@ -107,43 +107,21 @@ export interface BriefingSource {
   updatedAt?: string;
 }
 
-export interface CodeReviewSource {
+export interface ProjectFeed {
   id: string;
-  workspaceId: string;
-  repositoryId: string;
-  isActive: boolean;
-  workspace?: Workspace;
-  repository?: Repository;
+  projectId: string;
+  name: string;
+  enabled: boolean;
+  dailyHour: number;
+  timezone: string;
+  autoSend: boolean;
+  lastSchedulerSlot?: string | null;
+  lastSchedulerRunAt?: string | null;
+  lastSchedulerMessage?: string | null;
+  repositoryIds: string[];
+  deliveryTargetIds: string[];
   createdAt?: string;
   updatedAt?: string;
-}
-
-export interface ProjectBriefingConfig {
-  id?: string;
-  projectId: string;
-  enabled: boolean;
-  dailyHour: number;
-  timezone: string;
-  autoSend: boolean;
-  lastSchedulerSlot?: string | null;
-  lastSchedulerRunAt?: string | null;
-  lastSchedulerMessage?: string | null;
-  createdAt?: string | null;
-  updatedAt?: string | null;
-}
-
-export interface ProjectCodeReviewConfig {
-  id?: string;
-  projectId: string;
-  enabled: boolean;
-  dailyHour: number;
-  timezone: string;
-  autoSend: boolean;
-  lastSchedulerSlot?: string | null;
-  lastSchedulerRunAt?: string | null;
-  lastSchedulerMessage?: string | null;
-  createdAt?: string | null;
-  updatedAt?: string | null;
 }
 
 export interface DailyCodeReviewUnit {
@@ -165,6 +143,8 @@ export interface DailyCodeReviewUnit {
 
 export interface DailyCodeReview {
   id: string;
+  feedId?: string;
+  feed?: { id: string; name: string };
   projectId: string;
   workspaceId: string;
   date: string;
@@ -217,6 +197,8 @@ export type BriefingPeriod = 'DAILY' | 'WEEKLY';
 
 export interface Briefing {
   id: string;
+  feedId?: string;
+  feed?: { id: string; name: string };
   projectId: string;
   workspaceId: string;
   date: string;

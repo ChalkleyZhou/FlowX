@@ -1,24 +1,39 @@
-import { Body, Controller, Get, Param, Post, Put, Req } from '@nestjs/common';
-import { CodeReviewConfigService } from './code-review-config.service';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import { CodeReviewFeedsService } from './code-review-feeds.service';
 import { DailyCodeReviewService } from './daily-code-review.service';
+import { CreateCodeReviewFeedDto, UpdateCodeReviewFeedDto } from './dto/code-review-feed.dto';
 import { GenerateDailyCodeReviewDto } from './dto/generate-daily-code-review.dto';
-import { UpsertCodeReviewConfigDto } from './dto/upsert-code-review-config.dto';
 
 @Controller()
 export class DailyCodeReviewController {
   constructor(
     private readonly dailyCodeReviewService: DailyCodeReviewService,
-    private readonly codeReviewConfigService: CodeReviewConfigService,
+    private readonly codeReviewFeedsService: CodeReviewFeedsService,
   ) {}
 
-  @Get('projects/:id/code-review-config')
-  getProjectCodeReviewConfig(@Param('id') id: string) {
-    return this.codeReviewConfigService.getProjectConfig(id);
+  @Get('projects/:id/code-review-feeds')
+  listFeeds(@Param('id') id: string) {
+    return this.codeReviewFeedsService.listFeeds(id);
   }
 
-  @Put('projects/:id/code-review-config')
-  updateProjectCodeReviewConfig(@Param('id') id: string, @Body() dto: UpsertCodeReviewConfigDto) {
-    return this.codeReviewConfigService.upsertProjectConfig(id, dto);
+  @Post('projects/:id/code-review-feeds')
+  createFeed(@Param('id') id: string, @Body() dto: CreateCodeReviewFeedDto) {
+    return this.codeReviewFeedsService.createFeed(id, dto);
+  }
+
+  @Get('code-review-feeds/:id')
+  getFeed(@Param('id') id: string) {
+    return this.codeReviewFeedsService.getFeed(id);
+  }
+
+  @Patch('code-review-feeds/:id')
+  updateFeed(@Param('id') id: string, @Body() dto: UpdateCodeReviewFeedDto) {
+    return this.codeReviewFeedsService.updateFeed(id, dto);
+  }
+
+  @Delete('code-review-feeds/:id')
+  deleteFeed(@Param('id') id: string) {
+    return this.codeReviewFeedsService.deleteFeed(id);
   }
 
   @Get('projects/:id/daily-code-reviews')
@@ -26,13 +41,13 @@ export class DailyCodeReviewController {
     return this.dailyCodeReviewService.listProjectDailyCodeReviews(id);
   }
 
-  @Post('projects/:id/daily-code-reviews/generate')
-  generateProjectDailyCodeReview(
+  @Post('code-review-feeds/:id/generate')
+  generateFeedDailyCodeReview(
     @Param('id') id: string,
     @Body() dto: GenerateDailyCodeReviewDto,
     @Req() req: DailyCodeReviewRequest,
   ) {
-    return this.dailyCodeReviewService.generateProjectDailyCodeReview(id, dto, req.authSession, {
+    return this.dailyCodeReviewService.generateFeedDailyCodeReview(id, dto, req.authSession, {
       async: true,
     });
   }

@@ -26,6 +26,7 @@ type BriefingSendRecord = {
   date: Date;
   markdownContent: string;
   htmlContent: string;
+  deliveryTargetIds: string[];
 };
 
 type DailyCodeReviewSendRecord = BriefingSendRecord;
@@ -104,8 +105,16 @@ export class DeliveryTargetsService {
   }
 
   async sendBriefing(briefing: BriefingSendRecord) {
+    if (briefing.deliveryTargetIds.length === 0) {
+      await this.prisma.briefing.update({
+        where: { id: briefing.id },
+        data: { errorMessage: '未配置启用的投递目标' },
+      });
+      return { successCount: 0, targetCount: 0 };
+    }
     const targets = await this.prisma.deliveryTarget.findMany({
       where: {
+        id: { in: briefing.deliveryTargetIds },
         projectId: briefing.projectId,
         isActive: true,
         forBriefing: true,
@@ -162,8 +171,16 @@ export class DeliveryTargetsService {
   }
 
   async sendDailyCodeReview(review: DailyCodeReviewSendRecord) {
+    if (review.deliveryTargetIds.length === 0) {
+      await this.prisma.dailyCodeReview.update({
+        where: { id: review.id },
+        data: { errorMessage: '未配置启用的投递目标' },
+      });
+      return { successCount: 0, targetCount: 0 };
+    }
     const targets = await this.prisma.deliveryTarget.findMany({
       where: {
+        id: { in: review.deliveryTargetIds },
         projectId: review.projectId,
         isActive: true,
         forCodeReview: true,

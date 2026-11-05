@@ -15,7 +15,7 @@ describe('BriefingSchedulerService', () => {
   const configFindMany = vi.fn();
   const configUpdateMany = vi.fn();
   const configUpdate = vi.fn();
-  const generateProjectBriefing = vi.fn();
+  const generateFeedBriefing = vi.fn();
   const sendBriefing = vi.fn();
 
   beforeEach(() => {
@@ -35,14 +35,14 @@ describe('BriefingSchedulerService', () => {
   function createService() {
     return new BriefingSchedulerService(
       {
-        projectBriefingConfig: {
+        briefingFeed: {
           findMany: configFindMany,
           updateMany: configUpdateMany,
           update: configUpdate,
         },
       } as never,
       {
-        generateProjectBriefing,
+        generateFeedBriefing,
         sendBriefing,
       } as never,
     );
@@ -51,6 +51,8 @@ describe('BriefingSchedulerService', () => {
   it('generates and sends due project briefings', async () => {
     configFindMany.mockResolvedValue([
       {
+        id: 'feed-1',
+        name: '默认',
         projectId: 'project-1',
         enabled: true,
         dailyHour: 18,
@@ -58,15 +60,15 @@ describe('BriefingSchedulerService', () => {
         project: { id: 'project-1', name: 'FlowX' },
       },
     ]);
-    generateProjectBriefing.mockResolvedValue({ id: 'briefing-1', sentAt: null });
+    generateFeedBriefing.mockResolvedValue({ id: 'briefing-1', sentAt: null });
     sendBriefing.mockResolvedValue({ successCount: 1, targetCount: 1 });
 
     await expect(
       createService().runDueBriefings(new Date('2026-06-03T10:00:00.000Z')),
     ).resolves.toEqual({ generatedCount: 1 });
 
-    expect(generateProjectBriefing).toHaveBeenCalledWith(
-      'project-1',
+    expect(generateFeedBriefing).toHaveBeenCalledWith(
+      'feed-1',
       {
         date: '2026-06-03',
         regenerate: true,
@@ -77,7 +79,7 @@ describe('BriefingSchedulerService', () => {
     );
     expect(sendBriefing).toHaveBeenCalledWith('briefing-1');
     expect(configUpdate).toHaveBeenCalledWith({
-      where: { projectId: 'project-1' },
+      where: { id: 'feed-1' },
       data: expect.objectContaining({
         lastSchedulerSlot: '2026-06-03@18',
       }),
@@ -87,6 +89,8 @@ describe('BriefingSchedulerService', () => {
   it('skips configs that are not due yet', async () => {
     configFindMany.mockResolvedValue([
       {
+        id: 'feed-1',
+        name: '默认',
         projectId: 'project-1',
         enabled: true,
         dailyHour: 17,
@@ -99,12 +103,14 @@ describe('BriefingSchedulerService', () => {
       createService().runDueBriefings(new Date('2026-06-03T10:00:00.000Z')),
     ).resolves.toEqual({ generatedCount: 0 });
 
-    expect(generateProjectBriefing).not.toHaveBeenCalled();
+    expect(generateFeedBriefing).not.toHaveBeenCalled();
   });
 
   it('skips a scheduler slot that already completed', async () => {
     configFindMany.mockResolvedValue([
       {
+        id: 'feed-1',
+        name: '默认',
         projectId: 'project-1',
         enabled: true,
         dailyHour: 18,
@@ -117,12 +123,14 @@ describe('BriefingSchedulerService', () => {
       createService().runDueBriefings(new Date('2026-06-03T10:00:00.000Z')),
     ).resolves.toEqual({ generatedCount: 0 });
 
-    expect(generateProjectBriefing).not.toHaveBeenCalled();
+    expect(generateFeedBriefing).not.toHaveBeenCalled();
   });
 
   it('records a delivery failure without locking the slot', async () => {
     configFindMany.mockResolvedValue([
       {
+        id: 'feed-1',
+        name: '默认',
         projectId: 'project-1',
         enabled: true,
         dailyHour: 18,
@@ -130,13 +138,13 @@ describe('BriefingSchedulerService', () => {
         project: { id: 'project-1', name: 'FlowX' },
       },
     ]);
-    generateProjectBriefing.mockResolvedValue({ id: 'briefing-1', sentAt: null });
+    generateFeedBriefing.mockResolvedValue({ id: 'briefing-1', sentAt: null });
     sendBriefing.mockResolvedValue({ successCount: 0, targetCount: 0 });
 
     await createService().runDueBriefings(new Date('2026-06-03T10:00:00.000Z'));
 
     expect(configUpdate).toHaveBeenCalledWith({
-      where: { projectId: 'project-1' },
+      where: { id: 'feed-1' },
       data: expect.objectContaining({
         lastSchedulerMessage: expect.stringContaining('未配置启用的投递目标'),
       }),

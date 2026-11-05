@@ -12,7 +12,8 @@ vi.mock('../api', () => ({
   api: {
     getProjects: vi.fn(),
     getProjectBriefings: vi.fn(),
-    generateProjectBriefing: vi.fn(),
+    listBriefingFeeds: vi.fn(),
+    generateBriefingFeed: vi.fn(),
   },
 }));
 
@@ -35,7 +36,20 @@ describe('BriefingsPage', () => {
       },
     ]);
     vi.mocked(api.getProjectBriefings).mockResolvedValue([]);
-    vi.mocked(api.generateProjectBriefing).mockResolvedValue({
+    vi.mocked(api.listBriefingFeeds).mockResolvedValue([
+      {
+        id: 'feed-1',
+        projectId: 'project-1',
+        name: '默认',
+        enabled: true,
+        dailyHour: 22,
+        timezone: 'Asia/Shanghai',
+        autoSend: true,
+        repositoryIds: [],
+        deliveryTargetIds: [],
+      },
+    ]);
+    vi.mocked(api.generateBriefingFeed).mockResolvedValue({
       id: 'briefing-1',
       projectId: 'project-1',
       workspaceId: 'workspace-1',
@@ -95,11 +109,86 @@ describe('BriefingsPage', () => {
       button?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    expect(api.generateProjectBriefing).toHaveBeenCalledWith('project-1', {
+    expect(api.generateBriefingFeed).toHaveBeenCalledWith('feed-1', {
       period: 'DAILY',
       date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       regenerate: true,
     });
+  });
+
+  it('generates the selected feed when the project has more than one', async () => {
+    vi.mocked(api.listBriefingFeeds).mockResolvedValue([
+      {
+        id: 'feed-1',
+        projectId: 'project-1',
+        name: '前端',
+        enabled: true,
+        dailyHour: 22,
+        timezone: 'Asia/Shanghai',
+        autoSend: true,
+        repositoryIds: ['repo-1'],
+        deliveryTargetIds: [],
+      },
+      {
+        id: 'feed-2',
+        projectId: 'project-1',
+        name: '后端',
+        enabled: false,
+        dailyHour: 22,
+        timezone: 'Asia/Shanghai',
+        autoSend: false,
+        repositoryIds: ['repo-2'],
+        deliveryTargetIds: [],
+      },
+    ]);
+
+    await renderPage();
+
+    const feedTrigger = Array.from(document.querySelectorAll('button')).find((item) =>
+      item.textContent?.includes('前端'),
+    );
+    expect(feedTrigger).toBeTruthy();
+
+    await act(async () => {
+      feedTrigger?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const backendOption = Array.from(document.querySelectorAll('[role="option"]')).find((item) =>
+      item.textContent?.includes('后端'),
+    );
+    expect(backendOption).toBeTruthy();
+
+    await act(async () => {
+      backendOption?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const button = Array.from(document.querySelectorAll('button')).find((item) =>
+      item.textContent?.includes('生成简报'),
+    );
+    await act(async () => {
+      button?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(api.generateBriefingFeed).toHaveBeenCalledWith('feed-2', {
+      period: 'DAILY',
+      date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      regenerate: true,
+    });
+  });
+
+  it('does not generate when the project has no feeds', async () => {
+    vi.mocked(api.listBriefingFeeds).mockResolvedValue([]);
+
+    await renderPage();
+
+    const button = Array.from(document.querySelectorAll('button')).find((item) =>
+      item.textContent?.includes('生成简报'),
+    ) as HTMLButtonElement | undefined;
+    expect(button?.disabled).toBe(true);
+    expect(api.generateBriefingFeed).not.toHaveBeenCalled();
   });
 
   it('does not call the daily code review API on mount', async () => {
@@ -142,7 +231,7 @@ describe('BriefingsPage', () => {
       button?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    expect(api.generateProjectBriefing).toHaveBeenCalledWith('project-1', {
+    expect(api.generateBriefingFeed).toHaveBeenCalledWith('feed-1', {
       period: 'WEEKLY',
       date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       regenerate: true,

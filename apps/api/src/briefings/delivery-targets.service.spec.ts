@@ -277,11 +277,17 @@ describe('DeliveryTargetsService', () => {
         date: new Date('2026-06-03T00:00:00.000Z'),
         markdownContent: '# Briefing',
         htmlContent: '<h1>Briefing</h1>',
+        deliveryTargetIds: ['target-email', 'target-dingtalk'],
       }),
     ).resolves.toEqual({ successCount: 1, targetCount: 2 });
 
     expect(targetFindMany).toHaveBeenCalledWith({
-      where: { projectId: 'project-1', isActive: true, forBriefing: true },
+      where: {
+        id: { in: ['target-email', 'target-dingtalk'] },
+        projectId: 'project-1',
+        isActive: true,
+        forBriefing: true,
+      },
       orderBy: { createdAt: 'asc' },
     });
     expect(logCreate).toHaveBeenCalledTimes(2);
@@ -332,6 +338,7 @@ describe('DeliveryTargetsService', () => {
         date: new Date('2026-06-03T00:00:00.000Z'),
         markdownContent: '# Briefing',
         htmlContent: '<h1>Briefing</h1>',
+        deliveryTargetIds: ['target-app'],
       }),
     ).resolves.toEqual({ successCount: 1, targetCount: 1 });
 
@@ -365,11 +372,17 @@ describe('DeliveryTargetsService', () => {
       date: new Date('2026-06-03T00:00:00.000Z'),
       markdownContent: '# Briefing',
       htmlContent: '<h1>Briefing</h1>',
+      deliveryTargetIds: ['target-briefing-only'],
     });
 
     expect(result.targetCount).toBe(1);
     expect(targetFindMany).toHaveBeenCalledWith({
-      where: { projectId: 'project-1', isActive: true, forBriefing: true },
+      where: {
+        id: { in: ['target-briefing-only'] },
+        projectId: 'project-1',
+        isActive: true,
+        forBriefing: true,
+      },
       orderBy: { createdAt: 'asc' },
     });
   });
@@ -397,11 +410,17 @@ describe('DeliveryTargetsService', () => {
       date: new Date('2026-06-03T00:00:00.000Z'),
       markdownContent: '# 代码审查',
       htmlContent: '<h1>代码审查</h1>',
+      deliveryTargetIds: ['target-cr-only'],
     });
 
     expect(result.targetCount).toBe(1);
     expect(targetFindMany).toHaveBeenCalledWith({
-      where: { projectId: 'project-1', isActive: true, forCodeReview: true },
+      where: {
+        id: { in: ['target-cr-only'] },
+        projectId: 'project-1',
+        isActive: true,
+        forCodeReview: true,
+      },
       orderBy: { createdAt: 'asc' },
     });
     expect(dailyCodeReviewUpdate).toHaveBeenCalledWith({

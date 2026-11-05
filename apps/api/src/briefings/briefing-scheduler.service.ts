@@ -51,7 +51,7 @@ export class BriefingSchedulerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async syncLegacyAutoSendFlags() {
-    const updated = await this.prisma.projectBriefingConfig.updateMany({
+    const updated = await this.prisma.briefingFeed.updateMany({
       where: { enabled: true, autoSend: false },
       data: { autoSend: true },
     });
@@ -61,32 +61,32 @@ export class BriefingSchedulerService implements OnModuleInit, OnModuleDestroy {
   }
 
   async runDueBriefings(now = new Date()) {
-    const configs = await this.prisma.projectBriefingConfig.findMany({
+    const feeds = await this.prisma.briefingFeed.findMany({
       where: { enabled: true },
       include: { project: true },
     });
     let generatedCount = 0;
 
-    for (const config of configs) {
-      if (!isBriefingSchedulerDue(now, config.dailyHour)) {
+    for (const feed of feeds) {
+      if (!isBriefingSchedulerDue(now, feed.dailyHour)) {
         continue;
       }
 
       const date = formatBriefingDate(now);
-      const slot = `${date}@${config.dailyHour}`;
+      const slot = `${date}@${feed.dailyHour}`;
 
-      if (config.lastSchedulerSlot === slot) {
+      if (feed.lastSchedulerSlot === slot) {
         continue;
       }
 
       try {
-        const organizationId = await resolveProjectOrganizationId(this.prisma, config.projectId);
+        const organizationId = await resolveProjectOrganizationId(this.prisma, feed.projectId);
         const schedulerAuthSession = organizationId
           ? await buildSchedulerAuthSession(this.prisma, organizationId)
           : undefined;
 
-        const briefing = await this.briefingsService.generateProjectBriefing(
-          config.projectId,
+        const briefing = await this.briefingsService.generateFeedBriefing(
+          feed.id,
           {
             date,
             regenerate: true,
@@ -109,21 +109,21 @@ export class BriefingSchedulerService implements OnModuleInit, OnModuleDestroy {
         }
 
         if (delivered) {
-          await this.recordSchedulerRun(config.projectId, slot, message);
+          await this.recordSchedulerRun(feed.id, slot, message);
           this.logger.log(
-            `Scheduled briefing delivered for project ${config.projectId} (${config.project.name}) at slot ${slot}: ${message}.`,
+            `Scheduled briefing delivered for feed ${feed.id} (${feed.project.name}/${feed.name}) at slot ${slot}: ${message}.`,
           );
         } else {
-          await this.recordSchedulerRun(config.projectId, null, message);
+          await this.recordSchedulerRun(feed.id, null, message);
           this.logger.warn(
-            `Scheduled briefing generated but not delivered for project ${config.projectId} (${config.project.name}) at slot ${slot}: ${message}.`,
+            `Scheduled briefing generated but not delivered for feed ${feed.id} (${feed.project.name}/${feed.name}) at slot ${slot}: ${message}.`,
           );
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        await this.recordSchedulerRun(config.projectId, null, message);
+        await this.recordSchedulerRun(feed.id, null, message);
         this.logger.warn(
-          `Scheduled briefing failed for project ${config.projectId} (${config.project.name}) at slot ${slot}: ${message}`,
+          `Scheduled briefing failed for feed ${feed.id} (${feed.project.name}/${feed.name}) at slot ${slot}: ${message}`,
         );
       }
     }
@@ -131,9 +131,9 @@ export class BriefingSchedulerService implements OnModuleInit, OnModuleDestroy {
     return { generatedCount };
   }
 
-  private async recordSchedulerRun(projectId: string, slot: string | null, message: string) {
-    await this.prisma.projectBriefingConfig.update({
-      where: { projectId },
+  private async recordSchedulerRun(feedId: string, slot: string | null, message: string) {
+    await this.prisma.briefingFeed.update({
+      where: { id: feedId },
       data: {
         lastSchedulerRunAt: new Date(),
         lastSchedulerMessage: message,

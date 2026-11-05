@@ -11,10 +11,11 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Input } from '../components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
 import { formatBeijingDateTime } from '../utils/datetime';
-import type { DailyCodeReview, Project } from '../types';
+import type { DailyCodeReview, Project, ProjectFeed } from '../types';
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -25,6 +26,8 @@ export function CodeReviewsPage() {
   const selectedProjectId = useScopedProjectId();
   const [projects, setProjects] = useState<Project[]>([]);
   const [reviews, setReviews] = useState<DailyCodeReview[]>([]);
+  const [feeds, setFeeds] = useState<ProjectFeed[]>([]);
+  const [feedId, setFeedId] = useState('');
   const [date, setDate] = useState(today());
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -45,7 +48,15 @@ export function CodeReviewsPage() {
       setLoading(true);
     }
     try {
-      setReviews(await api.listProjectDailyCodeReviews(projectId));
+      const [nextReviews, nextFeeds] = await Promise.all([
+        api.listProjectDailyCodeReviews(projectId),
+        api.listCodeReviewFeeds(projectId),
+      ]);
+      setReviews(nextReviews);
+      setFeeds(nextFeeds);
+      setFeedId((current) => (
+        nextFeeds.some((feed) => feed.id === current) ? current : nextFeeds[0]?.id ?? ''
+      ));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '加载代码审查失败');
     } finally {
@@ -82,13 +93,13 @@ export function CodeReviewsPage() {
   }, [selectedProjectId, reviews]);
 
   async function handleGenerate() {
-    if (!selectedProjectId) {
-      toast.error('请先选择项目');
+    if (!selectedProjectId || !feedId) {
+      toast.error(selectedProjectId ? '请先在项目设置中创建代码审查' : '请先选择项目');
       return;
     }
     setGenerating(true);
     try {
-      const review = await api.generateProjectDailyCodeReview(selectedProjectId, {
+      const review = await api.generateCodeReviewFeed(feedId, {
         date,
         regenerate: true,
       });
@@ -115,9 +126,6 @@ export function CodeReviewsPage() {
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild>
-              <Link to="/settings/code-review-sources">代码审查数据源</Link>
-            </Button>
-            <Button variant="outline" asChild>
               <Link to="/settings/delivery-targets">投递目标</Link>
             </Button>
           </div>
@@ -140,6 +148,19 @@ export function CodeReviewsPage() {
                 <span className="text-xs font-medium text-muted-foreground">项目</span>
                 <p className="flex h-10 items-center text-sm font-medium">{selectedProject?.name ?? '未选择项目'}</p>
               </div>
+              <div className="flex w-full flex-col gap-1.5 sm:w-[180px]">
+                <label className="text-xs font-medium text-muted-foreground">代码审查</label>
+                <Select value={feedId} onValueChange={setFeedId} disabled={feeds.length === 0}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={feeds.length === 0 ? '尚未创建' : '选择代码审查'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {feeds.map((feed) => (
+                      <SelectItem key={feed.id} value={feed.id}>{feed.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex w-full flex-col gap-1.5 sm:w-[168px]">
                 <label className="text-xs font-medium text-muted-foreground">日期</label>
                 <Input
@@ -156,7 +177,7 @@ export function CodeReviewsPage() {
                 <Button
                   className="h-10 w-full sm:w-auto"
                   onClick={handleGenerate}
-                  disabled={!selectedProjectId || generating}
+                  disabled={!selectedProjectId || !feedId || generating}
                 >
                   {generating ? '生成中...' : '生成代码审查'}
                 </Button>
@@ -188,6 +209,7 @@ export function CodeReviewsPage() {
                 <thead className="bg-muted/40 text-left text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 font-medium">日期</th>
+                    <th className="px-4 py-3 font-medium">代码审查</th>
                     <th className="px-4 py-3 font-medium">状态</th>
                     <th className="px-4 py-3 font-medium">审查单元</th>
                     <th className="px-4 py-3 font-medium">生成时间</th>
@@ -199,6 +221,7 @@ export function CodeReviewsPage() {
                   {reviews.map((review) => (
                     <tr key={review.id} className="border-t border-border">
                       <td className="px-4 py-3">{review.date.slice(0, 10)}</td>
+                      <td className="px-4 py-3">{review.feed?.name ?? '未命名'}</td>
                       <td className="px-4 py-3"><Badge variant="secondary">{review.status}</Badge></td>
                       <td className="px-4 py-3">{review.unitsJson?.length ?? 0}</td>
                       <td className="px-4 py-3">{formatBeijingDateTime(review.generatedAt)}</td>
@@ -218,12 +241,7 @@ export function CodeReviewsPage() {
           ) : (
             <EmptyState
               title="暂无代码审查"
-              description="选择项目和日期后生成第一份每日代码审查。默认会审查该项目所属工作区的全部仓库；可在「代码审查数据源」中排除个别仓库。"
-              action={
-                <Button variant="outline" size="sm" asChild>
-                  <Link to="/settings/code-review-sources">管理排除项</Link>
-                </Button>
-              }
+              description="在项目设置中创建代码审查并勾选仓库后，选择这一份再生成。"
             />
           )}
         </CardContent>

@@ -86,7 +86,6 @@ const secondaryItems = [
   { key: '/settings/git-credentials', label: 'Git 凭据', icon: GitBranch },
   { key: '/settings/api-tokens', label: 'API Token', icon: KeySquare },
   { key: '/settings/briefing-sources', label: '简报数据源', icon: RadioTower },
-  { key: '/settings/code-review-sources', label: '代码审查数据源', icon: GitPullRequest },
   { key: '/settings/delivery-targets', label: '投递目标', icon: Send },
   ...builtInPlugins.map((plugin) => ({
     key: plugin.path,

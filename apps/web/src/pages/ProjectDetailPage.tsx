@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { PageHeader } from '../components/PageHeader';
-import { ProjectBriefingConfigPanel } from '../components/ProjectBriefingConfigPanel';
-import { ProjectCodeReviewConfigPanel } from '../components/ProjectCodeReviewConfigPanel';
+import { ProjectFeedsPanel } from '../components/ProjectFeedsPanel';
 import { ProjectRequiredState } from '../components/ProjectRequiredState';
 import { ProjectVersionsPanel } from '../components/ProjectVersionsPanel';
 import { Badge } from '../components/ui/badge';
@@ -80,8 +79,16 @@ export function ProjectDetailPage() {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <ProjectBriefingConfigPanel projectId={projectId} />
-        <ProjectCodeReviewConfigPanel projectId={projectId} />
+        <ProjectFeedsPanel
+          projectId={projectId}
+          kind="briefing"
+          repositories={project.workspace.repositories ?? []}
+        />
+        <ProjectFeedsPanel
+          projectId={projectId}
+          kind="codeReview"
+          repositories={project.workspace.repositories ?? []}
+        />
       </div>
 
       <div id="project-versions" className="mt-5 scroll-mt-5">

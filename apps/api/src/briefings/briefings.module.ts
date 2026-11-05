@@ -7,6 +7,7 @@ import { WorkspacesModule } from '../workspaces/workspaces.module';
 import { BriefingAiSummarizerService } from './briefing-ai-summarizer.service';
 import { BriefingSourcesController } from './briefing-sources.controller';
 import { BriefingSourcesService } from './briefing-sources.service';
+import { BriefingFeedsService } from './briefing-feeds.service';
 import { BriefingSchedulerService } from './briefing-scheduler.service';
 import { BriefingsController } from './briefings.controller';
 import { BriefingsService } from './briefings.service';
@@ -19,6 +20,7 @@ import { sendDingTalkMarkdown, sendEmail } from './delivery-senders';
   controllers: [BriefingSourcesController, BriefingsController, DeliveryTargetsController],
   providers: [
     BriefingSourcesService,
+    BriefingFeedsService,
     BriefingsService,
     BriefingAiSummarizerService,
     DeliveryTargetsService,
@@ -31,7 +33,7 @@ import { sendDingTalkMarkdown, sendEmail } from './delivery-senders';
       },
     },
   ],
-  exports: [BriefingsService, BriefingSourcesService, DeliveryTargetsService],
+  exports: [BriefingsService, BriefingFeedsService, BriefingSourcesService, DeliveryTargetsService],
 })
 export class BriefingsModule {}
 

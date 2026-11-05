@@ -19,7 +19,7 @@ import {
   writeBriefingsPagePreferences,
 } from '../utils/briefings-page-preferences';
 import { formatBeijingDateTime } from '../utils/datetime';
-import type { Briefing, BriefingPeriod, Project } from '../types';
+import type { Briefing, BriefingPeriod, Project, ProjectFeed } from '../types';
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -54,6 +54,8 @@ export function BriefingsPage() {
   const selectedProjectId = useScopedProjectId();
   const [projects, setProjects] = useState<Project[]>([]);
   const [briefings, setBriefings] = useState<Briefing[]>([]);
+  const [feeds, setFeeds] = useState<ProjectFeed[]>([]);
+  const [feedId, setFeedId] = useState('');
   const [period, setPeriod] = useState<BriefingPeriod>(
     () => readBriefingsPagePreferences().period ?? 'DAILY',
   );
@@ -77,7 +79,15 @@ export function BriefingsPage() {
       setLoading(true);
     }
     try {
-      setBriefings(await api.getProjectBriefings(projectId));
+      const [nextBriefings, nextFeeds] = await Promise.all([
+        api.getProjectBriefings(projectId),
+        api.listBriefingFeeds(projectId),
+      ]);
+      setBriefings(nextBriefings);
+      setFeeds(nextFeeds);
+      setFeedId((current) => (
+        nextFeeds.some((feed) => feed.id === current) ? current : nextFeeds[0]?.id ?? ''
+      ));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '加载简报失败');
     } finally {
@@ -114,13 +124,13 @@ export function BriefingsPage() {
   }, [selectedProjectId, briefings]);
 
   async function handleGenerate() {
-    if (!selectedProjectId) {
-      toast.error('请先选择项目');
+    if (!selectedProjectId || !feedId) {
+      toast.error(selectedProjectId ? '请先在项目设置中创建简报' : '请先选择项目');
       return;
     }
     setGenerating(true);
     try {
-      const briefing = await api.generateProjectBriefing(selectedProjectId, {
+      const briefing = await api.generateBriefingFeed(feedId, {
         period,
         date,
         regenerate: true,
@@ -177,6 +187,19 @@ export function BriefingsPage() {
                 <span className="text-xs font-medium text-muted-foreground">项目</span>
                 <p className="flex h-10 items-center text-sm font-medium">{selectedProject?.name ?? '未选择项目'}</p>
               </div>
+              <div className="flex w-full flex-col gap-1.5 sm:w-[180px]">
+                <label className="text-xs font-medium text-muted-foreground">简报</label>
+                <Select value={feedId} onValueChange={setFeedId} disabled={feeds.length === 0}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={feeds.length === 0 ? '尚未创建' : '选择简报'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {feeds.map((feed) => (
+                      <SelectItem key={feed.id} value={feed.id}>{feed.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex w-full flex-col gap-1.5 sm:w-[140px]">
                 <label className="text-xs font-medium text-muted-foreground">类型</label>
                 <Select
@@ -214,7 +237,7 @@ export function BriefingsPage() {
                 <Button
                   className="h-10 w-full sm:w-auto"
                   onClick={handleGenerate}
-                  disabled={!selectedProjectId || generating}
+                  disabled={!selectedProjectId || !feedId || generating}
                 >
                   {generating ? '生成中...' : period === 'WEEKLY' ? '生成周报' : '生成简报'}
                 </Button>
@@ -246,6 +269,7 @@ export function BriefingsPage() {
                 <thead className="bg-muted/40 text-left text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 font-medium">日期</th>
+                    <th className="px-4 py-3 font-medium">简报</th>
                     <th className="px-4 py-3 font-medium">类型</th>
                     <th className="px-4 py-3 font-medium">状态</th>
                     <th className="px-4 py-3 font-medium">事件</th>
@@ -258,6 +282,7 @@ export function BriefingsPage() {
                   {briefings.map((briefing) => (
                     <tr key={briefing.id} className="border-t border-border">
                       <td className="px-4 py-3">{briefingRangeLabel(briefing)}</td>
+                      <td className="px-4 py-3">{briefing.feed?.name ?? '未命名'}</td>
                       <td className="px-4 py-3">{periodLabel(briefing.period)}</td>
                       <td className="px-4 py-3"><Badge variant="secondary">{briefing.status}</Badge></td>
                       <td className="px-4 py-3">{briefing.eventCount}</td>
@@ -276,7 +301,7 @@ export function BriefingsPage() {
               </table>
             </div>
           ) : (
-            <EmptyState title="暂无简报" description="选择项目和日期后生成第一份简报。" />
+            <EmptyState title="暂无简报" description="在项目设置中创建简报并勾选仓库后，选择这一份再生成。" />
           )}
         </CardContent>
       </Card>

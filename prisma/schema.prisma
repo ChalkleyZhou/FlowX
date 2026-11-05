@@ -108,7 +108,6 @@ model Workspace {
   briefingSources BriefingSource[]
   briefingEvents BriefingEvent[]
   briefings    Briefing[]
-  codeReviewSources CodeReviewSource[]
   dailyCodeReviews DailyCodeReview[]
   executionSessions ExecutionSession[]
   artifacts         Artifact[]
@@ -134,8 +133,8 @@ model Project {
   versions         ProjectVersion[] @relation("ProjectVersions")
   requirements     Requirement[]
   bugs         Bug[]
-  briefingConfig ProjectBriefingConfig?
-  codeReviewConfig ProjectCodeReviewConfig?
+  briefingFeeds BriefingFeed[]
+  codeReviewFeeds CodeReviewFeed[]
   briefings    Briefing[]
   dailyCodeReviews DailyCodeReview[]
   deliveryTargets DeliveryTarget[]
@@ -185,7 +184,8 @@ model Repository {
   bugs                    Bug[]
   briefingSources         BriefingSource[]
   briefingEvents          BriefingEvent[]
-  codeReviewSource        CodeReviewSource?
+  briefingFeedRepositories BriefingFeedRepository[]
+  codeReviewFeedRepositories CodeReviewFeedRepository[]
   createdAt               DateTime                @default(now())
   updatedAt               DateTime                @updatedAt
 }
@@ -238,61 +238,112 @@ model BriefingEvent {
   @@index([eventType, occurredAt])
 }
 
-model CodeReviewSource {
-  id            String     @id @default(cuid())
-  workspaceId   String
-  workspace     Workspace  @relation(fields: [workspaceId], references: [id])
-  repositoryId  String
-  repository    Repository @relation(fields: [repositoryId], references: [id])
-  isActive      Boolean    @default(true)
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+model BriefingFeed {
+  id                   String                       @id @default(cuid())
+  projectId            String
+  project              Project                      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name                 String
+  enabled              Boolean                      @default(false)
+  dailyHour            Int                          @default(22)
+  timezone             String                       @default("Asia/Shanghai")
+  autoSend             Boolean                      @default(false)
+  lastSchedulerSlot    String?
+  lastSchedulerRunAt   DateTime?
+  lastSchedulerMessage String?
+  repositories         BriefingFeedRepository[]
+  deliveryTargets      BriefingFeedDeliveryTarget[]
+  briefings            Briefing[]
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
 
-  @@unique([repositoryId])
-  @@index([workspaceId])
-  @@index([isActive])
+  @@unique([projectId, name])
+  @@index([projectId])
+  @@index([enabled])
 }
 
-model ProjectBriefingConfig {
-  id        String   @id @default(cuid())
-  projectId String   @unique
-  project   Project  @relation(fields: [projectId], references: [id])
-  enabled   Boolean  @default(false)
-  dailyHour Int      @default(22)
-  timezone  String   @default("Asia/Shanghai")
-  autoSend               Boolean   @default(false)
-  lastSchedulerSlot      String?
-  lastSchedulerRunAt     DateTime?
-  lastSchedulerMessage   String?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+model BriefingFeedRepository {
+  id           String       @id @default(cuid())
+  feedId       String
+  feed         BriefingFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
+  repositoryId String
+  repository   Repository   @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  createdAt    DateTime     @default(now())
+
+  @@unique([feedId, repositoryId])
+  @@index([repositoryId])
 }
 
-model ProjectCodeReviewConfig {
-  id                       String    @id @default(cuid())
-  projectId                String    @unique
-  project                  Project   @relation(fields: [projectId], references: [id])
-  enabled                  Boolean   @default(false)
-  dailyHour                Int       @default(22)
-  timezone                 String    @default("Asia/Shanghai")
-  autoSend                 Boolean   @default(false)
-  lastSchedulerSlot        String?
-  lastSchedulerRunAt       DateTime?
-  lastSchedulerMessage     String?
-  createdAt                DateTime  @default(now())
-  updatedAt                DateTime  @updatedAt
+model BriefingFeedDeliveryTarget {
+  id               String         @id @default(cuid())
+  feedId           String
+  feed             BriefingFeed   @relation(fields: [feedId], references: [id], onDelete: Cascade)
+  deliveryTargetId String
+  deliveryTarget   DeliveryTarget @relation(fields: [deliveryTargetId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+
+  @@unique([feedId, deliveryTargetId])
+  @@index([deliveryTargetId])
+}
+
+model CodeReviewFeed {
+  id                   String                          @id @default(cuid())
+  projectId            String
+  project              Project                         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name                 String
+  enabled              Boolean                         @default(false)
+  dailyHour            Int                             @default(22)
+  timezone             String                          @default("Asia/Shanghai")
+  autoSend             Boolean                         @default(false)
+  lastSchedulerSlot    String?
+  lastSchedulerRunAt   DateTime?
+  lastSchedulerMessage String?
+  repositories         CodeReviewFeedRepository[]
+  deliveryTargets      CodeReviewFeedDeliveryTarget[]
+  dailyCodeReviews     DailyCodeReview[]
+  createdAt            DateTime                        @default(now())
+  updatedAt            DateTime                        @updatedAt
+
+  @@unique([projectId, name])
+  @@index([projectId])
+  @@index([enabled])
+}
+
+model CodeReviewFeedRepository {
+  id           String         @id @default(cuid())
+  feedId       String
+  feed         CodeReviewFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
+  repositoryId String
+  repository   Repository     @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  createdAt    DateTime       @default(now())
+
+  @@unique([feedId, repositoryId])
+  @@index([repositoryId])
+}
+
+model CodeReviewFeedDeliveryTarget {
+  id               String         @id @default(cuid())
+  feedId           String
+  feed             CodeReviewFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
+  deliveryTargetId String
+  deliveryTarget   DeliveryTarget @relation(fields: [deliveryTargetId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+
+  @@unique([feedId, deliveryTargetId])
+  @@index([deliveryTargetId])
 }
 
 model DailyCodeReview {
-  id              String        @id @default(cuid())
+  id              String         @id @default(cuid())
+  feedId          String
+  feed            CodeReviewFeed @relation(fields: [feedId], references: [id], onDelete: Restrict)
   projectId       String
-  project         Project       @relation(fields: [projectId], references: [id])
+  project         Project        @relation(fields: [projectId], references: [id])
   workspaceId     String
-  workspace       Workspace     @relation(fields: [workspaceId], references: [id])
+  workspace       Workspace      @relation(fields: [workspaceId], references: [id])
   date            DateTime
   scopeKey        String
   scope           Json
-  status          String        @default("GENERATED")
+  status          String         @default("GENERATED")
   unitsJson       Json
   markdownContent String
   htmlContent     String
@@ -300,16 +351,18 @@ model DailyCodeReview {
   sentAt          DateTime?
   errorMessage    String?
   deliveryLogs    DeliveryLog[]
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
-  @@unique([projectId, scopeKey])
+  @@unique([feedId, date])
   @@index([projectId, date])
   @@index([workspaceId, date])
 }
 
 model Briefing {
   id              String        @id @default(cuid())
+  feedId          String
+  feed            BriefingFeed  @relation(fields: [feedId], references: [id], onDelete: Restrict)
   projectId       String
   project         Project       @relation(fields: [projectId], references: [id])
   workspaceId     String
@@ -331,7 +384,7 @@ model Briefing {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  @@unique([projectId, date, scopeKey])
+  @@unique([feedId, date, period])
   @@index([projectId, date])
   @@index([workspaceId, date])
   @@index([projectId, period, periodStart])
@@ -349,8 +402,10 @@ model DeliveryTarget {
   dingtalkWebhookUrl String?
   dingtalkSecret     String?
   isActive           Boolean       @default(true)
-  forBriefing        Boolean       @default(true)
-  forCodeReview      Boolean       @default(true)
+  forBriefing        Boolean                      @default(true)
+  forCodeReview      Boolean                      @default(true)
+  briefingFeeds      BriefingFeedDeliveryTarget[]
+  codeReviewFeeds    CodeReviewFeedDeliveryTarget[]
   deliveryLogs       DeliveryLog[]
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt

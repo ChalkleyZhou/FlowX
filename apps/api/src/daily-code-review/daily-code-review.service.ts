@@ -77,6 +77,7 @@ export class DailyCodeReviewService {
       where: { projectId },
       orderBy: { createdAt: 'desc' },
       include: {
+        feed: { select: { id: true, name: true } },
         deliveryLogs: {
           include: { deliveryTarget: true },
           orderBy: { createdAt: 'desc' },
@@ -103,55 +104,61 @@ export class DailyCodeReviewService {
     return review;
   }
 
-  async generateProjectDailyCodeReview(
-    projectId: string,
+  async generateFeedDailyCodeReview(
+    feedId: string,
     options: GenerateDailyCodeReviewOptions = {},
     authSession?: BriefingAuthSession,
     runtimeOptions?: GenerateDailyCodeReviewRuntimeOptions,
   ) {
-    const project = await this.getProjectForReview(projectId);
-    const config = await this.prisma.projectCodeReviewConfig.findUnique({
-      where: { projectId },
+    const feed = await this.prisma.codeReviewFeed.findUnique({
+      where: { id: feedId },
+      include: {
+        repositories: true,
+        project: {
+          include: {
+            workspace: {
+              include: {
+                repositories: { orderBy: { createdAt: 'asc' } },
+              },
+            },
+          },
+        },
+      },
     });
-    const cutoffHour = config?.dailyHour ?? DEFAULT_DAILY_HOUR;
+    if (!feed) {
+      throw new NotFoundException('代码审查不存在。');
+    }
+    const project = feed.project;
+    const projectId = project.id;
+    const cutoffHour = feed.dailyHour ?? DEFAULT_DAILY_HOUR;
     const date = options.date?.trim() || resolveBriefingDate(new Date(), cutoffHour);
     const window = briefingDateWindow(date, cutoffHour);
     const recordDate = dateAtBeijingMidnight(date);
 
-    const repositoryIds = project.workspace.repositories.map((repository) => repository.id).sort();
-    // Default scope is every repository in the workspace. CodeReviewSource rows with
-    // isActive=false are explicit opt-outs; missing/active rows do not limit inclusion.
-    const excludedSources = await this.prisma.codeReviewSource.findMany({
-      where: {
-        workspaceId: project.workspaceId,
-        repositoryId: { in: repositoryIds },
-        isActive: false,
-      },
-      orderBy: { createdAt: 'asc' },
-    });
-    const excludedRepoIds = excludedSources.map((source) => source.repositoryId).sort();
-    const excludedRepoIdSet = new Set(excludedRepoIds);
-    const allowedRepoIds = new Set(
-      repositoryIds.filter((repositoryId) => !excludedRepoIdSet.has(repositoryId)),
-    );
+    const selectedRepositoryIds = new Set(feed.repositories.map((row) => row.repositoryId));
+    const repositoryIds = project.workspace.repositories
+      .map((repository) => repository.id)
+      .filter((repositoryId) => selectedRepositoryIds.has(repositoryId))
+      .sort();
+    const allowedRepoIds = new Set(repositoryIds);
 
     const scopeBase = {
       date,
       rangeLabel: date,
       periodStart: window.start.toISOString(),
       periodEnd: window.end.toISOString(),
+      feedId,
       projectId,
       workspaceId: project.workspaceId,
       repositoryIds,
-      excludedRepositoryIds: excludedRepoIds,
       cutoffHour,
     };
 
-    if (repositoryIds.length === 0 || allowedRepoIds.size === 0) {
+    if (repositoryIds.length === 0) {
       const scope = { ...scopeBase, briefingSourceIds: [] as string[] };
       const scopeKey = stableJson(scope);
       const existing = await this.prisma.dailyCodeReview.findFirst({
-        where: { projectId, scopeKey },
+        where: { feedId, date: recordDate },
       });
       if (existing && !options.regenerate) {
         return existing;
@@ -159,9 +166,7 @@ export class DailyCodeReviewService {
 
       const payload = {
         scope: scope as Prisma.InputJsonValue,
-        ...this.buildEmptyCodeReviewSourcesPayload(project.name, date, {
-          reason: repositoryIds.length === 0 ? 'NO_REPOSITORIES' : 'ALL_EXCLUDED',
-        }),
+        ...this.buildEmptyCodeReviewSourcesPayload(project.name, date),
         ...(options.regenerate ? { sentAt: null } : {}),
       };
 
@@ -169,7 +174,7 @@ export class DailyCodeReviewService {
         return this.prisma.dailyCodeReview.update({ where: { id: existing.id }, data: payload });
       }
       return this.prisma.dailyCodeReview.create({
-        data: { projectId, workspaceId: project.workspaceId, date: recordDate, scopeKey, ...payload },
+        data: { feedId, projectId, workspaceId: project.workspaceId, date: recordDate, scopeKey, ...payload },
       });
     }
 
@@ -187,8 +192,8 @@ export class DailyCodeReviewService {
 
     const existing = await this.prisma.dailyCodeReview.findFirst({
       where: {
-        projectId,
-        scopeKey,
+        feedId,
+        date: recordDate,
       },
     });
     if (existing && !options.regenerate) {
@@ -263,6 +268,7 @@ export class DailyCodeReviewService {
           })
         : await this.prisma.dailyCodeReview.create({
             data: {
+              feedId,
               projectId,
               workspaceId: project.workspaceId,
               date: recordDate,
@@ -296,6 +302,7 @@ export class DailyCodeReviewService {
 
     return this.prisma.dailyCodeReview.create({
       data: {
+        feedId,
         projectId,
         workspaceId: project.workspaceId,
         date: recordDate,
@@ -305,15 +312,7 @@ export class DailyCodeReviewService {
     });
   }
 
-  /**
-   * Empty-run when the workspace has no repositories, or every repository was
-   * explicitly excluded via inactive CodeReviewSource rows.
-   */
-  private buildEmptyCodeReviewSourcesPayload(
-    projectName: string,
-    date: string,
-    options: { reason: 'NO_REPOSITORIES' | 'ALL_EXCLUDED' },
-  ) {
+  private buildEmptyCodeReviewSourcesPayload(projectName: string, date: string) {
     const units: DailyCodeReviewUnitResult[] = [];
     const overallStatus = 'SKIPPED_NO_CR_SOURCES';
     const markdownContent = renderDailyCodeReviewMarkdown({
@@ -330,10 +329,7 @@ export class DailyCodeReviewService {
       units,
       overallStatus,
     });
-    const errorMessage =
-      options.reason === 'NO_REPOSITORIES'
-        ? '工作区尚未登记任何代码仓库，无法进行代码审查。'
-        : '工作区仓库均已从代码审查范围中排除，本次为空跑。可在「代码审查数据源」中恢复纳入。';
+    const errorMessage = '这份代码审查没有选择仓库，无法进行代码审查。';
 
     return {
       status: overallStatus,
@@ -599,7 +595,10 @@ export class DailyCodeReviewService {
   async sendDailyCodeReview(reviewId: string) {
     const review = await this.prisma.dailyCodeReview.findUnique({
       where: { id: reviewId },
-      include: { project: { select: { name: true } } },
+      include: {
+        project: { select: { name: true } },
+        feed: { include: { deliveryTargets: true } },
+      },
     });
     if (!review) {
       throw new NotFoundException('每日代码审查记录不存在。');
@@ -612,6 +611,7 @@ export class DailyCodeReviewService {
       date: review.date,
       markdownContent: review.markdownContent,
       htmlContent: review.htmlContent,
+      deliveryTargetIds: review.feed.deliveryTargets.map((row) => row.deliveryTargetId),
     });
 
     return delivery;

@@ -10,7 +10,6 @@ import type {
   BriefingPeriod,
   BriefingSource,
   Bug,
-  CodeReviewSource,
   DailyCodeReview,
   DeliveryTarget,
   DingTalkUserSyncResult,
@@ -40,8 +39,7 @@ import type {
   PrototypeImport,
   PrototypeImportUpdate,
   Project,
-  ProjectBriefingConfig,
-  ProjectCodeReviewConfig,
+  ProjectFeed,
   ProjectVersionSummary,
   RequirementAssignment,
   RequirementChange,
@@ -435,31 +433,51 @@ export const api = {
     }),
   deleteBriefingSource: (id: string) =>
     request<{ success: true }>(`/briefing-sources/${id}`, { method: 'DELETE' }),
-  getProjectBriefingConfig: (projectId: string) =>
-    request<ProjectBriefingConfig>(`/projects/${projectId}/briefing-config`),
-  updateProjectBriefingConfig: (
+  listBriefingFeeds: (projectId: string) =>
+    request<ProjectFeed[]>(`/projects/${projectId}/briefing-feeds`),
+  createBriefingFeed: (
     projectId: string,
     payload: {
+      name: string;
       enabled?: boolean;
       dailyHour?: number;
       autoSend?: boolean;
+      repositoryIds?: string[];
+      deliveryTargetIds?: string[];
     },
   ) =>
-    request<ProjectBriefingConfig>(`/projects/${projectId}/briefing-config`, {
-      method: 'PUT',
+    request<ProjectFeed>(`/projects/${projectId}/briefing-feeds`, {
+      method: 'POST',
       body: JSON.stringify(payload),
     }),
+  updateBriefingFeed: (
+    id: string,
+    payload: {
+      name?: string;
+      enabled?: boolean;
+      dailyHour?: number;
+      autoSend?: boolean;
+      repositoryIds?: string[];
+      deliveryTargetIds?: string[];
+    },
+  ) =>
+    request<ProjectFeed>(`/briefing-feeds/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteBriefingFeed: (id: string) =>
+    request<{ success: true }>(`/briefing-feeds/${id}`, { method: 'DELETE' }),
   getProjectBriefings: (projectId: string) =>
     request<Briefing[]>(`/projects/${projectId}/briefings`),
-  generateProjectBriefing: (
-    projectId: string,
+  generateBriefingFeed: (
+    feedId: string,
     payload: {
       period?: BriefingPeriod;
       date?: string;
       regenerate?: boolean;
     },
   ) =>
-    request<Briefing>(`/projects/${projectId}/briefings/generate`, {
+    request<Briefing>(`/briefing-feeds/${feedId}/generate`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
@@ -470,14 +488,48 @@ export const api = {
     }),
   listProjectDailyCodeReviews: (projectId: string) =>
     request<DailyCodeReview[]>(`/projects/${projectId}/daily-code-reviews`),
-  generateProjectDailyCodeReview: (
+  listCodeReviewFeeds: (projectId: string) =>
+    request<ProjectFeed[]>(`/projects/${projectId}/code-review-feeds`),
+  createCodeReviewFeed: (
     projectId: string,
+    payload: {
+      name: string;
+      enabled?: boolean;
+      dailyHour?: number;
+      autoSend?: boolean;
+      repositoryIds?: string[];
+      deliveryTargetIds?: string[];
+    },
+  ) =>
+    request<ProjectFeed>(`/projects/${projectId}/code-review-feeds`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateCodeReviewFeed: (
+    id: string,
+    payload: {
+      name?: string;
+      enabled?: boolean;
+      dailyHour?: number;
+      autoSend?: boolean;
+      repositoryIds?: string[];
+      deliveryTargetIds?: string[];
+    },
+  ) =>
+    request<ProjectFeed>(`/code-review-feeds/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteCodeReviewFeed: (id: string) =>
+    request<{ success: true }>(`/code-review-feeds/${id}`, { method: 'DELETE' }),
+  generateCodeReviewFeed: (
+    feedId: string,
     payload: {
       date?: string;
       regenerate?: boolean;
     },
   ) =>
-    request<DailyCodeReview>(`/projects/${projectId}/daily-code-reviews/generate`, {
+    request<DailyCodeReview>(`/code-review-feeds/${feedId}/generate`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
@@ -486,36 +538,6 @@ export const api = {
     request<{ successCount: number; targetCount: number }>(`/daily-code-reviews/${id}/send`, {
       method: 'POST',
     }),
-  getProjectCodeReviewConfig: (projectId: string) =>
-    request<ProjectCodeReviewConfig>(`/projects/${projectId}/code-review-config`),
-  updateProjectCodeReviewConfig: (
-    projectId: string,
-    payload: Partial<
-      Pick<ProjectCodeReviewConfig, 'enabled' | 'dailyHour' | 'timezone' | 'autoSend'>
-    >,
-  ) =>
-    request<ProjectCodeReviewConfig>(`/projects/${projectId}/code-review-config`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    }),
-  getCodeReviewSources: (params?: { workspaceId?: string }) =>
-    request<CodeReviewSource[]>(`/code-review-sources${queryString(params)}`),
-  createCodeReviewSource: (payload: {
-    workspaceId: string;
-    repositoryId: string;
-    isActive?: boolean;
-  }) =>
-    request<CodeReviewSource>('/code-review-sources', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
-  updateCodeReviewSource: (id: string, payload: { isActive?: boolean }) =>
-    request<CodeReviewSource>(`/code-review-sources/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(payload),
-    }),
-  deleteCodeReviewSource: (id: string) =>
-    request<{ success: true }>(`/code-review-sources/${id}`, { method: 'DELETE' }),
   getDeliveryTargets: (params?: { workspaceId?: string; projectId?: string }) =>
     request<DeliveryTarget[]>(`/delivery-targets${queryString(params)}`),
   createDeliveryTarget: (payload: {

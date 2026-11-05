@@ -12,7 +12,8 @@ vi.mock('../api', () => ({
   api: {
     getProjects: vi.fn(),
     listProjectDailyCodeReviews: vi.fn(),
-    generateProjectDailyCodeReview: vi.fn(),
+    listCodeReviewFeeds: vi.fn(),
+    generateCodeReviewFeed: vi.fn(),
   },
 }));
 
@@ -34,6 +35,19 @@ describe('CodeReviewsPage', () => {
         workspace: { id: 'workspace-1', name: '研发平台', repositories: [] },
       },
     ]);
+    vi.mocked(api.listCodeReviewFeeds).mockResolvedValue([
+      {
+        id: 'feed-1',
+        projectId: 'project-1',
+        name: '默认',
+        enabled: true,
+        dailyHour: 22,
+        timezone: 'Asia/Shanghai',
+        autoSend: true,
+        repositoryIds: ['repo-1'],
+        deliveryTargetIds: [],
+      },
+    ]);
     vi.mocked(api.listProjectDailyCodeReviews).mockResolvedValue([
       {
         id: 'review-1',
@@ -52,7 +66,7 @@ describe('CodeReviewsPage', () => {
         updatedAt: '2026-06-03T00:10:00.000Z',
       },
     ]);
-    vi.mocked(api.generateProjectDailyCodeReview).mockResolvedValue({
+    vi.mocked(api.generateCodeReviewFeed).mockResolvedValue({
       id: 'review-2',
       projectId: 'project-1',
       workspaceId: 'workspace-1',
@@ -117,7 +131,7 @@ describe('CodeReviewsPage', () => {
       button?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    expect(api.generateProjectDailyCodeReview).toHaveBeenCalledWith('project-1', {
+    expect(api.generateCodeReviewFeed).toHaveBeenCalledWith('feed-1', {
       date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       regenerate: true,
     });
