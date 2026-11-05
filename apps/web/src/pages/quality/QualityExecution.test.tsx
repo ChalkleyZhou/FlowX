@@ -14,6 +14,9 @@ vi.mock('../../api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api')>()),
   api: {
     createLocalTestRun: vi.fn(),
+    createTestRun: vi.fn(),
+    getOrganizationMembers: vi.fn(),
+    reportTestResult: vi.fn(),
     getTestRun: vi.fn(),
     getQualityReports: vi.fn(),
     createQualityRunReport: vi.fn(),
@@ -29,6 +32,12 @@ vi.mock('../../api', async (importOriginal) => ({
 }));
 vi.mock('../../lib/flowx-local-bridge', () => ({ probeFlowxLocal: vi.fn(), launchFlowxLocal: vi.fn() }));
 vi.mock('../../components/ui/toast', () => ({ useToast: () => ({ error: vi.fn(), success: vi.fn() }) }));
+
+function setInputValue(element: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  setter?.call(element, value);
+  element.dispatchEvent(new Event('input', { bubbles: true }));
+}
 
 const run: TestRun = {
   id: 'run-1',
@@ -176,6 +185,65 @@ describe('质量执行与报告', () => {
         targets: [{ key: 'web', name: 'Web', required: true, expectedRevisions: [] }],
       }),
     );
+  });
+  it('人工执行轮次选择执行人并把执行人透传到每条用例', async () => {
+    const request = { id: 'request-1', testPlan: { snapshots: [run.cases![0].snapshot] } } as Parameters<
+      typeof QualityCreateRunDialog
+    >[0]['request'];
+    vi.mocked(api.getOrganizationMembers).mockResolvedValue([
+      { id: 'tester-1', displayName: '张三', status: 'ACTIVE' },
+    ]);
+    vi.mocked(api.createTestRun).mockResolvedValue({ ...run, executionMode: 'MANUAL' });
+    await act(async () =>
+      root.render(
+        <MemoryRouter>
+          <QualityCreateRunDialog open onOpenChange={vi.fn()} request={request} onCreated={vi.fn()} />
+        </MemoryRouter>,
+      ),
+    );
+    const mode = document.querySelector('select[aria-label="执行方式"]') as HTMLSelectElement;
+    await act(async () => {
+      mode.value = 'MANUAL';
+      mode.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+    });
+    const assignee = document.querySelector('select[aria-label="执行人"]') as HTMLSelectElement;
+    await act(async () => {
+      assignee.value = 'tester-1';
+      assignee.dispatchEvent(new Event('change', { bubbles: true }));
+      (document.querySelector('input[aria-label="登录恢复 适用 Web"]') as HTMLInputElement).click();
+    });
+    await act(async () => {
+      Array.from(document.querySelectorAll('button')).find((item) => item.textContent === '创建人工轮次')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.createTestRun).toHaveBeenCalledWith('request-1', {
+      name: '功能初测',
+      runType: 'INITIAL',
+      cases: [{ snapshotId: 'snapshot-1', assignedToUserId: 'tester-1' }],
+    });
+  });
+
+  it('人工执行详情可以回传逐例结果并刷新轮次', async () => {
+    const manualRun: TestRun = {
+      ...run,
+      executionMode: 'MANUAL',
+      cases: [{ ...run.cases![0], result: null }],
+      executions: [],
+    };
+    vi.mocked(api.getTestRun).mockResolvedValue(manualRun);
+    vi.mocked(api.reportTestResult).mockResolvedValue({ result: { id: 'result-2', result: 'PASSED' }, runStatus: 'PASSED', testRequestStatus: 'PASSED' });
+    await renderRun();
+    await act(async () => {
+      (document.querySelector('select[aria-label="测试结果 登录恢复"]') as HTMLSelectElement).value = 'PASSED';
+      document.querySelector('select[aria-label="测试结果 登录恢复"]')?.dispatchEvent(new Event('change', { bubbles: true }));
+      setInputValue(document.querySelector('input[aria-label="实际结果 登录恢复"]') as HTMLInputElement, '已回到原页面');
+      Array.from(document.querySelectorAll('button')).find((item) => item.textContent === '保存结果：登录恢复')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.reportTestResult).toHaveBeenCalledWith('row-1', expect.objectContaining({ result: 'PASSED', actualResult: '已回到原页面' }));
   });
   it('逐例展示预期、实际、证据、实际版本与执行环境，并使用认证证据请求', async () => {
     await renderRun();

@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog';
 import { useToast } from '../../components/ui/toast';
-import type { TestRequest, TestRun } from '../../types';
+import type { OrganizationMember, TestRequest, TestRun } from '../../types';
 
 const targets = [
   { key: 'web', name: 'Web' },
@@ -38,12 +38,18 @@ export function QualityCreateRunDialog({
   const toast = useToast();
   const [name, setName] = useState('功能初测');
   const [mappings, setMappings] = useState<Record<string, string[]>>({});
+  const [executionMode, setExecutionMode] = useState<'LOCAL' | 'MANUAL'>('LOCAL');
+  const [assigneeId, setAssigneeId] = useState('');
+  const [members, setMembers] = useState<OrganizationMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const snapshots = (request.testPlan?.snapshots ?? []).filter((snapshot) => snapshot.kind !== 'SMOKE');
   useEffect(() => {
     if (!open) return;
     setName(sourceBugId ? '缺陷修复回归' : '功能初测');
+    setExecutionMode('LOCAL');
+    setAssigneeId('');
     const initial =
       initialCases ??
       snapshots.map((snapshot) => ({ snapshotId: snapshot.id, targetKeys: snapshot.targetKeys ?? [] }));
@@ -53,6 +59,17 @@ export function QualityCreateRunDialog({
     setMappings(next);
     setError('');
   }, [open, sourceBugId, request.id]);
+
+  useEffect(() => {
+    if (!open || executionMode !== 'MANUAL') return;
+    let active = true;
+    setMembersLoading(true);
+    void api.getOrganizationMembers()
+      .then((items) => { if (active) setMembers(items.filter((item) => item.status !== 'DISABLED')); })
+      .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : '加载执行人失败'); })
+      .finally(() => { if (active) setMembersLoading(false); });
+    return () => { active = false; };
+  }, [executionMode, open]);
   const cases = Object.entries(mappings)
     .filter(([, keys]) => keys.length)
     .map(([snapshotId, targetKeys]) => ({ snapshotId, targetKeys }));
@@ -61,19 +78,30 @@ export function QualityCreateRunDialog({
       setError('请明确选择至少一个用例与适用端。空适用端表示未确认，不会自动覆盖全部端。');
       return;
     }
+    if (executionMode === 'MANUAL' && !assigneeId) {
+      setError('请选择本轮执行人。');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
-      const result = await api.createLocalTestRun(request.id, {
-        name: name.trim() || (sourceBugId ? '缺陷修复回归' : '功能初测'),
-        runType: sourceBugId ? 'REGRESSION' : 'INITIAL',
-        ...(sourceBugId ? { sourceBugId } : {}),
-        targets: targets
-          .filter((target) => cases.some((item) => item.targetKeys.includes(target.key)))
-          .map((target) => ({ ...target, required: true, expectedRevisions: [] })),
-        cases,
-      });
-      toast.success('本地测试轮次已创建');
+      const result = executionMode === 'MANUAL'
+        ? await api.createTestRun(request.id, {
+          name: name.trim() || (sourceBugId ? '缺陷修复回归' : '功能初测'),
+          runType: sourceBugId ? 'REGRESSION' : 'INITIAL',
+          ...(sourceBugId ? { sourceBugId } : {}),
+          cases: cases.map((item) => ({ snapshotId: item.snapshotId, assignedToUserId: assigneeId })),
+        })
+        : await api.createLocalTestRun(request.id, {
+          name: name.trim() || (sourceBugId ? '缺陷修复回归' : '功能初测'),
+          runType: sourceBugId ? 'REGRESSION' : 'INITIAL',
+          ...(sourceBugId ? { sourceBugId } : {}),
+          targets: targets
+            .filter((target) => cases.some((item) => item.targetKeys.includes(target.key)))
+            .map((target) => ({ ...target, required: true, expectedRevisions: [] })),
+          cases,
+        });
+      toast.success(executionMode === 'MANUAL' ? '人工测试轮次已创建' : '本地测试轮次已创建');
       onOpenChange(false);
       await onCreated(result);
     } catch (cause) {
@@ -103,6 +131,33 @@ export function QualityCreateRunDialog({
           轮次名称
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </label>
+        <label className="grid gap-2 text-sm">
+          执行方式
+          <select
+            aria-label="执行方式"
+            className="rounded-md border border-border bg-background px-3 py-2"
+            value={executionMode}
+            onChange={(event) => setExecutionMode(event.target.value as 'LOCAL' | 'MANUAL')}
+          >
+            <option value="LOCAL">本地 Agent 执行</option>
+            <option value="MANUAL">人工执行</option>
+          </select>
+        </label>
+        {executionMode === 'MANUAL' ? (
+          <label className="grid gap-2 text-sm">
+            执行人
+            <select
+              aria-label="执行人"
+              className="rounded-md border border-border bg-background px-3 py-2"
+              value={assigneeId}
+              onChange={(event) => setAssigneeId(event.target.value)}
+              disabled={membersLoading}
+            >
+              <option value="">{membersLoading ? '加载执行人...' : '选择执行人'}</option>
+              {members.map((member) => <option key={member.id} value={member.id}>{member.displayName}</option>)}
+            </select>
+          </label>
+        ) : null}
         <div className="max-h-[50vh] overflow-auto rounded border">
           <table className="w-full min-w-[580px] text-sm">
             <thead className="bg-muted">
@@ -162,7 +217,7 @@ export function QualityCreateRunDialog({
             取消
           </Button>
           <Button disabled={busy || !name.trim()} onClick={() => void submit()}>
-            创建本地轮次
+            {executionMode === 'MANUAL' ? '创建人工轮次' : '创建本地轮次'}
           </Button>
         </DialogFooter>
       </DialogContent>

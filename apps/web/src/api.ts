@@ -55,6 +55,7 @@ import type {
   TestCaseModule,
   TestCasePage,
   QualityCaseSelection,
+  CreateManualTestRunInput,
   CreateLocalTestRunInput,
   QualityTestReport,
   QualityReportInput,
@@ -1295,6 +1296,18 @@ export const api = {
     request<TestDesign>(`/quality/test-designs/${id}/candidates`, { method: 'POST', body: JSON.stringify(payload) }),
   getTestRun: (id: string) => request<TestRun>(`/quality/test-runs/${id}`),
   getQualityCapabilities: () => request<{ capabilities: string[] }>('/quality/capabilities'),
+  createTestRun: (requestId: string, payload: CreateManualTestRunInput) =>
+    request<TestRun>(`/quality/test-requests/${requestId}/runs`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  reportTestResult: (
+    testRunCaseId: string,
+    payload: { result: 'PASSED' | 'FAILED' | 'BLOCKED' | 'SKIPPED'; actualResult?: string; remark?: string },
+  ) => request<{ result: NonNullable<TestRun['cases']>[number]['result']; runStatus: string; testRequestStatus: string }>(
+    `/quality/test-run-cases/${testRunCaseId}/result`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  ),
   createLocalTestRun: (requestId: string, payload: CreateLocalTestRunInput) =>
     request<TestRun>(`/quality/test-requests/${requestId}/local-test-runs`, { method: 'POST', body: JSON.stringify(payload) }),
   issueQualityLocalLaunchTicket: (id: string, payload: { targetId: string; caseIds?: string[]; preferredIde?: 'cursor' | 'codex' | 'workbuddy' }) =>

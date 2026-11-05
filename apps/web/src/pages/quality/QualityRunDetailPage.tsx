@@ -46,6 +46,7 @@ function QualityRunDetailContent({ id }: { id: string }) {
   const [regressionBugId, setRegressionBugId] = useState('');
   const [regressionRequest, setRegressionRequest] =
     useState<Awaited<ReturnType<typeof api.getTestRequest>>>();
+  const [manualDrafts, setManualDrafts] = useState<Record<string, { result: string; actualResult: string; remark: string }>>({});
   const request = run?.testPlan?.testRequest;
   useAdoptProject(request?.projectId);
   async function action(work: () => Promise<unknown>, success?: string) {
@@ -106,6 +107,26 @@ function QualityRunDetailContent({ id }: { id: string }) {
       setRegressionRequest(await api.getTestRequest(request.id));
       setRegressionBugId(sourceBugId);
     });
+  }
+
+  async function saveManualResult(row: NonNullable<TestRun['cases']>[number]) {
+    const draft = manualDrafts[row.id] ?? {
+      result: row.result?.result ?? '',
+      actualResult: row.result?.actualResult ?? '',
+      remark: row.result?.remark ?? '',
+    };
+    if (!['PASSED', 'FAILED', 'BLOCKED', 'SKIPPED'].includes(draft.result)) {
+      toast.error('请选择本条用例结论');
+      return;
+    }
+    await action(
+      () => api.reportTestResult(row.id, {
+        result: draft.result as 'PASSED' | 'FAILED' | 'BLOCKED' | 'SKIPPED',
+        actualResult: draft.actualResult.trim() || undefined,
+        remark: draft.remark.trim() || undefined,
+      }),
+      '测试结果已保存',
+    );
   }
   if (!run && resource.loading) return <LoadingState />;
   if (!run)
@@ -255,6 +276,63 @@ function QualityRunDetailContent({ id }: { id: string }) {
               </p>
             </div>
             {row.result?.remark ? <p className="text-sm">备注：{row.result.remark}</p> : null}
+            {!local && run.status === 'ACTIVE' ? (
+              <div className="grid gap-2 rounded-md border border-border bg-muted/20 p-3 md:grid-cols-[180px_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+                <label className="grid gap-1 text-xs text-muted-foreground">
+                  结论
+                  <select
+                    aria-label={`测试结果 ${row.snapshot.title}`}
+                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                    value={manualDrafts[row.id]?.result ?? row.result?.result ?? ''}
+                    onChange={(event) => setManualDrafts((current) => ({
+                      ...current,
+                      [row.id]: {
+                        result: event.target.value,
+                        actualResult: current[row.id]?.actualResult ?? row.result?.actualResult ?? '',
+                        remark: current[row.id]?.remark ?? row.result?.remark ?? '',
+                      },
+                    }))}
+                  >
+                    <option value="">选择结果</option>
+                    <option value="PASSED">通过</option>
+                    <option value="FAILED">失败</option>
+                    <option value="BLOCKED">阻塞</option>
+                    <option value="SKIPPED">跳过</option>
+                  </select>
+                </label>
+                <label className="grid gap-1 text-xs text-muted-foreground">
+                  实际结果
+                  <Input
+                    aria-label={`实际结果 ${row.snapshot.title}`}
+                    value={manualDrafts[row.id]?.actualResult ?? row.result?.actualResult ?? ''}
+                    onChange={(event) => setManualDrafts((current) => ({
+                      ...current,
+                      [row.id]: {
+                        result: current[row.id]?.result ?? row.result?.result ?? '',
+                        actualResult: event.target.value,
+                        remark: current[row.id]?.remark ?? row.result?.remark ?? '',
+                      },
+                    }))}
+                  />
+                </label>
+                <label className="grid gap-1 text-xs text-muted-foreground">
+                  备注
+                  <Input
+                    aria-label={`结果备注 ${row.snapshot.title}`}
+                    value={manualDrafts[row.id]?.remark ?? row.result?.remark ?? ''}
+                    onChange={(event) => setManualDrafts((current) => ({
+                      ...current,
+                      [row.id]: {
+                        result: current[row.id]?.result ?? row.result?.result ?? '',
+                        actualResult: current[row.id]?.actualResult ?? row.result?.actualResult ?? '',
+                        remark: event.target.value,
+                      },
+                    }))}
+                  />
+                </label>
+                <Button size="sm" disabled={busy} onClick={() => void saveManualResult(row)}>保存结果：{row.snapshot.title}</Button>
+              </div>
+            ) : null}
             <div className="flex flex-wrap gap-2">
               {row.result?.evidence?.artifactIds?.map((artifactId, index) => (
                 <QualityArtifactButton key={artifactId} artifactId={artifactId} name={`证据 ${index + 1}`}>

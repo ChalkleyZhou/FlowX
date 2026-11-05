@@ -251,6 +251,7 @@ describe('Quality pages', () => {
     await act(async () => root?.render(<MemoryRouter initialEntries={['/quality/test-requests/request-1?tab=runs']}><Routes><Route path="/quality/test-requests/:id" element={<QualityRequestDetailPage />} /></Routes></MemoryRouter>));
     expect(Array.from(container.querySelectorAll('[role="tab"]')).map(item => item.textContent)).toEqual(['概览', '测试范围', '执行轮次', '缺陷', '测试报告']);
     expect(container.querySelector('a[href="/quality/test-runs/run-1"]')?.textContent).toContain('缺陷修复回归');
+    expect(container.textContent).toContain('执行与报告');
   });
   it('shows test requests as an independent page without content tabs', async () => {
     await renderPage('/quality/test-requests?projectId=project-1', <QualityRequestsPage />);

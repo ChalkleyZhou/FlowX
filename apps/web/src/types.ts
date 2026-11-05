@@ -812,6 +812,13 @@ export interface CreateLocalTestRunInput {
   cases: Array<{ snapshotId: string; targetKeys: string[] }>;
 }
 
+export interface CreateManualTestRunInput {
+  name: string;
+  runType: 'INITIAL' | 'REGRESSION';
+  sourceBugId?: string;
+  cases: Array<{ snapshotId: string; assignedToUserId?: string }>;
+}
+
 export interface QualityReportSummary {
   total: number; passed: number; failed: number; blocked: number; skipped: number; pending: number;
   completionRate: number | null; passRate: number | null;

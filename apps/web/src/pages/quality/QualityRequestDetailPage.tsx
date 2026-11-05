@@ -209,6 +209,23 @@ function QualityRequestDetailContent({ id }: { id: string }) {
   const canCreateFormal = request.testPlan?.status === 'READY' && request.scopeGenerationStatus === 'COMPLETED'
     && ['READY', 'IN_TEST', 'PASSED', 'FAILED', 'BLOCKED'].includes(request.status)
     && request.testPlan.snapshots.some(snapshot => snapshot.kind !== 'SMOKE');
+  const formalRuns = (formal.data ?? request.testPlan?.runs ?? []).filter(run => run.runType !== 'LOCAL_SMOKE');
+  const activeFormal = formalRuns.some(run => run.status === 'ACTIVE');
+  const flowStep = request.scopeGenerationStatus !== 'COMPLETED'
+    ? 0
+    : request.status === 'DRAFT'
+      ? 1
+      : !formalRuns.length
+        ? 2
+        : activeFormal
+          ? 3
+          : 4;
+  const flowSteps = [
+    { label: '准备测试范围', detail: request.scopeGenerationStatus === 'COMPLETED' ? '测试设计已确认' : '选择并处理测试用例' },
+    { label: '冻结测试范围', detail: request.status === 'DRAFT' ? '确认快照和测试口径' : '范围已冻结' },
+    { label: '设置执行', detail: formalRuns.length ? `${formalRuns.length} 个执行轮次` : '选择执行方式和执行人' },
+    { label: '执行与报告', detail: activeFormal ? '执行中，等待逐例结果' : formalRuns.length ? '可查看执行结果和报告' : '完成执行后生成报告' },
+  ];
 
   return (
     <>
@@ -234,6 +251,30 @@ function QualityRequestDetailContent({ id }: { id: string }) {
           </>
         )}
       />
+
+      <section aria-label="测试任务流程" className="rounded-md border border-border bg-card p-4 shadow-none">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">测试任务流程</h2>
+            <p className="mt-1 text-sm text-muted-foreground">围绕同一条需求完成范围冻结、执行分配、结果回传和报告归档。</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {flowStep === 0 && request.testDesignId ? <Button size="sm" asChild><Link to={`/quality/test-designs/${request.testDesignId}`}>准备测试范围</Link></Button> : null}
+            {flowStep === 1 ? <Button size="sm" disabled={preparing || !request.testDesignId} onClick={() => void prepare()}>冻结测试范围</Button> : null}
+            {flowStep === 2 ? <Button size="sm" disabled={!canCreateFormal} onClick={() => setFormalDialog(true)}>设置执行</Button> : null}
+            {flowStep === 3 ? <Button size="sm" variant="outline" asChild><Link to={`/quality/test-runs/${formalRuns.find(run => run.status === 'ACTIVE')?.id ?? formalRuns[0]?.id}`}>进入执行详情：{formalRuns.find(run => run.status === 'ACTIVE')?.name ?? formalRuns[0]?.name}</Link></Button> : null}
+            {flowStep === 4 ? <Button size="sm" variant="outline" onClick={() => setParams(current => { const next = new URLSearchParams(current); next.set('tab', 'reports'); return next; }, { replace: true })}>查看测试报告</Button> : null}
+          </div>
+        </div>
+        <ol className="mt-4 grid gap-2 md:grid-cols-4">
+          {flowSteps.map((step, index) => (
+            <li key={step.label} className={`rounded-md border p-3 ${index <= flowStep ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/20'}`}>
+              <div className="flex items-center gap-2 text-sm font-medium"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs">{index + 1}</span>{step.label}</div>
+              <p className="mt-2 text-xs text-muted-foreground">{step.detail}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
 
       <Tabs value={['overview', 'scope', 'runs', 'bugs', 'reports'].includes(tab) ? tab : 'overview'} onValueChange={value => setParams(current => { const next = new URLSearchParams(current); next.set('tab', value); return next; }, { replace: true })}>
         <TabsList aria-label="提测详情页签"><TabsTrigger value="overview">概览</TabsTrigger><TabsTrigger value="scope">测试范围</TabsTrigger><TabsTrigger value="runs">执行轮次</TabsTrigger><TabsTrigger value="bugs">缺陷</TabsTrigger><TabsTrigger value="reports">测试报告</TabsTrigger></TabsList>
