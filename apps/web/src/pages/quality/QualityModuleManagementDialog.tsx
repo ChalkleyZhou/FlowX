@@ -30,12 +30,14 @@ export function QualityModuleManagementDialog({
   onOpenChange,
   libraries,
   defaultLibraryId,
+  defaultParentId,
   onChanged,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   libraries: TestCaseLibrary[];
   defaultLibraryId?: string;
+  defaultParentId?: string;
   onChanged: () => Promise<void>;
 }) {
   const toast = useToast();
@@ -55,6 +57,13 @@ export function QualityModuleManagementDialog({
       : libraries[0]?.id ?? '';
     setLibraryId((current) => libraries.some((item) => item.id === current) ? current : preferredId);
   }, [defaultLibraryId, libraries, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setEditingId(null);
+    setName('');
+    setParentId(defaultParentId && defaultLibraryId ? defaultParentId : ROOT_MODULE);
+  }, [defaultLibraryId, defaultParentId, open]);
 
   useEffect(() => {
     if (!open || !libraryId) {

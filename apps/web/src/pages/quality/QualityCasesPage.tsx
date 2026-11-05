@@ -65,6 +65,7 @@ export function QualityCasesPage() {
   const [editingCase, setEditingCase] = useState<TestCaseDefinition | null>(null);
   const [deletingCaseId, setDeletingCaseId] = useState<string | null>(null);
   const [caseCreateContext, setCaseCreateContext] = useState<{ libraryId?: string; moduleId?: string }>({});
+  const [moduleCreateContext, setModuleCreateContext] = useState<{ libraryId?: string; parentId?: string }>({});
 
   const scope = useProjectScopeOptional();
   const currentProjectId = useScopedProjectId();
@@ -240,10 +241,10 @@ export function QualityCasesPage() {
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7 shrink-0"
-                aria-label={`在模块“${module.name}”中新建用例`}
+                aria-label={`在模块“${module.name}”下添加子模块`}
                 onClick={() => {
-                  setCaseCreateContext({ libraryId: targetLibraryId, moduleId: module.id });
-                  setCaseDialogOpen(true);
+                  setModuleCreateContext({ libraryId: targetLibraryId, parentId: module.id });
+                  setModuleDialogOpen(true);
                 }}
               >
                 <Plus aria-hidden="true" className="h-3.5 w-3.5" />
@@ -346,7 +347,14 @@ export function QualityCasesPage() {
                   <Button variant="outline" disabled={!workspaceId} onClick={() => setLibraryDialogOpen(true)}>
                     <Plus aria-hidden="true" className="h-4 w-4" />新建用例库
                   </Button>
-                  <Button variant="outline" disabled={!libraries.length} onClick={() => setModuleDialogOpen(true)}>
+                  <Button
+                    variant="outline"
+                    disabled={!libraries.length}
+                    onClick={() => {
+                      setModuleCreateContext(libraryId === ALL ? {} : { libraryId });
+                      setModuleDialogOpen(true);
+                    }}
+                  >
                     <FolderTree aria-hidden="true" className="h-4 w-4" />模块管理
                   </Button>
                   <Button variant="outline" disabled={!libraries.length} onClick={() => setImportDialogOpen(true)}>
@@ -355,7 +363,10 @@ export function QualityCasesPage() {
                   <Button
                     disabled={!libraries.length}
                     onClick={() => {
-                      setCaseCreateContext(libraryId === ALL ? {} : { libraryId });
+                      setCaseCreateContext(libraryId === ALL ? {} : {
+                        libraryId,
+                        ...(moduleId === ALL ? {} : { moduleId }),
+                      });
                       setCaseDialogOpen(true);
                     }}
                   >
@@ -427,6 +438,19 @@ export function QualityCasesPage() {
                             >
                               <span className="flex items-center gap-2"><FolderOpen aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="truncate">{library.name}</span></span>
                             </button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 shrink-0"
+                              aria-label={`在用例库“${library.name}”中添加模块`}
+                              onClick={() => {
+                                setModuleCreateContext({ libraryId: library.id });
+                                setModuleDialogOpen(true);
+                              }}
+                            >
+                              <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+                            </Button>
                           </div>
                           {expanded ? (
                             <div className="ml-7 mt-1">
@@ -437,6 +461,7 @@ export function QualityCasesPage() {
                                   <p className="text-xs text-muted-foreground">暂无模块</p>
                                   <Button type="button" variant="ghost" className="h-auto p-0 text-xs text-primary" onClick={() => {
                                     selectTreeNode(library.id);
+                                    setModuleCreateContext({ libraryId: library.id });
                                     setModuleDialogOpen(true);
                                   }}>管理模块</Button>
                                 </div>
@@ -665,9 +690,13 @@ export function QualityCasesPage() {
       />
       <QualityModuleManagementDialog
         open={moduleDialogOpen}
-        onOpenChange={setModuleDialogOpen}
+        onOpenChange={(open) => {
+          setModuleDialogOpen(open);
+          if (!open) setModuleCreateContext({});
+        }}
         libraries={libraries}
-        defaultLibraryId={libraryId === ALL ? undefined : libraryId}
+        defaultLibraryId={moduleCreateContext.libraryId ?? (libraryId === ALL ? undefined : libraryId)}
+        defaultParentId={moduleCreateContext.parentId}
         onChanged={() => refreshList(true)}
       />
     </>

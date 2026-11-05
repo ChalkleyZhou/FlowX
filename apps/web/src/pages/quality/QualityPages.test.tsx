@@ -487,20 +487,57 @@ describe('Quality pages', () => {
     }));
   });
 
-  it('从模块节点快速新建用例时预填所属用例库和模块', async () => {
+  it('从模块节点的加号打开模块管理并预填所属父模块', async () => {
     await renderPage(
       '/quality/test-cases?workspaceId=workspace-1&libraryId=library-1',
       <QualityCasesPage />,
     );
 
-    const quickCreate = container.querySelector(
-      'button[aria-label="在模块“认证”中新建用例"]',
+    const addChildModule = container.querySelector(
+      'button[aria-label="在模块“认证”下添加子模块"]',
     ) as HTMLButtonElement | null;
-    await act(async () => quickCreate?.click());
+    await act(async () => {
+      addChildModule?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
-    expect(document.body.textContent).toContain('新建测试用例');
-    expect(document.body.querySelector('[aria-label="用例库"]')?.textContent).toContain('核心回归库');
-    expect(document.body.querySelector('[aria-label="模块"]')?.textContent).toContain('认证');
+    expect(document.body.textContent).toContain('模块管理');
+    expect(document.body.querySelector('[aria-label="上级模块"]')?.textContent).toContain('认证');
+
+    const nameInput = document.body.querySelector('input[aria-label="模块名称"]') as HTMLInputElement;
+    await act(async () => setInputValue(nameInput, '登录校验'));
+    const addButton = Array.from(document.body.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '添加模块',
+    );
+    await act(async () => {
+      addButton?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.createTestCaseModule).toHaveBeenCalledWith('library-1', {
+      name: '登录校验',
+      parentId: 'module-1',
+    });
+  });
+
+  it('从用例库节点的加号新增一级模块', async () => {
+    await renderPage(
+      '/quality/test-cases?workspaceId=workspace-1&libraryId=library-1',
+      <QualityCasesPage />,
+    );
+
+    const addModule = container.querySelector(
+      'button[aria-label="在用例库“核心回归库”中添加模块"]',
+    ) as HTMLButtonElement | null;
+    await act(async () => {
+      addModule?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(document.body.textContent).toContain('模块管理');
+    expect(document.body.querySelector('[aria-label="上级模块"]')?.textContent).toContain('一级模块');
   });
 
   it('模块级新建成功后刷新当前库和模块的用例列表', async () => {
@@ -510,7 +547,9 @@ describe('Quality pages', () => {
     );
 
     await act(async () => {
-      (container.querySelector('button[aria-label="在模块“认证”中新建用例"]') as HTMLButtonElement | null)?.click();
+      Array.from(container.querySelectorAll('button')).find(
+        (button) => button.textContent?.trim() === '新建用例',
+      )?.click();
     });
     const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
     const fields = dialog.querySelectorAll('input');
