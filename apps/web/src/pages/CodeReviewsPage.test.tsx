@@ -99,6 +99,8 @@ describe('CodeReviewsPage', () => {
     expect(api.getProjects).toHaveBeenCalled();
     expect(api.listProjectDailyCodeReviews).toHaveBeenCalledWith('project-1');
     expect(document.body.textContent).toContain('代码审查');
+    expect(document.body.textContent).not.toContain('项目数');
+    expect(document.body.textContent).toContain('已发送');
     expect(document.body.textContent).toContain('FlowX');
     expect(document.body.textContent).toContain('2026-06-03');
   });

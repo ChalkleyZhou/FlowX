@@ -162,8 +162,8 @@ export function BriefingsPage() {
       />
 
       <div className="grid gap-5 md:grid-cols-2">
-        <MetricCard label="项目数" value={projects.length} />
-        <MetricCard label="当前简报" value={briefings.length} />
+        <MetricCard label="当前简报" value={selectedProjectId ? briefings.length : 0} />
+        <MetricCard label="已发送" value={selectedProjectId ? briefings.filter((item) => item.sentAt).length : 0} />
       </div>
 
       <Card className="rounded-md border border-border bg-card">

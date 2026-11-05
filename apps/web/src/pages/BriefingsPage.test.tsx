@@ -82,6 +82,8 @@ describe('BriefingsPage', () => {
 
     expect(document.body.textContent).toContain('项目简报');
     expect(document.body.textContent).toContain('FlowX');
+    expect(document.body.textContent).not.toContain('项目数');
+    expect(document.body.textContent).toContain('已发送');
     expect(document.body.textContent).not.toContain('Code Review');
 
     const button = Array.from(document.querySelectorAll('button')).find((item) =>
