@@ -62,10 +62,10 @@ describe('BriefingsPage', () => {
     vi.clearAllMocks();
   });
 
-  async function renderPage() {
+  async function renderPage(path = '/briefings?projectId=project-1') {
     await act(async () => {
       root?.render(
-        <MemoryRouter>
+        <MemoryRouter initialEntries={[path]}>
           <ToastProvider>
             <BriefingsPage />
           </ToastProvider>
@@ -162,10 +162,10 @@ describe('BriefingsPage', () => {
     ]);
     window.localStorage.setItem(
       'flowx-briefings-page-preferences',
-      JSON.stringify({ projectId: 'project-2', period: 'WEEKLY' }),
+      JSON.stringify({ period: 'WEEKLY' }),
     );
 
-    await renderPage();
+    await renderPage('/briefings?projectId=project-2');
 
     expect(api.getProjectBriefings).toHaveBeenCalledWith('project-2');
     expect(document.body.textContent).toContain('Portal');

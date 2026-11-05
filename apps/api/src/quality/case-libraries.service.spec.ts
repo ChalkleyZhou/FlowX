@@ -44,6 +44,29 @@ describe('CaseLibrariesService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('lists only the selected project library when ownership is project', async () => {
+    const { service, prisma } = createService();
+    prisma.project.findFirst.mockResolvedValue({ id: 'project-1' });
+    prisma.testCaseLibrary.findMany.mockResolvedValue([]);
+    prisma.testCaseDefinition.findMany.mockResolvedValue([]);
+
+    await service.listLibraries({ workspaceId: 'workspace-1', projectId: 'project-1', ownership: 'project' });
+    await service.listCases({ workspaceId: 'workspace-1', projectId: 'project-1', ownership: 'project' });
+
+    expect(prisma.testCaseLibrary.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ projectId: 'project-1' }),
+      }),
+    );
+    expect(prisma.testCaseDefinition.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          library: { workspaceId: 'workspace-1', projectId: 'project-1' },
+        }),
+      }),
+    );
+  });
+
   it('lists workspace shared cases together with cases from the selected project', async () => {
     const { service, prisma } = createService();
     prisma.project.findFirst.mockResolvedValue({ id: 'project-1' });

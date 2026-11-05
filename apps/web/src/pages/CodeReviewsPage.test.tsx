@@ -81,7 +81,7 @@ describe('CodeReviewsPage', () => {
   async function renderPage() {
     await act(async () => {
       root?.render(
-        <MemoryRouter>
+        <MemoryRouter initialEntries={['/code-reviews?projectId=project-1']}>
           <ToastProvider>
             <CodeReviewsPage />
           </ToastProvider>

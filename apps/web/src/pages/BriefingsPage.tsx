@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
+import { useScopedProjectId } from '../project-scope-context';
 import { EmptyState } from '../components/EmptyState';
+import { ProjectRequiredState } from '../components/ProjectRequiredState';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
 import { SectionHeader } from '../components/SectionHeader';
@@ -48,11 +50,10 @@ function briefingRangeLabel(briefing: Briefing) {
 }
 
 export function BriefingsPage() {
+  const [searchParams] = useSearchParams();
+  const selectedProjectId = useScopedProjectId();
   const [projects, setProjects] = useState<Project[]>([]);
   const [briefings, setBriefings] = useState<Briefing[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState(
-    () => readBriefingsPagePreferences().projectId ?? '',
-  );
   const [period, setPeriod] = useState<BriefingPeriod>(
     () => readBriefingsPagePreferences().period ?? 'DAILY',
   );
@@ -65,17 +66,7 @@ export function BriefingsPage() {
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
 
   async function loadProjects() {
-    const projectList = await api.getProjects();
-    setProjects(projectList);
-    const persistedProjectId = selectedProjectId;
-    const nextProjectId = projectList.some((project) => project.id === persistedProjectId)
-      ? persistedProjectId
-      : projectList[0]?.id || '';
-    setSelectedProjectId(nextProjectId);
-    if (nextProjectId) {
-      writeBriefingsPagePreferences({ projectId: nextProjectId });
-      setBriefings(await api.getProjectBriefings(nextProjectId));
-    }
+    setProjects(await api.getProjects());
   }
 
   async function refresh(projectId = selectedProjectId, options?: { silent?: boolean }) {
@@ -97,11 +88,16 @@ export function BriefingsPage() {
   }
 
   useEffect(() => {
-    setLoading(true);
-    loadProjects()
-      .catch((error) => toast.error(error instanceof Error ? error.message : '加载项目失败'))
-      .finally(() => setLoading(false));
+    loadProjects().catch((error) => toast.error(error instanceof Error ? error.message : '加载项目失败'));
   }, []);
+
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setBriefings([]);
+      return;
+    }
+    void refresh(selectedProjectId);
+  }, [selectedProjectId]);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -178,26 +174,8 @@ export function BriefingsPage() {
           <div className="rounded-md border border-border bg-muted/70 p-3">
             <div className="flex flex-wrap items-end gap-3">
               <div className="flex min-w-[220px] flex-1 flex-col gap-1.5 sm:max-w-xs">
-                <label className="text-xs font-medium text-muted-foreground">项目</label>
-                <Select
-                  value={selectedProjectId || ''}
-                  onValueChange={(value) => {
-                    setSelectedProjectId(value);
-                    writeBriefingsPagePreferences({ projectId: value });
-                    void refresh(value);
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="选择项目" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <span className="text-xs font-medium text-muted-foreground">项目</span>
+                <p className="flex h-10 items-center text-sm font-medium">{selectedProject?.name ?? '未选择项目'}</p>
               </div>
               <div className="flex w-full flex-col gap-1.5 sm:w-[140px]">
                 <label className="text-xs font-medium text-muted-foreground">类型</label>
@@ -256,7 +234,9 @@ export function BriefingsPage() {
           <SectionHeader eyebrow="History" title="简报历史" />
         </CardHeader>
         <CardContent className="p-5 pt-0">
-          {loading ? (
+          {!selectedProjectId ? (
+            <ProjectRequiredState />
+          ) : loading ? (
             <div className="flex min-h-40 items-center justify-center">
               <Spinner className="h-7 w-7" />
             </div>

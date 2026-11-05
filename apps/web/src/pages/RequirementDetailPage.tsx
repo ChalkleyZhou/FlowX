@@ -16,6 +16,8 @@ import type { ProjectVersionSummary, Requirement } from '../types';
 import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
 import { formatRequirementWorkflowScope, getActiveRequirementWorkflows, isActiveRequirementWorkflow } from '../utils/requirement-workflows';
 import { formatWorkflowStatus } from '../utils/workflow-ui';
+import { withCurrentProject } from '../project-scope';
+import { useAdoptProject, useProjectScopeOptional } from '../project-scope-context';
 
 function RequirementDetailField({ label, value }: { label: string; value?: string | null }) {
   const text = value?.trim() ?? '';
@@ -40,6 +42,9 @@ export function RequirementDetailPage() {
   const confirm = useConfirm();
   const toast = useToast();
   const [requirement, setRequirement] = useState<Requirement | null>(null);
+  const scope = useProjectScopeOptional();
+  useAdoptProject(requirement?.project.id);
+  const requirementListHref = withCurrentProject('/requirements', requirement?.project.id ?? scope?.projectId ?? null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -128,7 +133,7 @@ export function RequirementDetailPage() {
           <p role="alert" className="text-sm text-muted-foreground">{error ?? '需求未找到'}</p>
           <div className="flex gap-3">
             <Button onClick={() => void fetchRequirement()}>重试</Button>
-            <Button variant="outline" asChild><Link to="/requirements">返回列表</Link></Button>
+            <Button variant="outline" asChild><Link to={requirementListHref}>返回列表</Link></Button>
           </div>
         </CardContent>
       </Card>
@@ -164,7 +169,7 @@ export function RequirementDetailPage() {
         actions={(
           <div className="flex flex-wrap items-center gap-3">
             <Button variant="outline" asChild>
-              <Link to="/requirements">返回列表</Link>
+              <Link to={requirementListHref}>返回列表</Link>
             </Button>
             <Button variant="outline" asChild>
               <Link to={`/quality/test-designs/new?${new URLSearchParams({ projectId: requirement.project.id, projectVersionId: requirement.versionId ?? '', requirementId: requirement.id })}`}>准备测试</Link>

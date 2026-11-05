@@ -33,17 +33,19 @@ export class CaseLibrariesService {
     });
   }
 
-  async listLibraries(filters: { workspaceId: string; projectId?: string }) {
-    if (filters.projectId) {
+  async listLibraries(filters: { workspaceId: string; projectId?: string; ownership?: string }) {
+    const ownership = this.normalizeOwnership(filters.ownership);
+    if (ownership === 'project' && !filters.projectId) {
+      throw new BadRequestException('Project is required when listing a project library.');
+    }
+    if (filters.projectId && ownership !== 'shared') {
       await this.requireProjectInWorkspace(filters.projectId, filters.workspaceId);
     }
     return this.prisma.testCaseLibrary.findMany({
       where: {
         workspaceId: filters.workspaceId,
         status: 'ACTIVE',
-        ...(filters.projectId
-          ? { OR: [{ projectId: null }, { projectId: filters.projectId }] }
-          : { projectId: null }),
+        ...this.libraryOwnership(filters.projectId, ownership),
       },
       include: { _count: { select: { definitions: true, modules: true } } },
       orderBy: [{ scope: 'asc' }, { name: 'asc' }],
@@ -402,8 +404,13 @@ export class CaseLibrariesService {
     priority?: string;
     page?: number;
     pageSize?: number;
+    ownership?: string;
   }) {
-    if (filters.projectId) {
+    const ownership = this.normalizeOwnership(filters.ownership);
+    if (ownership === 'project' && !filters.projectId) {
+      throw new BadRequestException('Project is required when listing a project library.');
+    }
+    if (filters.projectId && ownership !== 'shared') {
       await this.requireProjectInWorkspace(filters.projectId, filters.workspaceId);
     }
     const keyword = filters.q?.trim();
@@ -411,9 +418,7 @@ export class CaseLibrariesService {
       status: 'ACTIVE',
       library: {
         workspaceId: filters.workspaceId,
-        ...(filters.projectId
-          ? { OR: [{ projectId: null }, { projectId: filters.projectId }] }
-          : { projectId: null }),
+        ...this.libraryOwnership(filters.projectId, ownership),
       },
       ...(filters.libraryId ? { libraryId: filters.libraryId } : {}),
       ...(filters.moduleId ? { moduleId: filters.moduleId } : {}),
@@ -484,6 +489,18 @@ export class CaseLibrariesService {
       throw new NotFoundException('Test case library not found.');
     }
     return library;
+  }
+
+  private normalizeOwnership(value?: string): 'project' | 'shared' | undefined {
+    if (!value) return undefined;
+    if (value === 'project' || value === 'shared') return value;
+    throw new BadRequestException('ownership 只能是 project 或 shared。');
+  }
+
+  private libraryOwnership(projectId: string | undefined, ownership: 'project' | 'shared' | undefined) {
+    if (ownership === 'project') return { projectId };
+    if (ownership === 'shared' || !projectId) return { projectId: null };
+    return { OR: [{ projectId: null }, { projectId }] };
   }
 
   private async requireProjectInWorkspace(projectId: string, workspaceId: string) {

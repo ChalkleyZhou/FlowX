@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api, getBugScreenshotUrl } from '../api';
+import { withCurrentProject } from '../project-scope';
+import { useAdoptProject, useProjectScopeOptional } from '../project-scope-context';
 import { ONLINE_AI_UNAVAILABLE_MESSAGE, useOnlineAiProviders } from '../online-ai';
 import { AuthenticatedImage } from '../components/AuthenticatedImage';
 import { ImageAttachmentPicker } from '../components/ImageAttachmentPicker';
@@ -48,6 +50,7 @@ import {
 export function BugDetailPage() {
   const { bugId = '' } = useParams();
   const navigate = useNavigate();
+  const scope = useProjectScopeOptional();
   const [bug, setBug] = useState<Bug | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [fixModalOpen, setFixModalOpen] = useState(false);
@@ -255,8 +258,11 @@ export function BugDetailPage() {
     setNewAttachments([]);
   }
 
+  useAdoptProject(bug?.project?.id ?? bug?.projectId);
+  const bugListHref = withCurrentProject('/bugs', bug?.project?.id ?? bug?.projectId ?? scope?.projectId ?? null);
+
   if (!bugId) {
-    return <Navigate to="/bugs" replace />;
+    return <Navigate to={bugListHref} replace />;
   }
 
   return (
@@ -278,7 +284,7 @@ export function BugDetailPage() {
                 <UiButton onClick={() => setFixModalOpen(true)}>发起修复工作流</UiButton>
               ) : null}
               <UiButton variant="outline" asChild>
-                <Link to="/bugs">返回缺陷列表</Link>
+                <Link to={bugListHref}>返回缺陷列表</Link>
               </UiButton>
               {bug?.fixWorkflowRun?.id ? (
                 <UiButton variant="outline" asChild>

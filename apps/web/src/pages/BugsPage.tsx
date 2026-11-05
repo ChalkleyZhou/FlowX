@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
+import { useScopedProjectId } from '../project-scope-context';
 import { EmptyState } from '../components/EmptyState';
+import { ProjectRequiredState } from '../components/ProjectRequiredState';
 import { ListToolbar } from '../components/ListToolbar';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
@@ -45,6 +47,8 @@ import {
 import { useStoredListFilters } from '../utils/list-filter-storage';
 
 export function BugsPage() {
+  const [searchParams] = useSearchParams();
+  const scopedProjectId = useScopedProjectId();
   const [bugs, setBugs] = useState<Bug[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -74,6 +78,7 @@ export function BugsPage() {
 
   const filteredBugs = useMemo(() => {
     return bugs.filter((bug) => {
+      const matchesProject = scopedProjectId ? (bug.project?.id ?? bug.projectId) === scopedProjectId : false;
       const matchesWorkspace = selectedWorkspaceId ? bug.workspace?.id === selectedWorkspaceId : true;
       const matchesStatus = selectedStatus ? bug.status === selectedStatus : true;
       const matchesSeverity = selectedSeverity ? bug.severity === selectedSeverity : true;
@@ -85,20 +90,20 @@ export function BugsPage() {
             .toLowerCase()
             .includes(normalizedKeyword)
         : true;
-      return matchesWorkspace && matchesStatus && matchesSeverity && matchesPriority && matchesKeyword;
+      return matchesProject && matchesWorkspace && matchesStatus && matchesSeverity && matchesPriority && matchesKeyword;
     });
-  }, [bugs, keyword, selectedPriority, selectedSeverity, selectedStatus, selectedWorkspaceId]);
+  }, [bugs, keyword, scopedProjectId, selectedPriority, selectedSeverity, selectedStatus, selectedWorkspaceId]);
 
-  const bugSummary = useMemo(() => {
-    const openCount = bugs.filter((item) => item.status === 'OPEN').length;
-    const criticalCount = bugs.filter((item) => item.severity === 'CRITICAL').length;
-    return {
-      total: bugs.length,
-      visible: filteredBugs.length,
-      openCount,
-      criticalCount,
-    };
-  }, [bugs, filteredBugs.length]);
+  const projectBugs = useMemo(
+    () => bugs.filter((bug) => scopedProjectId && (bug.project?.id ?? bug.projectId) === scopedProjectId),
+    [bugs, scopedProjectId],
+  );
+  const bugSummary = useMemo(() => ({
+    total: projectBugs.length,
+    visible: filteredBugs.length,
+    openCount: projectBugs.filter((item) => item.status === 'OPEN').length,
+    criticalCount: projectBugs.filter((item) => item.severity === 'CRITICAL').length,
+  }), [filteredBugs.length, projectBugs]);
 
   const pagedBugs = useMemo(() => {
     const start = (page - 1) * 8;
@@ -195,7 +200,15 @@ export function BugsPage() {
         title="缺陷中心"
         description="集中管理手动登记与 AI 审查沉淀的缺陷，统一查看严重级别、优先级、来源流程和修复上下文。"
         actions={
-          <UiButton onClick={() => setCreateModalOpen(true)}>新建缺陷</UiButton>
+          <UiButton onClick={() => {
+            const project = projects.find((item) => item.id === scopedProjectId);
+            setCreateDraft((current) => ({
+              ...current,
+              projectId: project?.id ?? '',
+              workspaceId: project?.workspace.id ?? current.workspaceId,
+            }));
+            setCreateModalOpen(true);
+          }}>新建缺陷</UiButton>
         }
       />
       <Dialog
@@ -367,7 +380,9 @@ export function BugsPage() {
           <SectionHeader eyebrow="Bug Registry" title="缺陷列表" />
         </CardHeader>
         <CardContent className="p-5 pt-0">
-          {loading ? (
+          {!scopedProjectId ? (
+            <ProjectRequiredState />
+          ) : loading ? (
             <div className="flex min-h-40 items-center justify-center">
               <Spinner className="h-7 w-7" />
             </div>

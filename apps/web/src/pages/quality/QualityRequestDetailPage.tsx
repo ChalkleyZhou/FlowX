@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, Download, Plus } from 'lucide-react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../../api';
+import { withCurrentProject } from '../../project-scope';
+import { useAdoptProject, useProjectScopeOptional } from '../../project-scope-context';
 import { EmptyState } from '../../components/EmptyState';
 import { MetricCard } from '../../components/MetricCard';
 import { PageHeader } from '../../components/PageHeader';
@@ -92,6 +94,9 @@ function QualityRequestDetailContent({ id }: { id: string }) {
   const formal = useDetailResource(id, api.getTestRuns);
   const submission = useDetailResource(id, api.getSubmissionReport);
   const request = detail.data;
+  const scope = useProjectScopeOptional();
+  useAdoptProject(request?.projectId);
+  const requestListHref = withCurrentProject('/quality/test-requests', request?.projectId ?? scope?.projectId ?? null);
   const runs = smoke.data ?? [];
   const report = submission.data;
   const refreshing = detail.loading || smoke.loading || submission.loading;
@@ -195,7 +200,7 @@ function QualityRequestDetailContent({ id }: { id: string }) {
       : '加载提测详情失败';
     return <EmptyState title={title} description={detail.error?.message ?? '请重试加载提测详情。'} action={(
       <div className="flex gap-2">
-        <Button asChild variant="outline"><Link to="/quality/test-requests">返回提测列表</Link></Button>
+        <Button asChild variant="outline"><Link to={requestListHref}>返回提测列表</Link></Button>
         <Button onClick={() => void detail.reload()}>重试详情</Button>
       </div>
     )} />;
@@ -214,7 +219,7 @@ function QualityRequestDetailContent({ id }: { id: string }) {
         actions={(
           <>
             <Button asChild variant="outline" size="icon" title="返回提测列表" aria-label="返回提测列表">
-              <Link to="/quality/test-requests"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></Link>
+              <Link to={requestListHref}><ArrowLeft aria-hidden="true" className="h-4 w-4" /></Link>
             </Button>
             <RefreshButton loading={refreshing} onClick={() => void refresh()} />
             {report ? (

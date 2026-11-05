@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
+import { withCurrentProject } from '../project-scope';
+import { useAdoptProject, useProjectScopeOptional } from '../project-scope-context';
 import { BriefingMarkdownView } from '../components/BriefingMarkdownView';
 import { PageHeader } from '../components/PageHeader';
 import { SectionHeader } from '../components/SectionHeader';
@@ -30,7 +32,10 @@ function unitCountLabel(units: DailyCodeReviewUnit[]) {
 
 export function DailyCodeReviewDetailPage() {
   const { reviewId } = useParams();
+  const scope = useProjectScopeOptional();
   const [review, setReview] = useState<DailyCodeReview | null>(null);
+  useAdoptProject(review?.projectId);
+  const reviewListHref = withCurrentProject('/code-reviews', review?.projectId ?? scope?.projectId ?? null);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const toast = useToast();
@@ -113,7 +118,7 @@ export function DailyCodeReviewDetailPage() {
               {sending ? '发送中...' : '重新发送'}
             </Button>
             <Button variant="outline" asChild>
-              <Link to="/code-reviews">返回列表</Link>
+              <Link to={reviewListHref}>返回列表</Link>
             </Button>
           </div>
         }

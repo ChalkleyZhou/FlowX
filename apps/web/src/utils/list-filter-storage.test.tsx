@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Route, Routes, useLocation, useSearchParams } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { readStoredListFilters, useRememberedSearchFilters, useStoredListFilters, writeStoredListFilters } from './list-filter-storage';
+import { readStoredListFilters, useRememberedSearchFilters, useStoredListFilters, writeStoredListFilterSnapshot, writeStoredListFilters } from './list-filter-storage';
 
 function SearchProbe({ pageKey, keys }: { pageKey: string; keys: string[] }) {
   useRememberedSearchFilters(pageKey, keys);
@@ -65,6 +65,40 @@ describe('列表筛选本地缓存', () => {
       root.render(<MemoryRouter initialEntries={['/requirements']}><Routes><Route path="/requirements" element={<SearchProbe pageKey="requirements" keys={['projectId', 'priority']} />} /></Routes></MemoryRouter>);
     });
     expect(container.querySelector('[data-search]')?.getAttribute('data-search')).toBe('');
+  });
+
+  it('换项目后不恢复上一个项目的工作区和用例库', async () => {
+    writeStoredListFilterSnapshot('workflow-runs', {
+      projectId: 'project-1',
+      filters: { workspaceId: 'workspace-1', runType: 'BUG_FIX' },
+    });
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/workflow-runs?projectId=project-2']}>
+          <Routes>
+            <Route path="/workflow-runs" element={<SearchProbe pageKey="workflow-runs" keys={['workspaceId', 'requirementId', 'runType']} />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+    });
+    expect(container.querySelector('[data-search]')?.getAttribute('data-search')).toBe('?projectId=project-2&runType=BUG_FIX');
+  });
+
+  it('同一项目重新进入时恢复工作区', async () => {
+    writeStoredListFilterSnapshot('workflow-runs', {
+      projectId: 'project-1',
+      filters: { workspaceId: 'workspace-1', runType: 'BUG_FIX' },
+    });
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/workflow-runs?projectId=project-1']}>
+          <Routes>
+            <Route path="/workflow-runs" element={<SearchProbe pageKey="workflow-runs" keys={['workspaceId', 'requirementId', 'runType']} />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+    });
+    expect(container.querySelector('[data-search]')?.getAttribute('data-search')).toBe('?projectId=project-1&workspaceId=workspace-1&runType=BUG_FIX');
   });
 
   it('页面内筛选在重新进入后保持', async () => {

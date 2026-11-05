@@ -124,7 +124,7 @@ describe('RequirementsPage', () => {
   it('does not expose OpenDesign launch from the requirements list', async () => {
     await act(async () => {
       root?.render(
-        <MemoryRouter initialEntries={['/requirements']}>
+        <MemoryRouter initialEntries={['/requirements?projectId=project-1']}>
           <Routes>
             <Route path="/requirements" element={<RequirementsPage />} />
           </Routes>
@@ -150,7 +150,7 @@ describe('RequirementsPage', () => {
   it('keeps only web create as the requirements page CTA', async () => {
     await act(async () => {
       root?.render(
-        <MemoryRouter initialEntries={['/requirements']}>
+        <MemoryRouter initialEntries={['/requirements?projectId=project-1']}>
           <Routes>
             <Route path="/requirements" element={<RequirementsPage />} />
           </Routes>
@@ -178,7 +178,7 @@ describe('RequirementsPage', () => {
   it('需求列表展示标题、描述、优先级、创建人、时间和变更，不展示项目、版本和排期', async () => {
     await act(async () => {
       root?.render(
-        <MemoryRouter initialEntries={['/requirements']}>
+        <MemoryRouter initialEntries={['/requirements?projectId=project-1']}>
           <Routes>
             <Route path="/requirements" element={<RequirementsPage />} />
           </Routes>
@@ -225,7 +225,7 @@ describe('RequirementsPage', () => {
     }));
     vi.mocked(api.getRequirements).mockResolvedValue(many);
     await act(async () => {
-      root?.render(<MemoryRouter initialEntries={['/requirements?priority=HIGH']}><RequirementsPage /></MemoryRouter>);
+      root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1&priority=HIGH']}><RequirementsPage /></MemoryRouter>);
     });
     expect(container.querySelectorAll('tbody tr')).toHaveLength(20);
     expect(container.textContent).toContain('共 21 条');
@@ -248,7 +248,7 @@ describe('RequirementsPage', () => {
     const latestChangeAt = '2026-10-26T09:30:00.000Z';
     vi.mocked(api.getRequirements).mockResolvedValue([{ ...requirement, latestChangeAt, latestChangeContent: '最新变更正文' }]);
     await act(async () => {
-      root?.render(<MemoryRouter initialEntries={['/requirements']}><RequirementsPage /></MemoryRouter>);
+      root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1']}><RequirementsPage /></MemoryRouter>);
     });
     const cells = container.querySelectorAll('tbody td');
     expect(cells[5]?.textContent).toBe(new Date(latestChangeAt).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }));
@@ -296,39 +296,26 @@ describe('RequirementsPage', () => {
     expect(container.textContent).not.toContain('默认执行器：Codex');
   });
 
-  it('切换项目时清除不再适用的版本筛选', async () => {
-    const secondProject: Requirement['project'] = {
-      ...requirement.project,
-      id: 'project-2',
-      name: '另一个项目',
-      currentVersionId: 'ver-3',
-      currentVersion: { id: 'ver-3', name: '3.0.0' },
-      versions: [{ id: 'ver-3', name: '3.0.0' }],
-    };
-    vi.mocked(api.getProjects).mockResolvedValue([requirement.project, secondProject]);
-
+  it('列表不再提供项目筛选，项目由当前项目决定', async () => {
     await act(async () => {
       root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1&versionId=ver-1']}>
-        <RequirementsPage /><LocationProbe />
+        <RequirementsPage />
       </MemoryRouter>);
     });
-    const projectSelect = container.querySelector('[aria-label="按项目筛选"]') as HTMLElement;
-    await act(async () => { projectSelect.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); });
-    await act(async () => { (Array.from(document.querySelectorAll('[role="option"]')).find((item) => item.textContent === '另一个项目') as HTMLElement).click(); });
-
-    expect(container.querySelector('output')?.textContent).toBe('/requirements?projectId=project-2');
+    expect(container.querySelector('[aria-label="按项目筛选"]')).toBeNull();
+    expect(container.textContent).toContain('端云设计闭环');
   });
 
   it('清除筛选后恢复全量需求并在空结果时给出调整提示', async () => {
     vi.mocked(api.getRequirements).mockResolvedValue([{ ...requirement, planningStatus: 'DONE', priority: 'LOW' }]);
     await act(async () => {
-      root?.render(<MemoryRouter initialEntries={['/requirements?planningStatus=IN_PROGRESS']}>
+      root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1&planningStatus=IN_PROGRESS']}>
         <RequirementsPage /><LocationProbe />
       </MemoryRouter>);
     });
     expect(container.textContent).toContain('当前筛选条件下没有需求，请调整筛选或清除条件');
     await act(async () => { (Array.from(container.querySelectorAll('button')).find((item) => item.textContent === '清除筛选') as HTMLElement).click(); });
-    expect(container.querySelector('output')?.textContent).toBe('/requirements');
+    expect(container.querySelector('output')?.textContent).toBe('/requirements?projectId=project-1');
     expect(container.textContent).toContain('端云设计闭环');
   });
 
@@ -362,7 +349,7 @@ describe('RequirementsPage', () => {
     }]);
     vi.mocked(api.createWorkflowRun).mockResolvedValue({ id: 'run-new' } as Awaited<ReturnType<typeof api.createWorkflowRun>>);
     await act(async () => {
-      root?.render(<MemoryRouter initialEntries={['/requirements?launchRequirementId=requirement-1']}><Routes>
+      root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1&launchRequirementId=requirement-1']}><Routes>
         <Route path="/requirements" element={<RequirementsPage />} />
         <Route path="/workflow-runs/:id" element={<LocationProbe />} />
       </Routes></MemoryRouter>);
@@ -449,7 +436,7 @@ describe('RequirementsPage', () => {
     await act(async () => { dialog.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
     expect(errorToast).toHaveBeenCalledWith('请选择发布版本');
     expect(api.createPrototypeImport).not.toHaveBeenCalled();
-    expect(dialog.querySelector('a[href="/projects/project-1"]')).toBeTruthy();
+    expect(dialog.querySelector('a[href="/project-settings?projectId=project-1"]')).toBeTruthy();
     expect(input.files?.[0]?.name).toBe('prototype.zip');
   });
 
@@ -475,7 +462,7 @@ describe('RequirementsPage', () => {
 
   it('未完成原型导入在需求列表与启动深链均查看导入进度', async () => {
     vi.mocked(api.getRequirements).mockResolvedValue([{ ...requirement, prototypeImport: { id: 'import-1', status: 'WAITING_CONFIRMATION' } }]);
-    await act(async () => { root?.render(<MemoryRouter initialEntries={['/requirements?launchRequirementId=requirement-1']}><Routes>
+    await act(async () => { root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1&launchRequirementId=requirement-1']}><Routes>
       <Route path="/requirements" element={<RequirementsPage />} />
       <Route path="/requirements/:id" element={<LocationProbe />} />
     </Routes></MemoryRouter>); });
@@ -547,7 +534,7 @@ describe('RequirementsPage', () => {
     await act(async () => { dialog.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
     expect(api.createRequirement).not.toHaveBeenCalled();
     expect(errorToast).toHaveBeenCalledWith('请选择发布版本');
-    expect(dialog.querySelector('a[href="/projects/project-1"]')).toBeTruthy();
+    expect(dialog.querySelector('a[href="/project-settings?projectId=project-1"]')).toBeTruthy();
   });
 
   it('普通创建失败后保留输入重试，提交中阻止重复请求', async () => {
@@ -583,7 +570,7 @@ describe('RequirementsPage', () => {
       acceptanceCriteria: payload.acceptanceCriteria ?? requirement.acceptanceCriteria,
     }));
     await act(async () => {
-      root?.render(<MemoryRouter initialEntries={['/requirements']}><RequirementsPage /></MemoryRouter>);
+      root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1']}><RequirementsPage /></MemoryRouter>);
     });
     await act(async () => {
       Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '编辑')?.click();
@@ -627,7 +614,7 @@ describe('RequirementsPage', () => {
   it('确认后删除需求并刷新列表，取消时不请求', async () => {
     confirmDialog.mockResolvedValueOnce(false);
     await act(async () => {
-      root?.render(<MemoryRouter initialEntries={['/requirements']}><RequirementsPage /></MemoryRouter>);
+      root?.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1']}><RequirementsPage /></MemoryRouter>);
     });
     const deleteButton = () => container.querySelector('button[aria-label="删除需求：端云设计闭环"]') as HTMLButtonElement;
     await act(async () => { deleteButton().click(); });

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { withCurrentProject } from '../project-scope';
 import { api } from '../api';
 import { SectionHeader } from './SectionHeader';
 import { Button } from './ui/button';
@@ -104,7 +105,7 @@ export function ProjectBriefingConfigPanel({ projectId }: { projectId: string })
             仅生成简报预览
           </Button>
           <Button variant="outline" asChild>
-            <Link to="/briefings">查看历史</Link>
+            <Link to={withCurrentProject('/briefings', projectId)}>查看历史</Link>
           </Button>
         </div>
         {config?.enabled ? (

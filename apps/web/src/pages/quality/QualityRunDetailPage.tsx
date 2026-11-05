@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError, getFlowxApiBaseUrl } from '../../api';
+import { useAdoptProject } from '../../project-scope-context';
 import { PageHeader } from '../../components/PageHeader';
 import { EmptyState } from '../../components/EmptyState';
 import { Button } from '../../components/ui/button';
@@ -46,6 +47,7 @@ function QualityRunDetailContent({ id }: { id: string }) {
   const [regressionRequest, setRegressionRequest] =
     useState<Awaited<ReturnType<typeof api.getTestRequest>>>();
   const request = run?.testPlan?.testRequest;
+  useAdoptProject(request?.projectId);
   async function action(work: () => Promise<unknown>, success?: string) {
     setBusy(true);
     try {

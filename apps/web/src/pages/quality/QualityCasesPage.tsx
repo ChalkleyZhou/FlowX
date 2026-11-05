@@ -3,6 +3,7 @@ import { Eye, FolderTree, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useRememberedSearchFilters } from '../../utils/list-filter-storage';
 import { api } from '../../api';
+import { useProjectScopeOptional, useScopedProjectId } from '../../project-scope-context';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { EmptyState } from '../../components/EmptyState';
 import { ListToolbar } from '../../components/ListToolbar';
@@ -28,7 +29,7 @@ import {
   SelectValue,
 } from '../../components/ui/select';
 import { useToast } from '../../components/ui/toast';
-import type { Project, TestCaseDefinition, TestCaseLibrary, Workspace } from '../../types';
+import type { TestCaseDefinition, TestCaseLibrary, Workspace } from '../../types';
 import { CreateCaseDialog, CreateLibraryDialog } from './QualityDialogs';
 import { QualityCaseImportDialog } from './QualityCaseImportDialog';
 import { QualityCaseEditDialog } from './QualityCaseEditDialog';
@@ -36,19 +37,17 @@ import { QualityModuleManagementDialog } from './QualityModuleManagementDialog';
 import { LoadingState, Pagination, RefreshButton } from './quality-ui';
 
 const ALL = '__all__';
-const SHARED = '__shared__';
 const PAGE_SIZE = 20;
 
 export function QualityCasesPage() {
   const toast = useToast();
   const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
-  useRememberedSearchFilters('quality-cases', ['workspaceId', 'projectId', 'libraryId', 'priority', 'q']);
+  useRememberedSearchFilters('quality-cases', ['workspaceId', 'caseScope', 'libraryId', 'priority', 'q']);
   const [metaLoading, setMetaLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [libraries, setLibraries] = useState<TestCaseLibrary[]>([]);
   const [cases, setCases] = useState<TestCaseDefinition[]>([]);
   const [total, setTotal] = useState(0);
@@ -62,19 +61,23 @@ export function QualityCasesPage() {
   const [editingCase, setEditingCase] = useState<TestCaseDefinition | null>(null);
   const [deletingCaseId, setDeletingCaseId] = useState<string | null>(null);
 
-  const workspaceId = searchParams.get('workspaceId') ?? '';
-  const projectId = searchParams.get('projectId') ?? SHARED;
+  const scope = useProjectScopeOptional();
+  const currentProjectId = useScopedProjectId();
+  const caseScope = searchParams.get('caseScope') === 'shared' || !currentProjectId ? 'shared' : 'project';
+  const projectWorkspaceId = scope?.projects.find((item) => item.id === currentProjectId)?.workspace.id ?? '';
+  const workspaceId = caseScope === 'project' ? projectWorkspaceId : (searchParams.get('workspaceId') ?? '');
   const libraryId = searchParams.get('libraryId') ?? ALL;
   const priority = searchParams.get('priority') ?? ALL;
   const keyword = searchParams.get('q') ?? '';
   const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
-  const selectedProjectId = projectId === SHARED ? undefined : projectId;
+  const selectedProjectId = caseScope === 'shared' ? undefined : currentProjectId;
+  const libraryOwnership = caseScope === 'project' ? 'project' as const : undefined;
   const [searchValue, setSearchValue] = useState(keyword);
 
   function updateQuery(patch: Record<string, string | null>) {
     const next = new URLSearchParams(searchParams);
     for (const [key, value] of Object.entries(patch)) {
-      if (!value || value === ALL || (key === 'projectId' && value === SHARED)) next.delete(key);
+      if (!value || value === ALL) next.delete(key);
       else next.set(key, value);
     }
     setSearchParams(next, { replace: true });
@@ -84,18 +87,7 @@ export function QualityCasesPage() {
     void (async () => {
       setMetaLoading(true);
       try {
-        const [workspaceList, projectList] = await Promise.all([api.getWorkspaces(), api.getProjects()]);
-        setWorkspaces(workspaceList);
-        setProjects(projectList);
-        if (workspaceList[0]?.id) {
-          const fallbackWorkspaceId = workspaceList[0].id;
-          setSearchParams((current) => {
-            if (current.get('workspaceId')) return current;
-            const next = new URLSearchParams(current);
-            next.set('workspaceId', fallbackWorkspaceId);
-            return next;
-          }, { replace: true });
-        }
+        setWorkspaces(await api.getWorkspaces());
       } catch (error) {
         toast.error(error instanceof Error ? error.message : '加载用例库范围失败');
       } finally {
@@ -103,6 +95,24 @@ export function QualityCasesPage() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (caseScope === 'project') {
+      if (!projectWorkspaceId || searchParams.get('workspaceId') === projectWorkspaceId) return;
+      const next = new URLSearchParams(searchParams);
+      next.set('workspaceId', projectWorkspaceId);
+      next.delete('libraryId');
+      next.delete('page');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    if (searchParams.get('workspaceId') || workspaces.length === 0) return;
+    const fallback = projectWorkspaceId || workspaces[0]?.id;
+    if (!fallback) return;
+    const next = new URLSearchParams(searchParams);
+    next.set('workspaceId', fallback);
+    setSearchParams(next, { replace: true });
+  }, [caseScope, projectWorkspaceId, searchParams, setSearchParams, workspaces]);
 
   useEffect(() => {
     setSearchValue(keyword);
@@ -121,10 +131,15 @@ export function QualityCasesPage() {
     silent ? setRefreshing(true) : setListLoading(true);
     try {
       const [libraryList, casePage] = await Promise.all([
-        api.getTestCaseLibraries({ workspaceId, projectId: selectedProjectId }),
+        api.getTestCaseLibraries({
+          workspaceId,
+          projectId: selectedProjectId,
+          ...(libraryOwnership ? { ownership: libraryOwnership } : {}),
+        }),
         api.getTestCasesPage({
           workspaceId,
           projectId: selectedProjectId,
+          ...(libraryOwnership ? { ownership: libraryOwnership } : {}),
           libraryId: libraryId === ALL ? undefined : libraryId,
           priority: priority === ALL ? undefined : priority,
           q: keyword.trim() || undefined,
@@ -173,7 +188,6 @@ export function QualityCasesPage() {
     }
   }
 
-  const projectsInWorkspace = projects.filter((project) => project.workspace.id === workspaceId);
   const hasFilters = Boolean(keyword.trim()) || libraryId !== ALL || priority !== ALL;
 
   function renderActions(testCase: TestCaseDefinition) {
@@ -270,8 +284,8 @@ export function QualityCasesPage() {
                 <>
                   <Select
                     value={workspaceId || ''}
-                    onValueChange={(value) => updateQuery({ workspaceId: value, projectId: null, libraryId: null, page: null })}
-                    disabled={metaLoading}
+                    onValueChange={(value) => updateQuery({ workspaceId: value, libraryId: null, page: null })}
+                    disabled={metaLoading || caseScope === 'project'}
                   >
                     <SelectTrigger className="w-full sm:w-[180px]" aria-label="按工作区筛选">
                       <SelectValue placeholder="选择工作区" />
@@ -280,13 +294,17 @@ export function QualityCasesPage() {
                       {workspaces.map((workspace) => <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <Select value={projectId} onValueChange={(value) => updateQuery({ projectId: value, libraryId: null, page: null })}>
+                  <Select
+                    value={caseScope}
+                    onValueChange={(value) => updateQuery({ caseScope: value === 'shared' ? 'shared' : null, libraryId: null, page: null })}
+                    disabled={!currentProjectId && caseScope === 'shared'}
+                  >
                     <SelectTrigger className="w-full sm:w-[190px]" aria-label="按项目范围筛选">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={SHARED}>Workspace 共享库</SelectItem>
-                      {projectsInWorkspace.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
+                      <SelectItem value="project" disabled={!currentProjectId}>当前项目库</SelectItem>
+                      <SelectItem value="shared">Workspace 共享库</SelectItem>
                     </SelectContent>
                   </Select>
                   <Select value={libraryId} onValueChange={(value) => updateQuery({ libraryId: value, page: null })}>

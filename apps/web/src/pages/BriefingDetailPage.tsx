@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
+import { withCurrentProject } from '../project-scope';
+import { useAdoptProject, useProjectScopeOptional } from '../project-scope-context';
 import { BriefingMarkdownView } from '../components/BriefingMarkdownView';
 import { PageHeader } from '../components/PageHeader';
 import { SectionHeader } from '../components/SectionHeader';
@@ -14,7 +16,10 @@ import type { Briefing } from '../types';
 
 export function BriefingDetailPage() {
   const { briefingId } = useParams();
+  const scope = useProjectScopeOptional();
   const [briefing, setBriefing] = useState<Briefing | null>(null);
+  useAdoptProject(briefing?.projectId);
+  const briefingListHref = withCurrentProject('/briefings', briefing?.projectId ?? scope?.projectId ?? null);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const toast = useToast();
@@ -96,7 +101,7 @@ export function BriefingDetailPage() {
               {sending ? '发送中...' : '重新发送'}
             </Button>
             <Button variant="outline" asChild>
-              <Link to="/briefings">返回简报列表</Link>
+              <Link to={briefingListHref}>返回简报列表</Link>
             </Button>
           </div>
         }

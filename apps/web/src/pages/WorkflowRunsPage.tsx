@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { EmptyState } from '../components/EmptyState';
+import { ProjectRequiredState } from '../components/ProjectRequiredState';
 import { ListToolbar } from '../components/ListToolbar';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
@@ -20,16 +21,16 @@ import {
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
 import { useConfirm } from '../components/ConfirmDialog';
-import type { Project, Requirement, WorkflowRun, Workspace } from '../types';
+import type { Requirement, WorkflowRun, Workspace } from '../types';
+import { useScopedProjectId } from '../project-scope-context';
 import { useRememberedSearchFilters } from '../utils/list-filter-storage';
 import { formatWorkflowRunType, formatWorkflowStatus } from '../utils/workflow-ui';
 
 export function WorkflowRunsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  useRememberedSearchFilters('workflow-runs', ['workspaceId', 'projectId', 'requirementId', 'runType']);
+  useRememberedSearchFilters('workflow-runs', ['workspaceId', 'requirementId', 'runType']);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [workflowRuns, setWorkflowRuns] = useState<WorkflowRun[]>([]);
   const [loading, setLoading] = useState(false);
@@ -37,21 +38,17 @@ export function WorkflowRunsPage() {
   const toast = useToast();
   const confirm = useConfirm();
   const workspaceId = searchParams.get('workspaceId') ?? '';
-  const projectId = searchParams.get('projectId') ?? '';
+  const projectId = useScopedProjectId();
   const requirementId = searchParams.get('requirementId') ?? '';
   const runType = searchParams.get('runType') ?? '';
 
-  const visibleProjects = useMemo(
-    () => projects.filter((project) => !workspaceId || project.workspace.id === workspaceId),
-    [projects, workspaceId],
-  );
   const visibleRequirements = useMemo(
     () =>
       requirements.filter((requirement) => {
         if (workspaceId && requirement.project.workspace.id !== workspaceId) {
           return false;
         }
-        if (projectId && requirement.project.id !== projectId) {
+        if (!projectId || requirement.project.id !== projectId) {
           return false;
         }
         return true;
@@ -65,7 +62,7 @@ export function WorkflowRunsPage() {
         if (workspaceId && run.requirement.project.workspace.id !== workspaceId) {
           return false;
         }
-        if (projectId && run.requirement.project.id !== projectId) {
+        if (!projectId || run.requirement.project.id !== projectId) {
           return false;
         }
         if (requirementId && run.requirement.id !== requirementId) {
@@ -79,28 +76,30 @@ export function WorkflowRunsPage() {
     [projectId, requirementId, runType, workflowRuns, workspaceId],
   );
 
+  const projectRuns = useMemo(
+    () => workflowRuns.filter((run) => projectId && run.requirement.project.id === projectId),
+    [projectId, workflowRuns],
+  );
   const workflowSummary = useMemo(() => {
-    const runningCount = workflowRuns.filter((run) => run.status === 'EXECUTION_RUNNING').length;
-    const pendingCount = workflowRuns.filter((run) => run.status.includes('PENDING') || run.status.includes('WAITING')).length;
+    const runningCount = projectRuns.filter((run) => run.status === 'EXECUTION_RUNNING').length;
+    const pendingCount = projectRuns.filter((run) => run.status.includes('PENDING') || run.status.includes('WAITING')).length;
     return {
-      total: workflowRuns.length,
+      total: projectRuns.length,
       visible: filteredRuns.length,
       running: runningCount,
       pending: pendingCount,
     };
-  }, [filteredRuns.length, workflowRuns]);
+  }, [filteredRuns.length, projectRuns]);
 
   async function refresh() {
     setLoading(true);
     try {
-      const [workspaceList, projectList, requirementList, runList] = await Promise.all([
+      const [workspaceList, requirementList, runList] = await Promise.all([
         api.getWorkspaces(),
-        api.getProjects(),
         api.getRequirements(),
         api.getWorkflowRuns(runType ? { runType } : undefined),
       ]);
       setWorkspaces(workspaceList);
-      setProjects(projectList);
       setRequirements(requirementList);
       setWorkflowRuns(runList);
     } catch (error) {
@@ -173,7 +172,6 @@ export function WorkflowRunsPage() {
                     const next = new URLSearchParams(searchParams);
                     if (value && value !== '__all__') {
                       next.set('workspaceId', value);
-                      next.delete('projectId');
                       next.delete('requirementId');
                     } else {
                       next.delete('workspaceId');
@@ -189,31 +187,6 @@ export function WorkflowRunsPage() {
                     {workspaces.map((workspace) => (
                       <SelectItem key={workspace.id} value={workspace.id}>
                         {workspace.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={projectId || '__all__'}
-                  onValueChange={(value) => {
-                    const next = new URLSearchParams(searchParams);
-                    if (value && value !== '__all__') {
-                      next.set('projectId', value);
-                      next.delete('requirementId');
-                    } else {
-                      next.delete('projectId');
-                    }
-                    navigate(`/workflow-runs?${next.toString()}`);
-                  }}
-                >
-                  <SelectTrigger className="w-[220px]">
-                    <SelectValue placeholder="按项目查看" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">全部项目</SelectItem>
-                    {visibleProjects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -266,7 +239,9 @@ export function WorkflowRunsPage() {
               </>
             )}
           />
-          {loading ? (
+          {!projectId ? (
+            <ProjectRequiredState />
+          ) : loading ? (
             <div className="flex min-h-40 items-center justify-center">
               <Spinner className="h-7 w-7" />
             </div>

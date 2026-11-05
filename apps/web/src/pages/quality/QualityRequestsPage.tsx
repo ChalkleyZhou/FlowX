@@ -3,7 +3,9 @@ import { Plus } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useRememberedSearchFilters } from '../../utils/list-filter-storage';
 import { api } from '../../api';
+import { useScopedProjectId } from '../../project-scope-context';
 import { EmptyState } from '../../components/EmptyState';
+import { ProjectRequiredState } from '../../components/ProjectRequiredState';
 import { ListToolbar } from '../../components/ListToolbar';
 import { MetricCard } from '../../components/MetricCard';
 import { PageHeader } from '../../components/PageHeader';
@@ -38,19 +40,19 @@ const PAGE_SIZE = 8;
 export function QualityRequestsPage() {
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  useRememberedSearchFilters('quality-requests', ['projectId', 'status', 'q']);
+  useRememberedSearchFilters('quality-requests', ['status', 'q']);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [workflowRuns, setWorkflowRuns] = useState<WorkflowRun[]>([]);
   const [requests, setRequests] = useState<TestRequest[]>([]);
   const createFromWorkflow = searchParams.get('create') === '1';
-  const initialProjectId = searchParams.get('projectId') ?? undefined;
+  const projectId = useScopedProjectId();
+  const initialProjectId = projectId || undefined;
   const initialProjectVersionId = searchParams.get('projectVersionId') ?? undefined;
   const initialWorkflowRunId = searchParams.get('workflowRunId') ?? undefined;
   const [dialogOpen, setDialogOpen] = useState(createFromWorkflow);
 
-  const projectId = searchParams.get('projectId') ?? ALL;
   const status = searchParams.get('status') ?? ALL;
   const keyword = searchParams.get('q') ?? '';
   const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
@@ -101,7 +103,7 @@ export function QualityRequestsPage() {
   const filteredRequests = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
     return requests.filter((request) => {
-      if (projectId !== ALL && request.projectId !== projectId) return false;
+      if (!projectId || request.projectId !== projectId) return false;
       if (status !== ALL && request.status !== status) return false;
       if (!normalizedKeyword) return true;
       return [
@@ -117,9 +119,10 @@ export function QualityRequestsPage() {
   const totalPages = Math.max(1, Math.ceil(filteredRequests.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const pageRows = filteredRequests.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-  const activeCount = requests.filter((item) => ['DRAFT', 'READY', 'IN_TEST'].includes(item.status)).length;
-  const readyCount = requests.filter((item) => item.status === 'READY').length;
-  const passedCount = requests.filter((item) => item.status === 'PASSED').length;
+  const projectRequests = requests.filter((item) => projectId && item.projectId === projectId);
+  const activeCount = projectRequests.filter((item) => ['DRAFT', 'READY', 'IN_TEST'].includes(item.status)).length;
+  const readyCount = projectRequests.filter((item) => item.status === 'READY').length;
+  const passedCount = projectRequests.filter((item) => item.status === 'PASSED').length;
 
   return (
     <>
@@ -136,7 +139,7 @@ export function QualityRequestsPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="提测总数" value={requests.length} />
+        <MetricCard label="提测总数" value={projectRequests.length} />
         <MetricCard label="进行中" value={activeCount} />
         <MetricCard label="待执行" value={readyCount} />
         <MetricCard label="已通过" value={passedCount} />
@@ -163,15 +166,6 @@ export function QualityRequestsPage() {
               )}
               filters={(
                 <>
-                  <Select value={projectId} onValueChange={(value) => updateQuery({ projectId: value, page: null })}>
-                    <SelectTrigger className="w-full sm:w-[190px]" aria-label="按项目筛选">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={ALL}>全部项目</SelectItem>
-                      {projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
                   <Select value={status} onValueChange={(value) => updateQuery({ status: value, page: null })}>
                     <SelectTrigger className="w-full sm:w-[150px]" aria-label="按状态筛选">
                       <SelectValue />
@@ -187,7 +181,7 @@ export function QualityRequestsPage() {
               )}
             />
 
-            {loading ? <LoadingState /> : pageRows.length ? (
+            {!projectId ? <ProjectRequiredState /> : loading ? <LoadingState /> : pageRows.length ? (
               <div className="space-y-3">
                 {pageRows.map((request) => (
                   <RecordListItem

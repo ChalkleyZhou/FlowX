@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { LegacyProjectEntryRedirect } from './project-scope-context';
 import { AuthProvider } from './auth';
 import { BugsPage } from './pages/BugsPage';
 import { BugDetailPage } from './pages/BugDetailPage';
@@ -45,6 +46,11 @@ function ExecutionSessionsRedirect() {
   return <Navigate to={`/dashboard${search}${hash}`} replace />;
 }
 
+function QualityIndexRedirect() {
+  const { search, hash } = useLocation();
+  return <Navigate to={`/quality/test-requests${search}${hash}`} replace />;
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -63,8 +69,9 @@ export default function App() {
             <Route path="/schedule" element={<ScheduleHubPage />} />
             <Route path="/schedule/members" element={<ScheduleMembersRedirect />} />
             <Route path="/projects" element={<ProjectsPage />} />
-            <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+            <Route path="/projects/:projectId" element={<LegacyProjectEntryRedirect />} />
             <Route path="/projects/:projectId/schedule" element={<ProjectScheduleRedirect />} />
+            <Route path="/project-settings" element={<ProjectDetailPage />} />
             <Route path="/briefings" element={<BriefingsPage />} />
             <Route path="/briefings/:briefingId" element={<BriefingDetailPage />} />
             <Route path="/code-reviews" element={<CodeReviewsPage />} />
@@ -78,7 +85,7 @@ export default function App() {
             <Route path="/workflow-runs/:workflowRunId" element={<WorkflowRunDetailPage />} />
             <Route path="/issues" element={<IssuesPage />} />
             <Route path="/issues/:issueId" element={<IssueDetailPage />} />
-            <Route path="/quality" element={<Navigate to="/quality/test-requests" replace />} />
+            <Route path="/quality" element={<QualityIndexRedirect />} />
             <Route path="/quality/test-requests" element={<QualityRequestsPage />} />
             <Route path="/quality/test-requests/:id" element={<QualityRequestDetailPage />} />
             <Route path="/quality/test-runs/:id" element={<QualityRunDetailPage />} />

@@ -20,8 +20,12 @@ export class CaseLibrariesController {
   }
 
   @Get('case-libraries')
-  listLibraries(@Query('workspaceId') workspaceId: string, @Query('projectId') projectId?: string) {
-    return this.libraries.listLibraries({ workspaceId, projectId });
+  listLibraries(
+    @Query('workspaceId') workspaceId: string,
+    @Query('projectId') projectId?: string,
+    @Query('ownership') ownership?: string,
+  ) {
+    return this.libraries.listLibraries({ workspaceId, projectId, ownership });
   }
 
   @Post('case-libraries/:libraryId/modules')

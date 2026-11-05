@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
+import { useScopedProjectId } from '../project-scope-context';
 import { EmptyState } from '../components/EmptyState';
+import { ProjectRequiredState } from '../components/ProjectRequiredState';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
 import { SectionHeader } from '../components/SectionHeader';
@@ -9,45 +11,20 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Input } from '../components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
 import { formatBeijingDateTime } from '../utils/datetime';
 import type { DailyCodeReview, Project } from '../types';
 
-const STORAGE_KEY = 'flowx-code-reviews-page-preferences';
-
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function readPreferredProjectId(): string {
-  if (typeof window === 'undefined') {
-    return '';
-  }
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return '';
-    }
-    const parsed = JSON.parse(raw) as { projectId?: unknown };
-    return typeof parsed.projectId === 'string' ? parsed.projectId : '';
-  } catch {
-    return '';
-  }
-}
-
-function writePreferredProjectId(projectId: string) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ projectId }));
-}
-
 export function CodeReviewsPage() {
+  const [searchParams] = useSearchParams();
+  const selectedProjectId = useScopedProjectId();
   const [projects, setProjects] = useState<Project[]>([]);
   const [reviews, setReviews] = useState<DailyCodeReview[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState(() => readPreferredProjectId());
   const [date, setDate] = useState(today());
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -57,17 +34,7 @@ export function CodeReviewsPage() {
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
 
   async function loadProjects() {
-    const projectList = await api.getProjects();
-    setProjects(projectList);
-    const persistedProjectId = selectedProjectId;
-    const nextProjectId = projectList.some((project) => project.id === persistedProjectId)
-      ? persistedProjectId
-      : projectList[0]?.id || '';
-    setSelectedProjectId(nextProjectId);
-    if (nextProjectId) {
-      writePreferredProjectId(nextProjectId);
-      setReviews(await api.listProjectDailyCodeReviews(nextProjectId));
-    }
+    setProjects(await api.getProjects());
   }
 
   async function refresh(projectId = selectedProjectId, options?: { silent?: boolean }) {
@@ -89,11 +56,16 @@ export function CodeReviewsPage() {
   }
 
   useEffect(() => {
-    setLoading(true);
-    loadProjects()
-      .catch((error) => toast.error(error instanceof Error ? error.message : '加载项目失败'))
-      .finally(() => setLoading(false));
+    loadProjects().catch((error) => toast.error(error instanceof Error ? error.message : '加载项目失败'));
   }, []);
+
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setReviews([]);
+      return;
+    }
+    void refresh(selectedProjectId);
+  }, [selectedProjectId]);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -165,26 +137,8 @@ export function CodeReviewsPage() {
           <div className="rounded-md border border-border bg-muted/70 p-3">
             <div className="flex flex-wrap items-end gap-3">
               <div className="flex min-w-[220px] flex-1 flex-col gap-1.5 sm:max-w-xs">
-                <label className="text-xs font-medium text-muted-foreground">项目</label>
-                <Select
-                  value={selectedProjectId || ''}
-                  onValueChange={(value) => {
-                    setSelectedProjectId(value);
-                    writePreferredProjectId(value);
-                    void refresh(value);
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="选择项目" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <span className="text-xs font-medium text-muted-foreground">项目</span>
+                <p className="flex h-10 items-center text-sm font-medium">{selectedProject?.name ?? '未选择项目'}</p>
               </div>
               <div className="flex w-full flex-col gap-1.5 sm:w-[168px]">
                 <label className="text-xs font-medium text-muted-foreground">日期</label>
@@ -222,7 +176,9 @@ export function CodeReviewsPage() {
           <SectionHeader eyebrow="History" title="代码审查历史" />
         </CardHeader>
         <CardContent className="p-5 pt-0">
-          {loading ? (
+          {!selectedProjectId ? (
+            <ProjectRequiredState />
+          ) : loading ? (
             <div className="flex min-h-40 items-center justify-center">
               <Spinner className="h-7 w-7" />
             </div>

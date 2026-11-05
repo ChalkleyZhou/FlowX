@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { PageHeader } from '../components/PageHeader';
+import { ProjectRequiredState } from '../components/ProjectRequiredState';
 import { ScheduleAssignmentDialog } from '../components/ScheduleAssignmentDialog';
 import { ScheduleGantt } from '../components/ScheduleGantt';
 import { Button } from '../components/ui/button';
@@ -15,13 +16,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
 import type { Project, Requirement } from '../types';
+import { useScopedProjectId } from '../project-scope-context';
 import {
   defaultScheduleRange,
   parseScheduleRange,
-  ALL_PROJECTS,
   ALL_REQUIREMENTS,
   ALL_ROLES,
   ASSIGNMENT_ROLE_OPTIONS,
@@ -32,7 +32,7 @@ import { useRememberedSearchFilters } from '../utils/list-filter-storage';
 
 export function ScheduleHubPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  useRememberedSearchFilters('schedule', ['projectId', 'requirementId', 'role', 'onlyMe', 'from', 'to'], (params) => {
+  useRememberedSearchFilters('schedule', ['requirementId', 'role', 'onlyMe', 'from', 'to'], (params) => {
     if (params.get('from') && params.get('to')) return params;
     const next = new URLSearchParams(params);
     const fallback = defaultScheduleRange();
@@ -48,7 +48,7 @@ export function ScheduleHubPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [ganttRefreshToken, setGanttRefreshToken] = useState(0);
 
-  const projectId = searchParams.get('projectId') ?? '';
+  const projectId = useScopedProjectId();
   const requirementId = searchParams.get('requirementId') ?? '';
   const role = searchParams.get('role') ?? '';
   const onlyMe = searchParams.get('onlyMe') === '1' || searchParams.get('onlyMe') === 'true';
@@ -120,14 +120,6 @@ export function ScheduleHubPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only reconcile URL when data/filters change
   }, [requirements, projectId, requirementId]);
 
-  function handleProjectChange(value: string) {
-    const nextProjectId = value === ALL_PROJECTS ? '' : value;
-    updateParams({
-      projectId: nextProjectId || null,
-      requirementId: null,
-    });
-  }
-
   function handleRequirementChange(value: string) {
     updateParams({
       requirementId: value === ALL_REQUIREMENTS ? null : value,
@@ -153,7 +145,7 @@ export function ScheduleHubPage() {
 
   const ganttQuery = useMemo(
     () => ({
-      scope: 'organization' as const,
+      scope: 'project' as const,
       projectId: projectId || undefined,
       requirementId: requirementId || undefined,
       role: role || undefined,
@@ -169,7 +161,7 @@ export function ScheduleHubPage() {
       <PageHeader
         eyebrow="Schedule"
         title="排期甘特"
-        description="每行一名成员，每列一天；条形为在该时间段内的排期任务。筛选时需先选项目，再选该项目下的需求。"
+        description="每行一名成员，每列一天；条形为当前项目在该时间段内的排期任务。"
         actions={(
           <>
             <Button type="button" onClick={() => setCreateDialogOpen(true)}>
@@ -185,26 +177,6 @@ export function ScheduleHubPage() {
       <Card className="mb-4 rounded-md border border-border bg-card">
         <CardContent className="space-y-4 p-4">
           <div className="flex flex-wrap items-end gap-4">
-            <FilterField label="项目">
-              {metaLoading ? (
-                <Spinner className="h-5 w-5" />
-              ) : (
-                <Select value={projectId || ALL_PROJECTS} onValueChange={handleProjectChange}>
-                  <SelectTrigger className="w-[220px]" aria-label="筛选项目">
-                    <SelectValue placeholder="全部项目" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ALL_PROJECTS}>全部项目</SelectItem>
-                    {projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </FilterField>
-
             <FilterField label="需求">
               <Select
                 value={projectId ? requirementId || ALL_REQUIREMENTS : ''}
@@ -299,7 +271,7 @@ export function ScheduleHubPage() {
             </div>
             {selectedProject ? (
               <Button variant="ghost" size="sm" asChild className="text-muted-foreground">
-                <Link to={`/projects/${selectedProject.id}`}>项目详情</Link>
+                <Link to={`/project-settings?projectId=${selectedProject.id}`}>项目设置</Link>
               </Button>
             ) : null}
           </div>
@@ -308,7 +280,11 @@ export function ScheduleHubPage() {
 
       <Card className="rounded-md border border-border bg-card">
         <CardContent className="p-5">
-          <ScheduleGantt query={ganttQuery} refreshToken={ganttRefreshToken} />
+          {projectId ? (
+            <ScheduleGantt query={ganttQuery} refreshToken={ganttRefreshToken} />
+          ) : (
+            <ProjectRequiredState />
+          )}
         </CardContent>
       </Card>
 

@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useRememberedSearchFilters } from '../../utils/list-filter-storage';
 import { api } from '../../api';
+import { useScopedProjectId } from '../../project-scope-context';
 import { EmptyState } from '../../components/EmptyState';
+import { ProjectRequiredState } from '../../components/ProjectRequiredState';
 import { ListToolbar } from '../../components/ListToolbar';
 import { MetricCard } from '../../components/MetricCard';
 import { PageHeader } from '../../components/PageHeader';
@@ -19,7 +21,7 @@ import {
   SelectValue,
 } from '../../components/ui/select';
 import { useToast } from '../../components/ui/toast';
-import type { Project, TestRequest, TestRun } from '../../types';
+import type { TestRequest, TestRun } from '../../types';
 import {
   LoadingState,
   Pagination,
@@ -40,13 +42,12 @@ interface RunRow {
 export function QualityRunsPage() {
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  useRememberedSearchFilters('quality-runs', ['projectId', 'runType', 'status', 'q']);
+  useRememberedSearchFilters('quality-runs', ['runType', 'status', 'q']);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [requests, setRequests] = useState<TestRequest[]>([]);
 
-  const projectId = searchParams.get('projectId') ?? ALL;
+  const projectId = useScopedProjectId();
   const runType = searchParams.get('runType') ?? ALL;
   const status = searchParams.get('status') ?? ALL;
   const keyword = searchParams.get('q') ?? '';
@@ -55,9 +56,7 @@ export function QualityRunsPage() {
   async function refresh(silent = false) {
     silent ? setRefreshing(true) : setLoading(true);
     try {
-      const [projectList, requestList] = await Promise.all([api.getProjects(), api.getTestRequests()]);
-      setProjects(projectList);
-      setRequests(requestList);
+      setRequests(await api.getTestRequests());
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '加载执行记录失败');
     } finally {
@@ -86,7 +85,7 @@ export function QualityRunsPage() {
   const filteredRows = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
     return rows.filter(({ request, run }) => {
-      if (projectId !== ALL && request.projectId !== projectId) return false;
+      if (!projectId || request.projectId !== projectId) return false;
       if (runType !== ALL && run.runType !== runType) return false;
       if (status !== ALL && run.status !== status) return false;
       if (!normalizedKeyword) return true;
@@ -100,9 +99,10 @@ export function QualityRunsPage() {
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const pageRows = filteredRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-  const activeCount = rows.filter((item) => item.run.status === 'ACTIVE').length;
-  const regressionCount = rows.filter((item) => item.run.runType === 'REGRESSION').length;
-  const exceptionCount = rows.filter((item) => ['FAILED', 'BLOCKED'].includes(item.run.status)).length;
+  const projectRows = rows.filter((item) => projectId && item.request.projectId === projectId);
+  const activeCount = projectRows.filter((item) => item.run.status === 'ACTIVE').length;
+  const regressionCount = projectRows.filter((item) => item.run.runType === 'REGRESSION').length;
+  const exceptionCount = projectRows.filter((item) => ['FAILED', 'BLOCKED'].includes(item.run.status)).length;
 
   return (
     <>
@@ -114,7 +114,7 @@ export function QualityRunsPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="执行轮次" value={rows.length} />
+        <MetricCard label="执行轮次" value={projectRows.length} />
         <MetricCard label="执行中" value={activeCount} />
         <MetricCard label="Bug 回归" value={regressionCount} />
         <MetricCard label="异常结论" value={exceptionCount} />
@@ -141,15 +141,6 @@ export function QualityRunsPage() {
               )}
               filters={(
                 <>
-                  <Select value={projectId} onValueChange={(value) => updateQuery({ projectId: value, page: null })}>
-                    <SelectTrigger className="w-full sm:w-[180px]" aria-label="按项目筛选">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={ALL}>全部项目</SelectItem>
-                      {projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
                   <Select value={runType} onValueChange={(value) => updateQuery({ runType: value, page: null })}>
                     <SelectTrigger className="w-full sm:w-[140px]" aria-label="按轮次类型筛选">
                       <SelectValue />
@@ -174,7 +165,7 @@ export function QualityRunsPage() {
               )}
             />
 
-            {loading ? <LoadingState /> : pageRows.length ? (
+            {!projectId ? <ProjectRequiredState /> : loading ? <LoadingState /> : pageRows.length ? (
               <div className="space-y-3">
                 {pageRows.map(({ request, run }) => (
                   <RecordListItem

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
+import { withCurrentProject } from '../project-scope';
 import { SectionHeader } from './SectionHeader';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader } from './ui/card';
@@ -108,7 +109,7 @@ export function ProjectCodeReviewConfigPanel({ projectId }: { projectId: string 
             生成今日代码审查
           </Button>
           <Button variant="outline" asChild>
-            <Link to="/code-reviews">查看历史</Link>
+            <Link to={withCurrentProject('/code-reviews', projectId)}>查看历史</Link>
           </Button>
         </div>
         <p className="text-sm text-muted-foreground">

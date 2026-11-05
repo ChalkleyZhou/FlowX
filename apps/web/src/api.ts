@@ -1135,7 +1135,7 @@ export const api = {
         }, {}),
       ).toString()}`,
     ),
-  getTestCaseLibraries: (params: { workspaceId: string; projectId?: string }) =>
+  getTestCaseLibraries: (params: { workspaceId: string; projectId?: string; ownership?: 'project' | 'shared' }) =>
     request<TestCaseLibrary[]>(`/quality/case-libraries${queryString(params)}`),
   getTestCaseModules: (libraryId: string) =>
     request<TestCaseModule[]>(`/quality/case-libraries/${libraryId}/modules`),
@@ -1169,6 +1169,7 @@ export const api = {
     projectId?: string;
     libraryId?: string;
     moduleId?: string;
+    ownership?: 'project' | 'shared';
   }) => request<TestCaseDefinition[]>(`/quality/test-cases${queryString(params)}`),
   getTestCasesPage: (params: {
     workspaceId: string;
@@ -1177,6 +1178,7 @@ export const api = {
     moduleId?: string;
     q?: string;
     priority?: string;
+    ownership?: 'project' | 'shared';
     page: number;
     pageSize: number;
   }) => request<TestCasePage>(`/quality/test-cases${queryString(params)}`),

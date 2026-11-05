@@ -1,31 +1,84 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
+import { PROJECT_DEPENDENT_QUERY_KEYS, isProjectScopedListPath, readCurrentProjectId } from '../project-scope';
 
 const STORAGE_PREFIX = 'flowx-list-filters:';
+const DEPENDENT_FILTER_KEYS = new Set<string>(PROJECT_DEPENDENT_QUERY_KEYS);
 
-export function readStoredListFilters(pageKey: string): Record<string, string> {
-  if (typeof window === 'undefined') {
+type ListFilterSnapshot = {
+  projectId: string | null;
+  filters: Record<string, string>;
+};
+
+function stringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {};
+  }
+  const filters: Record<string, string> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (typeof item === 'string' && item) {
+      filters[key] = item;
+    }
+  }
+  return filters;
+}
+
+export function readStoredListFilterSnapshot(pageKey: string): ListFilterSnapshot {
+  if (typeof window === 'undefined') {
+    return { projectId: null, filters: {} };
   }
   try {
     const raw = window.localStorage.getItem(STORAGE_PREFIX + pageKey);
     if (!raw) {
-      return {};
+      return { projectId: null, filters: {} };
     }
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return {};
+      return { projectId: null, filters: {} };
     }
-    const filters: Record<string, string> = {};
-    for (const [key, value] of Object.entries(parsed)) {
-      if (typeof value === 'string' && value) {
-        filters[key] = value;
-      }
+    const record = parsed as Record<string, unknown>;
+    if (record.filters && typeof record.filters === 'object' && !Array.isArray(record.filters)) {
+      return {
+        projectId: typeof record.projectId === 'string' && record.projectId ? record.projectId : null,
+        filters: stringRecord(record.filters),
+      };
     }
-    return filters;
+    return { projectId: null, filters: stringRecord(record) };
   } catch {
-    return {};
+    return { projectId: null, filters: {} };
   }
+}
+
+/** 同一项目恢复全部筛选项。换项目或旧记录没有项目归属时，只保留状态、优先级、关键词这类不依赖项目的条件。 */
+export function filtersForCurrentProject(stored: ListFilterSnapshot, currentProjectId: string | null) {
+  const sameProject = Boolean(stored.projectId && currentProjectId && stored.projectId === currentProjectId);
+  const unscoped = !stored.projectId && !currentProjectId;
+  if (sameProject || unscoped) {
+    return stored.filters;
+  }
+  const filters: Record<string, string> = {};
+  for (const [key, value] of Object.entries(stored.filters)) {
+    if (!DEPENDENT_FILTER_KEYS.has(key)) {
+      filters[key] = value;
+    }
+  }
+  return filters;
+}
+
+export function readStoredListFilters(pageKey: string): Record<string, string> {
+  return readStoredListFilterSnapshot(pageKey).filters;
+}
+
+export function writeStoredListFilterSnapshot(pageKey: string, snapshot: ListFilterSnapshot) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const filters = stringRecord(snapshot.filters);
+  const payload: { projectId?: string; filters: Record<string, string> } = { filters };
+  if (snapshot.projectId) {
+    payload.projectId = snapshot.projectId;
+  }
+  window.localStorage.setItem(STORAGE_PREFIX + pageKey, JSON.stringify(payload));
 }
 
 export function writeStoredListFilters(pageKey: string, filters: Record<string, string>) {
@@ -84,6 +137,7 @@ export function useRememberedSearchFilters(
   keys: readonly string[],
   fill?: (params: URLSearchParams) => URLSearchParams,
 ) {
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const keysRef = useRef(keys);
   keysRef.current = keys;
@@ -102,12 +156,17 @@ export function useRememberedSearchFilters(
     let next = new URLSearchParams(searchParams);
     const hasExplicit = filterKeys.some((key) => searchParams.get(key));
     if (!hasExplicit) {
-      const stored = readStoredListFilters(pageKey);
+      const currentProjectId = searchParams.get('projectId') || readCurrentProjectId();
+      const stored = filtersForCurrentProject(readStoredListFilterSnapshot(pageKey), currentProjectId);
       for (const key of filterKeys) {
         if (stored[key]) next.set(key, stored[key]);
       }
     }
     if (fillRef.current) next = fillRef.current(next);
+    const rememberedProjectId = searchParams.get('projectId') || readCurrentProjectId();
+    if (rememberedProjectId && isProjectScopedListPath(location.pathname) && !next.get('projectId')) {
+      next.set('projectId', rememberedProjectId);
+    }
     if (next.toString() === searchParams.toString()) return;
     pendingHydration.current = true;
     setSearchParams(next, { replace: true });
@@ -122,6 +181,9 @@ export function useRememberedSearchFilters(
       }
       pendingHydration.current = false;
     }
-    writeStoredListFilters(pageKey, snapshot);
+    writeStoredListFilterSnapshot(pageKey, {
+      projectId: searchParams.get('projectId') || readCurrentProjectId(),
+      filters: snapshot,
+    });
   }, [pageKey, searchParams]);
 }

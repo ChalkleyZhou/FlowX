@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError } from '../../api';
+import { ProjectScopeProvider } from '../../project-scope-context';
 import { ConfirmProvider } from '../../components/ConfirmDialog';
 import type { Project, TestCaseDefinition, TestCaseLibrary, TestDesign, TestRequest, WorkflowRun, Workspace } from '../../types';
 import { QualityCasesPage } from './QualityCasesPage';
@@ -241,7 +242,7 @@ describe('Quality pages', () => {
     expect(container.querySelector('a[href="/quality/test-runs/run-1"]')?.textContent).toContain('缺陷修复回归');
   });
   it('shows test requests as an independent page without content tabs', async () => {
-    await renderPage('/quality/test-requests', <QualityRequestsPage />);
+    await renderPage('/quality/test-requests?projectId=project-1', <QualityRequestsPage />);
 
     expect(api.getTestRequests).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain('2.6.0 登录能力提测');
@@ -392,6 +393,24 @@ describe('Quality pages', () => {
     const submitButton = Array.from(document.body.querySelectorAll('button')).find((button) => button.textContent?.trim() === '创建提测草稿');
     expect(submitButton).toBeTruthy();
     expect(submitButton?.hasAttribute('disabled')).toBe(true);
+  });
+
+  it('当前项目库使用该项目的工作区，并且不混入共享库', async () => {
+    await renderPage(
+      '/quality/test-cases?projectId=project-1&workspaceId=workspace-other',
+      <ProjectScopeProvider><QualityCasesPage /></ProjectScopeProvider>,
+    );
+
+    expect(api.getTestCaseLibraries).toHaveBeenCalledWith({
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      ownership: 'project',
+    });
+    expect(api.getTestCasesPage).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      ownership: 'project',
+    }));
   });
 
   it('loads the selected workspace case library and test cases', async () => {
@@ -584,7 +603,7 @@ describe('Quality pages', () => {
   });
 
   it('maps test plan runs into the execution history page', async () => {
-    await renderPage('/quality/test-runs', <QualityRunsPage />);
+    await renderPage('/quality/test-runs?projectId=project-1', <QualityRunsPage />);
 
     expect(container.textContent).toContain('缺陷修复回归 #2');
     expect(container.textContent).toContain('登录跳转丢失目标地址');

@@ -43,6 +43,10 @@ export class ListTestCasesQueryDto {
   projectId?: string;
 
   @IsOptional()
+  @IsIn(['project', 'shared'])
+  ownership?: 'project' | 'shared';
+
+  @IsOptional()
   @IsString()
   @MinLength(1)
   libraryId?: string;

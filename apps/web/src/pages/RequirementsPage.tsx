@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useConfirm } from '../components/ConfirmDialog';
 import { EmptyState } from '../components/EmptyState';
+import { ProjectRequiredState } from '../components/ProjectRequiredState';
 import { RequirementEditDialog } from '../components/RequirementEditDialog';
 import { ListToolbar } from '../components/ListToolbar';
 import { MetricCard } from '../components/MetricCard';
@@ -31,6 +32,7 @@ import { Textarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
 import type { Project, Requirement } from '../types';
 import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
+import { useScopedProjectId } from '../project-scope-context';
 import { useRememberedSearchFilters } from '../utils/list-filter-storage';
 import { formatRequirementWorkflowScope, getActiveRequirementWorkflows } from '../utils/requirement-workflows';
 import { formatWorkflowStatus } from '../utils/workflow-ui';
@@ -81,7 +83,7 @@ const priorityOptions = [
 export function RequirementsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  useRememberedSearchFilters('requirements', ['projectId', 'versionId', 'planningStatus', 'priority']);
+  useRememberedSearchFilters('requirements', ['versionId', 'planningStatus', 'priority']);
   const [projects, setProjects] = useState<Project[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [loading, setLoading] = useState(false);
@@ -109,12 +111,12 @@ export function RequirementsPage() {
   const prototypeInFlight = useRef(false);
   const toast = useToast();
   const confirm = useConfirm();
-  const selectedProjectId = searchParams.get('projectId') ?? undefined;
+  const selectedProjectId = useScopedProjectId() || undefined;
   const selectedVersionId = searchParams.get('versionId') ?? undefined;
   const selectedPlanningStatus = searchParams.get('planningStatus') ?? undefined;
   const selectedPriority = searchParams.get('priority') ?? undefined;
   const hasActiveFilters = Boolean(
-    selectedProjectId || selectedVersionId || selectedPlanningStatus || selectedPriority,
+    selectedVersionId || selectedPlanningStatus || selectedPriority,
   );
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === createDraft.projectId) ?? null,
@@ -140,7 +142,7 @@ export function RequirementsPage() {
   const filteredRequirements = useMemo(
     () =>
       requirements.filter((item) => {
-        if (selectedProjectId && item.project.id !== selectedProjectId) {
+        if (!selectedProjectId || item.project.id !== selectedProjectId) {
           return false;
         }
         if (selectedVersionId && item.versionId !== selectedVersionId) {
@@ -164,15 +166,18 @@ export function RequirementsPage() {
   );
 
   const requirementSummary = useMemo(() => {
-    const workspaceSet = new Set(requirements.map((item) => item.project.workspace.id));
-    const projectSet = new Set(requirements.map((item) => item.project.id));
+    const scoped = selectedProjectId
+      ? requirements.filter((item) => item.project.id === selectedProjectId)
+      : [];
+    const workspaceSet = new Set(scoped.map((item) => item.project.workspace.id));
+    const projectSet = new Set(scoped.map((item) => item.project.id));
     return {
-      requirementCount: requirements.length,
+      requirementCount: scoped.length,
       visibleCount: filteredRequirements.length,
       workspaceCount: workspaceSet.size,
       projectCount: projectSet.size,
     };
-  }, [filteredRequirements.length, requirements]);
+  }, [filteredRequirements.length, requirements, selectedProjectId]);
 
   async function refresh() {
     setLoading(true);
@@ -235,7 +240,7 @@ export function RequirementsPage() {
 
   function clearFilters() {
     const nextParams = new URLSearchParams(searchParams);
-    ['workspaceId', 'projectId', 'versionId', 'planningStatus', 'priority'].forEach((key) => nextParams.delete(key));
+    ['workspaceId', 'versionId', 'planningStatus', 'priority'].forEach((key) => nextParams.delete(key));
     setSearchParams(nextParams, { replace: true });
   }
 
@@ -624,7 +629,7 @@ export function RequirementsPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                {!(selectedProject?.versions?.length) && <p className="text-sm text-muted-foreground">项目尚无发布版本，请先<Link className="text-primary underline" to={`/projects/${createDraft.projectId}`}>前往项目设置版本</Link>。</p>}
+                {!(selectedProject?.versions?.length) && <p className="text-sm text-muted-foreground">项目尚无发布版本，请先<Link className="text-primary underline" to={`/project-settings?projectId=${createDraft.projectId}`}>前往项目设置版本</Link>。</p>}
               </div>
             ) : null}
             {createMode === 'manual' && <>
@@ -817,22 +822,6 @@ export function RequirementsPage() {
             filters={(
               <>
                 <Select
-                  value={selectedProjectId ?? ALL_FILTER_VALUE}
-                  onValueChange={(value) => updateFilterQuery({ projectId: value === ALL_FILTER_VALUE ? undefined : value }, ['versionId'])}
-                >
-                  <SelectTrigger className="w-[220px]" aria-label="按项目筛选">
-                    <SelectValue placeholder="按项目筛选" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ALL_FILTER_VALUE}>全部项目</SelectItem>
-                    {projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
                   value={selectedVersionId ?? ALL_FILTER_VALUE}
                   onValueChange={(value) => updateFilterQuery({ versionId: value === ALL_FILTER_VALUE ? undefined : value })}
                 >
@@ -884,7 +873,9 @@ export function RequirementsPage() {
               </>
             )}
           />
-          {loading ? (
+          {!selectedProjectId ? (
+            <ProjectRequiredState />
+          ) : loading ? (
             <div className="flex min-h-40 items-center justify-center">
               <Spinner className="h-7 w-7" />
             </div>

@@ -226,6 +226,7 @@ export class ReviewArtifactsService {
         actualBehavior: dto.actualBehavior,
         reproductionSteps: dto.reproductionSteps ?? [],
         workspaceId: workflowRun.requirement.workspaceId,
+        projectId: workflowRun.requirement.projectId,
         requirementId: workflowRun.requirementId,
         workflowRunId: workflowRun.id,
         repositoryId: dto.repositoryId ?? null,

@@ -6,11 +6,14 @@ import { DevelopmentProgressRow } from '../components/DevelopmentProgressRow';
 import { DevelopmentOverview } from '../components/DevelopmentOverview';
 import { DevelopmentProgressDetail } from '../components/DevelopmentProgressDetail';
 import { EmptyState } from '../components/EmptyState';
+import { ProjectRequiredState } from '../components/ProjectRequiredState';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import type { ExecutionSessionDetail, ExecutionSessionStatus, ExecutionSessionView, OrganizationMember, Project, SourceTool } from '../types';
+import type { ExecutionSessionDetail, ExecutionSessionStatus, ExecutionSessionView, OrganizationMember, SourceTool } from '../types';
+import { withCurrentProject } from '../project-scope';
+import { useAdoptProject, useScopedProjectId } from '../project-scope-context';
 import { useRememberedSearchFilters } from '../utils/list-filter-storage';
 
 const statuses: Array<[ExecutionSessionStatus, string]> = [
@@ -29,8 +32,7 @@ function Filter({ label, value, allLabel, items, onChange }: {
 
 export function ExecutionSessionsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  useRememberedSearchFilters('execution-sessions', ['projectId', 'status', 'sourceTool', 'claimedByUserId', 'search', 'view']);
-  const [projects, setProjects] = useState<Project[]>([]);
+  useRememberedSearchFilters('execution-sessions', ['status', 'sourceTool', 'claimedByUserId', 'search', 'view']);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [optionsError, setOptionsError] = useState(false);
   const [rows, setRows] = useState<ExecutionSessionDetail[]>([]);
@@ -39,7 +41,7 @@ export function ExecutionSessionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
-  const projectId = searchParams.get('projectId') ?? 'all';
+  const projectId = useScopedProjectId();
   const status = searchParams.get('status') ?? 'all';
   const sourceTool = searchParams.get('sourceTool') ?? 'all';
   const claimedByUserId = searchParams.get('claimedByUserId') ?? 'all';
@@ -54,11 +56,12 @@ export function ExecutionSessionsPage() {
   useEffect(() => setSearchDraft(search), [search]);
   useEffect(() => {
     let active = true;
-    void Promise.allSettled([api.getProjects(), api.getOrganizationMembers()]).then(([projectResult, memberResult]) => {
+    void api.getOrganizationMembers().then((memberList) => {
       if (!active) return;
-      if (projectResult.status === 'fulfilled') setProjects(projectResult.value);
-      if (memberResult.status === 'fulfilled') setMembers(memberResult.value);
-      setOptionsError(projectResult.status === 'rejected' || memberResult.status === 'rejected');
+      setMembers(memberList);
+      setOptionsError(false);
+    }).catch(() => {
+      if (active) setOptionsError(true);
     });
     return () => { active = false; };
   }, [revision]);
@@ -67,12 +70,12 @@ export function ExecutionSessionsPage() {
     let active = true;
     let inFlight = false;
     async function refresh(options?: { silent?: boolean }) {
-      if (inFlight) return;
+      if (!projectId || inFlight) return;
       inFlight = true;
       if (!options?.silent) setLoading(true);
       try {
         const result = await api.listExecutionSessions({
-          projectId: projectId === 'all' ? undefined : projectId,
+          projectId,
           status: status === 'all' ? undefined : status as ExecutionSessionStatus,
           sourceTool: sourceTool === 'all' ? undefined : sourceTool as SourceTool,
           claimedByUserId: claimedByUserId === 'all' ? undefined : claimedByUserId,
@@ -96,8 +99,13 @@ export function ExecutionSessionsPage() {
         if (active && !options?.silent) setLoading(false);
       }
     }
-    void refresh();
-    const timer = window.setInterval(() => void refresh({ silent: true }), 30_000);
+    if (projectId) {
+      void refresh();
+    } else if (active) {
+      setLoading(false);
+      setRows([]);
+    }
+    const timer = projectId ? window.setInterval(() => void refresh({ silent: true }), 30_000) : 0;
     return () => { active = false; window.clearInterval(timer); };
   }, [projectId, status, sourceTool, claimedByUserId, search, view, page, query, revision, setSearchParams]);
 
@@ -136,20 +144,20 @@ export function ExecutionSessionsPage() {
     <DevelopmentOverview counts={counts} view={view} onChange={(value) => updateFilter('view', value)} />
     <div className="space-y-3 rounded-md border border-border bg-card p-4">
       <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap">
-        <Filter label="按项目筛选" value={projectId} allLabel="全部项目" items={projects.map((project) => [project.id, project.name])} onChange={(value) => updateFilter('projectId', value)} />
         <Filter label="按执行人筛选" value={claimedByUserId} allLabel="全部执行人" items={members.map((member) => [member.id, member.displayName])} onChange={(value) => updateFilter('claimedByUserId', value)} />
         <Filter label="按工具筛选" value={sourceTool} allLabel="全部工具" items={tools} onChange={(value) => updateFilter('sourceTool', value)} />
         <Filter label="按运行状态筛选" value={status} allLabel="全部状态" items={statuses} onChange={(value) => updateFilter('status', value)} />
       </div>
       <form className="flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); updateFilter('search', searchDraft.trim()); }}>
         <Input className="min-w-40 flex-1" aria-label="搜索需求名称" placeholder="搜索需求名称" value={searchDraft} maxLength={200} onChange={(event) => setSearchDraft(event.target.value)} />
-        <Button type="submit" variant="outline">搜索</Button><Button type="button" variant="ghost" onClick={() => { setSearchDraft(''); setSearchParams({}); }}>清除筛选</Button>
+        <Button type="submit" variant="outline">搜索</Button><Button type="button" variant="ghost" onClick={() => { setSearchDraft(''); const next = new URLSearchParams(); if (projectId) next.set('projectId', projectId); setSearchParams(next); }}>清除筛选</Button>
       </form>
       {optionsError ? <p className="text-sm text-muted-foreground">部分筛选选项暂时无法读取，可点击刷新重试。</p> : null}
     </div>
-    {error ? <div className="flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger" role="alert"><span>{error}</span><Button variant="outline" size="sm" onClick={() => setRevision((value) => value + 1)}>重试</Button></div> : null}
-    {loading ? <p role="status" className="text-sm text-muted-foreground">正在读取运行记录…</p> : null}
-    {!loading && !error && !rows.length ? <EmptyState title={emptyState.title} description={emptyState.description} action={<Button asChild variant="outline"><Link to="/workflow-runs">查看工作流</Link></Button>} /> : null}
+    {!projectId ? <ProjectRequiredState /> : null}
+    {projectId && error ? <div className="flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger" role="alert"><span>{error}</span><Button variant="outline" size="sm" onClick={() => setRevision((value) => value + 1)}>重试</Button></div> : null}
+    {projectId && loading ? <p role="status" className="text-sm text-muted-foreground">正在读取运行记录…</p> : null}
+    {projectId && !loading && !error && !rows.length ? <EmptyState title={emptyState.title} description={emptyState.description} action={<Button asChild variant="outline"><Link to={withCurrentProject('/workflow-runs', projectId)}>查看工作流</Link></Button>} /> : null}
     <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-base font-semibold">{views.find(([key]) => key === view)?.[1]}的开发任务</h2><p className="text-xs text-muted-foreground">概览按项目、执行人、工具和搜索统计；任务卡片异常优先</p></div>
     {rows.length ? <div className="grid items-start gap-4 2xl:grid-cols-2" aria-busy={loading}>{rows.map((row) => <DevelopmentProgressRow key={row.id} session={row} search={query ? `?${query}` : ''} />)}</div> : null}
     <nav className="flex flex-wrap items-center justify-between gap-3" aria-label="开发任务分页">
@@ -176,7 +184,10 @@ export function ExecutionSessionDetailPage() {
   const request = useRef(0);
   const inFlight = useRef(false);
   const terminal = useRef(false);
-  const listHref = `/dashboard${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
+  useAdoptProject(session?.projectId);
+  const backParams = new URLSearchParams(searchParams);
+  if (session?.projectId && !backParams.get('projectId')) backParams.set('projectId', session.projectId);
+  const listHref = `/dashboard${backParams.toString() ? `?${backParams.toString()}` : ''}`;
 
   const refresh = async (options?: { silent?: boolean }) => {
     if (inFlight.current) return;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { EmptyState } from '../components/EmptyState';
 import { ListToolbar } from '../components/ListToolbar';
@@ -23,9 +23,12 @@ import { Spinner } from '../components/ui/spinner';
 import { Textarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
 import { useStoredListFilters } from '../utils/list-filter-storage';
+import { useProjectScopeOptional } from '../project-scope-context';
 import type { Project, Workspace } from '../types';
 
 export function ProjectsPage() {
+  const navigate = useNavigate();
+  const scope = useProjectScopeOptional();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [filters, setFilter] = useStoredListFilters('projects');
@@ -79,6 +82,15 @@ export function ProjectsPage() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  function enterProject(projectId: string) {
+    const target = `/dashboard?projectId=${encodeURIComponent(projectId)}`;
+    if (scope) {
+      scope.setProjectId(projectId, { to: target });
+      return;
+    }
+    navigate(target);
+  }
 
   async function handleCreateProject(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -223,12 +235,13 @@ export function ProjectsPage() {
                   key={project.id}
                   interactive
                   title={(
-                    <Link
-                      to={`/projects/${project.id}`}
-                      className="text-base font-semibold leading-6 text-foreground no-underline hover:text-primary"
+                    <button
+                      type="button"
+                      className="text-base font-semibold leading-6 text-foreground hover:text-primary"
+                      onClick={() => enterProject(project.id)}
                     >
                       {project.name}
-                    </Link>
+                    </button>
                   )}
                   badges={
                     <>
@@ -244,9 +257,7 @@ export function ProjectsPage() {
                     </p>
                   }
                   actions={(
-                    <UiButton variant="outline" asChild>
-                      <Link to={`/projects/${project.id}`}>项目详情</Link>
-                    </UiButton>
+                    <UiButton variant="outline" onClick={() => enterProject(project.id)}>进入项目</UiButton>
                   )}
                 />
               ))}

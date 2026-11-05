@@ -38,7 +38,7 @@ beforeEach(() => {
   vi.mocked(api.listExecutionSessionEvents).mockResolvedValue({ items: [], nextCursor: null });
 });
 afterEach(() => { act(() => root.unmount()); vi.useRealTimers(); document.body.innerHTML = ''; });
-async function render(initialPath = '/execution-sessions') {
+async function render(initialPath = '/dashboard?projectId=p1') {
   await act(async () => { root.render(<MemoryRouter initialEntries={[initialPath]}><Routes>
     <Route path="/execution-sessions" element={<ExecutionSessionsPage />} />
     <Route path="/dashboard" element={<ExecutionSessionsPage />} />
@@ -91,7 +91,7 @@ it('切换快捷视图和执行人后回到第一页', async () => {
 });
 
 it('按需求名称搜索会重置页码并保留其他筛选', async () => {
-  await render('/execution-sessions?page=2&sourceTool=codex');
+  await render('/execution-sessions?page=2&sourceTool=codex&projectId=p1');
   const input = container.querySelector('input[aria-label="搜索需求名称"]') as HTMLInputElement;
   expect(input).not.toBeNull();
   await act(async () => {
@@ -114,7 +114,7 @@ it('展示实际进度、项目和测试证据，阻塞直接展示原因', asyn
 
 it('静默刷新保留页码和已有内容，失败后仍可查看和重试', async () => {
   vi.useFakeTimers();
-  await render('/execution-sessions?page=2');
+  await render('/execution-sessions?page=2&projectId=p1');
   vi.mocked(api.listExecutionSessions).mockRejectedValueOnce(new Error('读取失败'));
   await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
   expect(container.textContent).toContain('修复登录');
@@ -127,7 +127,7 @@ it('静默刷新保留页码和已有内容，失败后仍可查看和重试', a
 
 it('首屏失败可重试，无匹配记录可清除筛选', async () => {
   vi.mocked(api.listExecutionSessions).mockRejectedValueOnce(new Error('读取失败'));
-  await render('/execution-sessions?search=不存在');
+  await render('/execution-sessions?search=不存在&projectId=p1');
   expect(container.querySelector('[role="alert"]')?.textContent).toContain('读取失败');
   vi.mocked(api.listExecutionSessions).mockResolvedValueOnce({ items: [], nextCursor: null, total: 0, page: 1, pageSize: 20, totalPages: 1 });
   await click('重试');

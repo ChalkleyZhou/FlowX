@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ClipboardCheck, Send } from 'lucide-react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api, getFlowxApiBaseUrl } from '../api';
+import { withCurrentProject } from '../project-scope';
+import { useAdoptProject, useProjectScopeOptional } from '../project-scope-context';
 import { ONLINE_AI_UNAVAILABLE_MESSAGE, useOnlineAiProviders } from '../online-ai';
 import { ContextPanel } from '../components/ContextPanel';
 import { OpenDesignLaunchGuideDialog } from '../components/OpenDesignLaunchGuideDialog';
@@ -409,6 +411,9 @@ function WorkflowRunDetailContent() {
   const onlineAi = useOnlineAiProviders();
   const navigate = useNavigate();
   const [workflowRun, setWorkflowRun] = useState<WorkflowRun | null>(null);
+  const scope = useProjectScopeOptional();
+  useAdoptProject(workflowRun?.requirement.project.id);
+  const workflowListHref = withCurrentProject('/workflow-runs', workflowRun?.requirement.project.id ?? scope?.projectId ?? null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedStage, setSelectedStage] = useState<WorkflowStageKey>('SPEC_PLAN');
@@ -1881,7 +1886,7 @@ function WorkflowRunDetailContent() {
   }, [workflowRun, busyStage, stageActionsLocked, localHandoff, localExecutionActive, localLaunchBusy, openDesignBusy, feedbackText]);
 
   if (!workflowRunId) {
-    return <Navigate to="/workflow-runs" replace />;
+    return <Navigate to={workflowListHref} replace />;
   }
 
   const selectedStageContent = stageContent?.[selectedStage];
@@ -2262,7 +2267,7 @@ function WorkflowRunDetailContent() {
                   </UiButton>
                 ) : null}
                 <UiButton variant="outline" asChild>
-                  <Link to="/workflow-runs">返回列表</Link>
+                  <Link to={workflowListHref}>返回列表</Link>
                 </UiButton>
               </>
             }

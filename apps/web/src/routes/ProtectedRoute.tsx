@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { AppLayout } from '../components/AppLayout';
+import { ProjectScopeProvider } from '../project-scope-context';
 import { Spinner } from '../components/ui/spinner';
 
 export function ProtectedRoute({ children }: { children: ReactElement }) {
@@ -40,8 +41,10 @@ export function ProtectedLayout() {
   }
 
   return (
-    <AppLayout>
-      <Outlet />
-    </AppLayout>
+    <ProjectScopeProvider>
+      <AppLayout>
+        <Outlet />
+      </AppLayout>
+    </ProjectScopeProvider>
   );
 }

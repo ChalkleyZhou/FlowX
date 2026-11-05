@@ -39,12 +39,14 @@ import {
   DialogTitle,
 } from './ui/dialog';
 import { ConfirmProvider, useConfirm } from './ConfirmDialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { useProjectScopeOptional } from '../project-scope-context';
+import { withCurrentProject } from '../project-scope';
 
-const primaryItems = [
+const projectItems = [
   { key: '/dashboard', label: '看板', icon: LayoutDashboard },
   { key: '/requirements', label: '需求', icon: ClipboardList },
   { key: '/workflow-runs', label: '工作流', icon: Workflow },
-  { key: '/projects', label: '项目', icon: FolderKanban },
   { key: '/briefings', label: '简报', icon: Newspaper },
   { key: '/code-reviews', label: '代码审查', icon: GitPullRequest },
   {
@@ -59,13 +61,22 @@ const primaryItems = [
   },
   { key: '/schedule', label: '排期', icon: CalendarRange },
   { key: '/bugs', label: '缺陷', icon: Bug },
+  { key: '/project-settings', label: '项目设置', icon: Settings2 },
+] satisfies Array<{
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  children?: Array<{ key: string; label: string }>;
+}>;
+
+const organizationItems = [
+  { key: '/projects', label: '项目', icon: FolderKanban },
   { key: '/issues', label: '问题项', icon: CircleAlert },
   { key: '/workspaces', label: '工作区', icon: Boxes },
 ] satisfies Array<{
   key: string;
   label: string;
   icon: LucideIcon;
-  children?: Array<{ key: string; label: string }>;
 }>;
 
 const secondaryItems = [
@@ -100,9 +111,12 @@ function AppLayoutContent({ children }: PropsWithChildren) {
   const [showAiCredentialReminder, setShowAiCredentialReminder] = useState(false);
   const [showSecondaryMenu, setShowSecondaryMenu] = useState(false);
 
+  const scope = useProjectScopeOptional();
+  const currentProjectId = scope?.projectId ?? null;
   const selectedKey =
     [
-      ...primaryItems.flatMap((item) => [item, ...(item.children ?? [])]),
+      ...projectItems.flatMap((item) => [item, ...(item.children ?? [])]),
+      ...organizationItems,
       ...secondaryItems,
     ]
       .sort((left, right) => right.key.length - left.key.length)
@@ -167,48 +181,11 @@ function AppLayoutContent({ children }: PropsWithChildren) {
           <div className="mb-1 flex w-full items-center gap-3 border-b border-nav-border px-2 pb-4 pt-1">
             <FlowXLogo labelClassName="[&>div:first-child]:text-foreground [&>div:last-child]:text-nav-text" />
           </div>
+          <CurrentProjectSwitcher />
           <nav aria-label="主导航" className="flex flex-col gap-1 pt-0.5 max-xl:w-full max-xl:flex-row max-xl:flex-wrap max-xl:overflow-visible max-xl:pb-1">
-            {primaryItems.map((item) => {
-              const active = isPathActive(location.pathname, item.key);
-              const childActive = item.children?.some((child) => selectedKey === child.key) ?? false;
-              const Icon = item.icon;
-              return (
-                <div key={item.key} className="flex flex-col gap-1 max-xl:flex-row max-xl:items-center">
-                  <Link
-                    to={item.key}
-                    aria-expanded={item.children ? active : undefined}
-                    className={[
-                      'flex min-h-10 items-center gap-3 rounded-md border border-transparent px-3 py-2 text-sm text-nav-text no-underline transition-colors hover:bg-nav-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 max-xl:shrink-0',
-                      active ? 'font-medium text-foreground' : '',
-                      active && !childActive ? 'border-nav-border bg-nav-active' : '',
-                    ].filter(Boolean).join(' ')}
-                  >
-                    <Icon aria-hidden="true" className={active ? 'h-4 w-4 text-nav-accent' : 'h-4 w-4'} />
-                    <span className="truncate">{item.label}</span>
-                  </Link>
-                  {item.children && active ? (
-                    <div className="ml-5 flex flex-col gap-0.5 border-l border-nav-border max-xl:ml-0 max-xl:flex-row max-xl:border-l-0">
-                      {item.children.map((child) => {
-                        const selected = selectedKey === child.key;
-                        return (
-                          <Link
-                            key={child.key}
-                            to={child.key}
-                            aria-current={selected ? 'page' : undefined}
-                            className={[
-                              '-ml-px flex min-h-9 items-center rounded-r-md border-l-2 border-transparent py-1.5 pl-5 pr-3 text-[13px] text-nav-text no-underline transition-colors hover:bg-nav-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 max-xl:ml-0 max-xl:min-h-10 max-xl:shrink-0 max-xl:rounded-md max-xl:border-b-2 max-xl:border-l-0 max-xl:px-3',
-                              selected ? 'border-nav-accent bg-nav-active font-medium text-foreground max-xl:border-nav-accent' : '',
-                            ].filter(Boolean).join(' ')}
-                          >
-                            <span className="truncate">{child.label}</span>
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
+            <NavItemList items={projectItems} pathname={location.pathname} selectedKey={selectedKey} projectId={currentProjectId} />
+            <div className="mx-2 my-2 border-t border-nav-border max-xl:hidden" />
+            <NavItemList items={organizationItems} pathname={location.pathname} selectedKey={selectedKey} projectId={null} />
           </nav>
           {session ? (
             <div className="mt-auto border-t border-nav-border pt-3 max-xl:mt-0 max-xl:w-full max-xl:pt-2">
@@ -323,6 +300,90 @@ function AppLayoutContent({ children }: PropsWithChildren) {
           </div>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+function CurrentProjectSwitcher() {
+  const scope = useProjectScopeOptional();
+  if (!scope) {
+    return null;
+  }
+  return (
+    <div className="w-full px-2">
+      <label className="mb-1.5 block px-1 text-xs text-nav-text" htmlFor="current-project">当前项目</label>
+      <Select
+        value={scope.projectId ?? ''}
+        onValueChange={(value) => scope.setProjectId(value)}
+        disabled={scope.loading || scope.projects.length === 0}
+      >
+        <SelectTrigger id="current-project" aria-label="当前项目" className="w-full">
+          <SelectValue placeholder={scope.projects.length === 0 ? '暂无项目' : '选择项目'} />
+        </SelectTrigger>
+        <SelectContent>
+          {scope.projects.map((project) => (
+            <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function NavItemList({
+  items,
+  pathname,
+  selectedKey,
+  projectId,
+}: {
+  items: Array<{ key: string; label: string; icon: LucideIcon; children?: Array<{ key: string; label: string }> }>;
+  pathname: string;
+  selectedKey: string;
+  projectId: string | null;
+}) {
+  return (
+    <>
+      {items.map((item) => {
+        const active = isPathActive(pathname, item.key);
+        const childActive = item.children?.some((child) => selectedKey === child.key) ?? false;
+        const Icon = item.icon;
+        return (
+          <div key={item.key} className="flex flex-col gap-1 max-xl:flex-row max-xl:items-center">
+            <Link
+              to={withCurrentProject(item.key, projectId)}
+              aria-expanded={item.children ? active : undefined}
+              className={[
+                'flex min-h-10 items-center gap-3 rounded-md border border-transparent px-3 py-2 text-sm text-nav-text no-underline transition-colors hover:bg-nav-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 max-xl:shrink-0',
+                active ? 'font-medium text-foreground' : '',
+                active && !childActive ? 'border-nav-border bg-nav-active' : '',
+              ].filter(Boolean).join(' ')}
+            >
+              <Icon aria-hidden="true" className={active ? 'h-4 w-4 text-nav-accent' : 'h-4 w-4'} />
+              <span className="truncate">{item.label}</span>
+            </Link>
+            {item.children && active ? (
+              <div className="ml-5 flex flex-col gap-0.5 border-l border-nav-border max-xl:ml-0 max-xl:flex-row max-xl:border-l-0">
+                {item.children.map((child) => {
+                  const selected = selectedKey === child.key;
+                  return (
+                    <Link
+                      key={child.key}
+                      to={withCurrentProject(child.key, projectId)}
+                      aria-current={selected ? 'page' : undefined}
+                      className={[
+                        '-ml-px flex min-h-9 items-center rounded-r-md border-l-2 border-transparent py-1.5 pl-5 pr-3 text-[13px] text-nav-text no-underline transition-colors hover:bg-nav-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 max-xl:ml-0 max-xl:min-h-10 max-xl:shrink-0 max-xl:rounded-md max-xl:border-b-2 max-xl:border-l-0 max-xl:px-3',
+                        selected ? 'border-nav-accent bg-nav-active font-medium text-foreground max-xl:border-nav-accent' : '',
+                      ].filter(Boolean).join(' ')}
+                    >
+                      <span className="truncate">{child.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
     </>
   );
 }
