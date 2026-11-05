@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Eye, FolderTree, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { ChevronDown, ChevronRight, Eye, Folder, FolderOpen, FolderTree, Loader2, Pencil, Plus, RotateCw, Trash2, Upload } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useRememberedSearchFilters } from '../../utils/list-filter-storage';
 import { api } from '../../api';
@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from '../../components/ui/select';
 import { useToast } from '../../components/ui/toast';
-import type { TestCaseDefinition, TestCaseLibrary, Workspace } from '../../types';
+import type { TestCaseDefinition, TestCaseLibrary, TestCaseModule, Workspace } from '../../types';
 import { CreateCaseDialog, CreateLibraryDialog } from './QualityDialogs';
 import { QualityCaseImportDialog } from './QualityCaseImportDialog';
 import { QualityCaseEditDialog } from './QualityCaseEditDialog';
@@ -43,12 +43,16 @@ export function QualityCasesPage() {
   const toast = useToast();
   const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
-  useRememberedSearchFilters('quality-cases', ['workspaceId', 'caseScope', 'libraryId', 'priority', 'q']);
+  useRememberedSearchFilters('quality-cases', ['workspaceId', 'caseScope', 'libraryId', 'moduleId', 'priority', 'q']);
   const [metaLoading, setMetaLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [libraries, setLibraries] = useState<TestCaseLibrary[]>([]);
+  const [modulesByLibrary, setModulesByLibrary] = useState<Record<string, TestCaseModule[]>>({});
+  const [moduleLoading, setModuleLoading] = useState<Record<string, boolean>>({});
+  const [moduleErrors, setModuleErrors] = useState<Record<string, string | null>>({});
+  const [expandedLibraries, setExpandedLibraries] = useState<Set<string>>(new Set());
   const [cases, setCases] = useState<TestCaseDefinition[]>([]);
   const [total, setTotal] = useState(0);
   const [p0Count, setP0Count] = useState(0);
@@ -60,6 +64,7 @@ export function QualityCasesPage() {
   const [selectedCase, setSelectedCase] = useState<TestCaseDefinition | null>(null);
   const [editingCase, setEditingCase] = useState<TestCaseDefinition | null>(null);
   const [deletingCaseId, setDeletingCaseId] = useState<string | null>(null);
+  const [caseCreateContext, setCaseCreateContext] = useState<{ libraryId?: string; moduleId?: string }>({});
 
   const scope = useProjectScopeOptional();
   const currentProjectId = useScopedProjectId();
@@ -67,6 +72,7 @@ export function QualityCasesPage() {
   const projectWorkspaceId = scope?.projects.find((item) => item.id === currentProjectId)?.workspace.id ?? '';
   const workspaceId = caseScope === 'project' ? projectWorkspaceId : (searchParams.get('workspaceId') ?? '');
   const libraryId = searchParams.get('libraryId') ?? ALL;
+  const moduleId = searchParams.get('moduleId') ?? ALL;
   const priority = searchParams.get('priority') ?? ALL;
   const keyword = searchParams.get('q') ?? '';
   const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
@@ -82,6 +88,31 @@ export function QualityCasesPage() {
     }
     setSearchParams(next, { replace: true });
   }
+
+  function selectTreeNode(nextLibraryId?: string, nextModuleId?: string) {
+    updateQuery({
+      libraryId: nextLibraryId ?? null,
+      moduleId: nextModuleId ?? null,
+      page: null,
+    });
+  }
+
+  const loadModules = useCallback(async (targetLibraryId: string, force = false) => {
+    if (!force && Object.prototype.hasOwnProperty.call(modulesByLibrary, targetLibraryId)) return;
+    setModuleLoading((current) => ({ ...current, [targetLibraryId]: true }));
+    setModuleErrors((current) => ({ ...current, [targetLibraryId]: null }));
+    try {
+      const items = await api.getTestCaseModules(targetLibraryId);
+      setModulesByLibrary((current) => ({ ...current, [targetLibraryId]: items }));
+    } catch (error) {
+      setModuleErrors((current) => ({
+        ...current,
+        [targetLibraryId]: error instanceof Error ? error.message : '加载模块失败',
+      }));
+    } finally {
+      setModuleLoading((current) => ({ ...current, [targetLibraryId]: false }));
+    }
+  }, [modulesByLibrary]);
 
   useEffect(() => {
     void (async () => {
@@ -141,6 +172,7 @@ export function QualityCasesPage() {
           projectId: selectedProjectId,
           ...(libraryOwnership ? { ownership: libraryOwnership } : {}),
           libraryId: libraryId === ALL ? undefined : libraryId,
+          ...(moduleId === ALL ? {} : { moduleId }),
           priority: priority === ALL ? undefined : priority,
           q: keyword.trim() || undefined,
           page,
@@ -164,7 +196,64 @@ export function QualityCasesPage() {
 
   useEffect(() => {
     void refreshList();
-  }, [workspaceId, selectedProjectId, libraryId, priority, keyword, page]);
+  }, [workspaceId, selectedProjectId, libraryId, moduleId, priority, keyword, page]);
+
+  useEffect(() => {
+    if (!libraries.length || libraryId === ALL) return;
+    if (!libraries.some((library) => library.id === libraryId)) {
+      updateQuery({ libraryId: null, moduleId: null, page: null });
+      return;
+    }
+    setExpandedLibraries((current) => current.has(libraryId) ? current : new Set(current).add(libraryId));
+    void loadModules(libraryId);
+  }, [libraries, libraryId, loadModules]);
+
+  useEffect(() => {
+    if (libraryId === ALL || moduleId === ALL) return;
+    const modules = modulesByLibrary[libraryId];
+    if (modules && !modules.some((module) => module.id === moduleId)) {
+      updateQuery({ moduleId: null, page: null });
+    }
+  }, [libraryId, moduleId, modulesByLibrary]);
+
+  function renderModuleTree(targetLibraryId: string, modules: TestCaseModule[], parentId: string | null, depth = 0): ReactNode[] {
+    return modules
+      .filter((module) => (module.parentId ?? null) === parentId)
+      .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name))
+      .map((module) => {
+        const hasChildren = modules.some((item) => item.parentId === module.id);
+        return (
+          <div key={module.id} style={{ paddingLeft: depth * 12 }}>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label={`筛选模块：${module.name}`}
+                aria-current={moduleId === module.id ? 'page' : undefined}
+                className={`flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted ${moduleId === module.id ? 'bg-muted font-medium text-primary' : 'text-foreground'}`}
+                onClick={() => selectTreeNode(targetLibraryId, module.id)}
+              >
+                {hasChildren ? <FolderOpen aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /> : <Folder aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                <span className="truncate">{module.name}</span>
+              </button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0"
+                aria-label={`在模块“${module.name}”中新建用例`}
+                onClick={() => {
+                  setCaseCreateContext({ libraryId: targetLibraryId, moduleId: module.id });
+                  setCaseDialogOpen(true);
+                }}
+              >
+                <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            {hasChildren ? renderModuleTree(targetLibraryId, modules, module.id, depth + 1) : null}
+          </div>
+        );
+      });
+  }
 
   async function handleDelete(testCase: TestCaseDefinition) {
     const confirmed = await confirm({
@@ -263,7 +352,13 @@ export function QualityCasesPage() {
                   <Button variant="outline" disabled={!libraries.length} onClick={() => setImportDialogOpen(true)}>
                     <Upload aria-hidden="true" className="h-4 w-4" />批量导入
                   </Button>
-                  <Button disabled={!libraries.length} onClick={() => setCaseDialogOpen(true)}>
+                  <Button
+                    disabled={!libraries.length}
+                    onClick={() => {
+                      setCaseCreateContext(libraryId === ALL ? {} : { libraryId });
+                      setCaseDialogOpen(true);
+                    }}
+                  >
                     <Plus aria-hidden="true" className="h-4 w-4" />新建用例
                   </Button>
                 </>
@@ -271,6 +366,90 @@ export function QualityCasesPage() {
             />
           </CardHeader>
           <CardContent className="p-5 pt-0">
+            <div className="grid gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
+              <aside className="rounded-md border border-border bg-surface-subtle/40 p-3" aria-label="用例目录">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">用例目录</h3>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    aria-label="筛选全部用例"
+                    aria-current={libraryId === ALL && moduleId === ALL ? 'page' : undefined}
+                    onClick={() => selectTreeNode()}
+                  >
+                    <FolderTree aria-hidden="true" className="h-4 w-4" />
+                  </Button>
+                </div>
+                <button
+                  type="button"
+                  aria-label="筛选全部用例"
+                  className={`mb-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted ${libraryId === ALL && moduleId === ALL ? 'bg-muted font-medium text-primary' : 'text-foreground'}`}
+                  aria-current={libraryId === ALL && moduleId === ALL ? 'page' : undefined}
+                  onClick={() => selectTreeNode()}
+                >
+                  <FolderTree aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
+                  <span>全部用例</span>
+                </button>
+                {metaLoading ? <div className="flex items-center gap-2 px-2 py-4 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />加载用例库...</div> : libraries.length ? (
+                  <div className="space-y-1">
+                    {libraries.map((library) => {
+                      const expanded = expandedLibraries.has(library.id);
+                      const modules = modulesByLibrary[library.id] ?? [];
+                      const error = moduleErrors[library.id];
+                      return (
+                        <div key={library.id}>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 shrink-0"
+                              aria-label={`${expanded ? '收起' : '展开'}用例库：${library.name}`}
+                              onClick={() => {
+                                setExpandedLibraries((current) => {
+                                  const next = new Set(current);
+                                  if (next.has(library.id)) next.delete(library.id); else next.add(library.id);
+                                  return next;
+                                });
+                                if (!expanded) void loadModules(library.id);
+                              }}
+                            >
+                              {expanded ? <ChevronDown aria-hidden="true" className="h-4 w-4" /> : <ChevronRight aria-hidden="true" className="h-4 w-4" />}
+                            </Button>
+                            <button
+                              type="button"
+                              aria-label={`筛选用例库：${library.name}`}
+                              aria-current={libraryId === library.id && moduleId === ALL ? 'page' : undefined}
+                              className={`min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted ${libraryId === library.id && moduleId === ALL ? 'bg-muted font-medium text-primary' : 'text-foreground'}`}
+                              onClick={() => selectTreeNode(library.id)}
+                            >
+                              <span className="flex items-center gap-2"><FolderOpen aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="truncate">{library.name}</span></span>
+                            </button>
+                          </div>
+                          {expanded ? (
+                            <div className="ml-7 mt-1">
+                              {moduleLoading[library.id] ? <div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />加载模块...</div> : error ? (
+                                <div className="flex items-center justify-between gap-2 px-2 py-2 text-xs text-danger"><span className="truncate">{error}</span><Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label={`重试加载模块：${library.name}`} onClick={() => void loadModules(library.id, true)}><RotateCw className="h-3.5 w-3.5" /></Button></div>
+                              ) : modules.length ? renderModuleTree(library.id, modules, null) : (
+                                <div className="space-y-2 px-2 py-2">
+                                  <p className="text-xs text-muted-foreground">暂无模块</p>
+                                  <Button type="button" variant="ghost" className="h-auto p-0 text-xs text-primary" onClick={() => {
+                                    selectTreeNode(library.id);
+                                    setModuleDialogOpen(true);
+                                  }}>管理模块</Button>
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : <p className="px-2 py-4 text-xs text-muted-foreground">暂无用例库</p>}
+              </aside>
+              <div className="min-w-0">
             <ListToolbar
               search={(
                 <Input
@@ -305,15 +484,6 @@ export function QualityCasesPage() {
                     <SelectContent>
                       <SelectItem value="project" disabled={!currentProjectId}>当前项目库</SelectItem>
                       <SelectItem value="shared">Workspace 共享库</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={libraryId} onValueChange={(value) => updateQuery({ libraryId: value, page: null })}>
-                    <SelectTrigger className="w-full sm:w-[180px]" aria-label="按用例库筛选">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={ALL}>全部用例库</SelectItem>
-                      {libraries.map((library) => <SelectItem key={library.id} value={library.id}>{library.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <Select value={priority} onValueChange={(value) => updateQuery({ priority: value, page: null })}>
@@ -401,6 +571,8 @@ export function QualityCasesPage() {
                 description={hasFilters ? '调整搜索或筛选条件后重试。' : '先创建用例库，再录入测试用例。'}
               />
             )}
+              </div>
+            </div>
           </CardContent>
         </Card>
       </section>
@@ -462,8 +634,11 @@ export function QualityCasesPage() {
         open={caseDialogOpen}
         onOpenChange={setCaseDialogOpen}
         libraries={libraries}
+        initialLibraryId={caseCreateContext.libraryId}
+        initialModuleId={caseCreateContext.moduleId}
         onCreated={async () => {
           setCaseDialogOpen(false);
+          setCaseCreateContext({});
           await refreshList(true);
         }}
       />

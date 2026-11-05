@@ -299,11 +299,15 @@ export function CreateCaseDialog({
   open,
   onOpenChange,
   libraries,
+  initialLibraryId,
+  initialModuleId,
   onCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   libraries: TestCaseLibrary[];
+  initialLibraryId?: string;
+  initialModuleId?: string;
   onCreated: () => Promise<void>;
 }) {
   const toast = useToast();
@@ -320,6 +324,15 @@ export function CreateCaseDialog({
   const [expected, setExpected] = useState('');
   const [tags, setTags] = useState('');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const nextLibraryId = initialLibraryId && libraries.some((item) => item.id === initialLibraryId)
+      ? initialLibraryId
+      : libraries[0]?.id ?? '';
+    setLibraryId(nextLibraryId);
+    setModuleId(initialModuleId ?? NO_MODULE);
+  }, [initialLibraryId, initialModuleId, libraries, open]);
 
   useEffect(() => {
     if (open && !libraries.some((library) => library.id === libraryId)) {

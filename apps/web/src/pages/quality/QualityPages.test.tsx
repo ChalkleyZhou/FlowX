@@ -24,6 +24,12 @@ function setInputValue(element: HTMLInputElement, value: string) {
   element.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+function setTextareaValue(element: HTMLTextAreaElement, value: string) {
+  const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+  valueSetter?.call(element, value);
+  element.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 vi.mock('../../api', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../api')>(),
   api: {
@@ -199,6 +205,11 @@ describe('Quality pages', () => {
     vi.mocked(api.deleteTestCaseModule).mockResolvedValue({ success: true, affectedCases: 1 });
     vi.mocked(api.importTestCases).mockResolvedValue({ imported: 1 });
     vi.mocked(api.updateTestCase).mockResolvedValue({ ...testCase, version: 4, title: '登录后返回原页面' });
+    vi.mocked(api.createTestCase).mockResolvedValue({
+      ...testCase,
+      id: 'case-2',
+      title: '新建登录恢复用例',
+    });
   });
 
   afterEach(() => {
@@ -448,6 +459,82 @@ describe('Quality pages', () => {
     ) as HTMLButtonElement | null;
     await act(async () => viewButton?.click());
     expect(document.body.textContent).toContain('自动返回登录前页面');
+  });
+
+  it('通过左侧树按用例库和模块筛选，并把模块筛选透传到分页请求', async () => {
+    function CaseRoute() {
+      const location = useLocation();
+      return <><span data-testid="case-search">{location.search}</span><QualityCasesPage /></>;
+    }
+
+    await renderPage(
+      '/quality/test-cases?workspaceId=workspace-1&libraryId=library-1',
+      <CaseRoute />,
+    );
+
+    const moduleButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.getAttribute('aria-label') === '筛选模块：认证',
+    );
+    await act(async () => moduleButton?.click());
+
+    expect(container.querySelector('[data-testid="case-search"]')?.textContent).toContain('libraryId=library-1');
+    expect(container.querySelector('[data-testid="case-search"]')?.textContent).toContain('moduleId=module-1');
+    expect(api.getTestCasesPage).toHaveBeenLastCalledWith(expect.objectContaining({
+      libraryId: 'library-1',
+      moduleId: 'module-1',
+      page: 1,
+    }));
+  });
+
+  it('从模块节点快速新建用例时预填所属用例库和模块', async () => {
+    await renderPage(
+      '/quality/test-cases?workspaceId=workspace-1&libraryId=library-1',
+      <QualityCasesPage />,
+    );
+
+    const quickCreate = container.querySelector(
+      'button[aria-label="在模块“认证”中新建用例"]',
+    ) as HTMLButtonElement | null;
+    await act(async () => quickCreate?.click());
+
+    expect(document.body.textContent).toContain('新建测试用例');
+    expect(document.body.querySelector('[aria-label="用例库"]')?.textContent).toContain('核心回归库');
+    expect(document.body.querySelector('[aria-label="模块"]')?.textContent).toContain('认证');
+  });
+
+  it('模块级新建成功后刷新当前库和模块的用例列表', async () => {
+    await renderPage(
+      '/quality/test-cases?workspaceId=workspace-1&libraryId=library-1&moduleId=module-1',
+      <QualityCasesPage />,
+    );
+
+    await act(async () => {
+      (container.querySelector('button[aria-label="在模块“认证”中新建用例"]') as HTMLButtonElement | null)?.click();
+    });
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+    const fields = dialog.querySelectorAll('input');
+    await act(async () => {
+      setInputValue(fields[1] as HTMLInputElement, '新增认证用例');
+      const textareas = dialog.querySelectorAll('textarea');
+      setTextareaValue(textareas[1], '打开登录页');
+      setTextareaValue(textareas[2], '页面打开成功');
+    });
+    await act(async () => {
+      Array.from(dialog.querySelectorAll('button')).find((button) => button.textContent?.trim() === '创建用例')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.createTestCase).toHaveBeenCalledWith('library-1', expect.objectContaining({
+      moduleId: 'module-1',
+      title: '新增认证用例',
+      steps: ['打开登录页'],
+      expected: '页面打开成功',
+    }));
+    expect(api.getTestCasesPage).toHaveBeenLastCalledWith(expect.objectContaining({
+      libraryId: 'library-1',
+      moduleId: 'module-1',
+    }));
   });
 
   it('confirms before deleting a test case and refreshes the server page', async () => {
