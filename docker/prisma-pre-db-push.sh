@@ -4,13 +4,20 @@
 set -eu
 
 SCHEMA_PATH="${1:-/app/prisma/schema.prisma}"
-DELIVERY_TARGET_MIGRATION_SQL="/app/prisma/migrations/20260604180000_delivery_target_project_scope/migration.sql"
-CODE_REVIEW_CONFIG_MIGRATION_SQL="/app/prisma/migrations/20260717080000_add_project_code_review_config/migration.sql"
-CODE_REVIEW_SOURCE_MIGRATION_SQL="/app/prisma/migrations/20260717100000_add_code_review_source/migration.sql"
-WORKSPACE_ORGANIZATION_MIGRATION_SQL="/app/prisma/migrations/20260826160000_add_workspace_organization/migration.sql"
-YUNXIAO_ORGANIZATION_BINDING_MIGRATION_SQL="/app/prisma/migrations/20260831130000_add_yunxiao_organization_binding/migration.sql"
-YUNXIAO_MULTI_RECIPIENT_MIGRATION_SQL="/app/prisma/migrations/20260831183000_expand_yunxiao_delivery_recipients/migration.sql"
-YUNXIAO_RECIPIENT_AUDIT_MIGRATION_SQL="/app/prisma/migrations/20260902090000_add_yunxiao_recipient_audit/migration.sql"
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+if [ -d "/app/prisma/migrations" ]; then
+  MIGRATIONS_DIR="/app/prisma/migrations"
+else
+  MIGRATIONS_DIR="${SCRIPT_DIR}/../prisma/migrations"
+fi
+DELIVERY_TARGET_MIGRATION_SQL="${MIGRATIONS_DIR}/20260604180000_delivery_target_project_scope/migration.sql"
+CODE_REVIEW_CONFIG_MIGRATION_SQL="${MIGRATIONS_DIR}/20260717080000_add_project_code_review_config/migration.sql"
+CODE_REVIEW_SOURCE_MIGRATION_SQL="${MIGRATIONS_DIR}/20260717100000_add_code_review_source/migration.sql"
+WORKSPACE_ORGANIZATION_MIGRATION_SQL="${MIGRATIONS_DIR}/20260826160000_add_workspace_organization/migration.sql"
+YUNXIAO_ORGANIZATION_BINDING_MIGRATION_SQL="${MIGRATIONS_DIR}/20260831130000_add_yunxiao_organization_binding/migration.sql"
+YUNXIAO_MULTI_RECIPIENT_MIGRATION_SQL="${MIGRATIONS_DIR}/20260831183000_expand_yunxiao_delivery_recipients/migration.sql"
+YUNXIAO_RECIPIENT_AUDIT_MIGRATION_SQL="${MIGRATIONS_DIR}/20260902090000_add_yunxiao_recipient_audit/migration.sql"
+FEED_MIGRATION_SQL="${MIGRATIONS_DIR}/20261105120000_briefing_code_review_feeds/migration.sql"
 
 resolve_db_path() {
   db_url="${DATABASE_URL:-file:/data/dev.db}"
@@ -81,6 +88,59 @@ if [ "$(table_exists CodeReviewSource)" = "0" ] \
   && [ "$(table_exists ProjectCodeReviewConfig)" = "1" ]; then
   echo "Creating CodeReviewSource and backfilling from BriefingSource in ${DB_PATH}..."
   sqlite3 "$DB_PATH" < "$CODE_REVIEW_SOURCE_MIGRATION_SQL"
+fi
+
+# --- Briefing / DailyCodeReview: backfill feedId before db push adds it as required ---
+# db push cannot add a required column to tables that already have rows.
+# This step creates the default feeds, keeps the latest duplicate history, then
+# rebuilds both tables with a non-null feedId and drops the old singleton tables.
+if { [ "$(table_exists Briefing)" = "1" ] && [ "$(column_exists Briefing feedId)" = "0" ]; } \
+  || { [ "$(table_exists DailyCodeReview)" = "1" ] && [ "$(column_exists DailyCodeReview feedId)" = "0" ]; }; then
+  echo "Backfilling briefing and code review feeds before db push in ${DB_PATH}..."
+  if [ "$(table_exists ProjectBriefingConfig)" = "0" ]; then
+    sqlite3 "$DB_PATH" <<'SQL'
+CREATE TABLE "ProjectBriefingConfig" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "projectId" TEXT NOT NULL,
+    "enabled" BOOLEAN NOT NULL DEFAULT false,
+    "dailyHour" INTEGER NOT NULL DEFAULT 22,
+    "timezone" TEXT NOT NULL DEFAULT 'Asia/Shanghai',
+    "autoSend" BOOLEAN NOT NULL DEFAULT false,
+    "lastSchedulerSlot" TEXT,
+    "lastSchedulerRunAt" DATETIME,
+    "lastSchedulerMessage" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+SQL
+  fi
+  if [ "$(table_exists ProjectCodeReviewConfig)" = "0" ]; then
+    sqlite3 "$DB_PATH" <<'SQL'
+CREATE TABLE "ProjectCodeReviewConfig" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "projectId" TEXT NOT NULL,
+    "enabled" BOOLEAN NOT NULL DEFAULT false,
+    "dailyHour" INTEGER NOT NULL DEFAULT 22,
+    "timezone" TEXT NOT NULL DEFAULT 'Asia/Shanghai',
+    "autoSend" BOOLEAN NOT NULL DEFAULT false,
+    "lastSchedulerSlot" TEXT,
+    "lastSchedulerRunAt" DATETIME,
+    "lastSchedulerMessage" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+SQL
+  fi
+  if [ "$(table_exists CodeReviewSource)" = "0" ]; then
+    sqlite3 "$DB_PATH" <<'SQL'
+CREATE TABLE "CodeReviewSource" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "repositoryId" TEXT NOT NULL,
+    "isActive" BOOLEAN NOT NULL DEFAULT true
+);
+SQL
+  fi
+  sqlite3 "$DB_PATH" < "$FEED_MIGRATION_SQL"
 fi
 
 # --- Workspace: establish the organization tenant boundary for existing data ---

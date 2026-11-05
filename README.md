@@ -198,7 +198,7 @@ Notes:
 - Web runs on `4173`
 - SQLite data is stored in `/data/dev.db`, so mounting `/data` is recommended
 - The container startup script will run `prisma db push` automatically before starting services
-- Before `db push`, it also applies idempotent SQLite pre-migrations (including assigning existing workspaces to an organization, adding Yunxiao integration indexes safely, and dropping obsolete `Task`/`Plan` and deploy integration tables)
+- Before `db push`, it also applies idempotent SQLite pre-migrations (including assigning existing workspaces to an organization, adding Yunxiao integration indexes safely, backfilling existing briefings and code reviews onto a default feed, and dropping obsolete `Task`/`Plan` and deploy integration tables). Do not use `prisma db push --force-reset` on a database that already has briefings or code reviews.
 - The runtime image now installs both Codex CLI and Cursor CLI
 - Online AI uses only the current organization's credentials from the `AI 凭据` page. Set `FLOWX_CREDENTIAL_MASTER_KEY` so those keys can be encrypted. Choose the preferred provider on that page; if neither Cursor nor Codex is configured, online AI is unavailable.
 - `AI_EXECUTOR_DEFAULT_PROVIDER` and instance `OPENAI_API_KEY` / `CURSOR_API_KEY` no longer select or authorize online AI. Local Cursor, Codex, and WorkBuddy launches do not use these organization keys.
