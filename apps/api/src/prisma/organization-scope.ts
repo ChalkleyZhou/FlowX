@@ -127,6 +127,9 @@ const scopeFactories: Record<string, (organizationId: string) => Record<string, 
   TestRequestArtifact: (organizationId) => ({
     testRequest: { workspace: workspaceScope(organizationId) },
   }),
+  TestRequestScopeCase: (organizationId) => ({
+    testRequest: { workspace: workspaceScope(organizationId) },
+  }),
   TestPlan: (organizationId) => ({
     testRequest: { workspace: workspaceScope(organizationId) },
   }),

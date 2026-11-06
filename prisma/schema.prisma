@@ -462,6 +462,8 @@ model User {
   createdTestCaseLibraries TestCaseLibrary[]         @relation("TestCaseLibraryCreatedBy")
   createdTestCases         TestCaseDefinition[]      @relation("TestCaseDefinitionCreatedBy")
   createdTestRequests      TestRequest[]             @relation("TestRequestCreatedBy")
+  assignedTestSnapshots    TestCaseSnapshot[]       @relation("TestCaseSnapshotAssignee")
+  assignedByTestSnapshots  TestCaseSnapshot[]       @relation("TestCaseSnapshotAssignedBy")
   confirmedTestDesigns    TestDesign[]               @relation("TestDesignConfirmedBy")
   createdTestPlans         TestPlan[]                @relation("TestPlanCreatedBy")
   createdTestRuns          TestRun[]                 @relation("TestRunCreatedBy")
@@ -1154,6 +1156,7 @@ model TestCaseLibrary {
   createdByUser   User?                @relation("TestCaseLibraryCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   modules         TestCaseModule[]
   definitions     TestCaseDefinition[]
+  scopeCases      TestRequestScopeCase[]
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 
@@ -1171,6 +1174,7 @@ model TestCaseModule {
   name      String
   sortOrder Int                  @default(0)
   cases     TestCaseDefinition[]
+  scopeCases TestRequestScopeCase[]
   createdAt DateTime             @default(now())
   updatedAt DateTime             @updatedAt
 
@@ -1200,6 +1204,7 @@ model TestCaseDefinition {
   createdByUserId String?
   createdByUser   User?                  @relation("TestCaseDefinitionCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   coverageLinks   TestCaseCoverageLink[]
+  scopeCases      TestRequestScopeCase[]
   designCandidates TestDesignCandidate[]
   snapshots       TestCaseSnapshot[]
   createdAt       DateTime               @default(now())
@@ -1352,12 +1357,47 @@ model TestRequest {
   requirementLinks      TestRequestRequirement[]
   workflowLinks         TestRequestWorkflowRun[]
   artifactLinks         TestRequestArtifact[]
+  scopeCases            TestRequestScopeCase[]
   testPlan              TestPlan?
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
 
   @@index([workspaceId, status, createdAt])
   @@index([projectId, projectVersionId, createdAt])
+}
+
+model TestRequestScopeCase {
+  id                 String              @id @default(cuid())
+  testRequestId      String
+  testRequest        TestRequest         @relation(fields: [testRequestId], references: [id], onDelete: Cascade)
+  sourceDefinitionId String?
+  sourceDefinition   TestCaseDefinition? @relation(fields: [sourceDefinitionId], references: [id], onDelete: SetNull)
+  sourceVersion      Int?
+  libraryId          String?
+  library            TestCaseLibrary?    @relation(fields: [libraryId], references: [id], onDelete: SetNull)
+  moduleId           String?
+  module             TestCaseModule?     @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  moduleName         String?
+  action             String
+  status             String              @default("INCLUDED")
+  title              String
+  priority           String              @default("P2")
+  precondition       String?
+  testData           String?
+  targetKeys         Json?
+  steps              Json
+  expected           String
+  metadata           Json?
+  coverageKeys       Json
+  matchReason        String?
+  origin             String              @default("LIBRARY")
+  sortOrder          Int                 @default(0)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([testRequestId, status, sortOrder])
+  @@index([sourceDefinitionId])
+  @@index([libraryId, moduleId])
 }
 
 model TestRequestRequirement {
@@ -1428,11 +1468,20 @@ model TestCaseSnapshot {
   impactLevel        String?
   kind               String              @default("FUNCTIONAL")
   origin             String              @default("LIBRARY")
+  libraryId          String?
+  moduleId           String?
+  moduleName         String?
+  assignedToUserId   String?
+  assignedToUser     User?               @relation("TestCaseSnapshotAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  assignedByUserId   String?
+  assignedByUser     User?               @relation("TestCaseSnapshotAssignedBy", fields: [assignedByUserId], references: [id], onDelete: SetNull)
+  assignedAt         DateTime?
   runCases           TestRunCase[]
   createdAt          DateTime            @default(now())
 
   @@unique([testPlanId, sourceDefinitionId, sourceVersion])
   @@index([testPlanId, createdAt])
+  @@index([assignedToUserId, createdAt])
 }
 
 model TestRun {
