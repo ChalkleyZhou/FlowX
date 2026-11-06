@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
 import { api } from '../../api';
-import { ListPagination } from '../../components/ListPagination';
 import { Button } from '../../components/ui/button';
 import { useQualityPage } from './use-quality-page';
 
@@ -9,9 +8,8 @@ export function QualityModuleTree({ libraryId, parentId = null, selectedId, onSe
   libraryId: string; parentId?: string | null; selectedId?: string;
   onSelect: (id: string) => void; onAdd: (id: string) => void;
 }) {
-  const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<string[]>([]);
-  const modules = useQualityPage(`${libraryId}:${parentId}:${page}`, () => api.getTestCaseModules(libraryId, { parentId: parentId ?? 'null', page, pageSize: 10 }), true, setPage);
+  const modules = useQualityPage(`${libraryId}:${parentId}`, () => api.getTestCaseModules(libraryId, { parentId: parentId ?? 'null', page: 1, pageSize: 100 }));
   return <div className="space-y-1">
     {modules.error ? <p role="alert" className="text-xs">{modules.error}<Button size="sm" variant="ghost" onClick={() => void modules.refresh()}>重试</Button></p> : null}
     {modules.loading ? <p role="status" className="p-2 text-xs">加载模块...</p> : modules.items.map(module => <div key={module.id}>
@@ -23,6 +21,5 @@ export function QualityModuleTree({ libraryId, parentId = null, selectedId, onSe
       {expanded.includes(module.id) ? <div className="ml-4"><QualityModuleTree libraryId={libraryId} parentId={module.id} selectedId={selectedId} onSelect={onSelect} onAdd={onAdd} /></div> : null}
     </div>)}
     {!modules.loading && !modules.total ? <p className="p-2 text-xs text-muted-foreground">暂无子模块</p> : null}
-    {modules.total > 10 ? <ListPagination page={page} total={modules.total} pageSize={10} onPageChange={setPage} /> : null}
   </div>;
 }

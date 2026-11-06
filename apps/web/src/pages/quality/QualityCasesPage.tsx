@@ -3,7 +3,6 @@ import { ChevronDown, ChevronRight, Eye, Folder, FolderOpen, FolderTree, Loader2
 import { useSearchParams } from 'react-router-dom';
 import { useRememberedSearchFilters } from '../../utils/list-filter-storage';
 import { api } from '../../api';
-import { ListPagination } from '../../components/ListPagination';
 import { PagedSelect } from '../../components/PagedSelect';
 import { QualityModuleTree } from './QualityModuleTree';
 import { useProjectScopeOptional, useScopedProjectId } from '../../project-scope-context';
@@ -52,7 +51,6 @@ export function QualityCasesPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [libraries, setLibraries] = useState<TestCaseLibrary[]>([]);
-  const [libraryPage, setLibraryPage] = useState(1);
   const [libraryTotal, setLibraryTotal] = useState(0);
   const listSequence = useRef(0);
   const [expandedLibraries, setExpandedLibraries] = useState<Set<string>>(new Set());
@@ -152,7 +150,8 @@ export function QualityCasesPage() {
       const [libraryList, casePage] = await Promise.all([
         api.getTestCaseLibraries({
           workspaceId,
-          page: libraryPage, pageSize: 10,
+          // 用例目录是树状导航，根节点一次加载完整目录；右侧用例明细单独分页。
+          page: 1, pageSize: 100,
           projectId: selectedProjectId,
           ...(libraryOwnership ? { ownership: libraryOwnership } : {}),
         }),
@@ -169,8 +168,6 @@ export function QualityCasesPage() {
         }),
       ]);
       if (sequence !== listSequence.current) return;
-      const lastLibraryPage = Math.max(1, libraryList.totalPages);
-      if (libraryPage > lastLibraryPage) { setLibraryPage(lastLibraryPage); return; }
       setLibraries(libraryList.items);
       setLibraryTotal(libraryList.total);
       setCases(casePage.items);
@@ -189,7 +186,7 @@ export function QualityCasesPage() {
   useEffect(() => {
     void refreshList();
     return () => { listSequence.current += 1; };
-  }, [workspaceId, selectedProjectId, libraryId, moduleId, priority, keyword, page, libraryPage]);
+  }, [workspaceId, selectedProjectId, libraryId, moduleId, priority, keyword, page]);
 
   useEffect(() => {
     if (libraryId === ALL) return;
@@ -399,7 +396,6 @@ export function QualityCasesPage() {
                     })}
                   </div>
                 ) : <p className="px-2 py-4 text-xs text-muted-foreground">暂无用例库</p>}
-                <ListPagination page={libraryPage} total={libraryTotal} pageSize={10} onPageChange={setLibraryPage} />
               </aside>
               <div className="min-w-0">
             <ListToolbar
@@ -413,7 +409,7 @@ export function QualityCasesPage() {
               )}
               filters={(
                 <>
-                  <PagedSelect label="按工作区筛选" value={workspaceId} selectedLabel={workspaces.find(item => item.id === workspaceId)?.name} disabled={caseScope === 'project'} onValueChange={value => { setLibraryPage(1); updateQuery({ workspaceId: value, libraryId: null, moduleId: null, page: null }); }} loadPage={query => api.getWorkspaces(query)} />
+                  <PagedSelect label="按工作区筛选" value={workspaceId} selectedLabel={workspaces.find(item => item.id === workspaceId)?.name} disabled={caseScope === 'project'} onValueChange={value => { updateQuery({ workspaceId: value, libraryId: null, moduleId: null, page: null }); }} loadPage={query => api.getWorkspaces(query)} />
                   <Select
                     value={caseScope}
                     onValueChange={(value) => updateQuery({ caseScope: value === 'shared' ? 'shared' : null, libraryId: null, page: null })}

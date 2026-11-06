@@ -466,7 +466,7 @@ describe('Quality pages', () => {
     expect(api.getTestCaseLibraries).toHaveBeenCalledWith({
       workspaceId: 'workspace-1',
       projectId: 'project-1',
-      ownership: 'project', page: 1, pageSize: 10,
+      ownership: 'project', page: 1, pageSize: 100,
     });
     expect(api.getTestCasesPage).toHaveBeenCalledWith(expect.objectContaining({
       workspaceId: 'workspace-1',
@@ -480,7 +480,7 @@ describe('Quality pages', () => {
 
     expect(api.getTestCaseLibraries).toHaveBeenCalledWith({
       workspaceId: 'workspace-1',
-      projectId: undefined, page: 1, pageSize: 10,
+      projectId: undefined, page: 1, pageSize: 100,
     });
     expect(api.getTestCasesPage).toHaveBeenCalledWith({
       workspaceId: 'workspace-1',
@@ -510,6 +510,27 @@ describe('Quality pages', () => {
     ) as HTMLButtonElement | null;
     await act(async () => viewButton?.click());
     expect(document.body.textContent).toContain('自动返回登录前页面');
+  });
+
+  it('keeps the case-library directory as a tree without page navigation', async () => {
+    const directoryLibraries = Array.from({ length: 25 }, (_, index) => ({
+      ...library,
+      id: `library-${index + 1}`,
+      name: `用例库 ${index + 1}`,
+    }));
+    vi.mocked(api.getTestCaseLibraries).mockResolvedValue(pageResult(directoryLibraries));
+
+    await renderPage('/quality/test-cases?workspaceId=workspace-1', <QualityCasesPage />);
+
+    const directory = container.querySelector('aside[aria-label="用例目录"]');
+    expect(directory?.textContent).toContain('用例库 25');
+    expect(directory?.textContent).not.toContain('下一页');
+    expect(api.getTestCaseLibraries).toHaveBeenCalledWith({
+      workspaceId: 'workspace-1',
+      projectId: undefined,
+      page: 1,
+      pageSize: 100,
+    });
   });
 
   it('通过左侧树按用例库和模块筛选，并把模块筛选透传到分页请求', async () => {
