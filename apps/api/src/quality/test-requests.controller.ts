@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
-import { AddTestScopeCasesDto, CompleteTestScopeDto, CreateTestRequestDto, PrepareTestRequestDto } from './dto/test-request.dto';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { AddTestScopeCasesDto, AssignTestRequestCasesDto, CompleteTestScopeDto, CreateTestRequestDto, PrepareTestRequestDto, SaveGeneratedTestCaseDto, UpdateTestRequestScopeDraftDto } from './dto/test-request.dto';
 import { TestRequestsService } from './test-requests.service';
 
 @Controller('quality/test-requests')
@@ -38,6 +38,41 @@ export class TestRequestsController {
   @Post(':id/prepare')
   prepare(@Param('id') id: string, @Body() dto: PrepareTestRequestDto) {
     return this.requests.prepare(id, dto);
+  }
+
+  @Get(':id/scope-draft')
+  scopeDraft(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery & { q?: string; action?: string }) {
+    return this.requests.getScopeDraft(id, query);
+  }
+
+  @Patch(':id/scope-draft')
+  updateScopeDraft(@Param('id') id: string, @Body() dto: UpdateTestRequestScopeDraftDto) {
+    return this.requests.updateScopeDraft(id, dto);
+  }
+
+  @Post(':id/scope-draft/:candidateId/save-to-library')
+  saveGeneratedCase(
+    @Param('id') id: string,
+    @Param('candidateId') candidateId: string,
+    @Body() dto: SaveGeneratedTestCaseDto,
+    @Req() req: QualityRequest,
+  ) {
+    return this.requests.saveGeneratedCaseToLibrary(id, candidateId, dto, req.authSession?.user.id);
+  }
+
+  @Get(':id/assignments')
+  assignments(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery & { q?: string; unassigned?: string }) {
+    return this.requests.listAssignments(id, query);
+  }
+
+  @Patch(':id/assignments')
+  updateAssignments(@Param('id') id: string, @Body() dto: AssignTestRequestCasesDto, @Req() req: QualityRequest) {
+    return this.requests.updateAssignments(id, dto, req.authSession?.user.id);
+  }
+
+  @Post(':id/assignments/complete')
+  completeAssignments(@Param('id') id: string, @Body() dto: PrepareTestRequestDto, @Req() req: QualityRequest) {
+    return this.requests.completeAssignments(id, dto.scopeRevision, req.authSession?.user.id);
   }
 
   @Post(':id/scope/cases')

@@ -918,6 +918,7 @@ export interface TestRequest {
   title: string;
   description?: string | null;
   testDesignId?: string | null;
+  testDesign?: TestDesign | null;
   status: TestRequestStatus;
   scopeGenerationStatus: string;
   scopeSummary?: string | null;
@@ -937,6 +938,37 @@ export interface TestRequest {
     runs: TestRun[];
     _count?: {snapshots:number;runs:number};
   } | null;
+}
+
+export interface TestRequestScopeDraft {
+  testRequestId?: string;
+  scopeRevision: number;
+  status: string;
+  summary?: Record<string, number>;
+  items: TestDesignCandidate[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface TestRequestAssignmentSummary {
+  id: string;
+  title: string;
+  moduleId?: string | null;
+  moduleName?: string | null;
+  assignedToUserId?: string | null;
+  assignedToUser?: { id: string; displayName: string } | null;
+}
+
+export interface TestRequestAssignmentsPage {
+  items: TestRequestAssignmentSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  scopeRevision: number;
+  summary: { total: number; assigned: number; unassigned: number };
 }
 
 export type TestDesignStatus =

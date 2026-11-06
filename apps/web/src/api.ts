@@ -65,6 +65,8 @@ import type {
   TestDesign,
   TestDesignCandidate,
   TestRequest,
+  TestRequestAssignmentsPage,
+  TestRequestScopeDraft,
   TestRun,
   ArtifactSummary,
   TestedRepositoryRevision,
@@ -1254,6 +1256,12 @@ export const api = {
     }),
   prepareTestRequest: (id: string, payload: { scopeRevision: number }) =>
     request<TestRequest>(`/quality/test-requests/${id}/prepare`, { method: 'POST', body: JSON.stringify(payload) }),
+  getTestRequestScopeDraft: (id: string, query?: ListQuery & { action?: string }) => request<TestRequestScopeDraft>(`/quality/test-requests/${id}/scope-draft?${queryString({ page: 1, pageSize: 20, ...query })}`),
+  updateTestRequestScopeDraft: (id: string, payload: { scopeRevision: number; removedCandidateIds: string[] }) => request<TestRequest>(`/quality/test-requests/${id}/scope-draft`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  saveGeneratedTestRequestCase: (id: string, candidateId: string, payload: { libraryId: string; moduleId?: string }) => request<{ candidateId: string; testCase: TestCaseDefinition }>(`/quality/test-requests/${id}/scope-draft/${candidateId}/save-to-library`, { method: 'POST', body: JSON.stringify(payload) }),
+  getTestRequestAssignments: (id: string, query?: ListQuery & { unassigned?: string }) => request<TestRequestAssignmentsPage>(`/quality/test-requests/${id}/assignments?${queryString({ page: 1, pageSize: 20, ...query })}`),
+  updateTestRequestAssignments: (id: string, payload: { scopeRevision: number; assignments: Array<{ snapshotId: string; assignedToUserId?: string | null }> }) => request<TestRequestAssignmentsPage>(`/quality/test-requests/${id}/assignments`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  completeTestRequestAssignments: (id: string, payload: { scopeRevision: number }) => request<TestRequest>(`/quality/test-requests/${id}/assignments/complete`, { method: 'POST', body: JSON.stringify(payload) }),
   getTestRequest: (id: string) => request<TestRequest>(`/quality/test-requests/${id}`),
   createTestDesign: (payload: {
     caseSelection?: QualityCaseSelection;

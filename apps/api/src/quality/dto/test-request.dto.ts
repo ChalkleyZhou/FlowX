@@ -94,6 +94,49 @@ export class PrepareTestRequestDto {
   scopeRevision!: number;
 }
 
+export class UpdateTestRequestScopeDraftDto {
+  @IsInt()
+  @Min(0)
+  scopeRevision!: number;
+
+  @IsArray()
+  @IsString({ each: true })
+  removedCandidateIds!: string[];
+}
+
+export class SaveGeneratedTestCaseDto {
+  @IsString()
+  @MinLength(1)
+  libraryId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  moduleId?: string;
+}
+
+export class AssignTestRequestCasesDto {
+  @IsInt()
+  @Min(0)
+  scopeRevision!: number;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TestRequestCaseAssignmentDto)
+  assignments!: TestRequestCaseAssignmentDto[];
+}
+
+export class TestRequestCaseAssignmentDto {
+  @IsString()
+  @MinLength(1)
+  snapshotId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  assignedToUserId?: string | null;
+}
+
 export class CompleteTestScopeDto {
   @IsOptional()
   @IsInt()

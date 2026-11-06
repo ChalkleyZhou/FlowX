@@ -62,6 +62,12 @@ vi.mock('../../api', async (importOriginal) => ({
     updateTestCase: vi.fn(),
     deleteTestCase: vi.fn(),
     getTestRequest: vi.fn(),
+    getTestRequestScopeDraft: vi.fn(),
+    updateTestRequestScopeDraft: vi.fn(),
+    saveGeneratedTestRequestCase: vi.fn(),
+    getTestRequestAssignments: vi.fn(),
+    updateTestRequestAssignments: vi.fn(),
+    completeTestRequestAssignments: vi.fn(),
     prepareTestRequest: vi.fn(),
     getTestRuns: vi.fn(),
     getQualityReports: vi.fn(),
@@ -184,6 +190,8 @@ describe('Quality pages', () => {
     vi.mocked(api.getTestRequests).mockResolvedValue(pageResult([testRequest]));
     vi.mocked(api.getTestDesigns).mockResolvedValue(pageResult([]));
     vi.mocked(api.getTestRequest).mockResolvedValue(testRequest);
+    vi.mocked(api.getTestRequestScopeDraft).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50, totalPages: 0, scopeRevision: 1, status: 'NOT_STARTED' });
+    vi.mocked(api.getTestRequestAssignments).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100, totalPages: 0, scopeRevision: 1, summary: { total: 0, assigned: 0, unassigned: 0 } });
     vi.mocked(api.getTestRuns).mockResolvedValue(pageResult(testRequest.testPlan?.runs ?? []));
     vi.mocked(api.getQualityReports).mockResolvedValue(pageResult([]));
     vi.mocked(api.getLocalSmokeRuns).mockResolvedValue(pageResult([]));
@@ -253,19 +261,33 @@ describe('Quality pages', () => {
     });
   }
 
-  it('DRAFT提测先确认冻结范围，服务端准备完成后才开放功能测试轮次', async () => {
+  it('DRAFT提测先确认 AI 范围，服务端准备完成后才开放功能测试轮次', async () => {
     const snapshot = { id: 'snapshot-1', title: '功能测试', priority: 'P0', kind: 'FUNCTIONAL' as const, steps: ['登录'], expected: '成功', selectedBy: 'MANUAL' };
     const draft: TestRequest = { ...testRequest, status: 'DRAFT', testDesignId: 'design-1', scopeGenerationStatus: 'NOT_STARTED', testPlan: { id: 'plan-1', status: 'DRAFT', snapshots: [snapshot], runs: [] } };
     const ready: TestRequest = { ...draft, status: 'READY', scopeGenerationStatus: 'COMPLETED', scopeRevision: 2, testPlan: { ...draft.testPlan!, status: 'READY' } };
     vi.mocked(api.getTestRequestSnapshots).mockResolvedValue(pageResult([snapshot], { summary: { functionalCount: 1, smokeCount: 0 } }));
     vi.mocked(api.getTestRequest).mockResolvedValue(draft);
+    vi.mocked(api.getTestRequestScopeDraft).mockResolvedValue({ items: [{ id: 'candidate-1', action: 'REUSE', resolution: 'PENDING', coverageKeys: [], proposedCase: { title: '功能测试', priority: 'P0', steps: ['登录'], expected: '成功' } }], total: 1, page: 1, pageSize: 50, totalPages: 1, scopeRevision: 1, status: 'NOT_STARTED' });
     vi.mocked(api.prepareTestRequest).mockResolvedValue(ready);
     await act(async () => root?.render(<MemoryRouter initialEntries={['/quality/test-requests/request-1']}><Routes><Route path="/quality/test-requests/:id" element={<QualityRequestDetailPage />} /></Routes></MemoryRouter>));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
     const formalButton = () => Array.from(container.querySelectorAll('button')).find(button => button.textContent === '创建功能测试轮次');
     expect(formalButton()?.disabled).toBe(true);
-    await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent === '确认冻结范围并完成提测准备')?.click());
+    await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent === '确认 AI 范围')?.click());
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent === '确认范围并进入分派')?.click());
     expect(api.prepareTestRequest).toHaveBeenCalledWith('request-1', { scopeRevision: 1 });
     expect(formalButton()?.disabled).toBe(false);
+  });
+  it('AI 新用例默认只留在本次提测，人工点击后才保存到用例库', async () => {
+    const draft: TestRequest = { ...testRequest, status: 'DRAFT', testDesignId: 'design-1', scopeGenerationStatus: 'NOT_STARTED', testPlan: { id: 'plan-1', status: 'DRAFT', snapshots: [], runs: [] } };
+    vi.mocked(api.getTestRequest).mockResolvedValue(draft);
+    vi.mocked(api.getTestRequestScopeDraft).mockResolvedValue({ items: [{ id: 'candidate-create', action: 'CREATE', resolution: 'PENDING', coverageKeys: [], proposedCase: { title: 'AI 新用例', priority: 'P1', steps: ['操作'], expected: '成功' } }], total: 1, page: 1, pageSize: 50, totalPages: 1, scopeRevision: 1, status: 'NOT_STARTED' });
+    vi.mocked(api.saveGeneratedTestRequestCase).mockResolvedValue({ candidateId: 'candidate-create', testCase });
+    await act(async () => root?.render(<MemoryRouter initialEntries={['/quality/test-requests/request-1?tab=scope']}><Routes><Route path="/quality/test-requests/:id" element={<QualityRequestDetailPage />} /></Routes></MemoryRouter>));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent === '保存到用例库')?.click());
+    expect(api.saveGeneratedTestRequestCase).toHaveBeenCalledWith('request-1', 'candidate-create', { libraryId: 'library-1' });
   });
   it('提测详情以URL保存五个页签，并链接独立执行详情', async () => {
     await act(async () => root?.render(<MemoryRouter initialEntries={['/quality/test-requests/request-1?tab=runs']}><Routes><Route path="/quality/test-requests/:id" element={<QualityRequestDetailPage />} /></Routes></MemoryRouter>));
@@ -397,7 +419,7 @@ describe('Quality pages', () => {
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  it('disables提测提交并解释已确认测试设计已被冻结', async () => {
+  it('创建提测不再要求先选择已确认测试设计', async () => {
     const workflowRun: WorkflowRun = {
       id: 'workflow-1',
       status: 'DONE',
@@ -448,13 +470,11 @@ describe('Quality pages', () => {
     const titleInput = document.body.querySelector('input[placeholder="例如：2.6.0 登录能力提测"]') as HTMLInputElement;
     await act(async () => setInputValue(titleInput, '2.6.0 登录能力提测'));
 
-    await act(async () => { document.querySelector<HTMLButtonElement>('button[aria-label="已确认测试设计"]')?.click(); });
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-    expect(api.getTestDesigns).toHaveBeenCalledWith(expect.objectContaining({ status: 'CONFIRMED', availableForRequest: true, workflowRunIds: ['workflow-1'] }));
-    expect(document.body.textContent).toContain('没有匹配记录');
+    expect(api.getTestDesigns).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'CONFIRMED', availableForRequest: true }));
+    expect(document.body.textContent).not.toContain('已确认测试设计');
     const submitButton = Array.from(document.body.querySelectorAll('button')).find((button) => button.textContent?.trim() === '创建提测草稿');
     expect(submitButton).toBeTruthy();
-    expect(submitButton?.hasAttribute('disabled')).toBe(true);
+    expect(submitButton?.hasAttribute('disabled')).toBe(false);
   });
 
   it('当前项目库使用该项目的工作区，并且不混入共享库', async () => {

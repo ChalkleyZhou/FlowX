@@ -76,6 +76,26 @@ describe('TestRequestsService', () => {
     await expect(service.createRequest(requestInput, 'user-1')).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('saves an AI generated candidate to a selected project library only after explicit action', async () => {
+    const prisma = {
+      testRequest: { findUnique: vi.fn().mockResolvedValue({ id: 'request-1', workspaceId: 'workspace-1', projectId: 'project-1', status: 'DRAFT', testDesignId: 'design-1' }) },
+      testDesignCandidate: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'candidate-1', action: 'CREATE', sourceDefinitionId: null, proposedCase: { title: '新登录流程', priority: 'P1', steps: ['登录'], expected: '进入首页' } }),
+        update: vi.fn(),
+      },
+      testRequestScopeCase: { updateMany: vi.fn() },
+      testCaseLibrary: { findFirst: vi.fn().mockResolvedValue({ id: 'library-1' }) },
+    };
+    const caseLibraries = { createCase: vi.fn().mockResolvedValue({ id: 'case-1', version: 1, title: '新登录流程' }) };
+    const service = new TestRequestsService(prisma as never, {} as never, caseLibraries as never);
+
+    const result = await service.saveGeneratedCaseToLibrary('request-1', 'candidate-1', { libraryId: 'library-1', moduleId: 'module-1' }, 'user-1');
+
+    expect(caseLibraries.createCase).toHaveBeenCalledWith('library-1', expect.objectContaining({ moduleId: 'module-1', title: '新登录流程', steps: ['登录'] }), 'user-1');
+    expect(prisma.testDesignCandidate.update).toHaveBeenCalledWith({ where: { id: 'candidate-1' }, data: { sourceDefinitionId: 'case-1', sourceVersion: 1 } });
+    expect(result).toMatchObject({ candidateId: 'candidate-1', testCase: { id: 'case-1' } });
+  });
+
   it.each([
     { name: '候选元数据优先', proposed: { testData: '新测试账号', targetKeys: ['android'] }, expectedData: '新测试账号', expectedTargets: ['android'] },
     { name: '显式清空保留', proposed: { testData: null, targetKeys: [] }, expectedData: null, expectedTargets: [] },

@@ -23,6 +23,8 @@ import {
 } from '../../components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { QualityCreateRunDialog } from './QualityCreateRunDialog';
+import { QualityScopeDraftPanel } from './QualityScopeDraftPanel';
+import { QualityAssignmentPanel } from './QualityAssignmentPanel';
 import { QualityReportsPanel } from './QualityReportsPanel';
 import { Input } from '../../components/ui/input';
 import { useToast } from '../../components/ui/toast';
@@ -113,7 +115,6 @@ function QualityRequestDetailContent({ id }: { id: string }) {
   const report = submission.data;
   const refreshing = detail.loading || smoke.loading || submission.loading;
   const [formalDialog, setFormalDialog] = useState(false);
-  const [preparing, setPreparing] = useState(false);
   const [creating, setCreating] = useState(false);
   const [finalizingId, setFinalizingId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -137,18 +138,6 @@ function QualityRequestDetailContent({ id }: { id: string }) {
     executions: smoke.summary?.executionCount ?? 0,
   };
 
-  async function prepare() {
-    if (!request) return;
-    setPreparing(true);
-    try {
-      const prepared = await api.prepareTestRequest(id, { scopeRevision: request.scopeRevision });
-      detail.setData(prepared);
-      await snapshots.refresh();
-      toast.success(prepared.status === 'DRAFT' ? '冻结范围已确认，请继续完成冒烟门禁' : '提测准备已完成，可以创建功能测试轮次');
-    } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : '提测准备失败，请检查已确认设计和研发交付');
-    } finally { setPreparing(false); }
-  }
 
   async function createRun() {
     if (!selectedTargets.length) {
@@ -231,8 +220,8 @@ function QualityRequestDetailContent({ id }: { id: string }) {
           ? 3
           : 4;
   const flowSteps = [
-    { label: '准备测试范围', detail: request.scopeGenerationStatus === 'COMPLETED' ? '测试设计已确认' : '选择并处理测试用例' },
-    { label: '冻结测试范围', detail: request.status === 'DRAFT' ? '确认快照和测试口径' : '范围已冻结' },
+    { label: 'AI 分析范围', detail: request.scopeGenerationStatus === 'COMPLETED' ? '范围已确认' : '等待 AI 生成或人工删改' },
+    { label: '分派执行人', detail: request.status === 'DRAFT' ? '按模块设置负责人' : '范围已确认' },
     { label: '设置执行', detail: formal.total ? `${formal.total} 个执行轮次` : '选择执行方式和执行人' },
     { label: '执行与报告', detail: activeFormal ? '执行中，等待逐例结果' : formal.total ? '可查看执行结果和报告' : '完成执行后生成报告' },
   ];
@@ -266,11 +255,11 @@ function QualityRequestDetailContent({ id }: { id: string }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-semibold">测试任务流程</h2>
-            <p className="mt-1 text-sm text-muted-foreground">围绕同一条需求完成范围冻结、执行分配、结果回传和报告归档。</p>
+            <p className="mt-1 text-sm text-muted-foreground">围绕同一条需求完成 AI 范围确认、执行分配、结果回传和报告归档。</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {flowStep === 0 && request.testDesignId ? <Button size="sm" asChild><Link to={`/quality/test-designs/${request.testDesignId}`}>准备测试范围</Link></Button> : null}
-            {flowStep === 1 ? <Button size="sm" disabled={preparing || !request.testDesignId} onClick={() => void prepare()}>冻结测试范围</Button> : null}
+            {flowStep === 0 ? <Button size="sm" onClick={() => setParams(current => { const next = new URLSearchParams(current); next.set('tab', 'scope'); return next; }, { replace: true })}>确认 AI 范围</Button> : null}
+            {flowStep === 1 ? <Button size="sm" onClick={() => setParams(current => { const next = new URLSearchParams(current); next.set('tab', 'scope'); return next; }, { replace: true })}>分派执行人</Button> : null}
             {flowStep === 2 ? <Button size="sm" disabled={!canCreateFormal} onClick={() => setFormalDialog(true)}>设置执行</Button> : null}
             {flowStep === 3 ? <Button size="sm" variant="outline" asChild><Link to={`/quality/test-runs/${formalRuns.find(run => run.status === 'ACTIVE')?.id ?? formalRuns[0]?.id}`}>进入执行详情：{formalRuns.find(run => run.status === 'ACTIVE')?.name ?? formalRuns[0]?.name}</Link></Button> : null}
             {flowStep === 4 ? <Button size="sm" variant="outline" onClick={() => setParams(current => { const next = new URLSearchParams(current); next.set('tab', 'reports'); return next; }, { replace: true })}>查看测试报告</Button> : null}
@@ -288,8 +277,8 @@ function QualityRequestDetailContent({ id }: { id: string }) {
 
       <Tabs value={['overview', 'scope', 'runs', 'bugs', 'reports'].includes(tab) ? tab : 'overview'} onValueChange={value => setParams(current => { const next = new URLSearchParams(current); next.set('tab', value); return next; }, { replace: true })}>
         <TabsList aria-label="提测详情页签"><TabsTrigger value="overview">概览</TabsTrigger><TabsTrigger value="scope">测试范围</TabsTrigger><TabsTrigger value="runs">执行轮次</TabsTrigger><TabsTrigger value="bugs">缺陷</TabsTrigger><TabsTrigger value="reports">测试报告</TabsTrigger></TabsList>
-        <TabsContent value="overview"><section className="rounded-md border p-4 space-y-3"><h2 className="font-semibold">下一步</h2>{requirements.error ? <LoadError error={new Error(requirements.error)} retained={requirements.hasLoaded} loading={requirements.refreshing} label="关联需求" retry={() => void requirements.refresh()} /> : null}<p className="text-sm">{request.scopeGenerationStatus !== 'COMPLETED' ? '先确认测试设计，完成测试范围。' : request.status === 'DRAFT' ? '冻结范围已确认，完成本地冒烟并汇总通过门禁后可创建正式功能测试轮次。' : !formal.total ? '范围已冻结，创建功能测试轮次并明确适用端。' : active ? '进入执行轮次查看逐例进度与待回传范围。' : '执行已结束，可生成轮次或任务汇总报告。'}</p><div className="flex flex-wrap gap-2">{request.scopeGenerationStatus !== 'COMPLETED' ? <Button size="sm" disabled={preparing || !request.testDesignId} onClick={() => void prepare()}>确认冻结范围并完成提测准备</Button> : null}{request.testDesignId ? <Button variant="outline" size="sm" asChild><Link to={`/quality/test-designs/${request.testDesignId}`}>查看测试设计</Link></Button> : null}{request.requirementLinks.map(link => <Button key={link.requirement.id} variant="outline" size="sm" asChild><Link to={`/requirements/${link.requirement.id}`}>{link.requirement.title}</Link></Button>)}</div><p className="text-xs text-muted-foreground">范围 {snapshots.summary?.functionalCount ?? 0} 条功能用例 · 正式轮次 {formal.total} 个。冒烟门禁与正式测试结论分别记录。</p><ListPagination page={requirementPage} total={requirements.total} pageSize={10} onPageChange={setRequirementPage} /></section></TabsContent>
-        <TabsContent value="scope"><section className="space-y-3"><h2 className="font-semibold">已冻结的测试范围</h2>{snapshots.error ? <LoadError error={new Error(snapshots.error)} retained={snapshots.hasLoaded} loading={snapshots.refreshing} label="冻结快照" retry={() => void snapshots.refresh()} /> : null}{request.testPlan?.snapshots.map(snapshot => <article key={snapshot.id} className="rounded-md border p-4 space-y-2"><p className="font-medium">{snapshot.title} <Badge variant="outline">{snapshot.kind === 'SMOKE' ? '冒烟' : '功能'} · {snapshot.priority}</Badge></p><p className="text-sm">适用端：{snapshot.targetKeys?.join('、') || '未确认，创建轮次时需明确选择'}</p><p className="text-xs text-muted-foreground">{snapshot.selectionReason || snapshot.selectedBy} · 来源版本 {snapshot.sourceVersion ?? '生成用例'}</p><ol className="list-decimal pl-5 text-sm">{snapshot.steps.map((step, index) => <li key={index}>{step}</li>)}</ol><p className="text-sm">预期：{snapshot.expected}</p></article>)}{snapshots.hasLoaded && !snapshots.error && !request.testPlan?.snapshots.length ? <p className="text-sm text-muted-foreground">暂无冻结快照，请先确认测试设计。</p> : null}<ListPagination page={snapshotPage} total={snapshots.total} pageSize={20} onPageChange={setSnapshotPage} /></section></TabsContent>
+        <TabsContent value="overview"><section className="rounded-md border p-4 space-y-3"><h2 className="font-semibold">下一步</h2>{requirements.error ? <LoadError error={new Error(requirements.error)} retained={requirements.hasLoaded} loading={requirements.refreshing} label="关联需求" retry={() => void requirements.refresh()} /> : null}<p className="text-sm">{request.scopeGenerationStatus !== 'COMPLETED' ? 'AI 正在生成或等待你删改本次提测范围。' : request.status === 'DRAFT' ? '范围已确认，请完成模块和用例分派。' : !formal.total ? '范围和分派已完成，可以创建功能测试轮次。' : active ? '进入执行轮次查看逐例进度与待回传范围。' : '执行已结束，可生成轮次或任务汇总报告。'}</p><div className="flex flex-wrap gap-2">{request.testDesignId ? <Button variant="outline" size="sm" asChild><Link to={`/quality/test-designs/${request.testDesignId}`}>查看 AI 来源</Link></Button> : null}{request.requirementLinks.map(link => <Button key={link.requirement.id} variant="outline" size="sm" asChild><Link to={`/requirements/${link.requirement.id}`}>{link.requirement.title}</Link></Button>)}</div><p className="text-xs text-muted-foreground">范围 {snapshots.summary?.functionalCount ?? 0} 条功能用例 · 正式轮次 {formal.total} 个。</p><ListPagination page={requirementPage} total={requirements.total} pageSize={10} onPageChange={setRequirementPage} /></section></TabsContent>
+        <TabsContent value="scope"><div className="space-y-4">{request.scopeGenerationStatus !== 'COMPLETED' ? <QualityScopeDraftPanel request={request} onConfirmed={next => detail.setData(next)} /> : <QualityAssignmentPanel request={request} onCompleted={next => detail.setData(next)} />}<section className="space-y-3"><h2 className="font-semibold">已确认的测试范围</h2>{snapshots.error ? <LoadError error={new Error(snapshots.error)} retained={snapshots.hasLoaded} loading={snapshots.refreshing} label="测试范围" retry={() => void snapshots.refresh()} /> : null}{request.testPlan?.snapshots.map(snapshot => <article key={snapshot.id} className="rounded-md border p-4 space-y-2"><div className="font-medium">{snapshot.title} <Badge variant="outline">{snapshot.kind === 'SMOKE' ? '冒烟' : '功能'} · {snapshot.priority}</Badge></div><p className="text-sm">适用端：{snapshot.targetKeys?.join('、') || '创建轮次时需明确选择'}</p><p className="text-xs text-muted-foreground">{snapshot.selectionReason || snapshot.selectedBy} · 来源版本 {snapshot.sourceVersion ?? '生成用例'}</p><ol className="list-decimal pl-5 text-sm">{snapshot.steps.map((step, index) => <li key={index}>{step}</li>)}</ol><p className="text-sm">预期：{snapshot.expected}</p></article>)}{snapshots.hasLoaded && !snapshots.error && !request.testPlan?.snapshots.length ? <p className="text-sm text-muted-foreground">范围确认后会生成快照。</p> : null}<ListPagination page={snapshotPage} total={snapshots.total} pageSize={20} onPageChange={setSnapshotPage} /></section></div></TabsContent>
         <TabsContent value="runs"><section className="space-y-3"><h2 className="font-semibold">功能测试与回归轮次</h2>{formal.error ? <LoadError error={formal.error} retained={Boolean(formal.data)} loading={formal.loading} label="正式轮次" retry={() => void formal.reload()} /> : null}{(formal.data ?? request.testPlan?.runs ?? []).map(run => <article className="rounded-md border p-4" key={run.id}><div className="flex justify-between gap-3"><Link className="font-medium text-primary hover:underline" to={`/quality/test-runs/${run.id}`}>{run.name}</Link><Badge variant={statusBadgeVariant(run.status)}>{runStatusLabels[run.status] ?? run.status}</Badge></div><p className="mt-2 text-sm text-muted-foreground">{run.runType === 'REGRESSION' ? '缺陷回归' : '功能初测'} · {run.executionMode === 'LOCAL' ? '本地执行' : '历史执行'} · {run.summary?.completedCount ?? 0}/{run.summary?.caseCount ?? 0} 项已回传</p></article>)}<ListPagination page={formalPage} total={formal.total} pageSize={10} onPageChange={setFormalPage} /></section></TabsContent>
         <TabsContent value="bugs"><section className="space-y-3"><h2 className="font-semibold">失败、阻塞项与关联缺陷</h2>{bugs.error ? <LoadError error={new Error(bugs.error)} retained={bugs.hasLoaded} loading={bugs.refreshing} label="异常用例" retry={() => void bugs.refresh()} /> : null}{bugs.items.map(row => <article className="rounded-md border p-4 space-y-2" key={row.id}><p className="font-medium">{row.snapshot.title}</p><p className="text-sm text-muted-foreground">{row.result?.actualResult || '未记录实际结果'}</p>{row.result?.bug ? <Link className="text-sm text-primary underline" to={`/bugs/${row.result.bug.id}`}>{row.result.bug.title}</Link> : <p className="text-sm">尚未关联缺陷</p>}<p><Link className="text-sm text-primary underline" to={`/quality/test-runs/${row.testRun.id}`}>进入执行详情关联缺陷或创建独立回归</Link></p></article>)}{bugs.hasLoaded && !bugs.error && !bugs.total ? <p className="text-sm text-muted-foreground">暂无失败或阻塞项，异常用例将在此集中展示。</p> : null}<ListPagination page={bugPage} total={bugs.total} pageSize={20} onPageChange={setBugPage} /></section></TabsContent>
         <TabsContent value="reports"><QualityReportsPanel requestId={id} runs={formal.data ?? []} /></TabsContent>

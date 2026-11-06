@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { QualityTargetKeysField } from './QualityTargetKeysField';
 import { api } from '../../api';
 import { PagedSelect } from '../../components/PagedSelect';
@@ -54,7 +53,6 @@ export function CreateRequestDialog({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>(initialWorkflowRunId ? [initialWorkflowRunId] : []);
-  const [testDesignId, setTestDesignId] = useState('');
   const [saving, setSaving] = useState(false);
   const [project, setProject] = useState<Project>();
   const [runPage, setRunPage] = useState(1);
@@ -62,7 +60,7 @@ export function CreateRequestDialog({
   const [selectedRuns, setSelectedRuns] = useState<Record<string, WorkflowRun>>({});
   const runResult = useQualityPage(`${projectId}:${versionId}:${runPage}:${runQuery}`, () => api.getWorkflowRuns({ projectId, versionId, status: 'DONE', page: runPage, pageSize: 10, q: runQuery || undefined }), open && Boolean(projectId && versionId), setRunPage);
   const eligibleRuns = runResult.items;
-  const canSubmit = Boolean(project && versionId && title.trim() && selectedRunIds.length && testDesignId);
+  const canSubmit = Boolean(project && versionId && title.trim() && selectedRunIds.length);
   useEffect(() => {
     if (!open) return;
     setProjectId(initialProjectId ?? '');
@@ -77,8 +75,8 @@ export function CreateRequestDialog({
     return () => { active = false; };
   }, [projectId, open]);
   async function submit() {
-    if (!project || !versionId || !title.trim() || !selectedRunIds.length || !testDesignId) {
-      toast.error('请选择项目版本、已确认测试设计、提测工作流并填写标题');
+    if (!project || !versionId || !title.trim() || !selectedRunIds.length) {
+      toast.error('请选择项目版本、提测工作流并填写标题');
       return;
     }
     const requirementIds = [...new Set(selectedRunIds.map(id => selectedRuns[id]?.requirement.id).filter((id): id is string => Boolean(id)))];
@@ -92,7 +90,6 @@ export function CreateRequestDialog({
         description: description.trim() || undefined,
         requirementIds,
         workflowRunIds: selectedRunIds,
-        testDesignId,
       });
       setTitle('');
       setDescription('');
@@ -111,24 +108,20 @@ export function CreateRequestDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>发起提测</DialogTitle>
-          <DialogDescription>确认需求与设计，再关联已完成的研发工作流，冻结本次测试范围。</DialogDescription>
+        <DialogDescription>关联已完成的研发工作流，创建提测后由 AI 自动生成第一版测试范围。</DialogDescription>
         </DialogHeader>
-        <ol className="grid grid-cols-3 gap-2 rounded-md border p-3 text-xs"><li>1 选择项目版本与工作流</li><li>2 确认测试设计</li><li>3 冻结范围并提测</li></ol>
+        <ol className="grid grid-cols-3 gap-2 rounded-md border p-3 text-xs"><li>1 选择项目版本与工作流</li><li>2 AI 分析提测范围</li><li>3 人工删改并确认</li></ol>
         <div className="grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="项目">
-              <PagedSelect label="项目" value={projectId} selectedLabel={project?.name} onValueChange={value => { setProjectId(value); setVersionId(''); setSelectedRunIds([]); setTestDesignId(''); setRunPage(1); }} loadPage={query => api.getProjects(query)} placeholder="选择项目" />
+              <PagedSelect label="项目" value={projectId} selectedLabel={project?.name} onValueChange={value => { setProjectId(value); setVersionId(''); setSelectedRunIds([]); setRunPage(1); }} loadPage={query => api.getProjects(query)} placeholder="选择项目" />
             </Field>
             <Field label="项目版本">
-              <PagedSelect label="项目版本" value={versionId} onValueChange={value => { setVersionId(value); setSelectedRunIds([]); setTestDesignId(''); setRunPage(1); }} disabled={!projectId} scopeKey={projectId} loadPage={query => api.listProjectVersions(projectId, query)} placeholder="选择版本" />
+              <PagedSelect label="项目版本" value={versionId} onValueChange={value => { setVersionId(value); setSelectedRunIds([]); setRunPage(1); }} disabled={!projectId} scopeKey={projectId} loadPage={query => api.listProjectVersions(projectId, query)} placeholder="选择版本" />
             </Field>
           </div>
           <Field label="提测标题">
             <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：2.6.0 登录能力提测" />
-          </Field>
-          <Field label="已确认测试设计">
-            <PagedSelect label="已确认测试设计" value={testDesignId} onValueChange={setTestDesignId} disabled={!versionId} scopeKey={`${projectId}:${versionId}:${selectedRunIds.join(',')}`} loadPage={async query => { const result = await api.getTestDesigns({ ...query, projectId, projectVersionId: versionId, status: 'CONFIRMED', availableForRequest: true, workflowRunIds: selectedRunIds }); return { ...result, items: result.items.map(design => ({ id: design.id, name: `第 ${design.revision} 版` })) }; }} placeholder="选择测试设计" />
-            <Link className="text-xs text-primary underline" to="/requirements">去准备或修复测试设计</Link>
           </Field>
           <Field label="说明（可选）">
             <Textarea rows={2} value={description} onChange={(event) => setDescription(event.target.value)} />
@@ -142,7 +135,7 @@ export function CreateRequestDialog({
                     type="checkbox"
                     className="mt-0.5 h-4 w-4 accent-primary"
                     checked={selectedRunIds.includes(run.id)}
-                    onChange={(event) => { setSelectedRuns(current => ({ ...current, [run.id]: run })); setSelectedRunIds(current => event.target.checked ? [...current, run.id] : current.filter(id => id !== run.id)); setTestDesignId(''); }}
+                    onChange={(event) => { setSelectedRuns(current => ({ ...current, [run.id]: run })); setSelectedRunIds(current => event.target.checked ? [...current, run.id] : current.filter(id => id !== run.id)); }}
                   />
                   <span className="min-w-0 text-sm">
                     <span className="block font-medium text-foreground">{run.requirement.title}</span>
@@ -304,7 +297,7 @@ export function CreateCaseDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>新建测试用例</DialogTitle>
-          <DialogDescription>用例进入提测范围后将冻结为版本快照。</DialogDescription>
+          <DialogDescription>用例进入提测范围后会保存为本次执行快照。</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
