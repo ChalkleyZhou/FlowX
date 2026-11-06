@@ -283,6 +283,28 @@ describe('Quality pages', () => {
     expect(container.querySelector('[role="tablist"]')).toBeNull();
   });
 
+  it('renders the paged test-request browse shape with server-side counts', async () => {
+    const browseRequest = {
+      ...testRequest,
+      requirementLinks: undefined,
+      workflowLinks: undefined,
+      artifactLinks: undefined,
+      _count: { requirementLinks: 3, workflowLinks: 2, artifactLinks: 1 },
+      testPlan: {
+        id: 'plan-1',
+        status: 'ACTIVE',
+        _count: { snapshots: 7, runs: 4 },
+      },
+    } as unknown as TestRequest;
+    vi.mocked(api.getTestRequests).mockResolvedValue(pageResult([browseRequest]));
+
+    await renderPage('/quality/test-requests?projectId=project-1', <QualityRequestsPage />);
+
+    expect(container.textContent).toContain('3 个需求');
+    expect(container.textContent).toContain('7 个范围用例');
+    expect(container.textContent).toContain('4 个执行轮次');
+  });
+
   it('does not reopen the workflow create dialog after creating a request and returning', async () => {
     const workflowRun: WorkflowRun = {
       id: 'workflow-1',

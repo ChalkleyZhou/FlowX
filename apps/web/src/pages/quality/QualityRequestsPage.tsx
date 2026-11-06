@@ -161,9 +161,9 @@ export function QualityRequestsPage() {
                     description={(
                       <div className="flex flex-wrap gap-x-4 gap-y-1">
                         <span>{request.project.name}</span>
-                        <span>{request.requirementLinks.length} 个需求</span>
-                        <span>{request.testPlan?.snapshots.length ?? 0} 个范围用例</span>
-                        <span>{request.testPlan?.runs.length ?? 0} 个执行轮次</span>
+                        <span>{request._count?.requirementLinks ?? request.requirementLinks?.length ?? 0} 个需求</span>
+                        <span>{request.testPlan?._count?.snapshots ?? request.testPlan?.snapshots?.length ?? 0} 个范围用例</span>
+                        <span>{request.testPlan?._count?.runs ?? request.testPlan?.runs?.length ?? 0} 个执行轮次</span>
                       </div>
                     )}
                     details={request.scopeSummary ? <span>{request.scopeSummary}</span> : <span>测试范围尚未生成完成</span>}

@@ -929,6 +929,7 @@ export interface TestRequest {
   requirementLinks: Array<{ requirement: { id: string; title: string } }>;
   workflowLinks: Array<{ workflowRun: { id: string; status: string } }>;
   artifactLinks: Array<{ artifact: { id: string; name?: string; artifactType?: string } }>;
+  _count?: { requirementLinks?: number; workflowLinks?: number; artifactLinks?: number };
   testPlan?: {
     id: string;
     status: string;
