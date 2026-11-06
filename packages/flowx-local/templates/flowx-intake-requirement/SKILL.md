@@ -91,3 +91,11 @@ description: 仅在用户明确要求把事项新建、登记或发起到 FlowX 
 
 - 创建失败：不进入启动
 - 已创建、启动失败：保留 `requirementId`，引导再次确认后重试启动，或回 Web 启动
+
+## 分页读取约定
+
+所有浏览工具默认每页 20 条，`pageSize` 最大为 100。读取 `items` 与 `total/page/pageSize/totalPages`；需要更多候选时按页继续查询，不能把第一页或当前页计数当成完整范围。`flowx_list_tasks` 的 `tasks` 和 `openDesignWorkflows` 是独立分页，设计候选使用 `openDesignPage/openDesignPageSize/openDesignQ`。`flowx_list_projects` 通过 `resource=versions`（需 `projectId`）或 `resource=repositories`（需 `workspaceId`）分别发现版本与仓库，不依赖项目概要中的嵌套全量集合。
+
+测试设计通过 `flowx_get_test_design` 的 `collection=candidates|smoke-cases|requirements|workflows` 分页；提测单 get 动作通过 `collection=snapshots|requirements|workflows|artifacts` 分页。测试任务指定 `testRunId` 时以 `collection=cases|targets|executions` 分页发现；只执行 `claim` 实际返回的完整领取范围。冒烟按页修改必须传 `partial=true` 与每条既有 `id`，不能把一页作为完整范围替换。遇到 `PAGINATION_UPGRADE_REQUIRED` 应提示升级服务端与 `@flowx-ai/local`，不能退回旧全量接口或伪装空列表。
+
+发现项目、需求或测试记录时优先传 `q` 和已有范围过滤条件，保留分页元数据供后续选择；仅在当前页没有目标或用户继续浏览时请求下一页，不循环拉取所有页。用例多选过滤可传 `libraryIds/moduleIds/priorities`，MCP 会透传到 API；命令行 `flowx-local mcp` 与 IDE Adapter 共用此入口和分页契约请求头。

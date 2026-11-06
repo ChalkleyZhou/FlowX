@@ -1,3 +1,6 @@
+import { useListPage } from '../hooks/use-list-page';
+import { ListPagination } from '../components/ListPagination';
+import { PagedSelect } from '../components/PagedSelect';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
@@ -49,9 +52,6 @@ import { useStoredListFilters } from '../utils/list-filter-storage';
 export function BugsPage() {
   const [searchParams] = useSearchParams();
   const scopedProjectId = useScopedProjectId();
-  const [bugs, setBugs] = useState<Bug[]>([]);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createAttachments, setCreateAttachments] = useState<PendingImageAttachment[]>([]);
@@ -72,79 +72,11 @@ export function BugsPage() {
   const selectedSeverity = filters.severity;
   const selectedPriority = filters.priority;
   const keyword = filters.keyword ?? '';
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
   const toast = useToast();
 
-  const filteredBugs = useMemo(() => {
-    return bugs.filter((bug) => {
-      const matchesProject = scopedProjectId ? (bug.project?.id ?? bug.projectId) === scopedProjectId : false;
-      const matchesWorkspace = selectedWorkspaceId ? bug.workspace?.id === selectedWorkspaceId : true;
-      const matchesStatus = selectedStatus ? bug.status === selectedStatus : true;
-      const matchesSeverity = selectedSeverity ? bug.severity === selectedSeverity : true;
-      const matchesPriority = selectedPriority ? bug.priority === selectedPriority : true;
-      const normalizedKeyword = keyword.trim().toLowerCase();
-      const matchesKeyword = normalizedKeyword
-        ? [bug.title, bug.description, bug.requirement?.title ?? '', bug.workspace?.name ?? '']
-            .join(' ')
-            .toLowerCase()
-            .includes(normalizedKeyword)
-        : true;
-      return matchesProject && matchesWorkspace && matchesStatus && matchesSeverity && matchesPriority && matchesKeyword;
-    });
-  }, [bugs, keyword, scopedProjectId, selectedPriority, selectedSeverity, selectedStatus, selectedWorkspaceId]);
-
-  const projectBugs = useMemo(
-    () => bugs.filter((bug) => scopedProjectId && (bug.project?.id ?? bug.projectId) === scopedProjectId),
-    [bugs, scopedProjectId],
-  );
-  const bugSummary = useMemo(() => ({
-    total: projectBugs.length,
-    visible: filteredBugs.length,
-    openCount: projectBugs.filter((item) => item.status === 'OPEN').length,
-    criticalCount: projectBugs.filter((item) => item.severity === 'CRITICAL').length,
-  }), [filteredBugs.length, projectBugs]);
-
-  const pagedBugs = useMemo(() => {
-    const start = (page - 1) * 8;
-    return filteredBugs.slice(start, start + 8);
-  }, [filteredBugs, page]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredBugs.length / 8));
-
-  const createWorkspaceProjects = useMemo(
-    () =>
-      projects.filter(
-        (project) => !createDraft.workspaceId || project.workspace.id === createDraft.workspaceId,
-      ),
-    [createDraft.workspaceId, projects],
-  );
-
-  async function refresh() {
-    setLoading(true);
-    try {
-      const [bugList, workspaceList, projectList] = await Promise.all([
-        api.getBugs(),
-        api.getWorkspaces(),
-        api.getProjects(),
-      ]);
-      setBugs(bugList);
-      setWorkspaces(workspaceList);
-      setProjects(projectList);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载缺陷失败');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    void refresh();
-  }, []);
-
-  useEffect(() => {
-    setPage(1);
-  }, [keyword, selectedPriority, selectedSeverity, selectedStatus, selectedWorkspaceId]);
+  const list = useListPage(api.getBugs, { projectId: scopedProjectId || undefined, workspaceId: selectedWorkspaceId, status: selectedStatus, priority: selectedPriority, q: keyword || undefined, severity: selectedSeverity }, { enabled: Boolean(scopedProjectId) });
+  const { items: pagedBugs, loading, refresh } = list;
+  const bugSummary = { ...{total: 0, visible: 0, openCount: 0, criticalCount: 0}, ...list.summary };
 
   async function handleCreateBug(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -201,13 +133,12 @@ export function BugsPage() {
         description="集中管理手动登记与 AI 审查沉淀的缺陷，统一查看严重级别、优先级、来源流程和修复上下文。"
         actions={
           <UiButton onClick={() => {
-            const project = projects.find((item) => item.id === scopedProjectId);
-            setCreateDraft((current) => ({
-              ...current,
-              projectId: project?.id ?? '',
-              workspaceId: project?.workspace.id ?? current.workspaceId,
-            }));
-            setCreateModalOpen(true);
+            if (scopedProjectId) {
+              void api.getProject(scopedProjectId).then(project => {
+                setCreateDraft(current => ({ ...current, projectId: project.id, workspaceId: project.workspace.id }));
+                setCreateModalOpen(true);
+              }).catch(error => toast.error(error instanceof Error ? error.message : '加载项目失败'));
+            } else { setCreateModalOpen(true); }
           }}>新建缺陷</UiButton>
         }
       />
@@ -230,48 +161,14 @@ export function BugsPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-semibold text-foreground">工作区</label>
-                <Select
-                  value={createDraft.workspaceId || ''}
-                  onValueChange={(value) =>
-                    setCreateDraft((current) => ({ ...current, workspaceId: value, projectId: '' }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择工作区" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {workspaces.map((workspace) => (
-                      <SelectItem key={workspace.id} value={workspace.id}>
-                        {workspace.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <PagedSelect value={createDraft.workspaceId} label="工作区" placeholder="选择工作区" loadPage={api.getWorkspaces}
+                  onValueChange={value => setCreateDraft(current => ({ ...current, workspaceId: value, projectId: '' }))} />
               </div>
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-semibold text-foreground">项目（可选）</label>
-                <Select
-                  value={createDraft.projectId || '__none__'}
-                  onValueChange={(value) =>
-                    setCreateDraft((current) => ({
-                      ...current,
-                      projectId: value === '__none__' ? '' : value,
-                    }))
-                  }
-                  disabled={!createDraft.workspaceId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="默认使用缺陷修复项目" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">默认（缺陷修复）</SelectItem>
-                    {createWorkspaceProjects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <PagedSelect value={createDraft.projectId} label="项目" placeholder="默认使用缺陷修复项目" allowClear emptyLabel="默认（缺陷修复）"
+                  disabled={!createDraft.workspaceId} scopeKey={createDraft.workspaceId} loadPage={query => api.getProjects({ ...query, workspaceId: createDraft.workspaceId })}
+                  onValueChange={value => setCreateDraft(current => ({ ...current, projectId: value }))} />
               </div>
             </div>
             <div className="flex flex-col gap-2">
@@ -380,9 +277,10 @@ export function BugsPage() {
           <SectionHeader eyebrow="Bug Registry" title="缺陷列表" />
         </CardHeader>
         <CardContent className="p-5 pt-0">
+          {list.error ? <p role="alert" className="mb-3 text-sm text-destructive">{list.error}<UiButton variant="ghost" onClick={refresh}>重试</UiButton></p> : null}
           {!scopedProjectId ? (
             <ProjectRequiredState />
-          ) : loading ? (
+          ) : loading && pagedBugs.length === 0 && !keyword ? (
             <div className="flex min-h-40 items-center justify-center">
               <Spinner className="h-7 w-7" />
             </div>
@@ -398,22 +296,8 @@ export function BugsPage() {
                 )}
                 filters={(
                   <>
-                    <Select
-                      value={selectedWorkspaceId ?? '__all__'}
-                      onValueChange={(value) => setFilter('workspaceId', value === '__all__' ? undefined : value)}
-                    >
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="按工作区筛选" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__all__">全部工作区</SelectItem>
-                        {workspaces.map((workspace) => (
-                          <SelectItem key={workspace.id} value={workspace.id}>
-                            {workspace.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <PagedSelect value={selectedWorkspaceId ?? ''} label="按工作区筛选" placeholder="全部工作区" allowClear emptyLabel="全部工作区" className="w-[180px]" loadPage={api.getWorkspaces}
+                      onValueChange={value => setFilter('workspaceId', value || undefined)} />
                     <Select
                       value={selectedStatus ?? '__all__'}
                       onValueChange={(value) => setFilter('status', value === '__all__' ? undefined : value)}
@@ -504,18 +388,7 @@ export function BugsPage() {
               />
               ))}
             </div>
-            <div className="flex items-center justify-between gap-3 mt-4 border-t border-border pt-4">
-              <span className="text-sm text-muted-foreground">共 {filteredBugs.length} 条</span>
-              <div className="flex items-center gap-2.5">
-                <UiButton variant="outline" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>
-                  上一页
-                </UiButton>
-                <span className="text-sm text-muted-foreground">第 {page} / {totalPages} 页</span>
-                <UiButton variant="outline" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>
-                  下一页
-                </UiButton>
-              </div>
-            </div>
+            <ListPagination page={list.page} total={list.total} loading={loading} onPageChange={list.onPageChange} label="Bug列表分页" />
           </>
         ) : (
           <EmptyState description="当前还没有缺陷，可点击「新建缺陷」登记，或从 AI 审查阶段转换。" />

@@ -1,6 +1,7 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Copy } from 'lucide-react';
 import { api } from '../api';
+import { ListPagination } from '../components/ListPagination';
 import { PageHeader } from '../components/PageHeader';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -19,21 +20,31 @@ export function PersonalApiTokensPage() {
   const [tokens, setTokens] = useState<PersonalApiTokenMeta[]>([]);
   const [createdToken, setCreatedToken] = useState<PersonalApiTokenCreated | null>(null);
 
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const requestSequence = useRef(0);
+
   async function refreshTokens() {
-    setLoading(true);
+    const sequence = ++requestSequence.current;
+    if (!tokens.length) setLoading(true);
     try {
-      const next = await api.listPersonalApiTokens();
-      setTokens(next);
+      const next = await api.listPersonalApiTokens({ page, pageSize: 20 });
+      if (sequence !== requestSequence.current) return;
+      const lastPage = Math.max(1, next.totalPages);
+      if (page > lastPage) { setPage(lastPage); return; }
+      setTokens(next.items);
+      setTotal(next.total);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载 API Token 失败');
+      if (sequence === requestSequence.current) toast.error(error instanceof Error ? error.message : '加载 API Token 失败');
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   }
 
   useEffect(() => {
     void refreshTokens();
-  }, []);
+    return () => { requestSequence.current += 1; };
+  }, [page]);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -141,7 +152,7 @@ export function PersonalApiTokensPage() {
         <CardHeader className="space-y-2">
           <p className="text-sm font-medium text-foreground">已有 Token</p>
           <p className="text-sm text-muted-foreground">
-            {loading ? '加载中...' : tokens.length === 0 ? '暂无有效 Token' : `共 ${tokens.length} 个`}
+            {loading ? '加载中...' : tokens.length === 0 ? '暂无有效 Token' : `共 ${total} 个`}
           </p>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -170,6 +181,7 @@ export function PersonalApiTokensPage() {
               </Button>
             </div>
           ))}
+          <ListPagination page={page} total={total} pageSize={20} loading={loading} onPageChange={setPage} />
         </CardContent>
       </Card>
     </>

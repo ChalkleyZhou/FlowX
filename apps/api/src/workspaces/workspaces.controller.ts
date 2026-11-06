@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import type { PaginationQuery } from '../common/pagination';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { CreateRepositoryDto } from './dto/create-repository.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { UpdateRepositoryDto } from './dto/update-repository.dto';
@@ -15,9 +16,18 @@ export class WorkspacesController {
   }
 
   @Get()
-  findAll() {
-    return this.workspacesService.findAll();
+  findAll(@Query() query: PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; planningStatus?: string; priority?: string; status?: string; q?: string } = {}) {
+    return this.workspacesService.findPage(query);
   }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) { return this.workspacesService.findDetail(id); }
+
+  @Get(':id/repositories')
+  listRepositories(@Param('id') id: string, @Query() query: PaginationQuery & { q?: string; status?: string } = {}) { return this.workspacesService.listRepositories(id, query); }
+
+  @Get(':id/repositories/:repositoryId')
+  getRepository(@Param('id') id: string, @Param('repositoryId') repositoryId: string) { return this.workspacesService.getRepository(id, repositoryId); }
 
   @Post(':id/repositories')
   addRepository(@Param('id') id: string, @Body() dto: CreateRepositoryDto) {

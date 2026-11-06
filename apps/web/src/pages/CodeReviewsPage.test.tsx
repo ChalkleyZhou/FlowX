@@ -1,3 +1,4 @@
+import { pageResult } from './quality/page-result-test';
 // @vitest-environment jsdom
 
 import { act } from 'react';
@@ -10,6 +11,7 @@ import { CodeReviewsPage } from './CodeReviewsPage';
 
 vi.mock('../api', () => ({
   api: {
+    getProject: vi.fn(),
     getProjects: vi.fn(),
     listProjectDailyCodeReviews: vi.fn(),
     listCodeReviewFeeds: vi.fn(),
@@ -28,14 +30,14 @@ describe('CodeReviewsPage', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
-    vi.mocked(api.getProjects).mockResolvedValue([
+    vi.mocked(api.getProject).mockImplementation(async id => ([
       {
         id: 'project-1',
         name: 'FlowX',
         workspace: { id: 'workspace-1', name: '研发平台', repositories: [] },
       },
-    ]);
-    vi.mocked(api.listCodeReviewFeeds).mockResolvedValue([
+    ]).find(project => project.id === id)!);
+    vi.mocked(api.listCodeReviewFeeds).mockResolvedValue(pageResult([
       {
         id: 'feed-1',
         projectId: 'project-1',
@@ -47,8 +49,8 @@ describe('CodeReviewsPage', () => {
         repositoryIds: ['repo-1'],
         deliveryTargetIds: [],
       },
-    ]);
-    vi.mocked(api.listProjectDailyCodeReviews).mockResolvedValue([
+    ]));
+    vi.mocked(api.listProjectDailyCodeReviews).mockResolvedValue(pageResult([
       {
         id: 'review-1',
         projectId: 'project-1',
@@ -65,7 +67,7 @@ describe('CodeReviewsPage', () => {
         createdAt: '2026-06-03T00:00:00.000Z',
         updatedAt: '2026-06-03T00:10:00.000Z',
       },
-    ]);
+    ]));
     vi.mocked(api.generateCodeReviewFeed).mockResolvedValue({
       id: 'review-2',
       projectId: 'project-1',
@@ -110,8 +112,8 @@ describe('CodeReviewsPage', () => {
   it('lists daily code reviews for the selected project', async () => {
     await renderPage();
 
-    expect(api.getProjects).toHaveBeenCalled();
-    expect(api.listProjectDailyCodeReviews).toHaveBeenCalledWith('project-1');
+    expect(api.getProject).toHaveBeenCalledWith('project-1');
+    expect(api.listProjectDailyCodeReviews).toHaveBeenCalledWith('project-1', { page: 1, pageSize: 20 });
     expect(document.body.textContent).toContain('代码审查');
     expect(document.body.textContent).not.toContain('项目数');
     expect(document.body.textContent).toContain('已发送');
@@ -138,7 +140,7 @@ describe('CodeReviewsPage', () => {
   });
 
   it('shows an empty state when there are no reviews yet', async () => {
-    vi.mocked(api.listProjectDailyCodeReviews).mockResolvedValue([]);
+    vi.mocked(api.listProjectDailyCodeReviews).mockResolvedValue(pageResult([]));
 
     await renderPage();
 

@@ -162,6 +162,10 @@ export class SmokeCaseDto {
 }
 
 export class UpdateTestDesignSmokeDto {
+  @IsOptional()
+  @IsBoolean()
+  partial?: boolean;
+
   @IsInt()
   @Min(1)
   revision!: number;

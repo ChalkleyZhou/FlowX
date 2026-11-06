@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link,useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import type { GanttBar, GanttLane, GanttPayload } from '../types';
 import { ganttBarColorClass } from '../utils/gantt-bar-styles';
@@ -13,6 +13,7 @@ import {
 } from '../utils/gantt-range';
 import { formatAssignmentRole } from '../utils/label-utils';
 import { cn } from '../lib/utils';
+import { ListPagination } from './ListPagination';
 import { Spinner } from './ui/spinner';
 
 const LANE_LABEL_WIDTH = '11rem';
@@ -56,6 +57,13 @@ function barTooltip(bar: GanttBar): string {
 }
 
 export function ScheduleGantt({ query, refreshToken = 0 }: ScheduleGanttProps) {
+  const [params,setParams] = useSearchParams();
+  const requestedPage = Number(params.get('ganttPage') ?? 1);
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const setPage = (nextPage:number) => setParams(current => {const next = new URLSearchParams(current);if(nextPage > 1) next.set('ganttPage',String(nextPage));else next.delete('ganttPage');return next;},{replace:true});
+  const filterKey = JSON.stringify(query);
+  const [loadedKey,setLoadedKey] = useState(filterKey);
+  const effectivePage = loadedKey === filterKey ? page : 1;
   const [payload, setPayload] = useState<GanttPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -64,12 +72,14 @@ export function ScheduleGantt({ query, refreshToken = 0 }: ScheduleGanttProps) {
   const scope = query.scope ?? (query.projectId ? 'project' : 'organization');
 
   useEffect(() => {
+    let active = true;
+    if (loadedKey !== filterKey) {setLoadedKey(filterKey);setPage(1);}
     void (async () => {
       setLoading(true);
       setLoadError(null);
       try {
-        setPayload(
-          await api.getScheduleGantt({
+        const next = await api.getScheduleGantt({
+            page:effectivePage,pageSize:20,
             view: 'member',
             scope,
             from: query.from,
@@ -78,16 +88,22 @@ export function ScheduleGantt({ query, refreshToken = 0 }: ScheduleGanttProps) {
             ...(query.requirementId ? { requirementId: query.requirementId } : {}),
             ...(query.role ? { role: query.role } : {}),
             ...(query.onlyMe ? { onlyMe: true } : query.userId ? { userId: query.userId } : {}),
-          }),
-        );
+          });
+        if (active) {
+          if (next.pagination && effectivePage > next.pagination.totalPages) setPage(next.pagination.totalPages);
+          else setPayload(next);
+        }
       } catch (error) {
+        if (!active) return;
         setPayload(null);
         setLoadError(error instanceof Error ? error.message : '加载甘特数据失败');
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     })();
+    return () => {active=false;};
   }, [
+    effectivePage,
     scope,
     query.projectId,
     query.requirementId,
@@ -114,7 +130,7 @@ export function ScheduleGantt({ query, refreshToken = 0 }: ScheduleGanttProps) {
 
   const laneBarMap = useMemo(() => barsByLane(displayBars), [displayBars]);
 
-  if (loading) {
+  if (loading && !payload) {
     return (
       <div className="flex min-h-48 items-center justify-center">
         <Spinner className="h-6 w-6" />
@@ -143,15 +159,19 @@ export function ScheduleGantt({ query, refreshToken = 0 }: ScheduleGanttProps) {
     const filterNote =
       filterHints.length > 0 ? `（${filterHints.join('、')}，可尝试放宽筛选）` : '';
     return (
+      <div>
       <p className="text-sm text-muted-foreground">
         {formatRangeLabel(range.from, range.to)} 当前时间范围内没有排期条{filterNote}。
         请确认计划日期落在此区间，或在需求详情「人员排期」中配置成员与起止日。
       </p>
+      {payload?.pagination ? <ListPagination {...payload.pagination} loading={loading} onPageChange={setPage} label="排期分页" /> : null}
+      </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      {payload.pagination ? <ListPagination {...payload.pagination} loading={loading} onPageChange={setPage} label="排期分页" /> : null}
       <p className="text-xs text-muted-foreground">
         纵轴为自然日（{range.from} ~ {range.to}），横轴每行一名成员；条形为排期任务，人天按工作日计。
       </p>

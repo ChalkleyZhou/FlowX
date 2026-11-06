@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { AiInvocationRecipient } from '../ai/ai-invocation-context.service';
@@ -55,6 +56,26 @@ export class BriefingsService {
     private readonly briefingAiSummarizerService: BriefingAiSummarizerService,
   ) {}
 
+  async listProjectBriefingsPage(projectId: string, query: PaginationQuery = {}) {
+    const paging = parsePagination(query);
+    await this.ensureProjectExists(projectId);
+    const items = await this.prisma.briefing.findMany({
+      skip: paging.skip, take: paging.take,
+      where: { projectId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      include: {
+        feed: { select: { id: true, name: true } },
+        deliveryLogs: {
+          take: 1,
+          include: { deliveryTarget: true },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        },
+      },
+    });
+    const total = await this.prisma.briefing.count({ where: { projectId } });
+    return pageResult(items, total, paging);
+  }
+
   async listProjectBriefings(projectId: string) {
     await this.ensureProjectExists(projectId);
     return this.prisma.briefing.findMany({
@@ -70,6 +91,14 @@ export class BriefingsService {
     });
   }
 
+  async listDeliveryLogs(id: string, query: PaginationQuery = {}) {
+    const paging = parsePagination(query);
+    await this.prisma.briefing.findUniqueOrThrow({ where: { id }, select: { id: true } });
+    const where = { briefingId: id };
+    const [items, total] = await Promise.all([this.prisma.deliveryLog.findMany({ where, skip: paging.skip, take: paging.take, include: { deliveryTarget: true }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }), this.prisma.deliveryLog.count({ where })]);
+    return pageResult(items, total, paging);
+  }
+
   async getBriefing(id: string) {
     const briefing = await this.prisma.briefing.findUnique({
       where: { id },
@@ -77,8 +106,9 @@ export class BriefingsService {
         project: true,
         workspace: true,
         deliveryLogs: {
+          take: 20,
           include: { deliveryTarget: true },
-          orderBy: { createdAt: 'desc' },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         },
       },
     });

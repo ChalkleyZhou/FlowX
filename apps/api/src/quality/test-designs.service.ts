@@ -1,3 +1,5 @@
+import { queryValues } from './test-request-browse';
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import type { QualityCaseSelection } from '@flowx-ai/protocol';
 import { selectQualityCases, stringArray } from './test-case-selection';
 import { createHash } from 'node:crypto';
@@ -31,6 +33,11 @@ const designInclude = {
   smokeCases: { orderBy: { sortOrder: 'asc' as const } },
   testRequest: true,
   testPlan: true,
+} as const;
+
+const designBrowseInclude = {
+  testRequest: true, testPlan: true,
+  _count: { select: { candidates: true, smokeCases: true, requirements: true, workflowRuns: true } },
 } as const;
 
 const comparisonCaseSelect = {
@@ -238,12 +245,74 @@ export class TestDesignsService {
     });
   }
 
-  listDesigns(filters: { projectId?: string; projectVersionId?: string; status?: string }) {
-    return this.prisma.testDesign.findMany({
-      where: { projectId: filters.projectId, projectVersionId: filters.projectVersionId, status: filters.status },
-      include: designInclude,
-      orderBy: { updatedAt: 'desc' },
-    });
+  async listDesigns(filters: PaginationQuery & { requirementId?: string; projectId?: string; projectVersionId?: string; status?: string; q?: string; availableForRequest?: string | boolean; workflowRunIds?: string | string[] }) {
+    const paging = parsePagination(filters);
+    const workflowRunIds = queryValues(filters.workflowRunIds);
+    const scope: Prisma.TestDesignWhereInput = {
+      ...(filters.availableForRequest === true || filters.availableForRequest === 'true' ? { testRequest: null } : {}),
+      ...(workflowRunIds?.length ? { AND: workflowRunIds.map(workflowRunId => ({ workflowRuns: { some: { workflowRunId } } })) } : {}),
+      projectId: filters.projectId, projectVersionId: filters.projectVersionId,
+      ...((filters.requirementId || filters.q?.trim()) ? { requirements: { some: {
+        ...(filters.requirementId ? { requirementId: filters.requirementId } : {}),
+        ...(filters.q?.trim() ? { requirement: { title: { contains: filters.q.trim() } } } : {}),
+      } } } : {}),
+    };
+    const where = { ...scope, status: filters.status };
+    const [items, total, groups] = await Promise.all([
+      this.prisma.testDesign.findMany({ where, include: designBrowseInclude, orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }], skip: paging.skip, take: paging.take }),
+      this.prisma.testDesign.count({ where }),
+      this.prisma.testDesign.groupBy({ by: ['status'], where: scope, _count: true }),
+    ]);
+    return { ...pageResult(items, total, paging), summary: Object.fromEntries(groups.map(group => [group.status, group._count])) };
+  }
+
+  async getDesignBrowse(id: string) {
+    const design = await this.prisma.testDesign.findUnique({ where: { id }, include: designBrowseInclude });
+    if (!design) throw new NotFoundException('Test design not found.');
+    const [pendingCount, acceptedCount, smokePendingCount] = await Promise.all([
+      this.prisma.testDesignCandidate.count({ where: { testDesignId: id, resolution: 'PENDING', action: { not: 'EXCLUDE' } } }),
+      this.prisma.testDesignCandidate.count({ where: { testDesignId: id, resolution: 'ACCEPTED', action: { not: 'EXCLUDE' } } }),
+      this.prisma.testDesignSmokeCase.count({ where: { testDesignId: id, resolution: 'PENDING' } }),
+    ]);
+    return { ...design, summary: { pendingCount, acceptedCount, smokePendingCount, candidateCount: design._count.candidates, smokeCount: design._count.smokeCases } };
+  }
+
+  async listCandidates(id: string, query: PaginationQuery & { q?: string; resolution?: string }) {
+    await this.getDesignBrowse(id);
+    const paging = parsePagination(query);
+    const scope: Prisma.TestDesignCandidateWhereInput = { testDesignId: id,
+      ...(query.q?.trim() ? { proposedCase: { path: '$.title', string_contains: query.q.trim() } } : {}),
+    };
+    const where = { ...scope, resolution: query.resolution };
+    const [items, total, groups] = await Promise.all([
+      this.prisma.testDesignCandidate.findMany({ where, include: { sourceDefinition: { include: { library: true } } }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }], skip: paging.skip, take: paging.take }),
+      this.prisma.testDesignCandidate.count({ where }),
+      this.prisma.testDesignCandidate.groupBy({ by: ['resolution'], where: scope, _count: true }),
+    ]);
+    return { ...pageResult(items, total, paging), summary: Object.fromEntries(groups.map(group => [group.resolution, group._count])) };
+  }
+
+  async listSmokeCases(id: string, query: PaginationQuery & { q?: string }) {
+    await this.getDesignBrowse(id);
+    const paging = parsePagination(query);
+    const where = { testDesignId: id, ...(query.q?.trim() ? { title: { contains: query.q.trim() } } : {}) };
+    const [items, total] = await Promise.all([
+      this.prisma.testDesignSmokeCase.findMany({ where, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }], skip: paging.skip, take: paging.take }),
+      this.prisma.testDesignSmokeCase.count({ where }),
+    ]);
+    return pageResult(items, total, paging);
+  }
+
+  async listLinks(id: string, kind: 'requirements' | 'workflows', query: PaginationQuery) {
+    await this.getDesignBrowse(id);
+    const paging = parsePagination(query);
+    const where = { testDesignId: id };
+    if (kind === 'requirements') {
+      const [items, total] = await Promise.all([this.prisma.testDesignRequirement.findMany({ where, include: { requirement: true }, orderBy: [{ createdAt: 'asc' }, { requirementId: 'asc' }], skip: paging.skip, take: paging.take }), this.prisma.testDesignRequirement.count({ where })]);
+      return pageResult(items, total, paging);
+    }
+    const [items, total] = await Promise.all([this.prisma.testDesignWorkflowRun.findMany({ where, include: { workflowRun: true }, orderBy: [{ createdAt: 'asc' }, { workflowRunId: 'asc' }], skip: paging.skip, take: paging.take }), this.prisma.testDesignWorkflowRun.count({ where })]);
+    return pageResult(items, total, paging);
   }
 
   async assertReadyForRequest(id: string) {
@@ -445,6 +514,16 @@ export class TestDesignsService {
     assertRevision(design.revision, dto.revision);
     if (design.status !== 'WAITING_REVIEW') {
       throw new BadRequestException('Test design is not editable.');
+    }
+    if (dto.partial) {
+      const ids = dto.cases.map(item => item.id);
+      if (ids.some(id => !id) || new Set(ids).size !== ids.length || ids.some(id => !design.smokeCases.some(item => item.id === id))) throw new BadRequestException('分页修改只能更新当前设计中明确指定的冒烟条目。');
+      return this.prisma.$transaction(async tx => {
+        const locked = await tx.testDesign.updateMany({ where: { id, revision: dto.revision, status: 'WAITING_REVIEW' }, data: { revision: { increment: 1 }, ...(dto.noSmokeReason !== undefined ? { noSmokeReason: dto.noSmokeReason.trim() || null } : {}) } });
+        if (locked.count !== 1) throw new BadRequestException('测试设计已变化，请刷新后重试。');
+        for (const item of dto.cases) await tx.testDesignSmokeCase.update({ where: { id: item.id! }, data: { title: item.title.trim(), priority: item.priority ?? 'P1', precondition: item.precondition?.trim() || null, steps: item.steps, expected: item.expected.trim(), blocking: item.blocking, coverageKeys: item.coverageKeys, resolution: item.resolution } });
+        return tx.testDesign.findUniqueOrThrow({ where: { id }, include: designBrowseInclude });
+      });
     }
     return this.prisma.$transaction(async (tx) => {
       await tx.testDesignSmokeCase.deleteMany({ where: { testDesignId: id } });

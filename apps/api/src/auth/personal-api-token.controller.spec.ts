@@ -9,13 +9,12 @@ describe('PersonalApiTokenController', () => {
   };
 
   it('lists tokens for the authenticated user and organization', async () => {
-    const listTokens = vi.fn().mockResolvedValue([{ id: 'pat-1', name: 'laptop' }]);
-    const controller = new PersonalApiTokenController({ listTokens } as never);
+    const result = { items: [{ id: 'pat-1', name: 'laptop' }], total: 1, page: 1, pageSize: 20, totalPages: 1 };
+    const listTokensPage = vi.fn().mockResolvedValue(result);
+    const controller = new PersonalApiTokenController({ listTokensPage } as never);
 
-    await expect(controller.list({ authSession })).resolves.toEqual([
-      { id: 'pat-1', name: 'laptop' },
-    ]);
-    expect(listTokens).toHaveBeenCalledWith('user-1', 'org-1');
+    await expect(controller.list({ authSession })).resolves.toEqual(result);
+    expect(listTokensPage).toHaveBeenCalledWith('user-1', 'org-1', {});
   });
 
   it('creates a token and returns the service result', async () => {
@@ -48,7 +47,7 @@ describe('PersonalApiTokenController', () => {
 
   it('rejects requests without an organization', () => {
     const controller = new PersonalApiTokenController({
-      listTokens: vi.fn(),
+      listTokensPage: vi.fn(),
     } as never);
 
     expect(() =>
@@ -60,7 +59,7 @@ describe('PersonalApiTokenController', () => {
 
   it('rejects requests without an authenticated user', () => {
     const controller = new PersonalApiTokenController({
-      listTokens: vi.fn(),
+      listTokensPage: vi.fn(),
     } as never);
 
     expect(() =>

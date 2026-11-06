@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { MemoryRouter } from 'react-router-dom';
+import { pageResult } from '../test-utils/page-result';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -35,7 +37,7 @@ describe('ProjectVersionsPanel', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
-    vi.mocked(api.listProjectVersions).mockResolvedValue([{ id: 'ver-1', name: '2.6.0' }]);
+    vi.mocked(api.listProjectVersions).mockResolvedValue(pageResult([{ id: 'ver-1', name: '2.6.0' }]));
   });
 
   afterEach(() => {
@@ -47,7 +49,7 @@ describe('ProjectVersionsPanel', () => {
 
   it('shows the current version and disables deleting it', async () => {
     await act(async () => {
-      root?.render(<ProjectVersionsPanel projectId="proj-1" currentVersionId="ver-1" />);
+      root?.render(<MemoryRouter><ProjectVersionsPanel projectId="proj-1" currentVersionId="ver-1" /></MemoryRouter>);
     });
     await act(async () => {
       await Promise.resolve();

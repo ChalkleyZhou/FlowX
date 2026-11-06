@@ -1,3 +1,4 @@
+import type { PageQuery, PageResult } from './types';
 import type { WorkflowCollaboration } from './utils/workflow-collaboration';
 import type {
   AuthOrganization,
@@ -21,7 +22,7 @@ import type {
   ExecutionSessionStatus,
   SourceTool,
   ExecutionSessionEvidence,
-  ExecutionSessionEventsPage,
+  ExecutionSessionSyncEvent,
   Issue,
   IdeationSessionEvent,
   GanttPayload,
@@ -60,6 +61,7 @@ import type {
   QualityTestReport,
   QualityReportInput,
   QualityRequestReportInput,
+  QualitySupersession,
   TestDesign,
   TestDesignCandidate,
   TestRequest,
@@ -113,11 +115,12 @@ interface RequirementPayload {
   versionId?: string;
 }
 
-function queryString(params?: Record<string, string | number | undefined>) {
+function queryString(params?: Record<string, unknown>) {
   const search = new URLSearchParams(
     Object.entries(params ?? {}).reduce<Record<string, string>>((acc, [key, value]) => {
-      if (value) {
-        acc[key] = String(value);
+      if (key === 'parentId' && value === null) { acc[key] = 'null'; }
+      else if (value !== undefined && value !== null && value !== '') {
+        acc[key] = Array.isArray(value) ? value.join(',') : String(value);
       }
       return acc;
     }, {}),
@@ -166,6 +169,7 @@ async function request<T>(path: string, options?: RequestInit, responseType: 'js
   const requestOptions = {
     headers: {
       ...(!(typeof FormData !== 'undefined' && options?.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
+      'X-FlowX-List-Contract': 'pagination-v1',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options?.headers ?? {}),
     },
@@ -252,6 +256,27 @@ export function getBugScreenshotUrl(bugId: string, screenshotId: string) {
   return buildApiUrl(`/bugs/${bugId}/screenshots/${screenshotId}`);
 }
 
+
+export type ListQuery = PageQuery & {
+  workspaceId?: string; projectId?: string; versionId?: string; projectVersionId?: string;
+  requirementId?: string; workflowRunId?: string; status?: string; priority?: string;
+  planningStatus?: string; severity?: string; runType?: string; role?: string;
+  libraryId?: string; moduleId?: string; parentId?: string | null;
+  libraryIds?: string[]; moduleIds?: string[]; priorities?: string[]; selectedRunIds?: string[]; ownership?: 'project' | 'shared';
+  purpose?: 'briefing' | 'codeReview'; kind?: string; activeOnly?: boolean; terminalOnly?: boolean; excludeSuperseded?: boolean; availableForRequest?: boolean; workflowRunIds?: string[]; excludeId?: string;
+  bugId?: string; executionSessionId?: string; result?: string; targetId?: string; testRequestId?: string; testRunId?: string;
+};
+
+async function requestPage<T>(path: string, query: ListQuery = {}): Promise<PageResult<T>> {
+  const result = await request<PageResult<T>>(`${path}${queryString({ page: 1, pageSize: 20, ...query })}`);
+  if (!result || !Array.isArray(result.items) || !Number.isSafeInteger(result.total)
+      || !Number.isSafeInteger(result.page) || !Number.isSafeInteger(result.pageSize)
+      || !Number.isSafeInteger(result.totalPages)) {
+    throw new ApiError('分页接口契约不受支持，请升级 FlowX 服务端并刷新页面。', 426);
+  }
+  return result;
+}
+
 export const api = {
   createPrototypeImport: (payload: { projectId: string; title?: string; versionId?: string; goal?: string; aiProvider?: 'codex' | 'cursor' }, file: File) => {
     const body = new FormData(); body.append('file', file); body.append('projectId', payload.projectId);
@@ -319,11 +344,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  getWorkspaces: () => request<Workspace[]>('/workspaces'),
-  getProjects: () => request<Project[]>('/projects'),
+  getWorkspaces: (query?: ListQuery) => requestPage<Workspace>('/workspaces', query),
+  getWorkspace: (id: string) => request<Workspace>(`/workspaces/${id}`),
+  getWorkspaceRepositories: (id: string, query?: ListQuery) => requestPage<Repository>(`/workspaces/${id}/repositories`, query),
+  getRepository: (workspaceId: string, repositoryId: string) => request<Repository>(`/workspaces/${workspaceId}/repositories/${repositoryId}`),
+  getProjects: (query?: ListQuery) => requestPage<Project>('/projects', query),
   getProject: (id: string) => request<Project>(`/projects/${id}`),
-  listProjectVersions: (projectId: string) =>
-    request<ProjectVersionSummary[]>(`/projects/${projectId}/versions`),
+  listProjectVersions: (projectId: string, query?: ListQuery) => requestPage<ProjectVersionSummary>(`/projects/${projectId}/versions`, query),
+  getProjectVersion: (projectId: string, versionId: string) => request<ProjectVersionSummary>(`/projects/${projectId}/versions/${versionId}`),
   createProjectVersion: (projectId: string, payload: { name: string }) =>
     request<ProjectVersionSummary>(`/projects/${projectId}/versions`, {
       method: 'POST',
@@ -341,7 +369,7 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ currentVersionId }),
     }),
-  getOrganizationMembers: () => request<OrganizationMember[]>('/auth/organization/members'),
+  getOrganizationMembers: (query?: ListQuery) => requestPage<OrganizationMember>('/auth/organization/members', query),
   syncDingTalkOrganizationUsers: () =>
     request<DingTalkUserSyncResult>('/auth/organization/members/sync-dingtalk', {
       method: 'POST',
@@ -391,8 +419,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  getBriefingSources: (params?: { workspaceId?: string }) =>
-    request<BriefingSource[]>(`/briefing-sources${queryString(params)}`),
+  getBriefingSources: (query?: ListQuery) => requestPage<BriefingSource>('/briefing-sources', query),
   resolveBriefingRepositoryBinding: (params: {
     workspaceId: string;
     repositoryId: string;
@@ -434,8 +461,7 @@ export const api = {
     }),
   deleteBriefingSource: (id: string) =>
     request<{ success: true }>(`/briefing-sources/${id}`, { method: 'DELETE' }),
-  listBriefingFeeds: (projectId: string) =>
-    request<ProjectFeed[]>(`/projects/${projectId}/briefing-feeds`),
+  listBriefingFeeds: (projectId: string, query?: ListQuery) => requestPage<ProjectFeed>(`/projects/${projectId}/briefing-feeds`, query),
   createBriefingFeed: (
     projectId: string,
     payload: {
@@ -468,8 +494,7 @@ export const api = {
     }),
   deleteBriefingFeed: (id: string) =>
     request<{ success: true }>(`/briefing-feeds/${id}`, { method: 'DELETE' }),
-  getProjectBriefings: (projectId: string) =>
-    request<Briefing[]>(`/projects/${projectId}/briefings`),
+  getProjectBriefings: (projectId: string, query?: ListQuery) => requestPage<Briefing>(`/projects/${projectId}/briefings`, query),
   generateBriefingFeed: (
     feedId: string,
     payload: {
@@ -482,15 +507,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  getBriefingDeliveryLogs: (id:string,query?:ListQuery) => requestPage<NonNullable<Briefing['deliveryLogs']>[number]>(`/briefings/${id}/delivery-logs`,query),
+  getCodeReviewDeliveryLogs: (id:string,query?:ListQuery) => requestPage<NonNullable<DailyCodeReview['deliveryLogs']>[number]>(`/daily-code-reviews/${id}/delivery-logs`,query),
   getBriefing: (id: string) => request<Briefing>(`/briefings/${id}`),
   sendBriefing: (id: string) =>
     request<{ successCount: number; targetCount: number }>(`/briefings/${id}/send`, {
       method: 'POST',
     }),
-  listProjectDailyCodeReviews: (projectId: string) =>
-    request<DailyCodeReview[]>(`/projects/${projectId}/daily-code-reviews`),
-  listCodeReviewFeeds: (projectId: string) =>
-    request<ProjectFeed[]>(`/projects/${projectId}/code-review-feeds`),
+  listProjectDailyCodeReviews: (projectId: string, query?: ListQuery) => requestPage<DailyCodeReview>(`/projects/${projectId}/daily-code-reviews`, query),
+  listCodeReviewFeeds: (projectId: string, query?: ListQuery) => requestPage<ProjectFeed>(`/projects/${projectId}/code-review-feeds`, query),
   createCodeReviewFeed: (
     projectId: string,
     payload: {
@@ -539,8 +564,7 @@ export const api = {
     request<{ successCount: number; targetCount: number }>(`/daily-code-reviews/${id}/send`, {
       method: 'POST',
     }),
-  getDeliveryTargets: (params?: { workspaceId?: string; projectId?: string }) =>
-    request<DeliveryTarget[]>(`/delivery-targets${queryString(params)}`),
+  getDeliveryTargets: (query?: ListQuery) => requestPage<DeliveryTarget>('/delivery-targets', query),
   createDeliveryTarget: (payload: {
     projectId: string;
     type: string;
@@ -613,15 +637,15 @@ export const api = {
   getCurrentSession: () => request<AuthSession>('/auth/session/me'),
   getYunxiaoIntegration: () =>
     request<YunxiaoIntegrationStatus>('/integrations/yunxiao'),
-  getYunxiaoUnmatchedRecipients: () =>
-    request<YunxiaoUnmatchedRecipient[]>('/integrations/yunxiao/unmatched-recipients'),
+  getYunxiaoUnmatchedRecipients: (query?:ListQuery) =>
+    requestPage<YunxiaoUnmatchedRecipient>('/integrations/yunxiao/unmatched-recipients',query),
   clearYunxiaoUnmatchedRecipients: () =>
     request<{ deletedCount: number }>('/integrations/yunxiao/unmatched-recipients', {
       method: 'DELETE',
     }),
-  getYunxiaoProjectMembers: (projectId: string) =>
+  getYunxiaoProjectMembers: (projectId: string, userId: string) =>
     request<YunxiaoProjectMembersResponse>(
-      `/integrations/yunxiao/members?projectId=${encodeURIComponent(projectId)}`,
+      `/integrations/yunxiao/members?projectId=${encodeURIComponent(projectId)}&userId=${encodeURIComponent(userId)}`,
     ),
   updateYunxiaoMemberMapping: (payload: {
     yunxiaoMemberId: string | null;
@@ -671,7 +695,7 @@ export const api = {
     request<AiCredentialStatus>('/auth/ai-credentials/codex', {
       method: 'DELETE',
     }),
-  listPersonalApiTokens: () => request<PersonalApiTokenMeta[]>('/auth/personal-api-tokens'),
+  listPersonalApiTokens: (query?: ListQuery) => requestPage<PersonalApiTokenMeta>('/auth/personal-api-tokens', query),
   createPersonalApiToken: (payload: { name: string }) =>
     request<PersonalApiTokenCreated>('/auth/personal-api-tokens', {
       method: 'POST',
@@ -703,15 +727,19 @@ export const api = {
     request<GitCredentialStatus>('/auth/git-credentials/gitlab', {
       method: 'DELETE',
     }),
-  getRequirements: () => request<Requirement[]>('/requirements'),
+  getRequirements: (query?: ListQuery) => requestPage<Requirement>('/requirements', query),
   createRequirement: (payload: RequirementPayload) =>
     request<Requirement>('/requirements', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
   getRequirement: (id: string) => request<Requirement>(`/requirements/${id}`),
-  getRequirementChanges: (id: string, workflowRunId?: string) =>
-    request<RequirementChanges>(`/requirements/${id}/changes${workflowRunId ? `?${new URLSearchParams({ workflowRunId })}` : ''}`),
+  getRequirementRepositories: (id: string, query?: ListQuery) => requestPage<Repository>(`/requirements/${id}/repositories`, query),
+  getWorkflowHistory: (id: string, query?: ListQuery) => requestPage<WorkflowRun['stageExecutions'][number]>(`/workflow-runs/${id}/history`, query),
+  getWorkflowRepositories: (id: string, query?: ListQuery) => requestPage<WorkflowRun['workflowRepositories'][number]>(`/workflow-runs/${id}/repositories`, query),
+  getRequirementIdeationSessions: (id: string, query?: ListQuery) => requestPage<NonNullable<Requirement['ideationSessions']>[number]>(`/requirements/${id}/ideation/sessions`, query),
+  getRequirementIdeationArtifacts: (id: string, query?: ListQuery) => requestPage<NonNullable<Requirement['ideationArtifacts']>[number]>(`/requirements/${id}/ideation/artifacts`, query),
+  getRequirementChanges: (id: string, workflowRunId?: string, query?: ListQuery) => request<PageResult<RequirementChange> & Omit<RequirementChanges, 'changes'>>(`/requirements/${id}/changes${queryString({ page: 1, pageSize: 20, ...query, workflowRunId })}`),
   createRequirementChange: (id: string, payload: RequirementChangePayload) =>
     request<RequirementChange>(`/requirements/${id}/changes`, { method: 'POST', body: JSON.stringify(payload) }),
   createPrototypeRequirementChange: (id: string, payload: RequirementChangePayload & { aiProvider?: 'codex' | 'cursor' }, file: File) => {
@@ -746,8 +774,7 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
-  getRequirementAssignments: (id: string) =>
-    request<RequirementAssignment[]>(`/requirements/${id}/assignments`),
+  getRequirementAssignments: (id: string, query?: ListQuery) => requestPage<RequirementAssignment>(`/requirements/${id}/assignments`, query),
   createRequirementAssignment: (
     id: string,
     payload: {
@@ -786,6 +813,7 @@ export const api = {
       method: 'DELETE',
     }),
   getScheduleGantt: (query: {
+    page?: number; pageSize?: number;
     view?: 'requirement' | 'member';
     scope?: 'project' | 'organization';
     projectId?: string;
@@ -879,8 +907,8 @@ export const api = {
     request<Requirement>(`/requirements/${requirementId}/demo/confirm`, {
       method: 'POST',
     }),
-  getIdeationSessionEvents: (requirementId: string, sessionId: string) =>
-    request<IdeationSessionEvent[]>(`/requirements/${requirementId}/ideation/sessions/${sessionId}/events`),
+  getIdeationSessionEvents: (requirementId: string, sessionId: string, query?:ListQuery) =>
+    requestPage<IdeationSessionEvent>(`/requirements/${requirementId}/ideation/sessions/${sessionId}/events`,query),
   detectLocalDev: (repositoryId: string, workflowRunId?: string) =>
     request<LocalDevDetectResponse>(
       `/repositories/${repositoryId}/local-dev${workflowRunId ? `?workflowRunId=${encodeURIComponent(workflowRunId)}` : ''}`,
@@ -903,18 +931,9 @@ export const api = {
     request<Requirement>(`/requirements/${requirementId}/ideation/finalize`, {
       method: 'POST',
     }),
-  getWorkflowRuns: (params?: { runType?: string }) =>
-    request<WorkflowRun[]>(
-      `/workflow-runs?${new URLSearchParams(
-        Object.entries(params ?? {}).reduce<Record<string, string>>((acc, [key, value]) => {
-          if (value) {
-            acc[key] = value;
-          }
-          return acc;
-        }, {}),
-      ).toString()}`,
-    ),
+  getWorkflowRuns: (query?: ListQuery) => requestPage<WorkflowRun>('/workflow-runs', query),
   getWorkflowRun: (id: string) => request<WorkflowRun>(`/workflow-runs/${id}`),
+  getCodeDeliveryHistory: (id:string,query?:ListQuery) => requestPage<WorkflowCodeDelivery['history'][number]>(`/workflow-runs/${id}/code-delivery/history`,query),
   getCodeDelivery: (id: string) => request<WorkflowCodeDelivery>(`/workflow-runs/${id}/code-delivery`),
   submitCodeBranch: (id: string, body: { workflowRepositoryId: string; branch: string }) =>
     request<WorkflowCodeDelivery>(`/workflow-runs/${id}/code-delivery/branches`, { method: 'POST', body: JSON.stringify(body) }),
@@ -942,19 +961,10 @@ export const api = {
     }),
   getExecutionSession: (id: string) =>
     request<ExecutionSessionDetail>(`/execution-sessions/${id}`),
-  listExecutionSessionEvidence: (id: string) =>
-    request<ExecutionSessionEvidence[]>(`/execution-sessions/${id}/evidence`),
-  listExecutionSessionEvents: (
-    id: string,
-    params?: { cursor?: string; take?: number; view?: 'progress' },
-  ) =>
-    request<ExecutionSessionEventsPage>(
-      `/execution-sessions/${id}/events${queryString({
-        cursor: params?.cursor,
-        take: params?.take !== undefined ? String(params.take) : undefined,
-        view: params?.view,
-      })}`,
-    ),
+  listExecutionSessionEvidence: (id: string, query?:ListQuery) =>
+    requestPage<ExecutionSessionEvidence>(`/execution-sessions/${id}/evidence`,query),
+  listExecutionSessionEvents: (id:string, query:ListQuery & {view?:'progress'} = {}) =>
+    requestPage<ExecutionSessionSyncEvent>(`/execution-sessions/${id}/events`,query),
   listWorkflowDesignArtifacts: (id: string) =>
     request<WorkflowDesignArtifactsList>(`/workflow-runs/${id}/design-artifacts`),
   getWorkflowDesignArtifactPage: (id: string, surfaceId: string, pageId: string) =>
@@ -1099,8 +1109,7 @@ export const api = {
     }),
   skipReview: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/review/skip`, { method: 'POST' }),
-  getReviewFindings: (workflowRunId: string) =>
-    request<ReviewFinding[]>(`/workflow-runs/${workflowRunId}/review-findings`),
+  getReviewFindings: (workflowRunId: string, query?: ListQuery) => requestPage<ReviewFinding>(`/workflow-runs/${workflowRunId}/review-findings`, query),
   syncReviewFindings: (reviewReportId: string) =>
     request<ReviewFinding[]>(`/review-reports/${reviewReportId}/findings/sync`, { method: 'POST' }),
   acceptReviewFinding: (id: string) =>
@@ -1120,17 +1129,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload ?? {}),
     }),
-  getIssues: (params?: { workspaceId?: string; workflowRunId?: string; status?: string }) =>
-    request<Issue[]>(
-      `/issues?${new URLSearchParams(
-        Object.entries(params ?? {}).reduce<Record<string, string>>((acc, [key, value]) => {
-          if (value) {
-            acc[key] = value;
-          }
-          return acc;
-        }, {}),
-      ).toString()}`,
-    ),
+  getIssues: (query?: ListQuery) => requestPage<Issue>('/issues', query),
   getIssue: (id: string) => request<Issue>(`/issues/${id}`),
   updateIssue: (
     id: string,
@@ -1147,21 +1146,9 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
-  getBugs: (params?: { workspaceId?: string; workflowRunId?: string; status?: string }) =>
-    request<Bug[]>(
-      `/bugs?${new URLSearchParams(
-        Object.entries(params ?? {}).reduce<Record<string, string>>((acc, [key, value]) => {
-          if (value) {
-            acc[key] = value;
-          }
-          return acc;
-        }, {}),
-      ).toString()}`,
-    ),
-  getTestCaseLibraries: (params: { workspaceId: string; projectId?: string; ownership?: 'project' | 'shared' }) =>
-    request<TestCaseLibrary[]>(`/quality/case-libraries${queryString(params)}`),
-  getTestCaseModules: (libraryId: string) =>
-    request<TestCaseModule[]>(`/quality/case-libraries/${libraryId}/modules`),
+  getBugs: (query?: ListQuery) => requestPage<Bug>('/bugs', query),
+  getTestCaseLibraries: (query: ListQuery & { workspaceId: string }) => requestPage<TestCaseLibrary>('/quality/case-libraries', query),
+  getTestCaseModules: (libraryId: string, query?: ListQuery) => requestPage<TestCaseModule>(`/quality/case-libraries/${libraryId}/modules`, query),
   createTestCaseModule: (
     libraryId: string,
     payload: { name: string; parentId?: string; sortOrder?: number },
@@ -1187,24 +1174,22 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  getTestCases: (params: {
-    workspaceId: string;
-    projectId?: string;
-    libraryId?: string;
-    moduleId?: string;
-    ownership?: 'project' | 'shared';
-  }) => request<TestCaseDefinition[]>(`/quality/test-cases${queryString(params)}`),
-  getTestCasesPage: (params: {
-    workspaceId: string;
-    projectId?: string;
-    libraryId?: string;
-    moduleId?: string;
-    q?: string;
-    priority?: string;
-    ownership?: 'project' | 'shared';
-    page: number;
-    pageSize: number;
-  }) => request<TestCasePage>(`/quality/test-cases${queryString(params)}`),
+  getTestCases: (query: ListQuery & { workspaceId: string }) => requestPage<TestCaseDefinition>('/quality/test-cases', query),
+  getTestCasesPage: (query: ListQuery & { workspaceId: string }) => requestPage<TestCaseDefinition>('/quality/test-cases', query),
+  getTestDesignCandidates: (id: string, query?: ListQuery) => requestPage<TestDesignCandidate>(`/quality/test-designs/${id}/candidates`, query),
+  getTestDesignSmokeCases: (id: string, query?: ListQuery) => requestPage<TestDesign['smokeCases'][number]>(`/quality/test-designs/${id}/smoke-cases`, query),
+  getTestRequestSnapshots: (id: string, query?: ListQuery) => requestPage<NonNullable<TestRequest['testPlan']>['snapshots'][number]>(`/quality/test-requests/${id}/snapshots`, query),
+  getTestRunCases: (id: string, query?: ListQuery) => requestPage<NonNullable<TestRun['cases']>[number]>(`/quality/test-runs/${id}/cases`, query),
+  getTestRunExecutions: (id: string, query?: ListQuery) => requestPage<NonNullable<TestRun['executions']>[number]>(`/quality/test-runs/${id}/executions`, query),
+  getTestRunTargets: (id: string, query?: ListQuery) => requestPage<NonNullable<TestRun['targets']>[number]>(`/quality/test-runs/${id}/targets`, query),
+  getTestRequestCases: (id: string, query?: ListQuery) => requestPage<NonNullable<TestRun['cases']>[number] & { testRun: { id: string; name: string; status: string; runType: string } }>(`/quality/test-requests/${id}/cases`, query),
+  getQualityReportBaselines: (id: string, query?: ListQuery) => requestPage<TestedRepositoryRevision>(`/quality/test-requests/${id}/report-baselines`, query),
+  getQualityReportSupersessions: (id: string, query?: ListQuery) => requestPage<QualitySupersession & { label: string }>(`/quality/test-requests/${id}/report-supersessions`, query),
+  getTestRequestRequirements: (id: string, query?: ListQuery) => requestPage<TestRequest['requirementLinks'][number]>(`/quality/test-requests/${id}/requirements`, query),
+  getTestRequestWorkflows: (id: string, query?: ListQuery) => requestPage<TestRequest['workflowLinks'][number]>(`/quality/test-requests/${id}/workflows`, query),
+  getTestRequestArtifacts: (id: string, query?: ListQuery) => requestPage<TestRequest['artifactLinks'][number]>(`/quality/test-requests/${id}/artifacts`, query),
+  getTestDesignRequirements: (id: string, query?: ListQuery) => requestPage<NonNullable<TestDesign['requirements']>[number]>(`/quality/test-designs/${id}/requirements`, query),
+  getTestDesignWorkflows: (id: string, query?: ListQuery) => requestPage<NonNullable<TestDesign['workflowRuns']>[number]>(`/quality/test-designs/${id}/workflows`, query),
   createTestCase: (
     libraryId: string,
     payload: {
@@ -1251,8 +1236,7 @@ export const api = {
     }),
   deleteTestCase: (id: string) =>
     request<{ success: true }>(`/quality/test-cases/${id}`, { method: 'DELETE' }),
-  getTestRequests: (params?: { projectId?: string; projectVersionId?: string; status?: string }) =>
-    request<TestRequest[]>(`/quality/test-requests${queryString(params)}`),
+  getTestRequests: (query?: ListQuery) => requestPage<TestRequest>('/quality/test-requests', query),
   createTestRequest: (payload: {
     workspaceId: string;
     projectId: string;
@@ -1280,8 +1264,7 @@ export const api = {
     workflowRunIds: string[];
     changeSummary?: string;
   }) => request<TestDesign>('/quality/test-designs', { method: 'POST', body: JSON.stringify(payload) }),
-  getTestDesigns: (params?: { projectId?: string; projectVersionId?: string; status?: string }) =>
-    request<TestDesign[]>(`/quality/test-designs${queryString(params)}`),
+  getTestDesigns: (query?: ListQuery) => requestPage<TestDesign>('/quality/test-designs', query),
   getTestDesign: (id: string) => request<TestDesign>(`/quality/test-designs/${id}`),
   generateTestDesign: (id: string) => request<TestDesign>(`/quality/test-designs/${id}/generate`, { method: 'POST' }),
   updateTestDesignCandidate: (id: string, candidateId: string, payload: Record<string, unknown>) =>
@@ -1318,15 +1301,15 @@ export const api = {
     request<{ status: string; deviceStopped?: boolean; leaseExpiresAt?: string }>(`/execution-sessions/${sessionId}/quality/${action}`, { method: 'POST', body: JSON.stringify(payload) }),
   linkQualityCaseBug: (id: string, caseId: string, bugId: string) =>
     request<NonNullable<TestRun['cases']>[number]>(`/quality/test-runs/${id}/cases/${caseId}/bug`, { method: 'POST', body: JSON.stringify({ bugId }) }),
-  getQualityReports: (requestId: string) => request<QualityTestReport[]>(`/quality/test-requests/${requestId}/reports`),
+  getQualityReports: (requestId: string, query?: ListQuery) => requestPage<QualityTestReport>(`/quality/test-requests/${requestId}/reports`, query),
   createQualityRunReport: (runId: string, payload: QualityReportInput) =>
     request<QualityTestReport>(`/quality/test-runs/${runId}/reports`, { method: 'POST', body: JSON.stringify(payload) }),
   createQualityRequestReport: (requestId: string, payload: QualityRequestReportInput) =>
     request<QualityTestReport>(`/quality/test-requests/${requestId}/reports`, { method: 'POST', body: JSON.stringify(payload) }),
-  getTestRuns: (testRequestId: string) =>
-    request<TestRun[]>(`/quality/test-requests/${testRequestId}/runs`),
-  getLocalSmokeRuns: (testRequestId: string) =>
-    request<TestRun[]>(`/quality/test-requests/${testRequestId}/local-smoke-runs`),
+  getTestRuns: (testRequestId: string, query?: ListQuery) => requestPage<TestRun>(`/quality/test-requests/${testRequestId}/runs`, query),
+  getTestRequestRuns: (testRequestId: string, query?: ListQuery) => requestPage<TestRun>(`/quality/test-requests/${testRequestId}/runs`, query),
+  getTestRunsPage: (query?: ListQuery) => requestPage<TestRun & { testRequest: TestRequest }>('/quality/test-runs', query),
+  getLocalSmokeRuns: (testRequestId: string, query?: ListQuery) => requestPage<TestRun>(`/quality/test-requests/${testRequestId}/local-smoke-runs`, query),
   getLocalSmokeTasks: (testRunId: string) =>
     request<TestRun>(`/quality/local-smoke-runs/${testRunId}/tasks`),
   createLocalSmokeRun: (

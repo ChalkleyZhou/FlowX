@@ -1,3 +1,6 @@
+import { useListPage } from '../hooks/use-list-page';
+import { ListPagination } from '../components/ListPagination';
+import { PagedSelect } from '../components/PagedSelect';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
@@ -25,71 +28,16 @@ import { formatIssueStatus, formatPriority, formatPriorityLabel } from '../utils
 import { useStoredListFilters } from '../utils/list-filter-storage';
 
 export function IssuesPage() {
-  const [issues, setIssues] = useState<Issue[]>([]);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [filters, setFilter] = useStoredListFilters('issues');
   const selectedWorkspaceId = filters.workspaceId;
   const selectedStatus = filters.status;
   const selectedPriority = filters.priority;
   const keyword = filters.keyword ?? '';
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
   const toast = useToast();
 
-  const filteredIssues = useMemo(() => {
-    return issues.filter((issue) => {
-      const matchesWorkspace = selectedWorkspaceId ? issue.workspace?.id === selectedWorkspaceId : true;
-      const matchesStatus = selectedStatus ? issue.status === selectedStatus : true;
-      const matchesPriority = selectedPriority ? issue.priority === selectedPriority : true;
-      const normalizedKeyword = keyword.trim().toLowerCase();
-      const matchesKeyword = normalizedKeyword
-        ? [issue.title, issue.description, issue.requirement?.title ?? '', issue.workspace?.name ?? '']
-            .join(' ')
-            .toLowerCase()
-            .includes(normalizedKeyword)
-        : true;
-      return matchesWorkspace && matchesStatus && matchesPriority && matchesKeyword;
-    });
-  }, [issues, keyword, selectedPriority, selectedStatus, selectedWorkspaceId]);
-
-  const issueSummary = useMemo(() => {
-    const openCount = issues.filter((item) => item.status === 'OPEN').length;
-    const inProgressCount = issues.filter((item) => item.status === 'IN_PROGRESS').length;
-    return {
-      total: issues.length,
-      visible: filteredIssues.length,
-      openCount,
-      inProgressCount,
-    };
-  }, [filteredIssues.length, issues]);
-
-  const pagedIssues = useMemo(() => {
-    const start = (page - 1) * 8;
-    return filteredIssues.slice(start, start + 8);
-  }, [filteredIssues, page]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredIssues.length / 8));
-
-  async function refresh() {
-    setLoading(true);
-    try {
-      const [issueList, workspaceList] = await Promise.all([api.getIssues(), api.getWorkspaces()]);
-      setIssues(issueList);
-      setWorkspaces(workspaceList);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载问题项失败');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    void refresh();
-  }, []);
-
-  useEffect(() => {
-    setPage(1);
-  }, [keyword, selectedPriority, selectedStatus, selectedWorkspaceId]);
+  const list = useListPage(api.getIssues, { workspaceId: selectedWorkspaceId, status: selectedStatus, priority: selectedPriority, q: keyword || undefined });
+  const { items: pagedIssues, loading, refresh } = list;
+  const issueSummary = { ...{total: 0, visible: 0, openCount: 0, inProgressCount: 0}, ...list.summary };
 
   return (
     <>
@@ -109,6 +57,7 @@ export function IssuesPage() {
           <SectionHeader eyebrow="Issue Registry" title="问题项列表" />
         </CardHeader>
         <CardContent className="p-5 pt-0">
+          {list.error ? <p role="alert" className="mb-3 text-sm text-destructive">{list.error}<UiButton variant="ghost" onClick={refresh}>重试</UiButton></p> : null}
           {loading ? (
             <div className="flex min-h-40 items-center justify-center">
               <Spinner className="h-7 w-7" />
@@ -125,22 +74,8 @@ export function IssuesPage() {
                 )}
                 filters={(
                   <>
-                    <Select
-                      value={selectedWorkspaceId ?? '__all__'}
-                      onValueChange={(value) => setFilter('workspaceId', value === '__all__' ? undefined : value)}
-                    >
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="按工作区筛选" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__all__">全部工作区</SelectItem>
-                        {workspaces.map((workspace) => (
-                          <SelectItem key={workspace.id} value={workspace.id}>
-                            {workspace.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <PagedSelect value={selectedWorkspaceId ?? ''} label="按工作区筛选" placeholder="全部工作区" allowClear emptyLabel="全部工作区" className="w-[180px]" loadPage={api.getWorkspaces}
+                      onValueChange={value => setFilter('workspaceId', value || undefined)} />
                     <Select
                       value={selectedStatus ?? '__all__'}
                       onValueChange={(value) => setFilter('status', value === '__all__' ? undefined : value)}
@@ -211,18 +146,7 @@ export function IssuesPage() {
               />
               ))}
             </div>
-            <div className="flex items-center justify-between gap-3 mt-4 border-t border-border pt-4">
-              <span className="text-sm text-muted-foreground">共 {filteredIssues.length} 条</span>
-              <div className="flex items-center gap-2.5">
-                <UiButton variant="outline" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>
-                  上一页
-                </UiButton>
-                <span className="text-sm text-muted-foreground">第 {page} / {totalPages} 页</span>
-                <UiButton variant="outline" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>
-                  下一页
-                </UiButton>
-              </div>
-            </div>
+            <ListPagination page={list.page} total={list.total} loading={loading} onPageChange={list.onPageChange} label="Issue列表分页" />
           </>
         ) : (
           <EmptyState description="当前还没有沉淀的问题项，先在工作流审查里同步 findings。" />

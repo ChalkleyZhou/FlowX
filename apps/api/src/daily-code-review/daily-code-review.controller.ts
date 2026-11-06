@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import type { PaginationQuery } from '../common/pagination';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { CodeReviewFeedsService } from './code-review-feeds.service';
 import { DailyCodeReviewService } from './daily-code-review.service';
 import { CreateCodeReviewFeedDto, UpdateCodeReviewFeedDto } from './dto/code-review-feed.dto';
@@ -12,8 +13,8 @@ export class DailyCodeReviewController {
   ) {}
 
   @Get('projects/:id/code-review-feeds')
-  listFeeds(@Param('id') id: string) {
-    return this.codeReviewFeedsService.listFeeds(id);
+  listFeeds(@Param('id') id: string, @Query() query: PaginationQuery & {q?:string} = {}) {
+    return this.codeReviewFeedsService.listFeedsPage(id, query);
   }
 
   @Post('projects/:id/code-review-feeds')
@@ -37,8 +38,8 @@ export class DailyCodeReviewController {
   }
 
   @Get('projects/:id/daily-code-reviews')
-  listProjectDailyCodeReviews(@Param('id') id: string) {
-    return this.dailyCodeReviewService.listProjectDailyCodeReviews(id);
+  listProjectDailyCodeReviews(@Param('id') id: string, @Query() query: PaginationQuery = {}) {
+    return this.dailyCodeReviewService.listProjectDailyCodeReviewsPage(id, query);
   }
 
   @Post('code-review-feeds/:id/generate')
@@ -51,6 +52,9 @@ export class DailyCodeReviewController {
       async: true,
     });
   }
+
+  @Get('daily-code-reviews/:id/delivery-logs')
+  listDeliveryLogs(@Param('id') id: string, @Query() query: PaginationQuery = {}) { return this.dailyCodeReviewService.listDeliveryLogs(id, query); }
 
   @Get('daily-code-reviews/:id')
   getDailyCodeReview(@Param('id') id: string) {

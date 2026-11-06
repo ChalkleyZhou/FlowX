@@ -6,7 +6,7 @@ import { WorkflowCodeDeliveryPanel } from './WorkflowCodeDeliveryPanel';
 import { api } from '../api';
 import type { WorkflowCodeDelivery } from '../types';
 
-vi.mock('../api', () => ({ api: { getCodeDelivery: vi.fn(), submitCodeBranch: vi.fn(), confirmCodeDelivery: vi.fn() } }));
+vi.mock('../api', () => ({ api: { getCodeDelivery: vi.fn(), getCodeDeliveryHistory: vi.fn(), submitCodeBranch: vi.fn(), confirmCodeDelivery: vi.fn() } }));
 let container: HTMLDivElement;
 let root: Root;
 const changed = vi.fn();
@@ -22,6 +22,7 @@ beforeEach(() => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
   vi.clearAllMocks(); vi.mocked(api.getCodeDelivery).mockResolvedValue(snapshot());
+  vi.mocked(api.getCodeDeliveryHistory).mockImplementation(async (_id, query) => { const detail = await vi.mocked(api.getCodeDelivery).mock.results.at(-1)?.value; const rows = detail?.history ?? []; return { items: rows, total: rows.length, page: query?.page ?? 1, pageSize: 20, totalPages: 1 }; });
 });
 afterEach(() => { act(() => root.unmount()); document.body.innerHTML = ''; vi.useRealTimers(); });
 async function render(id = 'wf-1') {
@@ -51,10 +52,23 @@ it('返工后可只读查看历史分支，不能将旧尝试纳入新交付', a
   }));
   await render();
   expect(container.querySelector('details')?.textContent).toContain('历史分支提交');
+  await act(async () => { const history = container.querySelector('details')!; history.open = true; history.dispatchEvent(new Event('toggle')); });
+  expect(api.getCodeDeliveryHistory).toHaveBeenCalledWith('wf-1', { page: 1, pageSize: 20 });
   expect(container.querySelector('details')?.textContent).toContain('feature/web-other');
   expect(container.querySelector('details')?.textContent).toContain('第 1 次');
   expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
   expect(Array.from(container.querySelectorAll('button')).find(node => node.textContent === '确认本次交付')?.disabled).toBe(true);
+});
+
+it('历史交付按需读取后续页，保留当前交付的完整确认选择', async () => {
+  vi.mocked(api.getCodeDelivery).mockResolvedValue(snapshot({ historyCount: 25 }));
+  vi.mocked(api.getCodeDeliveryHistory).mockImplementation(async (_id, query) => ({ items: [{ stageExecutionId: `old-${query?.page}`, attempt: query?.page ?? 1, status: 'FAILED', submissions: [] }], total: 25, page: query?.page ?? 1, pageSize: 20, totalPages: 2 }));
+  await render(); expect(api.getCodeDeliveryHistory).not.toHaveBeenCalled();
+  await act(async () => { const detail = container.querySelector('details')!; detail.open = true; detail.dispatchEvent(new Event('toggle')); });
+  await act(async () => { container.querySelector<HTMLButtonElement>('[aria-label="第 2 页"]')!.click(); });
+  expect(api.getCodeDeliveryHistory).toHaveBeenLastCalledWith('wf-1', { page: 2, pageSize: 20 });
+  expect(container.querySelector('details')?.textContent).toContain('第 2 次');
+  expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(2);
 });
 
 it('StrictMode 重放挂载后只读交付仍完成加载，不复用已失效请求', async () => {

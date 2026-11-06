@@ -1,3 +1,4 @@
+import type { PaginationQuery } from '../common/pagination';
 import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { CreateRequirementDto } from './dto/create-requirement.dto';
 import {
@@ -28,13 +29,22 @@ export class RequirementsController {
   }
 
   @Get()
-  findAll() {
-    return this.requirementsService.findAll();
+  findAll(@Query() query: PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; planningStatus?: string; priority?: string; status?: string; q?: string } = {}) {
+    return this.requirementsService.findPage(query);
   }
+
+  @Get(':id/repositories')
+  listRepositoriesPage(@Param('id') id: string, @Query() query: PaginationQuery & { q?: string } = {}) { return this.requirementsService.listRepositoriesPage(id, query); }
+
+  @Get(':id/ideation/sessions')
+  listIdeationSessionsPage(@Param('id') id: string, @Query() query: PaginationQuery = {}) { return this.requirementsService.listIdeationSessionsPage(id, query); }
+
+  @Get(':id/ideation/artifacts')
+  listIdeationArtifactsPage(@Param('id') id: string, @Query() query: PaginationQuery = {}) { return this.requirementsService.listIdeationArtifactsPage(id, query); }
 
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.requirementsService.findOne(id);
+    return this.requirementsService.findDetail(id);
   }
 
   @Patch(':id')
@@ -48,9 +58,9 @@ export class RequirementsController {
   }
 
   @Get(':id/changes')
-  listChanges(@Param('id') id: string, @Query('workflowRunId') workflowRunId: string | undefined, @Req() req: RequirementsRequest) {
+  listChanges(@Param('id') id: string, @Query() query: PaginationQuery & { workflowRunId?: string }, @Req() req: RequirementsRequest) {
     if (!req.authSession) throw new ForbiddenException('请登录后查看需求变更。');
-    return this.requirementChangesService.list(id, workflowRunId, req.authSession);
+    return this.requirementChangesService.listPage(id, query.workflowRunId, req.authSession, query);
   }
 
   @Post(':id/changes')
@@ -81,8 +91,8 @@ export class RequirementsController {
   }
 
   @Get(':id/assignments')
-  listAssignments(@Param('id') id: string) {
-    return this.requirementAssignmentsService.list(id);
+  listAssignments(@Param('id') id: string, @Query() query: PaginationQuery = {}) {
+    return this.requirementAssignmentsService.listPage(id, query);
   }
 
   @Post(':id/assignments')
@@ -137,8 +147,8 @@ export class RequirementsController {
   }
 
   @Get(':id/ideation/sessions/:sessionId/events')
-  getIdeationSessionEvents(@Param('id') id: string, @Param('sessionId') sessionId: string) {
-    return this.requirementsService.getIdeationSessionEvents(id, sessionId);
+  getIdeationSessionEvents(@Param('id') id: string, @Param('sessionId') sessionId: string, @Query() query: PaginationQuery = {}) {
+    return this.requirementsService.getIdeationSessionEventsPage(id, sessionId, query);
   }
 
   @Post(':id/ideation/finalize')

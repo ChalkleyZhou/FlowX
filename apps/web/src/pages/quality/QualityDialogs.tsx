@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { QualityTargetKeysField } from './QualityTargetKeysField';
 import { api } from '../../api';
+import { PagedSelect } from '../../components/PagedSelect';
+import { ListPagination } from '../../components/ListPagination';
+import { useQualityPage } from './use-quality-page';
 import {
   Dialog,
   DialogContent,
@@ -21,7 +24,7 @@ import {
 } from '../../components/ui/select';
 import { Textarea } from '../../components/ui/textarea';
 import { useToast } from '../../components/ui/toast';
-import type { Project, TestCaseLibrary, TestCaseModule, TestDesign, WorkflowRun } from '../../types';
+import type { Project, TestCaseLibrary, WorkflowRun } from '../../types';
 import { Field } from './quality-ui';
 
 const NO_MODULE = '__none__';
@@ -29,8 +32,8 @@ const NO_MODULE = '__none__';
 export function CreateRequestDialog({
   open,
   onOpenChange,
-  projects,
-  workflowRuns,
+  projects: _projects,
+  workflowRuns: _workflowRuns,
   initialProjectId,
   initialProjectVersionId,
   initialWorkflowRunId,
@@ -51,81 +54,34 @@ export function CreateRequestDialog({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>(initialWorkflowRunId ? [initialWorkflowRunId] : []);
-  const [testDesigns, setTestDesigns] = useState<TestDesign[]>([]);
   const [testDesignId, setTestDesignId] = useState('');
   const [saving, setSaving] = useState(false);
-  const project = projects.find((item) => item.id === projectId);
-  const eligibleRuns = workflowRuns.filter(
-    (run) =>
-      run.status.toUpperCase() === 'DONE' &&
-      run.requirement.project.id === projectId &&
-      run.requirement.versionId === versionId,
-  );
-  const compatibleTestDesigns = useMemo(
-    () => testDesigns.filter((design) => (
-      !design.testRequest
-      && selectedRunIds.every((runId) => design.workflowRuns?.some((link) => link.workflowRun.id === runId))
-    )),
-    [testDesigns, selectedRunIds],
-  );
-  const designAvailabilityMessage = useMemo(() => {
-    if (!versionId || compatibleTestDesigns.length) return null;
-    if (!testDesigns.length) {
-      return '当前项目版本暂无已确认测试设计，请先从工作流详情创建并确认。';
-    }
-    if (testDesigns.every((design) => design.testRequest)) {
-      return '已确认测试设计已关联提测记录，请重新生成一版测试设计后再发起提测。';
-    }
-    return '当前所选工作流未包含在可用的已确认测试设计中，请调整工作流或重新生成测试设计。';
-  }, [compatibleTestDesigns.length, testDesigns, versionId]);
-  const canSubmit = Boolean(
-    project
-    && versionId
-    && title.trim()
-    && selectedRunIds.length
-    && selectedRunIds.every((runId) => eligibleRuns.some((run) => run.id === runId))
-    && testDesignId,
-  );
-
+  const [project, setProject] = useState<Project>();
+  const [runPage, setRunPage] = useState(1);
+  const [runQuery, setRunQuery] = useState('');
+  const [selectedRuns, setSelectedRuns] = useState<Record<string, WorkflowRun>>({});
+  const runResult = useQualityPage(`${projectId}:${versionId}:${runPage}:${runQuery}`, () => api.getWorkflowRuns({ projectId, versionId, status: 'DONE', page: runPage, pageSize: 10, q: runQuery || undefined }), open && Boolean(projectId && versionId), setRunPage);
+  const eligibleRuns = runResult.items;
+  const canSubmit = Boolean(project && versionId && title.trim() && selectedRunIds.length && testDesignId);
   useEffect(() => {
     if (!open) return;
     setProjectId(initialProjectId ?? '');
     setVersionId(initialProjectVersionId ?? '');
     setSelectedRunIds(initialWorkflowRunId ? [initialWorkflowRunId] : []);
+    if (initialWorkflowRunId) void api.getWorkflowRun(initialWorkflowRunId).then(run => setSelectedRuns(current => ({ ...current, [run.id]: run })));
   }, [open, initialProjectId, initialProjectVersionId, initialWorkflowRunId]);
-
   useEffect(() => {
-    if (!open || !projectId || !versionId) {
-      setTestDesigns([]);
-      setTestDesignId('');
-      return;
-    }
+    if (!open || !projectId) { setProject(undefined); return; }
     let active = true;
-    setTestDesigns([]);
-    setTestDesignId('');
-    void api.getTestDesigns({ projectId, projectVersionId: versionId, status: 'CONFIRMED' })
-      .then((items) => {
-        if (active) setTestDesigns(items);
-      })
-      .catch((error) => { if (active) toast.error(error instanceof Error ? error.message : '加载测试设计失败'); });
+    void api.getProject(projectId).then(value => { if (active) setProject(value); }).catch(error => { if (active) toast.error(error instanceof Error ? error.message : '加载项目失败'); });
     return () => { active = false; };
-  }, [open, projectId, versionId]);
-
-  useEffect(() => {
-    setTestDesignId((current) => (
-      compatibleTestDesigns.some((item) => item.id === current)
-        ? current
-        : compatibleTestDesigns[0]?.id ?? ''
-    ));
-  }, [compatibleTestDesigns]);
-
+  }, [projectId, open]);
   async function submit() {
     if (!project || !versionId || !title.trim() || !selectedRunIds.length || !testDesignId) {
       toast.error('请选择项目版本、已确认测试设计、提测工作流并填写标题');
       return;
     }
-    const selectedRuns = eligibleRuns.filter((run) => selectedRunIds.includes(run.id));
-    const requirementIds = [...new Set(selectedRuns.map((run) => run.requirement.id))];
+    const requirementIds = [...new Set(selectedRunIds.map(id => selectedRuns[id]?.requirement.id).filter((id): id is string => Boolean(id)))];
     setSaving(true);
     try {
       await api.createTestRequest({
@@ -161,54 +117,24 @@ export function CreateRequestDialog({
         <div className="grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="项目">
-              <Select
-                value={projectId}
-                onValueChange={(value) => {
-                  setProjectId(value);
-                  setVersionId('');
-                  setSelectedRunIds([]);
-                  setTestDesignId('');
-                }}
-              >
-                <SelectTrigger aria-label="项目"><SelectValue placeholder="选择项目" /></SelectTrigger>
-                <SelectContent>
-                  {projects.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <PagedSelect label="项目" value={projectId} selectedLabel={project?.name} onValueChange={value => { setProjectId(value); setVersionId(''); setSelectedRunIds([]); setTestDesignId(''); setRunPage(1); }} loadPage={query => api.getProjects(query)} placeholder="选择项目" />
             </Field>
             <Field label="项目版本">
-              <Select
-                value={versionId}
-                onValueChange={(value) => {
-                  setVersionId(value);
-                  setSelectedRunIds([]);
-                  setTestDesignId('');
-                }}
-                disabled={!project}
-              >
-                <SelectTrigger aria-label="项目版本"><SelectValue placeholder="选择版本" /></SelectTrigger>
-                <SelectContent>
-                  {(project?.versions ?? []).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <PagedSelect label="项目版本" value={versionId} onValueChange={value => { setVersionId(value); setSelectedRunIds([]); setTestDesignId(''); setRunPage(1); }} disabled={!projectId} scopeKey={projectId} loadPage={query => api.listProjectVersions(projectId, query)} placeholder="选择版本" />
             </Field>
           </div>
           <Field label="提测标题">
             <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：2.6.0 登录能力提测" />
           </Field>
           <Field label="已确认测试设计">
-            <Select value={testDesignId} onValueChange={setTestDesignId} disabled={!versionId || !compatibleTestDesigns.length}>
-              <SelectTrigger aria-label="已确认测试设计"><SelectValue placeholder="选择测试设计" /></SelectTrigger>
-              <SelectContent>
-                {compatibleTestDesigns.map((item) => <SelectItem key={item.id} value={item.id}>第 {item.revision} 版 · {item.candidates.length} 条功能用例 / {item.smokeCases.length} 条冒烟</SelectItem>)}
-              </SelectContent>
-            </Select>
-            {designAvailabilityMessage ? <div className="space-y-2"><p className="mt-1 text-xs text-muted-foreground">{designAvailabilityMessage}</p><Link className="text-xs text-primary underline" to={eligibleRuns.find(run => selectedRunIds.includes(run.id)) ? `/quality/test-designs/new?${new URLSearchParams({ requirementId: eligibleRuns.find(run => selectedRunIds.includes(run.id))!.requirement.id, projectId, projectVersionId: versionId })}` : '/requirements'}>去准备或修复测试设计</Link></div> : null}
+            <PagedSelect label="已确认测试设计" value={testDesignId} onValueChange={setTestDesignId} disabled={!versionId} scopeKey={`${projectId}:${versionId}:${selectedRunIds.join(',')}`} loadPage={async query => { const result = await api.getTestDesigns({ ...query, projectId, projectVersionId: versionId, status: 'CONFIRMED', availableForRequest: true, workflowRunIds: selectedRunIds }); return { ...result, items: result.items.map(design => ({ id: design.id, name: `第 ${design.revision} 版` })) }; }} placeholder="选择测试设计" />
+            <Link className="text-xs text-primary underline" to="/requirements">去准备或修复测试设计</Link>
           </Field>
           <Field label="说明（可选）">
             <Textarea rows={2} value={description} onChange={(event) => setDescription(event.target.value)} />
           </Field>
           <Field label="已完成研发工作流">
+            <Input aria-label="搜索提测工作流" value={runQuery} onChange={event => { setRunQuery(event.target.value); setRunPage(1); }} />
             <div className="max-h-52 space-y-1 overflow-y-auto rounded-md border border-border p-2">
               {eligibleRuns.length ? eligibleRuns.map((run) => (
                 <label key={run.id} className="flex min-h-10 cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-muted">
@@ -216,11 +142,7 @@ export function CreateRequestDialog({
                     type="checkbox"
                     className="mt-0.5 h-4 w-4 accent-primary"
                     checked={selectedRunIds.includes(run.id)}
-                    onChange={(event) => setSelectedRunIds((current) =>
-                      event.target.checked
-                        ? [...current, run.id]
-                        : current.filter((id) => id !== run.id),
-                    )}
+                    onChange={(event) => { setSelectedRuns(current => ({ ...current, [run.id]: run })); setSelectedRunIds(current => event.target.checked ? [...current, run.id] : current.filter(id => id !== run.id)); setTestDesignId(''); }}
                   />
                   <span className="min-w-0 text-sm">
                     <span className="block font-medium text-foreground">{run.requirement.title}</span>
@@ -231,6 +153,8 @@ export function CreateRequestDialog({
                 <p className="px-2 py-6 text-center text-sm text-muted-foreground">该版本暂无已完成研发工作流</p>
               )}
             </div>
+            <ListPagination page={runPage} total={runResult.total} pageSize={10} onPageChange={setRunPage} />
+            <p className="text-xs text-muted-foreground">已选 {selectedRunIds.length} 个工作流</p>
           </Field>
         </div>
         <DialogFooter>
@@ -299,6 +223,8 @@ export function CreateCaseDialog({
   open,
   onOpenChange,
   libraries,
+  workspaceId,
+  projectId,
   initialLibraryId,
   initialModuleId,
   onCreated,
@@ -306,13 +232,14 @@ export function CreateCaseDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   libraries: TestCaseLibrary[];
+  workspaceId: string;
+  projectId?: string;
   initialLibraryId?: string;
   initialModuleId?: string;
   onCreated: () => Promise<void>;
 }) {
   const toast = useToast();
   const [libraryId, setLibraryId] = useState('');
-  const [modules, setModules] = useState<TestCaseModule[]>([]);
   const [moduleId, setModuleId] = useState(NO_MODULE);
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState('P2');
@@ -326,36 +253,16 @@ export function CreateCaseDialog({
 
   useEffect(() => {
     if (!open) return;
-    const nextLibraryId = initialLibraryId && libraries.some((item) => item.id === initialLibraryId)
+    const nextLibraryId = initialLibraryId
       ? initialLibraryId
       : libraries[0]?.id ?? '';
     setLibraryId(nextLibraryId);
     setModuleId(initialModuleId ?? NO_MODULE);
   }, [initialLibraryId, initialModuleId, libraries, open]);
 
-  useEffect(() => {
-    if (open && !libraries.some((library) => library.id === libraryId)) {
-      setLibraryId(libraries[0]?.id ?? '');
-    }
-  }, [libraries, libraryId, open]);
 
-  useEffect(() => {
-    if (!open || !libraryId) {
-      setModules([]);
-      return;
-    }
-    let active = true;
-    void api.getTestCaseModules(libraryId)
-      .then((items) => {
-        if (!active) return;
-        setModules(items);
-        setModuleId((current) => items.some((item) => item.id === current) ? current : NO_MODULE);
-      })
-      .catch((error) => {
-        if (active) toast.error(error instanceof Error ? error.message : '加载用例模块失败');
-      });
-    return () => { active = false; };
-  }, [libraryId, open]);
+
+
 
   async function submit() {
     const stepList = steps.split('\n').map((item) => item.trim()).filter(Boolean);
@@ -402,24 +309,13 @@ export function CreateCaseDialog({
         <div className="grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="用例库">
-              <Select value={libraryId} onValueChange={(value) => {
+              <PagedSelect label="用例库" value={libraryId} selectedLabel={libraries.find(item => item.id === libraryId)?.name} onValueChange={(value) => {
                 setLibraryId(value);
                 setModuleId(NO_MODULE);
-              }}>
-                <SelectTrigger aria-label="用例库"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {libraries.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              }} loadPage={query => api.getTestCaseLibraries({ ...query, workspaceId, projectId })} placeholder="选择用例库" />
             </Field>
             <Field label="模块（可选）">
-              <Select value={moduleId} onValueChange={setModuleId}>
-                <SelectTrigger aria-label="模块"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_MODULE}>未分模块</SelectItem>
-                  {modules.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <PagedSelect label="模块" value={moduleId === NO_MODULE ? '' : moduleId} onValueChange={value => setModuleId(value || NO_MODULE)} scopeKey={libraryId} disabled={!libraryId} allowClear loadPage={query => api.getTestCaseModules(libraryId, query)} placeholder="未分模块" />
             </Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-[1fr_120px]">

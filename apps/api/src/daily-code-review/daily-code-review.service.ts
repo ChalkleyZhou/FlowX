@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { AiInvocationRecipient } from '../ai/ai-invocation-context.service';
@@ -71,6 +72,26 @@ export class DailyCodeReviewService {
     private readonly repositorySyncService: RepositorySyncService,
   ) {}
 
+  async listProjectDailyCodeReviewsPage(projectId: string, query: PaginationQuery = {}) {
+    const paging = parsePagination(query);
+    await this.ensureProjectExists(projectId);
+    const items = await this.prisma.dailyCodeReview.findMany({
+      skip: paging.skip, take: paging.take,
+      where: { projectId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      include: {
+        feed: { select: { id: true, name: true } },
+        deliveryLogs: {
+          take: 1,
+          include: { deliveryTarget: true },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        },
+      },
+    });
+    const total = await this.prisma.dailyCodeReview.count({ where: { projectId } });
+    return pageResult(items, total, paging);
+  }
+
   async listProjectDailyCodeReviews(projectId: string) {
     await this.ensureProjectExists(projectId);
     return this.prisma.dailyCodeReview.findMany({
@@ -86,6 +107,14 @@ export class DailyCodeReviewService {
     });
   }
 
+  async listDeliveryLogs(id: string, query: PaginationQuery = {}) {
+    const paging = parsePagination(query);
+    await this.prisma.dailyCodeReview.findUniqueOrThrow({ where: { id }, select: { id: true } });
+    const where = { dailyCodeReviewId: id };
+    const [items, total] = await Promise.all([this.prisma.deliveryLog.findMany({ where, skip: paging.skip, take: paging.take, include: { deliveryTarget: true }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }), this.prisma.deliveryLog.count({ where })]);
+    return pageResult(items, total, paging);
+  }
+
   async getDailyCodeReview(id: string) {
     const review = await this.prisma.dailyCodeReview.findUnique({
       where: { id },
@@ -93,8 +122,9 @@ export class DailyCodeReviewService {
         project: true,
         workspace: true,
         deliveryLogs: {
+          take: 20,
           include: { deliveryTarget: true },
-          orderBy: { createdAt: 'desc' },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         },
       },
     });

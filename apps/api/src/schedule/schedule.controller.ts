@@ -32,6 +32,9 @@ export class ScheduleController {
       userId,
       requirementId: query.requirementId,
       role: query.role,
+      q: query.q,
+      page: query.page,
+      pageSize: query.pageSize,
     });
   }
 }

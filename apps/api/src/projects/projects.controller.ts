@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import type { PaginationQuery } from '../common/pagination';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { CreateProjectVersionDto } from './dto/create-project-version.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
@@ -19,13 +20,18 @@ export class ProjectsController {
   }
 
   @Get()
-  findAll() {
-    return this.projectsService.findAll();
+  findAll(@Query() query: PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; planningStatus?: string; priority?: string; status?: string; q?: string } = {}) {
+    return this.projectsService.findPage(query);
   }
 
   @Get(':id/versions')
-  listVersions(@Param('id') id: string) {
-    return this.projectVersionsService.list(id);
+  listVersions(@Param('id') id: string, @Query() query: PaginationQuery & { q?: string } = {}) {
+    return this.projectVersionsService.listPage(id, query);
+  }
+
+  @Get(':id/versions/:versionId')
+  getVersion(@Param('id') id: string, @Param('versionId') versionId: string) {
+    return this.projectVersionsService.findVersion(id, versionId);
   }
 
   @Post(':id/versions')
@@ -57,6 +63,6 @@ export class ProjectsController {
 
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.projectsService.findOne(id);
+    return this.projectsService.findDetail(id);
   }
 }

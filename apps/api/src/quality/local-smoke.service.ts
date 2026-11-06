@@ -1,3 +1,5 @@
+import { runSummaries, runBrowseInclude, getRunBrowse, listRunCases } from './test-run-browse';
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { assertLocalSessionOwner, type LocalSessionScope } from '../workflow/workflow-local-ownership';
 import {
   BadRequestException,
@@ -118,19 +120,31 @@ export class LocalSmokeService {
     return this.getTasks(runId);
   }
 
-  listRuns(testRequestId: string) {
-    return this.prisma.testRun.findMany({
-      where: { testPlan: { testRequestId }, runType: 'LOCAL_SMOKE' },
-      include: {
-        targets: true,
-        executions: {
-          include: { claimedByUser: { select: { id: true, displayName: true } } },
-        },
-        cases: { include: { snapshot: true, result: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+  async listRuns(testRequestId: string, query: PaginationQuery = {}) {
+    const paging = parsePagination(query);
+    const where = { testPlan: { testRequestId }, runType: 'LOCAL_SMOKE' };
+    const [items, total] = await Promise.all([
+      this.prisma.testRun.findMany({ where, include: runBrowseInclude, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: paging.skip, take: paging.take }),
+      this.prisma.testRun.count({ where }),
+    ]);
+    const [summaries, activeCount, completedCount, targetCount, caseCount, executionCount] = await Promise.all([
+      runSummaries(this.prisma, items.map(run => run.id)),
+      this.prisma.testRun.count({ where: { ...where, status: 'ACTIVE' } }),
+      this.prisma.testRun.count({ where: { ...where, status: { not: 'ACTIVE' } } }),
+      this.prisma.testRunTarget.count({ where: { testRun: where } }),
+      this.prisma.testRunCase.count({ where: { testRun: where } }),
+      this.prisma.testExecution.count({ where: { testRun: where } }),
+    ]);
+    return { ...pageResult(items.map(run => ({ ...run, summary: summaries.get(run.id)! })), total, paging), summary: { activeCount, completedCount, targetCount, caseCount, executionCount } };
   }
+
+  async getTasksBrowse(id: string, query: PaginationQuery & { q?: string; result?: string; targetId?: string } = {}) {
+    const run = await getRunBrowse(this.prisma, id);
+    if (!this.supportsLocalRun(run)) throw new NotFoundException('Local smoke run not found.');
+    return listRunCases(this.prisma, id, query);
+  }
+
+  getRunBrowse(id: string) { return getRunBrowse(this.prisma, id); }
 
   protected supportsLocalRun(run: { runType: string; executionMode?: string }) { return run.runType === 'LOCAL_SMOKE'; }
 

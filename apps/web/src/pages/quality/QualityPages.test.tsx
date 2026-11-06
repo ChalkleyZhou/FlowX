@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { pageResult } from './page-result-test';
 
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -33,6 +34,15 @@ function setTextareaValue(element: HTMLTextAreaElement, value: string) {
 vi.mock('../../api', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../api')>(),
   api: {
+    getProject: vi.fn(),
+    getWorkflowRun: vi.fn(),
+    listProjectVersions: vi.fn(),
+    getTestRunsPage: vi.fn(),
+    getTestRequestSnapshots: vi.fn(),
+    getTestRequestRequirements: vi.fn(),
+    getTestRequestCases: vi.fn(),
+    getQualityReportBaselines: vi.fn(),
+    getQualityReportSupersessions: vi.fn(),
     getWorkspaces: vi.fn(),
     getProjects: vi.fn(),
     getWorkflowRuns: vi.fn(),
@@ -152,6 +162,14 @@ describe('Quality pages', () => {
   let root: Root | null;
 
   beforeEach(() => {
+    vi.mocked(api.getProject).mockResolvedValue(project);
+    vi.mocked(api.getTestRequestSnapshots).mockResolvedValue(pageResult(testRequest.testPlan?.snapshots ?? [], { summary: { functionalCount: testRequest.testPlan?.snapshots.filter(s => s.kind !== 'SMOKE').length ?? 0, smokeCount: testRequest.testPlan?.snapshots.filter(s => s.kind === 'SMOKE').length ?? 0 } }));
+    vi.mocked(api.getTestRequestRequirements).mockResolvedValue(pageResult(testRequest.requirementLinks));
+    vi.mocked(api.getTestRequestCases).mockResolvedValue(pageResult([]));
+    vi.mocked(api.getQualityReportBaselines).mockResolvedValue(pageResult([]));
+    vi.mocked(api.getQualityReportSupersessions).mockResolvedValue(pageResult([]));
+    vi.mocked(api.getTestRunsPage).mockResolvedValue(pageResult((testRequest.testPlan?.runs ?? []).map(run => ({ ...run, testRequest }))));
+    vi.mocked(api.listProjectVersions).mockResolvedValue(pageResult(project.versions ?? []));
     window.localStorage.clear();
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
       .IS_REACT_ACT_ENVIRONMENT = true;
@@ -160,31 +178,32 @@ describe('Quality pages', () => {
     root = createRoot(container);
     errorToast.mockReset();
     successToast.mockReset();
-    vi.mocked(api.getWorkspaces).mockResolvedValue([workspace]);
-    vi.mocked(api.getProjects).mockResolvedValue([project]);
-    vi.mocked(api.getWorkflowRuns).mockResolvedValue([]);
-    vi.mocked(api.getTestRequests).mockResolvedValue([testRequest]);
-    vi.mocked(api.getTestDesigns).mockResolvedValue([]);
+    vi.mocked(api.getWorkspaces).mockResolvedValue(pageResult([workspace]));
+    vi.mocked(api.getProjects).mockResolvedValue(pageResult([project]));
+    vi.mocked(api.getWorkflowRuns).mockResolvedValue(pageResult([]));
+    vi.mocked(api.getTestRequests).mockResolvedValue(pageResult([testRequest]));
+    vi.mocked(api.getTestDesigns).mockResolvedValue(pageResult([]));
     vi.mocked(api.getTestRequest).mockResolvedValue(testRequest);
-    vi.mocked(api.getTestRuns).mockResolvedValue(testRequest.testPlan?.runs ?? []);
-    vi.mocked(api.getQualityReports).mockResolvedValue([]);
-    vi.mocked(api.getLocalSmokeRuns).mockResolvedValue([]);
+    vi.mocked(api.getTestRuns).mockResolvedValue(pageResult(testRequest.testPlan?.runs ?? []));
+    vi.mocked(api.getQualityReports).mockResolvedValue(pageResult([]));
+    vi.mocked(api.getLocalSmokeRuns).mockResolvedValue(pageResult([]));
     vi.mocked(api.getSubmissionReport).mockResolvedValue(null);
-    vi.mocked(api.getTestCaseLibraries).mockResolvedValue([library]);
-    vi.mocked(api.getTestCaseModules).mockResolvedValue([{
+    vi.mocked(api.getTestCaseLibraries).mockResolvedValue(pageResult([library]));
+    vi.mocked(api.getTestCaseModules).mockResolvedValue(pageResult([{
       id: 'module-1',
       libraryId: library.id,
       parentId: null,
       name: '认证',
       sortOrder: 0,
       _count: { cases: 1, children: 0 },
-    }]);
-    vi.mocked(api.getTestCases).mockResolvedValue([testCase]);
+    }]));
+    vi.mocked(api.getTestCases).mockResolvedValue(pageResult([testCase]));
     vi.mocked(api.getTestCasesPage).mockResolvedValue({
       items: [testCase],
       total: 1,
       page: 1,
       pageSize: 20,
+      totalPages: 1,
       summary: { p0Count: 1, linkedCount: 1 },
     });
     vi.mocked(api.deleteTestCase).mockResolvedValue({ success: true });
@@ -238,6 +257,7 @@ describe('Quality pages', () => {
     const snapshot = { id: 'snapshot-1', title: '功能测试', priority: 'P0', kind: 'FUNCTIONAL' as const, steps: ['登录'], expected: '成功', selectedBy: 'MANUAL' };
     const draft: TestRequest = { ...testRequest, status: 'DRAFT', testDesignId: 'design-1', scopeGenerationStatus: 'NOT_STARTED', testPlan: { id: 'plan-1', status: 'DRAFT', snapshots: [snapshot], runs: [] } };
     const ready: TestRequest = { ...draft, status: 'READY', scopeGenerationStatus: 'COMPLETED', scopeRevision: 2, testPlan: { ...draft.testPlan!, status: 'READY' } };
+    vi.mocked(api.getTestRequestSnapshots).mockResolvedValue(pageResult([snapshot], { summary: { functionalCount: 1, smokeCount: 0 } }));
     vi.mocked(api.getTestRequest).mockResolvedValue(draft);
     vi.mocked(api.prepareTestRequest).mockResolvedValue(ready);
     await act(async () => root?.render(<MemoryRouter initialEntries={['/quality/test-requests/request-1']}><Routes><Route path="/quality/test-requests/:id" element={<QualityRequestDetailPage />} /></Routes></MemoryRouter>));
@@ -294,8 +314,9 @@ describe('Quality pages', () => {
       smokeCases: [],
       workflowRuns: [{ workflowRun: { id: workflowRun.id, status: 'DONE' } }],
     };
-    vi.mocked(api.getWorkflowRuns).mockResolvedValue([workflowRun]);
-    vi.mocked(api.getTestDesigns).mockResolvedValue([design]);
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(workflowRun);
+    vi.mocked(api.getWorkflowRuns).mockResolvedValue(pageResult([workflowRun]));
+    vi.mocked(api.getTestDesigns).mockResolvedValue(pageResult([design]));
     vi.mocked(api.createTestRequest).mockResolvedValue(testRequest);
 
     function RequestRoute() {
@@ -329,6 +350,9 @@ describe('Quality pages', () => {
     expect(document.body.querySelector('[role="dialog"]')).toBeTruthy();
     expect(container.querySelector('[data-testid="request-search"]')?.textContent).not.toContain('create=1');
 
+    await act(async () => { document.querySelector<HTMLButtonElement>('button[aria-label="已确认测试设计"]')?.click(); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    await act(async () => { document.querySelector<HTMLButtonElement>('[role="option"]')?.click(); });
     const titleInput = document.body.querySelector('input[placeholder="例如：2.6.0 登录能力提测"]') as HTMLInputElement;
     await act(async () => setInputValue(titleInput, '2.6.0 登录能力提测'));
     const submitButton = Array.from(document.body.querySelectorAll('button')).find((button) => button.textContent?.trim() === '创建提测草稿');
@@ -383,8 +407,9 @@ describe('Quality pages', () => {
       testRequest: { id: 'request-1', title: '2.6.0 登录能力提测' },
       workflowRuns: [{ workflowRun: { id: workflowRun.id, status: workflowRun.status } }],
     };
-    vi.mocked(api.getWorkflowRuns).mockResolvedValue([workflowRun]);
-    vi.mocked(api.getTestDesigns).mockResolvedValue([design]);
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(workflowRun);
+    vi.mocked(api.getWorkflowRuns).mockResolvedValue(pageResult([workflowRun]));
+    vi.mocked(api.getTestDesigns).mockResolvedValue(pageResult([]));
 
     await act(async () => {
       root?.render(
@@ -401,7 +426,10 @@ describe('Quality pages', () => {
     const titleInput = document.body.querySelector('input[placeholder="例如：2.6.0 登录能力提测"]') as HTMLInputElement;
     await act(async () => setInputValue(titleInput, '2.6.0 登录能力提测'));
 
-    expect(document.body.textContent).toContain('已确认测试设计已关联提测记录');
+    await act(async () => { document.querySelector<HTMLButtonElement>('button[aria-label="已确认测试设计"]')?.click(); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(api.getTestDesigns).toHaveBeenCalledWith(expect.objectContaining({ status: 'CONFIRMED', availableForRequest: true, workflowRunIds: ['workflow-1'] }));
+    expect(document.body.textContent).toContain('没有匹配记录');
     const submitButton = Array.from(document.body.querySelectorAll('button')).find((button) => button.textContent?.trim() === '创建提测草稿');
     expect(submitButton).toBeTruthy();
     expect(submitButton?.hasAttribute('disabled')).toBe(true);
@@ -416,7 +444,7 @@ describe('Quality pages', () => {
     expect(api.getTestCaseLibraries).toHaveBeenCalledWith({
       workspaceId: 'workspace-1',
       projectId: 'project-1',
-      ownership: 'project',
+      ownership: 'project', page: 1, pageSize: 10,
     });
     expect(api.getTestCasesPage).toHaveBeenCalledWith(expect.objectContaining({
       workspaceId: 'workspace-1',
@@ -430,7 +458,7 @@ describe('Quality pages', () => {
 
     expect(api.getTestCaseLibraries).toHaveBeenCalledWith({
       workspaceId: 'workspace-1',
-      projectId: undefined,
+      projectId: undefined, page: 1, pageSize: 10,
     });
     expect(api.getTestCasesPage).toHaveBeenCalledWith({
       workspaceId: 'workspace-1',
@@ -784,9 +812,9 @@ describe('Quality pages', () => {
   });
 
   it('报告失败保留详情和轮次，提供局部重试', async () => {
-    vi.mocked(api.getLocalSmokeRuns).mockResolvedValueOnce([
+    vi.mocked(api.getLocalSmokeRuns).mockResolvedValueOnce(pageResult([
       { id: 'smoke-1', name: '有效冒烟轮次', runType: 'LOCAL_SMOKE', status: 'ACTIVE' },
-    ]);
+    ]));
     vi.mocked(api.getSubmissionReport).mockRejectedValueOnce(new Error('报告服务暂不可用'));
     await renderDetail();
     expect(container.textContent).toContain(testRequest.title);
@@ -833,9 +861,9 @@ describe('Quality pages', () => {
   });
 
   it('刷新失败保留已有详情、轮次与报告并提示数据未更新', async () => {
-    vi.mocked(api.getLocalSmokeRuns).mockResolvedValue([
+    vi.mocked(api.getLocalSmokeRuns).mockResolvedValue(pageResult([
       { id: 'smoke-1', name: '已有冒烟轮次', runType: 'LOCAL_SMOKE', status: 'ACTIVE' },
-    ]);
+    ]));
     vi.mocked(api.getSubmissionReport).mockResolvedValue({
       id: 'report-1', name: 'submission-report.html', artifactType: 'TEST_REPORT', version: '1', createdAt: '2026-09-09T02:00:00Z',
     });
@@ -866,7 +894,7 @@ describe('Quality pages', () => {
     expect(container.textContent).toContain('第二条提测');
     await act(async () => {
       oldRequest.resolve(testRequest);
-      oldRuns.resolve([{ id: 'old-smoke', name: '旧轮次', runType: 'LOCAL_SMOKE', status: 'ACTIVE' }]);
+      oldRuns.resolve(pageResult([{ id: 'old-smoke', name: '旧轮次', runType: 'LOCAL_SMOKE', status: 'ACTIVE' }]));
       oldReport.resolve({ id: 'old-report', name: 'old.html', artifactType: 'TEST_REPORT', version: '1', createdAt: '2026-09-09T02:00:00Z' });
     });
     expect(container.textContent).toContain('第二条提测');
@@ -876,7 +904,7 @@ describe('Quality pages', () => {
   });
 
   it('shows the multi-target local smoke matrix and report entry', async () => {
-    vi.mocked(api.getLocalSmokeRuns).mockResolvedValue([
+    vi.mocked(api.getLocalSmokeRuns).mockResolvedValue(pageResult([
       {
         id: 'local-smoke-1',
         name: '本地冒烟 #1',
@@ -924,7 +952,7 @@ describe('Quality pages', () => {
           },
         ],
       },
-    ]);
+    ]));
     vi.mocked(api.getSubmissionReport).mockResolvedValue({
       id: 'report-1',
       name: 'submission-report.html',
@@ -949,11 +977,7 @@ describe('Quality pages', () => {
     });
 
     expect(container.textContent).toContain('本地冒烟 #1');
-    expect(container.textContent).toContain('登录主链路');
-    expect(container.textContent).toContain('张三');
-    expect(container.textContent).toContain('领取范围：登录主链路');
-    expect(container.textContent).toContain('已完成回传');
-    expect(container.textContent).toContain('登录回归已通过');
+    expect(container.querySelector('a[href^="/quality/test-runs/"]')).toBeTruthy();
     expect(container.textContent).toContain('下载报告');
   });
 });

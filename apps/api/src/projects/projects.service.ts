@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { formatCalendarDate } from '../common/business-days';
 import { PrismaService } from '../prisma/prisma.service';
@@ -40,6 +41,25 @@ export class ProjectsService {
         },
       },
     });
+  }
+
+  async findPage(query: PaginationQuery & { workspaceId?: string; q?: string } = {}) {
+    const paging = parsePagination(query);
+    const where = { ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}), ...(query.q?.trim() ? { OR: [{ name: { contains: query.q.trim() } }, { code: { contains: query.q.trim() } }] } : {}) };
+    const [items, total, scopeTotal, workspaceCount, requirementCount] = await Promise.all([
+      this.prisma.project.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { workspace: true, currentVersion: { select: { id: true, name: true } }, _count: { select: { requirements: true, versions: true } } } }),
+      this.prisma.project.count({ where }),
+      this.prisma.project.count({ where: query.workspaceId ? { workspaceId: query.workspaceId } : {} }),
+      this.prisma.workspace.count({ where: { projects: { some: where } } }),
+      this.prisma.requirement.count({ where: { project: where } }),
+    ]);
+    return { ...pageResult(items, total, paging), summary: { total: scopeTotal, visible: total, workspaceCount, requirementCount } };
+  }
+
+  async findDetail(id: string) {
+    const project = await this.prisma.project.findUnique({ where: { id }, include: { workspace: true, currentVersion: { select: { id: true, name: true } }, _count: { select: { requirements: true, versions: true } } } });
+    if (!project) throw new NotFoundException('Project not found.');
+    return project;
   }
 
   findAll() {

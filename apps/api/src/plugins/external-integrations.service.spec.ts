@@ -12,8 +12,11 @@ describe('ExternalIntegrationsService', () => {
   const mappingUpsert = vi.fn();
   const mappingDeleteMany = vi.fn();
   const recipientDeleteMany = vi.fn();
+  const recipientFindMany = vi.fn();
+  const recipientCount = vi.fn();
   const organizationMemberFindMany = vi.fn();
   const listProjectMembers = vi.fn();
+  const getOrganizationMember = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -32,14 +35,14 @@ describe('ExternalIntegrationsService', () => {
           upsert: mappingUpsert,
           deleteMany: mappingDeleteMany,
         },
-        yunxiaoWebhookRecipient: { deleteMany: recipientDeleteMany },
+        yunxiaoWebhookRecipient: { deleteMany: recipientDeleteMany, findMany: recipientFindMany, count: recipientCount },
       } as never,
       {
         get: (key: string) => key === 'YUNXIAO_WEBHOOK_SECRET'
           ? secret
           : key === 'YUNXIAO_PERSONAL_ACCESS_TOKEN' ? personalAccessToken : undefined,
       } as never,
-      { listProjectMembers } as never,
+      { listProjectMembers, getOrganizationMember } as never,
     );
   }
 
@@ -165,9 +168,9 @@ describe('ExternalIntegrationsService', () => {
     });
   });
 
-  it('返回云效项目成员和当前组织的 FlowX 用户', async () => {
+  it('按明确userId查询单个云效组织身份，不加载全员列表', async () => {
     findFirst.mockResolvedValue({ yunxiaoOrganizationIdentifier: 'yunxiao-org-1' });
-    listProjectMembers.mockResolvedValue([
+    getOrganizationMember.mockResolvedValue(
       {
         memberId: 'yunxiao-member-1',
         userId: 'yunxiao-user-1',
@@ -179,7 +182,7 @@ describe('ExternalIntegrationsService', () => {
         roleName: '项目成员',
         roleId: 'member',
       },
-    ]);
+    );
     mappingFindMany.mockResolvedValue([
       {
         yunxiaoMemberId: 'yunxiao-member-1',
@@ -193,7 +196,7 @@ describe('ExternalIntegrationsService', () => {
       { user: { id: 'flowx-user-1', displayName: '张三', account: 'zhangsan', email: null } },
     ]);
 
-    await expect(createService().listYunxiaoProjectMembers('org-1', 'project-1'))
+    await expect(createService().listYunxiaoProjectMembers('org-1', 'project-1', { userId: 'yunxiao-user-1' }))
       .resolves.toMatchObject({
         projectId: 'project-1',
         yunxiaoOrganizationIdentifier: 'yunxiao-org-1',
@@ -203,8 +206,17 @@ describe('ExternalIntegrationsService', () => {
           aliyunAccountId: 'aliyun-account-1',
           flowxUserId: 'flowx-user-1',
         }],
-        flowxUsers: [{ id: 'flowx-user-1', displayName: '张三' }],
+        identityScope: 'organization',
       });
+    expect(organizationMemberFindMany).not.toHaveBeenCalled();
+    expect(listProjectMembers).not.toHaveBeenCalled();
+    expect(mappingFindMany).toHaveBeenCalledWith(expect.objectContaining({ take: 1, where: expect.objectContaining({ organizationId: 'org-1', OR: expect.any(Array) }) }));
+  });
+
+  it('拒绝无userId的云效全员浏览，不请求第三方或数据库全量成员', async () => {
+    await expect(createService().listYunxiaoProjectMembers('org-1', 'project-1')).rejects.toMatchObject({ response: { code: 'YUNXIAO_MEMBER_BROWSE_UNSUPPORTED' } });
+    expect(listProjectMembers).not.toHaveBeenCalled();
+    expect(organizationMemberFindMany).not.toHaveBeenCalled();
   });
 
   it('管理员可以保存和解除云效成员映射', async () => {
@@ -266,4 +278,11 @@ describe('ExternalIntegrationsService', () => {
       .rejects.toBeInstanceOf(ForbiddenException);
     expect(recipientDeleteMany).not.toHaveBeenCalled();
   });
+  it('未匹配投递人员记录在DB分页并保留完整命中数量', async () => {
+    recipientFindMany.mockResolvedValue([{ id: 'recipient-21' }]); recipientCount.mockResolvedValue(41);
+    const result = await createService().listYunxiaoUnmatchedRecipients('org-1', { page: 2, pageSize: 20, q: '测试人' } as never);
+    expect(result).toMatchObject({ items: [{ id: 'recipient-21' }], total: 41, page: 2, pageSize: 20, totalPages: 3 });
+    expect(recipientFindMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 20, take: 20, where: expect.objectContaining({ organizationId: 'org-1', OR: expect.any(Array) }) }));
+  });
+
 });

@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { useListPage } from '../hooks/use-list-page';
+import { ListPagination } from './ListPagination';
+import { PagedSelect } from './PagedSelect';
 import { ScheduleAssignmentDialog } from './ScheduleAssignmentDialog';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -20,7 +23,7 @@ import { formatAssignmentRole, formatPlanningStatus, formatPriority } from '../u
 
 const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH'] as const;
 const PLANNING_OPTIONS = ['UNSCHEDULED', 'SCHEDULED', 'IN_PROGRESS', 'DONE'] as const;
-const UNVERSIONED = '__unversioned__';
+const UNVERSIONED = '';
 
 interface RequirementSchedulingPanelProps {
   requirement: Requirement;
@@ -29,47 +32,22 @@ interface RequirementSchedulingPanelProps {
 
 export function RequirementSchedulingPanel({ requirement, onChanged }: RequirementSchedulingPanelProps) {
   const toast = useToast();
-  const [assignments, setAssignments] = useState<RequirementAssignment[]>(requirement.assignments ?? []);
-  const [loading, setLoading] = useState(false);
+  const list = useListPage(query => api.getRequirementAssignments(requirement.id, query), { requirementId: requirement.id }, { pageKey: 'assignmentsPage' });
+  const assignments = list.items;
+  const loading = list.loading;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<RequirementAssignment | null>(null);
   const [priority, setPriority] = useState(requirement.priority ?? 'MEDIUM');
   const [planningStatus, setPlanningStatus] = useState(requirement.planningStatus ?? 'UNSCHEDULED');
   const [versionId, setVersionId] = useState(requirement.versionId ?? UNVERSIONED);
-  const [versions, setVersions] = useState(requirement.project.versions ?? []);
-
-  const totalEstimatedDays = useMemo(
-    () => assignments.reduce((sum, item) => sum + displayEstimatedDays(item), 0),
-    [assignments],
-  );
-
-  async function refreshAssignments() {
-    setLoading(true);
-    try {
-      setAssignments(await api.getRequirementAssignments(requirement.id));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载排期失败');
-    } finally {
-      setLoading(false);
-    }
-  }
+  const totalEstimatedDays = list.summary?.estimatedDays ?? 0;
+  const refreshAssignments = list.refresh;
 
   useEffect(() => {
-    setAssignments(requirement.assignments ?? []);
     setPriority(requirement.priority ?? 'MEDIUM');
     setPlanningStatus(requirement.planningStatus ?? 'UNSCHEDULED');
     setVersionId(requirement.versionId ?? UNVERSIONED);
-    setVersions(requirement.project.versions ?? []);
   }, [requirement]);
-
-  useEffect(() => {
-    if ((requirement.project.versions ?? []).length > 0) {
-      return;
-    }
-    void api.listProjectVersions(requirement.project.id).then(setVersions).catch((error) => {
-      toast.error(error instanceof Error ? error.message : '加载版本失败');
-    });
-  }, [requirement.project.id, requirement.project.versions]);
 
   function openCreateDialog() {
     setEditing(null);
@@ -168,25 +146,10 @@ export function RequirementSchedulingPanel({ requirement, onChanged }: Requireme
           </div>
           <div className="space-y-2">
             <label className="text-sm font-semibold text-foreground">发布版本</label>
-            <Select
-              value={versionId}
-              onValueChange={(value) => {
-                setVersionId(value);
-                void savePlanningMeta(priority, planningStatus, value);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="不挂版本" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={UNVERSIONED}>不挂版本</SelectItem>
-                {versions.map((version) => (
-                  <SelectItem key={version.id} value={version.id}>
-                    {version.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <PagedSelect value={versionId} selectedLabel={versionId === requirement.versionId ? requirement.version?.name : undefined}
+              label="发布版本" placeholder="不挂版本" allowClear emptyLabel="不挂版本" scopeKey={requirement.project.id}
+              loadPage={query => api.listProjectVersions(requirement.project.id, query)}
+              onValueChange={value => { setVersionId(value); void savePlanningMeta(priority, planningStatus, value); }} />
           </div>
           <div className="flex flex-col justify-end">
             <p className="text-sm text-muted-foreground">
@@ -195,7 +158,8 @@ export function RequirementSchedulingPanel({ requirement, onChanged }: Requireme
           </div>
         </div>
 
-        {loading ? (
+        {list.error ? <div role="alert">{list.error}<Button variant="outline" onClick={list.refresh}>重试排期</Button></div> : null}
+        {loading && assignments.length === 0 ? (
           <div className="flex min-h-24 items-center justify-center">
             <Spinner className="h-6 w-6" />
           </div>
@@ -240,6 +204,7 @@ export function RequirementSchedulingPanel({ requirement, onChanged }: Requireme
         ) : (
           <p className="text-sm text-muted-foreground">还没有配置人员排期，添加后会自动标记为已排期。</p>
         )}
+        <ListPagination page={list.page} pageSize={list.pageSize} total={list.total} loading={loading} onPageChange={list.onPageChange} />
       </CardContent>
 
       <ScheduleAssignmentDialog

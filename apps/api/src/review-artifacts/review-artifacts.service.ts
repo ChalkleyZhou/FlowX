@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -23,6 +24,14 @@ export class ReviewArtifactsService {
     private readonly prisma: PrismaService,
     private readonly workflowService: WorkflowService,
   ) {}
+
+  async getWorkflowRunReviewFindingsPage(workflowRunId: string, query: PaginationQuery = {}) {
+    const paging = parsePagination(query);
+    await this.prisma.workflowRun.findUniqueOrThrow({ where: { id: workflowRunId }, select: { id: true } });
+    const where = { workflowRunId };
+    const [items, total, pendingCount] = await Promise.all([this.prisma.reviewFinding.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'asc' }, { sourceIndex: 'asc' }, { id: 'asc' }] }), this.prisma.reviewFinding.count({ where }), this.prisma.reviewFinding.count({ where: { ...where, convertedIssueId: null, convertedBugId: null } })]);
+    return { ...pageResult(items, total, paging), summary: { pendingCount } };
+  }
 
   async getWorkflowRunReviewFindings(workflowRunId: string) {
     await this.prisma.workflowRun.findUniqueOrThrow({ where: { id: workflowRunId } });
@@ -246,6 +255,17 @@ export class ReviewArtifactsService {
     return bug;
   }
 
+  async getIssuesPage(query: PaginationQuery & { workspaceId?: string; projectId?: string; workflowRunId?: string; status?: string; priority?: string; severity?: string; q?: string } = {}) {
+    const paging = parsePagination(query);
+    const scope = {};
+    const where = { ...scope, ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}), ...(query.workflowRunId ? { workflowRunId: query.workflowRunId } : {}), ...(query.status ? { status: query.status } : {}), ...(query.priority ? { priority: query.priority } : {}), ...(query.projectId ? { requirement: { projectId: query.projectId } } : {}), ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }, { requirement: { title: { contains: query.q.trim() } } }, { workspace: { name: { contains: query.q.trim() } } }] } : {}) };
+    const [items, total, scopeTotal, openCount] = await Promise.all([
+      this.prisma.issue.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { workspace: true, requirement: true, workflowRun: true } }),
+      this.prisma.issue.count({ where }), this.prisma.issue.count({ where: scope }), this.prisma.issue.count({ where: { ...scope, status: 'OPEN' } }),
+    ]);
+    return { ...pageResult(items, total, paging), summary: { total: scopeTotal, visible: total, openCount, inProgressCount: await this.prisma.issue.count({ where: { ...scope, status: 'IN_PROGRESS' } }) } };
+  }
+
   async getIssues(filters: { workspaceId?: string; workflowRunId?: string; status?: string }) {
     return this.prisma.issue.findMany({
       where: {
@@ -382,6 +402,17 @@ export class ReviewArtifactsService {
 
   async startBugFixWorkflow(bugId: string, dto: StartBugFixWorkflowDto) {
     return this.workflowService.createBugFixWorkflowRun(bugId, dto);
+  }
+
+  async getBugsPage(query: PaginationQuery & { workspaceId?: string; projectId?: string; workflowRunId?: string; status?: string; priority?: string; severity?: string; q?: string } = {}) {
+    const paging = parsePagination(query);
+    const scope = { ...(query.projectId ? { projectId: query.projectId } : {}) };
+    const where = { ...scope, ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}), ...(query.workflowRunId ? { workflowRunId: query.workflowRunId } : {}), ...(query.status ? { status: query.status } : {}), ...(query.priority ? { priority: query.priority } : {}), ...(query.severity ? { severity: query.severity } : {}), ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }, { requirement: { title: { contains: query.q.trim() } } }, { workspace: { name: { contains: query.q.trim() } } }] } : {}) };
+    const [items, total, scopeTotal, openCount] = await Promise.all([
+      this.prisma.bug.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { workspace: true, requirement: true, workflowRun: true, project: true, fixWorkflowRun: true } }),
+      this.prisma.bug.count({ where }), this.prisma.bug.count({ where: scope }), this.prisma.bug.count({ where: { ...scope, status: 'OPEN' } }),
+    ]);
+    return { ...pageResult(items, total, paging), summary: { total: scopeTotal, visible: total, openCount, criticalCount: await this.prisma.bug.count({ where: { ...scope, severity: 'CRITICAL' } }) } };
   }
 
   async getBugs(filters: { workspaceId?: string; workflowRunId?: string; status?: string }) {

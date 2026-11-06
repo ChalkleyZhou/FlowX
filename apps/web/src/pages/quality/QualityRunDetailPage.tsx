@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError, getFlowxApiBaseUrl } from '../../api';
+import { ListPagination } from '../../components/ListPagination';
+import { PagedSelect } from '../../components/PagedSelect';
+import { useQualityPage } from './use-quality-page';
 import { useAdoptProject } from '../../project-scope-context';
 import { PageHeader } from '../../components/PageHeader';
 import { EmptyState } from '../../components/EmptyState';
@@ -16,7 +19,7 @@ import {
 } from '../../components/ui/dialog';
 import { useToast } from '../../components/ui/toast';
 import { launchFlowxLocal, probeFlowxLocal } from '../../lib/flowx-local-bridge';
-import type { Bug, TestRun } from '../../types';
+import type { TestRun } from '../../types';
 import { QualityArtifactButton } from './QualityArtifactButton';
 import { QualityReportsPanel } from './QualityReportsPanel';
 import { QualityCreateRunDialog } from './QualityCreateRunDialog';
@@ -30,18 +33,28 @@ export function QualityRunDetailPage() {
 }
 function QualityRunDetailContent({ id }: { id: string }) {
   const resource = useQualityResource(id, api.getTestRun, (run) => run.status === 'ACTIVE');
-  const run = resource.data;
+  const [casePage, setCasePage] = useState(1);
+  const [executionPage, setExecutionPage] = useState(1);
+  const [targetPage, setTargetPage] = useState(1);
   const toast = useToast();
   const navigate = useNavigate();
   const [target, setTarget] = useState('all');
   const [result, setResult] = useState('all');
+  const cases = useQualityPage(`${id}:${casePage}:${target}:${result}:${resource.data?.revision}`, () => api.getTestRunCases(id, { page: casePage, pageSize: 20, targetId: target === 'all' ? undefined : target, result: result === 'all' ? undefined : result }), true, setCasePage);
+  const executions = useQualityPage(`${id}:${executionPage}:${resource.data?.revision}`, () => api.getTestRunExecutions(id, { page: executionPage, pageSize: 20 }), true, setExecutionPage);
+  const targets = useQualityPage(`${id}:${targetPage}:${resource.data?.revision}`, () => api.getTestRunTargets(id, { page: targetPage, pageSize: 20 }), true, setTargetPage);
+  const run = resource.data ? { ...resource.data, cases: cases.items, executions: executions.items, targets: targets.items } : undefined;
+  useEffect(() => {
+    if (resource.data?.status !== 'ACTIVE') return;
+    const timer = window.setInterval(() => { void cases.refresh({ silent: true }); void executions.refresh({ silent: true }); void targets.refresh({ silent: true }); }, 5000);
+    return () => window.clearInterval(timer);
+  }, [resource.data?.status, cases.refresh, executions.refresh, targets.refresh]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [launchTarget, setLaunchTarget] = useState('');
   const [ide, setIde] = useState<'codex' | 'cursor' | 'workbuddy'>('codex');
   const [reason, setReason] = useState('');
   const [linkCase, setLinkCase] = useState<NonNullable<TestRun['cases']>[number]>();
-  const [bugs, setBugs] = useState<Bug[]>([]);
   const [bugId, setBugId] = useState('');
   const [regressionBugId, setRegressionBugId] = useState('');
   const [regressionRequest, setRegressionRequest] =
@@ -54,7 +67,7 @@ function QualityRunDetailContent({ id }: { id: string }) {
     try {
       await work();
       if (success) toast.success(success);
-      await resource.reload({ silent: true });
+      await Promise.all([resource.reload({ silent: true }), cases.refresh(), executions.refresh(), targets.refresh()]);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : '操作失败');
     } finally {
@@ -79,7 +92,7 @@ function QualityRunDetailContent({ id }: { id: string }) {
         loopbackPort,
       );
       setMessage('IDE 已打开，等待实际测试进度回传。');
-      await resource.reload({ silent: true });
+      await Promise.all([resource.reload({ silent: true }), cases.refresh(), executions.refresh(), targets.refresh()]);
     } catch (cause) {
       const text = cause instanceof Error ? cause.message : '本地启动失败';
       setMessage(`${text}。请检查本地登录、项目仓库映射与代码版本，修复后重试。`);
@@ -91,15 +104,6 @@ function QualityRunDetailContent({ id }: { id: string }) {
     if (!request) return;
     setLinkCase(row);
     setBugId(row.result?.bugId ?? '');
-    try {
-      setBugs(
-        (await api.getBugs({ workspaceId: request.workspaceId })).filter(
-          (bug) => bug.projectId === request.projectId,
-        ),
-      );
-    } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : '加载缺陷失败');
-    }
   }
   async function startRegression(sourceBugId: string) {
     if (!request) return;
@@ -141,15 +145,9 @@ function QualityRunDetailContent({ id }: { id: string }) {
         action={<Button onClick={() => void resource.reload()}>重试</Button>}
       />
     );
-  const rows = (run.cases ?? []).filter(
-    (row) =>
-      (target === 'all' || row.targetId === target) &&
-      (result === 'all' || (row.result?.result ?? 'PENDING') === result),
-  );
+  const rows = cases.items;
   const local = run.executionMode === 'LOCAL';
-  const hasLease = run.executions?.some(
-    (item) => item.status === 'RUNNING' && Date.parse(item.leaseExpiresAt ?? '') > Date.now(),
-  );
+  const hasLease = (run.summary?.activeLeaseCount ?? 0) > 0;
   return (
     <div className="space-y-5">
       <PageHeader
@@ -171,7 +169,7 @@ function QualityRunDetailContent({ id }: { id: string }) {
       <div className="flex flex-wrap items-center gap-3">
         <Badge variant={statusBadgeVariant(run.status)}>{resultLabels[run.status] ?? run.status}</Badge>
         <span className="text-sm">
-          已回传 {(run.cases ?? []).filter((row) => row.result).length} / {run.cases?.length ?? 0} 项
+          已回传 {run.summary?.completedCount ?? cases.summary?.completedCount ?? 0} / {run.summary?.caseCount ?? cases.total} 项
         </span>
         <span className="text-sm text-muted-foreground">执行完成与测试通过分别记录，失败结果仍可归档。</span>
       </div>
@@ -179,19 +177,8 @@ function QualityRunDetailContent({ id }: { id: string }) {
         <section aria-label="本地启动" className="rounded-md border p-4 space-y-3">
           <h2 className="font-semibold">下一步：在本地执行测试</h2>
           <div className="flex flex-wrap gap-3">
-            <select
-              aria-label="启动目标端"
-              value={launchTarget}
-              onChange={(e) => setLaunchTarget(e.target.value)}
-              className="rounded border bg-background p-2"
-            >
-              <option value="">选择目标端</option>
-              {run.targets?.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
+            <PagedSelect label="启动目标端" value={launchTarget === 'all' ? '' : launchTarget} onValueChange={value => { setLaunchTarget(value); }} loadPage={query => api.getTestRunTargets(id, query)} placeholder="启动目标端" />
+
             <select
               aria-label="本地 IDE"
               className="rounded border bg-background p-2"
@@ -220,24 +207,14 @@ function QualityRunDetailContent({ id }: { id: string }) {
         <div className="flex flex-wrap justify-between gap-3">
           <h2 className="font-semibold">逐例执行结果</h2>
           <div className="flex gap-2">
-            <select
-              aria-label="按目标端筛选"
-              className="rounded border bg-background p-2 text-sm"
-              value={target}
-              onChange={(e) => setTarget(e.target.value)}
-            >
-              <option value="all">全部目标端</option>
-              {run.targets?.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
+            <PagedSelect label="按目标端筛选" value={target === 'all' ? '' : target} onValueChange={value => { setTarget(value); setCasePage(1); }} loadPage={query => api.getTestRunTargets(id, query)} placeholder="按目标端筛选" />
+            <Button size="sm" variant="ghost" onClick={() => { setTarget('all'); setCasePage(1); }}>全部目标端</Button>
+
             <select
               aria-label="按结果筛选"
               className="rounded border bg-background p-2 text-sm"
               value={result}
-              onChange={(e) => setResult(e.target.value)}
+              onChange={(e) => { setResult(e.target.value); setCasePage(1); }}
             >
               <option value="all">全部结果</option>
               {['PENDING', 'PASSED', 'FAILED', 'BLOCKED', 'SKIPPED'].map((value) => (
@@ -254,7 +231,7 @@ function QualityRunDetailContent({ id }: { id: string }) {
               <h3 className="font-medium">{row.snapshot.title}</h3>
               <div className="flex gap-2">
                 <Badge variant="outline">
-                  {run.targets?.find((item) => item.id === row.targetId)?.name ?? '未记录目标端'}
+                  {row.target?.name ?? run.targets?.find((item) => item.id === row.targetId)?.name ?? '未记录目标端'}
                 </Badge>
                 <Badge variant={statusBadgeVariant(row.result?.result ?? 'PENDING')}>
                   {resultLabels[row.result?.result ?? 'PENDING'] ?? row.result?.result}
@@ -367,14 +344,17 @@ function QualityRunDetailContent({ id }: { id: string }) {
           </article>
         ))}
         {!rows.length ? <p className="text-sm text-muted-foreground">当前筛选没有执行项。</p> : null}
+        <ListPagination page={casePage} total={cases.total} pageSize={20} onPageChange={setCasePage} />
+        {cases.error ? <p role="alert">{cases.error}<Button onClick={() => void cases.refresh()}>重试</Button></p> : null}
       </section>
       <section aria-label="执行与租约" className="space-y-3">
         <h2 className="font-semibold">执行人、环境与领取范围</h2>
+        {executions.error ? <p role="alert">{executions.error}<Button onClick={() => void executions.refresh()}>重试执行记录</Button></p> : null}
         {(run.executions ?? []).map((execution) => (
           <article className="rounded-md border p-4 space-y-2 text-sm" key={execution.id}>
             <p className="font-medium">
               {execution.claimedByUser?.displayName ?? '未记录执行人'} ·{' '}
-              {run.targets?.find((item) => item.id === execution.targetId)?.name} · {execution.status}
+              {execution.target?.name ?? run.targets?.find((item) => item.id === execution.targetId)?.name ?? '未记录目标端'} · {execution.status}
             </p>
             <p>
               领取范围：
@@ -475,6 +455,7 @@ function QualityRunDetailContent({ id }: { id: string }) {
             ) : null}
           </article>
         ))}
+        <ListPagination page={executionPage} total={executions.total} pageSize={20} onPageChange={setExecutionPage} />
       </section>
       <section className="rounded-md border p-4 space-y-3">
         <h2 className="font-semibold">轮次归档与报告</h2>
@@ -540,19 +521,7 @@ function QualityRunDetailContent({ id }: { id: string }) {
             <DialogTitle>关联缺陷</DialogTitle>
             <DialogDescription>关联缺陷不会修改执行结果，修复完成后使用独立回归轮次验证。</DialogDescription>
           </DialogHeader>
-          <select
-            aria-label="选择已有缺陷"
-            className="rounded border bg-background p-2"
-            value={bugId}
-            onChange={(e) => setBugId(e.target.value)}
-          >
-            <option value="">选择已有缺陷</option>
-            {bugs.map((bug) => (
-              <option key={bug.id} value={bug.id}>
-                {bug.title}
-              </option>
-            ))}
-          </select>
+          <PagedSelect label="选择已有缺陷" value={bugId} onValueChange={setBugId} loadPage={async query => { const result = await api.getBugs({ ...query, projectId: request?.projectId }); return { ...result, items: result.items.map(bug => ({ id: bug.id, name: bug.title })) }; }} placeholder="选择已有缺陷" />
           <Button
             disabled={busy || !bugId}
             onClick={() =>
@@ -596,12 +565,7 @@ function QualityRunDetailContent({ id }: { id: string }) {
             if (!open) setRegressionBugId('');
           }}
           sourceBugId={regressionBugId}
-          initialCases={(run.cases ?? [])
-            .filter((row) => row.result?.bugId === regressionBugId)
-            .map((row) => ({
-              snapshotId: row.snapshot.id,
-              targetKeys: [run.targets?.find((item) => item.id === row.targetId)?.key ?? ''].filter(Boolean),
-            }))}
+          sourceRunId={id}
           onCreated={(created) => navigate(`/quality/test-runs/${created.id}`)}
         />
       ) : null}

@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
@@ -114,6 +115,21 @@ export class SyncEventsService {
       }
       throw error;
     }
+  }
+
+  async listPage(executionSessionId: string, query: PaginationQuery & { q?: string; view?: string } = {}, scope: ExecutionSessionScope = {}) {
+    await this.executionSessionsService.requireAccessibleSession(executionSessionId, scope);
+    if (query.view !== undefined && query.view !== 'progress') throw new BadRequestException('不支持的事件视图。');
+    const paging = parsePagination(query);
+    const where: Prisma.SyncEventWhereInput = { executionSessionId,
+      ...(query.view === 'progress' ? { eventType: { in: SYNC_EVENT_TYPES.filter(type => type.startsWith('execution.') && type !== 'execution.heartbeat') } } : {}),
+      ...(query.q?.trim() ? { OR: [{ eventType: { contains: query.q.trim() } }, { sourceTool: { contains: query.q.trim() } }, { traceId: { contains: query.q.trim() } }] } : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.syncEvent.findMany({ where, orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }], skip: paging.skip, take: paging.take }),
+      this.prisma.syncEvent.count({ where }),
+    ]);
+    return pageResult(items, total, paging);
   }
 
   async list(

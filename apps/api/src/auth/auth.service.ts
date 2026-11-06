@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import {
   BadRequestException,
   ConflictException,
@@ -392,6 +393,32 @@ export class AuthService {
     }
     const session = await this.getSession(token);
     return { ...session, authKind: 'user_session' as const };
+  }
+
+  async listOrganizationMembersPage(organizationId: string, query: PaginationQuery & { q?: string } = {}) {
+    const paging = parsePagination(query);
+    const rows = await this.prisma.userOrganization.findMany({
+      skip: paging.skip, take: paging.take,
+      where: { organizationId, ...(query.q?.trim() ? { user: { OR: [{ displayName: { contains: query.q.trim() } }, { account: { contains: query.q.trim() } }] } } : {}) },
+      include: {
+        user: {
+          include: { localCredential: true },
+        },
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+
+    const total = await this.prisma.userOrganization.count({ where: { organizationId, ...(query.q?.trim() ? { user: { OR: [{ displayName: { contains: query.q.trim() } }, { account: { contains: query.q.trim() } }] } } : {}) } });
+    return pageResult(rows.map((row) => ({
+      id: row.user.id,
+      displayName: row.user.displayName,
+      avatarUrl: row.user.avatarUrl,
+      account: row.user.localCredential?.account ?? row.user.account,
+      email: row.user.email,
+      role: row.role,
+      status: row.user.status,
+      joinedAt: row.createdAt.toISOString(),
+    })), total, paging);
   }
 
   async listOrganizationMembers(organizationId: string) {

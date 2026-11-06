@@ -1,3 +1,4 @@
+import { pageResult } from './test-utils/page-result';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, getFlowxApiBaseUrl, toApiUrl } from './api';
 
@@ -23,7 +24,7 @@ class LocalStorageMock {
 
 describe('api helpers', () => {
   it('通用质量接口透传快照目标端、版本控制及报告替代关系', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => pageResult([]) });
     vi.stubGlobal('fetch', fetchMock);
     const mapping = { name: '初测', runType: 'INITIAL' as const, targets: [{ key: 'api', name: 'API', expectedRevisions: [] }], cases: [{ snapshotId: 'snapshot-1', targetKeys: ['api'] }] };
     await api.createLocalTestRun('request-1', mapping);
@@ -61,14 +62,14 @@ describe('api helpers', () => {
     await api.getRequirementChanges('req-1', 'run-1');
     await api.createRequirementChange('req-1', { content: '导出增加 Excel 格式', mode: 'SUPPLEMENT', requestId: 'request-1', sourceWorkflowRunId: 'run-1' });
     await api.restartRequirementChange('req-1', 'change-1');
-    expect(fetchMock.mock.calls[0][0]).toContain('/requirements/req-1/changes?workflowRunId=run-1');
+    expect(fetchMock.mock.calls[0][0]).toContain('/requirements/req-1/changes?page=1&pageSize=20&workflowRunId=run-1');
     expect(fetchMock.mock.calls[1][1].method).toBe('POST');
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ content: '导出增加 Excel 格式', mode: 'SUPPLEMENT', requestId: 'request-1', sourceWorkflowRunId: 'run-1' });
     expect(fetchMock.mock.calls[2][0]).toContain('/requirements/req-1/changes/change-1/restart');
     expect(fetchMock.mock.calls[2][1].method).toBe('POST');
   });
   it('重新导入换包显式整体替换，正式变更通过 multipart 传递 ZIP 与 AI', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => pageResult([]) });
     vi.stubGlobal('fetch', fetchMock);
     const file = new File(['zip'], 'new.zip');
     await api.supplementPrototypeImport('import-1', 3, file, 'cursor', true);
@@ -93,7 +94,7 @@ describe('api helpers', () => {
   });
 
   it('为执行列表和控制命令传递筛选、幂等键和认证信息', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [], nextCursor: null }) });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => pageResult([]) });
     vi.stubGlobal('fetch', fetchMock);
     await api.listExecutionSessions({ projectId: 'p1', status: 'BLOCKED', take: 20,
       page: 2, view: 'attention', claimedByUserId: 'u1', search: '登录 改造' });
@@ -187,7 +188,7 @@ describe('api helpers', () => {
   });
 
   it('deduplicates concurrent identical get requests', async () => {
-    const payload = [{ id: 'workspace-1' }];
+    const payload = pageResult([{ id: 'workspace-1' }]);
     const fetchMock = vi.fn().mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -243,7 +244,7 @@ describe('api helpers', () => {
   it('passes runType when listing workflow runs', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => [],
+      json: async () => pageResult([]),
     });
 
     vi.stubGlobal('fetch', fetchMock);
@@ -251,7 +252,7 @@ describe('api helpers', () => {
     await api.getWorkflowRuns({ runType: 'BUG_FIX' });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:3000/workflow-runs?runType=BUG_FIX',
+      'http://localhost:3000/workflow-runs?page=1&pageSize=20&runType=BUG_FIX',
       expect.any(Object),
     );
   });
@@ -259,7 +260,7 @@ describe('api helpers', () => {
   it('calls quality endpoints with scoped query parameters and payloads', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => [],
+      json: async () => pageResult([]),
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -275,7 +276,7 @@ describe('api helpers', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      'http://localhost:3000/quality/test-cases?workspaceId=workspace-1&projectId=project-1',
+      'http://localhost:3000/quality/test-cases?page=1&pageSize=20&workspaceId=workspace-1&projectId=project-1',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -298,7 +299,7 @@ describe('api helpers', () => {
   it('paginates and deletes test cases through quality endpoints', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ items: [], total: 0, page: 2, pageSize: 20 }),
+      json: async () => ({ items: [], total: 0, page: 2, pageSize: 20,totalPages:2 }),
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -315,7 +316,7 @@ describe('api helpers', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      'http://localhost:3000/quality/test-cases?workspaceId=workspace-1&projectId=project-1&libraryId=library-1&priority=P0&q=%E7%99%BB%E5%BD%95&page=2&pageSize=20',
+      'http://localhost:3000/quality/test-cases?page=2&pageSize=20&workspaceId=workspace-1&projectId=project-1&libraryId=library-1&priority=P0&q=%E7%99%BB%E5%BD%95',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -361,7 +362,7 @@ describe('api helpers', () => {
   it('manages modules and updates a test case through quality endpoints', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({}),
+      json: async () => pageResult([]),
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -383,7 +384,7 @@ describe('api helpers', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      'http://localhost:3000/quality/case-libraries/library-1/modules',
+      'http://localhost:3000/quality/case-libraries/library-1/modules?page=1&pageSize=20',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -504,7 +505,7 @@ describe('api helpers', () => {
   it('calls briefing endpoints with expected methods and payloads', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({}),
+      json: async () => pageResult([]),
     });
 
     vi.stubGlobal('fetch', fetchMock);
@@ -538,7 +539,7 @@ describe('api helpers', () => {
     await api.deleteDeliveryTarget('target-1');
 
     expect(fetchMock.mock.calls.map((call) => [call[0], call[1]?.method ?? 'GET'])).toEqual([
-      ['http://localhost:3000/briefing-sources?workspaceId=workspace-1', 'GET'],
+      ['http://localhost:3000/briefing-sources?page=1&pageSize=20&workspaceId=workspace-1', 'GET'],
       [
         'http://localhost:3000/briefing-sources/repository-binding?workspaceId=workspace-1&repositoryId=repo-1',
         'GET',
@@ -546,14 +547,14 @@ describe('api helpers', () => {
       ['http://localhost:3000/briefing-sources', 'POST'],
       ['http://localhost:3000/briefing-sources/source-1', 'PATCH'],
       ['http://localhost:3000/briefing-sources/source-1', 'DELETE'],
-      ['http://localhost:3000/projects/project-1/briefing-feeds', 'GET'],
+      ['http://localhost:3000/projects/project-1/briefing-feeds?page=1&pageSize=20', 'GET'],
       ['http://localhost:3000/projects/project-1/briefing-feeds', 'POST'],
       ['http://localhost:3000/briefing-feeds/feed-1', 'PATCH'],
-      ['http://localhost:3000/projects/project-1/briefings', 'GET'],
+      ['http://localhost:3000/projects/project-1/briefings?page=1&pageSize=20', 'GET'],
       ['http://localhost:3000/briefing-feeds/feed-1/generate', 'POST'],
       ['http://localhost:3000/briefings/briefing-1', 'GET'],
       ['http://localhost:3000/briefings/briefing-1/send', 'POST'],
-      ['http://localhost:3000/delivery-targets?workspaceId=workspace-1', 'GET'],
+      ['http://localhost:3000/delivery-targets?page=1&pageSize=20&workspaceId=workspace-1', 'GET'],
       ['http://localhost:3000/delivery-targets', 'POST'],
       ['http://localhost:3000/delivery-targets/target-1', 'PATCH'],
       ['http://localhost:3000/delivery-targets/target-1', 'DELETE'],
@@ -592,14 +593,14 @@ describe('api helpers', () => {
   it('lists session evidence', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => [],
+      json: async () => pageResult([]),
     });
     vi.stubGlobal('fetch', fetchMock);
 
     await api.listExecutionSessionEvidence('session-1');
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:3000/execution-sessions/session-1/evidence',
+      'http://localhost:3000/execution-sessions/session-1/evidence?page=1&pageSize=20',
       expect.any(Object),
     );
   });
@@ -607,29 +608,29 @@ describe('api helpers', () => {
   it('lists session events', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ items: [], nextCursor: null }),
+      json: async () => pageResult([]),
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    await api.listExecutionSessionEvents('session-1', { cursor: 'event-cursor', take: 25 });
+    await api.listExecutionSessionEvents('session-1', {page:2,pageSize:25});
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:3000/execution-sessions/session-1/events?cursor=event-cursor&take=25',
+      'http://localhost:3000/execution-sessions/session-1/events?page=2&pageSize=25',
       expect.any(Object),
     );
   });
 
   it('读取实质进展时传递事件视图和数量', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [], nextCursor: null }) });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => pageResult([]) });
     vi.stubGlobal('fetch', fetchMock);
-    await api.listExecutionSessionEvents('session-1', { view: 'progress', take: 10 });
-    expect(fetchMock).toHaveBeenCalledWith('http://localhost:3000/execution-sessions/session-1/events?take=10&view=progress', expect.any(Object));
+    await api.listExecutionSessionEvents('session-1', {view:'progress',page:1,pageSize:20});
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:3000/execution-sessions/session-1/events?page=1&pageSize=20&view=progress', expect.any(Object));
   });
 
   it('calls code review feed endpoints with expected methods and payloads', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({}),
+      json: async () => pageResult([]),
     });
 
     vi.stubGlobal('fetch', fetchMock);
@@ -641,7 +642,7 @@ describe('api helpers', () => {
     await api.generateCodeReviewFeed('feed-1', { date: '2026-06-03' });
 
     expect(fetchMock.mock.calls.map((call) => [call[0], call[1]?.method ?? 'GET'])).toEqual([
-      ['http://localhost:3000/projects/project-1/code-review-feeds', 'GET'],
+      ['http://localhost:3000/projects/project-1/code-review-feeds?page=1&pageSize=20', 'GET'],
       ['http://localhost:3000/projects/project-1/code-review-feeds', 'POST'],
       ['http://localhost:3000/code-review-feeds/feed-1', 'PATCH'],
       ['http://localhost:3000/code-review-feeds/feed-1', 'DELETE'],
@@ -677,5 +678,25 @@ describe('原型包导入 API', () => {
     const headers = new Headers(options.headers);
     expect(headers.get('Authorization')).toBe('Bearer test-token');
     expect(headers.has('Content-Type')).toBe(false);
+  });
+});
+
+describe('记录列表分页边界', () => {
+  beforeEach(() => { vi.stubGlobal('localStorage', new LocalStorageMock()); });
+  it('需求翻页和组合筛选完整透传，返回分页元数据并声明新契约', async () => {
+    const payload = { items: [], total: 41, page: 2, pageSize: 20, totalPages: 3 };
+    const send = vi.fn().mockResolvedValue({ ok: true, json: async () => payload });
+    vi.stubGlobal('fetch', send);
+    const result = await api.getRequirements({ page: 2, pageSize: 20, projectId: 'project-1', priority: 'HIGH' });
+    expect(result).toEqual(payload);
+    const [url, init] = send.mock.calls[0];
+    expect(Object.fromEntries(new URL(url).searchParams)).toEqual({ page: '2', pageSize: '20', projectId: 'project-1', priority: 'HIGH' });
+    expect(new Headers(init.headers).get('X-FlowX-List-Contract')).toBe('pagination-v1');
+  });
+  it('默认列表请求也显式限量，旧服务端的数组响应明确提示升级', async () => {
+    const send = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal('fetch', send);
+    await expect(api.getProjects()).rejects.toThrow('分页');
+    expect(Object.fromEntries(new URL(send.mock.calls[0][0]).searchParams)).toEqual({ page: '1', pageSize: '20' });
   });
 });

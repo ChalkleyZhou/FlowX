@@ -1,3 +1,4 @@
+import type { PaginationQuery } from '../common/pagination';
 import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, Req, Res } from '@nestjs/common';
 import type { ArtifactType } from '@flowx-ai/protocol';
 import { ArtifactsService } from './artifacts.service';
@@ -44,8 +45,8 @@ export class ArtifactsController {
   }
 
   @Get('execution-sessions/:id/artifacts')
-  listSessionArtifacts(@Param('id') id: string, @Req() req: ArtifactRequest) {
-    return this.artifactsService.list({ executionSessionId: id }, toScope(req));
+  listSessionArtifacts(@Param('id') id: string, @Query() query: PaginationQuery & { q?: string }, @Req() req: ArtifactRequest) {
+    return this.artifactsService.listPage({ ...query, executionSessionId: id }, toScope(req));
   }
 
   @Post('execution-sessions/:id/evidence')
@@ -58,28 +59,16 @@ export class ArtifactsController {
   }
 
   @Get('execution-sessions/:id/evidence')
-  listEvidence(@Param('id') id: string, @Req() req: ArtifactRequest) {
-    return this.evidenceService.list(id, toScope(req));
+  listEvidence(@Param('id') id: string, @Query() query: PaginationQuery & { q?: string }, @Req() req: ArtifactRequest) {
+    return this.evidenceService.listPage(id, query, toScope(req));
   }
 
   @Get('artifacts')
   listArtifacts(
-    @Query('workflowRunId') workflowRunId: string | undefined,
-    @Query('executionSessionId') executionSessionId: string | undefined,
-    @Query('artifactType') artifactType: ArtifactType | undefined,
-    @Query('take') rawTake: string | undefined,
+    @Query() query: PaginationQuery & { q?: string; workflowRunId?: string; executionSessionId?: string; artifactType?: ArtifactType },
     @Req() req: ArtifactRequest,
   ) {
-    const take = rawTake ? Number.parseInt(rawTake, 10) : undefined;
-    return this.artifactsService.list(
-      {
-        workflowRunId: workflowRunId?.trim() || undefined,
-        executionSessionId: executionSessionId?.trim() || undefined,
-        artifactType,
-        take: Number.isFinite(take) ? take : undefined,
-      },
-      toScope(req),
-    );
+    return this.artifactsService.listPage({ ...query, workflowRunId: query.workflowRunId?.trim() || undefined, executionSessionId: query.executionSessionId?.trim() || undefined }, toScope(req));
   }
 
   @Get('artifacts/:id')

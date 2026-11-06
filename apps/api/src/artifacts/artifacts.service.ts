@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import {
   BadRequestException,
   ConflictException,
@@ -233,6 +234,28 @@ export class ArtifactsService {
     }
     this.assertOrganizationAccess(artifact.executionSession?.organizationId ?? null, scope);
     return artifact;
+  }
+
+  async listPage(
+    filters: PaginationQuery & { workflowRunId?: string; executionSessionId?: string; artifactType?: ArtifactType; q?: string } = {},
+    scope: ExecutionSessionScope = {},
+  ) {
+    if (filters.executionSessionId) await this.executionSessionsService.requireAccessibleSession(filters.executionSessionId, scope);
+    const paging = parsePagination(filters);
+    const where: Prisma.ArtifactWhereInput = {
+      status: { not: 'DELETED' }, workflowRunId: filters.workflowRunId,
+      executionSessionId: filters.executionSessionId, artifactType: filters.artifactType,
+      ...(filters.q?.trim() ? { name: { contains: filters.q.trim() } } : {}),
+      ...(scope.organizationId && !filters.executionSessionId ? { OR: [
+        { executionSession: { organizationId: scope.organizationId } },
+        { executionSessionId: null, workspace: { organizationId: scope.organizationId } },
+      ] } : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.artifact.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: paging.skip, take: paging.take }),
+      this.prisma.artifact.count({ where }),
+    ]);
+    return pageResult(items, total, paging);
   }
 
   async list(

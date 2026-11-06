@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -34,7 +35,7 @@ export class CaseLibrariesService {
     });
   }
 
-  async listLibraries(filters: { workspaceId: string; projectId?: string; ownership?: string }) {
+  async listLibraries(filters: PaginationQuery & { workspaceId: string; projectId?: string; ownership?: string; q?: string }) {
     const ownership = this.normalizeOwnership(filters.ownership);
     if (ownership === 'project' && !filters.projectId) {
       throw new BadRequestException('Project is required when listing a project library.');
@@ -42,15 +43,13 @@ export class CaseLibrariesService {
     if (filters.projectId && ownership !== 'shared') {
       await this.requireProjectInWorkspace(filters.projectId, filters.workspaceId);
     }
-    return this.prisma.testCaseLibrary.findMany({
-      where: {
-        workspaceId: filters.workspaceId,
-        status: 'ACTIVE',
-        ...this.libraryOwnership(filters.projectId, ownership),
-      },
-      include: { _count: { select: { definitions: true, modules: true } } },
-      orderBy: [{ scope: 'asc' }, { name: 'asc' }],
-    });
+    const paging = parsePagination(filters);
+    const where: Prisma.TestCaseLibraryWhereInput = { workspaceId: filters.workspaceId, status: 'ACTIVE', ...this.libraryOwnership(filters.projectId, ownership), ...(filters.q?.trim() ? { name: { contains: filters.q.trim() } } : {}) };
+    const [items, total] = await Promise.all([
+      this.prisma.testCaseLibrary.findMany({ where, include: { _count: { select: { definitions: true, modules: true } } }, orderBy: [{ scope: 'asc' }, { name: 'asc' }, { id: 'asc' }], skip: paging.skip, take: paging.take }),
+      this.prisma.testCaseLibrary.count({ where }),
+    ]);
+    return pageResult(items, total, paging);
   }
 
   async createModule(libraryId: string, dto: CreateTestCaseModuleDto) {
@@ -77,20 +76,16 @@ export class CaseLibrariesService {
     });
   }
 
-  async listModules(libraryId: string) {
+  async listModules(libraryId: string, query: PaginationQuery & { q?: string; parentId?: string; excludeId?: string } = {}) {
     await this.requireLibrary(libraryId);
-    return this.prisma.testCaseModule.findMany({
-      where: { libraryId },
-      include: {
-        _count: {
-          select: {
-            cases: { where: { status: 'ACTIVE' } },
-            children: true,
-          },
-        },
-      },
-      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-    });
+    const paging = parsePagination(query);
+    const excluded = query.excludeId ? await this.prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`WITH RECURSIVE descendants(id) AS (SELECT id FROM TestCaseModule WHERE id = ${query.excludeId} UNION SELECT m.id FROM TestCaseModule m JOIN descendants d ON m.parentId = d.id) SELECT id FROM descendants`) : [];
+    const where = { libraryId, ...(excluded.length ? { id: { notIn: excluded.map(item => item.id) } } : {}), ...(query.parentId !== undefined ? { parentId: query.parentId === 'null' ? null : query.parentId || null } : {}), ...(query.q?.trim() ? { name: { contains: query.q.trim() } } : {}) };
+    const [items, total] = await Promise.all([
+      this.prisma.testCaseModule.findMany({ where, include: { _count: { select: { cases: { where: { status: 'ACTIVE' } }, children: true } } }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }], skip: paging.skip, take: paging.take }),
+      this.prisma.testCaseModule.count({ where }),
+    ]);
+    return pageResult(items, total, paging);
   }
 
   async updateModule(id: string, dto: UpdateTestCaseModuleDto) {
@@ -388,6 +383,10 @@ export class CaseLibrariesService {
   async listCases(filters: {
     workspaceId: string;
     projectId?: string;
+    libraryIds?: string[] | string;
+    moduleIds?: string[] | string;
+    priorities?: string[] | string;
+    status?: string;
     libraryId?: string;
     moduleId?: string;
     q?: string;
@@ -403,6 +402,15 @@ export class CaseLibrariesService {
     if (filters.projectId && ownership !== 'shared') {
       await this.requireProjectInWorkspace(filters.projectId, filters.workspaceId);
     }
+    const array = (value: string[] | string | undefined) => typeof value === 'string' ? value.split(',').filter(Boolean) : value?.flatMap(item => item.split(',')).filter(Boolean);
+    const libraryIds = array(filters.libraryIds);
+    const moduleIds = array(filters.moduleIds);
+    const priorities = array(filters.priorities);
+    let descendantIds: string[] | undefined;
+    if (filters.moduleId) {
+      const descendants = await this.prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`WITH RECURSIVE descendants(id) AS (SELECT id FROM TestCaseModule WHERE id = ${filters.moduleId} UNION SELECT m.id FROM TestCaseModule m JOIN descendants d ON m.parentId = d.id) SELECT id FROM descendants`);
+      descendantIds = descendants.map(item => item.id);
+    }
     const keyword = filters.q?.trim();
     const scopeWhere: Prisma.TestCaseDefinitionWhereInput = {
       status: 'ACTIVE',
@@ -410,8 +418,8 @@ export class CaseLibrariesService {
         workspaceId: filters.workspaceId,
         ...this.libraryOwnership(filters.projectId, ownership),
       },
-      ...(filters.libraryId ? { libraryId: filters.libraryId } : {}),
-      ...(filters.moduleId ? { moduleId: filters.moduleId } : {}),
+      ...(filters.libraryId ? { libraryId: filters.libraryId } : libraryIds ? { libraryId: { in: libraryIds } } : {}),
+      ...(descendantIds ? { moduleId: { in: descendantIds } } : moduleIds ? { moduleId: { in: moduleIds } } : {}),
       ...(keyword
         ? {
             OR: [
@@ -426,25 +434,20 @@ export class CaseLibrariesService {
     };
     const where: Prisma.TestCaseDefinitionWhereInput = {
       ...scopeWhere,
-      ...(filters.priority ? { priority: filters.priority } : {}),
+      ...(filters.priority ? { priority: filters.priority } : priorities ? { priority: { in: priorities } } : {}),
     };
     const query = {
       where,
       include: { library: true, module: true, coverageLinks: true },
-      orderBy: [{ priority: 'asc' }, { updatedAt: 'desc' }],
+      orderBy: [{ priority: 'asc' }, { updatedAt: 'desc' }, { id: 'desc' }],
     } satisfies Prisma.TestCaseDefinitionFindManyArgs;
 
-    if (filters.page === undefined && filters.pageSize === undefined) {
-      return this.prisma.testCaseDefinition.findMany(query);
-    }
-
-    const page = filters.page ?? 1;
-    const pageSize = filters.pageSize ?? 20;
+    const paging = parsePagination(filters);
     const [items, total, p0Count, linkedCount] = await Promise.all([
       this.prisma.testCaseDefinition.findMany({
         ...query,
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip: paging.skip,
+        take: paging.take,
       }),
       this.prisma.testCaseDefinition.count({ where }),
       this.prisma.testCaseDefinition.count({ where: { ...scopeWhere, priority: 'P0' } }),
@@ -454,10 +457,7 @@ export class CaseLibrariesService {
     ]);
 
     return {
-      items,
-      total,
-      page,
-      pageSize,
+      ...pageResult(items, total, paging),
       summary: { p0Count, linkedCount },
     };
   }

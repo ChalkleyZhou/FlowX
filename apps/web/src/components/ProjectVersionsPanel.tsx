@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from '../api';
+import { useListPage } from '../hooks/use-list-page';
+import { ListPagination } from './ListPagination';
 import { SectionHeader } from './SectionHeader';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -20,19 +22,12 @@ export function ProjectVersionsPanel({
   onChanged,
 }: ProjectVersionsPanelProps) {
   const toast = useToast();
-  const [versions, setVersions] = useState<ProjectVersionSummary[]>([]);
+  const listing = useListPage(query => api.listProjectVersions(projectId,query), {projectId}, {pageKey:'versionsPage'});
+  const versions = listing.items;
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
 
-  async function refresh() {
-    setVersions(await api.listProjectVersions(projectId));
-  }
-
-  useEffect(() => {
-    void refresh().catch((error) => {
-      toast.error(error instanceof Error ? error.message : '加载版本失败');
-    });
-  }, [projectId]);
+  const refresh = listing.refresh;
 
   async function createVersion() {
     const trimmed = name.trim();
@@ -151,6 +146,8 @@ export function ProjectVersionsPanel({
             })}
           </ul>
         )}
+        {listing.error ? <p role="alert">{listing.error}</p> : null}
+        <ListPagination {...listing} label="项目版本分页" />
       </CardContent>
     </Card>
   );

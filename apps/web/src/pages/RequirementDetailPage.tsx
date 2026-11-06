@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
+import { useListPage } from '../hooks/use-list-page';
+import { ListPagination } from '../components/ListPagination';
 import { useConfirm } from '../components/ConfirmDialog';
 import { ContextPanel } from '../components/ContextPanel';
 import { DetailHeader } from '../components/DetailHeader';
@@ -12,9 +14,9 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
-import type { ProjectVersionSummary, Requirement } from '../types';
+import type { Requirement } from '../types';
 import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
-import { formatRequirementWorkflowScope, getActiveRequirementWorkflows, isActiveRequirementWorkflow } from '../utils/requirement-workflows';
+import { formatRequirementWorkflowScope } from '../utils/requirement-workflows';
 import { formatWorkflowStatus } from '../utils/workflow-ui';
 import { withCurrentProject } from '../project-scope';
 import { useAdoptProject, useProjectScopeOptional } from '../project-scope-context';
@@ -49,7 +51,8 @@ export function RequirementDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [editVersions, setEditVersions] = useState<ProjectVersionSummary[]>([]);
+  const activeList = useListPage(query => api.getWorkflowRuns(query), { requirementId: id, activeOnly: true, excludeSuperseded: true }, { enabled: !!id && requirement?.id === id, pageKey: 'activeWorkflowsPage' });
+  const historyList = useListPage(query => api.getWorkflowRuns(query), { requirementId: id, terminalOnly: true }, { enabled: !!id && requirement?.id === id, pageKey: 'historyWorkflowsPage' });
   const [changesRefresh, setChangesRefresh] = useState<string | undefined>();
   const requestVersion = useRef(0);
 
@@ -87,16 +90,7 @@ export function RequirementDetailPage() {
     }
   }, [requirement, loading]);
 
-  async function openEdit() {
-    if (!requirement) return;
-    try {
-      const project = await api.getProject(requirement.project.id);
-      setEditVersions(project.versions ?? []);
-    } catch {
-      setEditVersions(requirement.version ? [requirement.version] : []);
-    }
-    setEditOpen(true);
-  }
+  function openEdit() { setEditOpen(true); }
 
   async function handleDelete() {
     if (!requirement || deleting) return;
@@ -140,8 +134,8 @@ export function RequirementDetailPage() {
     );
   }
 
-  const activeWorkflows = getActiveRequirementWorkflows(requirement);
-  const historicalWorkflows = (requirement.workflowRuns ?? []).filter((run) => !isActiveRequirementWorkflow(run));
+  const activeWorkflows = activeList.items;
+  const historicalWorkflows = historyList.items;
   const launchParams = new URLSearchParams({ projectId: requirement.project.id, launchRequirementId: requirement.id });
 
   return (
@@ -181,14 +175,14 @@ export function RequirementDetailPage() {
             <Button variant="outline" asChild>
               <Link to={`/requirements/${requirement.id}#scheduling`}>排期</Link>
             </Button>
-            {activeWorkflows.length === 1 ? (
+            {activeList.total === 1 && activeWorkflows[0] ? (
               <Button asChild><Link to={`/workflow-runs/${activeWorkflows[0].id}`}>继续当前工作流</Link></Button>
-            ) : activeWorkflows.length > 1 ? (
+            ) : activeList.total > 1 ? (
               <Button asChild><a href="#active-workflows">选择要继续的工作流</a></Button>
             ) : null}
-            {(!requirement.prototypeImport || requirement.prototypeImport.status === 'CONFIRMED') && <Button variant={activeWorkflows.length > 0 ? 'outline' : 'default'} asChild>
+            {(!requirement.prototypeImport || requirement.prototypeImport.status === 'CONFIRMED') && <Button variant={activeList.total > 0 ? 'outline' : 'default'} asChild>
               <Link to={`/requirements?${launchParams.toString()}`}>
-                {activeWorkflows.length > 0 ? '启动其他仓库工作流' : '启动研发工作流'}
+                {activeList.total > 0 ? '启动其他仓库工作流' : '启动研发工作流'}
               </Link>
             </Button>}
           </div>
@@ -197,7 +191,7 @@ export function RequirementDetailPage() {
 
       {requirement.prototypeImport && <PrototypeImportPanel
         importId={requirement.prototypeImport.id}
-        existingWorkflowId={activeWorkflows.length === 1 ? activeWorkflows[0].id : undefined}
+        existingWorkflowId={activeList.total === 1 && activeWorkflows[0] ? activeWorkflows[0].id : undefined}
         onConfirmed={() => {
           setChangesRefresh(String(Date.now()));
           return fetchRequirement({ silent: true });
@@ -209,8 +203,8 @@ export function RequirementDetailPage() {
       <section id="active-workflows" className="scroll-mt-5">
         <ContextPanel
           eyebrow="Workflow"
-          title={activeWorkflows.length > 1 ? '选择要继续的工作流' : '当前工作流'}
-          description={activeWorkflows.length > 0 ? '按仓库范围继续已有流程；需要并行推进其他仓库时，可另行启动。' : requirement.prototypeImport?.status !== undefined && requirement.prototypeImport.status !== 'CONFIRMED' ? '原型导入完成后自动接入研发流程，失败可在上方重试。' : '当前没有活跃工作流，可以选择仓库和执行器后启动。'}
+          title={activeList.total > 1 ? '选择要继续的工作流' : '当前工作流'}
+          description={activeList.total > 0 ? '按仓库范围继续已有流程；需要并行推进其他仓库时，可另行启动。' : requirement.prototypeImport?.status !== undefined && requirement.prototypeImport.status !== 'CONFIRMED' ? '原型导入完成后自动接入研发流程，失败可在上方重试。' : '当前没有活跃工作流，可以选择仓库和执行器后启动。'}
         >
           <div className="flex flex-col gap-3">
             {activeWorkflows.map((run) => (
@@ -223,10 +217,12 @@ export function RequirementDetailPage() {
               </div>
             ))}
           </div>
+          {activeList.error ? <div role="alert">{activeList.error}<Button onClick={activeList.refresh}>重试工作流</Button></div> : null}
+          <ListPagination page={activeList.page} total={activeList.total} pageSize={20} loading={activeList.loading} onPageChange={activeList.onPageChange} />
         </ContextPanel>
       </section>
 
-      {historicalWorkflows.length > 0 ? (
+      {historyList.total > 0 || historyList.error ? (
         <ContextPanel eyebrow="History" title="历史工作流" description="已完成或失败的流程，可进入查看历史产物与记录。">
           <div className="flex flex-col gap-3">
             {historicalWorkflows.map((run) => (
@@ -239,6 +235,8 @@ export function RequirementDetailPage() {
               </div>
             ))}
           </div>
+          {historyList.error ? <div role="alert">{historyList.error}<Button onClick={historyList.refresh}>重试历史</Button></div> : null}
+          <ListPagination page={historyList.page} total={historyList.total} pageSize={20} loading={historyList.loading} onPageChange={historyList.onPageChange} />
         </ContextPanel>
       ) : null}
 
@@ -256,10 +254,9 @@ export function RequirementDetailPage() {
         </div>
       </ContextPanel>
 
-      <RequirementSchedulingPanel requirement={requirement} onChanged={() => fetchRequirement()} />
+      <RequirementSchedulingPanel requirement={requirement} onChanged={() => fetchRequirement({ silent: true })} />
       <RequirementEditDialog
         requirement={requirement}
-        versions={editVersions}
         open={editOpen}
         onOpenChange={setEditOpen}
         onSaved={(updated) => {

@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useRememberedSearchFilters } from '../../utils/list-filter-storage';
 import { api } from '../../api';
+import { useQualityPage } from './use-quality-page';
 import { useScopedProjectId } from '../../project-scope-context';
 import { EmptyState } from '../../components/EmptyState';
 import { ProjectRequiredState } from '../../components/ProjectRequiredState';
@@ -20,8 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
-import { useToast } from '../../components/ui/toast';
-import type { TestRequest, TestRun } from '../../types';
 import {
   LoadingState,
   Pagination,
@@ -34,40 +32,19 @@ import {
 const ALL = '__all__';
 const PAGE_SIZE = 10;
 
-interface RunRow {
-  request: TestRequest;
-  run: TestRun;
-}
-
 export function QualityRunsPage() {
-  const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   useRememberedSearchFilters('quality-runs', ['runType', 'status', 'q']);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [requests, setRequests] = useState<TestRequest[]>([]);
-
   const projectId = useScopedProjectId();
   const runType = searchParams.get('runType') ?? ALL;
   const status = searchParams.get('status') ?? ALL;
   const keyword = searchParams.get('q') ?? '';
   const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
 
-  async function refresh(silent = false) {
-    silent ? setRefreshing(true) : setLoading(true);
-    try {
-      setRequests(await api.getTestRequests());
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载执行记录失败');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }
-
-  useEffect(() => {
-    void refresh();
-  }, []);
+  const result = useQualityPage(JSON.stringify({ projectId, page, status, runType, keyword }), () =>
+    api.getTestRunsPage({ projectId, page, pageSize: PAGE_SIZE, status: status === ALL ? undefined : status, runType: runType === ALL ? undefined : runType, q: keyword.trim() || undefined }), Boolean(projectId), nextPage => updateQuery({ page: String(nextPage) }));
+  const { loading, refreshing, total, summary = {} } = result;
+  const refresh = (silent = false) => result.refresh({ silent });
 
   function updateQuery(patch: Record<string, string | null>) {
     const next = new URLSearchParams(searchParams);
@@ -78,31 +55,12 @@ export function QualityRunsPage() {
     setSearchParams(next, { replace: true });
   }
 
-  const rows = useMemo<RunRow[]>(
-    () => requests.flatMap((request) => (request.testPlan?.runs ?? []).map((run) => ({ request, run }))),
-    [requests],
-  );
-  const filteredRows = useMemo(() => {
-    const normalizedKeyword = keyword.trim().toLowerCase();
-    return rows.filter(({ request, run }) => {
-      if (!projectId || request.projectId !== projectId) return false;
-      if (runType !== ALL && run.runType !== runType) return false;
-      if (status !== ALL && run.status !== status) return false;
-      if (!normalizedKeyword) return true;
-      return [run.name, request.title, request.project.name, request.projectVersion.name, run.sourceBug?.title ?? '']
-        .join(' ')
-        .toLowerCase()
-        .includes(normalizedKeyword);
-    });
-  }, [keyword, projectId, rows, runType, status]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const pageRows = filteredRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-  const projectRows = rows.filter((item) => projectId && item.request.projectId === projectId);
-  const activeCount = projectRows.filter((item) => item.run.status === 'ACTIVE').length;
-  const regressionCount = projectRows.filter((item) => item.run.runType === 'REGRESSION').length;
-  const exceptionCount = projectRows.filter((item) => ['FAILED', 'BLOCKED'].includes(item.run.status)).length;
+  const rows = result.items;
+  const pageRows = rows.map(run => ({ run, request: run.testRequest }));
+  const currentPage = page;
+  const activeCount = summary.activeCount ?? 0;
+  const regressionCount = summary.regressionCount ?? 0;
+  const exceptionCount = summary.exceptionCount ?? 0;
 
   return (
     <>
@@ -114,7 +72,7 @@ export function QualityRunsPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="执行轮次" value={projectRows.length} />
+        <MetricCard label="执行轮次" value={summary.total ?? total} />
         <MetricCard label="执行中" value={activeCount} />
         <MetricCard label="Bug 回归" value={regressionCount} />
         <MetricCard label="异常结论" value={exceptionCount} />
@@ -126,7 +84,7 @@ export function QualityRunsPage() {
             <SectionHeader
               eyebrow="Test Runs"
               title="执行历史"
-              description={`当前显示 ${filteredRows.length} 个轮次`}
+              description={`当前显示 ${total} 个轮次`}
             />
           </CardHeader>
           <CardContent className="p-5 pt-0">
@@ -165,6 +123,7 @@ export function QualityRunsPage() {
               )}
             />
 
+            {result.error ? <p role="alert">{result.error}<button onClick={() => void refresh()}>重试</button></p> : null}
             {!projectId ? <ProjectRequiredState /> : loading ? <LoadingState /> : pageRows.length ? (
               <div className="space-y-3">
                 {pageRows.map(({ request, run }) => (
@@ -192,7 +151,7 @@ export function QualityRunsPage() {
                 ))}
                 <Pagination
                   page={currentPage}
-                  total={filteredRows.length}
+                  total={total}
                   pageSize={PAGE_SIZE}
                   onChange={(nextPage) => updateQuery({ page: String(nextPage) })}
                 />

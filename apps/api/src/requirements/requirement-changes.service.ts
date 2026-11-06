@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { RequirementChangePrototypeService } from './requirement-change-prototype.service';
@@ -59,6 +60,30 @@ export class RequirementChangesService {
     const row = await this.prisma.requirement.findFirst({ where: { id, project: { workspace: { organizationId: author.organization.id } } } });
     if (!row) throw new NotFoundException('需求不存在或无权访问。');
     return row;
+  }
+
+  async listPage(requirementId: string, workflowRunId: string | undefined, author: ChangeAuthor | undefined, query: PaginationQuery = {}) {
+    const paging = parsePagination(query);
+    const requirement = author ? await this.ownedRequirement(requirementId, author) : await this.ensureRequirement(requirementId);
+    await this.recoverExpiredStarts(requirementId);
+    const where = { requirementId };
+    const [changes, total, maximum, preferred] = await Promise.all([
+      this.prisma.requirementChange.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ revision: 'desc' }, { id: 'desc' }], include: changeInclude }),
+      this.prisma.requirementChange.count({ where }),
+      this.prisma.requirementChange.aggregate({ where, _max: { revision: true } }),
+      this.prisma.workflowRun.findFirst({ where: { requirementId, ...(workflowRunId ? { id: workflowRunId } : {}) }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { aiProvider: true, currentStage: true } }),
+    ]);
+    const revision = Math.max(requirement.revision, maximum._max.revision ?? 0);
+    const base = preferred ? null : await this.prisma.prototypeImport.findUnique({ where: { requirementId }, select: { aiProvider: true } });
+    const selectedAi = preferred?.aiProvider ?? base?.aiProvider;
+    const aiProvider = selectedAi === 'codex' || selectedAi === 'cursor' ? selectedAi : undefined;
+    let contextRevision: number | undefined;
+    if (workflowRunId) {
+      if (!preferred) throw new NotFoundException('关联工作流不存在。');
+      const consumed = await this.prisma.stageExecution.findFirst({ where: { workflowRunId, ...(preferred.currentStage ? { stage: preferred.currentStage } : {}) }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
+      contextRevision = consumed?.status === 'PENDING' ? 0 : readRequirementRevision(consumed?.input);
+    }
+    return { ...pageResult(changes.map((row) => this.response(row)), total, paging), revision, aiProvider, ...(contextRevision !== undefined ? { contextRevision, hasPendingChanges: contextRevision < revision } : {}) };
   }
 
   async list(requirementId: string, workflowRunId?: string, author?: ChangeAuthor) {

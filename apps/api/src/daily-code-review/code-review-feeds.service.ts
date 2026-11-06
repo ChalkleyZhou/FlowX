@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import {
   BadRequestException,
   ConflictException,
@@ -22,6 +23,20 @@ type CodeReviewFeedRecord = Prisma.CodeReviewFeedGetPayload<{ include: typeof fe
 @Injectable()
 export class CodeReviewFeedsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async listFeedsPage(projectId: string, query: PaginationQuery & {q?:string} = {}) {
+    const paging = parsePagination(query);
+    await this.ensureProject(projectId);
+    const where = {projectId,...(query.q?.trim() ? {name:{contains:query.q.trim()}} : {})};
+    const feeds = await this.prisma.codeReviewFeed.findMany({
+      skip: paging.skip, take: paging.take,
+      where,
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      include: feedInclude,
+    });
+    const total = await this.prisma.codeReviewFeed.count({ where });
+    return pageResult(feeds.map((feed) => this.serialize(feed)), total, paging);
+  }
 
   async listFeeds(projectId: string) {
     await this.ensureProject(projectId);

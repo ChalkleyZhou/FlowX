@@ -5,13 +5,15 @@ import { api } from '../api';
 import { DevelopmentProgressRow } from '../components/DevelopmentProgressRow';
 import { DevelopmentOverview } from '../components/DevelopmentOverview';
 import { DevelopmentProgressDetail } from '../components/DevelopmentProgressDetail';
+import { ListPagination } from '../components/ListPagination';
+import { PagedSelect } from '../components/PagedSelect';
 import { EmptyState } from '../components/EmptyState';
 import { ProjectRequiredState } from '../components/ProjectRequiredState';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import type { ExecutionSessionDetail, ExecutionSessionStatus, ExecutionSessionView, OrganizationMember, SourceTool } from '../types';
+import type { ExecutionSessionDetail, ExecutionSessionStatus, ExecutionSessionView, SourceTool } from '../types';
 import { withCurrentProject } from '../project-scope';
 import { useAdoptProject, useScopedProjectId } from '../project-scope-context';
 import { useRememberedSearchFilters } from '../utils/list-filter-storage';
@@ -33,8 +35,6 @@ function Filter({ label, value, allLabel, items, onChange }: {
 export function ExecutionSessionsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   useRememberedSearchFilters('execution-sessions', ['status', 'sourceTool', 'claimedByUserId', 'search', 'view']);
-  const [members, setMembers] = useState<OrganizationMember[]>([]);
-  const [optionsError, setOptionsError] = useState(false);
   const [rows, setRows] = useState<ExecutionSessionDetail[]>([]);
   const [counts, setCounts] = useState<Record<ExecutionSessionView, number> | null>(null);
   const [pagination, setPagination] = useState({ total: 0, page: 1, totalPages: 1 });
@@ -54,18 +54,6 @@ export function ExecutionSessionsPage() {
   const query = searchParams.toString();
 
   useEffect(() => setSearchDraft(search), [search]);
-  useEffect(() => {
-    let active = true;
-    void api.getOrganizationMembers().then((memberList) => {
-      if (!active) return;
-      setMembers(memberList);
-      setOptionsError(false);
-    }).catch(() => {
-      if (active) setOptionsError(true);
-    });
-    return () => { active = false; };
-  }, [revision]);
-
   useEffect(() => {
     let active = true;
     let inFlight = false;
@@ -144,7 +132,8 @@ export function ExecutionSessionsPage() {
     <DevelopmentOverview counts={counts} view={view} onChange={(value) => updateFilter('view', value)} />
     <div className="space-y-3 rounded-md border border-border bg-card p-4">
       <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap">
-        <Filter label="按执行人筛选" value={claimedByUserId} allLabel="全部执行人" items={members.map((member) => [member.id, member.displayName])} onChange={(value) => updateFilter('claimedByUserId', value)} />
+        <PagedSelect label="按执行人筛选" value={claimedByUserId === 'all' ? '' : claimedByUserId} onValueChange={value => updateFilter('claimedByUserId',value)} placeholder="全部执行人" allowClear emptyLabel="全部执行人"
+          loadPage={async query => { const result = await api.getOrganizationMembers(query);return {...result,items:result.items.map(item => ({id:item.id,name:item.displayName}))};}} />
         <Filter label="按工具筛选" value={sourceTool} allLabel="全部工具" items={tools} onChange={(value) => updateFilter('sourceTool', value)} />
         <Filter label="按运行状态筛选" value={status} allLabel="全部状态" items={statuses} onChange={(value) => updateFilter('status', value)} />
       </div>
@@ -152,7 +141,6 @@ export function ExecutionSessionsPage() {
         <Input className="min-w-40 flex-1" aria-label="搜索需求名称" placeholder="搜索需求名称" value={searchDraft} maxLength={200} onChange={(event) => setSearchDraft(event.target.value)} />
         <Button type="submit" variant="outline">搜索</Button><Button type="button" variant="ghost" onClick={() => { setSearchDraft(''); const next = new URLSearchParams(); if (projectId) next.set('projectId', projectId); setSearchParams(next); }}>清除筛选</Button>
       </form>
-      {optionsError ? <p className="text-sm text-muted-foreground">部分筛选选项暂时无法读取，可点击刷新重试。</p> : null}
     </div>
     {!projectId ? <ProjectRequiredState /> : null}
     {projectId && error ? <div className="flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger" role="alert"><span>{error}</span><Button variant="outline" size="sm" onClick={() => setRevision((value) => value + 1)}>重试</Button></div> : null}
@@ -173,7 +161,12 @@ export function ExecutionSessionsPage() {
 
 export function ExecutionSessionDetailPage() {
   const { sessionId = '' } = useParams();
-  const [searchParams] = useSearchParams();
+  const [searchParams,setSearchParams] = useSearchParams();
+  const evidencePage = Math.max(1,Number(searchParams.get('evidencePage')) || 1);
+  const eventPage = Math.max(1,Number(searchParams.get('eventPage')) || 1);
+  const [evidenceMeta,setEvidenceMeta] = useState({page:1,pageSize:20,total:0});
+  const [eventMeta,setEventMeta] = useState({page:1,pageSize:20,total:0});
+  const changeChildPage = (key:string,page:number) => setSearchParams(current => {const next = new URLSearchParams(current);next.set(key,String(page));return next;});
   const [session, setSession] = useState<ExecutionSessionDetail | null>(null);
   const [evidence, setEvidence] = useState<NonNullable<ExecutionSessionDetail['evidence']>>([]);
   const [events, setEvents] = useState<NonNullable<ExecutionSessionDetail['syncEvents']>>([]);
@@ -203,11 +196,11 @@ export function ExecutionSessionDetailPage() {
       terminal.current = ['COMPLETED', 'FAILED', 'CANCELLED'].includes(next.status);
       setError(null);
       const [evidenceResult, eventsResult] = await Promise.allSettled([
-        api.listExecutionSessionEvidence(sessionId), api.listExecutionSessionEvents(sessionId, { take: 10, view: 'progress' }),
+        api.listExecutionSessionEvidence(sessionId,{page:evidencePage,pageSize:20}), api.listExecutionSessionEvents(sessionId, {page:eventPage,pageSize:20,view:'progress'}),
       ]);
       if (current !== request.current) return;
-      if (evidenceResult.status === 'fulfilled') setEvidence(evidenceResult.value);
-      if (eventsResult.status === 'fulfilled') setEvents(eventsResult.value.items);
+      if (evidenceResult.status === 'fulfilled') {setEvidence(evidenceResult.value.items);setEvidenceMeta(evidenceResult.value);if(evidencePage > evidenceResult.value.totalPages) changeChildPage('evidencePage',evidenceResult.value.totalPages);}
+      if (eventsResult.status === 'fulfilled') {setEvents(eventsResult.value.items);setEventMeta(eventsResult.value);if(eventPage > eventsResult.value.totalPages) changeChildPage('eventPage',eventsResult.value.totalPages);}
       setResultsUnavailable(evidenceResult.status === 'rejected');
       setEventsUnavailable(eventsResult.status === 'rejected');
       if (evidenceResult.status === 'rejected' || eventsResult.status === 'rejected') setError('当前进展已更新，但部分开发结果或进展记录暂时无法读取。');
@@ -219,11 +212,13 @@ export function ExecutionSessionDetailPage() {
   };
   useEffect(() => {
     terminal.current = false;
-    setSession(null); setEvidence([]); setEvents([]); setResultsUnavailable(false); setEventsUnavailable(false);
+    setResultsUnavailable(false); setEventsUnavailable(false);
     void refresh();
     const timer = window.setInterval(() => { if (!terminal.current) void refresh({ silent: true }); }, 30_000);
     return () => { request.current += 1; inFlight.current = false; window.clearInterval(timer); };
-  }, [sessionId]);
+  }, [sessionId,evidencePage,eventPage]);
+
+  useEffect(() => {setSession(null);setEvidence([]);setEvents([]);},[sessionId]);
 
   if (loading && !session) return <p role="status" className="text-sm text-muted-foreground">正在读取运行详情…</p>;
   if (error && !session) return <div className="space-y-4"><Button asChild variant="outline"><Link to={listHref}><ArrowLeft />返回看板</Link></Button><p role="alert" className="text-danger">{error}</p><Button variant="outline" onClick={() => void refresh()}>重试</Button></div>;
@@ -232,5 +227,7 @@ export function ExecutionSessionDetailPage() {
     <PageHeader eyebrow="开发进展详情" title={session.workflowRun?.requirement.title ?? '开发进展'} description="查看当前推进情况、最近进展和本地回传的开发结果。" actions={<div className="flex flex-wrap gap-2"><Button variant="outline" disabled={loading} onClick={() => void refresh()}><RefreshCw />刷新</Button><Button asChild variant="outline"><Link to={listHref}><ArrowLeft />返回看板</Link></Button>{session.workflowRunId ? <Button asChild variant="outline"><Link to={`/workflow-runs/${session.workflowRunId}`}>打开工作流<ExternalLink /></Link></Button> : null}</div>} />
     {error ? <p role="alert" className="text-sm text-danger">{error}</p> : null}
     <DevelopmentProgressDetail session={session} evidence={evidence} events={events} loading={loading} resultsUnavailable={resultsUnavailable} eventsUnavailable={eventsUnavailable} />
+    <ListPagination {...eventMeta} loading={loading} label="进展记录分页" onPageChange={page => changeChildPage('eventPage',page)} />
+    <ListPagination {...evidenceMeta} loading={loading} label="开发结果分页" onPageChange={page => changeChildPage('evidencePage',page)} />
   </div>;
 }

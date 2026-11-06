@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api';
+import { ListPagination } from '../../components/ListPagination';
+import { PagedSelect } from '../../components/PagedSelect';
+import { useQualityPage } from './use-quality-page';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import {
@@ -11,7 +14,7 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog';
 import { useToast } from '../../components/ui/toast';
-import type { OrganizationMember, TestRequest, TestRun } from '../../types';
+import type { TestRequest, TestRun } from '../../types';
 
 const targets = [
   { key: 'web', name: 'Web' },
@@ -25,6 +28,7 @@ export function QualityCreateRunDialog({
   onOpenChange,
   request,
   sourceBugId,
+  sourceRunId,
   initialCases,
   onCreated,
 }: {
@@ -32,6 +36,7 @@ export function QualityCreateRunDialog({
   onOpenChange: (open: boolean) => void;
   request: TestRequest;
   sourceBugId?: string;
+  sourceRunId?: string;
   initialCases?: CaseMapping[];
   onCreated: (run: TestRun) => void | Promise<void>;
 }) {
@@ -40,19 +45,23 @@ export function QualityCreateRunDialog({
   const [mappings, setMappings] = useState<Record<string, string[]>>({});
   const [executionMode, setExecutionMode] = useState<'LOCAL' | 'MANUAL'>('LOCAL');
   const [assigneeId, setAssigneeId] = useState('');
-  const [members, setMembers] = useState<OrganizationMember[]>([]);
-  const [membersLoading, setMembersLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const snapshots = (request.testPlan?.snapshots ?? []).filter((snapshot) => snapshot.kind !== 'SMOKE');
+  const [page, setPage] = useState(1);
+  const [query, setQuery] = useState('');
+  const snapshotPage = useQualityPage(`${request.id}:${page}:${query}`, () => api.getTestRequestSnapshots(request.id, { page, pageSize: 20, q: query || undefined, kind: 'FUNCTIONAL' }), open && !sourceRunId, setPage);
+  const regressionPage = useQualityPage(`${sourceRunId}:${sourceBugId}:${page}:${query}`, () => api.getTestRunCases(sourceRunId!, { page, pageSize: 20, q: query || undefined, bugId: sourceBugId }), open && Boolean(sourceRunId), setPage);
+  const snapshots = sourceRunId
+    ? [...new Map(regressionPage.items.map(row => [row.snapshot.id, row.snapshot])).values()]
+    : snapshotPage.items;
+  const candidates = sourceRunId ? regressionPage : snapshotPage;
   useEffect(() => {
     if (!open) return;
     setName(sourceBugId ? '缺陷修复回归' : '功能初测');
     setExecutionMode('LOCAL');
     setAssigneeId('');
-    const initial =
-      initialCases ??
-      snapshots.map((snapshot) => ({ snapshotId: snapshot.id, targetKeys: snapshot.targetKeys ?? [] }));
+    setPage(1); setQuery('');
+    const initial = initialCases ?? [];
     const next: Record<string, string[]> = {};
     for (const mapping of initial)
       next[mapping.snapshotId] = [...new Set([...(next[mapping.snapshotId] ?? []), ...mapping.targetKeys])];
@@ -60,16 +69,6 @@ export function QualityCreateRunDialog({
     setError('');
   }, [open, sourceBugId, request.id]);
 
-  useEffect(() => {
-    if (!open || executionMode !== 'MANUAL') return;
-    let active = true;
-    setMembersLoading(true);
-    void api.getOrganizationMembers()
-      .then((items) => { if (active) setMembers(items.filter((item) => item.status !== 'DISABLED')); })
-      .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : '加载执行人失败'); })
-      .finally(() => { if (active) setMembersLoading(false); });
-    return () => { active = false; };
-  }, [executionMode, open]);
   const cases = Object.entries(mappings)
     .filter(([, keys]) => keys.length)
     .map(([snapshotId, targetKeys]) => ({ snapshotId, targetKeys }));
@@ -121,7 +120,7 @@ export function QualityCreateRunDialog({
         <DialogHeader>
           <DialogTitle>{sourceBugId ? '创建独立回归轮次' : '创建功能测试轮次'}</DialogTitle>
           <DialogDescription>
-            明确本轮用例与适用端。
+            明确勾选本轮用例与适用端，跨页保留选择；未勾选的用例不会进入本轮。
             {sourceBugId
               ? '回归使用已完成修复交付的代码基线，原失败历史保留。'
               : '服务端使用冻结的研发交付代码基线，回传结果保存在新轮次中。'}
@@ -146,18 +145,10 @@ export function QualityCreateRunDialog({
         {executionMode === 'MANUAL' ? (
           <label className="grid gap-2 text-sm">
             执行人
-            <select
-              aria-label="执行人"
-              className="rounded-md border border-border bg-background px-3 py-2"
-              value={assigneeId}
-              onChange={(event) => setAssigneeId(event.target.value)}
-              disabled={membersLoading}
-            >
-              <option value="">{membersLoading ? '加载执行人...' : '选择执行人'}</option>
-              {members.map((member) => <option key={member.id} value={member.id}>{member.displayName}</option>)}
-            </select>
+            <PagedSelect label="执行人" value={assigneeId} onValueChange={setAssigneeId} loadPage={async query => { const result = await api.getOrganizationMembers({ ...query, status: 'ACTIVE' }); return { ...result, items: result.items.map(member => ({ id: member.id, name: member.displayName ?? member.account ?? member.id })) }; }} placeholder="选择执行人" />
           </label>
         ) : null}
+        <Input aria-label="搜索功能用例" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} placeholder="搜索功能用例" />
         <div className="max-h-[50vh] overflow-auto rounded border">
           <table className="w-full min-w-[580px] text-sm">
             <thead className="bg-muted">
@@ -200,7 +191,9 @@ export function QualityCreateRunDialog({
             </tbody>
           </table>
         </div>
-        {!snapshots.length ? (
+        {candidates.error ? <p role="alert">{candidates.error}<Button variant="outline" onClick={() => void candidates.refresh()}>重试候选用例</Button></p> : null}
+        <ListPagination page={page} total={candidates.total} pageSize={20} loading={candidates.refreshing} onPageChange={setPage} />
+        {candidates.hasLoaded && !candidates.error && !snapshots.length ? (
           <p className="text-sm text-muted-foreground">暂无功能用例快照，请先确认测试设计和提测范围。</p>
         ) : null}
         <p className="text-sm text-muted-foreground">

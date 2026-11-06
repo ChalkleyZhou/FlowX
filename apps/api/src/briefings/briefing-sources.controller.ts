@@ -21,8 +21,8 @@ export class BriefingSourcesController {
   constructor(private readonly briefingSourcesService: BriefingSourcesService) {}
 
   @Get()
-  list(@Query('workspaceId') workspaceId?: string) {
-    return this.briefingSourcesService.listSources(workspaceId);
+  list(@Query() query: import('../common/pagination').PaginationQuery & { workspaceId?: string } = {}) {
+    return this.briefingSourcesService.listSourcesPage(query.workspaceId, query);
   }
 
   @Get('repository-binding')

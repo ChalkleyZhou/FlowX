@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { effectiveRequirementDescription } from './requirement-change-context';
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
@@ -337,6 +338,20 @@ export class RequirementsService {
     return typeof archiveId === 'string' && /^[a-zA-Z0-9_-]{1,120}$/.test(archiveId) ? archiveId : null;
   }
 
+  async findPage(query: PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; planningStatus?: string; priority?: string; status?: string; q?: string } = {}) {
+    const paging = parsePagination(query);
+    const scope = { ...(query.workspaceId ? { project: { workspaceId: query.workspaceId } } : {}), ...(query.projectId ? { projectId: query.projectId } : {}) };
+    const where = { ...scope, ...(query.versionId ? { versionId: query.versionId === '__unassigned__' ? null : query.versionId } : {}), ...(query.planningStatus ? { planningStatus: query.planningStatus } : {}), ...(query.priority ? { priority: query.priority } : {}), ...(query.status ? { status: query.status } : {}), ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }] } : {}) };
+    const [rows, total, requirementCount, workspaceCount, projectCount] = await Promise.all([
+      this.prisma.requirement.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { version: { select: { id: true, name: true } }, project: { include: { workspace: true } }, workspace: true, prototypeImport: { select: { id: true, status: true } }, workflowRuns: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1 }, changes: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1, select: { createdAt: true, content: true } }, _count: { select: { workflowRuns: true, assignments: true, requirementRepositories: true } } } }),
+      this.prisma.requirement.count({ where }), this.prisma.requirement.count({ where: scope }),
+      this.prisma.workspace.count({ where: { projects: { some: { requirements: { some: scope } } } } }),
+      this.prisma.project.count({ where: { requirements: { some: scope } } }),
+    ]);
+    const items = rows.map(({ changes, ...row }) => ({ ...row, latestChangeAt: changes[0]?.createdAt ?? null, latestChangeContent: changes[0]?.content ?? null }));
+    return { ...pageResult(items, total, paging), summary: { requirementCount, visibleCount: total, workspaceCount, projectCount } };
+  }
+
   async findAll() {
     const rows = await this.prisma.requirement.findMany({
       orderBy: {
@@ -398,6 +413,44 @@ export class RequirementsService {
         latestChangeContent: changes[0]?.content ?? null,
       };
     });
+  }
+
+  async listRepositoriesPage(requirementId: string, query: PaginationQuery & { q?: string } = {}) {
+    const paging = parsePagination(query);
+    await this.prisma.requirement.findUniqueOrThrow({ where: { id: requirementId }, select: { id: true } });
+    const where = { requirementId, ...(query.q?.trim() ? { repository: { name: { contains: query.q.trim() } } } : {}) };
+    const [items, total] = await Promise.all([this.prisma.requirementRepository.findMany({ where, skip: paging.skip, take: paging.take, include: { repository: true }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }), this.prisma.requirementRepository.count({ where })]);
+    return pageResult(items.map((row) => row.repository), total, paging);
+  }
+
+  async listIdeationSessionsPage(requirementId: string, query: PaginationQuery = {}) {
+    const paging = parsePagination(query);
+    await this.prisma.requirement.findUniqueOrThrow({ where: { id: requirementId }, select: { id: true } });
+    const where = { requirementId };
+    const [items, total] = await Promise.all([this.prisma.ideationSession.findMany({ where, skip: paging.skip, take: paging.take,  orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }), this.prisma.ideationSession.count({ where })]);
+    return pageResult(items, total, paging);
+  }
+
+  async listIdeationArtifactsPage(requirementId: string, query: PaginationQuery = {}) {
+    const paging = parsePagination(query);
+    await this.prisma.requirement.findUniqueOrThrow({ where: { id: requirementId }, select: { id: true } });
+    const where = { requirementId };
+    const [items, total] = await Promise.all([this.prisma.ideationArtifact.findMany({ where, skip: paging.skip, take: paging.take,  orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }), this.prisma.ideationArtifact.count({ where })]);
+    return pageResult(items, total, paging);
+  }
+
+  async findDetail(id: string) {
+    const row = await this.prisma.requirement.findUniqueOrThrow({ where: { id }, include: {
+      project: { include: { workspace: true } }, workspace: true, version: { select: { id: true, name: true } }, prototypeImport: { select: { id: true, status: true } },
+      changes: { take: 1, orderBy: [{ revision: 'desc' }, { id: 'desc' }] },
+      workflowRuns: { take: 1, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] },
+      assignments: { take: 20, include: { user: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] },
+      requirementRepositories: { take: 20, include: { repository: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+      ideationSessions: { take: 20, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] },
+      ideationArtifacts: { take: 20, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] },
+      _count: { select: { changes: true, workflowRuns: true, assignments: true, requirementRepositories: true, ideationSessions: true, ideationArtifacts: true } },
+    } });
+    return this.enrichRequirement(row);
   }
 
   async findOne(id: string) {
@@ -967,6 +1020,15 @@ export class RequirementsService {
     });
 
     return this.findOne(requirementId);
+  }
+
+  async getIdeationSessionEventsPage(requirementId: string, sessionId: string, query: PaginationQuery = {}) {
+    const paging = parsePagination(query);
+    const session = await this.prisma.ideationSession.findFirst({ where: { id: sessionId, requirementId }, select: { id: true } });
+    if (!session) throw new NotFoundException('Ideation session not found for this requirement.');
+    const where = { sessionId };
+    const [items, total] = await Promise.all([this.prisma.ideationSessionEvent.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }), this.prisma.ideationSessionEvent.count({ where })]);
+    return pageResult(items, total, paging);
   }
 
   async getIdeationSessionEvents(requirementId: string, sessionId: string) {

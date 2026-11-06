@@ -11,6 +11,24 @@ export function WorkflowCodeDeliveryPanel(props: Props) {
 
 function CodeDeliveryContent({ workflowRunId, workflowStatus, onChanged }: Props) {
   const [data, setData] = useState<WorkflowCodeDelivery | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [history, setHistory] = useState<Awaited<ReturnType<typeof api.getCodeDeliveryHistory>> | null>(null);
+  const [historyError, setHistoryError] = useState('');
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
+  useEffect(() => {
+    if (!historyOpen) return;
+    let cancelled = false;
+    setHistoryLoading(true); setHistoryError('');
+    void api.getCodeDeliveryHistory(workflowRunId, { page: historyPage, pageSize: 20 }).then(result => {
+      if (cancelled) return;
+      if (result.page > result.totalPages) { setHistoryPage(result.totalPages); return; }
+      setHistory(result);
+    }).catch(reason => { if (!cancelled) setHistoryError(reason instanceof Error ? reason.message : '历史交付加载失败'); })
+      .finally(() => { if (!cancelled) setHistoryLoading(false); });
+    return () => { cancelled = true; };
+  }, [workflowRunId, historyPage, historyOpen, historyRefresh, workflowStatus]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -130,10 +148,12 @@ function CodeDeliveryContent({ workflowRunId, workflowStatus, onChanged }: Props
         </section>;
       })}
       {canWrite ? <div className="space-y-3"><p className="text-sm text-muted-foreground">每个仓库选择一条最终交付分支。需要更新版本时，由提交人重新提交同一分支；平台不会合并分支，分支核验也不代表测试或联调通过。</p><Button disabled={!selected.length || busy} onClick={() => { setConfirmError(null); setConfirmRows(selected); }}>确认本次交付</Button></div> : null}
-      {data?.history?.length ? <details className="rounded-md border border-border p-4 text-sm">
+      {(data?.historyCount ?? data?.history?.length ?? 0) > 0 ? <details onToggle={event => setHistoryOpen(event.currentTarget.open)} className="rounded-md border border-border p-4 text-sm">
         <summary className="cursor-pointer font-medium">历史分支提交</summary>
         <p className="mt-3 text-muted-foreground">以下是之前开发尝试的记录，仅供追溯。本次交付需重新提交并确认。</p>
-        {data.history.map(attempt => <section key={attempt.stageExecutionId} className="mt-3 space-y-2 border-t border-border pt-3">
+        {historyError ? <div role="alert">{historyError}<Button onClick={() => setHistoryRefresh(n => n + 1)}>重试历史交付</Button></div> : null}
+        <ListPagination page={historyPage} total={history?.total ?? data?.historyCount ?? 0} pageSize={20} loading={historyLoading} onPageChange={setHistoryPage} />
+        {history?.items.map(attempt => <section key={attempt.stageExecutionId} className="mt-3 space-y-2 border-t border-border pt-3">
           <h4 className="font-medium">第 {attempt.attempt} 次开发尝试</h4>
           {attempt.submissions.map(row => <p key={row.id} className="break-all">{repositoryName(row.workflowRepositoryId)} · {row.branch}<br /><code className="text-xs">{row.headSha}</code><br /><span className="text-xs text-muted-foreground">{row.submittedBy?.displayName ?? '未记录提交人'} · {new Date(row.updatedAt).toLocaleString('zh-CN')}</span></p>)}
         </section>)}
@@ -158,3 +178,4 @@ import { Button } from './ui/button';
 import { Card, CardContent, CardHeader } from './ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
+import { ListPagination } from './ListPagination';

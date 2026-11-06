@@ -1,6 +1,7 @@
 import { useEffect, useState, type ChangeEvent } from 'react';
 import { Download } from 'lucide-react';
 import { api } from '../../api';
+import { PagedSelect } from '../../components/PagedSelect';
 import { Button } from '../../components/ui/button';
 import {
   Dialog,
@@ -34,12 +35,16 @@ export function QualityCaseImportDialog({
   open,
   onOpenChange,
   libraries,
+  workspaceId,
+  projectId,
   defaultLibraryId,
   onImported,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   libraries: TestCaseLibrary[];
+  workspaceId: string;
+  projectId?: string;
   defaultLibraryId?: string;
   onImported: () => Promise<void>;
 }) {
@@ -53,7 +58,7 @@ export function QualityCaseImportDialog({
 
   useEffect(() => {
     if (!open) return;
-    const initialLibraryId = libraries.some((item) => item.id === defaultLibraryId)
+    const initialLibraryId = Boolean(defaultLibraryId)
       ? defaultLibraryId!
       : libraries[0]?.id ?? '';
     setLibraryId(initialLibraryId);
@@ -117,14 +122,7 @@ export function QualityCaseImportDialog({
 
         <div className="grid gap-5">
           <Field label="目标用例库">
-            <Select value={libraryId} onValueChange={setLibraryId} disabled={importing}>
-              <SelectTrigger aria-label="目标用例库"><SelectValue placeholder="选择用例库" /></SelectTrigger>
-              <SelectContent>
-                {libraries.map((library) => (
-                  <SelectItem key={library.id} value={library.id}>{library.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <PagedSelect label="用例库" value={libraryId} selectedLabel={libraries.find(item => item.id === libraryId)?.name} onValueChange={setLibraryId} loadPage={query => api.getTestCaseLibraries({ ...query, workspaceId, projectId })} placeholder="选择用例库" />
           </Field>
 
           <Field label="CSV / XLSX 文件">

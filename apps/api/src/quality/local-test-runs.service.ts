@@ -1,3 +1,5 @@
+import { runBrowseInclude, runSummaries } from './test-run-browse';
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { QualityExecutionReport, QualityExecutionControl } from '@flowx-ai/protocol';
@@ -19,14 +21,18 @@ export class LocalTestRunsService extends LocalSmokeService {
     return run.executionMode === 'LOCAL' && ['INITIAL', 'REGRESSION'].includes(run.runType);
   }
 
-  async listTasks(filters: { projectId?: string; projectVersionId?: string; testRequestId?: string }) {
-    return this.prisma.testRun.findMany({ where: {
-      executionMode: 'LOCAL', status: 'ACTIVE', testPlan: { testRequest: {
-        ...(filters.projectId ? { projectId: filters.projectId } : {}),
-        ...(filters.projectVersionId ? { projectVersionId: filters.projectVersionId } : {}),
-        ...(filters.testRequestId ? { id: filters.testRequestId } : {}),
-      } },
-    }, include: { testPlan: { include: { testRequest: { select: { id: true, title: true, projectId: true, projectVersionId: true } } } }, targets: true, cases: { include: { snapshot: true, result: true, activeLease: true } } }, orderBy: { createdAt: 'desc' } });
+  async listTasks(filters: PaginationQuery & { projectId?: string; projectVersionId?: string; testRequestId?: string; q?: string }) {
+    const paging = parsePagination(filters);
+    const where: Prisma.TestRunWhereInput = { executionMode: 'LOCAL', status: 'ACTIVE',
+      testPlan: { testRequest: { projectId: filters.projectId, projectVersionId: filters.projectVersionId, id: filters.testRequestId } },
+      ...(filters.q?.trim() ? { name: { contains: filters.q.trim() } } : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.testRun.findMany({ where, include: runBrowseInclude, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: paging.skip, take: paging.take }),
+      this.prisma.testRun.count({ where }),
+    ]);
+    const summaries = await runSummaries(this.prisma, items.map(run => run.id));
+    return pageResult(items.map(run => ({ ...run, testRequest: run.testPlan.testRequest, summary: summaries.get(run.id)! })), total, paging);
   }
 
   async getRun(id: string) {

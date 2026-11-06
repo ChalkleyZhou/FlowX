@@ -1,3 +1,6 @@
+import { useListPage } from '../hooks/use-list-page';
+import { ListPagination } from '../components/ListPagination';
+import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import type { Repository, Workspace } from '../types';
@@ -18,8 +21,6 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { formatRepositorySyncStatus } from '../utils/label-utils';
 
 export function WorkspacesPage() {
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [loading, setLoading] = useState(false);
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const [repositoryModalOpen, setRepositoryModalOpen] = useState(false);
   const [editRepositoryModalOpen, setEditRepositoryModalOpen] = useState(false);
@@ -43,60 +44,11 @@ export function WorkspacesPage() {
   const toast = useToast();
   const confirm = useConfirm();
 
-  const workspaceSummary = useMemo(() => {
-    const repositoryCount = workspaces.reduce((sum, workspace) => sum + workspace.repositories.length, 0);
-    const projectCount = workspaces.reduce((sum, workspace) => sum + (workspace._count?.projects ?? 0), 0);
-    const requirementCount = workspaces.reduce((sum, workspace) => sum + (workspace._count?.requirements ?? 0), 0);
-    return {
-      workspaceCount: workspaces.length,
-      repositoryCount,
-      projectCount,
-      requirementCount,
-    };
-  }, [workspaces]);
-
-  async function refresh(options?: { silent?: boolean }) {
-    if (!options?.silent) {
-      setLoading(true);
-    }
-    try {
-      setWorkspaces(await api.getWorkspaces());
-    } catch (error) {
-      if (!options?.silent) {
-        toast.error(error instanceof Error ? error.message : '加载工作区失败');
-      }
-    } finally {
-      if (!options?.silent) {
-        setLoading(false);
-      }
-    }
-  }
-
-  const hasPendingRepositorySync = useMemo(
-    () =>
-      workspaces.some((workspace) =>
-        workspace.repositories.some(
-          (repository) => repository.syncStatus === 'PENDING' || repository.syncStatus === 'SYNCING',
-        ),
-      ),
-    [workspaces],
-  );
-
-  useEffect(() => {
-    void refresh();
-  }, []);
-
-  useEffect(() => {
-    if (!hasPendingRepositorySync) {
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      void refresh({ silent: true });
-    }, 3000);
-
-    return () => window.clearInterval(timer);
-  }, [hasPendingRepositorySync]);
+  const list = useListPage(api.getWorkspaces);
+  const { items: workspaces, loading } = list;
+  const [refreshKey, setRefreshKey] = useState(0);
+  const workspaceSummary = { workspaceCount: list.total, repositoryCount: 0, projectCount: 0, requirementCount: 0, ...list.summary };
+  function refresh(_options?: { silent?: boolean }) { list.refresh(); setRefreshKey(n => n + 1); }
 
   async function createWorkspace(values: { name: string; description?: string }) {
     try {
@@ -447,7 +399,7 @@ export function WorkspacesPage() {
                     <div className="text-base font-semibold leading-6 text-foreground">{workspace.name}</div>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">{workspace.description || '未填写描述'}</p>
                     <div className="mt-2 flex flex-wrap gap-3">
-                      <Badge variant="warning">{workspace.repositories.length} 个代码库</Badge>
+                      <Badge variant="warning">{workspace._count?.repositories ?? 0} 个代码库</Badge>
                       <Badge variant="secondary">{workspace._count?.projects ?? 0} 个项目</Badge>
                       <Badge variant="default">{workspace._count?.requirements ?? 0} 条需求</Badge>
                     </div>
@@ -462,9 +414,8 @@ export function WorkspacesPage() {
                     添加代码库
                   </UiButton>
                 </div>
-                {workspace.repositories.length > 0 ? (
-                  <div className="mt-4 flex flex-col gap-3">
-                    {workspace.repositories.map((repository) => (
+                <WorkspaceRepositoryList workspaceId={workspace.id} refreshKey={refreshKey}>
+                  {(repository) => (
                       <RepositoryBranchCard
                         key={repository.id}
                         name={repository.name}
@@ -531,17 +482,34 @@ export function WorkspacesPage() {
                           </div>
                         }
                       />
-                    ))}
-                  </div>
-                ) : null}
+                  )}
+                </WorkspaceRepositoryList>
               </div>
             ))}
           </div>
         ) : (
           <EmptyState description="还没有创建工作区，先建立项目上下文再收录代码库。" />
         )}
+          {list.error ? <p role="alert">{list.error}<UiButton onClick={() => refresh()}>重试</UiButton></p> : null}
+          <ListPagination page={list.page} total={list.total} loading={loading} onPageChange={list.onPageChange} label="工作区列表分页" />
         </CardContent>
       </Card>
     </>
   );
+}
+
+function WorkspaceRepositoryList({ workspaceId, refreshKey, children }: { workspaceId: string; refreshKey: number; children: (repository: Repository) => ReactNode }) {
+  const list = useListPage(query => api.getWorkspaceRepositories(workspaceId, query), {}, { pageKey: `repositories-${workspaceId}` });
+  useEffect(() => { if (refreshKey > 0) list.refresh(); }, [refreshKey, list.refresh]);
+  const syncing = list.items.some(item => item.syncStatus === 'PENDING' || item.syncStatus === 'SYNCING');
+  useEffect(() => {
+    if (!syncing) return;
+    const timer = window.setInterval(list.refresh, 5000);
+    return () => window.clearInterval(timer);
+  }, [syncing, list.refresh]);
+  return <div className="mt-4 flex flex-col gap-3">
+    {list.items.map(item => <div key={item.id}>{children(item)}</div>)}
+    {list.error ? <p role="alert">{list.error}<UiButton onClick={list.refresh}>重试</UiButton></p> : null}
+    <ListPagination page={list.page} total={list.total} loading={list.loading} onPageChange={list.onPageChange} label="代码库列表分页" />
+  </div>;
 }

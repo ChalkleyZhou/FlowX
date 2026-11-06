@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { pageResult } from '../test-utils/page-result';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
@@ -15,6 +16,7 @@ vi.mock('../api', () => ({
     getYunxiaoUnmatchedRecipients: vi.fn(),
     clearYunxiaoUnmatchedRecipients: vi.fn(),
     getYunxiaoProjectMembers: vi.fn(),
+    getOrganizationMembers: vi.fn(),
     updateYunxiaoMemberMapping: vi.fn(),
     updateYunxiaoIntegration: vi.fn(),
   },
@@ -61,7 +63,7 @@ describe('YunxiaoIntegrationPage', () => {
       webhookPath: '/api/yunxiao-webhooks',
       yunxiaoOrganizationIdentifier: 'yunxiao-org-1',
     });
-    vi.mocked(api.getYunxiaoUnmatchedRecipients).mockResolvedValue([]);
+    vi.mocked(api.getYunxiaoUnmatchedRecipients).mockResolvedValue(pageResult([]));
     vi.mocked(api.clearYunxiaoUnmatchedRecipients).mockResolvedValue({ deletedCount: 1 });
     vi.mocked(api.updateYunxiaoMemberMapping).mockResolvedValue({});
   });
@@ -105,12 +107,7 @@ describe('YunxiaoIntegrationPage', () => {
         roleId: 'member',
         flowxUserId: null,
       }],
-      flowxUsers: [{
-        id: 'flowx-user-1',
-        displayName: '张三',
-        account: 'zhangsan',
-        email: null,
-      }],
+      identityScope:'organization',
     });
     await renderPage();
 
@@ -119,13 +116,20 @@ describe('YunxiaoIntegrationPage', () => {
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
       valueSetter?.call(projectInput, 'project-1');
       projectInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      const userInput = container.querySelector('[aria-label="云效用户 ID"]') as HTMLInputElement;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set?.call(userInput,'yunxiao-user-1');
+      userInput.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    await act(async () => {
       const button = Array.from(container.querySelectorAll('button'))
-        .find((item) => item.textContent?.includes('加载成员'));
+        .find((item) => item.textContent?.includes('查询成员'));
       button?.click();
       await Promise.resolve();
     });
 
-    expect(api.getYunxiaoProjectMembers).toHaveBeenCalledWith('project-1');
+    expect(api.getYunxiaoProjectMembers).toHaveBeenCalledWith('project-1','yunxiao-user-1');
     expect(container.textContent).toContain('云效张三');
     expect(container.textContent).toContain('yunxiao-user-1');
     expect(container.textContent).toContain('aliyun-account-1');
@@ -133,7 +137,7 @@ describe('YunxiaoIntegrationPage', () => {
   });
 
   it('管理员可以确认清空未匹配人员记录', async () => {
-    vi.mocked(api.getYunxiaoUnmatchedRecipients).mockResolvedValue([{
+    vi.mocked(api.getYunxiaoUnmatchedRecipients).mockResolvedValue(pageResult([{
       id: 'recipient-1',
       eventId: 'event-1',
       workItemId: 'work-item-1',
@@ -146,7 +150,7 @@ describe('YunxiaoIntegrationPage', () => {
       dingTalkId: null,
       firstSeenAt: '2026-09-03T08:00:00.000Z',
       lastSeenAt: '2026-09-03T08:00:00.000Z',
-    }]);
+    }]));
     await renderPage();
 
     const clearButton = Array.from(container.querySelectorAll('button'))
@@ -161,6 +165,7 @@ describe('YunxiaoIntegrationPage', () => {
     const confirmButton = Array.from(document.body.querySelectorAll('button'))
       .filter((item) => item.textContent === '清空记录')
       .at(-1);
+    vi.mocked(api.getYunxiaoUnmatchedRecipients).mockResolvedValue(pageResult([]));
     await act(async () => {
       confirmButton?.click();
       await Promise.resolve();

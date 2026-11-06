@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useListPage } from '../hooks/use-list-page';
+import { ListPagination } from '../components/ListPagination';
 import { api } from '../api';
 import { withCurrentProject } from '../project-scope';
 import { useAdoptProject, useProjectScopeOptional } from '../project-scope-context';
@@ -16,6 +18,7 @@ import type { Briefing } from '../types';
 
 export function BriefingDetailPage() {
   const { briefingId } = useParams();
+  const logPage = useListPage(query => api.getBriefingDeliveryLogs(briefingId!,query), {q:briefingId}, {enabled:Boolean(briefingId),pageKey:'deliveryPage'});
   const scope = useProjectScopeOptional();
   const [briefing, setBriefing] = useState<Briefing | null>(null);
   useAdoptProject(briefing?.projectId);
@@ -66,6 +69,7 @@ export function BriefingDetailPage() {
     try {
       await api.sendBriefing(briefingId);
       await refresh();
+      logPage.refresh();
       toast.success('简报已重新发送');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '重新发送失败');
@@ -86,7 +90,7 @@ export function BriefingDetailPage() {
     return <p className="text-sm text-muted-foreground">简报不存在或无法加载。</p>;
   }
 
-  const logs = briefing.deliveryLogs ?? [];
+  const logs = logPage.items;
   const isGenerating = briefing.status === 'GENERATING';
 
   return (
@@ -176,6 +180,8 @@ export function BriefingDetailPage() {
           ) : (
             <p className="text-sm text-muted-foreground">暂无投递记录。</p>
           )}
+          {logPage.error ? <p role="alert">{logPage.error}</p> : null}
+          <ListPagination {...logPage} label="投递记录分页" />
         </CardContent>
       </Card>
     </>

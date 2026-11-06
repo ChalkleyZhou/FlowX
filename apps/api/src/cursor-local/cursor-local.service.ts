@@ -1,3 +1,4 @@
+import type { PaginationQuery } from '../common/pagination';
 import { Injectable } from '@nestjs/common';
 import { ContextPackageService } from '../edge/context-package.service';
 import { EdgeHandoffService } from '../edge/edge-handoff.service';
@@ -19,22 +20,23 @@ export class CursorLocalService {
     private readonly contextPackageService: ContextPackageService,
   ) {}
 
-  listTasks(filters: {
+  listTasks(filters: PaginationQuery & {
     workspaceId?: string;
     projectId?: string;
     versionId?: string;
     planningStatus?: string;
     priority?: string;
+    q?: string;
     session?: EdgeWorkflowSession;
   }) {
     return this.edgeTasksService.listTasks(filters);
   }
 
-  listOpenDesignTasks(filters: { workspaceId?: string; session?: EdgeWorkflowSession }) {
+  listOpenDesignTasks(filters: PaginationQuery & { workspaceId?: string; q?: string; session?: EdgeWorkflowSession }) {
     return this.edgeTasksService.listOpenDesignTasks(filters);
   }
 
-  listWorkflowPositions(filters: { workspaceId?: string; workflowRunId?: string; session?: EdgeWorkflowSession }) {
+  listWorkflowPositions(filters: PaginationQuery & { q?: string; workspaceId?: string; workflowRunId?: string; session?: EdgeWorkflowSession }) {
     return this.edgeTasksService.listWorkflowPositions(filters);
   }
 

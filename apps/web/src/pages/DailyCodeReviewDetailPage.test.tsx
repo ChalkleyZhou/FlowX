@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { pageResult } from '../test-utils/page-result';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -11,6 +12,7 @@ import { DailyCodeReviewDetailPage } from './DailyCodeReviewDetailPage';
 vi.mock('../api', () => ({
   api: {
     getDailyCodeReview: vi.fn(),
+    getCodeReviewDeliveryLogs: vi.fn(),
     sendDailyCodeReview: vi.fn(),
   },
 }));
@@ -24,6 +26,7 @@ describe('DailyCodeReviewDetailPage', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
+    vi.mocked(api.getCodeReviewDeliveryLogs).mockImplementation(async () => pageResult([]));
     vi.mocked(api.getDailyCodeReview).mockResolvedValue({
       id: 'review-1',
       projectId: 'project-1',

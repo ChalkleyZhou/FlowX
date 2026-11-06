@@ -1,3 +1,4 @@
+import type { PaginationQuery } from '../common/pagination';
 import { Injectable } from '@nestjs/common';
 import { ExternalIntegrationsService } from './external-integrations.service';
 import type {
@@ -30,16 +31,16 @@ export class YunxiaoPlugin implements BuiltInPlugin {
     return this.integrations.isYunxiaoEnabled(organizationId);
   }
 
-  getUnmatchedRecipients(organizationId: string) {
-    return this.integrations.listYunxiaoUnmatchedRecipients(organizationId);
+  getUnmatchedRecipients(organizationId: string, query: PaginationQuery & { q?: string } = {}) {
+    return this.integrations.listYunxiaoUnmatchedRecipients(organizationId, query);
   }
 
   clearUnmatchedRecipients(organizationId: string, actingUserId: string) {
     return this.integrations.clearYunxiaoUnmatchedRecipients(organizationId, actingUserId);
   }
 
-  getProjectMembers(organizationId: string, projectId: string) {
-    return this.integrations.listYunxiaoProjectMembers(organizationId, projectId);
+  getProjectMembers(organizationId: string, projectId: string, query: { userId?: string } = {}) {
+    return this.integrations.listYunxiaoProjectMembers(organizationId, projectId, query);
   }
 
   setMemberMapping(

@@ -26,61 +26,37 @@ export function ProjectScopeProvider({ children }: { children: ReactNode }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [projectsReady, setProjectsReady] = useState(false);
   const [projectId, setProjectIdState] = useState<string | null>(() => readCurrentProjectId());
 
+  const requestedProjectId = searchParams.get('projectId') || projectId;
   useEffect(() => {
     let cancelled = false;
+    if (!requestedProjectId) { setProjects([]); setLoading(false); return; }
     setLoading(true);
-    void api.getProjects()
-      .then((list) => {
-        if (!cancelled) {
-          setProjects(list);
-          setProjectsReady(true);
+    void api.getProject(requestedProjectId).then(project => {
+      if (cancelled) return;
+      setProjects([project]);
+      setProjectIdState(project.id);
+      writeCurrentProjectId(project.id);
+    }).catch((reason: unknown) => {
+      if (cancelled) return;
+      setProjects([]);
+      if (reason && typeof reason === 'object' && 'status' in reason && reason.status === 404) {
+        if (projectId && requestedProjectId !== projectId) {
+          setSearchParams(current => { const next = new URLSearchParams(current);next.set('projectId',projectId);return next; }, {replace:true});
+          return;
         }
-      })
-      .catch(() => {
-        if (!cancelled) setProjects([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+        writeCurrentProjectId(null); setProjectIdState(null);
+        setSearchParams(current => { const next = new URLSearchParams(current); next.delete('projectId'); return next; }, { replace: true });
+      }
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [requestedProjectId, setSearchParams]);
 
   useEffect(() => {
-    if (loading || !projectsReady) return;
-    const urlId = searchParams.get('projectId');
-    const urlValid = urlId && projects.some((item) => item.id === urlId) ? urlId : null;
-    if (urlValid) {
-      if (readCurrentProjectId() !== urlValid) writeCurrentProjectId(urlValid);
-      setProjectIdState((current) => (current === urlValid ? current : urlValid));
-      return;
-    }
-    if (!isProjectScopedListPath(location.pathname)) {
-      return;
-    }
-    const stored = readCurrentProjectId();
-    const storedValid = stored && projects.some((item) => item.id === stored) ? stored : null;
-    if (!storedValid) {
-      if (stored) writeCurrentProjectId(null);
-      setProjectIdState(null);
-      if (urlId) {
-        const next = new URLSearchParams(searchParams);
-        next.delete('projectId');
-        setSearchParams(next, { replace: true });
-      }
-      return;
-    }
-    const next = new URLSearchParams(searchParams);
-    next.set('projectId', storedValid);
-    if (next.toString() !== searchParams.toString()) {
-      setSearchParams(next, { replace: true });
-    }
-    setProjectIdState(storedValid);
-  }, [loading, location.pathname, projects, projectsReady, searchParams, setSearchParams]);
+    if (loading || !isProjectScopedListPath(location.pathname) || searchParams.get('projectId') || !projectId) return;
+    setSearchParams(current => { const next = new URLSearchParams(current); next.set('projectId', projectId); return next; }, { replace: true });
+  }, [loading, location.pathname, projectId, searchParams, setSearchParams]);
 
   const value = useMemo<ProjectScopeValue>(() => {
     const resolved = searchParams.get('projectId') || projectId;

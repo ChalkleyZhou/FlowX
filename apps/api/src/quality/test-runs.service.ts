@@ -1,3 +1,5 @@
+import { runSummaries, runBrowseInclude, listRunCases, listRunTargets, listRunExecutions } from './test-run-browse';
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { ConflictException, BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -94,25 +96,32 @@ export class TestRunsService {
     });
   }
 
-  async listRuns(testRequestId: string) {
-    const request = await this.prisma.testRequest.findUnique({
-      where: { id: testRequestId },
-      select: { testPlan: { select: { id: true } } },
-    });
-    if (!request?.testPlan) {
-      return [];
-    }
-    return this.prisma.testRun.findMany({
-      where: { testPlanId: request.testPlan.id },
-      include: {
-        sourceBug: { include: { fixWorkflowRun: { select: { id: true, status: true } } } },
-        targets: true,
-        executions: { include: { claimedByUser: { select: { id: true, displayName: true } } } },
-        cases: { include: { snapshot: true, target: true, assignedToUser: true, activeLease: true, result: { include: { bug: { include: { fixWorkflowRun: { select: { id: true, status: true } } } } } } } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+  async listRuns(testRequestId: string, query: PaginationQuery & { q?: string; status?: string } = {}) {
+    return this.listAllRuns({ ...query, testRequestId });
   }
+
+  async listAllRuns(filters: PaginationQuery & { projectId?: string; projectVersionId?: string; testRequestId?: string; status?: string; runType?: string; q?: string }) {
+    const paging = parsePagination(filters);
+    const scope: Prisma.TestRunWhereInput = {
+      testPlan: { testRequest: { projectId: filters.projectId, projectVersionId: filters.projectVersionId, id: filters.testRequestId } },
+      ...(filters.q?.trim() ? { OR: [{ name: { contains: filters.q.trim() } }, { testPlan: { testRequest: { title: { contains: filters.q.trim() } } } }] } : {}),
+    };
+    const where: Prisma.TestRunWhereInput = { ...scope, status: filters.status, runType: filters.runType };
+    const [items, total, activeCount, passedCount, regressionCount, exceptionCount] = await Promise.all([
+      this.prisma.testRun.findMany({ where, include: runBrowseInclude, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: paging.skip, take: paging.take }),
+      this.prisma.testRun.count({ where }),
+      this.prisma.testRun.count({ where: { ...scope, status: 'ACTIVE' } }),
+      this.prisma.testRun.count({ where: { ...scope, status: 'PASSED' } }),
+      this.prisma.testRun.count({ where: { ...scope, runType: 'REGRESSION' } }),
+      this.prisma.testRun.count({ where: { ...scope, status: { in: ['FAILED', 'BLOCKED', 'CANCELLED'] } } }),
+    ]);
+    const summaries = await runSummaries(this.prisma, items.map(run => run.id));
+    return { ...pageResult(items.map(run => ({ ...run, testRequest: run.testPlan.testRequest, summary: summaries.get(run.id)! })), total, paging), summary: { activeCount, passedCount, regressionCount, exceptionCount } };
+  }
+
+  listCases(id: string, query: PaginationQuery & { q?: string; result?: string; targetId?: string; bugId?: string }) { return listRunCases(this.prisma, id, query); }
+  listTargets(id: string, query: PaginationQuery) { return listRunTargets(this.prisma, id, query); }
+  listExecutions(id: string, query: PaginationQuery) { return listRunExecutions(this.prisma, id, query); }
 
   async reportResult(testRunCaseId: string, dto: ReportTestResultDto, userId?: string) {
     return this.prisma.$transaction(async tx => {

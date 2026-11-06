@@ -1,3 +1,5 @@
+import { listReportBaselines, listReportSupersessions, listRequestCases, type ReportBrowseQuery } from './test-request-browse';
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -18,6 +20,12 @@ const requestInclude = {
       runs: { orderBy: { createdAt: 'desc' as const } },
     },
   },
+} as const;
+
+const requestBrowseInclude = {
+  project: true, projectVersion: true,
+  _count: { select: { requirementLinks: true, workflowLinks: true, artifactLinks: true } },
+  testPlan: { include: { _count: { select: { snapshots: true, runs: true } } } },
 } as const;
 
 @Injectable()
@@ -180,17 +188,62 @@ export class TestRequestsService {
     return this.getRequest(requestId);
   }
 
-  listRequests(filters: { projectId?: string; projectVersionId?: string; status?: string }) {
-    return this.prisma.testRequest.findMany({
-      where: {
-        projectId: filters.projectId,
-        projectVersionId: filters.projectVersionId,
-        status: filters.status,
-      },
-      include: requestInclude,
-      orderBy: { createdAt: 'desc' },
-    });
+  async listRequests(filters: PaginationQuery & { projectId?: string; projectVersionId?: string; status?: string; q?: string }) {
+    const paging = parsePagination(filters);
+    const scope: Prisma.TestRequestWhereInput = {
+      projectId: filters.projectId, projectVersionId: filters.projectVersionId,
+      ...(filters.q?.trim() ? { title: { contains: filters.q.trim() } } : {}),
+    };
+    const where = { ...scope, status: filters.status };
+    const [items, total, groups] = await Promise.all([
+      this.prisma.testRequest.findMany({ where, include: requestBrowseInclude, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: paging.skip, take: paging.take }),
+      this.prisma.testRequest.count({ where }),
+      this.prisma.testRequest.groupBy({ by: ['status'], where: scope, _count: true }),
+    ]);
+    const counts = Object.fromEntries(groups.map(group => [group.status, group._count]));
+    return { ...pageResult(items, total, paging), summary: { ...counts, activeCount: (counts.IN_TEST ?? 0), readyCount: counts.READY ?? 0, passedCount: counts.PASSED ?? 0, exceptionCount: (counts.FAILED ?? 0) + (counts.BLOCKED ?? 0) } };
   }
+
+  async getRequestBrowse(id: string) {
+    const request = await this.prisma.testRequest.findUnique({ where: { id }, include: requestBrowseInclude });
+    if (!request) throw new NotFoundException('Test request not found.');
+    return request;
+  }
+
+  async listSnapshots(id: string, query: PaginationQuery & { q?: string; kind?: string }) {
+    await this.getRequestBrowse(id);
+    const paging = parsePagination(query);
+    const where: Prisma.TestCaseSnapshotWhereInput = { testPlan: { testRequestId: id }, kind: query.kind, ...(query.q?.trim() ? { title: { contains: query.q.trim() } } : {}) };
+    const [items, total] = await Promise.all([
+      this.prisma.testCaseSnapshot.findMany({ where, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], skip: paging.skip, take: paging.take }),
+      this.prisma.testCaseSnapshot.count({ where }),
+    ]);
+    const [functionalCount, smokeCount] = await Promise.all([
+      this.prisma.testCaseSnapshot.count({ where: { ...where, kind: 'FUNCTIONAL' } }),
+      this.prisma.testCaseSnapshot.count({ where: { ...where, kind: 'SMOKE' } }),
+    ]);
+    return { ...pageResult(items, total, paging), summary: { functionalCount, smokeCount } };
+  }
+
+  async listLinks(id: string, kind: 'requirements' | 'workflows' | 'artifacts', query: PaginationQuery) {
+    await this.getRequestBrowse(id);
+    const paging = parsePagination(query);
+    const where = { testRequestId: id };
+    if (kind === 'requirements') {
+      const [items, total] = await Promise.all([this.prisma.testRequestRequirement.findMany({ where, include: { requirement: true }, orderBy: [{ createdAt: 'asc' }, { requirementId: 'asc' }], skip: paging.skip, take: paging.take }), this.prisma.testRequestRequirement.count({ where })]);
+      return pageResult(items, total, paging);
+    }
+    if (kind === 'workflows') {
+      const [items, total] = await Promise.all([this.prisma.testRequestWorkflowRun.findMany({ where, include: { workflowRun: true }, orderBy: [{ createdAt: 'asc' }, { workflowRunId: 'asc' }], skip: paging.skip, take: paging.take }), this.prisma.testRequestWorkflowRun.count({ where })]);
+      return pageResult(items, total, paging);
+    }
+    const [items, total] = await Promise.all([this.prisma.testRequestArtifact.findMany({ where, include: { artifact: true }, orderBy: [{ createdAt: 'asc' }, { artifactId: 'asc' }], skip: paging.skip, take: paging.take }), this.prisma.testRequestArtifact.count({ where })]);
+    return pageResult(items, total, paging);
+  }
+
+  async reportBaselines(id: string, query: ReportBrowseQuery) { await this.getRequestBrowse(id); return listReportBaselines(this.prisma, id, query); }
+  async reportSupersessions(id: string, query: ReportBrowseQuery) { await this.getRequestBrowse(id); return listReportSupersessions(this.prisma, id, query); }
+  async listCases(id: string, query: PaginationQuery & { result?: string; q?: string; selectedRunIds?: string | string[] }) { await this.getRequestBrowse(id); return listRequestCases(this.prisma, id, query); }
 
   async getRequest(id: string) {
     const request = await this.prisma.testRequest.findUnique({

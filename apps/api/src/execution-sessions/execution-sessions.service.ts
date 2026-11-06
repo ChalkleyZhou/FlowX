@@ -133,6 +133,21 @@ export class ExecutionSessionsService {
     });
   }
 
+  async findBrowse(id: string, scope: ExecutionSessionScope = {}) {
+    const session = await this.prisma.executionSession.findUnique({ where: { id }, include: {
+      stageExecution: { select: { stage: true, statusMessage: true } },
+      project: { select: { name: true } },
+      workflowRun: { select: { requirement: { select: { title: true } } } },
+      claimedByUser: { select: { displayName: true } },
+      commands: { orderBy: { issuedAt: 'desc' }, take: 10 },
+      _count: { select: { syncEvents: true, artifacts: true, evidence: true } },
+    } });
+    if (!session) throw new NotFoundException('Execution session not found.');
+    this.assertScope(session.organizationId, scope);
+    const latestProgress = await this.prisma.syncEvent.findFirst({ where: { executionSessionId: id, eventType: 'execution.progressed' }, orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }] });
+    return { ...session, latestProgress };
+  }
+
   async findOne(id: string, scope: ExecutionSessionScope = {}, includeLatestProgress = false) {
     const session = await this.prisma.executionSession.findUnique({
       where: { id },

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
 import { CreateTestRunDto, ReportTestResultDto } from './dto/test-run.dto';
 import { TestRunsService } from './test-runs.service';
 
@@ -6,10 +6,17 @@ import { TestRunsService } from './test-runs.service';
 export class TestRunsController {
   constructor(private readonly runs: TestRunsService) {}
 
+  @Get('test-runs')
+  all(@Query() query: import('../common/pagination').PaginationQuery & { projectId?: string; projectVersionId?: string; testRequestId?: string; status?: string; runType?: string; q?: string }) { return this.runs.listAllRuns(query); }
+
   @Get('test-requests/:testRequestId/runs')
-  list(@Param('testRequestId') testRequestId: string) {
-    return this.runs.listRuns(testRequestId);
-  }
+  list(@Param('testRequestId') testRequestId: string, @Query() query: import('../common/pagination').PaginationQuery & { q?: string; status?: string }) { return this.runs.listRuns(testRequestId, query); }
+  @Get('test-runs/:id/cases')
+  cases(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery & { q?: string; result?: string; targetId?: string; bugId?: string }) { return this.runs.listCases(id, query); }
+  @Get('test-runs/:id/targets')
+  targets(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery) { return this.runs.listTargets(id, query); }
+  @Get('test-runs/:id/executions')
+  executions(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery) { return this.runs.listExecutions(id, query); }
 
   @Post('test-requests/:testRequestId/runs')
   create(

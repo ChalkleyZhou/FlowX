@@ -26,7 +26,7 @@ Reflect.defineMetadata('design:paramtypes', [WorkflowCodeDeliveryService], Workf
 class TestModule {}
 let app: INestApplication, baseUrl: string, org: string, workspace: string, project: string, userA: string, userB: string;
 beforeAll(async () => {
-  const cli = createRequire(import.meta.url).resolve('prisma/build/index.js');
+  const cli = createRequire(resolve('package.json')).resolve('prisma/build/index.js');
   const env = { ...process.env, DATABASE_URL: url };
   const sql = execFileSync(process.execPath, [cli, 'migrate', 'diff', '--from-empty', '--to-schema-datamodel', resolve('../../prisma/schema.prisma'), '--script'], { env, encoding: 'utf8' });
   execFileSync(process.execPath, [cli, 'db', 'execute', '--url', url, '--stdin'], { env, input: sql, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -57,6 +57,25 @@ function post(id: string, path: string, body: unknown, userId = userA, organizat
 async function submit(id: string, repoId: string, userId = userA, branch = 'feature/web') { return service.submitBranch(id, { workflowRepositoryId: repoId, branch }, actor(userId)); }
 function selection(view: Awaited<ReturnType<typeof service.getDelivery>>) { return { confirmed: true as const, submissions: view.submissions.map(({ id, headSha }) => ({ id, headSha })) }; }
 describe('多仓分支交付真实 SQLite/HTTP', () => {
+  it('历史尝试在数据库分页，详情仅保留当前交付上下文和历史计数', async () => {
+    const { run, repo } = await pending();
+    for (let attempt = 1; attempt <= 25; attempt++) {
+      const stage = await prisma.stageExecution.create({ data: { workflowRunId: run.id, stage: 'EXECUTION', attempt, status: 'FAILED' } });
+      await prisma.codeBranchSubmission.create({ data: { workflowRunId: run.id, stageExecutionId: stage.id, workflowRepositoryId: repo.id, branch: `feature/history-${attempt}`, headSha: head, submittedByUserId: userA } });
+    }
+    const detail = await service.getDelivery(run.id, actor());
+    expect(detail.history).toEqual([]);
+    expect(detail.historyCount).toBe(25);
+    const response = await fetch(`${baseUrl}/workflow-runs/${run.id}/code-delivery/history?page=2&pageSize=20`, { headers: { 'x-user-id': userA, 'x-org-id': org } });
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result).toMatchObject({ total: 25, page: 2, pageSize: 20, totalPages: 2 });
+    expect(result.items).toHaveLength(5);
+    expect(result.items.map((item: { attempt: number }) => item.attempt)).toEqual([5, 4, 3, 2, 1]);
+    const forbidden = await fetch(`${baseUrl}/workflow-runs/${run.id}/code-delivery/history`, { headers: { 'x-user-id': userA, 'x-org-id': 'other' } });
+    expect(forbidden.status).toBe(403);
+  });
+
   it('两人无需领取提交同仓同分支，更新仅本人记录且不推进审查', async () => {
     const { run, repo } = await pending();
     const first = await submit(run.id, repo.id); await submit(run.id, repo.id, userB);
@@ -120,7 +139,7 @@ describe('多仓分支交付真实 SQLite/HTTP', () => {
     });
     await expect(service.confirmDelivery(run.id, selection(view), actor())).rejects.toMatchObject({ status: 409 });
     const next = await submit(run.id, repo.id); expect(next.stageExecutionId).not.toBe(view.stageExecutionId); expect(next.submissions).toHaveLength(1);
-    expect(next.history).toEqual([{ stageExecutionId: view.stageExecutionId, attempt: 1, status: 'FAILED', submissions: view.submissions }]);
+    expect((await service.listHistory(run.id, {}, actor())).items).toEqual([{ stageExecutionId: view.stageExecutionId, attempt: 1, status: 'FAILED', submissions: view.submissions }]);
     await expect(service.confirmDelivery(run.id, selection(view), actor())).rejects.toMatchObject({ status: 409 });
   });
   it('返工到待开发立即隐藏旧交付，旧确认不具幂等资格', async () => {
@@ -133,7 +152,7 @@ describe('多仓分支交付真实 SQLite/HTTP', () => {
     expect(reverted.stageExecutions).toEqual(expect.arrayContaining([expect.objectContaining({ stage: 'EXECUTION', status: 'PENDING', attempt: 2, input: expect.objectContaining({ source: 'rollback' }) })]));
     const view = await service.getDelivery(run.id, actor());
     expect(view.stageExecutionId).toBeNull(); expect(view.submissions).toEqual([]); expect(view.confirmedDelivery).toBeNull();
-    expect(view.history).toEqual([{ stageExecutionId: first.stageExecutionId, attempt: 1, status: 'COMPLETED', submissions: first.submissions }]);
+    expect((await service.listHistory(run.id, {}, actor())).items).toEqual([{ stageExecutionId: first.stageExecutionId, attempt: 1, status: 'COMPLETED', submissions: first.submissions }]);
     await expect(service.confirmDelivery(run.id, selection(first), actor())).rejects.toMatchObject({ status: 409 });
     const smoke = new LocalSmokeService(prisma as never, {} as never);
     expect(await (smoke as unknown as { resolveExpectedRevisions(ids: string[]): Promise<unknown> }).resolveExpectedRevisions([run.id])).toEqual([]);
@@ -184,7 +203,7 @@ describe('多仓分支交付真实 SQLite/HTTP', () => {
     expect(reverted.status).toBe('SPEC_PLAN_PENDING'); expect(reverted.updatedAt.getTime()).toBeGreaterThan(before.updatedAt.getTime());
     const deliveryView = await service.getDelivery(run.id, actor());
     expect(deliveryView.submissions).toEqual([]); expect(deliveryView.stageExecutionId).toBeNull();
-    expect(deliveryView.history).toEqual([{ stageExecutionId: view.stageExecutionId, attempt: 1, status: 'FAILED', submissions: view.submissions }]);
+    expect((await service.listHistory(run.id, {}, actor())).items).toEqual([{ stageExecutionId: view.stageExecutionId, attempt: 1, status: 'FAILED', submissions: view.submissions }]);
     expect((await prisma.stageExecution.findUniqueOrThrow({ where: { id: view.stageExecutionId! } })).status).toBe('FAILED');
     expect(await prisma.codeBranchSubmission.count({ where: { workflowRunId: run.id } })).toBe(1);
     await expect(service.confirmDelivery(run.id, selection(view), actor())).rejects.toMatchObject({ status: 409 });

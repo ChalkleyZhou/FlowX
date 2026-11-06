@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { useListPage } from '../hooks/use-list-page';
+import { ListPagination } from '../components/ListPagination';
 import { api, getBugScreenshotUrl } from '../api';
 import { withCurrentProject } from '../project-scope';
 import { useAdoptProject, useProjectScopeOptional } from '../project-scope-context';
@@ -32,7 +34,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog';
-import type { Bug, Workspace } from '../types';
+import type { Bug } from '../types';
 import {
   type PendingImageAttachment,
   releaseImageAttachmentPreviews,
@@ -52,7 +54,7 @@ export function BugDetailPage() {
   const navigate = useNavigate();
   const scope = useProjectScopeOptional();
   const [bug, setBug] = useState<Bug | null>(null);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+
   const [fixModalOpen, setFixModalOpen] = useState(false);
   const [fixSubmitting, setFixSubmitting] = useState(false);
   const [fixRepositoryIds, setFixRepositoryIds] = useState<string[]>([]);
@@ -80,11 +82,8 @@ export function BugDetailPage() {
   });
   const toast = useToast();
 
-  const bugWorkspace = useMemo(
-    () => workspaces.find((workspace) => workspace.id === bug?.workspace?.id) ?? null,
-    [bug?.workspace?.id, workspaces],
-  );
-  const availableRepositories = bugWorkspace?.repositories ?? [];
+  const repositories = useListPage(query => api.getWorkspaceRepositories(bug!.workspace!.id,query), {workspaceId:bug?.workspace?.id}, {enabled:fixModalOpen && Boolean(bug?.workspace?.id),pageKey:'fixRepositoriesPage'});
+  const availableRepositories = repositories.items;
   const canStartFixWorkflow =
     bug != null &&
     ['OPEN', 'CONFIRMED'].includes(bug.status) &&
@@ -120,25 +119,6 @@ export function BugDetailPage() {
   useEffect(() => {
     void refresh();
   }, [bugId]);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        setWorkspaces(await api.getWorkspaces());
-      } catch {
-        // ignore — fix dialog can still open with defaults
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (!fixModalOpen || availableRepositories.length === 0) {
-      return;
-    }
-    setFixRepositoryIds((current) =>
-      current.length > 0 ? current : availableRepositories.map((repository) => repository.id),
-    );
-  }, [availableRepositories, fixModalOpen]);
 
   useEffect(() => {
     if (onlineAi?.defaultProvider) {
@@ -584,6 +564,8 @@ export function BugDetailPage() {
                     </label>
                   );
                 })}
+                {repositories.error ? <p role="alert">{repositories.error}</p> : null}
+                <ListPagination {...repositories} label="修复仓库分页" />
               </div>
             </div>
             <UiButton

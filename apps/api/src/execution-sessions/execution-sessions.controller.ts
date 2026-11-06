@@ -1,3 +1,4 @@
+import type { PaginationQuery } from '../common/pagination';
 import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
 import { AppendSyncEventDto } from './dto/append-sync-event.dto';
 import { CompleteExecutionSessionDto } from './dto/complete-execution-session.dto';
@@ -44,28 +45,17 @@ export class ExecutionSessionsController {
 
   @Get(':id')
   async findOne(@Param('id') id: string, @Req() req: ExecutionSessionRequest) {
-    const session = await this.executionSessionsService.findOne(id, toScope(req), true);
+    const session = await this.executionSessionsService.findBrowse(id, toScope(req));
     return { ...session, ...this.control.describe(session, toScope(req)) };
   }
 
   @Get(':id/events')
   listEvents(
     @Param('id') id: string,
-    @Query('cursor') cursor: string | undefined,
-    @Query('take') rawTake: string | undefined,
-    @Query('view') view: string | undefined,
+    @Query() query: PaginationQuery & { q?: string; view?: string },
     @Req() req: ExecutionSessionRequest,
   ) {
-    const parsedTake = rawTake ? Number.parseInt(rawTake, 10) : undefined;
-    return this.syncEventsService.list(
-      id,
-      {
-        cursor: cursor?.trim() || undefined,
-        take: Number.isFinite(parsedTake) ? parsedTake : undefined,
-        view,
-      },
-      toScope(req),
-    );
+    return this.syncEventsService.listPage(id, query, toScope(req));
   }
 
   @Post(':id/events')

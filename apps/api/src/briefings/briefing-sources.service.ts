@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import {
   BadRequestException,
   Injectable,
@@ -26,6 +27,21 @@ export interface WebhookRequestContext {
 @Injectable()
 export class BriefingSourcesService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async listSourcesPage(workspaceId?: string, query: PaginationQuery = {}) {
+    const paging = parsePagination(query);
+    const items = await this.prisma.briefingSource.findMany({
+      skip: paging.skip, take: paging.take,
+      where: workspaceId ? { workspaceId } : undefined,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      include: {
+        workspace: true,
+        repository: true,
+      },
+    });
+    const total = await this.prisma.briefingSource.count({ where: workspaceId ? { workspaceId } : undefined });
+    return pageResult(items, total, paging);
+  }
 
   listSources(workspaceId?: string) {
     return this.prisma.briefingSource.findMany({

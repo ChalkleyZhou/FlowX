@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, Download, Plus } from 'lucide-react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../../api';
+import { ListPagination } from '../../components/ListPagination';
+import { useQualityPage } from './use-quality-page';
 import { withCurrentProject } from '../../project-scope';
 import { useAdoptProject, useProjectScopeOptional } from '../../project-scope-context';
 import { EmptyState } from '../../components/EmptyState';
@@ -90,10 +92,20 @@ function QualityRequestDetailContent({ id }: { id: string }) {
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') ?? 'overview';
   const detail = useDetailResource(id, api.getTestRequest);
-  const smoke = useDetailResource(id, api.getLocalSmokeRuns);
-  const formal = useDetailResource(id, api.getTestRuns);
+  const [smokePage, setSmokePage] = useState(1);
+  const [formalPage, setFormalPage] = useState(1);
+  const [snapshotPage, setSnapshotPage] = useState(1);
+  const [requirementPage, setRequirementPage] = useState(1);
+  const [bugPage, setBugPage] = useState(1);
+  const smokeResult = useQualityPage(`${id}:${smokePage}`, () => api.getLocalSmokeRuns(id, { page: smokePage, pageSize: 10 }), true, setSmokePage);
+  const formalResult = useQualityPage(`${id}:${formalPage}`, () => api.getTestRuns(id, { page: formalPage, pageSize: 10 }), true, setFormalPage);
+  const snapshots = useQualityPage(`${id}:${snapshotPage}`, () => api.getTestRequestSnapshots(id, { page: snapshotPage, pageSize: 20 }), true, setSnapshotPage);
+  const requirements = useQualityPage(`${id}:${requirementPage}`, () => api.getTestRequestRequirements(id, { page: requirementPage, pageSize: 10 }), true, setRequirementPage);
+  const bugs = useQualityPage(`${id}:${bugPage}`, () => api.getTestRequestCases(id, { page: bugPage, pageSize: 20, result: 'FAILED,BLOCKED' }), tab === 'bugs', setBugPage);
+  const smoke = { ...smokeResult, data: smokeResult.hasLoaded ? smokeResult.items : undefined, error: smokeResult.error ? new Error(smokeResult.error) : null, reload: smokeResult.refresh };
+  const formal = { ...formalResult, data: formalResult.hasLoaded ? formalResult.items : undefined, error: formalResult.error ? new Error(formalResult.error) : null, reload: formalResult.refresh };
   const submission = useDetailResource(id, api.getSubmissionReport);
-  const request = detail.data;
+  const request = detail.data ? { ...detail.data, requirementLinks: requirements.items, testPlan: detail.data.testPlan ? { ...detail.data.testPlan, snapshots: snapshots.items, runs: formalResult.items } : undefined } : undefined;
   const scope = useProjectScopeOptional();
   useAdoptProject(request?.projectId);
   const requestListHref = withCurrentProject('/quality/test-requests', request?.projectId ?? scope?.projectId ?? null);
@@ -111,22 +123,19 @@ function QualityRequestDetailContent({ id }: { id: string }) {
   async function refresh(options: { silent?: boolean } = {}) {
     await Promise.all([detail.reload(options), smoke.reload(options), submission.reload(options), formal.reload(options)]);
   }
-  const active = (formal.data ?? []).some(run => run.status === 'ACTIVE') || runs.some(run => run.status === 'ACTIVE');
+  const active = (formal.summary?.activeCount ?? 0) > 0 || (smoke.summary?.activeCount ?? 0) > 0;
   useEffect(() => {
     if (!active) return;
     const timer = window.setInterval(() => { void refresh({ silent: true }); }, 5000);
     return () => window.clearInterval(timer);
   }, [active, detail.reload, smoke.reload, submission.reload, formal.reload]);
 
-  const totals = useMemo(() => {
-    const cases = runs.flatMap((run) => run.cases ?? []);
-    return {
-      targets: runs.flatMap((run) => run.targets ?? []).length,
-      completed: cases.filter((item) => item.result).length,
-      total: cases.length,
-      executions: runs.flatMap((run) => run.executions ?? []).length,
-    };
-  }, [runs]);
+  const totals = {
+    targets: smoke.summary?.targetCount ?? 0,
+    completed: smoke.summary?.completedCount ?? 0,
+    total: smoke.summary?.caseCount ?? 0,
+    executions: smoke.summary?.executionCount ?? 0,
+  };
 
   async function prepare() {
     if (!request) return;
@@ -134,6 +143,7 @@ function QualityRequestDetailContent({ id }: { id: string }) {
     try {
       const prepared = await api.prepareTestRequest(id, { scopeRevision: request.scopeRevision });
       detail.setData(prepared);
+      await snapshots.refresh();
       toast.success(prepared.status === 'DRAFT' ? '冻结范围已确认，请继续完成冒烟门禁' : '提测准备已完成，可以创建功能测试轮次');
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : '提测准备失败，请检查已确认设计和研发交付');
@@ -208,14 +218,14 @@ function QualityRequestDetailContent({ id }: { id: string }) {
 
   const canCreateFormal = request.testPlan?.status === 'READY' && request.scopeGenerationStatus === 'COMPLETED'
     && ['READY', 'IN_TEST', 'PASSED', 'FAILED', 'BLOCKED'].includes(request.status)
-    && request.testPlan.snapshots.some(snapshot => snapshot.kind !== 'SMOKE');
-  const formalRuns = (formal.data ?? request.testPlan?.runs ?? []).filter(run => run.runType !== 'LOCAL_SMOKE');
-  const activeFormal = formalRuns.some(run => run.status === 'ACTIVE');
+    && (snapshots.summary?.functionalCount ?? 0) > 0;
+  const formalRuns = (formal.data ?? request.testPlan?.runs ?? []);
+  const activeFormal = (formal.summary?.activeCount ?? 0) > 0;
   const flowStep = request.scopeGenerationStatus !== 'COMPLETED'
     ? 0
     : request.status === 'DRAFT'
       ? 1
-      : !formalRuns.length
+      : !formal.total
         ? 2
         : activeFormal
           ? 3
@@ -223,8 +233,8 @@ function QualityRequestDetailContent({ id }: { id: string }) {
   const flowSteps = [
     { label: '准备测试范围', detail: request.scopeGenerationStatus === 'COMPLETED' ? '测试设计已确认' : '选择并处理测试用例' },
     { label: '冻结测试范围', detail: request.status === 'DRAFT' ? '确认快照和测试口径' : '范围已冻结' },
-    { label: '设置执行', detail: formalRuns.length ? `${formalRuns.length} 个执行轮次` : '选择执行方式和执行人' },
-    { label: '执行与报告', detail: activeFormal ? '执行中，等待逐例结果' : formalRuns.length ? '可查看执行结果和报告' : '完成执行后生成报告' },
+    { label: '设置执行', detail: formal.total ? `${formal.total} 个执行轮次` : '选择执行方式和执行人' },
+    { label: '执行与报告', detail: activeFormal ? '执行中，等待逐例结果' : formal.total ? '可查看执行结果和报告' : '完成执行后生成报告' },
   ];
 
   return (
@@ -245,7 +255,7 @@ function QualityRequestDetailContent({ id }: { id: string }) {
               </Button>
             ) : null}
             <Button disabled={!canCreateFormal} onClick={() => setFormalDialog(true)}>创建功能测试轮次</Button>
-            <Button variant="outline" disabled={!['DRAFT', 'READY'].includes(request.status) || !request.testPlan?.snapshots.some(snapshot => snapshot.kind === 'SMOKE')} onClick={() => setDialogOpen(true)}>
+            <Button variant="outline" disabled={!['DRAFT', 'READY'].includes(request.status) || !(snapshots.summary?.smokeCount ?? 0)} onClick={() => setDialogOpen(true)}>
               <Plus aria-hidden="true" className="h-4 w-4" />创建冒烟轮次
             </Button>
           </>
@@ -278,10 +288,10 @@ function QualityRequestDetailContent({ id }: { id: string }) {
 
       <Tabs value={['overview', 'scope', 'runs', 'bugs', 'reports'].includes(tab) ? tab : 'overview'} onValueChange={value => setParams(current => { const next = new URLSearchParams(current); next.set('tab', value); return next; }, { replace: true })}>
         <TabsList aria-label="提测详情页签"><TabsTrigger value="overview">概览</TabsTrigger><TabsTrigger value="scope">测试范围</TabsTrigger><TabsTrigger value="runs">执行轮次</TabsTrigger><TabsTrigger value="bugs">缺陷</TabsTrigger><TabsTrigger value="reports">测试报告</TabsTrigger></TabsList>
-        <TabsContent value="overview"><section className="rounded-md border p-4 space-y-3"><h2 className="font-semibold">下一步</h2><p className="text-sm">{request.scopeGenerationStatus !== 'COMPLETED' ? '先确认测试设计，完成测试范围。' : request.status === 'DRAFT' ? '冻结范围已确认，完成本地冒烟并汇总通过门禁后可创建正式功能测试轮次。' : !(formal.data ?? []).some(run => run.runType !== 'LOCAL_SMOKE') ? '范围已冻结，创建功能测试轮次并明确适用端。' : active ? '进入执行轮次查看逐例进度与待回传范围。' : '执行已结束，可生成轮次或任务汇总报告。'}</p><div className="flex flex-wrap gap-2">{request.scopeGenerationStatus !== 'COMPLETED' ? <Button size="sm" disabled={preparing || !request.testDesignId} onClick={() => void prepare()}>确认冻结范围并完成提测准备</Button> : null}{request.testDesignId ? <Button variant="outline" size="sm" asChild><Link to={`/quality/test-designs/${request.testDesignId}`}>查看测试设计</Link></Button> : null}{request.requirementLinks.map(link => <Button key={link.requirement.id} variant="outline" size="sm" asChild><Link to={`/requirements/${link.requirement.id}`}>{link.requirement.title}</Link></Button>)}</div><p className="text-xs text-muted-foreground">范围 {request.testPlan?.snapshots.filter(snapshot => snapshot.kind !== 'SMOKE').length ?? 0} 条功能用例 · 正式轮次 {(formal.data ?? []).filter(run => run.runType !== 'LOCAL_SMOKE').length} 个。冒烟门禁与正式测试结论分别记录。</p></section></TabsContent>
-        <TabsContent value="scope"><section className="space-y-3"><h2 className="font-semibold">已冻结的测试范围</h2>{request.testPlan?.snapshots.map(snapshot => <article key={snapshot.id} className="rounded-md border p-4 space-y-2"><p className="font-medium">{snapshot.title} <Badge variant="outline">{snapshot.kind === 'SMOKE' ? '冒烟' : '功能'} · {snapshot.priority}</Badge></p><p className="text-sm">适用端：{snapshot.targetKeys?.join('、') || '未确认，创建轮次时需明确选择'}</p><p className="text-xs text-muted-foreground">{snapshot.selectionReason || snapshot.selectedBy} · 来源版本 {snapshot.sourceVersion ?? '生成用例'}</p><ol className="list-decimal pl-5 text-sm">{snapshot.steps.map((step, index) => <li key={index}>{step}</li>)}</ol><p className="text-sm">预期：{snapshot.expected}</p></article>)}{!request.testPlan?.snapshots.length ? <p className="text-sm text-muted-foreground">暂无冻结快照，请先确认测试设计。</p> : null}</section></TabsContent>
-        <TabsContent value="runs"><section className="space-y-3"><h2 className="font-semibold">功能测试与回归轮次</h2>{formal.error ? <LoadError error={formal.error} retained={Boolean(formal.data)} loading={formal.loading} label="正式轮次" retry={() => void formal.reload()} /> : null}{(formal.data ?? request.testPlan?.runs ?? []).filter(run => run.runType !== 'LOCAL_SMOKE').map(run => <article className="rounded-md border p-4" key={run.id}><div className="flex justify-between gap-3"><Link className="font-medium text-primary hover:underline" to={`/quality/test-runs/${run.id}`}>{run.name}</Link><Badge variant={statusBadgeVariant(run.status)}>{runStatusLabels[run.status] ?? run.status}</Badge></div><p className="mt-2 text-sm text-muted-foreground">{run.runType === 'REGRESSION' ? '缺陷回归' : '功能初测'} · {run.executionMode === 'LOCAL' ? '本地执行' : '历史执行'} · {run.cases?.filter(row => row.result).length ?? 0}/{run.cases?.length ?? 0} 项已回传</p></article>)}</section></TabsContent>
-        <TabsContent value="bugs"><section className="space-y-3"><h2 className="font-semibold">失败、阻塞项与关联缺陷</h2>{(formal.data ?? []).flatMap(run => (run.cases ?? []).filter(row => ['FAILED', 'BLOCKED'].includes(row.result?.result ?? '')).map(row => <article className="rounded-md border p-4 space-y-2" key={row.id}><p className="font-medium">{row.snapshot.title}</p><p className="text-sm text-muted-foreground">{row.result?.actualResult || '未记录实际结果'}</p>{row.result?.bug ? <Link className="text-sm text-primary underline" to={`/bugs/${row.result.bug.id}`}>{row.result.bug.title}</Link> : <p className="text-sm">尚未关联缺陷</p>}<p><Link className="text-sm text-primary underline" to={`/quality/test-runs/${run.id}`}>进入执行详情关联缺陷或创建独立回归</Link></p></article>))}{!(formal.data ?? []).some(run => run.cases?.some(row => ['FAILED', 'BLOCKED'].includes(row.result?.result ?? ''))) ? <p className="text-sm text-muted-foreground">暂无失败或阻塞项，异常用例将在此集中展示。</p> : null}</section></TabsContent>
+        <TabsContent value="overview"><section className="rounded-md border p-4 space-y-3"><h2 className="font-semibold">下一步</h2>{requirements.error ? <LoadError error={new Error(requirements.error)} retained={requirements.hasLoaded} loading={requirements.refreshing} label="关联需求" retry={() => void requirements.refresh()} /> : null}<p className="text-sm">{request.scopeGenerationStatus !== 'COMPLETED' ? '先确认测试设计，完成测试范围。' : request.status === 'DRAFT' ? '冻结范围已确认，完成本地冒烟并汇总通过门禁后可创建正式功能测试轮次。' : !formal.total ? '范围已冻结，创建功能测试轮次并明确适用端。' : active ? '进入执行轮次查看逐例进度与待回传范围。' : '执行已结束，可生成轮次或任务汇总报告。'}</p><div className="flex flex-wrap gap-2">{request.scopeGenerationStatus !== 'COMPLETED' ? <Button size="sm" disabled={preparing || !request.testDesignId} onClick={() => void prepare()}>确认冻结范围并完成提测准备</Button> : null}{request.testDesignId ? <Button variant="outline" size="sm" asChild><Link to={`/quality/test-designs/${request.testDesignId}`}>查看测试设计</Link></Button> : null}{request.requirementLinks.map(link => <Button key={link.requirement.id} variant="outline" size="sm" asChild><Link to={`/requirements/${link.requirement.id}`}>{link.requirement.title}</Link></Button>)}</div><p className="text-xs text-muted-foreground">范围 {snapshots.summary?.functionalCount ?? 0} 条功能用例 · 正式轮次 {formal.total} 个。冒烟门禁与正式测试结论分别记录。</p><ListPagination page={requirementPage} total={requirements.total} pageSize={10} onPageChange={setRequirementPage} /></section></TabsContent>
+        <TabsContent value="scope"><section className="space-y-3"><h2 className="font-semibold">已冻结的测试范围</h2>{snapshots.error ? <LoadError error={new Error(snapshots.error)} retained={snapshots.hasLoaded} loading={snapshots.refreshing} label="冻结快照" retry={() => void snapshots.refresh()} /> : null}{request.testPlan?.snapshots.map(snapshot => <article key={snapshot.id} className="rounded-md border p-4 space-y-2"><p className="font-medium">{snapshot.title} <Badge variant="outline">{snapshot.kind === 'SMOKE' ? '冒烟' : '功能'} · {snapshot.priority}</Badge></p><p className="text-sm">适用端：{snapshot.targetKeys?.join('、') || '未确认，创建轮次时需明确选择'}</p><p className="text-xs text-muted-foreground">{snapshot.selectionReason || snapshot.selectedBy} · 来源版本 {snapshot.sourceVersion ?? '生成用例'}</p><ol className="list-decimal pl-5 text-sm">{snapshot.steps.map((step, index) => <li key={index}>{step}</li>)}</ol><p className="text-sm">预期：{snapshot.expected}</p></article>)}{snapshots.hasLoaded && !snapshots.error && !request.testPlan?.snapshots.length ? <p className="text-sm text-muted-foreground">暂无冻结快照，请先确认测试设计。</p> : null}<ListPagination page={snapshotPage} total={snapshots.total} pageSize={20} onPageChange={setSnapshotPage} /></section></TabsContent>
+        <TabsContent value="runs"><section className="space-y-3"><h2 className="font-semibold">功能测试与回归轮次</h2>{formal.error ? <LoadError error={formal.error} retained={Boolean(formal.data)} loading={formal.loading} label="正式轮次" retry={() => void formal.reload()} /> : null}{(formal.data ?? request.testPlan?.runs ?? []).map(run => <article className="rounded-md border p-4" key={run.id}><div className="flex justify-between gap-3"><Link className="font-medium text-primary hover:underline" to={`/quality/test-runs/${run.id}`}>{run.name}</Link><Badge variant={statusBadgeVariant(run.status)}>{runStatusLabels[run.status] ?? run.status}</Badge></div><p className="mt-2 text-sm text-muted-foreground">{run.runType === 'REGRESSION' ? '缺陷回归' : '功能初测'} · {run.executionMode === 'LOCAL' ? '本地执行' : '历史执行'} · {run.summary?.completedCount ?? 0}/{run.summary?.caseCount ?? 0} 项已回传</p></article>)}<ListPagination page={formalPage} total={formal.total} pageSize={10} onPageChange={setFormalPage} /></section></TabsContent>
+        <TabsContent value="bugs"><section className="space-y-3"><h2 className="font-semibold">失败、阻塞项与关联缺陷</h2>{bugs.error ? <LoadError error={new Error(bugs.error)} retained={bugs.hasLoaded} loading={bugs.refreshing} label="异常用例" retry={() => void bugs.refresh()} /> : null}{bugs.items.map(row => <article className="rounded-md border p-4 space-y-2" key={row.id}><p className="font-medium">{row.snapshot.title}</p><p className="text-sm text-muted-foreground">{row.result?.actualResult || '未记录实际结果'}</p>{row.result?.bug ? <Link className="text-sm text-primary underline" to={`/bugs/${row.result.bug.id}`}>{row.result.bug.title}</Link> : <p className="text-sm">尚未关联缺陷</p>}<p><Link className="text-sm text-primary underline" to={`/quality/test-runs/${row.testRun.id}`}>进入执行详情关联缺陷或创建独立回归</Link></p></article>)}{bugs.hasLoaded && !bugs.error && !bugs.total ? <p className="text-sm text-muted-foreground">暂无失败或阻塞项，异常用例将在此集中展示。</p> : null}<ListPagination page={bugPage} total={bugs.total} pageSize={20} onPageChange={setBugPage} /></section></TabsContent>
         <TabsContent value="reports"><QualityReportsPanel requestId={id} runs={formal.data ?? []} /></TabsContent>
       </Tabs>
       {tab === 'overview' || tab === 'runs' ? <>
@@ -293,7 +303,7 @@ function QualityRequestDetailContent({ id }: { id: string }) {
 
       {smoke.data !== undefined ? <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="冒烟轮次" value={runs.length} />
+        <MetricCard label="冒烟轮次" value={smoke.total} />
         <MetricCard label="目标端" value={totals.targets} />
         <MetricCard label="覆盖进度" value={`${totals.completed}/${totals.total}`} />
         <MetricCard label="参与执行" value={totals.executions} />
@@ -307,7 +317,7 @@ function QualityRequestDetailContent({ id }: { id: string }) {
                 <SectionHeader
                   eyebrow="Local Smoke"
                   title={run.name}
-                  description={`报告版本 ${run.reportRevision ?? 0} · ${run.executions?.length ?? 0} 次执行`}
+                  description={`报告版本 ${run.reportRevision ?? 0} · ${run.summary?.executionCount ?? 0} 次执行`}
                 />
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="sm" asChild><Link to={`/quality/test-runs/${run.id}`}>执行详情</Link></Button>
@@ -331,50 +341,7 @@ function QualityRequestDetailContent({ id }: { id: string }) {
                     </Badge>
                   ))}
                 </div>
-                <div className="overflow-x-auto rounded-md border border-border">
-                  <table className="w-full min-w-[680px] text-sm">
-                    <thead className="bg-muted/60 text-left text-muted-foreground">
-                      <tr><th className="p-3">目标端</th><th className="p-3">冒烟用例</th><th className="p-3">优先级</th><th className="p-3">结论</th><th className="p-3">实际结果</th></tr>
-                    </thead>
-                    <tbody>
-                      {(run.cases ?? []).map((item) => {
-                        const target = run.targets?.find((candidate) => candidate.id === item.targetId);
-                        return (
-                          <tr key={item.id} className="border-t border-border">
-                            <td className="p-3 font-medium">{target?.name ?? '-'}</td>
-                            <td className="p-3">{item.snapshot.title}</td>
-                            <td className="p-3">{item.snapshot.priority}</td>
-                            <td className="p-3"><Badge variant={statusBadgeVariant(item.result?.result ?? 'PENDING')}>{runStatusLabels[item.result?.result ?? 'PENDING'] ?? item.result?.result ?? '待执行'}</Badge></td>
-                            <td className="max-w-[320px] p-3 text-muted-foreground">{item.result?.actualResult || '-'}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                {(run.executions ?? []).length ? (
-                  <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
-                    {(run.executions ?? []).map((execution) => {
-                      const target = run.targets?.find((item) => item.id === execution.targetId);
-                      const claimed = execution.claimedCaseIds;
-                      const titles = Array.isArray(claimed) ? claimed.map((caseId) =>
-                        run.cases?.find((item) => item.id === caseId)?.snapshot.title ?? caseId) : [];
-                      const active = execution.status === 'RUNNING';
-                      const lease = execution.leaseExpiresAt ? Date.parse(execution.leaseExpiresAt) : NaN;
-                      const leaseLabel = !active ? '领取已结束' : !Number.isFinite(lease)
-                        ? '租约信息未记录' : lease > Date.now() ? '租约有效' : '租约已到期';
-                      const status = ({ RUNNING: '等待回传', COMPLETED: '已完成回传', STALE: '结果版本已过期',
-                        FAILED: '执行失败', CANCELLED: '已取消' } as Record<string, string>)[execution.status] ?? execution.status;
-                      return <div key={execution.id} className="w-full rounded-md border border-border p-3">
-                        <p className="font-medium text-foreground">{target?.name ?? '未记录目标端'} · {execution.claimedByUser?.displayName ?? '未记录执行人'} · {status}</p>
-                        <p>领取范围：{titles.join('、') || '未记录领取用例'} · {leaseLabel}</p>
-                        {active && Number.isFinite(lease) ? <p>租约截止：{new Date(lease).toLocaleString('zh-CN')}；租约到期不代表原设备任务已停止。</p> : null}
-                        {execution.summary ? <p>回传结论：{execution.summary}</p> : null}
-                        <p>设备：{execution.deviceId || '未记录设备'}</p>
-                      </div>;
-                    })}
-                  </div>
-                ) : null}
+                <p className="text-sm text-muted-foreground">逐例结果、执行人和租约在执行详情中分页查看。</p>
               </CardContent>
             </Card>
           ))}
@@ -383,6 +350,7 @@ function QualityRequestDetailContent({ id }: { id: string }) {
         <EmptyState title="暂无本地冒烟轮次" description="创建轮次后，本地开发者可以按目标端认领并回传结果。" />
       )}
 
+      <ListPagination page={smokePage} total={smoke.total} pageSize={10} onPageChange={setSmokePage} />
       </> : null}
 
       </> : null}

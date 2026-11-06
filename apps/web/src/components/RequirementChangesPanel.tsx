@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { ONLINE_AI_UNAVAILABLE_MESSAGE, useOnlineAiProviders } from '../online-ai';
-import type { RequirementChange, RequirementChanges } from '../types';
+import type { RequirementChange } from '../types';
+import { ListPagination } from './ListPagination';
+type ChangesPage = Awaited<ReturnType<typeof api.getRequirementChanges>>;
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Input } from './ui/input';
@@ -22,7 +24,8 @@ export function RequirementChangesPanel(props: Props) {
 
 function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged }: Props) {
   const navigate = useNavigate();
-  const [data, setData] = useState<RequirementChanges | null>(null);
+  const [data, setData] = useState<ChangesPage | null>(null);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [writeError, setWriteError] = useState<string | null>(null);
@@ -55,8 +58,9 @@ function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged }: P
     const version = ++readVersion.current;
     if (!silent) setLoading(true);
     try {
-      const next = await api.getRequirementChanges(requirementId, workflowRunId);
+      const next = await api.getRequirementChanges(requirementId, workflowRunId, { page, pageSize: 20 });
       if (generation.current !== currentGeneration || version !== readVersion.current) return;
+      if (next.page > next.totalPages) { setPage(next.totalPages); return; }
       setData(previous => previous && previous.revision > next.revision ? previous : next);
       setLoadError(null);
     } catch (error) {
@@ -73,7 +77,7 @@ function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged }: P
         }
       }
     }
-  }, [requirementId, workflowRunId]);
+  }, [requirementId, workflowRunId, page]);
 
   useEffect(() => {
     generation.current += 1;
@@ -91,7 +95,7 @@ function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged }: P
 
   useEffect(() => { if (refreshKey) void load({ silent: true }); }, [refreshKey, load]);
 
-  const starting = data?.changes.some(change => change.restartStatus === 'STARTING') ?? false;
+  const starting = data?.items.some(change => change.restartStatus === 'STARTING') ?? false;
   useEffect(() => {
     if (!starting) return;
     const timer = window.setInterval(() => { void load({ silent: true }); }, 2500);
@@ -99,7 +103,7 @@ function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged }: P
   }, [starting, load]);
 
   useEffect(() => {
-    const completed = data?.changes.find(record => record.id === pendingNavigate.current && record.restartStatus === 'STARTED' && record.restartWorkflowRunId);
+    const completed = data?.items.find(record => record.id === pendingNavigate.current && record.restartStatus === 'STARTED' && record.restartWorkflowRunId);
     if (completed) { pendingNavigate.current = null; navigate(`/workflow-runs/${completed.restartWorkflowRunId}`); }
   }, [data, navigate]);
 
@@ -109,9 +113,12 @@ function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged }: P
     setData(previous => ({
       ...previous,
       revision: Math.max(previous?.revision ?? 0, record.revision),
-      changes: [record, ...(previous?.changes ?? []).filter(item => item.id !== record.id)].sort((a, b) => b.revision - a.revision),
+      page: 1, pageSize: 20, total: (previous?.total ?? 0) + (record.revision > (previous?.revision ?? 0) ? 1 : 0),
+      totalPages: Math.max(1, Math.ceil(((previous?.total ?? 0) + (record.revision > (previous?.revision ?? 0) ? 1 : 0)) / 20)),
+      items: [record, ...(previous?.items ?? []).filter(item => item.id !== record.id)].sort((a, b) => b.revision - a.revision),
       ...(workflowRunId ? { hasPendingChanges: record.revision > (previous?.contextRevision ?? 0) } : {}),
     }));
+    if (page !== 1) setPage(1);
     if (reading.current) reloadPending.current = true;
     else void load({ silent: true });
     void Promise.resolve(onChanged?.()).catch(() => undefined);
@@ -203,12 +210,12 @@ function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged }: P
     </article>
   );
 
-  const records = [...(data?.changes ?? [])].sort((a, b) => b.revision - a.revision);
+  const records = [...(data?.items ?? [])].sort((a, b) => b.revision - a.revision);
   return (
     <Card>
       <CardContent className="space-y-3 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-base font-semibold">需求变更记录{records.length ? ` · ${records.length}` : ''}</h2>
+          <h2 className="text-base font-semibold">需求变更记录{data?.total ? ` · ${data.total}` : ''}</h2>
           <div className="flex gap-2">
             {records.length > 0 && <Button size="sm" variant="ghost" disabled={loading} onClick={() => void load({ silent: true })}>刷新变更</Button>}
             <Button size="sm" variant="outline" onClick={() => setOpen(value => !value)} disabled={busy} aria-expanded={open}>需求变更</Button>
@@ -236,8 +243,8 @@ function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged }: P
         {writeError && <p role="alert" className="text-sm text-destructive">{writeError}</p>}
         {loadError && <div className="flex items-center gap-3"><p role="alert" className="text-sm text-destructive">{loadError}</p><Button size="sm" variant="outline" onClick={() => void load({ silent: !!data })}>重新加载</Button></div>}
         {loading && !data ? <p role="status" className="text-sm text-muted-foreground">正在加载变更…</p> : records.length === 0 && !loadError ? <p className="text-sm text-muted-foreground">有调整时，一句话记录即可。</p> : null}
-        {records.slice(0, 3).map(renderRecord)}
-        {records.length > 3 && <details><summary className="cursor-pointer text-sm text-muted-foreground">更早的变更（{records.length - 3}）</summary>{records.slice(3).map(renderRecord)}</details>}
+        {records.map(renderRecord)}
+        <ListPagination page={page} total={data?.total ?? 0} pageSize={20} loading={loading} onPageChange={setPage} />
       </CardContent>
     </Card>
   );

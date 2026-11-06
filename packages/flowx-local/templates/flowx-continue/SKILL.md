@@ -37,3 +37,11 @@ description: 继续一条 FlowX 流程。先联网读取当前阶段，再让用
 - 执行：先用本次 `executionSessionId` 调用 `flowx_execution_checkpoint`，处理待办命令；有实质进展时携带 `progressSummary`，说明已完成什么、正在做什么，普通保活可省略。再 `flowx_collect_git_report`，通过 `flowx_report_completion` 显式携带该会话 ID 提交。运行期间的检查点、取消和恢复规则见 `flowx-local-execution` 的“执行检查点与运行控制”，使用自己的开发技能时同样适用。
 
 上传结果为 `queued: true` 时先执行 `flowx-local sync`，确认成功后再用 Artifact ID 完成阶段。指纹不一致时重新拉取 handoff，不复用旧产物。提交成功后停止，等待网页确认。
+
+## 分页读取约定
+
+所有浏览工具默认每页 20 条，`pageSize` 最大为 100。读取 `items` 与 `total/page/pageSize/totalPages`；需要更多候选时按页继续查询，不能把第一页或当前页计数当成完整范围。`flowx_list_tasks` 的 `tasks` 和 `openDesignWorkflows` 是独立分页，设计候选使用 `openDesignPage/openDesignPageSize/openDesignQ`。`flowx_list_projects` 通过 `resource=versions`（需 `projectId`）或 `resource=repositories`（需 `workspaceId`）分别发现版本与仓库，不依赖项目概要中的嵌套全量集合。
+
+测试设计通过 `flowx_get_test_design` 的 `collection=candidates|smoke-cases|requirements|workflows` 分页；提测单 get 动作通过 `collection=snapshots|requirements|workflows|artifacts` 分页。测试任务指定 `testRunId` 时以 `collection=cases|targets|executions` 分页发现；只执行 `claim` 实际返回的完整领取范围。冒烟按页修改必须传 `partial=true` 与每条既有 `id`，不能把一页作为完整范围替换。遇到 `PAGINATION_UPGRADE_REQUIRED` 应提示升级服务端与 `@flowx-ai/local`，不能退回旧全量接口或伪装空列表。
+
+发现项目、需求或测试记录时优先传 `q` 和已有范围过滤条件，保留分页元数据供后续选择；仅在当前页没有目标或用户继续浏览时请求下一页，不循环拉取所有页。用例多选过滤可传 `libraryIds/moduleIds/priorities`，MCP 会透传到 API；命令行 `flowx-local mcp` 与 IDE Adapter 共用此入口和分页契约请求头。

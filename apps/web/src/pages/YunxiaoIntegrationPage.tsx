@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react';
 import { PlugZap, RefreshCw, Save, Trash2, Users } from 'lucide-react';
 import { useAuth } from '../auth';
+import { useListPage } from '../hooks/use-list-page';
+import { ListPagination } from '../components/ListPagination';
+import { PagedSelect } from '../components/PagedSelect';
 import { api } from '../api';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { useToast } from '../components/ui/toast';
 import { useConfirm } from '../components/ConfirmDialog';
 import type {
   YunxiaoIntegrationStatus,
   YunxiaoProjectMember,
-  YunxiaoUnmatchedRecipient,
 } from '../types';
 
 const UNMAPPED_VALUE = '__unmapped__';
@@ -27,15 +28,11 @@ export function YunxiaoIntegrationPage() {
   const confirm = useConfirm();
   const [status, setStatus] = useState<YunxiaoIntegrationStatus | null>(null);
   const [yunxiaoOrganizationIdentifier, setYunxiaoOrganizationIdentifier] = useState('');
-  const [unmatchedRecipients, setUnmatchedRecipients] = useState<YunxiaoUnmatchedRecipient[]>([]);
+  const unmatchedPage = useListPage(api.getYunxiaoUnmatchedRecipients,{}, {pageKey:'unmatchedPage'});
+  const unmatchedRecipients = unmatchedPage.items;
   const [projectId, setProjectId] = useState('');
+  const [yunxiaoUserId,setYunxiaoUserId] = useState('');
   const [projectMembers, setProjectMembers] = useState<YunxiaoProjectMember[]>([]);
-  const [flowxUserOptions, setFlowxUserOptions] = useState<Array<{
-    id: string;
-    displayName: string;
-    account?: string | null;
-    email?: string | null;
-  }>>([]);
   const [mappingDrafts, setMappingDrafts] = useState<Record<string, string>>({});
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -45,15 +42,11 @@ export function YunxiaoIntegrationPage() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      api.getYunxiaoIntegration(),
-      api.getYunxiaoUnmatchedRecipients(),
-    ])
-      .then(([result, unmatched]) => {
+    api.getYunxiaoIntegration()
+      .then((result) => {
         if (!cancelled) {
           setStatus(result);
           setYunxiaoOrganizationIdentifier(result.yunxiaoOrganizationIdentifier ?? '');
-          setUnmatchedRecipients(unmatched);
         }
       })
       .catch((error) => {
@@ -72,13 +65,7 @@ export function YunxiaoIntegrationPage() {
     };
   }, [toast]);
 
-  async function refreshUnmatchedRecipients() {
-    try {
-      setUnmatchedRecipients(await api.getYunxiaoUnmatchedRecipients());
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载未匹配人员失败');
-    }
-  }
+  const refreshUnmatchedRecipients = unmatchedPage.refresh;
 
   async function clearUnmatchedRecipients() {
     if (!isAdmin || unmatchedRecipients.length === 0) {
@@ -95,7 +82,7 @@ export function YunxiaoIntegrationPage() {
     setClearingUnmatched(true);
     try {
       const result = await api.clearYunxiaoUnmatchedRecipients();
-      setUnmatchedRecipients([]);
+      unmatchedPage.refresh();
       toast.success(`已清空 ${result.deletedCount} 条未匹配人员记录`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '清空未匹配人员记录失败');
@@ -106,16 +93,15 @@ export function YunxiaoIntegrationPage() {
 
   async function loadProjectMembers(nextProjectId = projectId) {
     const normalizedProjectId = nextProjectId.trim();
-    if (!normalizedProjectId) {
-      toast.error('请填写云效项目 ID');
+    if (!normalizedProjectId || !yunxiaoUserId.trim()) {
+      toast.error('请填写云效项目 ID 和用户 ID');
       return;
     }
     setLoadingMembers(true);
     try {
-      const result = await api.getYunxiaoProjectMembers(normalizedProjectId);
+      const result = await api.getYunxiaoProjectMembers(normalizedProjectId,yunxiaoUserId.trim());
       setProjectId(normalizedProjectId);
       setProjectMembers(result.members);
-      setFlowxUserOptions(result.flowxUsers);
       setMappingDrafts(Object.fromEntries(
         result.members.map((member) => [getMemberKey(member), member.flowxUserId ?? UNMAPPED_VALUE]),
       ));
@@ -273,7 +259,7 @@ export function YunxiaoIntegrationPage() {
                 <div>
                   <h3 className="text-sm font-semibold">云效项目成员关联</h3>
                   <p className="text-sm text-muted-foreground">
-                    使用个人 Token 只能拿到云效 userId，请先加载项目成员，再手动关联 FlowX 用户。
+                    按云效 userId 查询单人组织身份，再关联 FlowX 用户；此查询不验证项目成员资格。
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
@@ -283,6 +269,7 @@ export function YunxiaoIntegrationPage() {
                     placeholder="输入云效项目 ID，例如 spaceIdentifier"
                     disabled={loadingMembers || saving}
                   />
+                  <Input value={yunxiaoUserId} onChange={event => setYunxiaoUserId(event.target.value)} placeholder="输入云效 userId" aria-label="云效用户 ID" disabled={loadingMembers || saving} />
                   <Button
                     type="button"
                     variant="outline"
@@ -290,7 +277,7 @@ export function YunxiaoIntegrationPage() {
                     disabled={loadingMembers || saving}
                   >
                     <Users size={16} />
-                    {loadingMembers ? '加载中...' : '加载成员'}
+                    {loadingMembers ? '查询中...' : '查询成员'}
                   </Button>
                 </div>
                 {projectMembers.length > 0 ? (
@@ -316,26 +303,10 @@ export function YunxiaoIntegrationPage() {
                             <td className="px-3 py-2 font-mono text-xs">{member.aliyunAccountId ?? '-'}</td>
                             <td className="px-3 py-2">{member.roleName ?? '-'}</td>
                             <td className="w-72 px-3 py-2">
-                              <Select
-                                value={mappingDrafts[getMemberKey(member)] ?? UNMAPPED_VALUE}
-                                onValueChange={(value) => setMappingDrafts((current) => ({
-                                  ...current,
-                                  [getMemberKey(member)]: value,
-                                }))}
-                                disabled={saving || !isAdmin}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="未关联" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value={UNMAPPED_VALUE}>未关联</SelectItem>
-                                  {flowxUserOptions.map((user) => (
-                                    <SelectItem key={user.id} value={user.id}>
-                                      {user.displayName}{user.account ? `（${user.account}）` : ''}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                              <PagedSelect value={mappingDrafts[getMemberKey(member)] === UNMAPPED_VALUE ? '' : mappingDrafts[getMemberKey(member)] ?? ''}
+                                onValueChange={value => setMappingDrafts(current => ({...current,[getMemberKey(member)]:value || UNMAPPED_VALUE}))}
+                                label="选择关联的 FlowX 用户" placeholder="未关联" allowClear emptyLabel="未关联" disabled={saving || !isAdmin}
+                                loadPage={async query => {const result = await api.getOrganizationMembers(query);return {...result,items:result.items.map(item => ({id:item.id,name:item.displayName}))};}} />
                             </td>
                             <td className="px-3 py-2">
                               <Button
@@ -355,7 +326,7 @@ export function YunxiaoIntegrationPage() {
                     </table>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">输入项目 ID 后加载成员列表。</p>
+                  <p className="text-sm text-muted-foreground">输入项目 ID 和云效 userId 后查询单人身份。</p>
                 )}
               </div>
               <div className="space-y-3 border-t border-border pt-5">
@@ -363,7 +334,7 @@ export function YunxiaoIntegrationPage() {
                   <div>
                     <h3 className="text-sm font-semibold">未匹配人员</h3>
                     <p className="text-sm text-muted-foreground">
-                      最近 100 条无法通过云效 ID 找到钉钉用户的记录。
+                      按页查看无法通过云效 ID 找到钉钉用户的记录。
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -421,6 +392,8 @@ export function YunxiaoIntegrationPage() {
                     </table>
                   </div>
                 )}
+                {unmatchedPage.error ? <p role="alert">{unmatchedPage.error}</p> : null}
+                <ListPagination {...unmatchedPage} label="未匹配人员分页" />
               </div>
             </>
           ) : null}

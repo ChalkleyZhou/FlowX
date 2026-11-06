@@ -8,7 +8,7 @@ function createService() {
       typeof operations === 'function' ? operations(prisma) : Promise.all(operations)),
     workspace: { findUnique: vi.fn() },
     project: { findFirst: vi.fn() },
-    testCaseLibrary: { create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn().mockResolvedValue({ nextCaseNumber: 1 }) },
+    testCaseLibrary: { count: vi.fn().mockResolvedValue(0), create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn().mockResolvedValue({ nextCaseNumber: 1 }) },
     testCaseModule: {
       findFirst: vi.fn(),
       findMany: vi.fn(),
@@ -385,6 +385,7 @@ describe('CaseLibrariesService', () => {
       total: 43,
       page: 2,
       pageSize: 20,
+      totalPages: 3,
       summary: { p0Count: 8, linkedCount: 31 },
     });
 

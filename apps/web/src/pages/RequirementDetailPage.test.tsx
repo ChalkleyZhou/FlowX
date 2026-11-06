@@ -14,7 +14,7 @@ const { successToast, errorToast, confirmDialog } = vi.hoisted(() => ({
   confirmDialog: vi.fn(async () => true),
 }));
 
-vi.mock('../api', () => ({ api: { getRequirement: vi.fn(), getProject: vi.fn(), updateRequirement: vi.fn(), createWorkflowRun: vi.fn(), deleteRequirement: vi.fn() } }));
+vi.mock('../api', () => ({ api: { getRequirement: vi.fn(), getWorkflowRuns: vi.fn(), listProjectVersions: vi.fn(), getProject: vi.fn(), updateRequirement: vi.fn(), createWorkflowRun: vi.fn(), deleteRequirement: vi.fn() } }));
 vi.mock('../components/ui/toast', () => ({ useToast: () => ({ success: successToast, error: errorToast }) }));
 vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => confirmDialog }));
 vi.mock('../components/PrototypeImportPanel', () => ({ PrototypeImportPanel: ({ importId, existingWorkflowId }: { importId: string; existingWorkflowId?: string }) => <div data-import={importId} data-workflow={existingWorkflowId}>原型导入面板</div> }));
@@ -45,6 +45,12 @@ describe('RequirementDetailPage 流程接续', () => {
     document.body.appendChild(container);
     root = createRoot(container);
     vi.mocked(api.getRequirement).mockResolvedValue(requirement);
+    vi.mocked(api.getWorkflowRuns).mockImplementation(async query => {
+      const detail = await vi.mocked(api.getRequirement).mock.results.at(-1)?.value as Requirement | undefined;
+      const rows = (detail?.workflowRuns ?? []).filter(row => query?.activeOnly ? !['DONE', 'FAILED'].includes(row.status) && !row.supersededByChangeId : ['DONE', 'FAILED'].includes(row.status) || !!row.supersededByChangeId);
+      return { items: rows as Awaited<ReturnType<typeof api.getWorkflowRuns>>['items'], total: rows.length, page: query?.page ?? 1, pageSize: 20, totalPages: 1 };
+    });
+    vi.mocked(api.listProjectVersions).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20, totalPages: 1 });
     confirmDialog.mockResolvedValue(true);
   });
   afterEach(() => {
@@ -61,6 +67,15 @@ describe('RequirementDetailPage 流程接续', () => {
       </Routes></MemoryRouter>);
     });
   }
+
+  it('活跃工作流分页独立读取，不依赖详情中的单条预览', async () => {
+    vi.mocked(api.getWorkflowRuns).mockImplementation(async query => ({ items: query?.activeOnly ? [run(`run-${query.page}`, 'EXECUTION_PENDING', `仓库${query.page}`)] as Awaited<ReturnType<typeof api.getWorkflowRuns>>['items'] : [], total: query?.activeOnly ? 25 : 0, page: query?.page ?? 1, pageSize: 20, totalPages: query?.activeOnly ? 2 : 1 }));
+    await renderPage();
+    expect(container.textContent).toContain('选择要继续的工作流');
+    await act(async () => { container.querySelector<HTMLButtonElement>('[aria-label="第 2 页"]')!.click(); });
+    expect(api.getWorkflowRuns).toHaveBeenCalledWith(expect.objectContaining({ requirementId: 'requirement-1', activeOnly: true, page: 2, pageSize: 20 }));
+    expect(container.textContent).toContain('仓库2');
+  });
 
   it('测试准备入口携带当前项目版本和需求', async () => {
     vi.mocked(api.getRequirement).mockResolvedValue({ ...requirement, versionId: 'version-1' });

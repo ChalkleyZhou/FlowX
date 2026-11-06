@@ -1,3 +1,4 @@
+export type { PageQuery, PageResult } from '@flowx-ai/protocol';
 export interface RequirementScheduleSummary {
   assignmentCount: number;
   scheduleStart: string | null;
@@ -62,6 +63,7 @@ export interface GanttBar {
 }
 
 export interface GanttPayload {
+  pagination?: {total:number;page:number;pageSize:number;totalPages:number};
   view: 'requirement' | 'member';
   range: { from: string; to: string };
   lanes: GanttLane[];
@@ -88,6 +90,7 @@ export interface Project {
     }
   >;
   _count?: {
+    versions?: number;
     requirements: number;
   };
 }
@@ -163,6 +166,7 @@ export interface DailyCodeReview {
 }
 
 export interface DeliveryTarget {
+  project?: Pick<Project,'id'|'name'>;
   id: string;
   projectId: string;
   type: 'EMAIL' | 'DINGTALK_ROBOT' | 'DINGTALK_APP' | string;
@@ -283,6 +287,7 @@ export interface RequirementChangePayload {
 }
 
 export interface Requirement {
+  _count?: { workflowRuns?: number; assignments?: number; requirementRepositories?: number; ideationSessions?: number; ideationArtifacts?: number };
   id: string;
   title: string;
   description: string;
@@ -343,6 +348,7 @@ export interface Workspace {
   _count?: {
     projects: number;
     requirements: number;
+    repositories?: number;
   };
 }
 
@@ -382,6 +388,7 @@ export interface WorkflowDesignArtifactPage {
 }
 
 export interface WorkflowRun {
+  _count?: { workflowRepositories?: number; reviewFindings?: number };
   id: string;
   status: string;
   supersededByChangeId?: string | null;
@@ -768,6 +775,7 @@ export interface TestCaseSnapshot {
 }
 
 export interface TestRun {
+  summary?: Record<string, number>;
   id: string;
   name: string;
   runType: 'INITIAL' | 'SMOKE' | 'REGRESSION' | 'LOCAL_SMOKE';
@@ -783,6 +791,7 @@ export interface TestRun {
   cases?: Array<{
     id: string;
     targetId?: string | null;
+    target?: Pick<TestRunTarget,'id'|'key'|'name'> | null;
     required?: boolean;
     blocking?: boolean;
     snapshot: TestCaseSnapshot;
@@ -840,7 +849,10 @@ export interface QualityTestReport {
   artifactId: string;
   createdAt: string;
   artifact?: ArtifactSummary;
-  snapshot: {
+  mode?: 'PROGRESS' | 'FINAL';
+  summary?: QualityReportSummary;
+  supersessionCount?: number;
+  snapshot?: {
     mode: 'PROGRESS' | 'FINAL';
     summary: QualityReportSummary;
     baseline?: TestedRepositoryRevision[];
@@ -872,6 +884,7 @@ export interface TestRunTarget {
 }
 
 export interface TestExecution {
+  target?: Pick<TestRunTarget,'id'|'key'|'name'> | null;
   id: string;
   executionSessionId?: string | null;
   environment?: Record<string, unknown> | null;
@@ -921,6 +934,7 @@ export interface TestRequest {
     status: string;
     snapshots: TestCaseSnapshot[];
     runs: TestRun[];
+    _count?: {snapshots:number;runs:number};
   } | null;
 }
 
@@ -969,6 +983,7 @@ export interface TestDesignSmokeCase {
 }
 
 export interface TestDesign {
+  summary?: {pendingCount:number;acceptedCount:number;smokePendingCount:number;candidateCount:number;smokeCount:number};
   id: string;
   workspaceId: string;
   projectId: string;
@@ -1067,7 +1082,7 @@ export interface YunxiaoProjectMembersResponse {
   projectId: string;
   yunxiaoOrganizationIdentifier: string;
   members: YunxiaoProjectMember[];
-  flowxUsers: OrganizationMember[];
+  identityScope?: 'organization';
 }
 
 export interface AiCredentialStatus {
@@ -1350,6 +1365,7 @@ export interface ConfirmedCodeDelivery {
 }
 
 export interface WorkflowCodeDelivery {
+  historyCount?: number;
   workflowRunId: string;
   canSubmit: boolean;
   reason: string | null;

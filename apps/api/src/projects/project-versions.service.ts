@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -5,6 +6,21 @@ import { PrismaService } from '../prisma/prisma.service';
 @Injectable()
 export class ProjectVersionsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async listPage(projectId: string, query: PaginationQuery & { q?: string } = {}) {
+    const paging = parsePagination(query);
+    await this.requireProject(projectId);
+    const where = { projectId, ...(query.q?.trim() ? { name: { contains: query.q.trim() } } : {}) };
+    const [items, total] = await Promise.all([
+      this.prisma.projectVersion.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }),
+      this.prisma.projectVersion.count({ where }),
+    ]);
+    return pageResult(items, total, paging);
+  }
+
+  findVersion(projectId: string, versionId: string) {
+    return this.requireOwnedVersion(projectId, versionId);
+  }
 
   async list(projectId: string) {
     await this.requireProject(projectId);

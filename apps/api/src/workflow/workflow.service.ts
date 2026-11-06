@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { readChangePrototype } from '../requirements/requirement-change-prototype';
 import { effectiveRequirementDescription, readRequirementRevision } from '../requirements/requirement-change-context';
 import { requirementProfileFields } from '../requirements/requirement-profile';
@@ -714,12 +715,71 @@ export class WorkflowService {
     return this.aiInvocationContextService.listOnlineProviders(organizationId);
   }
 
+  async findPage(query: PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; excludeSuperseded?: string | boolean; activeOnly?: string | boolean; terminalOnly?: string | boolean; requirementId?: string; status?: string; runType?: string; q?: string } = {}) {
+    const paging = parsePagination(query);
+    if (query.excludeSuperseded !== undefined && ![true, false, 'true', 'false'].includes(query.excludeSuperseded)) throw new BadRequestException('excludeSuperseded 必须是布尔值。');
+    if (query.activeOnly !== undefined && ![true, false, 'true', 'false'].includes(query.activeOnly)) throw new BadRequestException('activeOnly 必须是布尔值。');
+    if (query.terminalOnly !== undefined && ![true, false, 'true', 'false'].includes(query.terminalOnly)) throw new BadRequestException('terminalOnly 必须是布尔值。');
+    const scope = { requirement: { ...(query.projectId ? { projectId: query.projectId } : {}), ...(query.versionId ? { versionId: query.versionId } : {}), ...(query.workspaceId ? { project: { workspaceId: query.workspaceId } } : {}) } };
+    const activeOnly = query.activeOnly === true || query.activeOnly === 'true';
+    const terminalOnly = query.terminalOnly === true || query.terminalOnly === 'true';
+    const where: Prisma.WorkflowRunWhereInput = {
+      ...scope,
+      ...(query.runType ? { runType: query.runType } : {}),
+      ...((query.excludeSuperseded === true || query.excludeSuperseded === 'true') ? { supersededByChangeId: null } : {}),
+      ...(query.requirementId ? { requirementId: query.requirementId } : {}),
+      ...(activeOnly ? { status: { notIn: ['DONE', 'FAILED'], ...(query.status ? { equals: query.status } : {}) } } : query.status ? { status: query.status } : {}),
+      AND: [
+        ...(terminalOnly ? [{ OR: [{ status: { in: ['DONE', 'FAILED'] } }, { supersededByChangeId: { not: null } }] }] : []),
+        ...(query.q?.trim() ? [{ OR: [{ id: { contains: query.q.trim() } }, { requirement: { title: { contains: query.q.trim() } } }] }] : []),
+      ],
+    };
+    const [items, total, scopeTotal, runningCount, pendingCount] = await Promise.all([
+      this.prisma.workflowRun.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { stageExecutions: { where: { stage: 'SPEC_PLAN' }, take: 1, orderBy: [{ attempt: 'desc' }, { id: 'desc' }], select: { id: true, stage: true, status: true, attempt: true, output: true } }, requirement: { include: { project: { include: { workspace: true } }, workspace: true } }, workflowRepositories: { take: 20, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }, _count: { select: { workflowRepositories: true } }, fixForBug: true } }),
+      this.prisma.workflowRun.count({ where }), this.prisma.workflowRun.count({ where: scope }),
+      this.prisma.workflowRun.count({ where: { ...scope, status: 'EXECUTION_RUNNING' } }),
+      this.prisma.workflowRun.count({ where: { ...scope, OR: [{ status: { contains: 'PENDING' } }, { status: { contains: 'WAITING' } }] } }),
+    ]);
+    return { ...pageResult(items, total, paging), summary: { total: scopeTotal, visible: total, runningCount, pendingCount } };
+  }
+
+  async getHistoryPage(workflowRunId: string, query: PaginationQuery = {}) {
+    const paging = parsePagination(query);
+    await this.prisma.workflowRun.findUniqueOrThrow({ where: { id: workflowRunId }, select: { id: true } });
+    const where = { workflowRunId };
+    const [items, total] = await Promise.all([this.prisma.stageExecution.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }), this.prisma.stageExecution.count({ where })]);
+    return pageResult(items, total, paging);
+  }
+
   async findAll(filters?: { runType?: string }) {
     return this.prisma.workflowRun.findMany({
       where: filters?.runType ? { runType: filters.runType } : undefined,
       orderBy: { createdAt: 'desc' },
       include: this.workflowInclude(),
     });
+  }
+
+  async findDetail(id: string) {
+    const workflow = await this.prisma.workflowRun.findUniqueOrThrow({ where: { id }, include: {
+      requirement: { include: { project: { include: { workspace: true } }, workspace: true, changes: { take: 1, orderBy: [{ revision: 'desc' }, { id: 'desc' }] } } },
+      codeExecution: true, reviewReport: true, fixForBug: true,
+      reviewFindings: { take: 20, orderBy: [{ createdAt: 'asc' }, { sourceIndex: 'asc' }, { id: 'asc' }] },
+      workflowRepositories: { take: 20, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+      _count: { select: { stageExecutions: true, reviewFindings: true, workflowRepositories: true } },
+    } });
+    // 详情只投影每个阶段的最近一次执行，避免某阶段大量重试挤掉其他阶段；完整记录由 history 分页读取。
+    const stages = await Promise.all(Object.values(stageTypeMap).map((stage) => this.prisma.stageExecution.findMany({
+      where: { workflowRunId: id, stage }, take: 1, orderBy: [{ attempt: 'desc' }, { id: 'desc' }],
+    })));
+    return { ...workflow, stageExecutions: stages.flat() };
+  }
+
+  async listRepositoriesPage(workflowRunId: string, query: PaginationQuery = {}) {
+    const paging = parsePagination(query);
+    await this.prisma.workflowRun.findUniqueOrThrow({ where: { id: workflowRunId }, select: { id: true } });
+    const where = { workflowRunId };
+    const [items, total] = await Promise.all([this.prisma.workflowRepository.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }), this.prisma.workflowRepository.count({ where })]);
+    return pageResult(items, total, paging);
   }
 
   async findOne(id: string) {

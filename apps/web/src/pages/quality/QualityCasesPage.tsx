@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Eye, Folder, FolderOpen, FolderTree, Loader2, Pencil, Plus, RotateCw, Trash2, Upload } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useRememberedSearchFilters } from '../../utils/list-filter-storage';
 import { api } from '../../api';
+import { ListPagination } from '../../components/ListPagination';
+import { PagedSelect } from '../../components/PagedSelect';
+import { QualityModuleTree } from './QualityModuleTree';
 import { useProjectScopeOptional, useScopedProjectId } from '../../project-scope-context';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { EmptyState } from '../../components/EmptyState';
@@ -49,9 +52,9 @@ export function QualityCasesPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [libraries, setLibraries] = useState<TestCaseLibrary[]>([]);
-  const [modulesByLibrary, setModulesByLibrary] = useState<Record<string, TestCaseModule[]>>({});
-  const [moduleLoading, setModuleLoading] = useState<Record<string, boolean>>({});
-  const [moduleErrors, setModuleErrors] = useState<Record<string, string | null>>({});
+  const [libraryPage, setLibraryPage] = useState(1);
+  const [libraryTotal, setLibraryTotal] = useState(0);
+  const listSequence = useRef(0);
   const [expandedLibraries, setExpandedLibraries] = useState<Set<string>>(new Set());
   const [cases, setCases] = useState<TestCaseDefinition[]>([]);
   const [total, setTotal] = useState(0);
@@ -98,28 +101,11 @@ export function QualityCasesPage() {
     });
   }
 
-  const loadModules = useCallback(async (targetLibraryId: string, force = false) => {
-    if (!force && Object.prototype.hasOwnProperty.call(modulesByLibrary, targetLibraryId)) return;
-    setModuleLoading((current) => ({ ...current, [targetLibraryId]: true }));
-    setModuleErrors((current) => ({ ...current, [targetLibraryId]: null }));
-    try {
-      const items = await api.getTestCaseModules(targetLibraryId);
-      setModulesByLibrary((current) => ({ ...current, [targetLibraryId]: items }));
-    } catch (error) {
-      setModuleErrors((current) => ({
-        ...current,
-        [targetLibraryId]: error instanceof Error ? error.message : '加载模块失败',
-      }));
-    } finally {
-      setModuleLoading((current) => ({ ...current, [targetLibraryId]: false }));
-    }
-  }, [modulesByLibrary]);
-
   useEffect(() => {
     void (async () => {
       setMetaLoading(true);
       try {
-        setWorkspaces(await api.getWorkspaces());
+        setWorkspaces((await api.getWorkspaces({ page: 1, pageSize: 1 })).items);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : '加载用例库范围失败');
       } finally {
@@ -160,11 +146,13 @@ export function QualityCasesPage() {
 
   async function refreshList(silent = false) {
     if (!workspaceId) return;
-    silent ? setRefreshing(true) : setListLoading(true);
+    const sequence = ++listSequence.current;
+    silent || cases.length ? setRefreshing(true) : setListLoading(true);
     try {
       const [libraryList, casePage] = await Promise.all([
         api.getTestCaseLibraries({
           workspaceId,
+          page: libraryPage, pageSize: 10,
           projectId: selectedProjectId,
           ...(libraryOwnership ? { ownership: libraryOwnership } : {}),
         }),
@@ -180,81 +168,33 @@ export function QualityCasesPage() {
           pageSize: PAGE_SIZE,
         }),
       ]);
-      setLibraries(libraryList);
+      if (sequence !== listSequence.current) return;
+      const lastLibraryPage = Math.max(1, libraryList.totalPages);
+      if (libraryPage > lastLibraryPage) { setLibraryPage(lastLibraryPage); return; }
+      setLibraries(libraryList.items);
+      setLibraryTotal(libraryList.total);
       setCases(casePage.items);
       setTotal(casePage.total);
-      setP0Count(casePage.summary.p0Count);
-      setLinkedCount(casePage.summary.linkedCount);
+      setP0Count(casePage.summary?.p0Count ?? 0);
+      setLinkedCount(casePage.summary?.linkedCount ?? 0);
       const lastPage = Math.max(1, Math.ceil(casePage.total / PAGE_SIZE));
       if (page > lastPage) updateQuery({ page: String(lastPage) });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载测试用例失败');
+      if (sequence === listSequence.current) toast.error(error instanceof Error ? error.message : '加载测试用例失败');
     } finally {
-      setListLoading(false);
-      setRefreshing(false);
+      if (sequence === listSequence.current) { setListLoading(false); setRefreshing(false); }
     }
   }
 
   useEffect(() => {
     void refreshList();
-  }, [workspaceId, selectedProjectId, libraryId, moduleId, priority, keyword, page]);
+    return () => { listSequence.current += 1; };
+  }, [workspaceId, selectedProjectId, libraryId, moduleId, priority, keyword, page, libraryPage]);
 
   useEffect(() => {
-    if (!libraries.length || libraryId === ALL) return;
-    if (!libraries.some((library) => library.id === libraryId)) {
-      updateQuery({ libraryId: null, moduleId: null, page: null });
-      return;
-    }
-    setExpandedLibraries((current) => current.has(libraryId) ? current : new Set(current).add(libraryId));
-    void loadModules(libraryId);
-  }, [libraries, libraryId, loadModules]);
-
-  useEffect(() => {
-    if (libraryId === ALL || moduleId === ALL) return;
-    const modules = modulesByLibrary[libraryId];
-    if (modules && !modules.some((module) => module.id === moduleId)) {
-      updateQuery({ moduleId: null, page: null });
-    }
-  }, [libraryId, moduleId, modulesByLibrary]);
-
-  function renderModuleTree(targetLibraryId: string, modules: TestCaseModule[], parentId: string | null, depth = 0): ReactNode[] {
-    return modules
-      .filter((module) => (module.parentId ?? null) === parentId)
-      .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name))
-      .map((module) => {
-        const hasChildren = modules.some((item) => item.parentId === module.id);
-        return (
-          <div key={module.id} style={{ paddingLeft: depth * 12 }}>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                aria-label={`筛选模块：${module.name}`}
-                aria-current={moduleId === module.id ? 'page' : undefined}
-                className={`flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted ${moduleId === module.id ? 'bg-muted font-medium text-primary' : 'text-foreground'}`}
-                onClick={() => selectTreeNode(targetLibraryId, module.id)}
-              >
-                {hasChildren ? <FolderOpen aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /> : <Folder aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />}
-                <span className="truncate">{module.name}</span>
-              </button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 shrink-0"
-                aria-label={`在模块“${module.name}”下添加子模块`}
-                onClick={() => {
-                  setModuleCreateContext({ libraryId: targetLibraryId, parentId: module.id });
-                  setModuleDialogOpen(true);
-                }}
-              >
-                <Plus aria-hidden="true" className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-            {hasChildren ? renderModuleTree(targetLibraryId, modules, module.id, depth + 1) : null}
-          </div>
-        );
-      });
-  }
+    if (libraryId === ALL) return;
+    setExpandedLibraries(current => current.has(libraryId) ? current : new Set(current).add(libraryId));
+  }, [libraryId]);
 
   async function handleDelete(testCase: TestCaseDefinition) {
     const confirmed = await confirm({
@@ -328,7 +268,7 @@ export function QualityCasesPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="可用用例库" value={libraries.length} />
+        <MetricCard label="可用用例库" value={libraryTotal} />
         <MetricCard label="当前范围用例" value={total} />
         <MetricCard label="P0 用例" value={p0Count} />
         <MetricCard label="已关联覆盖对象" value={linkedCount} />
@@ -407,8 +347,6 @@ export function QualityCasesPage() {
                   <div className="space-y-1">
                     {libraries.map((library) => {
                       const expanded = expandedLibraries.has(library.id);
-                      const modules = modulesByLibrary[library.id] ?? [];
-                      const error = moduleErrors[library.id];
                       return (
                         <div key={library.id}>
                           <div className="flex items-center gap-1">
@@ -424,7 +362,6 @@ export function QualityCasesPage() {
                                   if (next.has(library.id)) next.delete(library.id); else next.add(library.id);
                                   return next;
                                 });
-                                if (!expanded) void loadModules(library.id);
                               }}
                             >
                               {expanded ? <ChevronDown aria-hidden="true" className="h-4 w-4" /> : <ChevronRight aria-hidden="true" className="h-4 w-4" />}
@@ -454,18 +391,7 @@ export function QualityCasesPage() {
                           </div>
                           {expanded ? (
                             <div className="ml-7 mt-1">
-                              {moduleLoading[library.id] ? <div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />加载模块...</div> : error ? (
-                                <div className="flex items-center justify-between gap-2 px-2 py-2 text-xs text-danger"><span className="truncate">{error}</span><Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label={`重试加载模块：${library.name}`} onClick={() => void loadModules(library.id, true)}><RotateCw className="h-3.5 w-3.5" /></Button></div>
-                              ) : modules.length ? renderModuleTree(library.id, modules, null) : (
-                                <div className="space-y-2 px-2 py-2">
-                                  <p className="text-xs text-muted-foreground">暂无模块</p>
-                                  <Button type="button" variant="ghost" className="h-auto p-0 text-xs text-primary" onClick={() => {
-                                    selectTreeNode(library.id);
-                                    setModuleCreateContext({ libraryId: library.id });
-                                    setModuleDialogOpen(true);
-                                  }}>管理模块</Button>
-                                </div>
-                              )}
+                              <QualityModuleTree libraryId={library.id} selectedId={moduleId} onSelect={id => selectTreeNode(library.id, id)} onAdd={parentId => { setModuleCreateContext({ libraryId: library.id, parentId }); setModuleDialogOpen(true); }} />
                             </div>
                           ) : null}
                         </div>
@@ -473,6 +399,7 @@ export function QualityCasesPage() {
                     })}
                   </div>
                 ) : <p className="px-2 py-4 text-xs text-muted-foreground">暂无用例库</p>}
+                <ListPagination page={libraryPage} total={libraryTotal} pageSize={10} onPageChange={setLibraryPage} />
               </aside>
               <div className="min-w-0">
             <ListToolbar
@@ -486,18 +413,7 @@ export function QualityCasesPage() {
               )}
               filters={(
                 <>
-                  <Select
-                    value={workspaceId || ''}
-                    onValueChange={(value) => updateQuery({ workspaceId: value, libraryId: null, page: null })}
-                    disabled={metaLoading || caseScope === 'project'}
-                  >
-                    <SelectTrigger className="w-full sm:w-[180px]" aria-label="按工作区筛选">
-                      <SelectValue placeholder="选择工作区" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {workspaces.map((workspace) => <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <PagedSelect label="按工作区筛选" value={workspaceId} selectedLabel={workspaces.find(item => item.id === workspaceId)?.name} disabled={caseScope === 'project'} onValueChange={value => { setLibraryPage(1); updateQuery({ workspaceId: value, libraryId: null, moduleId: null, page: null }); }} loadPage={query => api.getWorkspaces(query)} />
                   <Select
                     value={caseScope}
                     onValueChange={(value) => updateQuery({ caseScope: value === 'shared' ? 'shared' : null, libraryId: null, page: null })}
@@ -659,6 +575,8 @@ export function QualityCasesPage() {
         open={caseDialogOpen}
         onOpenChange={setCaseDialogOpen}
         libraries={libraries}
+        workspaceId={workspaceId}
+        projectId={selectedProjectId}
         initialLibraryId={caseCreateContext.libraryId}
         initialModuleId={caseCreateContext.moduleId}
         onCreated={async () => {
@@ -671,6 +589,8 @@ export function QualityCasesPage() {
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}
         libraries={libraries}
+        workspaceId={workspaceId}
+        projectId={selectedProjectId}
         defaultLibraryId={libraryId === ALL ? undefined : libraryId}
         onImported={async () => {
           setImportDialogOpen(false);
@@ -682,6 +602,8 @@ export function QualityCasesPage() {
         onOpenChange={(open) => !open && setEditingCase(null)}
         testCase={editingCase}
         libraries={libraries}
+        workspaceId={workspaceId}
+        projectId={selectedProjectId}
         onUpdated={async (updated) => {
           setEditingCase(null);
           setSelectedCase((current) => current?.id === updated.id ? updated : current);
@@ -695,6 +617,8 @@ export function QualityCasesPage() {
           if (!open) setModuleCreateContext({});
         }}
         libraries={libraries}
+        workspaceId={workspaceId}
+        projectId={selectedProjectId}
         defaultLibraryId={moduleCreateContext.libraryId ?? (libraryId === ALL ? undefined : libraryId)}
         defaultParentId={moduleCreateContext.parentId}
         onChanged={() => refreshList(true)}

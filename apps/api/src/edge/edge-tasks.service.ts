@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { RequirementPlanningStatus, RequirementPriority, WorkflowRunStatus, WorkflowRunType } from '../common/enums';
 import { PrismaService } from '../prisma/prisma.service';
@@ -74,14 +76,16 @@ const OPEN_DESIGN_CANDIDATE_STATUSES = ['BRAINSTORM_PENDING', 'DESIGN_PENDING'] 
 export class EdgeTasksService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listTasks(filters: {
+  async listTasks(filters: PaginationQuery & {
     workspaceId?: string;
     projectId?: string;
     versionId?: string;
     planningStatus?: string;
     priority?: string;
     session?: EdgeWorkflowSession;
-  }): Promise<EdgeTaskItem[]> {
+    q?: string;
+  }) {
+    const paging = parsePagination(filters);
     const workspaceId = filters.workspaceId?.trim() || undefined;
     const projectId = filters.projectId?.trim() || undefined;
     const versionId = filters.versionId?.trim() || undefined;
@@ -103,18 +107,44 @@ export class EdgeTasksService {
       ...(priority ? { priority } : {}),
     };
     const includeBugs = !versionId && !planningStatus;
+    // 在数据库中对跨表任务统一排序分页，再仅补齐本页的关联信息。
+    const organizationId = filters.session?.organization?.id;
+    const shared = [
+      ...(workspaceId ? [Prisma.sql`workspaceId = ${workspaceId}`] : []),
+      ...(projectId ? [Prisma.sql`projectId = ${projectId}`] : []),
+      ...(priority ? [Prisma.sql`priority = ${priority}`] : []),
+      ...(filters.q?.trim() ? [Prisma.sql`instr(title, ${filters.q.trim()}) > 0`] : []),
+      ...(organizationId ? [Prisma.sql`workspaceId IN (SELECT id FROM Workspace WHERE organizationId = ${organizationId})`] : []),
+    ];
+    const requirementConditions = [Prisma.sql`status = 'ACTIVE'`, ...shared,
+      ...(versionId ? [Prisma.sql`versionId = ${versionId}`] : []),
+      ...(planningStatus ? [Prisma.sql`planningStatus = ${planningStatus}`] : []),
+    ];
+    const requirementsQuery = Prisma.sql`SELECT id, 'requirement' AS taskType, updatedAt FROM Requirement WHERE ${Prisma.join(requirementConditions, ' AND ')}`;
+    const union = includeBugs ? Prisma.sql`${requirementsQuery} UNION ALL SELECT id, 'bug' AS taskType, updatedAt FROM Bug WHERE ${Prisma.join([Prisma.sql`status IN ('OPEN', 'CONFIRMED')`, ...shared], ' AND ')}` : requirementsQuery;
+    const [keys, totals] = await Promise.all([
+      this.prisma.$queryRaw<Array<{ id: string; taskType: EdgeTaskType }>>(Prisma.sql`SELECT id, taskType FROM (${union}) ORDER BY updatedAt DESC, taskType ASC, id DESC LIMIT ${paging.take} OFFSET ${paging.skip}`),
+      this.prisma.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`SELECT COUNT(*) AS total FROM (${union})`),
+    ]);
+    const requirementIds = keys.filter(item => item.taskType === 'requirement').map(item => item.id);
+    const bugIds = keys.filter(item => item.taskType === 'bug').map(item => item.id);
     const [requirements, bugs] = await Promise.all([
       this.prisma.requirement.findMany({
-        where: requirementWhere,
+        where: { ...requirementWhere, id: { in: requirementIds } },
         include: {
           requirementRepositories: {
+            take: 1,
             include: { repository: true },
             orderBy: { createdAt: 'asc' },
           },
           workflowRuns: {
+            where: { status: { notIn: ['DONE', 'FAILED'] } },
+            take: 1,
             include: {
-              workflowRepositories: true,
               executionSessions: {
+                where: { status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] } },
+                take: 1,
+                orderBy: { createdAt: 'desc' },
                 select: { id: true, sourceTool: true, status: true, metadata: true },
               },
             },
@@ -125,6 +155,7 @@ export class EdgeTasksService {
       }),
       includeBugs ? this.prisma.bug.findMany({
         where: {
+          id: { in: bugIds },
           status: { in: ['OPEN', 'CONFIRMED'] },
           ...workspaceFilter,
           ...(projectId ? { projectId } : {}),
@@ -135,7 +166,7 @@ export class EdgeTasksService {
       }) : Promise.resolve([]),
     ]);
 
-    return [
+    const items: EdgeTaskItem[] = [
       ...requirements.map((requirement) => {
         const repository = requirement.requirementRepositories[0]?.repository ?? null;
         const localWorkflow = requirement.workflowRuns.find((workflow) => this.isReportableLocalWorkflow(workflow));
@@ -190,24 +221,32 @@ export class EdgeTasksService {
         });
       }),
     ];
+    const byKey = new Map(items.map(item => [`${item.type}:${item.id}`, item]));
+    return pageResult(keys.map(key => byKey.get(`${key.taskType}:${key.id}`)).filter((item): item is EdgeTaskItem => item !== undefined), Number(totals[0]?.total ?? 0), paging);
   }
 
-  async listWorkflowPositions(filters: {
+
+  async listWorkflowPositions(filters: PaginationQuery & {
     workspaceId?: string;
     workflowRunId?: string;
     session?: EdgeWorkflowSession;
-  }): Promise<WorkflowPositionItem[]> {
+    q?: string;
+  }) {
+    const paging = parsePagination(filters);
     const workspaceId = filters.workspaceId?.trim() || undefined;
     const workflowRunId = filters.workflowRunId?.trim() || undefined;
     const organizationId = filters.session?.organization?.id?.trim() || undefined;
-    const workflows = await this.prisma.workflowRun.findMany({
-      where: {
+    const where: Prisma.WorkflowRunWhereInput = {
         ...(workflowRunId ? { id: workflowRunId } : { status: { notIn: ['DONE', 'FAILED'] } }),
         ...(workspaceId || organizationId ? { requirement: {
           ...(workspaceId ? { workspaceId } : {}),
           ...(organizationId ? { project: { workspace: { organizationId } } } : {}),
         } } : {}),
-      },
+      };
+    if (filters.q?.trim()) where.requirement = { ...((where.requirement ?? {}) as Prisma.RequirementWhereInput), title: { contains: filters.q.trim() } };
+    const total = await this.prisma.workflowRun.count({ where });
+    const workflows = await this.prisma.workflowRun.findMany({ where, skip: paging.skip, take: paging.take,
+
       include: {
         requirement: { select: { id: true, title: true } },
         stageExecutions: {
@@ -239,12 +278,12 @@ export class EdgeTasksService {
           orderBy: { createdAt: 'desc' },
         },
       },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
     });
-    if (workflowRunId && workflows.length === 0) {
+    if (workflowRunId && total === 0) {
       throw new NotFoundException(`Workflow ${workflowRunId} was not found.`);
     }
-    return workflows.map((workflow) => {
+    const items = workflows.map((workflow): WorkflowPositionItem => {
       let position = resolveLocalPosition(workflow.status);
       const executionStage = [...workflow.stageExecutions].filter((stage) => stage.stage === 'EXECUTION')
         .sort((left, right) => right.attempt - left.attempt)[0];
@@ -304,6 +343,7 @@ export class EdgeTasksService {
         artifacts,
       };
     });
+    return pageResult(items, total, paging);
   }
 
   private matchesDesignInventory(
@@ -358,15 +398,16 @@ export class EdgeTasksService {
     }) ?? null;
   }
 
-  async listOpenDesignTasks(filters: {
+  async listOpenDesignTasks(filters: PaginationQuery & {
     workspaceId?: string;
     session?: EdgeWorkflowSession;
-  }): Promise<OpenDesignWorkflowItem[]> {
+    q?: string;
+  }) {
+    const paging = parsePagination(filters);
     const workspaceId = filters.workspaceId?.trim() || undefined;
     const organizationId = filters.session?.organization?.id?.trim() || undefined;
 
-    const workflows = await this.prisma.workflowRun.findMany({
-      where: {
+    const where: Prisma.WorkflowRunWhereInput = {
         runType: {
           in: [WorkflowRunType.LOCAL_DESIGN, WorkflowRunType.FULL],
         },
@@ -380,16 +421,20 @@ export class EdgeTasksService {
               ],
             }
           : {}),
-      },
+      };
+    if (filters.q?.trim()) where.requirement = { workspaceId, title: { contains: filters.q.trim() } };
+    const total = await this.prisma.workflowRun.count({ where });
+    const workflows = await this.prisma.workflowRun.findMany({ where, skip: paging.skip, take: paging.take,
+
       include: {
         requirement: {
           select: { id: true, title: true },
         },
       },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
     });
 
-    return workflows.map((workflow) => ({
+    const items = workflows.map((workflow) => ({
       kind: 'opendesign-workflow' as const,
       workflowRunId: workflow.id,
       requirementId: workflow.requirementId,
@@ -397,6 +442,7 @@ export class EdgeTasksService {
       status: workflow.status,
       suggestedAction: this.suggestedOpenDesignAction(workflow.status),
     }));
+    return pageResult(items, total, paging);
   }
 
   private suggestedOpenDesignAction(status: string): OpenDesignSuggestedAction {

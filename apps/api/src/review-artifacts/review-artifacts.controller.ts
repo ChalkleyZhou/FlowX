@@ -13,8 +13,8 @@ export class ReviewArtifactsController {
   constructor(private readonly reviewArtifactsService: ReviewArtifactsService) {}
 
   @Get('workflow-runs/:workflowRunId/review-findings')
-  getWorkflowRunReviewFindings(@Param('workflowRunId') workflowRunId: string) {
-    return this.reviewArtifactsService.getWorkflowRunReviewFindings(workflowRunId);
+  getWorkflowRunReviewFindings(@Param('workflowRunId') workflowRunId: string, @Query() query: import('../common/pagination').PaginationQuery = {}) {
+    return this.reviewArtifactsService.getWorkflowRunReviewFindingsPage(workflowRunId, query);
   }
 
   @Post('review-reports/:reviewReportId/findings/sync')
@@ -56,12 +56,8 @@ export class ReviewArtifactsController {
   }
 
   @Get('issues')
-  getIssues(
-    @Query('workspaceId') workspaceId?: string,
-    @Query('workflowRunId') workflowRunId?: string,
-    @Query('status') status?: string,
-  ) {
-    return this.reviewArtifactsService.getIssues({ workspaceId, workflowRunId, status });
+  getIssues(@Query() query: import('../common/pagination').PaginationQuery & { workspaceId?: string; projectId?: string; workflowRunId?: string; status?: string; priority?: string; severity?: string; q?: string } = {}) {
+    return this.reviewArtifactsService.getIssuesPage(query);
   }
 
   @Get('issues/:id')
@@ -88,12 +84,8 @@ export class ReviewArtifactsController {
   }
 
   @Get('bugs')
-  getBugs(
-    @Query('workspaceId') workspaceId?: string,
-    @Query('workflowRunId') workflowRunId?: string,
-    @Query('status') status?: string,
-  ) {
-    return this.reviewArtifactsService.getBugs({ workspaceId, workflowRunId, status });
+  getBugs(@Query() query: import('../common/pagination').PaginationQuery & { workspaceId?: string; projectId?: string; workflowRunId?: string; status?: string; priority?: string; severity?: string; q?: string } = {}) {
+    return this.reviewArtifactsService.getBugsPage(query);
   }
 
   @Get('bugs/:id/screenshots/:screenshotId')

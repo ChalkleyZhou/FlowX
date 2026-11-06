@@ -6,9 +6,9 @@ describe('CursorLocalController workflow position', () => {
     const service = { listWorkflowPositions: vi.fn().mockResolvedValue([]) };
     const controller = new CursorLocalController(service as never);
     const authSession = { user: { id: 'user-1', displayName: '用户' }, organization: { id: 'org-1' } };
-    await controller.listWorkflowPositions('workspace-1', 'workflow-1', { authSession });
+    await controller.listWorkflowPositions({ workspaceId: 'workspace-1', workflowRunId: 'workflow-1', page: 2, pageSize: 10 }, { authSession });
     expect(service.listWorkflowPositions).toHaveBeenCalledWith({
-      workspaceId: 'workspace-1', workflowRunId: 'workflow-1', session: authSession,
+      workspaceId: 'workspace-1', workflowRunId: 'workflow-1', page: 2, pageSize: 10, session: authSession,
     });
   });
 });

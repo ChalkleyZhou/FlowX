@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { pageResult } from "../test-utils/page-result";
+
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,6 +11,8 @@ import { ToastProvider } from './ui/toast';
 
 vi.mock('../api', () => ({
   api: {
+    getProject: vi.fn(),
+    getRequirement: vi.fn(),
     getOrganizationMembers: vi.fn(),
     getProjects: vi.fn(),
     getRequirements: vi.fn(),
@@ -40,9 +44,9 @@ describe('ScheduleAssignmentDialog', () => {
 
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    vi.mocked(api.getOrganizationMembers).mockResolvedValue(members);
-    vi.mocked(api.getProjects).mockResolvedValue(projects);
-    vi.mocked(api.getRequirements).mockResolvedValue(requirements);
+    vi.mocked(api.getOrganizationMembers).mockResolvedValue(pageResult(members));
+    vi.mocked(api.getProjects).mockResolvedValue(pageResult(projects));
+    vi.mocked(api.getRequirements).mockResolvedValue(pageResult(requirements));
     vi.mocked(api.createRequirementAssignment).mockResolvedValue({
       id: 'asg-1',
       userId: 'user-1',
@@ -51,6 +55,8 @@ describe('ScheduleAssignmentDialog', () => {
       plannedEndDate: '2026-05-05',
       sortOrder: 0,
     });
+    vi.mocked(api.getProject).mockResolvedValue(projects[0]);
+    vi.mocked(api.getRequirement).mockResolvedValue(requirements[0]);
     onSaved.mockReset();
     onOpenChange.mockReset();
     container = document.createElement('div');

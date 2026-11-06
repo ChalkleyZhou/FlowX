@@ -33,6 +33,15 @@ export class CreateCaseLibraryDto {
 }
 
 export class ListTestCasesQueryDto {
+  @IsOptional() @Type(() => String) @IsString({ each: true })
+  libraryIds?: string[];
+  @IsOptional() @Type(() => String) @IsString({ each: true })
+  moduleIds?: string[];
+  @IsOptional() @Type(() => String) @IsIn(['P0', 'P1', 'P2', 'P3'], { each: true })
+  priorities?: string[];
+  @IsOptional() @IsIn(['ACTIVE'])
+  status?: string;
+
   @IsString()
   @MinLength(1)
   workspaceId!: string;
@@ -74,7 +83,7 @@ export class ListTestCasesQueryDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  @Min(10)
+  @Min(1)
   @Max(100)
   pageSize?: number;
 }

@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
@@ -52,6 +53,19 @@ export class EvidenceService {
         metadata: toInputJson(input.metadata),
       },
     });
+  }
+
+  async listPage(executionSessionId: string, query: PaginationQuery & { q?: string } = {}, scope: ExecutionSessionScope = {}) {
+    await this.executionSessionsService.requireAccessibleSession(executionSessionId, scope);
+    const paging = parsePagination(query);
+    const where: Prisma.EvidenceWhereInput = { executionSessionId,
+      ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { summary: { contains: query.q.trim() } }] } : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.evidence.findMany({ where, include: { artifact: true }, orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }], skip: paging.skip, take: paging.take }),
+      this.prisma.evidence.count({ where }),
+    ]);
+    return pageResult(items, total, paging);
   }
 
   async list(executionSessionId: string, scope: ExecutionSessionScope = {}) {

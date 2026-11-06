@@ -96,3 +96,11 @@ flowx-local login
 回归必须绑定本项目已完成修复的 Bug，使用修复工作流交付版本。失败结果独立关联缺陷，不能用手工结果入口覆盖本地事实。回归和显式汇总不会改写初测或旧报告。能力查询不支持时返回明确错误，不能改用旧 smoke 工具回传正式功能结果。
 
 质量启动内部注入 `FLOWX_QUALITY_TEST_RUN_ID` 与 `FLOWX_QUALITY_EXECUTION_SESSION_ID`，让 MCP 使用交接的短期身份；无需手工配置。不要记录或分享交接 token。
+
+## 分页读取记录
+
+本地工具适配结论：**需要适配**。项目、版本、仓库、需求/缺陷混合任务、OpenDesign 任务、用例库、模块、用例及测试任务等记录发现入口支持分页与搜索，工具 schema 的参数实际透传 API，返回保留 `items/total/page/pageSize/totalPages`。按用户需要请求下一页；不要循环读完全部页，也不要把当前页当作完整业务范围。已有精确 ID 的详情和执行上下文入口继续复用，领取、确认和报告不以列表页内容替代完整范围。
+
+HTTP 记录列表默认 `page=1&pageSize=20`，`pageSize` 最大 100，并要求 `X-FlowX-List-Contract: pagination-v1`。新版本地客户端自动发送该标记。旧客户端会收到 `426 / PAGINATION_UPGRADE_REQUIRED`，应更新 `@flowx-ai/local`、重新加载 IDE MCP 后重试；不要解析网页或直接读取数据库来绕过接口。更新源码不等于已发布 npm 版本，请安装包含该分页契约的配套构建。
+
+`flowx_list_projects` 可通过 `resource` 选择项目、版本或仓库，配合明确的项目/工作区 ID 查询对应页。用例模块按 `parentId` 分层读取，根层可传 `null`；搜索和页面选择不会改变服务端冻结范围、门禁和权限。

@@ -82,12 +82,12 @@ export function ProjectDetailPage() {
         <ProjectFeedsPanel
           projectId={projectId}
           kind="briefing"
-          repositories={project.workspace.repositories ?? []}
+          workspaceId={project.workspace.id}
         />
         <ProjectFeedsPanel
           projectId={projectId}
           kind="codeReview"
-          repositories={project.workspace.repositories ?? []}
+          workspaceId={project.workspace.id}
         />
       </div>
 

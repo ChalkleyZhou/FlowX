@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { StageExecutionStatus, WorkflowRunStatus } from '../common/enums';
@@ -30,6 +31,7 @@ export type CodeDeliveryView = {
   repositories: Array<{ id: string; name: string; baseBranch: string }>;
   submissions: Array<{ id: string; workflowRepositoryId: string; branch: string; headSha: string; submittedBy: { id: string; displayName: string } | null; updatedAt: string }>;
   confirmedDelivery: ConfirmedCodeDelivery | null;
+  historyCount: number;
   history: Array<{ stageExecutionId: string; attempt: number; status: string; submissions: CodeDeliveryView['submissions'] }>;
 };
 
@@ -38,7 +40,54 @@ export class WorkflowCodeDeliveryService {
   constructor(private readonly prisma: PrismaService, private readonly stateMachine: WorkflowStateMachine, private readonly git: WorkflowGitRemoteService) {}
 
   async getDelivery(id: string, actor?: WorkflowCollaborationActor): Promise<CodeDeliveryView> {
-    return this.view(await this.accessible(this.prisma, id, this.scope(actor)));
+    const scope = this.scope(actor);
+    const workflow = await this.prisma.workflowRun.findUnique({ where: { id }, include: {
+      ...deliveryInclude, stageExecutions: { take: 0 }, codeBranchSubmissions: { ...deliveryInclude.codeBranchSubmissions, take: 0 },
+      executionSessions: { ...deliveryInclude.executionSessions, take: 1 },
+    } });
+    if (!workflow) throw new NotFoundException('工作流不存在。');
+    if ((workflow.requirement.workspace ?? workflow.requirement.project?.workspace)?.organizationId !== scope.organizationId) throw new ForbiddenException('该工作流属于其他组织。');
+    const stages = await Promise.all(['EXECUTION', 'SPEC_PLAN'].map(stage => this.prisma.stageExecution.findFirst({ where: { workflowRunId: id, stage }, orderBy: deliveryInclude.stageExecutions.orderBy })));
+    workflow.stageExecutions = stages.filter((stage): stage is NonNullable<typeof stage> => stage !== null);
+    const currentStage = this.visibleExecution(workflow);
+    if (currentStage) workflow.codeBranchSubmissions = await this.prisma.codeBranchSubmission.findMany({ where: { stageExecutionId: currentStage.id }, orderBy: deliveryInclude.codeBranchSubmissions.orderBy, include: deliveryInclude.codeBranchSubmissions.include });
+    const [historyCount, conflicts] = await Promise.all([
+      this.prisma.stageExecution.count({ where: this.historyWhere(id, currentStage?.id) }),
+      this.prisma.$queryRaw<Array<{ total: bigint | number }>>(Prisma.sql`SELECT COUNT(*) AS total FROM StageExecution WHERE workflowRunId = ${id} AND stage = 'EXECUTION' AND status = 'RUNNING' AND COALESCE(json_extract(input, '$.executor'), '') <> 'CODE_DELIVERY'`),
+    ]);
+    const view = this.view(workflow);
+    if (view.canSubmit && Number(conflicts[0]?.total ?? 0) > 0) { view.canSubmit = false; view.reason = '已有本地或云端开发正在执行，请通过原入口停止或取消。'; }
+    return { ...view, historyCount };
+  }
+
+  async listHistory(id: string, query: PaginationQuery = {}, actor?: WorkflowCollaborationActor) {
+    const scope = this.scope(actor);
+    const workflow = await this.prisma.workflowRun.findUnique({ where: { id }, select: {
+      status: true, requirement: { select: { workspace: { select: { organizationId: true } }, project: { select: { workspace: { select: { organizationId: true } } } } } },
+      stageExecutions: { where: { stage: 'EXECUTION' }, orderBy: deliveryInclude.stageExecutions.orderBy, take: 1, select: { id: true } },
+    } });
+    if (!workflow) throw new NotFoundException('工作流不存在。');
+    if ((workflow.requirement.workspace ?? workflow.requirement.project?.workspace)?.organizationId !== scope.organizationId) throw new ForbiddenException('该工作流属于其他组织。');
+    const currentStageId = ['EXECUTION_RUNNING', 'REVIEW_PENDING', 'HUMAN_REVIEW_PENDING', 'DONE'].includes(workflow.status) ? workflow.stageExecutions[0]?.id : undefined;
+    const paging = parsePagination(query);
+    const where = this.historyWhere(id, currentStageId);
+    const [stages, total] = await Promise.all([
+      this.prisma.stageExecution.findMany({ where, orderBy: deliveryInclude.stageExecutions.orderBy, skip: paging.skip, take: paging.take,
+        select: { id: true, attempt: true, status: true, codeBranchSubmissions: { orderBy: deliveryInclude.codeBranchSubmissions.orderBy, include: deliveryInclude.codeBranchSubmissions.include } },
+      }),
+      this.prisma.stageExecution.count({ where }),
+    ]);
+    return pageResult(stages.map(stage => ({ stageExecutionId: stage.id, attempt: stage.attempt, status: stage.status,
+      submissions: stage.codeBranchSubmissions.map(row => ({ id: row.id, workflowRepositoryId: row.workflowRepositoryId, branch: row.branch, headSha: row.headSha, submittedBy: row.submittedByUser, updatedAt: row.updatedAt.toISOString() })),
+    })), total, paging);
+  }
+
+  private historyWhere(workflowRunId: string, currentStageId?: string): Prisma.StageExecutionWhereInput {
+    return { workflowRunId, stage: 'EXECUTION', ...(currentStageId ? { id: { not: currentStageId } } : {}), codeBranchSubmissions: { some: {} } };
+  }
+
+  private visibleExecution(workflow: Workflow) {
+    return ['EXECUTION_RUNNING', 'REVIEW_PENDING', 'HUMAN_REVIEW_PENDING', 'DONE'].includes(workflow.status) ? this.latestExecution(workflow) : undefined;
   }
 
   async submitBranch(id: string, input: SubmitCodeBranchDto, actor?: WorkflowCollaborationActor): Promise<CodeDeliveryView> {
@@ -77,7 +126,7 @@ export class WorkflowCodeDeliveryService {
     const scope = this.scope(actor);
     this.validateSelection(input);
     const workflow = await this.accessible(this.prisma, id, scope);
-    if (this.isSameConfirmation(workflow, input)) return this.view(workflow);
+    if (this.isSameConfirmation(workflow, input)) return this.getDelivery(id, actor);
     this.assertCanSubmit(workflow);
     const stage = this.latestExecution(workflow);
     if (!stage || workflow.status !== 'EXECUTION_RUNNING') this.conflict();
@@ -131,8 +180,7 @@ export class WorkflowCodeDeliveryService {
   }
 
   private view(workflow: Workflow): CodeDeliveryView {
-    const stage = ['EXECUTION_RUNNING', 'REVIEW_PENDING', 'HUMAN_REVIEW_PENDING', 'DONE'].includes(workflow.status)
-      ? this.latestExecution(workflow) : undefined;
+    const stage = this.visibleExecution(workflow);
     const reason = this.submissionReason(workflow);
     const submissionsFor = (stageExecutionId: string): CodeDeliveryView['submissions'] =>
       workflow.codeBranchSubmissions.filter((row) => row.stageExecutionId === stageExecutionId).map((row) => ({
@@ -143,10 +191,8 @@ export class WorkflowCodeDeliveryService {
       repositories: workflow.workflowRepositories.map(({ id, name, baseBranch }) => ({ id, name, baseBranch })),
       submissions: stage ? submissionsFor(stage.id) : [],
       confirmedDelivery: this.delivery(stage),
-      history: workflow.stageExecutions.filter((row) => row.stage === 'EXECUTION' && row.id !== stage?.id).flatMap((row) => {
-        const submissions = submissionsFor(row.id);
-        return submissions.length ? [{ stageExecutionId: row.id, attempt: row.attempt, status: row.status, submissions }] : [];
-      }),
+      historyCount: 0,
+      history: [],
     };
   }
   private latestExecution(workflow: Workflow) { return workflow.stageExecutions.find((stage) => stage.stage === 'EXECUTION'); }

@@ -20,6 +20,16 @@ describe('YunxiaoMembersService', () => {
     } as ConfigService);
   }
 
+  it('明确userId只读取单个组织成员与绑定，不能调用项目全员端点', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ data: { id: 'member-1', userId: 'user-1', userName: '张三' } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ binds: [{ bindType: 'aliyunAccount', bindId: 'aliyun-1' }] }) });
+    const result = await createService({ YUNXIAO_PERSONAL_ACCESS_TOKEN: 'token' }).getOrganizationMember('org-1', 'user-1');
+    expect(result).toMatchObject({ memberId: 'member-1', userId: 'user-1', displayName: '张三', aliyunAccountId: 'aliyun-1' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('members:readByUser?userId=user-1');
+    expect(fetchMock.mock.calls.some(call => String(call[0]).includes('/projects/'))).toBe(false);
+  });
+
   it('使用个人 Token 通过标准 OpenAPI 查询项目成员', async () => {
     fetchMock
       .mockResolvedValueOnce({

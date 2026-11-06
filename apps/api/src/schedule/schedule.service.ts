@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+import { parsePagination, pageResult } from '../common/pagination';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   countBusinessDays,
@@ -56,7 +58,7 @@ export class ScheduleService {
       }
     }
 
-    const assignments = await this.loadAssignments(query, scope);
+    const { assignments, pagination } = await this.loadAssignments(query, scope);
     const range = { from: query.from, to: query.to };
     const bars: GanttBar[] = [];
     const lanes: GanttLane[] = [];
@@ -166,47 +168,38 @@ export class ScheduleService {
       range,
       lanes,
       bars,
+      pagination,
     };
   }
 
-  private async loadAssignments(
-    query: GetScheduleGanttQuery,
-    scope: 'project' | 'organization',
-  ): Promise<AssignmentRow[]> {
-    if (scope === 'organization') {
-      // Global/cross-project: do not require assignee ∈ organization (picker list ≠ visiblity).
-      return this.prisma.requirementAssignment.findMany({
-        where: {
-          requirement: {
-            ...(query.projectId ? { projectId: query.projectId } : {}),
-            ...(query.requirementId ? { id: query.requirementId } : {}),
-          },
-          ...(query.userId ? { userId: query.userId } : {}),
-          ...(query.role ? { role: query.role } : {}),
-        },
-        include: {
-          requirement: { include: { project: true } },
-          user: true,
-        },
-        orderBy: [{ requirement: { project: { name: 'asc' } } }, { sortOrder: 'asc' }],
-      });
-    }
-
-    return this.prisma.requirementAssignment.findMany({
-      where: {
-        requirement: {
-          projectId: query.projectId!,
-          ...(query.requirementId ? { id: query.requirementId } : {}),
-        },
-        ...(query.userId ? { userId: query.userId } : {}),
-        ...(query.role ? { role: query.role } : {}),
-      },
-      include: {
-        requirement: { include: { project: true } },
-        user: true,
-      },
-      orderBy: [{ requirement: { createdAt: 'desc' } }, { sortOrder: 'asc' }],
+  private async loadAssignments(query: GetScheduleGanttQuery, scope: 'project' | 'organization') {
+    const paging = parsePagination(query);
+    const assignmentScope: Prisma.RequirementAssignmentWhereInput = {
+      ...(query.userId ? { userId: query.userId } : {}),
+      ...(query.role ? { role: query.role } : {}),
+    };
+    const requirementScope: Prisma.RequirementWhereInput = {
+      ...(query.projectId ? { projectId: query.projectId } : {}),
+      ...(query.requirementId ? { id: query.requirementId } : {}),
+      ...(query.q?.trim() ? { title: { contains: query.q.trim() } } : {}),
+    };
+    const where: Prisma.RequirementWhereInput = { ...requirementScope, assignments: { some: {
+      ...assignmentScope,
+      plannedStartDate: { lte: new Date(`${query.to}T00:00:00.000Z`) },
+      plannedEndDate: { gte: new Date(`${query.from}T00:00:00.000Z`) },
+    } } };
+    const [requirements, total] = await Promise.all([
+      this.prisma.requirement.findMany({ where, select: { id: true }, orderBy: [{ project: { name: 'asc' } }, { createdAt: 'desc' }, { id: 'desc' }], skip: paging.skip, take: paging.take }),
+      this.prisma.requirement.count({ where }),
+    ]);
+    // 页边界落在需求上；本页需求的分配完整加载，整体周期不会被assignment分页截断。
+    const assignments = await this.prisma.requirementAssignment.findMany({
+      where: { ...assignmentScope, requirement: requirementScope, requirementId: { in: requirements.map(item => item.id) } },
+      include: { requirement: { include: { project: true } }, user: true },
+      orderBy: scope === 'organization' ? [{ requirement: { project: { name: 'asc' } } }, { sortOrder: 'asc' }, { id: 'asc' }] : [{ requirement: { createdAt: 'desc' } }, { sortOrder: 'asc' }, { id: 'asc' }],
     });
+    const { items: _, ...pagination } = pageResult([], total, paging);
+    return { assignments, pagination };
   }
 
   /** UTC calendar date — aligns with web gantt viewport (monthRange uses UTC). */

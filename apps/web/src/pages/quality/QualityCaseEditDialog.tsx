@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api';
+import { PagedSelect } from '../../components/PagedSelect';
 import { Button } from '../../components/ui/button';
 import {
   Dialog,
@@ -19,7 +20,7 @@ import {
 } from '../../components/ui/select';
 import { Textarea } from '../../components/ui/textarea';
 import { useToast } from '../../components/ui/toast';
-import type { TestCaseDefinition, TestCaseLibrary, TestCaseModule } from '../../types';
+import type { TestCaseDefinition, TestCaseLibrary } from '../../types';
 import { QualityTargetKeysField } from './QualityTargetKeysField';
 import { Field } from './quality-ui';
 
@@ -30,17 +31,20 @@ export function QualityCaseEditDialog({
   onOpenChange,
   testCase,
   libraries,
+  workspaceId,
+  projectId,
   onUpdated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   testCase: TestCaseDefinition | null;
   libraries: TestCaseLibrary[];
+  workspaceId: string;
+  projectId?: string;
   onUpdated: (updated: TestCaseDefinition) => Promise<void>;
 }) {
   const toast = useToast();
   const [libraryId, setLibraryId] = useState('');
-  const [modules, setModules] = useState<TestCaseModule[]>([]);
   const [moduleId, setModuleId] = useState(NO_MODULE);
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<TestCaseDefinition['priority']>('P2');
@@ -66,23 +70,7 @@ export function QualityCaseEditDialog({
     setTags(testCase.tags?.join(', ') ?? '');
   }, [open, testCase]);
 
-  useEffect(() => {
-    if (!open || !libraryId) {
-      setModules([]);
-      return;
-    }
-    let active = true;
-    void api.getTestCaseModules(libraryId)
-      .then((items) => {
-        if (!active) return;
-        setModules(items);
-        setModuleId((current) => items.some((item) => item.id === current) ? current : NO_MODULE);
-      })
-      .catch((error) => {
-        if (active) toast.error(error instanceof Error ? error.message : '加载用例模块失败');
-      });
-    return () => { active = false; };
-  }, [libraryId, open]);
+
 
   async function submit() {
     if (!testCase) return;
@@ -129,24 +117,13 @@ export function QualityCaseEditDialog({
         <div className="grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="用例库">
-              <Select value={libraryId} onValueChange={(value) => {
+              <PagedSelect label="用例库" value={libraryId} selectedLabel={libraries.find(item => item.id === libraryId)?.name} onValueChange={(value) => {
                 setLibraryId(value);
                 setModuleId(NO_MODULE);
-              }} disabled={saving}>
-                <SelectTrigger aria-label="编辑用例库"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {libraries.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              }} loadPage={query => api.getTestCaseLibraries({ ...query, workspaceId, projectId })} placeholder="选择用例库" />
             </Field>
             <Field label="模块（可选）">
-              <Select value={moduleId} onValueChange={setModuleId} disabled={saving}>
-                <SelectTrigger aria-label="编辑模块"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_MODULE}>未分模块</SelectItem>
-                  {modules.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <PagedSelect label="模块" value={moduleId === NO_MODULE ? '' : moduleId} onValueChange={value => setModuleId(value || NO_MODULE)} scopeKey={libraryId} disabled={!libraryId} allowClear loadPage={query => api.getTestCaseModules(libraryId, query)} placeholder="未分模块" />
             </Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-[1fr_120px]">

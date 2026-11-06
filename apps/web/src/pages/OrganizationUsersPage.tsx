@@ -1,6 +1,7 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { RefreshCw, UserPlus } from 'lucide-react';
 import { api } from '../api';
+import { ListPagination } from '../components/ListPagination';
 import { useAuth } from '../auth';
 import { EmptyState } from '../components/EmptyState';
 import { ListToolbar } from '../components/ListToolbar';
@@ -85,35 +86,11 @@ export function OrganizationUsersPage() {
   const canManageMembers = isPrimaryAdmin || session?.organization?.role === 'sub_admin';
   const isDingTalkOrganization = session?.organization?.provider === 'dingtalk';
 
-  const filteredMembers = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
-    if (!keyword) {
-      return members;
-    }
-    return members.filter((member) => {
-      const haystack = [
-        member.displayName,
-        member.account,
-        member.email,
-        member.role,
-        roleLabel(member.role),
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(keyword);
-    });
-  }, [members, search]);
-
-  const summary = useMemo(
-    () => ({
-      total: members.length,
-      visible: filteredMembers.length,
-      adminCount: members.filter((member) => member.role === 'admin').length,
-      activeCount: members.filter((member) => member.status !== 'DISABLED').length,
-    }),
-    [filteredMembers.length, members],
-  );
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState<Record<string, number>>({});
+  const requestSequence = useRef(0);
+  const filteredMembers = members;
 
   async function refresh() {
     if (!session?.organization?.id) {
@@ -121,20 +98,27 @@ export function OrganizationUsersPage() {
       return;
     }
 
-    setLoading(true);
+    const sequence = ++requestSequence.current;
+    if (!members.length) setLoading(true);
     try {
-      const next = await api.getOrganizationMembers();
-      setMembers(next);
+      const next = await api.getOrganizationMembers({ page, pageSize: 20, q: search.trim() || undefined });
+      if (sequence !== requestSequence.current) return;
+      const lastPage = Math.max(1, next.totalPages);
+      if (page > lastPage) { setPage(lastPage); return; }
+      setMembers(next.items);
+      setTotal(next.total);
+      setSummary({ ...next.summary, visible: next.total });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载组织成员失败');
+      if (sequence === requestSequence.current) toast.error(error instanceof Error ? error.message : '加载组织成员失败');
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   }
 
   useEffect(() => {
     void refresh();
-  }, [session?.organization?.id]);
+    return () => { requestSequence.current += 1; };
+  }, [session?.organization?.id, page, search]);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -291,11 +275,11 @@ export function OrganizationUsersPage() {
       />
 
       <div className="grid gap-5 md:grid-cols-5">
-        <MetricCard label="成员总数" value={summary.total} />
-        <MetricCard label="当前筛选结果" value={summary.visible} />
-        <MetricCard label="主管理员" value={summary.adminCount} />
-        <MetricCard label="子管理员" value={members.filter((member) => member.role === 'sub_admin').length} />
-        <MetricCard label="正常账号" value={summary.activeCount} />
+        <MetricCard label="成员总数" value={summary.total ?? total} />
+        <MetricCard label="当前筛选结果" value={total} />
+        <MetricCard label="主管理员" value={summary.adminCount ?? 0} />
+        <MetricCard label="子管理员" value={summary.subAdminCount ?? 0} />
+        <MetricCard label="正常账号" value={summary.activeCount ?? 0} />
       </div>
 
       <Card className="rounded-md border border-border bg-card">
@@ -333,7 +317,7 @@ export function OrganizationUsersPage() {
               <Input
                 placeholder="搜索姓名、账号或邮箱"
                 value={search}
-                onChange={(event) => setFilter('q', event.target.value || undefined)}
+                onChange={(event) => { setPage(1); setFilter('q', event.target.value || undefined); }}
               />
             )}
           />
@@ -428,6 +412,7 @@ export function OrganizationUsersPage() {
               }
             />
           )}
+          <ListPagination page={page} total={total} pageSize={20} loading={loading} onPageChange={setPage} />
         </CardContent>
       </Card>
 

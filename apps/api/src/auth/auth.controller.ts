@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import {
   BadRequestException,
   Body,
@@ -39,12 +40,13 @@ export class AuthController {
   @Get('organization/members')
   listOrganizationMembers(
     @Req() req: { authSession?: { organization?: { id: string } | null } },
+    @Query() query: import('../common/pagination').PaginationQuery & { q?: string } = {},
   ) {
     const organizationId = req.authSession?.organization?.id?.trim();
     if (!organizationId) {
-      return [];
+      return pageResult([], 0, parsePagination(query));
     }
-    return this.authService.listOrganizationMembers(organizationId);
+    return this.authService.listOrganizationMembersPage(organizationId, query);
   }
 
   @Get('organization/members/:userId/email')

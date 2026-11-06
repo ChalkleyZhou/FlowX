@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { ListPagination } from '../components/ListPagination';
+import { PagedSelect } from '../components/PagedSelect';
+import { useQualityPage } from './quality/use-quality-page';
 import { DeliveryTargetList } from '../components/DeliveryTargetList';
 import { EmptyState } from '../components/EmptyState';
 import { PageHeader } from '../components/PageHeader';
@@ -19,7 +22,8 @@ export function DeliveryTargetsPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
-  const [targets, setTargets] = useState<DeliveryTarget[]>([]);
+  const [page, setPage] = useState(1);
+  const [query, setQuery] = useState('');
   const [workspaceId, setWorkspaceId] = useState(() => readStoredListFilters('delivery-targets').workspaceId ?? '');
   const [projectId, setProjectId] = useState('');
   const [type, setType] = useState('DINGTALK_APP');
@@ -36,46 +40,30 @@ export function DeliveryTargetsPage() {
   const usesMemberPicker = type === 'DINGTALK_APP';
   const usesWebhook = type === 'DINGTALK_ROBOT';
 
-  const workspaceProjects = useMemo(
-    () => projects.filter((project) => project.workspace.id === workspaceId),
-    [projects, workspaceId],
-  );
-
-  async function refresh(nextWorkspaceId = workspaceId) {
-    if (!nextWorkspaceId) {
-      setTargets([]);
-      return;
-    }
-    setTargets(await api.getDeliveryTargets({ workspaceId: nextWorkspaceId }));
-  }
-
+  const result = useQualityPage(`${workspaceId}:${page}:${query}`, () => api.getDeliveryTargets({ workspaceId, page, pageSize: 20, q: query || undefined }), Boolean(workspaceId), setPage);
+  const targets = result.items;
+  const workspaceProjects = [...new Map([...projects, ...targets.flatMap(target => target.project ? [target.project] : [])].map(project => [project.id, project])).values()];
+  const refresh = (_workspaceId = workspaceId) => result.refresh();
   useEffect(() => {
-    Promise.all([api.getWorkspaces(), api.getProjects(), api.getOrganizationMembers()])
-      .then(async ([workspaceList, projectList, memberList]) => {
-        setWorkspaces(workspaceList);
-        setProjects(projectList);
-        setMembers(memberList);
-        const storedWorkspaceId = readStoredListFilters('delivery-targets').workspaceId;
-        const firstWorkspaceId = workspaceList.find((workspace) => workspace.id === storedWorkspaceId)?.id ?? workspaceList[0]?.id ?? '';
-        setWorkspaceId(firstWorkspaceId);
-        writeStoredListFilters('delivery-targets', firstWorkspaceId ? { workspaceId: firstWorkspaceId } : {});
-        const firstProjectId =
-          projectList.find((project) => project.workspace.id === firstWorkspaceId)?.id ?? '';
-        setProjectId(firstProjectId);
-        if (firstWorkspaceId) {
-          setTargets(await api.getDeliveryTargets({ workspaceId: firstWorkspaceId }));
-        }
-      })
-      .catch((error) => toast.error(error instanceof Error ? error.message : '加载投递目标失败'));
+    let active = true;
+    const stored = readStoredListFilters('delivery-targets').workspaceId;
+    void (stored ? api.getWorkspace(stored) : api.getWorkspaces({ page: 1, pageSize: 1 }).then(page => page.items[0]))
+      .then(workspace => { if (active && workspace) { setWorkspaces([workspace]); setWorkspaceId(workspace.id); } })
+      .catch(error => { if (active) toast.error(error instanceof Error ? error.message : '加载工作区失败'); });
+    return () => { active = false; };
   }, []);
+  useEffect(() => {
+    if (!workspaceId) return;
+    let active = true;
+    setProjects([]); setProjectId('');
+    void api.getProjects({ workspaceId, page: 1, pageSize: 1 }).then(result => { if (active) { setProjects(result.items); setProjectId(result.items[0]?.id ?? ''); } }).catch(error => { if (active) toast.error(error instanceof Error ? error.message : '加载项目失败'); });
+    return () => { active = false; };
+  }, [workspaceId]);
 
   function handleWorkspaceChange(nextWorkspaceId: string) {
     setWorkspaceId(nextWorkspaceId);
     writeStoredListFilters('delivery-targets', nextWorkspaceId ? { workspaceId: nextWorkspaceId } : {});
-    const nextProjectId =
-      projects.find((project) => project.workspace.id === nextWorkspaceId)?.id ?? '';
-    setProjectId(nextProjectId);
-    void refresh(nextWorkspaceId);
+    setPage(1); setProjectId('');
   }
 
   function handleMemberChange(nextMemberId: string) {
@@ -185,22 +173,8 @@ export function DeliveryTargetsPage() {
           <SectionHeader eyebrow="Create" title="新增投递目标" />
         </CardHeader>
         <CardContent className="grid gap-3 p-5 pt-0 md:grid-cols-2 xl:grid-cols-3">
-          <Select value={workspaceId || ''} onValueChange={handleWorkspaceChange}>
-            <SelectTrigger><SelectValue placeholder="工作区" /></SelectTrigger>
-            <SelectContent>{workspaces.map((workspace) => <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>)}</SelectContent>
-          </Select>
-          <Select
-            value={projectId || ''}
-            onValueChange={setProjectId}
-            disabled={workspaceProjects.length === 0}
-          >
-            <SelectTrigger><SelectValue placeholder="项目" /></SelectTrigger>
-            <SelectContent>
-              {workspaceProjects.map((project) => (
-                <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <PagedSelect label="工作区" value={workspaceId} selectedLabel={workspaces.find(workspace => workspace.id === workspaceId)?.name} onValueChange={handleWorkspaceChange} loadPage={query => api.getWorkspaces(query)} placeholder="工作区" />
+          <PagedSelect label="项目" value={projectId} selectedLabel={projects.find(project => project.id === projectId)?.name} onValueChange={setProjectId} disabled={!workspaceId} scopeKey={workspaceId} loadPage={async query => { const result = await api.getProjects({ ...query, workspaceId }); setProjects(current => [...new Map([...current, ...result.items].map(project => [project.id, project])).values()]); return result; }} placeholder="项目" />
           <Select value={type} onValueChange={(value) => {
             setType(value);
             resetFormFields();
@@ -212,20 +186,7 @@ export function DeliveryTargetsPage() {
             </SelectContent>
           </Select>
           {usesMemberPicker ? (
-            <Select
-              value={selectedMemberId}
-              onValueChange={handleMemberChange}
-            >
-              <SelectTrigger><SelectValue placeholder="组织成员" /></SelectTrigger>
-              <SelectContent>
-                {members.map((member) => (
-                  <SelectItem key={member.id} value={member.id}>
-                    {member.displayName}
-                    {member.email ? ` (${member.email})` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <PagedSelect label="组织成员" value={selectedMemberId === MANUAL_MEMBER_VALUE ? '' : selectedMemberId} onValueChange={handleMemberChange} loadPage={async query => { const result = await api.getOrganizationMembers({ ...query, status: 'ACTIVE' }); setMembers(current => [...new Map([...current, ...result.items].map(member => [member.id, member])).values()]); return { ...result, items: result.items.map(member => ({ id: member.id, name: member.displayName })) }; }} placeholder="组织成员" />
           ) : null}
           <Input placeholder="名称" value={name} onChange={(event) => setName(event.target.value)} />
           {usesWebhook ? (
@@ -270,7 +231,8 @@ export function DeliveryTargetsPage() {
           <SectionHeader eyebrow="Targets" title="目标列表" />
         </CardHeader>
         <CardContent className="p-5 pt-0">
-          {workspaceProjects.length === 0 ? (
+          <Input aria-label="搜索投递目标" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} placeholder="搜索投递目标" className="mb-3" />
+          {!result.hasLoaded || result.loading ? <p role="status">加载中…</p> : result.error && !workspaceProjects.length ? null : workspaceProjects.length === 0 ? (
             <EmptyState title="暂无项目" description="请先在项目中创建工作区下的项目，再配置投递目标。" />
           ) : (
             <DeliveryTargetList
@@ -282,6 +244,8 @@ export function DeliveryTargetsPage() {
               onToggleTargetForCodeReview={(target) => void toggleTargetPurpose(target, 'forCodeReview')}
             />
           )}
+          {result.error ? <p role="alert">{result.error}<Button onClick={() => void result.refresh()}>重试</Button></p> : null}
+          <ListPagination page={page} total={result.total} pageSize={20} loading={result.refreshing} onPageChange={setPage} />
         </CardContent>
       </Card>
     </>

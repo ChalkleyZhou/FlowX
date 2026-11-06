@@ -3,7 +3,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { canTransitionExecutionSession, getExecutionHealth, type ExecutionSessionStatus } from '@flowx-ai/protocol';
 import { isOrganizationAdminRole } from '../auth/organization-role';
-import { StageExecutionStatus } from '../common/enums';
+import { StageExecutionStatus, StageType } from '../common/enums';
 import { WorkflowStateMachine } from '../common/workflow-state-machine';
 import { assertExecutionSessionTransition } from '../execution-sessions/execution-session-state';
 import { PrismaService } from '../prisma/prisma.service';
@@ -42,7 +42,7 @@ export class WorkflowCollaborationService {
 
   async getCollaboration(id: string, actor?: WorkflowCollaborationActor) {
     const scope = this.scope(actor);
-    const workflow = await this.accessible(this.prisma, id, scope);
+    const workflow = await this.accessible(this.prisma, id, scope, true);
     const admin = await this.isAdmin(this.prisma, scope);
     const sessions = this.latestStages(workflow).flatMap((stage) => {
       const session = stage.executionSessions.find((row) => row.executorType === 'LOCAL');
@@ -133,10 +133,21 @@ export class WorkflowCollaborationService {
     return { userId: actor.user.id.trim(), organizationId };
   }
 
-  private async accessible(db: Database, id: string, scope: Scope) {
-    const workflow = await db.workflowRun.findUnique({ where: { id }, include: collaborationInclude });
+  private async accessible(db: Database, id: string, scope: Scope, browse = false) {
+    const workflow = await db.workflowRun.findUnique({ where: { id }, include: browse ? { ...collaborationInclude, stageExecutions: { ...collaborationInclude.stageExecutions, take: 0 } } : collaborationInclude });
     if (!workflow) throw new NotFoundException('工作流不存在。');
     if (this.workspace(workflow)?.organizationId !== scope.organizationId) throw new ForbiddenException('该工作流属于其他组织。');
+    if (browse) {
+      const stageNames = Object.values(StageType).map(stage => stage.toUpperCase());
+      const latest = await db.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT id FROM (
+          SELECT id, ROW_NUMBER() OVER (PARTITION BY UPPER(stage) ORDER BY attempt DESC, createdAt DESC, id DESC) AS position
+          FROM StageExecution WHERE workflowRunId = ${id} AND UPPER(stage) IN (${Prisma.join(stageNames)})
+        ) WHERE position = 1
+      `);
+      workflow.stageExecutions = await db.stageExecution.findMany({ where: { id: { in: latest.map(stage => stage.id) } },
+        include: collaborationInclude.stageExecutions.include, orderBy: collaborationInclude.stageExecutions.orderBy, take: stageNames.length });
+    }
     return workflow;
   }
 

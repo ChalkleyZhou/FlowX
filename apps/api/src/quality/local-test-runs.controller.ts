@@ -7,10 +7,10 @@ import { LocalTestRunsService } from './local-test-runs.service';
 export class LocalTestRunsController {
   constructor(private readonly runs: LocalTestRunsService) {}
   @Get('quality/capabilities') capabilities() { return { capabilities: QUALITY_CAPABILITIES }; }
-  @Get('quality/local-test-tasks') tasks(@Query('projectId') projectId?: string, @Query('projectVersionId') projectVersionId?: string, @Query('testRequestId') testRequestId?: string) { return this.runs.listTasks({ projectId, projectVersionId, testRequestId }); }
+  @Get('quality/local-test-tasks') tasks(@Query() query: import('../common/pagination').PaginationQuery & { projectId?: string; projectVersionId?: string; testRequestId?: string; q?: string }) { return this.runs.listTasks(query); }
   @Post('quality/test-requests/:id/local-test-runs') create(@Param('id') id: string, @Body() dto: CreateLocalTestRunDto, @Req() req: QualityRequest) { return this.runs.createTestRun(id, dto, req.authSession?.user.id); }
-  @Get('quality/test-runs/:id') get(@Param('id') id: string) { return this.runs.getRun(id); }
-  @Get('quality/test-runs/:id/tasks') getTasks(@Param('id') id: string) { return this.runs.getTasks(id); }
+  @Get('quality/test-runs/:id') get(@Param('id') id: string) { return this.runs.getRunBrowse(id); }
+  @Get('quality/test-runs/:id/tasks') getTasks(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery & { q?: string; result?: string; targetId?: string }) { return this.runs.getTasksBrowse(id, query); }
   @Post('quality/test-runs/:id/claim') claim(@Param('id') id: string, @Body() dto: ClaimLocalSmokeDto, @Req() req: QualityRequest) { return this.runs.claim(id, dto, req.authSession?.user.id); }
   @Post('quality/test-runs/:id/cases/:caseId/bug') linkBug(@Param('id') id: string, @Param('caseId') caseId: string, @Body() dto: LinkQualityBugDto) { return this.runs.linkBug(id, caseId, dto.bugId); }
   @Post('quality/test-runs/:id/finish') finish(@Param('id') id: string, @Body() dto: FinishQualityRunDto, @Req() req: QualityRequest) { return this.runs.finish(id, dto, req.authSession?.user.id); }

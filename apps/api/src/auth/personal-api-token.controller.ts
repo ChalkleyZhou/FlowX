@@ -6,6 +6,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Req,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -17,9 +18,9 @@ export class PersonalApiTokenController {
   constructor(private readonly tokens: PersonalApiTokenService) {}
 
   @Get()
-  list(@Req() req: AuthenticatedRequest) {
+  list(@Req() req: AuthenticatedRequest, @Query() query: import('../common/pagination').PaginationQuery = {}) {
     const { userId, organizationId } = this.requireUserAndOrganization(req);
-    return this.tokens.listTokens(userId, organizationId);
+    return this.tokens.listTokensPage(userId, organizationId, query);
   }
 
   @Post()

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import YunxiaoClient, {
   ListProjectMembersRequest,
@@ -23,6 +23,25 @@ export class YunxiaoMembersService {
 
   isConfigured() {
     return Boolean(this.getPersonalAccessToken() || this.hasAccessKeyCredentials());
+  }
+
+  async getOrganizationMember(organizationId: string, userId: string) {
+    const token = this.getPersonalAccessToken();
+    if (!token) throw new BadRequestException({ code: 'YUNXIAO_MEMBER_LOOKUP_UNSUPPORTED', message: '按 userId 查询云效组织身份需要配置 YUNXIAO_PERSONAL_ACCESS_TOKEN。' });
+    const body = await this.fetchJson(new URL(`/oapi/v1/platform/organizations/${encodeURIComponent(organizationId)}/members:readByUser?userId=${encodeURIComponent(userId)}`, this.getApiEndpoint()), token);
+    const record = this.asRecord(body);
+    const member = this.asRecord(record?.data) ?? record;
+    if (!member || this.pickString(member.userId) !== userId) throw new NotFoundException('未找到指定的云效组织成员。');
+    const normalized = this.normalizeMembers([member])[0];
+    if (!normalized) throw new NotFoundException('未找到指定的云效组织成员。');
+    const memberId = this.pickString(member.id, member.memberId);
+    if (!memberId) return normalized;
+    const bindsBody = await this.fetchJson(new URL(`/oapi/v1/platform/organizations/${encodeURIComponent(organizationId)}/members/${encodeURIComponent(memberId)}/binds`, this.getApiEndpoint()), token);
+    const bindsRecord = this.asRecord(bindsBody);
+    const bindsData = this.asRecord(bindsRecord?.data);
+    const binds = Array.isArray(bindsRecord?.binds) ? bindsRecord.binds : Array.isArray(bindsData?.binds) ? bindsData.binds : [];
+    const account = binds.map(bind => this.asRecord(bind)).find(bind => bind?.bindType === 'aliyunAccount');
+    return { ...normalized, memberId, aliyunAccountId: this.pickString(account?.bindId) };
   }
 
   async listProjectMembers(organizationId: string, projectId: string) {

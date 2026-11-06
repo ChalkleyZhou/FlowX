@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import type { PaginationQuery } from '../common/pagination';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { BriefingFeedsService } from './briefing-feeds.service';
 import { BriefingsService } from './briefings.service';
 import { CreateBriefingFeedDto, UpdateBriefingFeedDto } from './dto/briefing-feed.dto';
@@ -12,8 +13,8 @@ export class BriefingsController {
   ) {}
 
   @Get('projects/:id/briefing-feeds')
-  listFeeds(@Param('id') id: string) {
-    return this.briefingFeedsService.listFeeds(id);
+  listFeeds(@Param('id') id: string, @Query() query: PaginationQuery & {q?:string} = {}) {
+    return this.briefingFeedsService.listFeedsPage(id, query);
   }
 
   @Post('projects/:id/briefing-feeds')
@@ -37,8 +38,8 @@ export class BriefingsController {
   }
 
   @Get('projects/:id/briefings')
-  listProjectBriefings(@Param('id') id: string) {
-    return this.briefingsService.listProjectBriefings(id);
+  listProjectBriefings(@Param('id') id: string, @Query() query: PaginationQuery = {}) {
+    return this.briefingsService.listProjectBriefingsPage(id, query);
   }
 
   @Post('briefing-feeds/:id/generate')
@@ -51,6 +52,9 @@ export class BriefingsController {
       async: true,
     });
   }
+
+  @Get('briefings/:id/delivery-logs')
+  listDeliveryLogs(@Param('id') id: string, @Query() query: PaginationQuery = {}) { return this.briefingsService.listDeliveryLogs(id, query); }
 
   @Get('briefings/:id')
   getBriefing(@Param('id') id: string) {

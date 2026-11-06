@@ -63,7 +63,7 @@ describe('OrganizationUsersPage', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
-    vi.mocked(api.getOrganizationMembers).mockResolvedValue([
+    vi.mocked(api.getOrganizationMembers).mockResolvedValue({ items: [
       {
         id: 'user-1',
         displayName: 'Admin User',
@@ -80,7 +80,7 @@ describe('OrganizationUsersPage', () => {
         status: 'ACTIVE',
         joinedAt: '2026-01-02T00:00:00.000Z',
       },
-    ]);
+    ], total: 41, page: 1, pageSize: 20, totalPages: 3, summary: { total: 41, adminCount: 1, subAdminCount: 2, activeCount: 40 } });
   });
 
   afterEach(() => {
@@ -113,11 +113,20 @@ describe('OrganizationUsersPage', () => {
   it('loads and renders organization members', async () => {
     await renderPage();
 
-    expect(api.getOrganizationMembers).toHaveBeenCalled();
+    expect(api.getOrganizationMembers).toHaveBeenCalledWith({ page: 1, pageSize: 20, q: undefined });
     expect(document.body.textContent).toContain('用户管理');
     expect(document.body.textContent).toContain('Demo Org');
     expect(document.body.textContent).toContain('Bob');
     expect(document.body.textContent).toContain('当前用户');
+  });
+
+  it('requests the next server page and uses global summary', async () => {
+    await renderPage();
+    expect(document.body.textContent).toContain('41');
+    const next = Array.from(document.querySelectorAll('button')).find(button => button.textContent === '下一页');
+    expect(next).toBeTruthy();
+    await act(async () => { next?.click(); });
+    expect(api.getOrganizationMembers).toHaveBeenLastCalledWith({ page: 2, pageSize: 20, q: undefined });
   });
 
   it('syncs DingTalk users and refreshes the member list', async () => {

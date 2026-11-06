@@ -31,6 +31,7 @@ export interface GanttPayload {
   range: { from: string; to: string };
   lanes: GanttLane[];
   bars: GanttBar[];
+  pagination: { total: number; page: number; pageSize: number; totalPages: number };
 }
 
 export interface GetScheduleGanttQuery {
@@ -43,4 +44,7 @@ export interface GetScheduleGanttQuery {
   userId?: string;
   requirementId?: string;
   role?: string;
+  q?: string;
+  page?: string | number;
+  pageSize?: string | number;
 }

@@ -31,9 +31,9 @@ export class PluginsController {
   }
 
   @Get('yunxiao/unmatched-recipients')
-  getYunxiaoUnmatchedRecipients(@Req() req: IntegrationRequest) {
+  getYunxiaoUnmatchedRecipients(@Req() req: IntegrationRequest, @Query() query: import('../common/pagination').PaginationQuery & { q?: string }) {
     const organizationId = this.requireOrganizationId(req);
-    return this.registry.get('yunxiao').getUnmatchedRecipients(organizationId);
+    return this.registry.get('yunxiao').getUnmatchedRecipients(organizationId, query);
   }
 
   @Delete('yunxiao/unmatched-recipients')
@@ -47,9 +47,9 @@ export class PluginsController {
   }
 
   @Get('yunxiao/members')
-  getYunxiaoProjectMembers(@Query('projectId') projectId: string, @Req() req: IntegrationRequest) {
+  getYunxiaoProjectMembers(@Query('projectId') projectId: string, @Query('userId') userId: string | undefined, @Req() req: IntegrationRequest) {
     const organizationId = this.requireOrganizationId(req);
-    return this.registry.get('yunxiao').getProjectMembers(organizationId, projectId ?? '');
+    return this.registry.get('yunxiao').getProjectMembers(organizationId, projectId ?? '', { userId });
   }
 
   @Patch('yunxiao/member-mapping')

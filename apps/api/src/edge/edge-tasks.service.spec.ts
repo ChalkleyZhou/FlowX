@@ -5,8 +5,16 @@ function createService() {
   const prisma = {
     requirement: { findMany: vi.fn() },
     bug: { findMany: vi.fn() },
-    workflowRun: { findMany: vi.fn() },
+    workflowRun: { findMany: vi.fn(), count: vi.fn() },
+    $queryRaw: vi.fn(),
   };
+  prisma.workflowRun.count.mockImplementation(async () => (await prisma.workflowRun.findMany.getMockImplementation()?.() ?? []).length);
+  prisma.$queryRaw.mockImplementation(async (query: { sql: string }) => {
+    const requirements: Array<{ id: string }> = await prisma.requirement.findMany.getMockImplementation()?.() ?? [];
+    const bugs: Array<{ id: string }> = query.sql.includes('Bug') ? await prisma.bug.findMany.getMockImplementation()?.() ?? [] : [];
+    if (query.sql.includes('COUNT(*)')) return [{ total: BigInt(requirements.length + bugs.length) }];
+    return [...requirements.map(row => ({ id: row.id, taskType: 'requirement' })), ...bugs.map(row => ({ id: row.id, taskType: 'bug' }))];
+  });
   return { service: new EdgeTasksService(prisma as never), prisma };
 }
 
@@ -37,14 +45,14 @@ describe('EdgeTasksService', () => {
       },
     ]);
 
-    const tasks = await service.listTasks({ workspaceId: 'workspace-1' });
+    const { items: tasks } = await service.listTasks({ workspaceId: 'workspace-1' });
 
     expect(tasks).toEqual([
       expect.objectContaining({ id: 'req-1', type: 'requirement', eligible: true }),
       expect.objectContaining({ id: 'bug-1', type: 'bug', eligible: true }),
     ]);
     expect(prisma.requirement.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { status: 'ACTIVE', workspaceId: 'workspace-1' } }),
+      expect.objectContaining({ where: expect.objectContaining({ status: 'ACTIVE', workspaceId: 'workspace-1' }) }),
     );
   });
 
@@ -67,6 +75,7 @@ describe('EdgeTasksService', () => {
         versionId: 'version-1',
         planningStatus: 'SCHEDULED',
         priority: 'HIGH',
+        id: { in: [] },
       },
     }));
     expect(prisma.bug.findMany).not.toHaveBeenCalled();
@@ -92,7 +101,7 @@ describe('EdgeTasksService', () => {
     ]);
     prisma.bug.findMany.mockResolvedValue([]);
 
-    const tasks = await service.listTasks({});
+    const { items: tasks } = await service.listTasks({});
 
     expect(tasks[0]).toEqual(
       expect.objectContaining({ eligible: false, workflowRunId: 'workflow-1' }),
@@ -110,7 +119,7 @@ describe('EdgeTasksService', () => {
     }]);
     prisma.bug.findMany.mockResolvedValue([]);
 
-    const [task] = await service.listTasks({});
+    const { items: [task] } = await service.listTasks({});
 
     expect(task).toEqual(expect.objectContaining({
       workflowRunId: 'workflow-spec', executionSessionId: 'session-spec',
@@ -135,7 +144,7 @@ describe('EdgeTasksService', () => {
       },
     ]);
 
-    const items = await service.listOpenDesignTasks({
+    const { items } = await service.listOpenDesignTasks({
       workspaceId: 'workspace-1',
       session: {
         user: { id: 'user-1', displayName: 'Ada' },
@@ -224,7 +233,7 @@ describe('EdgeTasksService', () => {
       },
     ]);
 
-    await expect(service.listWorkflowPositions({ workflowRunId: 'workflow-spec' })).resolves.toEqual([
+    await expect(service.listWorkflowPositions({ workflowRunId: 'workflow-spec' }).then(page => page.items)).resolves.toEqual([
       expect.objectContaining({
         workflowRunId: 'workflow-spec',
         title: 'Export CSV',
@@ -291,7 +300,7 @@ describe('EdgeTasksService workflow position ownership', () => {
   it('blocks another user and provides the current session and owner', async () => {
     const { service, prisma } = createService();
     prisma.workflowRun.findMany.mockResolvedValue([workflow()]);
-    const [position] = await service.listWorkflowPositions({ session: auth });
+    const { items: [position] } = await service.listWorkflowPositions({ session: auth });
     expect(position).toMatchObject({ localAction: 'none', outputContract: null,
       executionSession: { id: currentSession.id, claimedByUserId: 'user-other',
         claimedByUser: { displayName: '其他执行人' } } });
@@ -303,7 +312,7 @@ describe('EdgeTasksService workflow position ownership', () => {
     prisma.workflowRun.findMany.mockResolvedValue([workflow({ executionSessions: [
       { ...currentSession, claimedByUserId: auth.user.id, claimedByUser: auth.user },
     ] })]);
-    const [position] = await service.listWorkflowPositions({ session: auth });
+    const { items: [position] } = await service.listWorkflowPositions({ session: auth });
     expect(position.localAction).toBe('generate');
     expect(position.outputContract?.files).toEqual(['spec.md', 'plan.md', 'spec-plan.json']);
   });
@@ -311,7 +320,7 @@ describe('EdgeTasksService workflow position ownership', () => {
   it.each([undefined, { user: { id: '', displayName: '' } }])('does not grant occupied work to an anonymous caller', async (session) => {
     const { service, prisma } = createService();
     prisma.workflowRun.findMany.mockResolvedValue([workflow()]);
-    const [position] = await service.listWorkflowPositions({ session });
+    const { items: [position] } = await service.listWorkflowPositions({ session });
     expect(position).toMatchObject({ localAction: 'none', outputContract: null });
   });
 
@@ -320,7 +329,7 @@ describe('EdgeTasksService workflow position ownership', () => {
     prisma.workflowRun.findMany.mockResolvedValue([workflow({ executionSessions: [
       { ...currentSession, claimedByUserId: null, claimedByUser: null },
     ] })]);
-    const [position] = await service.listWorkflowPositions({ session: auth });
+    const { items: [position] } = await service.listWorkflowPositions({ session: auth });
     expect(position).toMatchObject({ localAction: 'none', outputContract: null });
     expect(position.message).toMatch(/管理员.*恢复|管理员.*交接/);
   });
@@ -328,7 +337,7 @@ describe('EdgeTasksService workflow position ownership', () => {
   it.each(['COMPLETED', 'FAILED', 'CANCELLED'])('ignores terminal session %s', async (status) => {
     const { service, prisma } = createService();
     prisma.workflowRun.findMany.mockResolvedValue([workflow({ executionSessions: [{ ...currentSession, status }] })]);
-    const [position] = await service.listWorkflowPositions({ session: auth });
+    const { items: [position] } = await service.listWorkflowPositions({ session: auth });
     expect(position.localAction).toBe('generate');
     expect(position.executionSession).toBeNull();
   });
@@ -343,7 +352,7 @@ describe('EdgeTasksService workflow position ownership', () => {
         { ...currentSession, id: 'design-session', stageExecutionId: 'design-stage', metadata: { stage: 'DESIGN' } },
       ],
     })]);
-    const [position] = await service.listWorkflowPositions({ session: auth });
+    const { items: [position] } = await service.listWorkflowPositions({ session: auth });
     expect(position.localAction).toBe('generate');
     expect(position.executionSession).toBeNull();
   });
@@ -354,7 +363,7 @@ describe('EdgeTasksService workflow position ownership', () => {
       stageExecutions: [{ ...stage, status: 'WAITING_CONFIRMATION' }],
       executionSessions: [{ ...currentSession, claimedByUserId: auth.user.id, claimedByUser: auth.user }],
     })]);
-    const [position] = await service.listWorkflowPositions({ session: auth });
+    const { items: [position] } = await service.listWorkflowPositions({ session: auth });
     expect(position).toMatchObject({ localAction: 'wait_for_confirmation', outputContract: null });
   });
 
@@ -386,7 +395,7 @@ describe('EdgeTasksService workflow position ownership', () => {
           executionSession: { stageExecutionId: stage.id } },
       ],
     })]);
-    const [position] = await service.listWorkflowPositions({ session: auth });
+    const { items: [position] } = await service.listWorkflowPositions({ session: auth });
     expect(position.artifacts).toEqual([]);
     expect(position.priorOutputs).toEqual([]);
   });
@@ -403,7 +412,7 @@ describe('EdgeTasksService workflow position ownership', () => {
         { id: 'current-file', artifactType: 'DESIGN_HTML', name: '已确认设计', executionSession: { stageExecutionId: 'design-current' } },
       ],
     })]);
-    const [position] = await service.listWorkflowPositions({ session: auth });
+    const { items: [position] } = await service.listWorkflowPositions({ session: auth });
     expect(position.artifacts).toEqual([
       { id: 'current-file', artifactType: 'DESIGN_HTML', name: '已确认设计' },
     ]);
@@ -429,7 +438,7 @@ describe('EdgeTasksService workflow position ownership', () => {
       ],
     })]);
 
-    const [position] = await service.listWorkflowPositions({ session: auth });
+    const { items: [position] } = await service.listWorkflowPositions({ session: auth });
 
     expect(position.artifacts).toEqual([
       { id: 'current-file', artifactType: 'DESIGN_HTML', name: '已确认设计' },
@@ -460,7 +469,7 @@ describe('EdgeTasksService workflow position ownership', () => {
       ],
     })]);
 
-    const [position] = await service.listWorkflowPositions({ session: auth });
+    const { items: [position] } = await service.listWorkflowPositions({ session: auth });
 
     expect(position.artifacts).toEqual([
       { id: 'current-file', artifactType: 'DESIGN_HTML', name: '已确认设计' },
@@ -479,7 +488,7 @@ describe('EdgeTasksService workflow position ownership', () => {
       artifacts: [{ id: 'old-file', artifactType: 'DESIGN_HTML', name: '旧设计', storageKey: `design/${relPath}` }],
     })]);
 
-    const [position] = await service.listWorkflowPositions({ session: auth });
+    const { items: [position] } = await service.listWorkflowPositions({ session: auth });
 
     expect(position.artifacts).toEqual([]);
   });
@@ -493,7 +502,7 @@ describe('EdgeTasksService workflow position ownership', () => {
       artifacts: [{ id: 'unknown-file', artifactType: 'DESIGN_HTML', name: '无法证明版本的历史设计' }],
     })]);
 
-    const [position] = await service.listWorkflowPositions({ session: auth });
+    const { items: [position] } = await service.listWorkflowPositions({ session: auth });
 
     expect(position.artifacts).toEqual([]);
   });
@@ -509,7 +518,7 @@ describe('EdgeTasksService workflow position ownership', () => {
       artifacts: [{ id: 'design-file', artifactType: 'DESIGN_HTML', name: '设计', storageKey: `design/${relPath}` }],
     })]);
 
-    const [position] = await service.listWorkflowPositions({ session: auth });
+    const { items: [position] } = await service.listWorkflowPositions({ session: auth });
 
     expect(position.artifacts).toEqual([]);
   });
@@ -521,7 +530,7 @@ describe('EdgeTasksService workflow position ownership', () => {
         { id: 'execution-stage', stage: 'EXECUTION', status: 'PENDING', attempt: 1 }],
       executionSessions: [{ ...currentSession, status: 'COMPLETED' }],
     })]);
-    const [position] = await service.listWorkflowPositions({ session: auth });
+    const { items: [position] } = await service.listWorkflowPositions({ session: auth });
     expect(position).toMatchObject({ localAction: 'generate', stage: 'execution',
       priorOutputs: [expect.objectContaining({ stage: 'spec-plan', summary: '已确认方案' })] });
   });
@@ -534,7 +543,7 @@ describe('EdgeTasksService workflow position ownership', () => {
       artifacts: [{ id: 'inherited', artifactType: 'DESIGN_HTML', name: '保留的移动页面',
         storageKey: `design/${relPath}`, executionSession: { stageExecutionId: 'design-old' } }],
     })]);
-    const [position] = await service.listWorkflowPositions({ session: auth });
+    const { items: [position] } = await service.listWorkflowPositions({ session: auth });
     expect(position.artifacts).toEqual([{ id: 'inherited', artifactType: 'DESIGN_HTML', name: '保留的移动页面' }]);
   });
 
@@ -551,7 +560,7 @@ describe('EdgeTasksService 分支交付位置', () => {
         { id: 'spec', stage: 'SPEC_PLAN', status: 'COMPLETED', attempt: 1, output: { spec: { goal: '已确认共享方案' } } },
       ],
     }]);
-    const [position] = await service.listWorkflowPositions({});
+    const { items: [position] } = await service.listWorkflowPositions({});
     expect(position).toMatchObject({ localAction: 'none', stage: 'execution', outputContract: null, executionSession: null,
       priorOutputs: [expect.objectContaining({ stage: 'spec-plan', summary: '已确认共享方案' })] });
     expect(position.message).toMatch(/网页.*分支/);

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ClipboardCheck, Send } from 'lucide-react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api, getFlowxApiBaseUrl } from '../api';
+import { useListPage } from '../hooks/use-list-page';
+import { ListPagination } from '../components/ListPagination';
 import { withCurrentProject } from '../project-scope';
 import { useAdoptProject, useProjectScopeOptional } from '../project-scope-context';
 import { ONLINE_AI_UNAVAILABLE_MESSAGE, useOnlineAiProviders } from '../online-ai';
@@ -50,8 +52,6 @@ import {
 } from '../lib/flowx-local-bridge';
 import type {
   ExecutionSessionDetail,
-  ExecutionSessionEvidence,
-  ExecutionSessionSyncEvent,
   LocalHandoffPayload,
   WorkflowRun,
 } from '../types';
@@ -418,6 +418,11 @@ function WorkflowRunDetailContent() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedStage, setSelectedStage] = useState<WorkflowStageKey>('SPEC_PLAN');
   const [branchSummaryExpanded, setBranchSummaryExpanded] = useState(false);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const findings = useListPage(query => api.getReviewFindings(workflowRunId, query), { workflowRunId }, { enabled: !!workflowRun && ['AI_REVIEW', 'HUMAN_REVIEW'].includes(selectedStage), pageKey: 'findingsPage' });
+  const repositories = useListPage(query => api.getWorkflowRepositories(workflowRunId, query), { workflowRunId }, { enabled: branchSummaryExpanded, pageKey: 'repositoriesPage' });
+  const history = useListPage(query => api.getWorkflowHistory(workflowRunId, query), { workflowRunId }, { enabled: historyExpanded, pageKey: 'historyPage' });
+  useEffect(() => { findings.refresh(); history.refresh(); repositories.refresh(); }, [workflowRun, findings.refresh, history.refresh, repositories.refresh]);
   const [busyStage, setBusyStage] = useState<string | null>(null);
   const [submittingAction, setSubmittingAction] = useState<'feedback' | null>(null);
   const [busyFindingId, setBusyFindingId] = useState<string | null>(null);
@@ -435,8 +440,6 @@ function WorkflowRunDetailContent() {
   const [lastPublishedRepositories, setLastPublishedRepositories] = useState<PublishRepositorySummary[]>([]);
   const [localHandoff, setLocalHandoff] = useState<LocalHandoffPayload | null>(null);
   const [executionSession, setExecutionSession] = useState<ExecutionSessionDetail | null>(null);
-  const [executionEvidence, setExecutionEvidence] = useState<ExecutionSessionEvidence[]>([]);
-  const [executionEvents, setExecutionEvents] = useState<ExecutionSessionSyncEvent[]>([]);
   const [executionSessionError, setExecutionSessionError] = useState<string | null>(null);
   const [executionSessionLoading, setExecutionSessionLoading] = useState(false);
   const [localLaunchOpen, setLocalLaunchOpen] = useState(false);
@@ -634,7 +637,7 @@ function WorkflowRunDetailContent() {
       return;
     }
 
-    if (workflowRun.reviewFindings.length > 0) {
+    if ((workflowRun._count?.reviewFindings ?? workflowRun.reviewFindings.length) > 0) {
       syncedReviewReportIdRef.current = reviewReportId;
       return;
     }
@@ -702,13 +705,13 @@ function WorkflowRunDetailContent() {
     const latestStages = STAGE_SEQUENCE.map((stageKey) => getStage(workflowRun, stageKey)).filter(Boolean);
     const completedStages = latestStages.filter((item) => item?.status === 'COMPLETED').length;
     const waitingStages = latestStages.filter((item) => item?.status === 'WAITING_CONFIRMATION').length;
-    const findingsCount = workflowRun.reviewFindings.length;
+    const findingsCount = workflowRun._count?.reviewFindings ?? workflowRun.reviewFindings.length;
 
     return {
       completedStages,
       waitingStages,
       findingsCount,
-      repositoryCount: workflowRun.workflowRepositories.length,
+      repositoryCount: workflowRun._count?.workflowRepositories ?? workflowRun.workflowRepositories.length,
     };
   }, [workflowRun]);
   const branchSummaryText = useMemo(() => {
@@ -717,11 +720,11 @@ function WorkflowRunDetailContent() {
     }
 
     const first = workflowRun.workflowRepositories[0];
-    if (workflowRun.workflowRepositories.length === 1) {
+    if ((workflowRun._count?.workflowRepositories ?? workflowRun.workflowRepositories.length) === 1) {
       return `工作分支：${first.name} / ${first.workingBranch}`;
     }
 
-    return `工作分支：${first.name} / ${first.workingBranch} 等 ${workflowRun.workflowRepositories.length} 个`;
+    return `工作分支：${first.name} / ${first.workingBranch} 等 ${workflowRun._count?.workflowRepositories ?? workflowRun.workflowRepositories.length} 个`;
   }, [workflowRun]);
   const selectedSpecPlanOutput = useMemo(
     () => (selectedStage === 'SPEC_PLAN' && workflowRun ? parseSpecPlanOutput(getStage(workflowRun, 'SPEC_PLAN')?.output) : null),
@@ -772,6 +775,8 @@ function WorkflowRunDetailContent() {
   const executionSessionId =
     selectedStage === 'EXECUTION' ? localHandoff?.executionSessionId ?? null : null;
 
+  const evidenceList = useListPage(query => api.listExecutionSessionEvidence(executionSessionId!, query), { executionSessionId: executionSessionId ?? undefined }, { enabled: !!executionSessionId, pageKey: 'evidencePage' });
+  const eventsList = useListPage(query => api.listExecutionSessionEvents(executionSessionId!, { ...query, view: 'progress' }), { executionSessionId: executionSessionId ?? undefined }, { enabled: !!executionSessionId, pageKey: 'eventsPage' });
   const executionSessionKeyRef = useRef(executionSessionId);
   executionSessionKeyRef.current = executionSessionId;
   const executionRequestRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
@@ -784,16 +789,13 @@ function WorkflowRunDetailContent() {
     if (!options?.silent && !executionSession) setExecutionSessionLoading(true);
     const promise = (async () => {
       try {
-        const [session, evidence, eventsPage] = await Promise.all([
+        const [session] = await Promise.all([
           api.getExecutionSession(sessionId),
-          api.listExecutionSessionEvidence(sessionId),
-          api.listExecutionSessionEvents(sessionId, { take: 10 }).catch(() => null),
         ]);
         if (!isCurrent()) return;
         setExecutionSessionError(null);
         setExecutionSession(session);
-        setExecutionEvidence(evidence);
-        setExecutionEvents(eventsPage?.items ?? []);
+        evidenceList.refresh(); eventsList.refresh();
       } catch (error) {
         if (isCurrent()) setExecutionSessionError(error instanceof Error ? error.message : '执行会话加载失败，请刷新后重试。');
       } finally {
@@ -807,8 +809,6 @@ function WorkflowRunDetailContent() {
 
   useEffect(() => {
     setExecutionSession(null);
-    setExecutionEvidence([]);
-    setExecutionEvents([]);
     setExecutionSessionError(null);
     if (executionSessionId) void refreshExecutionSession();
   }, [executionSessionId, refreshExecutionSession]);
@@ -2545,9 +2545,12 @@ function WorkflowRunDetailContent() {
                       </Link>
                     </UiButton>
                   </div>
+                  {evidenceList.error || eventsList.error ? <div role="alert">{evidenceList.error || eventsList.error}<UiButton onClick={() => { evidenceList.refresh(); eventsList.refresh(); }}>重试运行记录</UiButton></div> : null}
+                  <ListPagination label="运行证据分页" page={evidenceList.page} total={evidenceList.total} pageSize={20} loading={evidenceList.loading} onPageChange={evidenceList.onPageChange} />
+                  <ListPagination label="运行事件分页" page={eventsList.page} total={eventsList.total} pageSize={20} loading={eventsList.loading} onPageChange={eventsList.onPageChange} />
                   {!workflowRun.supersededByChangeId && <ExecutionControlActions
                     key={executionSession.id}
-                    session={{ ...executionSession, evidence: executionEvidence, syncEvents: executionEvents }}
+                    session={{ ...executionSession, evidence: evidenceList.items, syncEvents: eventsList.items }}
                     loading={executionSessionLoading}
                     onChanged={async (newSessionId) => {
                       if (newSessionId && workflowRun) setLocalHandoff(await api.getLocalHandoff(workflowRun.id));
@@ -2672,13 +2675,15 @@ function WorkflowRunDetailContent() {
                     />
                     <div className="flex flex-col items-end gap-3 max-[960px]:items-start">
                       <div className="flex flex-wrap justify-end gap-2 max-[960px]:justify-start">
-                        <Badge variant="secondary">{workflowRun.reviewFindings.length} 条结果</Badge>
-                        <Badge variant="default">{workflowRun.reviewFindings.filter((item) => !item.convertedIssueId && !item.convertedBugId).length} 条待处理</Badge>
+                        <Badge variant="secondary">{findings.total} 条结果</Badge>
+                        <Badge variant="default">{findings.summary?.pendingCount ?? 0} 条待处理</Badge>
                       </div>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="p-5 pt-0">
+                  {findings.error ? <div role="alert">{findings.error}<UiButton onClick={findings.refresh}>重试审查结果</UiButton></div> : null}
+                  <ListPagination page={findings.page} total={findings.total} pageSize={20} loading={findings.loading} onPageChange={findings.onPageChange} />
                   {hasStaleReviewResults ? (
                     <div className="mb-4 flex flex-col gap-3 rounded-md border border-warning/30 bg-warning/5 px-4 py-3 text-sm leading-6 text-warning">
                       <div>
@@ -2694,9 +2699,9 @@ function WorkflowRunDetailContent() {
                       </div>
                     </div>
                   ) : null}
-                  {workflowRun.reviewFindings.length > 0 ? (
+                  {findings.items.length > 0 ? (
                     <div className="flex flex-col gap-3">
-                      {workflowRun.reviewFindings.map((finding) => (
+                      {findings.items.map((finding) => (
                         <ReviewFindingCard
                           key={finding.id}
                           id={finding.id}
@@ -2881,7 +2886,9 @@ function WorkflowRunDetailContent() {
               </div>
               {branchSummaryExpanded ? (
                 <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
-                  {workflowRun.workflowRepositories.map((repository) => (
+                  {repositories.error ? <div role="alert">{repositories.error}<UiButton onClick={repositories.refresh}>重试仓库</UiButton></div> : null}
+                  <ListPagination page={repositories.page} total={repositories.total} pageSize={20} loading={repositories.loading} onPageChange={repositories.onPageChange} />
+                  {repositories.items.map((repository) => (
                     <div key={repository.id} className="text-sm leading-6 text-muted-foreground">
                       <span className="font-medium text-foreground">{repository.name}</span>
                       {' / '}
@@ -2895,6 +2902,12 @@ function WorkflowRunDetailContent() {
             </div>
           ) : null}
 
+          <details onToggle={event => setHistoryExpanded(event.currentTarget.open)}>
+            <summary className="cursor-pointer text-sm font-semibold">阶段执行历史</summary>
+            {history.error ? <div role="alert">{history.error}<UiButton onClick={history.refresh}>重试阶段历史</UiButton></div> : null}
+            {history.items.map(row => <article className="border-b py-3 text-sm" key={row.id}>{row.stage} · {row.status} · 第 {row.attempt} 次执行</article>)}
+            <ListPagination page={history.page} total={history.total} pageSize={20} loading={history.loading} onPageChange={history.onPageChange} />
+          </details>
           {workflowMetrics ? (
             <div className="grid gap-5 md:grid-cols-4">
               <MetricCard

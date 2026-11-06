@@ -41,10 +41,12 @@ class LocalFlowXApiClient {
   ) {}
 
   async request(path: string, init: RequestInit = {}) {
+    path = path.replace(/\?$/, '');
     const response = await fetch(`${this.baseUrl}${path}`, {
       ...init,
       headers: {
         'Content-Type': 'application/json',
+        'X-FlowX-List-Contract': 'pagination-v1',
         ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
         ...(init.headers ?? {}),
       },
@@ -53,7 +55,9 @@ class LocalFlowXApiClient {
       const message = await response.text();
       throw new Error(`FlowX API request failed (${response.status}): ${message || response.statusText}`);
     }
-    return response.json();
+    const value: unknown = await response.json();
+    if ((!init.method || init.method === 'GET') && isPaginatedListPath(path)) return requirePage(value);
+    return value;
   }
 
   async upload(path: string, content: Buffer, contentType = 'application/octet-stream') {
@@ -262,16 +266,39 @@ function valueHasNext(value: unknown): value is { next: unknown } {
   return Boolean(value && typeof value === 'object' && 'next' in value);
 }
 
+const paginationFields = {
+  page: z.number().int().min(1).optional(),
+  pageSize: z.number().int().min(1).max(100).optional(),
+  q: z.string().optional(),
+};
+
+function isPaginatedListPath(path: string) {
+  const pathname = path.split('?')[0];
+  return /^\/projects(?:\/[^/]+\/versions)?$/.test(pathname) ||
+    /^\/workspaces\/[^/]+\/repositories$/.test(pathname) ||
+    /^\/cursor-local\/(tasks|opendesign-tasks|workflow-position)$/.test(pathname) ||
+    /^\/quality\/(case-libraries|test-cases|local-test-tasks|test-requests|test-designs|test-runs)$/.test(pathname) ||
+    /^\/quality\/(case-libraries\/[^/]+\/modules|(?:test-requests|test-designs|test-runs|local-smoke-runs)\/[^/]+\/(?:tasks|cases|targets|executions|runs|reports|snapshots|candidates|smoke-cases|requirements|workflows|artifacts|report-baselines|report-supersessions))$/.test(pathname);
+}
+
+function requirePage(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('PAGINATION_UPGRADE_REQUIRED: 服务端未返回分页契约，请升级服务端与 @flowx-ai/local 后重试。');
+  const page = value as Record<string, unknown>;
+  if (!Array.isArray(page.items) || !['total', 'page', 'pageSize', 'totalPages'].every(key => Number.isSafeInteger(page[key])) || Number(page.total) < 0 || Number(page.page) < 1 || Number(page.pageSize) < 1 || Number(page.pageSize) > 100 || page.items.length > Number(page.pageSize)) throw new Error('PAGINATION_UPGRADE_REQUIRED: 分页响应缺少有效的 items/total/page/pageSize/totalPages，请升级服务端。');
+  return page;
+}
+
 function summarizeProjects(raw: unknown) {
-  const list = Array.isArray(raw) ? raw : [];
+  const page = requirePage(raw);
+  const list = page.items as unknown[];
   return {
-    projects: list.map((item) => {
+    ...page,
+    items: list.map((item) => {
       const project = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
       const workspace =
         project.workspace && typeof project.workspace === 'object'
           ? (project.workspace as Record<string, unknown>)
           : {};
-      const repositories = Array.isArray(workspace.repositories) ? workspace.repositories : [];
       return {
         id: typeof project.id === 'string' ? project.id : '',
         name: typeof project.name === 'string' ? project.name : '',
@@ -282,17 +309,9 @@ function summarizeProjects(raw: unknown) {
               ? workspace.id
               : '',
         workspaceName: typeof workspace.name === 'string' ? workspace.name : '',
-        repositories: repositories.map((repo) => {
-          const row = repo && typeof repo === 'object' ? (repo as Record<string, unknown>) : {};
-          return {
-            id: typeof row.id === 'string' ? row.id : '',
-            name: typeof row.name === 'string' ? row.name : '',
-          };
-        }),
         currentVersion: summarizeVersion(project.currentVersion),
-        versions: (Array.isArray(project.versions) ? project.versions : [])
-          .map((row) => summarizeVersion(row))
-          .filter((row): row is { id: string; name: string } => row !== null),
+        _count: project._count,
+
       };
     }),
   };
@@ -681,12 +700,12 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     {
       title: 'List Local Smoke Tasks',
       description: 'List target, case, claim, and aggregate status for a local smoke run.',
-      inputSchema: z.object({ testRunId: z.string().min(1) }),
+      inputSchema: z.object({ testRunId: z.string().min(1), ...paginationFields, targetId: z.string().optional(), result: z.string().optional() }),
     },
-    async ({ testRunId }) => {
+    async ({ testRunId, ...query }) => {
       const { client } = await resolveSession(options.homeDir);
       return runRequest(() =>
-        client.request(`/quality/local-smoke-runs/${encodeURIComponent(testRunId)}/tasks`),
+        client.request(`/quality/local-smoke-runs/${encodeURIComponent(testRunId)}/tasks?${qualityQuery(query)}`),
       );
     },
   );
@@ -753,20 +772,20 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
   }
   const qualityReportSchema = smokeReportSchema.extend({ testRunRevision: z.number().int().min(0) }).strict();
   const qualitySelectionSchema = z.object({ libraryIds: z.array(z.string().min(1)).min(1), moduleIds: z.array(z.string()).optional(), priorities: z.array(z.enum(['P0', 'P1', 'P2', 'P3'])).optional(), tags: z.array(z.string()).optional(), targetKeys: z.array(z.string()).optional() }).strict();
-  function qualityQuery(input: Record<string, string | number | undefined>) {
-    return new URLSearchParams(Object.entries(input).filter((entry): entry is [string, string | number] => entry[1] !== undefined).map(([key, value]) => [key, String(value)])).toString();
+  function qualityQuery(input: Record<string, string | number | string[] | undefined>) {
+    return new URLSearchParams(Object.entries(input).filter((entry): entry is [string, string | number | string[]] => entry[1] !== undefined).map(([key, value]) => [key, String(value)])).toString();
   }
   server.registerTool('flowx_list_case_libraries', {
     title: '发现测试用例库', description: '查询有权限的工作区及项目用例库，返回 libraryId 供选例使用。',
-    inputSchema: { workspaceId: z.string().min(1), projectId: z.string().min(1).optional() },
+    inputSchema: { workspaceId: z.string().min(1), projectId: z.string().min(1).optional(), ...paginationFields },
   }, async input => runRequest(() => qualityRequest(`/quality/case-libraries?${qualityQuery(input)}`)));
   server.registerTool('flowx_list_case_modules', {
     title: '发现用例库模块', description: '读取所选用例库的模块和层级，返回 moduleId；不修改正式用例库。',
-    inputSchema: { libraryId: z.string().min(1) },
-  }, async ({ libraryId }) => runRequest(() => qualityRequest(`/quality/case-libraries/${encodeURIComponent(libraryId)}/modules`)));
+    inputSchema: { libraryId: z.string().min(1), parentId: z.string().optional(), ...paginationFields },
+  }, async ({ libraryId, ...query }) => runRequest(() => qualityRequest(`/quality/case-libraries/${encodeURIComponent(libraryId)}/modules?${qualityQuery(query)}`)));
   server.registerTool('flowx_list_test_cases', {
     title: '检索正式测试用例', description: '按库、模块、优先级、关键词分页检索正式用例，读取步骤、测试数据和预期。用返回的 definition id 补选候选。',
-    inputSchema: { workspaceId: z.string().min(1), projectId: z.string().min(1).optional(), libraryId: z.string().min(1).optional(), moduleId: z.string().min(1).optional(), priority: z.enum(['P0', 'P1', 'P2', 'P3']).optional(), q: z.string().optional(), page: z.number().int().min(1).optional(), pageSize: z.number().int().min(10).max(100).optional() },
+    inputSchema: { workspaceId: z.string().min(1), projectId: z.string().min(1).optional(), libraryId: z.string().min(1).optional(), libraryIds: z.array(z.string().min(1)).optional(), moduleId: z.string().min(1).optional(), moduleIds: z.array(z.string().min(1)).optional(), priority: z.enum(['P0', 'P1', 'P2', 'P3']).optional(), priorities: z.array(z.enum(['P0', 'P1', 'P2', 'P3'])).optional(), q: z.string().optional(), page: z.number().int().min(1).optional(), pageSize: z.number().int().min(1).max(100).optional() },
   }, async input => runRequest(() => qualityRequest(`/quality/test-cases?${qualityQuery(input)}`)));
   server.registerTool('flowx_generate_test_design', {
     title: '生成需求测试设计', description: '在已明确用例库与范围后请求服务端生成候选设计。异步生成后读取最新设计；不会自动确认或开始测试。',
@@ -785,7 +804,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
   server.registerTool('flowx_update_test_smoke', {
     title: '处理测试设计冒烟范围', description: '按用户决策整体替换未冻结设计的冒烟范围，使用最新 revision；服务端重新生成条目，id 不保证保留。cases 仅透传可写字段，剔除 sortOrder、时间戳、testDesignId 等只读数据；支持 precondition:null。不会自动确认设计，不能自行批量接受。无冒烟时明确传空 cases 和 noSmokeReason。',
     inputSchema: {
-      testDesignId: z.string().min(1), revision: z.number().int().min(1),
+      testDesignId: z.string().min(1), revision: z.number().int().min(1), partial: z.boolean().optional(),
       cases: z.array(z.object({ id: z.string().optional(), title: z.string().min(1), priority: z.string().optional(), precondition: z.string().nullable().optional(), steps: z.array(z.string()), expected: z.string().min(1), blocking: z.boolean(), coverageKeys: z.array(z.string()), resolution: z.enum(['PENDING', 'ACCEPTED', 'REJECTED']) }).strip()),
       noSmokeReason: z.string().optional(),
     },
@@ -807,15 +826,15 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     requirementIds: z.array(z.string()).min(1), workflowRunIds: z.array(z.string()).min(1), artifactIds: z.array(z.string()).optional(), testDesignId: z.string().optional(),
   }).strict();
   const testRequestActionSchema = z.discriminatedUnion('action', [
-    z.object({ action: z.literal('list'), projectId: z.string().min(1).optional(), projectVersionId: z.string().min(1).optional(), status: z.string().optional() }).strict(),
-    z.object({ action: z.literal('get'), testRequestId: z.string().min(1) }).strict(),
+    z.object({ action: z.literal('list'), ...paginationFields, projectId: z.string().min(1).optional(), projectVersionId: z.string().min(1).optional(), status: z.string().optional() }).strict(),
+    z.object({ action: z.literal('get'), testRequestId: z.string().min(1), collection: z.enum(['overview', 'snapshots', 'requirements', 'workflows', 'artifacts']).optional(), ...paginationFields }).strict(),
     z.object({ action: z.literal('create'), request: createTestRequestSchema }).strict(),
     z.object({ action: z.literal('prepare'), testRequestId: z.string().min(1), scopeRevision: z.number().int().min(0) }).strict(),
   ]);
   server.registerTool('flowx_test_requests', {
     title: '查询、创建或准备提测单', description: 'list 按项目、版本和状态发现提测单；get 读取计划、快照和 scopeRevision；create 只按 request 创建，不自动准备；prepare 必须用户明确要求且传入最新 scopeRevision，由服务端检查设计、工作流和范围门禁。创建或准备不代表执行测试或测试通过。每个 action 只接受对应字段。',
     inputSchema: z.object({
-      action: z.enum(['list', 'get', 'create', 'prepare']), testRequestId: z.string().min(1).optional(),
+      ...paginationFields, collection: z.enum(['overview', 'snapshots', 'requirements', 'workflows', 'artifacts']).optional(), action: z.enum(['list', 'get', 'create', 'prepare']), testRequestId: z.string().min(1).optional(),
       projectId: z.string().min(1).optional(), projectVersionId: z.string().min(1).optional(), status: z.string().optional(),
       request: createTestRequestSchema.optional(), scopeRevision: z.number().int().min(0).optional(),
     }).strict(),
@@ -828,7 +847,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       const query = qualityQuery(filters);
       return runRequest(() => qualityRequest(`/quality/test-requests${query ? `?${query}` : ''}`));
     }
-    if (action.action === 'get') return runRequest(() => qualityRequest(`/quality/test-requests/${encodeURIComponent(action.testRequestId)}`));
+    if (action.action === 'get') { const { testRequestId, collection, action: _, ...query } = action; return runRequest(() => qualityRequest(`/quality/test-requests/${encodeURIComponent(testRequestId)}${collection && collection !== 'overview' ? `/${collection}?${qualityQuery(query)}` : ''}`)); }
     if (action.action === 'create') return runRequest(() => qualityRequest('/quality/test-requests', { method: 'POST', body: JSON.stringify(action.request) }));
     return runRequest(() => qualityRequest(`/quality/test-requests/${encodeURIComponent(action.testRequestId)}/prepare`, { method: 'POST', body: JSON.stringify({ scopeRevision: action.scopeRevision }) }));
   });
@@ -838,8 +857,8 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
   }, async ({ testRequestId, ...body }) => runRequest(() => qualityRequest(`/quality/test-requests/${encodeURIComponent(testRequestId)}/local-test-runs`, { method: 'POST', body: JSON.stringify(body) })));
   server.registerTool('flowx_list_test_tasks', {
     title: '查询本地测试任务', description: '不传 testRunId 时发现有权限的活动测试任务；传入时读取待测快照、目标端、代码基线和领取状态。',
-    inputSchema: { testRunId: z.string().optional(), projectId: z.string().optional(), projectVersionId: z.string().optional(), testRequestId: z.string().optional() },
-  }, async ({ testRunId, ...filters }) => runRequest(() => qualityRequest(testRunId ? `/quality/test-runs/${encodeURIComponent(testRunId)}/tasks` : `/quality/local-test-tasks?${new URLSearchParams(Object.entries(filters).filter((entry): entry is [string, string] => entry[1] !== undefined))}`)));
+    inputSchema: { testRunId: z.string().optional(), projectId: z.string().optional(), projectVersionId: z.string().optional(), testRequestId: z.string().optional(), collection: z.enum(['cases', 'targets', 'executions']).optional(), targetId: z.string().optional(), result: z.string().optional(), ...paginationFields },
+  }, async ({ testRunId, collection, ...filters }) => runRequest(() => qualityRequest(testRunId ? `/quality/test-runs/${encodeURIComponent(testRunId)}/${collection || 'tasks'}?${qualityQuery(filters)}` : `/quality/local-test-tasks?${qualityQuery(filters)}`)));
   server.registerTool('flowx_claim_test_task', {
     title: '领取本地测试用例', description: '领取指定目标端与用例，返回会话、稳定任务版本、租约和代码基线。只执行本次实际领取范围。',
     inputSchema: { testRunId: z.string().min(1), targetId: z.string().min(1), caseIds: z.array(z.string()).optional(), deviceId: z.string().optional(), leaseSeconds: z.number().int().min(60).max(86400).optional() },
@@ -860,8 +879,8 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     inputSchema: { workspaceId: z.string().min(1), projectId: z.string().min(1), projectVersionId: z.string().min(1), requirementIds: z.array(z.string()).min(1), workflowRunIds: z.array(z.string()).min(1), caseSelection: qualitySelectionSchema.optional(), changeSummary: z.string().optional() },
   }, async body => runRequest(() => qualityRequest('/quality/test-designs', { method: 'POST', body: JSON.stringify(body) })));
   server.registerTool('flowx_get_test_design', {
-    title: '读取测试设计与范围', description: '查询用例候选、选例范围、未覆盖项和最新 revision，不自动生成或确认。', inputSchema: { testDesignId: z.string().min(1) },
-  }, async ({ testDesignId }) => runRequest(() => qualityRequest(`/quality/test-designs/${encodeURIComponent(testDesignId)}`)));
+    title: '读取测试设计与范围', description: '查询用例候选、选例范围、未覆盖项和最新 revision，不自动生成或确认。', inputSchema: { testDesignId: z.string().min(1), collection: z.enum(['overview', 'candidates', 'smoke-cases', 'requirements', 'workflows']).optional(), resolution: z.string().optional(), ...paginationFields },
+  }, async ({ testDesignId, collection, ...query }) => runRequest(() => qualityRequest(`/quality/test-designs/${encodeURIComponent(testDesignId)}${collection && collection !== 'overview' ? `/${collection}?${qualityQuery(query)}` : ''}`)));
   server.registerTool('flowx_update_test_selection', {
     title: '选择需求用例库与模块', description: '修改未冻结设计的选例范围，清除旧候选并等待重新生成。使用当前 revision。', inputSchema: { testDesignId: z.string().min(1), revision: z.number().int().min(1), caseSelection: qualitySelectionSchema },
   }, async ({ testDesignId, ...body }) => runRequest(() => qualityRequest(`/quality/test-designs/${encodeURIComponent(testDesignId)}/selection`, { method: 'PATCH', body: JSON.stringify(body) })));
@@ -870,9 +889,9 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
   }, async ({ testDesignId, ...body }) => runRequest(() => qualityRequest(`/quality/test-designs/${encodeURIComponent(testDesignId)}/candidates`, { method: 'POST', body: JSON.stringify(body) })));
   server.registerTool('flowx_test_reports', {
     title: '读取或生成测试报告', description: 'list 查询历史报告；run 生成本轮报告；request 以明确 runIds、baseline 和可选 supersessions 汇总提测报告。失败和阻塞可生成报告；FINAL 要求轮次已结束。不会把测试标记为通过。',
-    inputSchema: { action: z.enum(['list', 'run', 'request']), testRequestId: z.string().min(1).optional(), testRunId: z.string().min(1).optional(), idempotencyKey: z.string().min(1).optional(), mode: z.enum(['PROGRESS', 'FINAL']).optional(), runIds: z.array(z.string().min(1)).min(1).optional(), baseline: z.array(z.object({ workflowRepositoryId: z.string().min(1), branch: z.string().min(1), headSha: z.string().min(1) }).strict()).min(1).optional(), supersessions: z.array(z.object({ previousRunId: z.string().min(1), regressionRunId: z.string().min(1), testRunCaseIds: z.array(z.string().min(1)).min(1) }).strict()).optional() },
+    inputSchema: { ...paginationFields, action: z.enum(['list', 'run', 'request']), testRequestId: z.string().min(1).optional(), testRunId: z.string().min(1).optional(), idempotencyKey: z.string().min(1).optional(), mode: z.enum(['PROGRESS', 'FINAL']).optional(), runIds: z.array(z.string().min(1)).min(1).optional(), baseline: z.array(z.object({ workflowRepositoryId: z.string().min(1), branch: z.string().min(1), headSha: z.string().min(1) }).strict()).min(1).optional(), supersessions: z.array(z.object({ previousRunId: z.string().min(1), regressionRunId: z.string().min(1), testRunCaseIds: z.array(z.string().min(1)).min(1) }).strict()).optional() },
   }, async input => {
-    if (input.action === 'list' && input.testRequestId) return runRequest(() => qualityRequest(`/quality/test-requests/${encodeURIComponent(input.testRequestId!)}/reports`));
+    if (input.action === 'list' && input.testRequestId) return runRequest(() => qualityRequest(`/quality/test-requests/${encodeURIComponent(input.testRequestId!)}/reports?${qualityQuery({ page: input.page, pageSize: input.pageSize, q: input.q })}`));
     if (input.action === 'run' && input.testRunId && input.idempotencyKey && input.mode) return runRequest(() => qualityRequest(`/quality/test-runs/${encodeURIComponent(input.testRunId!)}/reports`, { method: 'POST', body: JSON.stringify({ idempotencyKey: input.idempotencyKey, mode: input.mode }) }));
     if (input.action === 'request' && input.testRequestId && input.idempotencyKey && input.mode && input.runIds && input.baseline) return runRequest(() => qualityRequest(`/quality/test-requests/${encodeURIComponent(input.testRequestId!)}/reports`, { method: 'POST', body: JSON.stringify({ idempotencyKey: input.idempotencyKey, mode: input.mode, runIds: input.runIds, baseline: input.baseline, ...(input.supersessions ? { supersessions: input.supersessions } : {}) }) }));
     return textResult('请提供对应动作的标识和参数：报告生成需 idempotencyKey、mode；汇总另需 runIds、baseline。', true);
@@ -948,11 +967,15 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       title: 'List FlowX Projects',
       description:
         'List workspaces/projects for FlowX requirement intake only after the user explicitly asked to create/register the item in FlowX or confirmed that choice. Do not use for ordinary code changes, current-project feature work, or requirement discussion. If intent is unclear, ask whether to handle it in the current project or register it in FlowX before calling any FlowX tool. Ask the user to pick a projectId; do not infer from local repo paths.',
-      inputSchema: z.object({}),
+      inputSchema: z.object({ ...paginationFields, resource: z.enum(['projects', 'versions', 'repositories']).optional(), projectId: z.string().optional(), workspaceId: z.string().optional() }),
     },
-    async () => {
+    async ({ resource = 'projects', projectId, workspaceId, ...query }) => {
       const { client } = await resolveSession(options.homeDir);
-      return runRequest(async () => summarizeProjects(await client.request('/projects')));
+      return runRequest(async () => {
+        if (resource === 'versions') { if (!projectId) throw new Error('projectId is required for versions.'); return client.request(`/projects/${encodeURIComponent(projectId)}/versions?${qualityQuery(query)}`); }
+        if (resource === 'repositories') { if (!workspaceId) throw new Error('workspaceId is required for repositories.'); return client.request(`/workspaces/${encodeURIComponent(workspaceId)}/repositories?${qualityQuery(query)}`); }
+        return summarizeProjects(await client.request(`/projects?${qualityQuery({ ...query, workspaceId })}`));
+      });
     },
   );
 
@@ -1241,11 +1264,12 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       inputSchema: z.object({
         workflowRunId: z.string().optional(),
         workspaceId: z.string().optional(),
+        ...paginationFields,
       }),
     },
-    async ({ workflowRunId, workspaceId }) => {
+    async ({ workflowRunId, workspaceId, ...paging }) => {
       const { client } = await resolveSession(options.homeDir);
-      const params = new URLSearchParams();
+      const params = new URLSearchParams(qualityQuery(paging));
       if (workflowRunId?.trim()) params.set('workflowRunId', workflowRunId.trim());
       if (workspaceId?.trim()) params.set('workspaceId', workspaceId.trim());
       const query = params.toString();
@@ -1262,6 +1286,10 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       description:
         'List FlowX requirements/bugs and OpenDesign brainstorm/design candidate workflows. Optional projectId, versionId, planningStatus and priority filter the task list. versionId and planningStatus apply to requirements only and omit bugs. OpenDesign candidates are not filtered. Confirm a workflow with the user, then call flowx_bind_workflow.',
       inputSchema: z.object({
+        ...paginationFields,
+        openDesignPage: z.number().int().min(1).optional(),
+        openDesignPageSize: z.number().int().min(1).max(100).optional(),
+        openDesignQ: z.string().optional(),
         workspaceId: z.string().optional(),
         projectId: z.string().optional(),
         versionId: z.string().optional(),
@@ -1269,16 +1297,16 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
         priority: requirementPrioritySchema.optional(),
       }),
     },
-    async ({ workspaceId, projectId, versionId, planningStatus, priority }) => {
+    async ({ workspaceId, projectId, versionId, planningStatus, priority, page, pageSize, q, openDesignPage, openDesignPageSize, openDesignQ }) => {
       const { client } = await resolveSession(options.homeDir);
-      const params = new URLSearchParams();
+      const params = new URLSearchParams(qualityQuery({ page, pageSize, q }));
       if (workspaceId?.trim()) params.set('workspaceId', workspaceId.trim());
       if (projectId?.trim()) params.set('projectId', projectId.trim());
       if (versionId?.trim()) params.set('versionId', versionId.trim());
       if (planningStatus) params.set('planningStatus', planningStatus);
       if (priority) params.set('priority', priority);
       const query = params.toString();
-      const openDesignParams = new URLSearchParams();
+      const openDesignParams = new URLSearchParams(qualityQuery({ page: openDesignPage, pageSize: openDesignPageSize, q: openDesignQ }));
       if (workspaceId?.trim()) openDesignParams.set('workspaceId', workspaceId.trim());
       const openDesignQuery = openDesignParams.toString();
       return runRequest(async () => {

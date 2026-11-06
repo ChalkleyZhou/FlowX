@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import { api } from '../../api';
+import { ListPagination } from '../../components/ListPagination';
+import { PagedSelect } from '../../components/PagedSelect';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { Button } from '../../components/ui/button';
 import {
@@ -29,6 +31,8 @@ export function QualityModuleManagementDialog({
   open,
   onOpenChange,
   libraries,
+  workspaceId,
+  projectId,
   defaultLibraryId,
   defaultParentId,
   onChanged,
@@ -36,6 +40,8 @@ export function QualityModuleManagementDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   libraries: TestCaseLibrary[];
+  workspaceId: string;
+  projectId?: string;
   defaultLibraryId?: string;
   defaultParentId?: string;
   onChanged: () => Promise<void>;
@@ -43,6 +49,8 @@ export function QualityModuleManagementDialog({
   const toast = useToast();
   const confirm = useConfirm();
   const [libraryId, setLibraryId] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [modules, setModules] = useState<TestCaseModule[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -52,10 +60,10 @@ export function QualityModuleManagementDialog({
 
   useEffect(() => {
     if (!open) return;
-    const preferredId = defaultLibraryId && libraries.some((item) => item.id === defaultLibraryId)
+    const preferredId = defaultLibraryId && Boolean(defaultLibraryId)
       ? defaultLibraryId
       : libraries[0]?.id ?? '';
-    setLibraryId((current) => libraries.some((item) => item.id === current) ? current : preferredId);
+    setLibraryId(current => current || preferredId);
   }, [defaultLibraryId, libraries, open]);
 
   useEffect(() => {
@@ -72,9 +80,12 @@ export function QualityModuleManagementDialog({
     }
     let active = true;
     setLoading(true);
-    void api.getTestCaseModules(libraryId)
+    void api.getTestCaseModules(libraryId, { page, pageSize: 20 })
       .then((items) => {
-        if (active) setModules(items);
+        if (!active) return;
+        const lastPage = Math.max(1, items.totalPages);
+        if (page > lastPage) { setPage(lastPage); return; }
+        setModules(items.items); setTotal(items.total);
       })
       .catch((error) => {
         if (active) toast.error(error instanceof Error ? error.message : '加载模块失败');
@@ -83,7 +94,7 @@ export function QualityModuleManagementDialog({
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [libraryId, open]);
+  }, [libraryId, open, page]);
 
   const moduleNames = useMemo(
     () => new Map(modules.map((module) => [module.id, module.name])),
@@ -109,8 +120,10 @@ export function QualityModuleManagementDialog({
   async function reloadModules() {
     if (!libraryId) return;
     try {
-      const items = await api.getTestCaseModules(libraryId);
-      setModules(items);
+      const items = await api.getTestCaseModules(libraryId, { page, pageSize: 20 });
+      const lastPage = Math.max(1, items.totalPages);
+      if (page > lastPage) { setPage(lastPage); return; }
+      setModules(items.items); setTotal(items.total);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '刷新模块列表失败');
     }
@@ -171,6 +184,7 @@ export function QualityModuleManagementDialog({
   }
 
   function changeLibrary(nextLibraryId: string) {
+    setPage(1);
     setLibraryId(nextLibraryId);
     resetForm();
   }
@@ -184,14 +198,7 @@ export function QualityModuleManagementDialog({
         </DialogHeader>
 
         <Field label="用例库">
-          <Select value={libraryId} onValueChange={changeLibrary} disabled={Boolean(busyId)}>
-            <SelectTrigger aria-label="模块所属用例库"><SelectValue placeholder="选择用例库" /></SelectTrigger>
-            <SelectContent>
-              {libraries.map((library) => (
-                <SelectItem key={library.id} value={library.id}>{library.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <PagedSelect label="用例库" value={libraryId} selectedLabel={libraries.find(item => item.id === libraryId)?.name} onValueChange={changeLibrary} loadPage={query => api.getTestCaseLibraries({ ...query, workspaceId, projectId })} placeholder="选择用例库" />
         </Field>
 
         <div className="rounded-md border border-border bg-muted/50 p-3">
@@ -217,17 +224,7 @@ export function QualityModuleManagementDialog({
               />
             </Field>
             <Field label="上级模块">
-              <Select value={parentId} onValueChange={setParentId} disabled={Boolean(busyId)}>
-                <SelectTrigger aria-label="上级模块"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ROOT_MODULE}>一级模块</SelectItem>
-                  {modules
-                    .filter((module) => !unavailableParentIds.has(module.id))
-                    .map((module) => (
-                      <SelectItem key={module.id} value={module.id}>{module.name}</SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              <PagedSelect label="上级模块" selectedLabel={moduleNames.get(parentId)} value={parentId === ROOT_MODULE ? '' : parentId} onValueChange={value => setParentId(value || ROOT_MODULE)} allowClear scopeKey={libraryId} loadPage={query => api.getTestCaseModules(libraryId, { ...query, excludeId: editingId ?? undefined })} placeholder="一级模块" />
             </Field>
             <Button type="button" disabled={Boolean(busyId) || !libraryId || !name.trim()} onClick={() => void saveModule()}>
               {editingId ? null : <Plus aria-hidden="true" className="h-4 w-4" />}
@@ -285,6 +282,7 @@ export function QualityModuleManagementDialog({
             <p className="px-4 py-10 text-center text-sm text-muted-foreground">当前用例库还没有模块</p>
           )}
         </div>
+        <ListPagination page={page} total={total} pageSize={20} onPageChange={setPage} />
       </DialogContent>
     </Dialog>
   );

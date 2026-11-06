@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../api';
-import type { RequirementChange, RequirementChanges } from '../types';
+import type { RequirementChange } from '../types';
 import { RequirementChangesPanel } from './RequirementChangesPanel';
 
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }));
@@ -16,7 +16,8 @@ const change = (overrides: Partial<RequirementChange> = {}): RequirementChange =
   createdByName: '产品甲', createdAt: '2026-10-23T08:00:00Z', sourceWorkflowRunId: null,
   restartWorkflowRunId: null, restartStatus: 'NOT_REQUESTED', errorMessage: null, ...overrides,
 });
-const snapshot = (changes: RequirementChange[] = [], overrides: Partial<RequirementChanges> = {}): RequirementChanges => ({ revision: changes[0]?.revision ?? 0, changes, ...overrides });
+type RequirementChanges = Awaited<ReturnType<typeof api.getRequirementChanges>>;
+const snapshot = (changes: RequirementChange[] = [], overrides: Partial<RequirementChanges> = {}): RequirementChanges => ({ revision: changes[0]?.revision ?? 0, items: changes, total: changes.length, page: 1, pageSize: 20, totalPages: 1, ...overrides });
 
 describe('需求变更最小闭环', () => {
   let container: HTMLDivElement, root: Root;
@@ -119,15 +120,24 @@ describe('需求变更最小闭环', () => {
     await render('req-1', 'run-1');
     expect(container.textContent).toContain('当前任务尚未读取最新变更');
     expect(container.textContent).toContain('重新领取');
-    expect(api.getRequirementChanges).toHaveBeenCalledWith('req-1', 'run-1');
+    expect(api.getRequirementChanges).toHaveBeenCalledWith('req-1', 'run-1', { page: 1, pageSize: 20 });
   });
 
-  it('历史超过三条默认折叠，正式原文按修订展示', async () => {
+  it('翻页读取后端历史并保留全范围修订信息', async () => {
+    vi.mocked(api.getRequirementChanges).mockImplementation(async (_id, _run, query) => snapshot([change({ revision: query?.page === 2 ? 1 : 25, content: query?.page === 2 ? '末页变更' : '最新变更' })], { revision: 25, total: 25, totalPages: 2, page: query?.page ?? 1, hasPendingChanges: true }));
+    await render();
+    await act(async () => { container.querySelector<HTMLButtonElement>('[aria-label="第 2 页"]')!.click(); });
+    expect(api.getRequirementChanges).toHaveBeenLastCalledWith('req-1', undefined, { page: 2, pageSize: 20 });
+    expect(container.textContent).toContain('末页变更');
+    expect(container.textContent).toContain('当前任务尚未读取最新变更');
+    expect(container.textContent).toContain('共 25 条');
+  });
+
+  it('当前页完整展示正式变更原文', async () => {
     vi.mocked(api.getRequirementChanges).mockResolvedValue(snapshot([4, 3, 2, 1].map(revision => change({ id: `c-${revision}`, revision, content: `正式变更 ${revision}` }))));
     await render();
     expect(container.querySelectorAll('article')).toHaveLength(4);
-    expect(container.querySelector('details')?.open).toBe(false);
-    expect(container.querySelector('details')?.textContent).toContain('正式变更 1');
+    expect(container.textContent).toContain('正式变更 1');
   });
 
   it('补充变更历史明确展示方式与来源流程', async () => {

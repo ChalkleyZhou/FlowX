@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { OrganizationContextService } from '../prisma/organization-context.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -38,6 +39,38 @@ export class WorkspacesService {
         },
       },
     });
+  }
+
+  async findPage(query: PaginationQuery & { q?: string } = {}) {
+    const paging = parsePagination(query);
+    const where = query.q?.trim() ? { name: { contains: query.q.trim() } } : {};
+    const [items, total, workspaceCount, repositoryCount, projectCount, requirementCount] = await Promise.all([
+      this.prisma.workspace.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { _count: { select: { projects: true, requirements: true, repositories: true } } } }),
+      this.prisma.workspace.count({ where }),
+      this.prisma.workspace.count(), this.prisma.repository.count(), this.prisma.project.count(), this.prisma.requirement.count(),
+    ]);
+    return { ...pageResult(items, total, paging), summary: { workspaceCount, repositoryCount, projectCount, requirementCount } };
+  }
+
+  findDetail(id: string) {
+    return this.prisma.workspace.findUniqueOrThrow({ where: { id }, include: { _count: { select: { projects: true, requirements: true, repositories: true } } } });
+  }
+
+  async listRepositories(workspaceId: string, query: PaginationQuery & { q?: string; status?: string } = {}) {
+    const paging = parsePagination(query);
+    await this.prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } });
+    const where = { workspaceId, ...(query.status ? { status: query.status } : {}), ...(query.q?.trim() ? { name: { contains: query.q.trim() } } : {}) };
+    const [items, total] = await Promise.all([
+      this.prisma.repository.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }),
+      this.prisma.repository.count({ where }),
+    ]);
+    return pageResult(items, total, paging);
+  }
+
+  async getRepository(workspaceId: string, repositoryId: string) {
+    const row = await this.prisma.repository.findFirst({ where: { id: repositoryId, workspaceId } });
+    if (!row) throw new NotFoundException('Repository not found.');
+    return row;
   }
 
   findAll() {

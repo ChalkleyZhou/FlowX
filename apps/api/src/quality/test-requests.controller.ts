@@ -12,18 +12,28 @@ export class TestRequestsController {
   }
 
   @Get()
-  list(
-    @Query('projectId') projectId?: string,
-    @Query('projectVersionId') projectVersionId?: string,
-    @Query('status') status?: string,
-  ) {
-    return this.requests.listRequests({ projectId, projectVersionId, status });
+  list(@Query() query: import('../common/pagination').PaginationQuery & { projectId?: string; projectVersionId?: string; status?: string; q?: string }) {
+    return this.requests.listRequests(query);
   }
 
   @Get(':id')
-  get(@Param('id') id: string) {
-    return this.requests.getRequest(id);
-  }
+  get(@Param('id') id: string) { return this.requests.getRequestBrowse(id); }
+
+  @Get(':id/snapshots')
+  snapshots(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery & { q?: string; kind?: string }) { return this.requests.listSnapshots(id, query); }
+  @Get(':id/requirements')
+  requirements(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery) { return this.requests.listLinks(id, 'requirements', query); }
+  @Get(':id/workflows')
+  workflows(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery) { return this.requests.listLinks(id, 'workflows', query); }
+  @Get(':id/artifacts')
+  artifacts(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery) { return this.requests.listLinks(id, 'artifacts', query); }
+
+  @Get(':id/report-baselines')
+  reportBaselines(@Param('id') id: string, @Query() query: import('./test-request-browse').ReportBrowseQuery) { return this.requests.reportBaselines(id, query); }
+  @Get(':id/report-supersessions')
+  reportSupersessions(@Param('id') id: string, @Query() query: import('./test-request-browse').ReportBrowseQuery) { return this.requests.reportSupersessions(id, query); }
+  @Get(':id/cases')
+  cases(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery & { q?: string; result?: string; selectedRunIds?: string | string[] }) { return this.requests.listCases(id, query); }
 
   @Post(':id/prepare')
   prepare(@Param('id') id: string, @Body() dto: PrepareTestRequestDto) {

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { pageResult } from './page-result-test';
 
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -15,11 +16,14 @@ const { errorToast, successToast } = vi.hoisted(() => ({
 
 vi.mock('../../api', () => ({
   api: {
+    getTestDesignCandidates: vi.fn(),
+    getTestDesignWorkflows: vi.fn(),
+    getTestDesignSmokeCases: vi.fn(),
+    getTestCasesPage: vi.fn(),
     getTestDesign: vi.fn(),
     getTestCaseLibraries: vi.fn(),
     getTestCaseModules: vi.fn(),
-    getTestCases: vi.fn(),
-    generateTestDesign: vi.fn(),
+        generateTestDesign: vi.fn(),
     updateTestDesignCandidate: vi.fn(),
     updateTestDesignSmoke: vi.fn(),
     confirmTestDesign: vi.fn(),
@@ -88,20 +92,28 @@ const design: TestDesign = {
   }],
 };
 
+function mockDesignPages(value: TestDesign) { return value; }
+function designSummary(value: TestDesign) {
+  return { pendingCount: value.candidates.filter(c => c.resolution === 'PENDING' || (c.resolution === 'ACCEPTED' && c.action === 'REUSE' && c.sourceDefinition && (c.proposedCase.title !== c.sourceDefinition.title || c.proposedCase.expected !== c.sourceDefinition.expected || JSON.stringify(c.proposedCase.steps) !== JSON.stringify(c.sourceDefinition.steps)))).length, acceptedCount: value.candidates.filter(c => c.resolution === 'ACCEPTED' && c.action !== 'EXCLUDE').length };
+}
 describe('QualityTestDesignPage', () => {
   let container: HTMLDivElement;
   let root: Root | null;
 
   beforeEach(() => {
+    vi.mocked(api.getTestDesignWorkflows).mockResolvedValue(pageResult([]));
+    vi.mocked(api.getTestCasesPage).mockResolvedValue(pageResult([]));
+    vi.mocked(api.getTestDesignCandidates).mockImplementation(async () => { const value = await vi.mocked(api.getTestDesign).mock.results.at(-1)?.value as TestDesign; return pageResult(value.candidates, { summary: designSummary(value) }); });
+    vi.mocked(api.getTestDesignSmokeCases).mockImplementation(async () => { const value = await (vi.mocked(api.updateTestDesignSmoke).mock.results.at(-1)?.value ?? vi.mocked(api.getTestDesign).mock.results.at(-1)?.value) as TestDesign; return pageResult(value.smokeCases, { summary: { pendingCount: value.smokeCases.filter(item => item.resolution !== 'ACCEPTED').length } }); });
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
       .IS_REACT_ACT_ENVIRONMENT = true;
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
-    vi.mocked(api.getTestDesign).mockResolvedValue(design);
-    vi.mocked(api.getTestCaseLibraries).mockResolvedValue([]);
-    vi.mocked(api.getTestCaseModules).mockResolvedValue([]);
-    vi.mocked(api.getTestCases).mockResolvedValue([]);
+    vi.mocked(api.getTestDesign).mockResolvedValue(mockDesignPages(design));
+    vi.mocked(api.getTestCaseLibraries).mockResolvedValue(pageResult([]));
+    vi.mocked(api.getTestCaseModules).mockResolvedValue(pageResult([]));
+    vi.mocked(api.getTestCasesPage).mockResolvedValue(pageResult([]));
   });
 
   afterEach(() => {
@@ -126,12 +138,24 @@ describe('QualityTestDesignPage', () => {
   }
 
   it('展示未覆盖验收点，支持批量明确排除候选', async () => {
-    vi.mocked(api.getTestDesign).mockResolvedValue({ ...design, uncoveredItems: ['未覆盖注销'] });
+    vi.mocked(api.getTestDesign).mockResolvedValue(mockDesignPages({ ...design, uncoveredItems: ['未覆盖注销'] }));
     await renderPage();
     expect(container.textContent).toContain('未覆盖注销');
     await act(async () => (container.querySelector('input[aria-label="选择候选 登录失败展示明确原因"]') as HTMLInputElement).click());
     await act(async () => Array.from(container.querySelectorAll('button')).find(item => item.textContent === '批量排除')?.click());
     expect(api.updateTestDesignCandidate).toHaveBeenCalledWith('design-1', 'candidate-1', { revision: 2, resolution: 'REJECTED' });
+  });
+  it('批量排除保留跨页选择并逐项使用最新修订', async () => {
+    vi.mocked(api.getTestDesignCandidates).mockImplementation(async (_id, query) => pageResult([{ ...design.candidates[0], id: `candidate-${query?.page ?? 1}`, proposedCase: { ...design.candidates[0].proposedCase, title: `候选${query?.page ?? 1}` } }], { total: 21, totalPages: 2 }));
+    vi.mocked(api.updateTestDesignCandidate).mockResolvedValue(design.candidates[0]);
+    await renderPage();
+    await act(async () => container.querySelector<HTMLInputElement>('input[aria-label="选择候选 候选1"]')?.click());
+    const section = container.querySelector('section[aria-label="功能测试候选"]')!;
+    await act(async () => Array.from(section.querySelectorAll('button')).find(item => item.textContent === '下一页')?.click());
+    await act(async () => container.querySelector<HTMLInputElement>('input[aria-label="选择候选 候选2"]')?.click());
+    await act(async () => Array.from(container.querySelectorAll('button')).find(item => item.textContent === '批量排除')?.click());
+    expect(api.updateTestDesignCandidate).toHaveBeenCalledWith('design-1', 'candidate-1', { revision: 2, resolution: 'REJECTED' });
+    expect(api.updateTestDesignCandidate).toHaveBeenCalledWith('design-1', 'candidate-2', { revision: 2, resolution: 'REJECTED' });
   });
   it('shows library origin and the existing/proposed case comparison', async () => {
     await renderPage();
@@ -170,13 +194,14 @@ describe('QualityTestDesignPage', () => {
     });
 
     const smokeButton = Array.from(container.querySelectorAll('button')).find((button) =>
-      button.textContent?.trim() === '确认冒烟',
+      button.textContent?.trim() === '确认本页冒烟',
     );
     await act(async () => {
       smokeButton?.click();
       await Promise.resolve();
     });
     expect(api.updateTestDesignSmoke).toHaveBeenCalledWith('design-1', {
+      partial: true,
       revision: 2,
       cases: [expect.objectContaining({ id: 'smoke-1', resolution: 'ACCEPTED' })],
     });
@@ -192,8 +217,8 @@ describe('QualityTestDesignPage', () => {
       matchReason: '本次只修改导出功能，登录流程不受影响',
     };
     vi.mocked(api.getTestDesign)
-      .mockResolvedValueOnce({ ...design, candidates: [candidate] })
-      .mockResolvedValue({
+      .mockResolvedValueOnce(mockDesignPages({ ...design, candidates: [candidate] }))
+      .mockResolvedValue(mockDesignPages({
         ...design,
         candidates: [{
           ...candidate,
@@ -208,7 +233,7 @@ describe('QualityTestDesignPage', () => {
             tags: design.candidates[0].sourceDefinition!.tags ?? [],
           } : candidate.proposedCase,
         }],
-      });
+      }));
     await renderPage();
 
     const card = container.querySelector('article');
@@ -239,10 +264,10 @@ describe('QualityTestDesignPage', () => {
   });
 
   it('requires an explicit choice when AI labels changed content as reuse', async () => {
-    vi.mocked(api.getTestDesign).mockResolvedValue({
+    vi.mocked(api.getTestDesign).mockResolvedValue(mockDesignPages({
       ...design,
       candidates: [{ ...design.candidates[0], action: 'REUSE', resolution: 'PENDING' }],
-    });
+    }));
     await renderPage();
 
     const card = container.querySelector('article');
@@ -275,7 +300,7 @@ describe('QualityTestDesignPage', () => {
       revision: 3,
       candidates: [{ ...candidate, action: 'EXCLUDE' as const }, initialDesign.candidates[1]],
     };
-    vi.mocked(api.getTestDesign).mockResolvedValueOnce(initialDesign).mockResolvedValue(correctedDesign);
+    vi.mocked(api.getTestDesign).mockResolvedValueOnce(mockDesignPages(initialDesign)).mockResolvedValue(mockDesignPages(correctedDesign));
     vi.mocked(api.updateTestDesignCandidate).mockResolvedValue(correctedDesign.candidates[0]);
     vi.mocked(api.confirmTestDesign).mockResolvedValue({ ...correctedDesign, status: 'CONFIRMED' });
 
@@ -317,7 +342,7 @@ describe('QualityTestDesignPage', () => {
       createdAt: '2026-10-19T00:00:00.000Z',
       updatedAt: '2026-10-19T00:00:00.000Z',
     };
-    vi.mocked(api.getTestDesign).mockResolvedValue({ ...design, smokeCases: [persistedSmoke] });
+    vi.mocked(api.getTestDesign).mockResolvedValue(mockDesignPages({ ...design, smokeCases: [persistedSmoke] }));
     vi.mocked(api.updateTestDesignSmoke).mockResolvedValue({
       ...design,
       revision: 3,
@@ -326,12 +351,13 @@ describe('QualityTestDesignPage', () => {
     await renderPage();
 
     const smokeButton = Array.from(container.querySelectorAll('button')).find((button) =>
-      button.textContent?.trim() === '确认冒烟',
+      button.textContent?.trim() === '确认本页冒烟',
     );
     expect(smokeButton).toBeDefined();
     await act(async () => { smokeButton?.click(); });
 
     expect(api.updateTestDesignSmoke).toHaveBeenCalledWith('design-1', {
+      partial: true,
       revision: 2,
       cases: [{ ...design.smokeCases[0], resolution: 'ACCEPTED' }],
     });
@@ -341,10 +367,10 @@ describe('QualityTestDesignPage', () => {
   });
 
   it('identifies a missing exclusion reason and hides reuse without a source case', async () => {
-    vi.mocked(api.getTestDesign).mockResolvedValue({
+    vi.mocked(api.getTestDesign).mockResolvedValue(mockDesignPages({
       ...design,
       candidates: [{ ...design.candidates[0], action: 'EXCLUDE', matchReason: null, sourceDefinitionId: null, sourceDefinition: null }],
-    });
+    }));
     await renderPage();
 
     expect(container.textContent).toContain('AI 未提供不纳入原因');
@@ -356,7 +382,7 @@ describe('QualityTestDesignPage', () => {
     vi.mocked(api.generateTestDesign).mockResolvedValue({ ...design, status: 'GENERATING' });
     let finishPoll!: (value: TestDesign) => void;
     vi.mocked(api.getTestDesign)
-      .mockResolvedValueOnce(design)
+      .mockResolvedValueOnce(mockDesignPages(design))
       .mockImplementationOnce(() => new Promise((resolve) => { finishPoll = resolve; }));
     await renderPage();
 
@@ -386,9 +412,9 @@ describe('QualityTestDesignPage', () => {
   });
 
   it('shows the persisted failure reason and clears it when retry starts', async () => {
-    vi.mocked(api.getTestDesign).mockResolvedValueOnce({
+    vi.mocked(api.getTestDesign).mockResolvedValueOnce(mockDesignPages({
       ...design, status: 'GENERATION_FAILED', generationError: 'AI 凭据无效，请更新组织凭据。',
-    });
+    }));
     vi.mocked(api.generateTestDesign).mockResolvedValue({
       ...design, status: 'GENERATING', generationError: null,
     });
@@ -404,8 +430,8 @@ describe('QualityTestDesignPage', () => {
   it('shows the failure reason when polling completes with an error', async () => {
     vi.useFakeTimers();
     vi.mocked(api.getTestDesign)
-      .mockResolvedValueOnce({ ...design, status: 'GENERATING' })
-      .mockResolvedValueOnce({ ...design, status: 'GENERATION_FAILED', generationError: 'AI 生成超时，请稍后重试。' });
+      .mockResolvedValueOnce(mockDesignPages({ ...design, status: 'GENERATING' }))
+      .mockResolvedValueOnce(mockDesignPages({ ...design, status: 'GENERATION_FAILED', generationError: 'AI 生成超时，请稍后重试。' }));
     await renderPage();
 
     await act(async () => { vi.advanceTimersByTime(2000); await Promise.resolve(); });
@@ -414,7 +440,7 @@ describe('QualityTestDesignPage', () => {
   });
 
   it('explains that older failures have no recorded reason', async () => {
-    vi.mocked(api.getTestDesign).mockResolvedValueOnce({ ...design, status: 'GENERATION_FAILED' });
+    vi.mocked(api.getTestDesign).mockResolvedValueOnce(mockDesignPages({ ...design, status: 'GENERATION_FAILED' }));
     await renderPage();
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('本次失败未记录原因');
   });

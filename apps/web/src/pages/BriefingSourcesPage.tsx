@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, toApiUrl } from '../api';
+import { PagedSelect } from '../components/PagedSelect';
+import { ListPagination } from '../components/ListPagination';
+import { useQualityPage } from './quality/use-quality-page';
 import { EmptyState } from '../components/EmptyState';
 import { PageHeader } from '../components/PageHeader';
 import { SectionHeader } from '../components/SectionHeader';
@@ -7,13 +10,12 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Input } from '../components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
 import { useConfirm } from '../components/ConfirmDialog';
 import { cn } from '../lib/utils';
 import { copyToClipboard } from '../lib/clipboard';
-import type { BriefingSource, Repository, Workspace } from '../types';
+import type { BriefingSource, Workspace } from '../types';
 import { readStoredListFilters, writeStoredListFilters } from '../utils/list-filter-storage';
 
 type RepositoryBinding = {
@@ -118,48 +120,32 @@ function WebhookSetupGuide({
 
 export function BriefingSourcesPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [sources, setSources] = useState<BriefingSource[]>([]);
+  const [page, setPage] = useState(1);
+  const [query, setQuery] = useState('');
   const [workspaceId, setWorkspaceId] = useState(() => readStoredListFilters('briefing-sources').workspaceId ?? '');
   const [repositoryId, setRepositoryId] = useState('');
   const [binding, setBinding] = useState<RepositoryBinding | null>(null);
   const [bindingError, setBindingError] = useState('');
   const [setupSourceId, setSetupSourceId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [bindingLoading, setBindingLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const toast = useToast();
   const confirm = useConfirm();
 
-  const repositories = useMemo(
-    () => workspaces.find((workspace) => workspace.id === workspaceId)?.repositories ?? [],
-    [workspaces, workspaceId],
-  );
-
-  async function refresh(nextWorkspaceId = workspaceId) {
-    if (!nextWorkspaceId) {
-      return;
-    }
-    setSources(await api.getBriefingSources({ workspaceId: nextWorkspaceId }));
-  }
-
+  const result = useQualityPage(`${workspaceId}:${page}:${query}`, () => api.getBriefingSources({ workspaceId, page, pageSize: 20, q: query || undefined }), Boolean(workspaceId), setPage);
+  const { items: sources, loading } = result;
+  const refresh = (_workspaceId = workspaceId) => result.refresh();
   useEffect(() => {
-    setLoading(true);
-    api.getWorkspaces()
-      .then(async (workspaceList) => {
-        setWorkspaces(workspaceList);
-        const storedWorkspaceId = readStoredListFilters('briefing-sources').workspaceId;
-        const preferredWorkspace = workspaceList.find((workspace) => workspace.id === storedWorkspaceId) ?? workspaceList[0];
-        const firstWorkspaceId = preferredWorkspace?.id || '';
-        setWorkspaceId(firstWorkspaceId);
-        writeStoredListFilters('briefing-sources', firstWorkspaceId ? { workspaceId: firstWorkspaceId } : {});
-        const firstRepositoryId = preferredWorkspace?.repositories[0]?.id ?? '';
-        setRepositoryId(firstRepositoryId);
-        if (firstWorkspaceId) {
-          setSources(await api.getBriefingSources({ workspaceId: firstWorkspaceId }));
-        }
-      })
-      .catch((error) => toast.error(error instanceof Error ? error.message : '加载数据源失败'))
-      .finally(() => setLoading(false));
+    let active = true;
+    const stored = readStoredListFilters('briefing-sources').workspaceId;
+    void (stored ? api.getWorkspace(stored) : api.getWorkspaces({ page: 1, pageSize: 1 }).then(page => page.items[0]))
+      .then(async workspace => {
+        if (!active || !workspace) return;
+        setWorkspaces([workspace]); setWorkspaceId(workspace.id);
+        const repositoryPage = await api.getWorkspaceRepositories(workspace.id, { page: 1, pageSize: 1 });
+        if (active) setRepositoryId(repositoryPage.items[0]?.id ?? '');
+      }).catch(error => { if (active) toast.error(error instanceof Error ? error.message : '加载工作区失败'); });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -169,10 +155,13 @@ export function BriefingSourcesPage() {
       return;
     }
 
+    let active = true;
     setBindingLoading(true);
+    setBinding(null);
     setBindingError('');
     api.resolveBriefingRepositoryBinding({ workspaceId, repositoryId })
       .then((resolved) => {
+        if (!active) return;
         setBinding({
           provider: resolved.provider,
           externalPath: resolved.externalPath,
@@ -181,10 +170,12 @@ export function BriefingSourcesPage() {
         });
       })
       .catch((error) => {
+        if (!active) return;
         setBinding(null);
         setBindingError(error instanceof Error ? error.message : '无法解析仓库地址');
       })
-      .finally(() => setBindingLoading(false));
+      .finally(() => { if (active) setBindingLoading(false); });
+    return () => { active = false; };
   }, [workspaceId, repositoryId]);
 
   async function createSource() {
@@ -257,30 +248,8 @@ export function BriefingSourcesPage() {
         </CardHeader>
         <CardContent className="space-y-3 p-5 pt-0">
           <div className="grid gap-3 md:grid-cols-3">
-            <Select
-              value={workspaceId || ''}
-              onValueChange={(value) => {
-                setWorkspaceId(value);
-                writeStoredListFilters('briefing-sources', value ? { workspaceId: value } : {});
-                setRepositoryId('');
-                void refresh(value);
-              }}
-            >
-              <SelectTrigger><SelectValue placeholder="工作区" /></SelectTrigger>
-              <SelectContent>
-                {workspaces.map((workspace) => (
-                  <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={repositoryId || ''} onValueChange={setRepositoryId}>
-              <SelectTrigger><SelectValue placeholder="仓库" /></SelectTrigger>
-              <SelectContent>
-                {repositories.map((repository: Repository) => (
-                  <SelectItem key={repository.id} value={repository.id}>{repository.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <PagedSelect label="工作区" value={workspaceId} selectedLabel={workspaces.find(workspace => workspace.id === workspaceId)?.name} onValueChange={value => { setWorkspaceId(value); setPage(1); setRepositoryId(''); writeStoredListFilters('briefing-sources', value ? { workspaceId: value } : {}); }} loadPage={query => api.getWorkspaces(query)} placeholder="工作区" />
+            <PagedSelect label="仓库" value={repositoryId} selectedLabel={binding?.externalPath} disabled={!workspaceId} scopeKey={workspaceId} onValueChange={setRepositoryId} loadPage={query => api.getWorkspaceRepositories(workspaceId, query)} placeholder="仓库" />
             <div
               className={cn(
                 'flex h-10 w-full min-w-0 items-center rounded-md border border-input bg-background px-3 text-sm',
@@ -316,6 +285,7 @@ export function BriefingSourcesPage() {
           <SectionHeader eyebrow="Sources" title="数据源列表" />
         </CardHeader>
         <CardContent className="p-5 pt-0">
+          <Input aria-label="搜索数据源" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} placeholder="搜索数据源" className="mb-3" />
           {loading ? <Spinner className="h-7 w-7" /> : sources.length > 0 ? (
             <div className="flex flex-col gap-3">
               {sources.map((source) => {
@@ -364,12 +334,14 @@ export function BriefingSourcesPage() {
                 );
               })}
             </div>
-          ) : (
+          ) : result.hasLoaded && !result.error ? (
             <EmptyState
               title="暂无数据源"
               description="选择工作区与仓库后点击「创建数据源」，再按卡片中的步骤配置 GitLab/GitHub webhook。"
             />
-          )}
+          ) : null}
+          {result.error ? <p role="alert">{result.error}<Button onClick={() => void result.refresh()}>重试</Button></p> : null}
+          <ListPagination page={page} total={result.total} pageSize={20} loading={result.refreshing} onPageChange={setPage} />
         </CardContent>
       </Card>
     </>

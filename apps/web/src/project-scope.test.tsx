@@ -16,7 +16,7 @@ import type { Project } from './types';
 
 vi.mock('./api', () => ({
   api: {
-    getProjects: vi.fn(),
+    getProject: vi.fn(),
   },
 }));
 
@@ -54,10 +54,7 @@ describe('project scope', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
-    vi.mocked(api.getProjects).mockResolvedValue([
-      project,
-      { ...project, id: 'project-2', name: '接处警' },
-    ]);
+    vi.mocked(api.getProject).mockImplementation(async id => ({...project,id,name:id === 'project-2' ? '接处警' : project.name}));
   });
 
   afterEach(() => {
@@ -106,7 +103,7 @@ describe('project scope', () => {
   });
 
   it('项目列表还没返回时，页面已经使用本机项目', async () => {
-    vi.mocked(api.getProjects).mockReturnValue(new Promise(() => undefined));
+    vi.mocked(api.getProject).mockReturnValue(new Promise(() => undefined));
     window.localStorage.setItem(CURRENT_PROJECT_STORAGE_KEY, 'project-1');
     await act(async () => {
       root.render(
@@ -146,6 +143,7 @@ describe('project scope', () => {
   });
 
   it('地址栏里的项目不存在时，改用本机仍有效的项目', async () => {
+    vi.mocked(api.getProject).mockImplementation(async id => {if(id === 'missing') throw {status:404};return {...project,id};});
     window.localStorage.setItem(CURRENT_PROJECT_STORAGE_KEY, 'project-1');
     await renderAt('/requirements?projectId=missing');
     expect(container.querySelector('[data-location]')?.textContent).toBe('/requirements?projectId=project-1');

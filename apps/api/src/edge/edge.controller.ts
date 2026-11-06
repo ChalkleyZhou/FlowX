@@ -14,17 +14,9 @@ export class EdgeController {
   ) {}
 
   @Get('tasks')
-  listTasks(@Query('workspaceId') workspaceId: string | undefined, @Req() req: EdgeRequest) {
-    return this.edgeTasksService.listTasks({ workspaceId, session: req.authSession });
-  }
-
+  listTasks(@Query() query: import('../common/pagination').PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; planningStatus?: string; priority?: string; q?: string }, @Req() req: EdgeRequest) { return this.edgeTasksService.listTasks({ ...query, session: req.authSession }); }
   @Get('opendesign-tasks')
-  listOpenDesignTasks(
-    @Query('workspaceId') workspaceId: string | undefined,
-    @Req() req: EdgeRequest,
-  ) {
-    return this.edgeTasksService.listOpenDesignTasks({ workspaceId, session: req.authSession });
-  }
+  listOpenDesignTasks(@Query() query: import('../common/pagination').PaginationQuery & { workspaceId?: string; q?: string }, @Req() req: EdgeRequest) { return this.edgeTasksService.listOpenDesignTasks({ ...query, session: req.authSession }); }
 
   @Get('tasks/:type/:id/context')
   getContext(

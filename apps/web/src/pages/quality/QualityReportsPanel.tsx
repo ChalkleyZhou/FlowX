@@ -6,56 +6,26 @@ import { Badge } from '../../components/ui/badge';
 import { useToast } from '../../components/ui/toast';
 import type { QualitySupersession, TestRun, TestedRepositoryRevision } from '../../types';
 import { QualityArtifactButton } from './QualityArtifactButton';
-import { useQualityResource } from './use-quality-resource';
+import { useQualityPage } from './use-quality-page';
+import { ListPagination } from '../../components/ListPagination';
 
-function baselineOptions(runs: TestRun[]) {
-  const values = runs.flatMap((run) => run.targets?.flatMap((target) => target.expectedRevisions) ?? []);
-  return [
-    ...new Map(
-      values.map((value) => [`${value.workflowRepositoryId}:${value.branch}:${value.headSha}`, value]),
-    ).values(),
-  ];
-}
-
-export function QualityReportsPanel({ requestId, runs }: { requestId: string; runs: TestRun[] }) {
-  const reports = useQualityResource(requestId, api.getQualityReports);
+export function QualityReportsPanel({ requestId, runs: _runs }: { requestId: string; runs: TestRun[] }) {
+  const [page, setPage] = useState(1);
+  const [runPage, setRunPage] = useState(1);
+  const reports = useQualityPage(`${requestId}:${page}`, () => api.getQualityReports(requestId, { page, pageSize: 10 }), true, setPage);
+  const runResult = useQualityPage(`${requestId}:${runPage}`, () => api.getTestRuns(requestId, { page: runPage, pageSize: 10 }), true, setRunPage);
   const toast = useToast();
   const [selected, setSelected] = useState<string[]>([]);
   const [baseline, setBaseline] = useState<TestedRepositoryRevision[]>([]);
   const [supersessions, setSupersessions] = useState<QualitySupersession[]>([]);
   const [mode, setMode] = useState<'PROGRESS' | 'FINAL'>('PROGRESS');
   const [busy, setBusy] = useState(false);
-  const formal = runs.filter((run) => run.runType !== 'LOCAL_SMOKE');
-  // 只有用户明确选中的替代范围才进入汇总；历史失败不会自动被最后一轮掩盖。
-  const replacementOptions = formal.flatMap((previous) =>
-    (previous.cases ?? []).flatMap((row) => {
-      if (!row.result?.bugId) return [];
-      return formal
-        .filter(
-          (regression) =>
-            regression.runType === 'REGRESSION' &&
-            regression.sourceBug?.id === row.result?.bugId &&
-            regression.sourceBug?.fixWorkflowRun?.status.toLowerCase() === 'done' &&
-            regression.status !== 'ACTIVE' &&
-            selected.includes(regression.id) &&
-            selected.includes(previous.id),
-        )
-        .filter((regression) =>
-          regression.cases?.some(
-            (candidate) =>
-              candidate.snapshot.id === row.snapshot.id &&
-              regression.targets?.find((target) => target.id === candidate.targetId)?.key ===
-                previous.targets?.find((target) => target.id === row.targetId)?.key,
-          ),
-        )
-        .map((regression) => ({
-          previousRunId: previous.id,
-          regressionRunId: regression.id,
-          testRunCaseIds: [row.id],
-          label: `${previous.name} / ${row.snapshot.title} → ${regression.name}`,
-        }));
-    }),
-  );
+  const formal = runResult.items;
+  const [baselinePage, setBaselinePage] = useState(1);
+  const [replacementPage, setReplacementPage] = useState(1);
+  const baselineResult = useQualityPage(`${requestId}:${baselinePage}:${selected.join(',')}`, () => api.getQualityReportBaselines(requestId, { page: baselinePage, pageSize: 10, selectedRunIds: selected }), Boolean(selected.length), setBaselinePage);
+  const replacements = useQualityPage(`${requestId}:${replacementPage}:${selected.join(',')}`, () => api.getQualityReportSupersessions(requestId, { page: replacementPage, pageSize: 10, selectedRunIds: selected }), Boolean(selected.length), setReplacementPage);
+  const replacementOptions = replacements.items;
   async function generate() {
     setBusy(true);
     try {
@@ -66,7 +36,7 @@ export function QualityReportsPanel({ requestId, runs }: { requestId: string; ru
         baseline,
         supersessions,
       });
-      await reports.reload();
+      await reports.refresh();
       toast.success('任务汇总报告已生成');
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : '生成报告失败');
@@ -93,17 +63,19 @@ export function QualityReportsPanel({ requestId, runs }: { requestId: string; ru
                     setSelected((ids) =>
                       e.target.checked ? [...ids, run.id] : ids.filter((id) => id !== run.id),
                     );
+                    setBaseline([]); setBaselinePage(1); setReplacementPage(1);
                     setSupersessions([]);
                   }}
                 />
                 {run.name} · {run.status}
               </label>
             ))}
+            <ListPagination page={runPage} total={runResult.total} pageSize={10} onPageChange={setRunPage} />
             {!formal.length ? <p className="text-sm text-muted-foreground">暂无正式测试轮次</p> : null}
           </fieldset>
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">汇总代码基线</legend>
-            {baselineOptions(formal).map((value) => (
+            {baselineResult.items.map((value) => (
               <label
                 className="flex gap-2 break-all text-sm"
                 key={`${value.workflowRepositoryId}:${value.headSha}`}
@@ -127,9 +99,10 @@ export function QualityReportsPanel({ requestId, runs }: { requestId: string; ru
                 {value.workflowRepositoryId} · {value.branch} · {value.headSha}
               </label>
             ))}
+            <ListPagination page={baselinePage} total={baselineResult.total} pageSize={10} onPageChange={setBaselinePage} />
           </fieldset>
         </div>
-        {replacementOptions.length ? (
+        {replacements.total ? (
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">确认回归替代（原失败历史保留）</legend>
             {replacementOptions.map((relation) => (
@@ -162,6 +135,7 @@ export function QualityReportsPanel({ requestId, runs }: { requestId: string; ru
                 {relation.label}
               </label>
             ))}
+            <ListPagination page={replacementPage} total={replacements.total} pageSize={10} onPageChange={setReplacementPage} />
           </fieldset>
         ) : null}
         <div className="flex flex-wrap items-center gap-3">
@@ -188,19 +162,16 @@ export function QualityReportsPanel({ requestId, runs }: { requestId: string; ru
           size="sm"
           variant="outline"
           disabled={reports.refreshing}
-          onClick={() => void reports.reload()}
+          onClick={() => void reports.refresh()}
         >
           刷新报告
         </Button>
       </div>
-      {reports.error ? <p role="alert">报告加载失败：{reports.error.message}</p> : null}
+      {reports.error ? <p role="alert">报告加载失败：{reports.error}</p> : null}
       {reports.loading ? (
         <p role="status">报告加载中…</p>
-      ) : reports.data?.length ? (
-        reports.data.map((report) => {
-          const revisions =
-            report.snapshot.baseline ??
-            report.snapshot.runs.flatMap((run) => run.targets.flatMap((target) => target.expectedRevisions));
+      ) : reports.items.length ? (
+        reports.items.map((report) => {
           return (
             <article key={report.id} className="rounded-md border p-4 space-y-2">
               <div className="flex flex-wrap justify-between gap-3">
@@ -210,9 +181,9 @@ export function QualityReportsPanel({ requestId, runs }: { requestId: string; ru
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Badge variant="outline">
-                      {report.snapshot.mode === 'PROGRESS' ? '阶段报告 · 截至当前' : '最终报告'}
+                      {report.mode === 'PROGRESS' ? '阶段报告 · 截至当前' : '最终报告'}
                     </Badge>
-                    <Badge variant="outline">{report.snapshot.summary.conclusion}</Badge>
+                    <Badge variant="outline">{report.summary?.conclusion}</Badge>
                     <span className="text-xs text-muted-foreground">
                       {new Date(report.createdAt).toLocaleString('zh-CN')}
                     </span>
@@ -235,23 +206,17 @@ export function QualityReportsPanel({ requestId, runs }: { requestId: string; ru
                 </div>
               </div>
               <p className="text-sm text-muted-foreground">
-                通过 {report.snapshot.summary.passed} / 总数 {report.snapshot.summary.total} · 失败{' '}
-                {report.snapshot.summary.failed} · 阻塞 {report.snapshot.summary.blocked} · 跳过{' '}
-                {report.snapshot.summary.skipped} · 未测 {report.snapshot.summary.pending}
-              </p>
-              <p className="break-all text-xs text-muted-foreground">
-                代码基线：
-                {revisions
-                  .map((item) => `${item.workflowRepositoryId} / ${item.branch} / ${item.headSha}`)
-                  .join('；') || '未记录'}
+                通过 {report.summary?.passed} / 总数 {report.summary?.total} · 失败{' '}
+                {report.summary?.failed} · 阻塞 {report.summary?.blocked} · 跳过{' '}
+                {report.summary?.skipped} · 未测 {report.summary?.pending}
               </p>
               {report.runId ? (
                 <Link className="text-sm text-primary underline" to={`/quality/test-runs/${report.runId}`}>
                   追溯执行轮次
                 </Link>
               ) : null}
-              {report.snapshot.supersessions?.length ? (
-                <p className="text-xs">已确认 {report.snapshot.supersessions.length} 项回归替代关系</p>
+              {report.supersessionCount ? (
+                <p className="text-xs">已确认 {report.supersessionCount} 项回归替代关系</p>
               ) : null}
             </article>
           );
@@ -259,6 +224,7 @@ export function QualityReportsPanel({ requestId, runs }: { requestId: string; ru
       ) : (
         <p className="text-sm text-muted-foreground">暂无测试报告；失败或阻塞结果同样可以生成报告。</p>
       )}
+      <ListPagination page={page} total={reports.total} pageSize={10} onPageChange={setPage} />
     </section>
   );
 }

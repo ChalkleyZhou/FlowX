@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
+import { useListPage } from '../hooks/use-list-page';
+import { PagedSelect } from '../components/PagedSelect';
+import { ListPagination } from '../components/ListPagination';
 import { EmptyState } from '../components/EmptyState';
 import { ProjectRequiredState } from '../components/ProjectRequiredState';
 import { ListToolbar } from '../components/ListToolbar';
@@ -30,10 +33,8 @@ export function WorkflowRunsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   useRememberedSearchFilters('workflow-runs', ['workspaceId', 'requirementId', 'runType']);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [requirements, setRequirements] = useState<Requirement[]>([]);
-  const [workflowRuns, setWorkflowRuns] = useState<WorkflowRun[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
+  const [selectedRequirement, setSelectedRequirement] = useState<Requirement | null>(null);
   const [deletingWorkflowId, setDeletingWorkflowId] = useState<string | null>(null);
   const toast = useToast();
   const confirm = useConfirm();
@@ -42,76 +43,26 @@ export function WorkflowRunsPage() {
   const requirementId = searchParams.get('requirementId') ?? '';
   const runType = searchParams.get('runType') ?? '';
 
-  const visibleRequirements = useMemo(
-    () =>
-      requirements.filter((requirement) => {
-        if (workspaceId && requirement.project.workspace.id !== workspaceId) {
-          return false;
-        }
-        if (!projectId || requirement.project.id !== projectId) {
-          return false;
-        }
-        return true;
-      }),
-    [projectId, requirements, workspaceId],
-  );
-
-  const filteredRuns = useMemo(
-    () =>
-      workflowRuns.filter((run) => {
-        if (workspaceId && run.requirement.project.workspace.id !== workspaceId) {
-          return false;
-        }
-        if (!projectId || run.requirement.project.id !== projectId) {
-          return false;
-        }
-        if (requirementId && run.requirement.id !== requirementId) {
-          return false;
-        }
-        if (runType && (run.runType ?? 'FULL') !== runType) {
-          return false;
-        }
-        return true;
-      }),
-    [projectId, requirementId, runType, workflowRuns, workspaceId],
-  );
-
-  const projectRuns = useMemo(
-    () => workflowRuns.filter((run) => projectId && run.requirement.project.id === projectId),
-    [projectId, workflowRuns],
-  );
-  const workflowSummary = useMemo(() => {
-    const runningCount = projectRuns.filter((run) => run.status === 'EXECUTION_RUNNING').length;
-    const pendingCount = projectRuns.filter((run) => run.status.includes('PENDING') || run.status.includes('WAITING')).length;
-    return {
-      total: projectRuns.length,
-      visible: filteredRuns.length,
-      running: runningCount,
-      pending: pendingCount,
-    };
-  }, [filteredRuns.length, projectRuns]);
-
-  async function refresh() {
-    setLoading(true);
-    try {
-      const [workspaceList, requirementList, runList] = await Promise.all([
-        api.getWorkspaces(),
-        api.getRequirements(),
-        api.getWorkflowRuns(runType ? { runType } : undefined),
-      ]);
-      setWorkspaces(workspaceList);
-      setRequirements(requirementList);
-      setWorkflowRuns(runList);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载工作流失败');
-    } finally {
-      setLoading(false);
-    }
-  }
+  const list = useListPage(api.getWorkflowRuns, { projectId: projectId || undefined, workspaceId: workspaceId || undefined, requirementId: requirementId || undefined, runType: runType || undefined }, {enabled:Boolean(projectId)});
+  const {items: workflowRuns, loading, refresh} = list;
+  const workflowSummary = {total:list.summary?.total ?? list.total,visible:list.summary?.visible ?? list.total,running:list.summary?.runningCount ?? 0,pending:list.summary?.pendingCount ?? 0};
 
   useEffect(() => {
-    void refresh();
-  }, [runType]);
+    let cancelled = false; setSelectedWorkspace(null);
+    if (workspaceId) void api.getWorkspace(workspaceId).then(item => { if (!cancelled) setSelectedWorkspace(item); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+  useEffect(() => {
+    let cancelled = false; setSelectedRequirement(null);
+    if (requirementId) void api.getRequirement(requirementId).then(item => { if (!cancelled) setSelectedRequirement(item); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [requirementId]);
+  function updateFilter(key: string, value: string) {
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set(key,value); else next.delete(key);
+    next.delete('page'); if (key === 'workspaceId') next.delete('requirementId');
+    navigate(`/workflow-runs?${next.toString()}`);
+  }
 
   async function handleDeleteWorkflow(workflowRunId: string) {
     const confirmed = await confirm({
@@ -139,7 +90,9 @@ export function WorkflowRunsPage() {
       return '当前工作流没有记录仓库副本。';
     }
 
-    return run.workflowRepositories.map((repository) => repository.name).join('、');
+    const names = run.workflowRepositories.map((repository) => repository.name).join('、');
+    const count = run._count?.workflowRepositories ?? run.workflowRepositories.length;
+    return count > run.workflowRepositories.length ? `${names} 等 ${count} 个仓库（详情可分页查看）` : names;
   }
 
   return (
@@ -166,55 +119,9 @@ export function WorkflowRunsPage() {
           <ListToolbar
             filters={(
               <>
-                <Select
-                  value={workspaceId || '__all__'}
-                  onValueChange={(value) => {
-                    const next = new URLSearchParams(searchParams);
-                    if (value && value !== '__all__') {
-                      next.set('workspaceId', value);
-                      next.delete('requirementId');
-                    } else {
-                      next.delete('workspaceId');
-                    }
-                    navigate(`/workflow-runs?${next.toString()}`);
-                  }}
-                >
-                  <SelectTrigger className="w-[220px]">
-                    <SelectValue placeholder="按工作区查看" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">全部工作区</SelectItem>
-                    {workspaces.map((workspace) => (
-                      <SelectItem key={workspace.id} value={workspace.id}>
-                        {workspace.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={requirementId || '__all__'}
-                  onValueChange={(value) => {
-                    const next = new URLSearchParams(searchParams);
-                    if (value && value !== '__all__') {
-                      next.set('requirementId', value);
-                    } else {
-                      next.delete('requirementId');
-                    }
-                    navigate(`/workflow-runs?${next.toString()}`);
-                  }}
-                >
-                  <SelectTrigger className="w-[220px]">
-                    <SelectValue placeholder="按需求查看" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">全部需求</SelectItem>
-                    {visibleRequirements.map((requirement) => (
-                      <SelectItem key={requirement.id} value={requirement.id}>
-                        {requirement.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <PagedSelect className="w-[220px]" value={workspaceId} selectedLabel={selectedWorkspace?.name} label="按工作区查看" placeholder="按工作区查看" allowClear emptyLabel="全部工作区" loadPage={query => api.getWorkspaces(query)} onValueChange={value => updateFilter('workspaceId',value)} />
+                <PagedSelect className="w-[220px]" value={requirementId} selectedLabel={selectedRequirement?.title} label="按需求查看" placeholder="按需求查看" allowClear emptyLabel="全部需求" disabled={!projectId} scopeKey={`${projectId}:${workspaceId}`}
+                  loadPage={async query => { const result = await api.getRequirements({...query,projectId:projectId!,workspaceId:workspaceId || undefined}); return {...result,items:result.items.map(item => ({id:item.id,name:item.title}))}; }} onValueChange={value => updateFilter('requirementId',value)} />
                 <Select
                   value={runType || '__all__'}
                   onValueChange={(value) => {
@@ -239,15 +146,16 @@ export function WorkflowRunsPage() {
               </>
             )}
           />
+          {list.error ? <p role="alert" className="mb-3 text-sm text-danger">{list.error}<UiButton variant="outline" size="sm" onClick={refresh}>重试</UiButton></p> : null}
           {!projectId ? (
             <ProjectRequiredState />
-          ) : loading ? (
+          ) : loading && workflowRuns.length === 0 ? (
             <div className="flex min-h-40 items-center justify-center">
               <Spinner className="h-7 w-7" />
             </div>
-          ) : filteredRuns.length > 0 ? (
+          ) : workflowRuns.length > 0 ? (
             <div className="flex flex-col gap-3.5">
-              {filteredRuns.map((item) => (
+              {workflowRuns.map((item) => (
                 <RecordListItem
                   key={item.id}
                   interactive
@@ -261,7 +169,7 @@ export function WorkflowRunsPage() {
                       <Badge variant="outline">{item.aiProvider === 'cursor' ? 'Cursor CLI' : 'Codex'}</Badge>
                       <Badge variant="secondary">{item.requirement.project.name}</Badge>
                       <Badge variant="outline">{item.requirement.project.workspace.name}</Badge>
-                      <Badge variant="outline">{item.workflowRepositories.length} 个执行仓库</Badge>
+                      <Badge variant="outline">{item._count?.workflowRepositories ?? item.workflowRepositories.length} 个执行仓库</Badge>
                     </>
                   }
                   details={(
@@ -292,6 +200,7 @@ export function WorkflowRunsPage() {
           ) : (
             <EmptyState description="当前筛选条件下还没有工作流，可先从需求页发起流程。" />
           )}
+          {projectId ? <ListPagination page={list.page} total={list.total} loading={loading} onPageChange={list.onPageChange} label="工作流列表分页" /> : null}
         </CardContent>
       </Card>
     </>

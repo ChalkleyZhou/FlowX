@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { createHash, randomBytes } from 'node:crypto';
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -32,6 +33,23 @@ export class PersonalApiTokenService {
       token,
       createdAt: row.createdAt.toISOString(),
     };
+  }
+
+  async listTokensPage(userId: string, organizationId: string, query: PaginationQuery = {}) {
+    const paging = parsePagination(query);
+    const rows = await this.prisma.personalApiToken.findMany({
+      skip: paging.skip, take: paging.take,
+      where: { userId, organizationId, revokedAt: null },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+    const total = await this.prisma.personalApiToken.count({ where: { userId, organizationId, revokedAt: null } });
+    return pageResult(rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      tokenPrefix: row.tokenPrefix,
+      createdAt: row.createdAt.toISOString(),
+      lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
+    })), total, paging);
   }
 
   async listTokens(userId: string, organizationId: string) {

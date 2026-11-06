@@ -167,7 +167,7 @@ function ProjectTargetSection({
   onToggleTargetForBriefing,
   onToggleTargetForCodeReview,
 }: {
-  project: Project;
+  project: Pick<Project, 'id' | 'name'>;
   targets: DeliveryTarget[];
   expanded: boolean;
   onToggle: () => void;
@@ -196,7 +196,7 @@ function ProjectTargetSection({
         />
         <span className="flex-1 font-semibold text-foreground">{project.name}</span>
         <span className="text-sm text-muted-foreground">
-          {targets.length} 个目标 · {activeCount} 个启用
+          本页 {targets.length} 个目标 · {activeCount} 个启用
         </span>
       </button>
       {expanded ? (
@@ -224,7 +224,7 @@ export function DeliveryTargetList({
   onToggleTargetForBriefing,
   onToggleTargetForCodeReview,
 }: {
-  projects: Project[];
+  projects: Pick<Project, 'id' | 'name'>[];
   targets: DeliveryTarget[];
   onToggleTarget: (target: DeliveryTarget) => void;
   onDeleteTarget: (target: DeliveryTarget) => void;

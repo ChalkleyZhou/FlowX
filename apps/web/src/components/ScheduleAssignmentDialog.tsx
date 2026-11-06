@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { PagedSelect } from './PagedSelect';
 import { Button } from './ui/button';
 import {
   Dialog,
@@ -19,7 +20,7 @@ import {
 } from './ui/select';
 import { Textarea } from './ui/textarea';
 import { useToast } from './ui/toast';
-import type { OrganizationMember, Project, Requirement, RequirementAssignment } from '../types';
+import type { RequirementAssignment } from '../types';
 import { addLocalCalendarDays, localTodayIso } from '../utils/business-days';
 import { ASSIGNMENT_ROLE_OPTIONS } from '../utils/schedule-filters';
 
@@ -67,9 +68,9 @@ export function ScheduleAssignmentDialog({
   onSaved,
 }: ScheduleAssignmentDialogProps) {
   const toast = useToast();
-  const [members, setMembers] = useState<OrganizationMember[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [requirements, setRequirements] = useState<Requirement[]>([]);
+  const [projectLabel, setProjectLabel] = useState('');
+  const [requirementLabel, setRequirementLabel] = useState('');
+  const [memberLabel, setMemberLabel] = useState('');
   const [metaLoading, setMetaLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [projectId, setProjectId] = useState(() => initialProjectId);
@@ -82,15 +83,6 @@ export function ScheduleAssignmentDialog({
 
   const pickerEnabled = !fixedRequirementId;
   const resolvedRequirementId = fixedRequirementId ?? requirementId;
-
-  const requirementOptions = useMemo(() => {
-    if (!pickerEnabled || !projectId) {
-      return [];
-    }
-    return requirements.filter((r) => r.project.id === projectId);
-  }, [pickerEnabled, projectId, requirements]);
-
-  const requirementPickerReady = Boolean(projectId) && requirementOptions.length > 0;
 
   useEffect(() => {
     if (!open) {
@@ -125,78 +117,20 @@ export function ScheduleAssignmentDialog({
   ]);
 
   useEffect(() => {
-    if (!open) {
-      return;
-    }
-
+    if (!open) return;
     let cancelled = false;
-
-    void (async () => {
-      setMetaLoading(true);
-      try {
-        const memberList = await api.getOrganizationMembers();
-        if (cancelled) {
-          return;
-        }
-        setMembers(memberList);
-
-        if (!pickerEnabled) {
-          if (!editing) {
-            setDraft(defaultScheduleAssignmentDraft(memberList[0]?.id ?? ''));
-          }
-          return;
-        }
-
-        const [projectList, requirementList] = await Promise.all([
-          api.getProjects(),
-          api.getRequirements(),
-        ]);
-        if (cancelled) {
-          return;
-        }
-        setProjects(projectList);
-        setRequirements(requirementList);
-
-        if (editing) {
-          return;
-        }
-
-        const nextProjectId = initialProjectId || '';
-        let nextRequirementId = '';
-        if (nextProjectId) {
-          const filtered = requirementList.filter((r) => r.project.id === nextProjectId);
-          if (
-            initialRequirementId &&
-            filtered.some((r) => r.id === initialRequirementId)
-          ) {
-            nextRequirementId = initialRequirementId;
-          }
-        }
-        setProjectId(nextProjectId);
-        setRequirementId(nextRequirementId);
-        setDraft(defaultScheduleAssignmentDraft(memberList[0]?.id ?? ''));
-      } catch (error) {
-        if (!cancelled) {
-          toast.error(error instanceof Error ? error.message : '加载排期表单失败');
-        }
-      } finally {
-        if (!cancelled) {
-          setMetaLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    open,
-    pickerEnabled,
-    editing?.id,
-    initialProjectId,
-    initialRequirementId,
-    toast,
-  ]);
+    setMetaLoading(true);
+    setProjectLabel(''); setRequirementLabel(''); setMemberLabel(editing?.user?.displayName ?? '');
+    void Promise.all([
+      initialProjectId && pickerEnabled ? api.getProject(initialProjectId).then(item => { if (!cancelled) setProjectLabel(item.name); }) : Promise.resolve(),
+      initialRequirementId && pickerEnabled ? api.getRequirement(initialRequirementId).then(item => { if (!cancelled) setRequirementLabel(item.title); }) : Promise.resolve(),
+      !editing ? api.getOrganizationMembers({page:1,pageSize:20}).then(result => {
+        if (!cancelled && result.items[0]) { setDraft(current => current.userId ? current : ({...current,userId:result.items[0].id})); setMemberLabel(result.items[0].displayName); }
+      }) : Promise.resolve(),
+    ]).catch(error => { if (!cancelled) toast.error(error instanceof Error ? error.message : '加载排期表单失败'); })
+      .finally(() => { if (!cancelled) setMetaLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, editing?.id, initialProjectId, initialRequirementId, pickerEnabled]);
 
   function handleProjectChange(value: string) {
     setProjectId(value);
@@ -279,55 +213,16 @@ export function ScheduleAssignmentDialog({
                 <label className="text-sm font-semibold text-foreground">
                   项目 <span className="text-destructive">*</span>
                 </label>
-                <Select
-                  value={projectId || ''}
-                  onValueChange={handleProjectChange}
-                  disabled={metaLoading || projects.length === 0}
-                  required
-                >
-                  <SelectTrigger aria-label="选择项目">
-                    <SelectValue placeholder={metaLoading ? '加载中…' : '请选择项目'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <PagedSelect value={projectId} onValueChange={value => {setProjectLabel('');handleProjectChange(value);}}
+                  label="选择项目" placeholder="请选择项目" selectedLabel={projectLabel} loadPage={api.getProjects} />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-foreground">
                   需求 <span className="text-destructive">*</span>
                 </label>
-                <Select
-                  value={requirementId || ''}
-                  onValueChange={setRequirementId}
-                  disabled={metaLoading || !projectId || !requirementPickerReady}
-                  required
-                >
-                  <SelectTrigger aria-label="选择需求">
-                    <SelectValue
-                      placeholder={
-                        metaLoading
-                          ? '加载中…'
-                          : !projectId
-                            ? '请先选择项目'
-                            : requirementOptions.length === 0
-                              ? '该项目下暂无需求'
-                              : '请选择需求'
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {requirementOptions.map((req) => (
-                      <SelectItem key={req.id} value={req.id}>
-                        {req.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <PagedSelect value={requirementId} onValueChange={value => {setRequirementLabel('');setRequirementId(value);}}
+                  label="选择需求" placeholder={projectId ? '请选择需求' : '请先选择项目'} selectedLabel={requirementLabel} disabled={!projectId} scopeKey={projectId}
+                  loadPage={async query => {const result = await api.getRequirements({...query,projectId});return {...result,items:result.items.map(item => ({id:item.id,name:item.title}))};}} />
               </div>
             </>
           ) : null}
@@ -336,23 +231,9 @@ export function ScheduleAssignmentDialog({
             <label className="text-sm font-semibold text-foreground">
               成员 <span className="text-destructive">*</span>
             </label>
-            <Select
-              value={draft.userId || ''}
-              onValueChange={(value) => setDraft((c) => ({ ...c, userId: value }))}
-              disabled={metaLoading || members.length === 0}
-              required
-            >
-              <SelectTrigger aria-label="选择成员">
-                <SelectValue placeholder="请选择成员" />
-              </SelectTrigger>
-              <SelectContent>
-                {members.map((member) => (
-                  <SelectItem key={member.id} value={member.id}>
-                    {member.displayName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <PagedSelect value={draft.userId} onValueChange={value => {setMemberLabel('');setDraft(current => ({...current,userId:value}));}}
+              label="选择成员" placeholder="请选择成员" selectedLabel={memberLabel}
+              loadPage={async query => {const result = await api.getOrganizationMembers(query);return {...result,items:result.items.map(item => ({id:item.id,name:item.displayName}))};}} />
           </div>
 
           <div className="space-y-2">

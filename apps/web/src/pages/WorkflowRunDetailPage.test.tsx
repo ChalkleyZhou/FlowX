@@ -14,6 +14,8 @@ vi.mock('../components/RequirementChangesPanel', () => ({ RequirementChangesPane
 vi.mock('../api', () => ({
   api: {
     getWorkflowRun: vi.fn(),
+    getCodeDeliveryHistory: vi.fn(async () => ({ items: [], total: 0, page: 1, pageSize: 20, totalPages: 1 })),
+    getReviewFindings: vi.fn(), getWorkflowRepositories: vi.fn(), getWorkflowHistory: vi.fn(),
     getWorkflowCollaboration: vi.fn(),
     getCodeDelivery: vi.fn(async () => ({ workflowRunId: 'workflow-1', canSubmit: true, reason: null, stageExecutionId: null, repositories: [{ id: 'repo-web', name: 'Web', baseBranch: 'main' }], submissions: [], confirmedDelivery: null })),
     submitCodeBranch: vi.fn(),
@@ -192,7 +194,34 @@ describe('WorkflowRunDetailPage', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
+    const pageOf = <T,>(items: T[], query?: { page?: number; pageSize?: number }) => ({ items, total: items.length, page: query?.page ?? 1, pageSize: 20, totalPages: 1 });
+    const current = async () => await vi.mocked(api.getWorkflowRun).mock.results.at(-1)?.value as WorkflowRun | undefined;
+    vi.mocked(api.getReviewFindings).mockImplementation(async (_id, query) => { const rows = (await current())?.reviewFindings ?? []; return { ...pageOf(rows, query), summary: { pendingCount: rows.filter(row => !row.convertedIssueId && !row.convertedBugId).length } }; });
+    vi.mocked(api.getWorkflowRepositories).mockImplementation(async (_id, query) => pageOf((await current())?.workflowRepositories ?? [], query));
+    vi.mocked(api.getWorkflowHistory).mockImplementation(async (_id, query) => pageOf((await current())?.stageExecutions ?? [], query));
     vi.mocked(api.getWorkflowCollaboration).mockResolvedValue({ workflowRunId: 'workflow-1', currentStage: 'SPEC_PLAN', sessions: [] });
+  });
+
+  it('审查结果总数与待处理数来自全范围，翻页请求不受详情预览限制', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({ status: 'HUMAN_REVIEW_PENDING', currentStage: 'HUMAN_REVIEW', _count: { reviewFindings: 25, workflowRepositories: 0 } }));
+    vi.mocked(api.getReviewFindings).mockImplementation(async (_id, query) => ({ items: [], total: 25, page: query?.page ?? 1, pageSize: 20, totalPages: 2, summary: { pendingCount: 24 } }));
+    await renderPage();
+    expect(container.textContent).toContain('25 条结果'); expect(container.textContent).toContain('24 条待处理');
+    await act(async () => { container.querySelector<HTMLButtonElement>('[aria-label="第 2 页"]')!.click(); });
+    expect(api.getReviewFindings).toHaveBeenLastCalledWith('workflow-1', expect.objectContaining({ page: 2, pageSize: 20 }));
+  });
+
+  it('仓库与阶段历史只在展开后分页读取', async () => {
+    vi.mocked(api.getWorkflowRun).mockResolvedValue(createWorkflowRun({ workflowRepositories: [{ id: 'repo', name: '仓库', workingBranch: 'feature', baseBranch: 'main', status: 'READY' } as WorkflowRun['workflowRepositories'][number]] }));
+    vi.mocked(api.getWorkflowRepositories).mockResolvedValue({ items: [], total: 25, page: 1, pageSize: 20, totalPages: 2 });
+    await renderPage();
+    expect(api.getWorkflowHistory).not.toHaveBeenCalled(); expect(api.getWorkflowRepositories).not.toHaveBeenCalled();
+    await act(async () => { Array.from(container.querySelectorAll('button')).find(row => row.textContent === '查看分支')!.click(); });
+    expect(api.getWorkflowRepositories).toHaveBeenCalledWith('workflow-1', expect.objectContaining({ page: 1, pageSize: 20 }));
+    await act(async () => { container.querySelector<HTMLButtonElement>('[aria-label="第 2 页"]')!.click(); });
+    expect(api.getWorkflowRepositories).toHaveBeenLastCalledWith('workflow-1', expect.objectContaining({ page: 2 }));
+    await act(async () => { const detail = Array.from(container.querySelectorAll('details')).find(row => row.querySelector('summary')?.textContent === '阶段执行历史')!; detail.open = true; detail.dispatchEvent(new Event('toggle')); });
+    expect(api.getWorkflowHistory).toHaveBeenCalledWith('workflow-1', expect.objectContaining({ page: 1, pageSize: 20 }));
   });
 
   it('工作流详情变更入口携带当前需求与来源流程', async () => {
@@ -454,8 +483,8 @@ describe('WorkflowRunDetailPage', () => {
     }));
     vi.mocked(api.getLocalHandoff).mockResolvedValue({ executionSessionId: 'session-1', repositories: [] } as never);
     vi.mocked(api.getExecutionSession).mockResolvedValue({ id: 'session-1', workflowRunId: 'workflow-1', status: 'COMPLETED', executorType: 'LOCAL', sourceTool: 'cursor', protocolVersion: '1.0', traceId: 'trace-1', createdAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:00:00Z' });
-    vi.mocked(api.listExecutionSessionEvidence).mockResolvedValue([]);
-    vi.mocked(api.listExecutionSessionEvents).mockResolvedValue({ items: [], nextCursor: null });
+    vi.mocked(api.listExecutionSessionEvidence).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20, totalPages: 1 });
+    vi.mocked(api.listExecutionSessionEvents).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20, totalPages: 1 });
     await renderPage();
     const calls = vi.mocked(api.getExecutionSession).mock.calls.length;
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
@@ -2336,8 +2365,8 @@ describe('WorkflowRunDetailPage', () => {
       createdAt: '2026-07-23T07:00:00.000Z',
       updatedAt: '2026-07-23T08:00:00.000Z',
     });
-    vi.mocked(api.listExecutionSessionEvidence).mockResolvedValue([]);
-    vi.mocked(api.listExecutionSessionEvents).mockResolvedValue({ items: [], nextCursor: null });
+    vi.mocked(api.listExecutionSessionEvidence).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20, totalPages: 1 });
+    vi.mocked(api.listExecutionSessionEvents).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20, totalPages: 1 });
 
     await renderPage();
     await act(async () => {
@@ -2348,7 +2377,7 @@ describe('WorkflowRunDetailPage', () => {
     expect(container.textContent).toContain('运行状态');
     expect(container.textContent).toContain('查看完整运行');
     expect(api.getExecutionSession).toHaveBeenCalledWith('session-1');
-    expect(api.listExecutionSessionEvidence).toHaveBeenCalledWith('session-1');
+    expect(api.listExecutionSessionEvidence).toHaveBeenCalledWith('session-1', expect.objectContaining({ page: 1, pageSize: 20 }));
   });
 
   it('hides the execution session panel when the local handoff has no session id', async () => {

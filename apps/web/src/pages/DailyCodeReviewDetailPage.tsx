@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useListPage } from '../hooks/use-list-page';
+import { ListPagination } from '../components/ListPagination';
 import { api } from '../api';
 import { withCurrentProject } from '../project-scope';
 import { useAdoptProject, useProjectScopeOptional } from '../project-scope-context';
@@ -32,6 +34,7 @@ function unitCountLabel(units: DailyCodeReviewUnit[]) {
 
 export function DailyCodeReviewDetailPage() {
   const { reviewId } = useParams();
+  const logPage = useListPage(query => api.getCodeReviewDeliveryLogs(reviewId!,query), {q:reviewId}, {enabled:Boolean(reviewId),pageKey:'deliveryPage'});
   const scope = useProjectScopeOptional();
   const [review, setReview] = useState<DailyCodeReview | null>(null);
   useAdoptProject(review?.projectId);
@@ -82,6 +85,7 @@ export function DailyCodeReviewDetailPage() {
     try {
       await api.sendDailyCodeReview(reviewId);
       await refresh();
+      logPage.refresh();
       toast.success('代码审查已重新发送');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '重新发送失败');
@@ -102,7 +106,7 @@ export function DailyCodeReviewDetailPage() {
     return <p className="text-sm text-muted-foreground">代码审查记录不存在或无法加载。</p>;
   }
 
-  const logs = review.deliveryLogs ?? [];
+  const logs = logPage.items;
   const units = review.unitsJson ?? [];
   const isGenerating = review.status === 'GENERATING';
 
@@ -230,6 +234,8 @@ export function DailyCodeReviewDetailPage() {
           ) : (
             <p className="text-sm text-muted-foreground">暂无投递记录。</p>
           )}
+          {logPage.error ? <p role="alert">{logPage.error}</p> : null}
+          <ListPagination {...logPage} label="投递记录分页" />
         </CardContent>
       </Card>
     </>

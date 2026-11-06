@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuthService } from '../auth/auth.service';
@@ -46,6 +47,23 @@ export class DeliveryTargetsService {
     @Optional()
     private readonly dingTalkNotification?: DingTalkNotificationService,
   ) {}
+
+  async listTargetsPage(params: { workspaceId?: string; projectId?: string } = {}, query: PaginationQuery & { q?: string; purpose?: string } = {}) {
+    const paging = parsePagination(query);
+    if (query.purpose !== undefined && !['briefing', 'codeReview'].includes(query.purpose)) throw new BadRequestException('purpose 必须为 briefing 或 codeReview。');
+    const workspaceId = params?.workspaceId?.trim();
+    const projectId = params?.projectId?.trim();
+    const where = {
+      ...(projectId ? { projectId } : workspaceId ? { project: { workspaceId } } : {}),
+      ...(query.q?.trim() ? { name: { contains: query.q.trim() } } : {}),
+      ...(query.purpose === 'briefing' ? { forBriefing: true } : query.purpose === 'codeReview' ? { forCodeReview: true } : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.deliveryTarget.findMany({ where, skip: paging.skip, take: paging.take, include: { project: { select: { id: true, name: true } } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }),
+      this.prisma.deliveryTarget.count({ where }),
+    ]);
+    return pageResult(items, total, paging);
+  }
 
   listTargets(params?: { workspaceId?: string; projectId?: string }) {
     const workspaceId = params?.workspaceId?.trim();

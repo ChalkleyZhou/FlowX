@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
+import { ListPagination } from '../components/ListPagination';
+import { PagedSelect } from '../components/PagedSelect';
+import { useQualityPage } from './quality/use-quality-page';
 import { useScopedProjectId } from '../project-scope-context';
 import { EmptyState } from '../components/EmptyState';
 import { ProjectRequiredState } from '../components/ProjectRequiredState';
@@ -11,71 +14,40 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Input } from '../components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
 import { formatBeijingDateTime } from '../utils/datetime';
-import type { DailyCodeReview, Project, ProjectFeed } from '../types';
+import type { Project, ProjectFeed } from '../types';
 
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
 export function CodeReviewsPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const page = Math.max(1, Number(searchParams.get('page') ?? 1) || 1);
   const selectedProjectId = useScopedProjectId();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [reviews, setReviews] = useState<DailyCodeReview[]>([]);
   const [feeds, setFeeds] = useState<ProjectFeed[]>([]);
   const [feedId, setFeedId] = useState('');
   const [date, setDate] = useState(today());
-  const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const toast = useToast();
   const navigate = useNavigate();
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
 
-  async function loadProjects() {
-    setProjects(await api.getProjects());
-  }
-
-  async function refresh(projectId = selectedProjectId, options?: { silent?: boolean }) {
-    if (!projectId) {
-      return;
-    }
-    if (!options?.silent) {
-      setLoading(true);
-    }
-    try {
-      const [nextReviews, nextFeeds] = await Promise.all([
-        api.listProjectDailyCodeReviews(projectId),
-        api.listCodeReviewFeeds(projectId),
-      ]);
-      setReviews(nextReviews);
-      setFeeds(nextFeeds);
-      setFeedId((current) => (
-        nextFeeds.some((feed) => feed.id === current) ? current : nextFeeds[0]?.id ?? ''
-      ));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载代码审查失败');
-    } finally {
-      if (!options?.silent) {
-        setLoading(false);
-      }
-    }
-  }
+  const result = useQualityPage(`${selectedProjectId}:${page}`, () => api.listProjectDailyCodeReviews(selectedProjectId, { page, pageSize: 20 }), Boolean(selectedProjectId), nextPage => setSearchParams(current => { const next = new URLSearchParams(current); next.set('page', String(nextPage)); return next; }, { replace: true }));
+  const { items: reviews, loading, total, summary = {} } = result;
+  const refresh = (_projectId = selectedProjectId, options?: { silent?: boolean }) => result.refresh(options);
 
   useEffect(() => {
-    loadProjects().catch((error) => toast.error(error instanceof Error ? error.message : '加载项目失败'));
-  }, []);
-
-  useEffect(() => {
-    if (!selectedProjectId) {
-      setReviews([]);
-      return;
-    }
-    void refresh(selectedProjectId);
+    if (!selectedProjectId) { setProjects([]); setFeeds([]); setFeedId(''); return; }
+    let active = true;
+    void Promise.all([api.getProject(selectedProjectId), api.listCodeReviewFeeds(selectedProjectId, { page: 1, pageSize: 1 })])
+      .then(([project, feeds]) => { if (active) { setProjects([project]); setFeeds(feeds.items); setFeedId(feeds.items[0]?.id ?? ''); } })
+      .catch(error => { if (active) toast.error(error instanceof Error ? error.message : '加载项目配置失败'); });
+    return () => { active = false; };
   }, [selectedProjectId]);
 
   useEffect(() => {
@@ -133,8 +105,8 @@ export function CodeReviewsPage() {
       />
 
       <div className="grid gap-5 md:grid-cols-2">
-        <MetricCard label="代码审查" value={selectedProjectId ? reviews.length : 0} />
-        <MetricCard label="已发送" value={selectedProjectId ? reviews.filter((item) => item.sentAt).length : 0} />
+        <MetricCard label="代码审查" value={selectedProjectId ? total : 0} />
+        <MetricCard label="已发送" value={selectedProjectId ? summary.sentCount ?? 0 : 0} />
       </div>
 
       <Card className="rounded-md border border-border bg-card">
@@ -150,16 +122,9 @@ export function CodeReviewsPage() {
               </div>
               <div className="flex w-full flex-col gap-1.5 sm:w-[180px]">
                 <label className="text-xs font-medium text-muted-foreground">代码审查</label>
-                <Select value={feedId} onValueChange={setFeedId} disabled={feeds.length === 0}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={feeds.length === 0 ? '尚未创建' : '选择代码审查'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {feeds.map((feed) => (
-                      <SelectItem key={feed.id} value={feed.id}>{feed.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <PagedSelect value={feedId} onValueChange={setFeedId} disabled={!selectedProjectId}
+                  selectedLabel={feeds.find(feed => feed.id === feedId)?.name} placeholder="选择代码审查"
+                  loadPage={query => api.listCodeReviewFeeds(selectedProjectId, query)} />
               </div>
               <div className="flex w-full flex-col gap-1.5 sm:w-[168px]">
                 <label className="text-xs font-medium text-muted-foreground">日期</label>
@@ -244,6 +209,8 @@ export function CodeReviewsPage() {
               description="在项目设置中创建代码审查并勾选仓库后，选择这一份再生成。"
             />
           )}
+          {result.error ? <p role="alert">{result.error}<Button variant="outline" onClick={() => void result.refresh()}>重试</Button></p> : null}
+          <ListPagination page={page} total={total} pageSize={20} loading={result.refreshing} onPageChange={nextPage => { const next = new URLSearchParams(searchParams); next.set('page', String(nextPage)); setSearchParams(next); }} />
         </CardContent>
       </Card>
     </>

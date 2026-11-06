@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import type { PaginationQuery } from '../common/pagination';
+import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
 import { ConfirmCodeDeliveryDto, SubmitCodeBranchDto } from './dto/code-delivery.dto';
 import { WorkflowCollaborationActor } from './workflow-collaboration.service';
 import { WorkflowCodeDeliveryService } from './workflow-code-delivery.service';
@@ -9,6 +10,11 @@ export class WorkflowCodeDeliveryController {
   @Get(':id/code-delivery')
   getDelivery(@Param('id') id: string, @Req() req: DeliveryRequest) {
     return this.delivery.getDelivery(id, req.authSession);
+  }
+
+  @Get(':id/code-delivery/history')
+  listHistory(@Param('id') id: string, @Query() query: PaginationQuery, @Req() req: DeliveryRequest) {
+    return this.delivery.listHistory(id, query, req.authSession);
   }
 
   @Post(':id/code-delivery/branches')

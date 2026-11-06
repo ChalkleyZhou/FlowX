@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { api } from '../api';
+import { PagedSelect } from './PagedSelect';
 import type { ProjectVersionSummary, Requirement } from '../types';
 import { Button } from './ui/button';
 import {
@@ -19,8 +20,6 @@ import {
   SelectValue,
 } from './ui/select';
 import { Textarea } from './ui/textarea';
-
-const UNVERSIONED = '__none__';
 
 const priorityOptions = [
   { id: 'URGENT', label: '紧急' },
@@ -74,13 +73,12 @@ function Field({
 
 export function RequirementEditDialog({
   requirement,
-  versions,
   open,
   onOpenChange,
   onSaved,
 }: {
   requirement: Requirement;
-  versions: ProjectVersionSummary[];
+  versions?: ProjectVersionSummary[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved: (requirement: Requirement) => void;
@@ -96,13 +94,6 @@ export function RequirementEditDialog({
     setSaving(false);
   }, [open, requirement]);
 
-  const versionChoices = useMemo(() => {
-    const choices = [...versions];
-    if (requirement.version && !choices.some((item) => item.id === requirement.version?.id)) {
-      choices.unshift(requirement.version);
-    }
-    return choices;
-  }, [requirement.version, versions]);
 
   const priorityChoices = priorityOptions.some((option) => option.id === draft.priority)
     ? priorityOptions
@@ -174,20 +165,8 @@ export function RequirementEditDialog({
               </Select>
             </Field>
             <Field label="发布版本">
-              <Select
-                value={draft.versionId || UNVERSIONED}
-                onValueChange={(value) => setDraft((current) => ({ ...current, versionId: value === UNVERSIONED ? '' : value }))}
-              >
-                <SelectTrigger aria-label="发布版本">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={UNVERSIONED}>未挂版本</SelectItem>
-                  {versionChoices.map((version) => (
-                    <SelectItem key={version.id} value={version.id}>{version.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <PagedSelect value={draft.versionId} selectedLabel={requirement.version?.id === draft.versionId ? requirement.version.name : undefined} label="发布版本" placeholder="未挂版本" allowClear emptyLabel="未挂版本" scopeKey={requirement.project.id}
+                loadPage={query => api.listProjectVersions(requirement.project.id, query)} onValueChange={value => setDraft(current => ({...current,versionId:value}))} />
             </Field>
             <Field label="功能模块" htmlFor="edit-requirement-module">
               <Input

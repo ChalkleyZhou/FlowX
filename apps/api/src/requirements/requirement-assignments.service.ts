@@ -1,9 +1,10 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import {
   BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { parseAssignmentDate } from '../common/business-days';
 import { RequirementPlanningStatus } from '../common/enums';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,6 +14,29 @@ import { toRequirementAssignmentResponse } from './requirement-assignment.mapper
 @Injectable()
 export class RequirementAssignmentsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async listPage(requirementId: string, query: PaginationQuery = {}) {
+    const paging = parsePagination(query);
+    await this.ensureRequirement(requirementId);
+    const rows = await this.prisma.requirementAssignment.findMany({
+      skip: paging.skip, take: paging.take,
+      where: { requirementId },
+      include: { user: true },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+    });
+    const total = await this.prisma.requirementAssignment.count({ where: { requirementId } });
+    // SQLite 中日期以毫秒存储；按服务端日历计算工作日，并在数据库汇总完整范围。
+    const remainderTerms = Array.from({ length: 6 }, (_, offset) => Prisma.sql`CASE WHEN days % 7 > ${offset} AND (startDay + ${offset}) % 7 NOT IN (0, 6) THEN 1 ELSE 0 END`);
+    const summary = await this.prisma.$queryRaw<Array<{ estimatedDays: bigint | number }>>(Prisma.sql`
+      WITH ranges AS (
+        SELECT CAST(julianday(date(plannedEndDate / 1000, 'unixepoch', 'localtime')) - julianday(date(plannedStartDate / 1000, 'unixepoch', 'localtime')) + 1 AS INTEGER) AS days,
+          CAST(strftime('%w', plannedStartDate / 1000, 'unixepoch', 'localtime') AS INTEGER) AS startDay
+        FROM RequirementAssignment WHERE requirementId = ${requirementId}
+      )
+      SELECT COALESCE(SUM(CASE WHEN days <= 0 THEN 0 ELSE CAST(days / 7 AS INTEGER) * 5 + ${Prisma.join(remainderTerms, ' + ')} END), 0) AS estimatedDays FROM ranges
+    `);
+    return { ...pageResult(rows.map((row) => this.toResponse(row)), total, paging), summary: { estimatedDays: Number(summary[0]?.estimatedDays ?? 0) } };
+  }
 
   async list(requirementId: string) {
     await this.ensureRequirement(requirementId);

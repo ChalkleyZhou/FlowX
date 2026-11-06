@@ -25,7 +25,8 @@ function harness(run = workflow(), target = session()) {
   const prisma = {
     workflowRun: { findUnique: vi.fn().mockResolvedValue(run), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     executionSession: { findUnique: vi.fn().mockResolvedValue(target), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
-    stageExecution: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    stageExecution: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), findMany: vi.fn().mockResolvedValue(run.stageExecutions) },
+    $queryRaw: vi.fn().mockResolvedValue(run.stageExecutions.map(stage => ({ id: stage.id }))),
     syncEvent: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({}) },
     userOrganization: { findUnique: vi.fn().mockResolvedValue({ role: 'member' }) },
     $transaction: vi.fn(),
@@ -47,6 +48,8 @@ describe('工作流协同状态与本地任务交接', () => {
       expect.objectContaining({ id: 'session', health: 'UNKNOWN', isOwner: true, canRelease: true,
         lastHeartbeatAt: now.toISOString(), claimedByUser: { displayName: '执行人' } }),
     ] });
+    expect(prisma.stageExecution.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 8, where: { id: { in: expect.any(Array) } } }));
+    expect(prisma.workflowRun.findUnique.mock.calls[0][0].include.stageExecutions).toMatchObject({ take: 0 });
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(prisma.workflowRun.updateMany).not.toHaveBeenCalled();
     expect(prisma.executionSession.updateMany).not.toHaveBeenCalled();

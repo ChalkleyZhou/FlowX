@@ -14,11 +14,8 @@ export class DeliveryTargetsController {
   constructor(private readonly deliveryTargetsService: DeliveryTargetsService) {}
 
   @Get()
-  list(
-    @Query('workspaceId') workspaceId?: string,
-    @Query('projectId') projectId?: string,
-  ) {
-    return this.deliveryTargetsService.listTargets({ workspaceId, projectId });
+  list(@Query() query: import('../common/pagination').PaginationQuery & { workspaceId?: string; projectId?: string; q?: string; purpose?: string } = {}) {
+    return this.deliveryTargetsService.listTargetsPage(query, query);
   }
 
   @Post()

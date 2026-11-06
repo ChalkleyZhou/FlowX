@@ -1,3 +1,4 @@
+import { PagedSelect } from './PagedSelect';
 import { useEffect, useState, type PropsWithChildren } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
@@ -311,20 +312,8 @@ function CurrentProjectSwitcher() {
   return (
     <div className="w-full px-2">
       <label className="mb-1.5 block px-1 text-xs text-nav-text" htmlFor="current-project">当前项目</label>
-      <Select
-        value={scope.projectId ?? ''}
-        onValueChange={(value) => scope.setProjectId(value)}
-        disabled={scope.loading || scope.projects.length === 0}
-      >
-        <SelectTrigger id="current-project" aria-label="当前项目" className="w-full">
-          <SelectValue placeholder={scope.projects.length === 0 ? '暂无项目' : '选择项目'} />
-        </SelectTrigger>
-        <SelectContent>
-          {scope.projects.map((project) => (
-            <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <PagedSelect id="current-project" label="当前项目" value={scope.projectId ?? ''} selectedLabel={scope.project?.name}
+        placeholder="选择项目" loadPage={api.getProjects} onValueChange={value => scope.setProjectId(value)} disabled={scope.loading} />
     </div>
   );
 }

@@ -1,3 +1,6 @@
+import { useListPage } from '../hooks/use-list-page';
+import { ListPagination } from '../components/ListPagination';
+import { PagedSelect } from '../components/PagedSelect';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
@@ -29,11 +32,8 @@ import type { Project, Workspace } from '../types';
 export function ProjectsPage() {
   const navigate = useNavigate();
   const scope = useProjectScopeOptional();
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [filters, setFilter] = useStoredListFilters('projects');
   const selectedWorkspaceId = filters.workspaceId;
-  const [loading, setLoading] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createDraft, setCreateDraft] = useState({
     workspaceId: '',
@@ -43,45 +43,9 @@ export function ProjectsPage() {
   });
   const toast = useToast();
 
-  const filteredProjects = useMemo(() => {
-    if (!selectedWorkspaceId) {
-      return projects;
-    }
-    return projects.filter((project) => project.workspace.id === selectedWorkspaceId);
-  }, [projects, selectedWorkspaceId]);
-
-  const summary = useMemo(
-    () => ({
-      total: projects.length,
-      visible: filteredProjects.length,
-      workspaceCount: new Set(projects.map((project) => project.workspace.id)).size,
-      requirementCount: filteredProjects.reduce(
-        (sum, project) => sum + (project._count?.requirements ?? 0),
-        0,
-      ),
-    }),
-    [filteredProjects, projects],
-  );
-
-  async function refresh() {
-    setLoading(true);
-    try {
-      const [workspaceList, projectList] = await Promise.all([
-        api.getWorkspaces(),
-        api.getProjects(),
-      ]);
-      setWorkspaces(workspaceList);
-      setProjects(projectList);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载项目失败');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    void refresh();
-  }, []);
+  const list = useListPage(api.getProjects, { workspaceId: selectedWorkspaceId });
+  const { items: filteredProjects, loading, refresh } = list;
+  const summary = { total: 0, visible: list.total, workspaceCount: 0, requirementCount: 0, ...list.summary };
 
   function enterProject(projectId: string) {
     const target = `/dashboard?projectId=${encodeURIComponent(projectId)}`;
@@ -135,21 +99,8 @@ export function ProjectsPage() {
           <form className="flex flex-col gap-4" onSubmit={(event) => void handleCreateProject(event)}>
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-foreground">所属工作区</label>
-              <Select
-                value={createDraft.workspaceId || ''}
-                onValueChange={(value) => setCreateDraft((current) => ({ ...current, workspaceId: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="选择项目所在工作区" />
-                </SelectTrigger>
-                <SelectContent>
-                  {workspaces.map((workspace) => (
-                    <SelectItem key={workspace.id} value={workspace.id}>
-                      {workspace.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <PagedSelect value={createDraft.workspaceId} label="所属工作区" placeholder="选择项目所在工作区" loadPage={api.getWorkspaces}
+                onValueChange={value => setCreateDraft(current => ({ ...current, workspaceId: value }))} />
             </div>
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-foreground" htmlFor="project-name">项目名称</label>
@@ -206,22 +157,8 @@ export function ProjectsPage() {
         <CardContent className="p-5 pt-0">
           <ListToolbar
             filters={(
-              <Select
-                value={selectedWorkspaceId ?? '__all__'}
-                onValueChange={(value) => setFilter('workspaceId', value === '__all__' ? undefined : value)}
-              >
-                <SelectTrigger className="w-[220px]">
-                  <SelectValue placeholder="按工作区筛选" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">全部工作区</SelectItem>
-                  {workspaces.map((workspace) => (
-                    <SelectItem key={workspace.id} value={workspace.id}>
-                      {workspace.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <PagedSelect value={selectedWorkspaceId ?? ''} label="按工作区筛选" placeholder="全部工作区" allowClear emptyLabel="全部工作区" className="w-[220px]" loadPage={api.getWorkspaces}
+                onValueChange={value => setFilter('workspaceId', value || undefined)} />
             )}
           />
           {loading ? (
@@ -265,6 +202,8 @@ export function ProjectsPage() {
           ) : (
             <EmptyState description="当前还没有项目，可先从某个工作区下创建。" />
           )}
+          {list.error ? <p role="alert">{list.error}<UiButton onClick={refresh}>重试</UiButton></p> : null}
+          <ListPagination page={list.page} total={list.total} loading={loading} onPageChange={list.onPageChange} label="项目列表分页" />
         </CardContent>
       </Card>
     </>

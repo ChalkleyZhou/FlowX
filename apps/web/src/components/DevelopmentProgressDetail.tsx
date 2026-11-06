@@ -53,10 +53,10 @@ function ResultRecord({ item }: { item: ExecutionSessionEvidence }) {
 
 function recentProgress(session: ExecutionSessionDetail, events: ExecutionSessionSyncEvent[]) {
   const unique = new Map<string, ExecutionSessionSyncEvent>();
-  for (const event of [...events, ...(session.latestProgress ? [session.latestProgress] : [])]) {
+  for (const event of (events.some(event => eventLabels[event.eventType]) ? events : session.latestProgress ? [session.latestProgress] : [])) {
     if (eventLabels[event.eventType]) unique.set(event.id ?? event.eventId ?? `${event.eventType}:${event.occurredAt}`, event);
   }
-  return [...unique.values()].sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt)).slice(0, 10);
+  return [...unique.values()].sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt));
 }
 
 export function DevelopmentProgressDetail({ session, evidence, events, loading, resultsUnavailable, eventsUnavailable }: {
@@ -72,7 +72,7 @@ export function DevelopmentProgressDetail({ session, evidence, events, loading, 
   return <>
     <section aria-label="当前进展" className="space-y-3"><h2 className="text-base font-semibold">当前进展</h2><DevelopmentProgressRow detail session={{ ...session, syncEvents: events, evidence }} search="" /></section>
     <Card aria-label="最近进展" className="shadow-none">
-      <CardHeader className="p-4 pb-3"><CardTitle className="text-base">最近进展</CardTitle><p className="text-sm text-muted-foreground">展示最近同步的开发进展和状态变化，最多 10 条。</p></CardHeader>
+      <CardHeader className="p-4 pb-3"><CardTitle className="text-base">最近进展</CardTitle><p className="text-sm text-muted-foreground">按页查看开发进展和状态变化，每页 20 条。</p></CardHeader>
       <CardContent className="p-4 pt-0">
         {timeline.length ? <ol className="space-y-4 border-l border-border pl-4">{timeline.map((event) => {
           const message = [event.payload.summary, event.payload.message, event.payload.blockedReason, event.payload.errorMessage, event.payload.reason]

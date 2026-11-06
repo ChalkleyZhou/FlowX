@@ -44,8 +44,8 @@ export class WorkflowController {
   }
 
   @Get()
-  findAll(@Query('runType') runType?: string) {
-    return this.workflowService.findAll(runType ? { runType } : undefined);
+  findAll(@Query() query: import('../common/pagination').PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; excludeSuperseded?: string | boolean; activeOnly?: string | boolean; terminalOnly?: string | boolean; requirementId?: string; status?: string; runType?: string; q?: string } = {}) {
+    return this.workflowService.findPage(query);
   }
 
   @Get(':id/artifacts/execution')
@@ -90,14 +90,17 @@ export class WorkflowController {
     );
   }
 
+  @Get(':id/repositories')
+  listRepositories(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery = {}) { return this.workflowService.listRepositoriesPage(id, query); }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.workflowService.findOne(id);
+    return this.workflowService.findDetail(id);
   }
 
   @Get(':id/history')
-  history(@Param('id') id: string) {
-    return this.workflowService.getHistory(id);
+  history(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery = {}) {
+    return this.workflowService.getHistoryPage(id, query);
   }
 
   @Delete(':id')

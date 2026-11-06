@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useRememberedSearchFilters } from '../../utils/list-filter-storage';
 import { api } from '../../api';
+import { useQualityPage } from './use-quality-page';
 import { useScopedProjectId } from '../../project-scope-context';
 import { EmptyState } from '../../components/EmptyState';
 import { ProjectRequiredState } from '../../components/ProjectRequiredState';
@@ -22,7 +23,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
-import { useToast } from '../../components/ui/toast';
 import type { Project, TestRequest, WorkflowRun } from '../../types';
 import { CreateRequestDialog } from './QualityDialogs';
 import {
@@ -38,14 +38,8 @@ const ALL = '__all__';
 const PAGE_SIZE = 8;
 
 export function QualityRequestsPage() {
-  const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   useRememberedSearchFilters('quality-requests', ['status', 'q']);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [workflowRuns, setWorkflowRuns] = useState<WorkflowRun[]>([]);
-  const [requests, setRequests] = useState<TestRequest[]>([]);
   const createFromWorkflow = searchParams.get('create') === '1';
   const projectId = useScopedProjectId();
   const initialProjectId = projectId || undefined;
@@ -57,28 +51,16 @@ export function QualityRequestsPage() {
   const keyword = searchParams.get('q') ?? '';
   const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
 
-  async function refresh(silent = false) {
-    silent ? setRefreshing(true) : setLoading(true);
-    try {
-      const [projectList, workflowList, requestList] = await Promise.all([
-        api.getProjects(),
-        api.getWorkflowRuns(),
-        api.getTestRequests(),
-      ]);
-      setProjects(projectList);
-      setWorkflowRuns(workflowList);
-      setRequests(requestList);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载提测记录失败');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }
-
+  const result = useQualityPage(JSON.stringify({ projectId, page, status, keyword }), () =>
+    api.getTestRequests({ projectId, page, pageSize: PAGE_SIZE, status: status === ALL ? undefined : status, q: keyword.trim() || undefined }), Boolean(projectId), nextPage => updateQuery({ page: String(nextPage) }));
+  const { loading, refreshing, items: requests, total, summary = {} } = result;
+  const refresh = (silent = false) => result.refresh({ silent });
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [workflowRuns] = useState<WorkflowRun[]>([]);
   useEffect(() => {
-    void refresh();
-  }, []);
+    if (!dialogOpen || !projectId) return;
+    void api.getProject(projectId).then(project => setProjects([project]));
+  }, [dialogOpen, projectId]);
 
   useEffect(() => {
     if (createFromWorkflow) {
@@ -100,29 +82,11 @@ export function QualityRequestsPage() {
     setSearchParams(next, { replace: true });
   }
 
-  const filteredRequests = useMemo(() => {
-    const normalizedKeyword = keyword.trim().toLowerCase();
-    return requests.filter((request) => {
-      if (!projectId || request.projectId !== projectId) return false;
-      if (status !== ALL && request.status !== status) return false;
-      if (!normalizedKeyword) return true;
-      return [
-        request.title,
-        request.description ?? '',
-        request.project.name,
-        request.projectVersion.name,
-        ...request.requirementLinks.map((link) => link.requirement.title),
-      ].join(' ').toLowerCase().includes(normalizedKeyword);
-    });
-  }, [keyword, projectId, requests, status]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredRequests.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const pageRows = filteredRequests.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-  const projectRequests = requests.filter((item) => projectId && item.projectId === projectId);
-  const activeCount = projectRequests.filter((item) => ['DRAFT', 'READY', 'IN_TEST'].includes(item.status)).length;
-  const readyCount = projectRequests.filter((item) => item.status === 'READY').length;
-  const passedCount = projectRequests.filter((item) => item.status === 'PASSED').length;
+  const currentPage = page;
+  const pageRows = requests;
+  const activeCount = summary.activeCount ?? 0;
+  const readyCount = summary.readyCount ?? 0;
+  const passedCount = summary.passedCount ?? 0;
 
   return (
     <>
@@ -139,7 +103,7 @@ export function QualityRequestsPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="提测总数" value={projectRequests.length} />
+        <MetricCard label="提测总数" value={summary.total ?? total} />
         <MetricCard label="进行中" value={activeCount} />
         <MetricCard label="待执行" value={readyCount} />
         <MetricCard label="已通过" value={passedCount} />
@@ -151,7 +115,7 @@ export function QualityRequestsPage() {
             <SectionHeader
               eyebrow="Test Requests"
               title="提测记录"
-              description={`当前显示 ${filteredRequests.length} 条记录`}
+              description={`当前显示 ${total} 条记录`}
             />
           </CardHeader>
           <CardContent className="p-5 pt-0">
@@ -181,6 +145,7 @@ export function QualityRequestsPage() {
               )}
             />
 
+            {result.error ? <p role="alert">{result.error}<button onClick={() => void refresh()}>重试</button></p> : null}
             {!projectId ? <ProjectRequiredState /> : loading ? <LoadingState /> : pageRows.length ? (
               <div className="space-y-3">
                 {pageRows.map((request) => (
@@ -213,7 +178,7 @@ export function QualityRequestsPage() {
                 ))}
                 <Pagination
                   page={currentPage}
-                  total={filteredRequests.length}
+                  total={total}
                   pageSize={PAGE_SIZE}
                   onChange={(nextPage) => updateQuery({ page: String(nextPage) })}
                 />

@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api';
+import { useQualityPage } from './use-quality-page';
+import { ListPagination } from '../../components/ListPagination';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { useToast } from '../../components/ui/toast';
 import type {
   QualityCaseSelection,
-  TestCaseDefinition,
-  TestCaseLibrary,
-  TestCaseModule,
   TestDesign,
 } from '../../types';
 
@@ -23,18 +22,18 @@ export function QualityScopePanel(props: Props) {
 }
 function QualityScopeContent({ workspaceId, projectId, design, onSelectionChange, onDesignChange }: Props) {
   const toast = useToast();
-  const [libraries, setLibraries] = useState<TestCaseLibrary[]>([]);
-  const [modules, setModules] = useState<TestCaseModule[]>([]);
+  const [libraryPage, setLibraryPage] = useState(1);
+  const [libraryQuery, setLibraryQuery] = useState('');
+  const [casePage, setCasePage] = useState(1);
+  const [modulePage, setModulePage] = useState(1);
+  const [moduleLibrary, setModuleLibrary] = useState('');
   const [selection, setSelection] = useState<QualityCaseSelection>(
     design?.caseSelection ?? { libraryIds: [] },
   );
-  const [cases, setCases] = useState<TestCaseDefinition[]>([]);
   const [checked, setChecked] = useState<string[]>([]);
   const [moduleId, setModuleId] = useState('all');
   const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
   const callback = useRef(onSelectionChange);
   callback.current = onSelectionChange;
   const frozen =
@@ -50,89 +49,35 @@ function QualityScopeContent({ workspaceId, projectId, design, onSelectionChange
   const dirty = Boolean(design && normalizeSelection(design.caseSelection) !== normalizeSelection(selection));
   const canSupplement =
     !dirty && !frozen && (!design || ['WAITING_REVIEW', 'NOT_STARTED'].includes(design.status));
+  const librariesResult = useQualityPage(JSON.stringify({ workspaceId, projectId, libraryPage, libraryQuery }), () => api.getTestCaseLibraries({ workspaceId, projectId, page: libraryPage, pageSize: 10, q: libraryQuery || undefined }), true, setLibraryPage);
+  const libraries = librariesResult.items;
+  const modulesResult = useQualityPage(`${moduleLibrary}:${modulePage}`, () => api.getTestCaseModules(moduleLibrary, { page: modulePage, pageSize: 10 }), Boolean(moduleLibrary), setModulePage);
+  const modules = modulesResult.items;
+  const casesResult = useQualityPage(JSON.stringify({ workspaceId, projectId, selection, moduleId, query, casePage }), () => api.getTestCasesPage({ workspaceId, projectId, libraryIds: selection.libraryIds, moduleIds: selection.moduleIds, priorities: selection.priorities, moduleId: moduleId === 'all' ? undefined : moduleId, status: 'ACTIVE', q: query.trim() || undefined, page: casePage, pageSize: 20 }), Boolean(selection.libraryIds.length), setCasePage);
+  const visible = casesResult.items;
+  const loading = librariesResult.loading || casesResult.loading;
+  const error = librariesResult.error || modulesResult.error || casesResult.error;
+  const initialized = useRef(false);
   useEffect(() => {
-    let active = true;
-    void api
-      .getTestCaseLibraries({ workspaceId, projectId })
-      .then((items) => {
-        if (!active) return;
-        setLibraries(items);
-        const initial = design?.caseSelection ?? {
-          libraryIds: items.filter((item) => item.projectId === projectId).map((item) => item.id),
-        };
-        setSelection(initial);
-        callback.current?.(initial);
-        setLoading(false);
-      })
-      .catch((cause) => {
-        if (active) {
-          setError(cause instanceof Error ? cause.message : '加载用例库失败');
-          setLoading(false);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [workspaceId, projectId]);
-  useEffect(() => {
-    let active = true;
-    setChecked([]);
-    setCases([]);
-    setModules([]);
-    if (!selection.libraryIds.length) return;
-    setLoading(true);
-    void Promise.all(
-      selection.libraryIds.map(async (libraryId) => ({
-        modules: await api.getTestCaseModules(libraryId),
-        cases: await api.getTestCases({ workspaceId, projectId, libraryId }),
-      })),
-    )
-      .then((groups) => {
-        if (active) {
-          setModules(groups.flatMap((group) => group.modules));
-          setCases(groups.flatMap((group) => group.cases));
-          setError('');
-        }
-      })
-      .catch((cause) => {
-        if (active) setError(cause instanceof Error ? cause.message : '加载范围失败');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [selection.libraryIds.join(','), workspaceId, projectId]);
+    if (initialized.current || librariesResult.loading || !librariesResult.items.length) return;
+    initialized.current = true;
+    const initial = design?.caseSelection ?? { libraryIds: [] };
+    setSelection(initial);
+    setModuleLibrary(initial.libraryIds[0] ?? '');
+    callback.current?.(initial);
+  }, [librariesResult.items, librariesResult.loading, projectId]);
   function update(next: QualityCaseSelection) {
     setSelection(next);
     callback.current?.(next);
+    setCasePage(1);
     setChecked([]);
   }
-  const descendants = new Set(moduleId !== 'all' ? [moduleId] : []);
-  for (let index = 0; index < modules.length; index += 1)
-    for (const module of modules)
-      if (module.parentId && descendants.has(module.parentId)) descendants.add(module.id);
-  const selectedModules = new Set(selection.moduleIds ?? []);
-  for (let index = 0; index < modules.length; index += 1)
-    for (const module of modules)
-      if (module.parentId && selectedModules.has(module.parentId)) selectedModules.add(module.id);
-  const visible = cases.filter(
-    (item) =>
-      item.status === 'ACTIVE' &&
-      (moduleId === 'all' || Boolean(item.moduleId && descendants.has(item.moduleId))) &&
-      (!selectedModules.size || Boolean(item.moduleId && selectedModules.has(item.moduleId))) &&
-      (!selection.priorities?.length || selection.priorities.includes(item.priority)) &&
-      (!query.trim() ||
-        `${item.title} ${item.externalId ?? ''}`.toLowerCase().includes(query.trim().toLowerCase())),
-  );
   async function saveSelection() {
     if (!design) return;
     setBusy(true);
     try {
-      onDesignChange?.(
-        await api.updateQualitySelection(design.id, { revision: design.revision, caseSelection: selection }),
-      );
+      const updated = await api.updateQualitySelection(design.id, { revision: design.revision, caseSelection: selection });
+      onDesignChange?.(updated);
       toast.success('选例范围已保存，请重新生成建议');
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : '保存选例范围失败');
@@ -144,9 +89,8 @@ function QualityScopeContent({ workspaceId, projectId, design, onSelectionChange
     if (!design || !checked.length) return;
     setBusy(true);
     try {
-      onDesignChange?.(
-        await api.addQualityCandidates(design.id, { revision: design.revision, definitionIds: checked }),
-      );
+      const updated = await api.addQualityCandidates(design.id, { revision: design.revision, definitionIds: checked });
+      onDesignChange?.(updated);
       setChecked([]);
       toast.success('人工补选已纳入');
     } catch (cause) {
@@ -161,7 +105,7 @@ function QualityScopeContent({ workspaceId, projectId, design, onSelectionChange
       <div>
         <h2 className="font-semibold">选择用例范围</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          默认使用项目库；共享库需明确选择。父模块包含子模块。AI 建议之外的用例可人工补选。
+          请明确选择本次使用的项目库或共享库；翻页后保留已选范围。父模块包含子模块。AI 建议之外的用例可人工补选。
         </p>
       </div>
       {error ? (
@@ -172,6 +116,7 @@ function QualityScopeContent({ workspaceId, projectId, design, onSelectionChange
       <div className="grid gap-4 lg:grid-cols-[200px_minmax(0,1fr)_200px]">
         <fieldset className="space-y-2">
           <legend className="mb-2 text-sm font-medium">用例库</legend>
+          <Input aria-label="搜索用例库" value={libraryQuery} onChange={event => { setLibraryQuery(event.target.value); setLibraryPage(1); }} />
           {libraries.map((library) => (
             <label key={library.id} className="flex items-start gap-2 text-sm">
               <input
@@ -196,6 +141,7 @@ function QualityScopeContent({ workspaceId, projectId, design, onSelectionChange
               </span>
             </label>
           ))}
+          <ListPagination page={libraryPage} total={librariesResult.total} pageSize={10} onPageChange={setLibraryPage} />
           {!libraries.length && !loading ? (
             <p className="text-sm text-muted-foreground">暂无可用用例库，请先创建项目用例库。</p>
           ) : null}
@@ -207,13 +153,13 @@ function QualityScopeContent({ workspaceId, projectId, design, onSelectionChange
               aria-label="搜索补选用例"
               placeholder="搜索标题或编号"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => { setQuery(e.target.value); setCasePage(1); }}
             />
             <select
               className="max-w-full rounded border bg-background p-2 text-sm"
               aria-label="筛选用例模块"
               value={moduleId}
-              onChange={(e) => setModuleId(e.target.value)}
+              onChange={(e) => { setModuleId(e.target.value); setCasePage(1); }}
             >
               <option value="all">全部模块</option>
               {modules.map((module) => (
@@ -223,6 +169,7 @@ function QualityScopeContent({ workspaceId, projectId, design, onSelectionChange
               ))}
             </select>
           </div>
+          <select aria-label="模块所属用例库" value={moduleLibrary} onChange={event => { setModuleLibrary(event.target.value); setModulePage(1); }} className="rounded border bg-background p-2 text-sm"><option value="">选择用例库加载模块</option>{libraries.map(library => <option key={library.id} value={library.id}>{library.name}</option>)}</select>
           <fieldset className="flex flex-wrap gap-3">
             <legend className="mb-1 text-xs text-muted-foreground">
               生成范围模块（不选表示所选库全部模块）
@@ -246,6 +193,7 @@ function QualityScopeContent({ workspaceId, projectId, design, onSelectionChange
               </label>
             ))}
           </fieldset>
+          <ListPagination page={modulePage} total={modulesResult.total} pageSize={10} onPageChange={setModulePage} />
           <div className="max-h-64 space-y-1 overflow-y-auto rounded border p-2">
             {loading ? (
               <p role="status" className="p-2 text-sm">
@@ -253,7 +201,7 @@ function QualityScopeContent({ workspaceId, projectId, design, onSelectionChange
               </p>
             ) : (
               visible.map((item) => {
-                const included = design?.candidates.some(
+                const included = design?.candidates?.some(
                   (candidate) =>
                     candidate.sourceDefinitionId === item.id &&
                     candidate.action !== 'EXCLUDE' &&
@@ -290,6 +238,7 @@ function QualityScopeContent({ workspaceId, projectId, design, onSelectionChange
               </p>
             ) : null}
           </div>
+          <ListPagination page={casePage} total={casesResult.total} pageSize={20} loading={casesResult.refreshing} onPageChange={setCasePage} />
           {dirty && !frozen ? (
             <p className="text-sm text-amber-700 dark:text-amber-400">
               选例范围尚未保存，请先保存范围，再人工补选；保存会清空旧建议。
@@ -312,7 +261,7 @@ function QualityScopeContent({ workspaceId, projectId, design, onSelectionChange
             已选 {selection.libraryIds.length} 个库 · {selection.moduleIds?.length ?? 0} 个限定模块
           </p>
           <p>
-            可见用例 {visible.length} 条 · 补选 {checked.length} 条
+            匹配用例 {casesResult.total} 条 · 补选 {checked.length} 条
           </p>
           {summary ? (
             <>

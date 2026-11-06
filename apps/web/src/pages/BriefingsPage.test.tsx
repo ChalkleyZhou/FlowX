@@ -1,3 +1,4 @@
+import { pageResult } from './quality/page-result-test';
 // @vitest-environment jsdom
 
 import { act } from 'react';
@@ -10,6 +11,7 @@ import { BriefingsPage } from './BriefingsPage';
 
 vi.mock('../api', () => ({
   api: {
+    getProject: vi.fn(),
     getProjects: vi.fn(),
     getProjectBriefings: vi.fn(),
     listBriefingFeeds: vi.fn(),
@@ -28,15 +30,15 @@ describe('BriefingsPage', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
-    vi.mocked(api.getProjects).mockResolvedValue([
+    vi.mocked(api.getProject).mockImplementation(async id => ([
       {
         id: 'project-1',
         name: 'FlowX',
         workspace: { id: 'workspace-1', name: '研发平台', repositories: [] },
       },
-    ]);
-    vi.mocked(api.getProjectBriefings).mockResolvedValue([]);
-    vi.mocked(api.listBriefingFeeds).mockResolvedValue([
+    ]).find(project => project.id === id)!);
+    vi.mocked(api.getProjectBriefings).mockResolvedValue(pageResult([]));
+    vi.mocked(api.listBriefingFeeds).mockResolvedValue(pageResult([
       {
         id: 'feed-1',
         projectId: 'project-1',
@@ -48,7 +50,7 @@ describe('BriefingsPage', () => {
         repositoryIds: [],
         deliveryTargetIds: [],
       },
-    ]);
+    ]));
     vi.mocked(api.generateBriefingFeed).mockResolvedValue({
       id: 'briefing-1',
       projectId: 'project-1',
@@ -117,7 +119,7 @@ describe('BriefingsPage', () => {
   });
 
   it('generates the selected feed when the project has more than one', async () => {
-    vi.mocked(api.listBriefingFeeds).mockResolvedValue([
+    vi.mocked(api.listBriefingFeeds).mockResolvedValue(pageResult([
       {
         id: 'feed-1',
         projectId: 'project-1',
@@ -140,7 +142,7 @@ describe('BriefingsPage', () => {
         repositoryIds: ['repo-2'],
         deliveryTargetIds: [],
       },
-    ]);
+    ]));
 
     await renderPage();
 
@@ -153,7 +155,7 @@ describe('BriefingsPage', () => {
       feedTrigger?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     await act(async () => {
-      await Promise.resolve();
+      await new Promise(resolve => setTimeout(resolve, 0));
     });
 
     const backendOption = Array.from(document.querySelectorAll('[role="option"]')).find((item) =>
@@ -180,7 +182,7 @@ describe('BriefingsPage', () => {
   });
 
   it('does not generate when the project has no feeds', async () => {
-    vi.mocked(api.listBriefingFeeds).mockResolvedValue([]);
+    vi.mocked(api.listBriefingFeeds).mockResolvedValue(pageResult([]));
 
     await renderPage();
 
@@ -239,7 +241,7 @@ describe('BriefingsPage', () => {
   });
 
   it('restores the last selected project when re-entering the page', async () => {
-    vi.mocked(api.getProjects).mockResolvedValue([
+    vi.mocked(api.getProject).mockImplementation(async id => ([
       {
         id: 'project-1',
         name: 'FlowX',
@@ -250,7 +252,7 @@ describe('BriefingsPage', () => {
         name: 'Portal',
         workspace: { id: 'workspace-2', name: '业务平台', repositories: [] },
       },
-    ]);
+    ]).find(project => project.id === id)!);
     window.localStorage.setItem(
       'flowx-briefings-page-preferences',
       JSON.stringify({ period: 'WEEKLY' }),
@@ -258,12 +260,12 @@ describe('BriefingsPage', () => {
 
     await renderPage('/briefings?projectId=project-2');
 
-    expect(api.getProjectBriefings).toHaveBeenCalledWith('project-2');
+    expect(api.getProjectBriefings).toHaveBeenCalledWith('project-2', { page: 1, pageSize: 20 });
     expect(document.body.textContent).toContain('Portal');
   });
 
   it('shows weekly briefing type and range in history', async () => {
-    vi.mocked(api.getProjectBriefings).mockResolvedValue([
+    vi.mocked(api.getProjectBriefings).mockResolvedValue(pageResult([
       {
         id: 'weekly-1',
         projectId: 'project-1',
@@ -281,7 +283,7 @@ describe('BriefingsPage', () => {
         createdAt: '2026-06-21T16:00:00.000Z',
         updatedAt: '2026-06-21T16:00:00.000Z',
       },
-    ]);
+    ]));
 
     await renderPage();
 

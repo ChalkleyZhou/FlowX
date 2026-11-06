@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../../api';
+import { ListPagination } from '../../components/ListPagination';
 import { EmptyState } from '../../components/EmptyState';
 import { PageHeader } from '../../components/PageHeader';
 import { Button } from '../../components/ui/button';
@@ -24,6 +25,8 @@ function QualityPreparationContent({ requirementId }: { requirementId: string })
   const navigate = useNavigate();
   const toast = useToast();
   const [requirement, setRequirement] = useState<Requirement>();
+  const [runPage, setRunPage] = useState(1);
+  const [runTotal, setRunTotal] = useState(0);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [existing, setExisting] = useState<TestDesign>();
@@ -41,24 +44,22 @@ function QualityPreparationContent({ requirementId }: { requirementId: string })
       try {
         const requirement = await api.getRequirement(requirementId);
         const [allRuns, designs] = await Promise.all([
-          api.getWorkflowRuns(),
+          api.getWorkflowRuns({ requirementId, page: runPage, pageSize: 10, excludeSuperseded: true }),
           api.getTestDesigns({
+            requirementId, page: 1, pageSize: 1,
             projectId: requirement.project.id,
             projectVersionId: requirement.versionId ?? undefined,
           }),
         ]);
         if (!active) return;
-        const linked = allRuns.filter(
-          (run) => run.requirement.id === requirementId && !run.supersededByChangeId,
-        );
+        const lastPage = Math.max(1, allRuns.totalPages);
+        if (runPage > lastPage) { setRunPage(lastPage); return; }
+        const linked = allRuns.items;
+        setRunTotal(allRuns.total);
         setRequirement(requirement);
         setRuns(linked);
-        setSelected(linked.filter(sourceReady).map((run) => run.id));
-        setExisting(
-          designs.find((design) =>
-            design.requirements?.some((link) => link.requirement.id === requirementId),
-          ),
-        );
+        setSelected(current => current.length ? current : linked.filter(sourceReady).map(run => run.id));
+        setExisting(designs.items[0]);
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : '加载测试准备失败');
       } finally {
@@ -69,7 +70,7 @@ function QualityPreparationContent({ requirementId }: { requirementId: string })
     return () => {
       active = false;
     };
-  }, [requirementId]);
+  }, [requirementId, runPage]);
   async function create() {
     if (
       !requirement?.project.workspace ||
@@ -186,6 +187,7 @@ function QualityPreparationContent({ requirementId }: { requirementId: string })
                 · {run.status}
               </label>
             ))}
+            <ListPagination page={runPage} total={runTotal} pageSize={10} onPageChange={setRunPage} />
             {!runs.length ? (
               <p className="text-sm">
                 暂无研发流程，请先

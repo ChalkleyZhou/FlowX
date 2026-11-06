@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { pageResult } from './page-result-test';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
@@ -13,6 +14,13 @@ import { QualityCreateRunDialog } from './QualityCreateRunDialog';
 vi.mock('../../api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api')>()),
   api: {
+    getTestRunCases: vi.fn(),
+    getTestRunTargets: vi.fn(),
+    getTestRunExecutions: vi.fn(),
+    getTestRequestSnapshots: vi.fn(),
+    getTestRuns: vi.fn(),
+    getQualityReportBaselines: vi.fn(),
+    getQualityReportSupersessions: vi.fn(),
     createLocalTestRun: vi.fn(),
     createTestRun: vi.fn(),
     getOrganizationMembers: vi.fn(),
@@ -103,10 +111,20 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+function mockRunPages(value: TestRun) {
+ vi.mocked(api.getTestRunCases).mockResolvedValue(pageResult(value.cases ?? [], { summary: { completedCount: value.cases?.filter(c => c.result).length ?? 0 } }));
+ vi.mocked(api.getTestRunTargets).mockResolvedValue(pageResult(value.targets ?? []));
+ vi.mocked(api.getTestRunExecutions).mockResolvedValue(pageResult(value.executions ?? [])); return value;
+}
 describe('质量执行与报告', () => {
   let container: HTMLDivElement;
   let root: Root;
   beforeEach(() => {
+    mockRunPages(run);
+    vi.mocked(api.getTestRequestSnapshots).mockResolvedValue(pageResult(run.cases?.map(row => row.snapshot) ?? []));
+    vi.mocked(api.getTestRuns).mockResolvedValue(pageResult([run]));
+    vi.mocked(api.getQualityReportBaselines).mockResolvedValue(pageResult(run.targets?.flatMap(target => target.expectedRevisions) ?? []));
+    vi.mocked(api.getQualityReportSupersessions).mockResolvedValue(pageResult([]));
     vi.mocked(probeFlowxLocal).mockResolvedValue(true);
     vi.mocked(launchFlowxLocal).mockResolvedValue({
       ok: true,
@@ -122,9 +140,9 @@ describe('质量执行与报告', () => {
       expiresAt: '2099-01-01',
     });
     vi.clearAllMocks();
-    vi.mocked(api.getTestRun).mockResolvedValue(run);
-    vi.mocked(api.getQualityReports).mockResolvedValue([]);
-    vi.mocked(api.getBugs).mockResolvedValue([]);
+    vi.mocked(api.getTestRun).mockResolvedValue(mockRunPages(run));
+    vi.mocked(api.getQualityReports).mockResolvedValue(pageResult([]));
+    vi.mocked(api.getBugs).mockResolvedValue(pageResult([]));
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
       true;
     container = document.createElement('div');
@@ -190,9 +208,9 @@ describe('质量执行与报告', () => {
     const request = { id: 'request-1', testPlan: { snapshots: [run.cases![0].snapshot] } } as Parameters<
       typeof QualityCreateRunDialog
     >[0]['request'];
-    vi.mocked(api.getOrganizationMembers).mockResolvedValue([
+    vi.mocked(api.getOrganizationMembers).mockResolvedValue(pageResult([
       { id: 'tester-1', displayName: '张三', status: 'ACTIVE' },
-    ]);
+    ]));
     vi.mocked(api.createTestRun).mockResolvedValue({ ...run, executionMode: 'MANUAL' });
     await act(async () =>
       root.render(
@@ -207,10 +225,8 @@ describe('质量执行与报告', () => {
       mode.dispatchEvent(new Event('change', { bubbles: true }));
       await Promise.resolve();
     });
-    const assignee = document.querySelector('select[aria-label="执行人"]') as HTMLSelectElement;
+    await choosePaged('执行人', '张三');
     await act(async () => {
-      assignee.value = 'tester-1';
-      assignee.dispatchEvent(new Event('change', { bubbles: true }));
       (document.querySelector('input[aria-label="登录恢复 适用 Web"]') as HTMLInputElement).click();
     });
     await act(async () => {
@@ -225,6 +241,20 @@ describe('质量执行与报告', () => {
     });
   });
 
+  it('启动与筛选目标均可分页选择首页以外的目标', async () => {
+    vi.mocked(api.getTestRunTargets).mockImplementation(async (_id, query) => pageResult([{ ...run.targets![0], id: `target-${query?.page ?? 1}`, key: query?.page === 2 ? 'api' : 'web', name: query?.page === 2 ? '后页API' : '首页Web' }], { page: query?.page ?? 1, total: 21, totalPages: 2 }));
+    await renderRun();
+    for (const label of ['启动目标端', '按目标端筛选']) {
+      await act(async () => document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)?.click());
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+      await act(async () => Array.from(document.querySelectorAll('button')).find(item => item.textContent === '加载更多')?.click());
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+      expect(api.getTestRunTargets).toHaveBeenLastCalledWith('run-1', { page: 2, pageSize: 20, q: undefined });
+      await act(async () => Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(item => item.textContent === '后页API')?.click());
+      expect(document.querySelector(`button[aria-label="${label}"]`)?.textContent).toContain('后页API');
+    }
+    expect(api.getTestRunCases).toHaveBeenLastCalledWith('run-1', expect.objectContaining({ targetId: 'target-2' }));
+  });
   it('人工执行详情可以回传逐例结果并刷新轮次', async () => {
     const manualRun: TestRun = {
       ...run,
@@ -232,7 +262,7 @@ describe('质量执行与报告', () => {
       cases: [{ ...run.cases![0], result: null }],
       executions: [],
     };
-    vi.mocked(api.getTestRun).mockResolvedValue(manualRun);
+    vi.mocked(api.getTestRun).mockResolvedValue(mockRunPages(manualRun));
     vi.mocked(api.reportTestResult).mockResolvedValue({ result: { id: 'result-2', result: 'PASSED' }, runStatus: 'PASSED', testRequestStatus: 'PASSED' });
     await renderRun();
     await act(async () => {
@@ -285,7 +315,7 @@ describe('质量执行与报告', () => {
       return <button onClick={() => navigate('/quality/test-runs/run-2')}>切换轮次</button>;
     }
     await renderRun(<Switch />);
-    vi.mocked(api.getTestRun).mockResolvedValue({ ...run, id: 'run-2', name: '新轮次' });
+    vi.mocked(api.getTestRun).mockResolvedValue(mockRunPages({ ...run, id: 'run-2', name: '新轮次' }));
     await act(async () =>
       Array.from(container.querySelectorAll('button'))
         .find((item) => item.textContent === '切换轮次')
@@ -295,12 +325,15 @@ describe('质量执行与报告', () => {
     expect(container.textContent).toContain('新轮次');
     expect(container.querySelector('.text-2xl')?.textContent).toBe('新轮次');
   });
+  async function choosePaged(label: string, option: string) {
+    await act(async () => { document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)?.click(); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    const candidate = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(item => item.textContent === option);
+    expect(candidate).toBeTruthy();
+    await act(async () => { candidate?.click(); });
+  }
   async function launch() {
-    const select = container.querySelector('select[aria-label="启动目标端"]') as HTMLSelectElement;
-    await act(async () => {
-      select.value = 'web-1';
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    await choosePaged('启动目标端', 'Web');
     await act(async () =>
       Array.from(container.querySelectorAll('button'))
         .find((item) => item.textContent === '在本地打开测试任务')
@@ -353,7 +386,7 @@ describe('质量执行与报告', () => {
     expect(container.textContent).toContain('设备进程可能仍在运行');
   });
   it('失败轮次也能生成阶段报告，生成不会结束轮次', async () => {
-    vi.mocked(api.getTestRun).mockResolvedValue({ ...run, status: 'FAILED' });
+    vi.mocked(api.getTestRun).mockResolvedValue(mockRunPages({ ...run, status: 'FAILED' }));
     await renderRun();
     await act(async () =>
       Array.from(container.querySelectorAll('button'))
@@ -369,6 +402,8 @@ describe('质量执行与报告', () => {
   it('任务汇总只提交明确选中的轮次、代码基线和回归替代范围', async () => {
     const initial: TestRun = { ...run, status: 'FAILED', cases: run.cases!.map(row => ({ ...row, result: { ...row.result!, bugId: 'bug-1' } })) };
     const regression: TestRun = { ...run, id: 'run-2', name: '独立回归', status: 'PASSED', runType: 'REGRESSION', sourceBug: { id: 'bug-1', title: '跳转错误', fixWorkflowRun: { status: 'DONE' } }, cases: run.cases!.map(row => ({ ...row, id: 'regression-row-1', result: { id: 'regression-result', result: 'PASSED' } })) };
+    vi.mocked(api.getTestRuns).mockResolvedValue(pageResult([initial, regression]));
+    vi.mocked(api.getQualityReportSupersessions).mockResolvedValue(pageResult([{ previousRunId: 'run-1', regressionRunId: 'run-2', testRunCaseIds: ['row-1'], label: '功能初测 / 登录恢复 → 独立回归' }]));
     await act(async () => root.render(<MemoryRouter><QualityReportsPanel requestId="request-1" runs={[initial, regression]} /></MemoryRouter>));
     const check = async (prefix: string) => {
       const label = Array.from(container.querySelectorAll('label')).find(label => label.textContent?.trim().startsWith(prefix));
@@ -383,12 +418,14 @@ describe('质量执行与报告', () => {
     });
   });
   it('报告列表区分轮次和任务汇总，并使用认证预览和下载', async () => {
-    vi.mocked(api.getQualityReports).mockResolvedValue([
+    vi.mocked(api.getQualityReports).mockResolvedValue(pageResult([
       {
         id: 'report-1',
         requestId: 'request-1',
         runId: 'run-1',
         kind: 'RUN',
+        mode: 'PROGRESS',
+        summary: { conclusion: 'FAILED', total: 1, passed: 0, failed: 1, blocked: 0, skipped: 0, pending: 0, completed: 1, passRate: 0, completionRate: 1 },
         revision: 2,
         artifactId: 'artifact-report',
         createdAt: '2026-11-04T01:00:00Z',
@@ -416,7 +453,7 @@ describe('质量执行与报告', () => {
           createdAt: '2026-11-04T01:00:00Z',
         },
       },
-    ]);
+    ]));
     await act(async () =>
       root.render(
         <MemoryRouter>
@@ -426,7 +463,7 @@ describe('质量执行与报告', () => {
     );
     expect(container.textContent).toContain('轮次报告');
     expect(container.textContent).toContain('阶段报告');
-    expect(container.textContent).toContain('abc123');
+    expect(container.textContent).toContain('FAILED');
     vi.mocked(api.fetchArtifactContent).mockResolvedValue(
       new Blob(['<h1>测试报告</h1>'], { type: 'text/html' }),
     );

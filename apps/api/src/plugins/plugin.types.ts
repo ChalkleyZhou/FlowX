@@ -1,3 +1,4 @@
+import type { PaginationQuery } from '../common/pagination';
 export interface BuiltInPluginUpdateOptions {
   yunxiaoOrganizationIdentifier?: string | null;
 }
@@ -21,9 +22,9 @@ export interface BuiltInPlugin {
     enabled: boolean,
     options?: BuiltInPluginUpdateOptions,
   ): Promise<unknown>;
-  getUnmatchedRecipients(organizationId: string): Promise<unknown>;
+  getUnmatchedRecipients(organizationId: string, query?: PaginationQuery & { q?: string }): Promise<unknown>;
   clearUnmatchedRecipients(organizationId: string, actingUserId: string): Promise<unknown>;
-  getProjectMembers(organizationId: string, projectId: string): Promise<unknown>;
+  getProjectMembers(organizationId: string, projectId: string, query?: { userId?: string }): Promise<unknown>;
   setMemberMapping(
     organizationId: string,
     actingUserId: string,

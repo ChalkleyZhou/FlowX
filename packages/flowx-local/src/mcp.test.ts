@@ -34,6 +34,8 @@ const output = {
   },
 };
 
+function testPage<T>(items: T[], page = 1, pageSize = 20) { return { items, total: items.length, page, pageSize, totalPages: 1 }; }
+
 function makeHome() {
   const home = mkdtempSync(join(tmpdir(), 'flowx-local-mcp-'));
   homes.push(home);
@@ -378,7 +380,7 @@ describe('flowx-local MCP server', () => {
         return new Response(JSON.stringify({ id: 'run-1', sourceFingerprint: 'fp-1' }), { status: 201 });
       }
       if (url.endsWith('/quality/local-smoke-runs/run-1/tasks')) {
-        return new Response(JSON.stringify({ id: 'run-1', targets: [{ id: 'target-web' }] }), { status: 200 });
+        return Response.json(testPage([{ id: 'case-1', target: { id: 'target-web' } }]));
       }
       if (url.endsWith('/quality/local-smoke-runs/run-1/claim')) {
         expect(init?.method).toBe('POST');
@@ -442,7 +444,7 @@ describe('flowx-local MCP server', () => {
       const url = String(input);
       if (url.endsWith('/projects') && (!init?.method || init.method === 'GET')) {
         return new Response(
-          JSON.stringify([
+          JSON.stringify(testPage([
             {
               id: 'proj_1',
               name: 'Demo',
@@ -455,7 +457,7 @@ describe('flowx-local MCP server', () => {
                 repositories: [{ id: 'repo_1', name: 'app', url: 'https://git.example/app.git' }],
               },
             },
-          ]),
+          ])),
           { status: 200 },
         );
       }
@@ -480,14 +482,12 @@ describe('flowx-local MCP server', () => {
     const listed = await client.callTool({ name: 'flowx_list_projects', arguments: {} });
     expect(listed.isError).toBeUndefined();
     const listedPayload = JSON.parse(String((listed.content as Array<{ text: string }>)[0].text));
-    expect(listedPayload.projects[0]).toMatchObject({
+    expect(listedPayload.items[0]).toMatchObject({
       id: 'proj_1',
       name: 'Demo',
       workspaceId: 'ws_1',
       workspaceName: 'WS',
       currentVersion: { id: 'ver-1', name: '2.6.0' },
-      versions: [{ id: 'ver-1', name: '2.6.0' }],
-      repositories: [{ id: 'repo_1', name: 'app' }],
     });
 
     const created = await client.callTool({
@@ -763,14 +763,14 @@ describe('flowx-local MCP server', () => {
       const url = String(input);
       if (url.endsWith('/cursor-local/workflow-position?workflowRunId=workflow-spec')) {
         return new Response(
-          JSON.stringify([
+          JSON.stringify(testPage([
             {
               workflowRunId: 'workflow-spec',
               status: 'SPEC_PLAN_PENDING',
               localAction: 'generate',
               stage: 'spec-plan',
             },
-          ]),
+          ])),
           { status: 200 },
         );
       }
@@ -784,14 +784,14 @@ describe('flowx-local MCP server', () => {
       arguments: { workflowRunId: 'workflow-spec' },
     });
     expect(result.isError).toBeUndefined();
-    expect(JSON.parse(String((result.content as Array<{ text: string }>)[0].text))).toEqual([
+    expect(JSON.parse(String((result.content as Array<{ text: string }>)[0].text))).toEqual(testPage([
       {
         workflowRunId: 'workflow-spec',
         status: 'SPEC_PLAN_PENDING',
         localAction: 'generate',
         stage: 'spec-plan',
       },
-    ]);
+    ]));
 
     await client.close();
     await server.close();
@@ -804,11 +804,11 @@ describe('flowx-local MCP server', () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
       if (url.includes('/cursor-local/tasks?') && url.includes('workspaceId=ws-1') && url.includes('projectId=proj-1') && url.includes('priority=HIGH')) {
-        return new Response(JSON.stringify([{ id: 'req-1', type: 'requirement' }]), { status: 200 });
+        return new Response(JSON.stringify(testPage([{ id: 'req-1', type: 'requirement' }])), { status: 200 });
       }
       if (url.endsWith('/cursor-local/opendesign-tasks?workspaceId=ws-1')) {
         return new Response(
-          JSON.stringify([
+          JSON.stringify(testPage([
             {
               kind: 'opendesign-workflow',
               workflowRunId: 'wf-1',
@@ -817,7 +817,7 @@ describe('flowx-local MCP server', () => {
               status: 'BRAINSTORM_PENDING',
               suggestedAction: 'brainstorm',
             },
-          ]),
+          ])),
           { status: 200 },
         );
       }
@@ -832,8 +832,8 @@ describe('flowx-local MCP server', () => {
     });
     expect(result.isError).toBeUndefined();
     expect(JSON.parse(String((result.content as Array<{ text: string }>)[0].text))).toEqual({
-      tasks: [{ id: 'req-1', type: 'requirement' }],
-      openDesignWorkflows: [
+      tasks: testPage([{ id: 'req-1', type: 'requirement' }]),
+      openDesignWorkflows: testPage([
         {
           kind: 'opendesign-workflow',
           workflowRunId: 'wf-1',
@@ -842,7 +842,7 @@ describe('flowx-local MCP server', () => {
           status: 'BRAINSTORM_PENDING',
           suggestedAction: 'brainstorm',
         },
-      ],
+      ]),
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
@@ -1217,6 +1217,7 @@ it('质量工具发现用例库与模块、过滤用例、生成确认设计、�
   const calls: Array<{ url: string; method?: string; body: unknown }> = [];
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
     calls.push({ url: String(url), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : {} });
+    if (!init?.method && !String(url).endsWith('/quality/capabilities') && (/case-libraries|test-cases|test-requests\?/.test(String(url)))) return Response.json(testPage([{ id: 'saved' }]));
     return new Response(JSON.stringify(String(url).endsWith('/quality/capabilities') ? { capabilities: ['local-test-runs'] } : { id: 'saved' }), { status: 200 });
   });
   const { client, server } = await connectClient(makeHome());
@@ -1301,6 +1302,7 @@ it('提测单工具按动作透传发现、创建与显式准备，候选保留�
   const calls: Array<{ url: string; method?: string; body: unknown }> = [];
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
     calls.push({ url: String(url), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : {} });
+    if (!init?.method && !String(url).endsWith('/quality/capabilities') && (/case-libraries|test-cases|test-requests\?/.test(String(url)))) return Response.json(testPage([{ id: 'saved' }]));
     return new Response(JSON.stringify(String(url).endsWith('/quality/capabilities') ? { capabilities: ['local-test-runs'] } : { id: 'request-1' }), { status: 200 });
   });
   const { client, server } = await connectClient(makeHome());
@@ -1326,4 +1328,50 @@ it('提测单工具按动作透传发现、创建与显式准备，候选保留�
     }
     expect(calls).toHaveLength(beforeInvalid);
   } finally { await client.close(); await server.close(); }
+});
+
+
+describe('MCP分页浏览契约', () => {
+  it('列表工具暴露分页schema、透传每种独立页码并保留metadata', async () => {
+    const homeDir = makeHome();
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
+    const requests: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(String(input)); requests.push(url.pathname + url.search);
+      expect(new Headers(init?.headers).get('X-FlowX-List-Contract')).toBe('pagination-v1');
+      if (url.pathname.endsWith('/quality/capabilities')) return Response.json({ capabilities: ['local-test-runs', 'pagination-v1'] });
+      return Response.json({ items: [], total: 21, page: Number(url.searchParams.get('page') || '1'), pageSize: Number(url.searchParams.get('pageSize') || '20'), totalPages: 3 });
+    }));
+    const { client, server } = await connectClient(homeDir);
+    const tools = await client.listTools();
+    for (const name of ['flowx_list_projects', 'flowx_list_tasks', 'flowx_list_case_libraries', 'flowx_list_case_modules', 'flowx_list_test_tasks', 'flowx_list_smoke_tasks']) {
+      expect(tools.tools.find(tool => tool.name === name)?.inputSchema.properties).toHaveProperty('page');
+    }
+    const result = await client.callTool({ name: 'flowx_list_tasks', arguments: { page: 2, pageSize: 10, q: 'login', openDesignPage: 3, openDesignPageSize: 10 } });
+    expect(result.isError).toBeUndefined();
+    const value = JSON.parse(String((result.content as Array<{ text: string }>)[0].text));
+    expect(value.tasks).toMatchObject({ page: 2, pageSize: 10, total: 21 });
+    expect(value.openDesignWorkflows).toMatchObject({ page: 3, pageSize: 10, total: 21 });
+    expect(requests.some(path => path.includes('/cursor-local/tasks?') && path.includes('q=login') && path.includes('page=2'))).toBe(true);
+    const projects = await client.callTool({ name: 'flowx_list_projects', arguments: { page: 2, pageSize: 10, q: '项目' } });
+    expect(projects.isError).toBeUndefined();
+    expect(JSON.parse(String((projects.content as Array<{ text: string }>)[0].text))).toMatchObject({ items: [], page: 2, pageSize: 10, total: 21 });
+    const cases = await client.callTool({ name: 'flowx_list_test_cases', arguments: { workspaceId: 'ws', libraryIds: ['lib-a', 'lib-b'], moduleIds: ['root', 'child'], priorities: ['P0', 'P1'], page: 2 } });
+    expect(cases.isError).toBeUndefined();
+    const caseUrl = new URL(requests.find(path => path.includes('/quality/test-cases?'))!, 'https://flowx.test');
+    expect(caseUrl.searchParams.get('libraryIds')).toBe('lib-a,lib-b');
+    expect(caseUrl.searchParams.get('moduleIds')).toBe('root,child');
+    expect(caseUrl.searchParams.get('priorities')).toBe('P0,P1');
+    await client.close(); await server.close();
+  });
+  it('旧服务端全量数组返回明确升级错误，不伪装为空列表', async () => {
+    const homeDir = makeHome();
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json([{ id: 'project-old' }])));
+    const { client, server } = await connectClient(homeDir);
+    const result = await client.callTool({ name: 'flowx_list_projects', arguments: {} });
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('PAGINATION_UPGRADE_REQUIRED');
+    await client.close(); await server.close();
+  });
 });

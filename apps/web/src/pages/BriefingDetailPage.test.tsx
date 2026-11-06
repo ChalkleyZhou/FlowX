@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { pageResult } from '../test-utils/page-result';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -11,6 +12,7 @@ import { BriefingDetailPage } from './BriefingDetailPage';
 vi.mock('../api', () => ({
   api: {
     getBriefing: vi.fn(),
+    getBriefingDeliveryLogs: vi.fn(),
     sendBriefing: vi.fn(),
   },
 }));
@@ -24,6 +26,7 @@ describe('BriefingDetailPage', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
+    vi.mocked(api.getBriefingDeliveryLogs).mockImplementation(async () => pageResult([{id:'log-1',deliveryTargetId:'target-1',channel:'EMAIL',status:'SUCCESS',createdAt:'2026-06-03T00:00:00.000Z',deliveryTarget:{id:'target-1',projectId:'project-1',type:'EMAIL',name:'Team',isActive:true,forBriefing:true,forCodeReview:true}}]));
     vi.mocked(api.getBriefing).mockResolvedValue({
       id: 'briefing-1',
       projectId: 'project-1',

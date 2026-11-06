@@ -2,7 +2,6 @@ import 'reflect-metadata';
 import { Module, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { pathToFileURL } from 'node:url';
-import { createLocalMcpServer } from '../../../../packages/flowx-local/src/mcp';
 import { LocalTestRunsController } from './local-test-runs.controller';
 import { TestReportsController } from './test-reports.controller';
 import { ClaimLocalSmokeDto } from './dto/local-smoke.dto';
@@ -189,6 +188,9 @@ describe('完整本地测试真实 SQLite 链路', () => {
     const localRequire = createRequire(resolve('../../packages/flowx-local/package.json'));
     const { Client } = await import(/* @vite-ignore */ pathToFileURL(localRequire.resolve('@modelcontextprotocol/sdk/client/index.js')).href);
     const { InMemoryTransport } = await import(/* @vite-ignore */ pathToFileURL(localRequire.resolve('@modelcontextprotocol/sdk/inMemory.js')).href);
+    // 本地包使用 NodeNext，API 使用 CommonJS；运行时加载避免跨包重复展开 MCP/Zod 泛型。
+    const localMcpPath = '../../../../packages/flowx-local/src/mcp';
+    const { createLocalMcpServer } = await import(localMcpPath);
     const server = createLocalMcpServer({ homeDir: join(directory, 'mcp-home') });
     const client = new Client({ name: 'quality-http-test', version: '1' });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

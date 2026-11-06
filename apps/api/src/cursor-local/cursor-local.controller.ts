@@ -7,43 +7,13 @@ export class CursorLocalController {
   constructor(private readonly cursorLocalService: CursorLocalService) {}
 
   @Get('tasks')
-  listTasks(
-    @Query('workspaceId') workspaceId: string | undefined,
-    @Query('projectId') projectId: string | undefined,
-    @Query('versionId') versionId: string | undefined,
-    @Query('planningStatus') planningStatus: string | undefined,
-    @Query('priority') priority: string | undefined,
-    @Req() req: CursorLocalRequest,
-  ) {
-    return this.cursorLocalService.listTasks({
-      workspaceId,
-      projectId,
-      versionId,
-      planningStatus,
-      priority,
-      session: req.authSession,
-    });
+  listTasks(@Query() query: import('../common/pagination').PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; planningStatus?: string; priority?: string; q?: string }, @Req() req: CursorLocalRequest) {
+    return this.cursorLocalService.listTasks({ ...query, session: req.authSession });
   }
-
   @Get('workflow-position')
-  listWorkflowPositions(
-    @Query('workspaceId') workspaceId: string | undefined,
-    @Query('workflowRunId') workflowRunId: string | undefined,
-    @Req() req: CursorLocalRequest,
-  ) {
-    return this.cursorLocalService.listWorkflowPositions({ workspaceId, workflowRunId, session: req.authSession });
-  }
-
+  listWorkflowPositions(@Query() query: import('../common/pagination').PaginationQuery & { workspaceId?: string; workflowRunId?: string; q?: string }, @Req() req: CursorLocalRequest) { return this.cursorLocalService.listWorkflowPositions({ ...query, session: req.authSession }); }
   @Get('opendesign-tasks')
-  listOpenDesignTasks(
-    @Query('workspaceId') workspaceId: string | undefined,
-    @Req() req: CursorLocalRequest,
-  ) {
-    return this.cursorLocalService.listOpenDesignTasks({
-      workspaceId,
-      session: req.authSession,
-    });
-  }
+  listOpenDesignTasks(@Query() query: import('../common/pagination').PaginationQuery & { workspaceId?: string; q?: string }, @Req() req: CursorLocalRequest) { return this.cursorLocalService.listOpenDesignTasks({ ...query, session: req.authSession }); }
 
   @Post('handoff')
   startHandoff(@Body() dto: StartLocalChatDto, @Req() req: CursorLocalRequest) {

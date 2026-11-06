@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+
+
+
+import { pageResult } from "../test-utils/page-result";
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -27,15 +31,15 @@ beforeEach(() => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   HTMLElement.prototype.scrollIntoView = vi.fn();
   container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
-  vi.mocked(api.getProjects).mockResolvedValue([]);
-  vi.mocked(api.getOrganizationMembers).mockResolvedValue([{ id: 'u1', displayName: '张三' }]);
+  vi.mocked(api.getProjects).mockResolvedValue(pageResult([]));
+  vi.mocked(api.getOrganizationMembers).mockResolvedValue(pageResult([{ id: 'u1', displayName: '张三' }]));
   vi.mocked(api.listExecutionSessions).mockImplementation(async (params) => ({
-    items: [row], nextCursor: null, total: 41, page: params?.page ?? 1, pageSize: 20, totalPages: 3,
+    items: [row], nextCursor:null, total: 41, page: params?.page ?? 1, pageSize: 20, totalPages: 3,
     counts: { active: 41, attention: 8, completed: 17, all: 60 },
   }));
   vi.mocked(api.getExecutionSession).mockResolvedValue(row);
-  vi.mocked(api.listExecutionSessionEvidence).mockResolvedValue([]);
-  vi.mocked(api.listExecutionSessionEvents).mockResolvedValue({ items: [], nextCursor: null });
+  vi.mocked(api.listExecutionSessionEvidence).mockResolvedValue(pageResult([]));
+  vi.mocked(api.listExecutionSessionEvents).mockResolvedValue({ items: [], total:1,page:1,pageSize:20,totalPages:1 });
 });
 afterEach(() => { act(() => root.unmount()); vi.useRealTimers(); document.body.innerHTML = ''; });
 async function render(initialPath = '/dashboard?projectId=p1') {
@@ -83,7 +87,7 @@ it('切换快捷视图和执行人后回到第一页', async () => {
   await click('需关注');
   expect(api.listExecutionSessions).toHaveBeenLastCalledWith(expect.objectContaining({ view: 'attention', page: 1, projectId: 'p1' }));
   const trigger = container.querySelector('[aria-label="按执行人筛选"]') as HTMLElement;
-  await act(async () => trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })));
+  await act(async () => {trigger.click();await new Promise(resolve => setTimeout(resolve,10));});
   const option = Array.from(document.querySelectorAll('[role="option"]')).find((item) => item.textContent === '张三') as HTMLElement;
   expect(option).toBeDefined();
   await act(async () => option.click());
@@ -107,7 +111,7 @@ it('展示实际进度、项目和测试证据，阻塞直接展示原因', asyn
     blockedReason: '等待接口确认', project: { name: '客户平台' },
     syncEvents: [{ id: 'event-1', eventType: 'execution.progressed', payload: { summary: '正在执行回归测试' }, occurredAt: row.createdAt } as never],
     evidence: [{ id: 'e1', evidenceType: 'TEST_RESULT', title: '回归测试', summary: '18/20 通过' } as never],
-  }], nextCursor: null, total: 1, page: 1, pageSize: 20, totalPages: 1 });
+  }], nextCursor:null, total: 1, page: 1, pageSize: 20, totalPages: 1 });
   await render();
   for (const content of ['等待接口确认', '客户平台', '正在执行回归测试', '18/20 通过']) expect(container.textContent).toContain(content);
 });
@@ -129,7 +133,7 @@ it('首屏失败可重试，无匹配记录可清除筛选', async () => {
   vi.mocked(api.listExecutionSessions).mockRejectedValueOnce(new Error('读取失败'));
   await render('/execution-sessions?search=不存在&projectId=p1');
   expect(container.querySelector('[role="alert"]')?.textContent).toContain('读取失败');
-  vi.mocked(api.listExecutionSessions).mockResolvedValueOnce({ items: [], nextCursor: null, total: 0, page: 1, pageSize: 20, totalPages: 1 });
+  vi.mocked(api.listExecutionSessions).mockResolvedValueOnce({ items: [], nextCursor:null, total: 0, page: 1, pageSize: 20, totalPages: 1 });
   await click('重试');
   expect(container.textContent).toContain('暂无开发任务');
   await click('清除筛选');
@@ -138,7 +142,7 @@ it('首屏失败可重试，无匹配记录可清除筛选', async () => {
 
 it('当前视图为空但仍有其他状态任务时给出明确范围说明', async () => {
   vi.mocked(api.listExecutionSessions).mockResolvedValueOnce({
-    items: [], nextCursor: null, total: 0, page: 1, pageSize: 20, totalPages: 1,
+    items: [], nextCursor:null, total: 0, page: 1, pageSize: 20, totalPages: 1,
     counts: { active: 0, attention: 0, completed: 1, all: 1 },
   });
   await render();
@@ -184,9 +188,9 @@ it('进展详情展示实质进展记录，心跳不进入记录，技术信息�
     progressEvent('h1', 'execution.heartbeat', '仅保活，不代表进度'),
     latest,
     progressEvent('p0', 'execution.started', '已开始处理登录问题', '2026-09-30T07:00:00Z'),
-  ], nextCursor: null });
+  ], total:1,page:1,pageSize:20,totalPages:1 });
   await render('/execution-sessions/s1');
-  expect(api.listExecutionSessionEvents).toHaveBeenLastCalledWith('s1', { view: 'progress', take: 10 });
+  expect(api.listExecutionSessionEvents).toHaveBeenLastCalledWith('s1', {view:'progress',page:1,pageSize:20});
   const timeline = container.querySelector('[aria-label="最近进展"]');
   expect(timeline?.textContent).toContain('已完成接口联调，正在执行回归测试');
   expect(timeline?.textContent).toContain('已开始处理登录问题');
@@ -201,13 +205,13 @@ it('进展详情展示实质进展记录，心跳不进入记录，技术信息�
 });
 
 it('开发结果分类展示提交、文件、测试与构建，明确回报和核验状态', async () => {
-  vi.mocked(api.listExecutionSessionEvidence).mockResolvedValue([
+  vi.mocked(api.listExecutionSessionEvidence).mockResolvedValue(pageResult([
     reportedResult('GIT_COMMIT', { title: 'web commit abc123', metadata: { workingBranch: 'codex/login', headSha: 'abc123', pushed: false } }),
     reportedResult('CHANGED_FILES', { metadata: { changedFiles: ['src/login.ts', 'src/login.test.ts'] } }),
     reportedResult('TEST_RESULT', { title: 'Local execution test result', summary: '18/20 通过，登录续期失败' }),
     reportedResult('BUILD_RESULT', { status: 'VERIFIED', summary: '构建通过' }),
     reportedResult('USER_CONFIRMATION', { status: 'REJECTED', summary: '尚未满足验收要求' }),
-  ]);
+  ]));
   await render('/execution-sessions/s1');
   const results = container.querySelector('[aria-label="开发结果"]');
   for (const text of ['代码提交', '变更文件', '测试结果', '构建结果', '人工确认', '本地回报', '已核验', '核验未通过',
@@ -232,14 +236,14 @@ it('最近同步都是心跳时仍保留独立获取的最近进展正文', asyn
   vi.mocked(api.getExecutionSession).mockResolvedValue({ ...row,
     latestProgress: progressEvent('older', 'execution.progressed', '已修复权限校验'),
   });
-  vi.mocked(api.listExecutionSessionEvents).mockResolvedValue({ items: [progressEvent('h1', 'execution.heartbeat', '仅保活')], nextCursor: null });
+  vi.mocked(api.listExecutionSessionEvents).mockResolvedValue({ items: [progressEvent('h1', 'execution.heartbeat', '仅保活')], total:1,page:1,pageSize:20,totalPages:1 });
   await render('/execution-sessions/s1');
   expect(container.querySelector('[aria-label="最近进展"]')?.textContent).toContain('已修复权限校验');
 });
 
 it('详情静默刷新失败保留已有进展和开发结果，并可主动刷新恢复', async () => {
   vi.useFakeTimers();
-  vi.mocked(api.listExecutionSessionEvidence).mockResolvedValue([reportedResult('TEST_RESULT', { summary: '接口测试 42/42 通过' })]);
+  vi.mocked(api.listExecutionSessionEvidence).mockResolvedValue(pageResult([reportedResult('TEST_RESULT', { summary: '接口测试 42/42 通过' })]));
   vi.mocked(api.getExecutionSession).mockResolvedValue({ ...row, latestProgress: progressEvent('p1', 'execution.progressed', '正在检查权限边界') });
   await render('/execution-sessions/s1');
   vi.mocked(api.getExecutionSession).mockRejectedValueOnce(new Error('服务暂时不可用'));

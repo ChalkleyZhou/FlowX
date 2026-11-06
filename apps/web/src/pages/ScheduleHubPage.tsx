@@ -17,12 +17,12 @@ import {
   SelectValue,
 } from '../components/ui/select';
 import { useToast } from '../components/ui/toast';
-import type { Project, Requirement } from '../types';
+import type { Requirement } from '../types';
+import { PagedSelect } from '../components/PagedSelect';
 import { useScopedProjectId } from '../project-scope-context';
 import {
   defaultScheduleRange,
   parseScheduleRange,
-  ALL_REQUIREMENTS,
   ALL_ROLES,
   ASSIGNMENT_ROLE_OPTIONS,
 } from '../utils/schedule-filters';
@@ -42,9 +42,7 @@ export function ScheduleHubPage() {
   });
   const { session } = useAuth();
   const toast = useToast();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [requirements, setRequirements] = useState<Requirement[]>([]);
-  const [metaLoading, setMetaLoading] = useState(false);
+  const [selectedRequirement, setSelectedRequirement] = useState<Requirement | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [ganttRefreshToken, setGanttRefreshToken] = useState(0);
 
@@ -55,36 +53,16 @@ export function ScheduleHubPage() {
   const { from, to } = parseScheduleRange(searchParams);
 
   useEffect(() => {
-    void (async () => {
-      setMetaLoading(true);
-      try {
-        const [projectList, requirementList] = await Promise.all([
-          api.getProjects(),
-          api.getRequirements(),
-        ]);
-        setProjects(projectList);
-        setRequirements(requirementList);
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : '加载筛选数据失败');
-      } finally {
-        setMetaLoading(false);
+    let cancelled = false;
+    setSelectedRequirement(null);
+    if (requirementId) void api.getRequirement(requirementId).then(item => {
+      if (!cancelled) {
+        setSelectedRequirement(item);
+        if (projectId && item.project.id !== projectId) updateParams({requirementId:null});
       }
-    })();
-  }, []);
-
-  const requirementOptions = useMemo(() => {
-    if (!projectId) {
-      return [];
-    }
-    return requirements.filter((r) => r.project.id === projectId);
-  }, [requirements, projectId]);
-
-  const requirementFilterReady = Boolean(projectId) && requirementOptions.length > 0;
-
-  const selectedProject = useMemo(
-    () => projects.find((p) => p.id === projectId),
-    [projects, projectId],
-  );
+    }).catch(error => { if (!cancelled) toast.error(error instanceof Error ? error.message : '加载需求失败'); });
+    return () => { cancelled = true; };
+  }, [requirementId,projectId]);
 
   function updateParams(patch: Record<string, string | null>) {
     const next = new URLSearchParams(searchParams);
@@ -101,29 +79,6 @@ export function ScheduleHubPage() {
       next.set('to', fallback.to);
     }
     setSearchParams(next, { replace: true });
-  }
-
-  useEffect(() => {
-    if (!requirements.length) {
-      return;
-    }
-    if (requirementId && !projectId) {
-      updateParams({ requirementId: null });
-      return;
-    }
-    if (requirementId && projectId) {
-      const match = requirements.find((r) => r.id === requirementId);
-      if (match?.project.id !== projectId) {
-        updateParams({ requirementId: null });
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only reconcile URL when data/filters change
-  }, [requirements, projectId, requirementId]);
-
-  function handleRequirementChange(value: string) {
-    updateParams({
-      requirementId: value === ALL_REQUIREMENTS ? null : value,
-    });
   }
 
   function handleRoleChange(value: string) {
@@ -178,33 +133,10 @@ export function ScheduleHubPage() {
         <CardContent className="space-y-4 p-4">
           <div className="flex flex-wrap items-end gap-4">
             <FilterField label="需求">
-              <Select
-                value={projectId ? requirementId || ALL_REQUIREMENTS : ''}
-                onValueChange={handleRequirementChange}
-                disabled={!projectId || metaLoading}
-              >
-                <SelectTrigger className="w-[260px]" aria-label="筛选需求">
-                  <SelectValue
-                    placeholder={
-                      !projectId
-                        ? '请先选择项目'
-                        : requirementOptions.length === 0
-                          ? '该项目下暂无需求'
-                          : '全部需求'
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_REQUIREMENTS}>全部需求</SelectItem>
-                  {requirementFilterReady
-                    ? requirementOptions.map((req) => (
-                        <SelectItem key={req.id} value={req.id}>
-                          {req.title}
-                        </SelectItem>
-                      ))
-                    : null}
-                </SelectContent>
-              </Select>
+              <PagedSelect value={requirementId} onValueChange={value => updateParams({requirementId:value})}
+                label="筛选需求" placeholder={projectId ? '全部需求' : '请先选择项目'} disabled={!projectId}
+                selectedLabel={selectedRequirement?.title} scopeKey={projectId} allowClear emptyLabel="全部需求"
+                loadPage={async query => { const result = await api.getRequirements({...query,projectId}); return {...result,items:result.items.map(item => ({id:item.id,name:item.title}))}; }} />
             </FilterField>
 
             <FilterField label="角色">
@@ -269,9 +201,9 @@ export function ScheduleHubPage() {
                 下一月
               </Button>
             </div>
-            {selectedProject ? (
+            {projectId ? (
               <Button variant="ghost" size="sm" asChild className="text-muted-foreground">
-                <Link to={`/project-settings?projectId=${selectedProject.id}`}>项目设置</Link>
+                <Link to={`/project-settings?projectId=${projectId}`}>项目设置</Link>
               </Button>
             ) : null}
           </div>

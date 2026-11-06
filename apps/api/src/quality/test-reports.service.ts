@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -21,10 +22,25 @@ type ReportRun = Prisma.TestRunGetPayload<{ include: typeof reportRunInclude }>;
 @Injectable()
 export class TestReportsService {
   constructor(private readonly prisma: PrismaService, private readonly artifacts: ArtifactsService) {}
-  async list(requestId: string) {
+  async list(requestId: string, query: PaginationQuery = {}) {
     const request = await this.prisma.testRequest.findUnique({ where: { id: requestId }, select: { id: true } });
     if (!request) throw new NotFoundException('提测不存在。');
-    return this.prisma.qualityTestReport.findMany({ where: { requestId }, include: { artifact: true }, orderBy: { createdAt: 'desc' } });
+    const paging = parsePagination(query);
+    const [items, total] = await Promise.all([
+      this.prisma.qualityTestReport.findMany({ where: { requestId }, select: { id: true, requestId: true, runId: true, kind: true, revision: true, artifactId: true, artifact: true, createdAt: true }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: paging.skip, take: paging.take }),
+      this.prisma.qualityTestReport.count({ where: { requestId } }),
+    ]);
+    const metadata = items.length ? await this.prisma.$queryRaw<Array<{ id: string; mode: string | null; summary: string | null; supersessionCount: number | bigint | null }>>(Prisma.sql`
+      SELECT id, json_extract(snapshot, '$.mode') AS mode,
+        json_extract(snapshot, '$.summary') AS summary,
+        COALESCE(json_array_length(snapshot, '$.supersessions'), 0) AS supersessionCount
+      FROM QualityTestReport WHERE id IN (${Prisma.join(items.map(item => item.id))})
+    `) : [];
+    const byId = new Map(metadata.map(item => [item.id, item]));
+    return pageResult(items.map(item => {
+      const detail = byId.get(item.id);
+      return { ...item, mode: detail?.mode ?? null, summary: detail?.summary ? JSON.parse(detail.summary) as Record<string, unknown> : null, supersessionCount: Number(detail?.supersessionCount ?? 0) };
+    }), total, paging);
   }
   async createRunReport(runId: string, dto: CreateRunTestReportDto, userId?: string) {
     const run = await this.prisma.testRun.findUnique({ where: { id: runId }, include: reportRunInclude });

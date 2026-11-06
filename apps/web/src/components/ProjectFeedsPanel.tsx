@@ -8,7 +8,9 @@ import { Card, CardContent, CardHeader } from './ui/card';
 import { Input } from './ui/input';
 import { useToast } from './ui/toast';
 import { formatBeijingDateTime } from '../utils/datetime';
-import type { DeliveryTarget, ProjectFeed, Repository } from '../types';
+import type { ProjectFeed } from '../types';
+import { ListPagination } from './ListPagination';
+import { useQualityPage } from '../pages/quality/use-quality-page';
 
 type FeedKind = 'briefing' | 'codeReview';
 
@@ -32,31 +34,24 @@ const copy = {
 export function ProjectFeedsPanel({
   projectId,
   kind,
-  repositories,
+  workspaceId,
 }: {
   projectId: string;
   kind: FeedKind;
-  repositories: Repository[];
+  workspaceId: string;
 }) {
-  const [feeds, setFeeds] = useState<ProjectFeed[]>([]);
-  const [targets, setTargets] = useState<DeliveryTarget[]>([]);
+  const [page, setPage] = useState(1);
+  const [query, setQuery] = useState('');
+  const result = useQualityPage(JSON.stringify([projectId, kind, page, query]), () => (kind === 'briefing' ? api.listBriefingFeeds : api.listCodeReviewFeeds)(projectId, { page, pageSize: 20, q: query || undefined }), true, setPage);
+  const feeds = result.items;
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
   const toast = useToast();
   const text = copy[kind];
 
-  async function refresh() {
-    const [nextFeeds, nextTargets] = await Promise.all([
-      kind === 'briefing' ? api.listBriefingFeeds(projectId) : api.listCodeReviewFeeds(projectId),
-      api.getDeliveryTargets({ projectId }),
-    ]);
-    setFeeds(nextFeeds);
-    setTargets(nextTargets);
-  }
+  async function refresh() { await result.refresh(); }
 
-  useEffect(() => {
-    refresh().catch((error) => toast.error(error instanceof Error ? error.message : '加载配置失败'));
-  }, [projectId, kind]);
+  useEffect(() => { setPage(1); setQuery(''); }, [projectId, kind]);
 
   async function createFeed() {
     const nextName = name.trim();
@@ -106,7 +101,9 @@ export function ProjectFeedsPanel({
             <Link to={withCurrentProject(text.history, projectId)}>{text.historyLabel}</Link>
           </Button>
         </div>
-        {feeds.length === 0 ? (
+        <Input aria-label="搜索配置" placeholder="搜索配置" value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} />
+        {result.error ? <p role="alert">{result.error}<Button variant="outline" onClick={() => void refresh()}>重试</Button></p> : null}
+        {result.loading ? <p>加载中…</p> : result.hasLoaded && feeds.length === 0 ? (
           <p className="text-sm text-muted-foreground">{text.empty}</p>
         ) : (
           feeds.map((feed) => (
@@ -114,12 +111,12 @@ export function ProjectFeedsPanel({
               key={feed.id}
               kind={kind}
               feed={feed}
-              repositories={repositories}
-              targets={targets}
+              workspaceId={workspaceId}
               onChanged={refresh}
             />
           ))
         )}
+        <ListPagination page={page} total={result.total} loading={result.refreshing} onPageChange={setPage} label="配置列表分页" />
       </CardContent>
     </Card>
   );
@@ -128,24 +125,26 @@ export function ProjectFeedsPanel({
 function FeedEditor({
   kind,
   feed,
-  repositories,
-  targets,
+  workspaceId,
   onChanged,
 }: {
   kind: FeedKind;
   feed: ProjectFeed;
-  repositories: Repository[];
-  targets: DeliveryTarget[];
+  workspaceId: string;
   onChanged: () => Promise<void>;
 }) {
   const [hour, setHour] = useState(String(feed.dailyHour));
   const [saving, setSaving] = useState(false);
   const toast = useToast();
+  const [repoPage, setRepoPage] = useState(1);
+  const [repoQuery, setRepoQuery] = useState('');
+  const [targetPage, setTargetPage] = useState(1);
+  const [targetQuery, setTargetQuery] = useState('');
+  const repositoryResult = useQualityPage(JSON.stringify([workspaceId, repoPage, repoQuery]), () => api.getWorkspaceRepositories(workspaceId, { page: repoPage, pageSize: 20, q: repoQuery || undefined }), true, setRepoPage);
+  const targetResult = useQualityPage(JSON.stringify([feed.projectId, kind, targetPage, targetQuery]), () => api.getDeliveryTargets({ projectId: feed.projectId, purpose: kind, page: targetPage, pageSize: 20, q: targetQuery || undefined }), true, setTargetPage);
+  const repositories = repositoryResult.items;
+  const visibleTargets = targetResult.items;
   const unassigned = repositories.filter((repository) => !feed.repositoryIds.includes(repository.id));
-  const visibleTargets = targets.filter((target) => (
-    feed.deliveryTargetIds.includes(target.id)
-    || (kind === 'briefing' ? target.forBriefing : target.forCodeReview)
-  ));
 
   useEffect(() => {
     setHour(String(feed.dailyHour));
@@ -226,7 +225,9 @@ function FeedEditor({
         </Button>
       </div>
       <div className="flex flex-col gap-2">
-        <span className="text-xs font-medium text-muted-foreground">仓库</span>
+        <span className="text-xs font-medium text-muted-foreground">仓库 · 已选 {feed.repositoryIds.length} 个</span>
+        <Input aria-label="搜索工作区仓库" placeholder="搜索工作区仓库" value={repoQuery} onChange={(event) => { setRepoQuery(event.target.value); setRepoPage(1); }} />
+        {repositoryResult.error ? <p role="alert">{repositoryResult.error}<Button variant="outline" onClick={() => void repositoryResult.refresh()}>重试</Button></p> : null}
         {repositories.length === 0 ? (
           <p className="text-sm text-muted-foreground">工作区还没有仓库。</p>
         ) : (
@@ -250,12 +251,15 @@ function FeedEditor({
         )}
         {unassigned.length > 0 ? (
           <p className="text-sm text-muted-foreground">
-            尚未加入：{unassigned.map((repository) => repository.name).join('、')}
+            本页尚未加入：{unassigned.map((repository) => repository.name).join('、')}
           </p>
         ) : null}
+        <ListPagination page={repoPage} total={repositoryResult.total} loading={repositoryResult.refreshing} onPageChange={setRepoPage} label="仓库候选分页" />
       </div>
       <div className="flex flex-col gap-2">
-        <span className="text-xs font-medium text-muted-foreground">投递目标</span>
+        <span className="text-xs font-medium text-muted-foreground">投递目标 · 已选 {feed.deliveryTargetIds.length} 个</span>
+        <Input aria-label="搜索投递目标" placeholder="搜索投递目标" value={targetQuery} onChange={(event) => { setTargetQuery(event.target.value); setTargetPage(1); }} />
+        {targetResult.error ? <p role="alert">{targetResult.error}<Button variant="outline" onClick={() => void targetResult.refresh()}>重试</Button></p> : null}
         {visibleTargets.length === 0 ? (
           <p className="text-sm text-muted-foreground">当前项目还没有可用的投递目标。</p>
         ) : (
@@ -279,6 +283,7 @@ function FeedEditor({
             })}
           </div>
         )}
+        <ListPagination page={targetPage} total={targetResult.total} loading={targetResult.refreshing} onPageChange={setTargetPage} label="投递目标候选分页" />
       </div>
       {feed.enabled ? (
         <p className="text-sm text-muted-foreground">

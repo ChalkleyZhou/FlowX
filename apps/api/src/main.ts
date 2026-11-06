@@ -3,6 +3,7 @@ import { Logger, LogLevel, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { listContractMiddleware } from './common/list-contract';
 
 function resolveLogLevels(): LogLevel[] {
   const configuredLevel = process.env.LOG_LEVEL?.trim().toLowerCase();
@@ -25,6 +26,7 @@ async function bootstrap() {
   app.useBodyParser('json', { limit: '6mb' });
   app.useBodyParser('raw', { type: 'application/octet-stream', limit: '100mb' });
   app.enableCors();
+  app.use(listContractMiddleware);
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

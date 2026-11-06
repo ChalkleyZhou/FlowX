@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, Res } from '@nestjs/common';
 import {
   ClaimLocalSmokeDto,
   CompleteLocalSmokeDto,
@@ -16,13 +16,13 @@ export class LocalSmokeController {
   }
 
   @Get('quality/test-requests/:id/local-smoke-runs')
-  list(@Param('id') id: string) {
-    return this.localSmoke.listRuns(id);
+  list(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery) {
+    return this.localSmoke.listRuns(id, query);
   }
 
   @Get('quality/local-smoke-runs/:id/tasks')
-  tasks(@Param('id') id: string) {
-    return this.localSmoke.getTasks(id);
+  tasks(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery & { q?: string; result?: string; targetId?: string }) {
+    return this.localSmoke.getTasksBrowse(id, query);
   }
 
   @Post('quality/local-smoke-runs/:id/claim')

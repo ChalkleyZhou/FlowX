@@ -20,13 +20,7 @@ export class CaseLibrariesController {
   }
 
   @Get('case-libraries')
-  listLibraries(
-    @Query('workspaceId') workspaceId: string,
-    @Query('projectId') projectId?: string,
-    @Query('ownership') ownership?: string,
-  ) {
-    return this.libraries.listLibraries({ workspaceId, projectId, ownership });
-  }
+  listLibraries(@Query() query: import('../common/pagination').PaginationQuery & { workspaceId: string; projectId?: string; ownership?: string; q?: string }) { return this.libraries.listLibraries(query); }
 
   @Post('case-libraries/:libraryId/modules')
   createModule(@Param('libraryId') libraryId: string, @Body() dto: CreateTestCaseModuleDto) {
@@ -34,8 +28,8 @@ export class CaseLibrariesController {
   }
 
   @Get('case-libraries/:libraryId/modules')
-  listModules(@Param('libraryId') libraryId: string) {
-    return this.libraries.listModules(libraryId);
+  listModules(@Param('libraryId') libraryId: string, @Query() query: import('../common/pagination').PaginationQuery & { q?: string; parentId?: string; excludeId?: string }) {
+    return this.libraries.listModules(libraryId, query);
   }
 
   @Patch('test-case-modules/:id')

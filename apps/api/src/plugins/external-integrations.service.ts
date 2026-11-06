@@ -1,3 +1,4 @@
+import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import {
   BadRequestException,
   ConflictException,
@@ -115,14 +116,15 @@ export class ExternalIntegrationsService {
     return integration?.enabled ?? this.hasWebhookSecret();
   }
 
-  async listYunxiaoUnmatchedRecipients(organizationId: string) {
-    return this.prisma.yunxiaoWebhookRecipient.findMany({
-      where: {
-        organizationId,
-        status: { not: 'MATCHED' },
-      },
-      orderBy: { lastSeenAt: 'desc' },
-      take: 100,
+  async listYunxiaoUnmatchedRecipients(organizationId: string, query: PaginationQuery & { q?: string } = {}) {
+    const paging = parsePagination(query);
+    const where = { organizationId, status: { not: 'MATCHED' }, ...(query.q?.trim() ? { OR: [{ yunxiaoDisplayName: { contains: query.q.trim() } }, { yunxiaoUserIdentifier: { contains: query.q.trim() } }, { workItemId: { contains: query.q.trim() } }] } : {}) };
+    const [items, total] = await Promise.all([
+ this.prisma.yunxiaoWebhookRecipient.findMany({
+      where,
+      orderBy: [{ lastSeenAt: 'desc' }, { id: 'desc' }],
+      skip: paging.skip,
+      take: paging.take,
       select: {
         id: true,
         eventId: true,
@@ -137,7 +139,10 @@ export class ExternalIntegrationsService {
         firstSeenAt: true,
         lastSeenAt: true,
       },
-    });
+    }),
+      this.prisma.yunxiaoWebhookRecipient.count({ where }),
+    ]);
+    return pageResult(items, total, paging);
   }
 
   async clearYunxiaoUnmatchedRecipients(organizationId: string, actingUserId: string) {
@@ -168,72 +173,21 @@ export class ExternalIntegrationsService {
     return { deletedCount: result.count };
   }
 
-  async listYunxiaoProjectMembers(organizationId: string, projectId: string) {
+  async listYunxiaoProjectMembers(organizationId: string, projectId: string, query: { userId?: string } = {}) {
+    const userId = query.userId?.trim();
+    if (!userId) throw new BadRequestException({ code: 'YUNXIAO_MEMBER_BROWSE_UNSUPPORTED', message: '云效项目成员接口不支持服务端分页。请输入明确的云效 userId 按需查询组织身份；此查询不证明其项目成员资格。' });
     const normalizedProjectId = projectId.trim();
-    if (!normalizedProjectId) {
-      throw new BadRequestException('Yunxiao project identifier is required.');
-    }
-    const integration = await this.prisma.externalIntegration.findFirst({
-      where: { organizationId, provider: YUNXIAO_PROVIDER },
-      select: { yunxiaoOrganizationIdentifier: true },
-    });
+    if (!normalizedProjectId) throw new BadRequestException('Yunxiao project identifier is required.');
+    const integration = await this.prisma.externalIntegration.findFirst({ where: { organizationId, provider: YUNXIAO_PROVIDER }, select: { yunxiaoOrganizationIdentifier: true } });
     const yunxiaoOrganizationIdentifier = integration?.yunxiaoOrganizationIdentifier;
-    if (!yunxiaoOrganizationIdentifier) {
-      throw new BadRequestException(
-        'Please bind a Yunxiao organization before listing project members.',
-      );
-    }
-
-    const [members, mappings, organizationMembers] = await Promise.all([
-      this.yunxiaoMembers.listProjectMembers(yunxiaoOrganizationIdentifier, normalizedProjectId),
-      this.prisma.yunxiaoMemberMapping.findMany({
-        where: { organizationId, yunxiaoOrganizationIdentifier },
-        select: {
-          yunxiaoMemberId: true,
-          yunxiaoUserId: true,
-          aliyunAccountId: true,
-          yunxiaoUserIdentifier: true,
-          flowxUserId: true,
-        },
-      }),
-      this.prisma.userOrganization.findMany({
-        where: {
-          organizationId,
-          user: { status: { not: 'DISABLED' } },
-        },
-        select: {
-          user: {
-            select: { id: true, displayName: true, account: true, email: true },
-          },
-        },
-      }),
-    ]);
-    const mappingByYunxiaoId = new Map<string, string>();
-    for (const mapping of mappings) {
-      for (const identifier of [
-        mapping.aliyunAccountId,
-        mapping.yunxiaoMemberId,
-        mapping.yunxiaoUserId,
-        mapping.yunxiaoUserIdentifier,
-      ]) {
-        if (identifier) {
-          mappingByYunxiaoId.set(identifier, mapping.flowxUserId);
-        }
-      }
-    }
-
-    return {
-      projectId: normalizedProjectId,
-      yunxiaoOrganizationIdentifier,
-      members: members.map((member) => ({
-        ...member,
-        flowxUserId: [member.aliyunAccountId, member.userId, member.memberId]
-          .filter((identifier): identifier is string => Boolean(identifier))
-          .map((identifier) => mappingByYunxiaoId.get(identifier))
-          .find((flowxUserId): flowxUserId is string => Boolean(flowxUserId)) ?? null,
-      })),
-      flowxUsers: organizationMembers.map(({ user }) => user),
-    };
+    if (!yunxiaoOrganizationIdentifier) throw new BadRequestException('Please bind a Yunxiao organization before querying members.');
+    const member = await this.yunxiaoMembers.getOrganizationMember(yunxiaoOrganizationIdentifier, userId);
+    const identifiers = [member.aliyunAccountId, member.userId, member.memberId].filter((id): id is string => Boolean(id));
+    const mappings = await this.prisma.yunxiaoMemberMapping.findMany({ where: { organizationId, yunxiaoOrganizationIdentifier, OR: [
+      { aliyunAccountId: { in: identifiers } }, { yunxiaoUserId: { in: identifiers } },
+      { yunxiaoMemberId: { in: identifiers } }, { yunxiaoUserIdentifier: { in: identifiers } },
+    ] }, select: { flowxUserId: true }, take: 1, orderBy: { id: 'asc' } });
+    return { projectId: normalizedProjectId, yunxiaoOrganizationIdentifier, identityScope: 'organization' as const, members: [{ ...member, flowxUserId: mappings[0]?.flowxUserId ?? null }] };
   }
 
   async setYunxiaoMemberMapping(

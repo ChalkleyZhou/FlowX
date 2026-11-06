@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Check, Minus, Play, RefreshCw } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../../api';
+import { ListPagination } from '../../components/ListPagination';
+import { useQualityPage } from './use-quality-page';
 import { ONLINE_AI_UNAVAILABLE_MESSAGE, useOnlineAiProviders } from '../../online-ai';
 import { EmptyState } from '../../components/EmptyState';
 import { PageHeader } from '../../components/PageHeader';
@@ -72,7 +74,14 @@ function QualityTestDesignContent({ id }: { id: string }) {
   const toast = useToast();
   const onlineAi = useOnlineAiProviders();
   const resource = useQualityResource(id, api.getTestDesign, design => design.status === 'GENERATING', 2000);
-  const design = resource.data;
+  const workflows = useQualityPage(`${id}:workflows`, () => api.getTestDesignWorkflows(id, { page: 1, pageSize: 1 }));
+  const [candidatePage, setCandidatePage] = useState(1);
+  const [candidateQuery, setCandidateQuery] = useState('');
+  const [smokePage, setSmokePage] = useState(1);
+  const candidates = useQualityPage(`${id}:${candidatePage}:${candidateQuery}:${resource.data?.revision}`, () => api.getTestDesignCandidates(id, { page: candidatePage, pageSize: 20, q: candidateQuery || undefined }), true, setCandidatePage);
+  const smoke = useQualityPage(`${id}:${smokePage}:${resource.data?.revision}`, () => api.getTestDesignSmokeCases(id, { page: smokePage, pageSize: 20 }), true, setSmokePage);
+  const design = resource.data ? { ...resource.data, candidates: candidates.items, smokeCases: smoke.items } : undefined;
+  const summary = resource.data?.summary ?? candidates.summary ?? {};
   const setDesign = resource.setData;
   const loading = resource.loading;
   const load = resource.reload;
@@ -122,6 +131,7 @@ function QualityTestDesignContent({ id }: { id: string }) {
         ...(proposedCase ? { proposedCase } : {}),
       });
       await load();
+      await candidates.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '更新候选失败');
     }
@@ -133,10 +143,10 @@ function QualityTestDesignContent({ id }: { id: string }) {
     try {
       const result = await api.confirmTestDesign(id, {
         revision: design.revision,
-        coverageChecks: [{ key: 'candidate-resolution', passed: design.candidates.every((item) => item.resolution !== 'PENDING') }],
+        coverageChecks: [{ key: 'candidate-resolution', passed: (summary.pendingCount ?? 0) === 0 }],
         uncoveredItems: design.uncoveredItems ?? [],
-        noCaseReason: design.candidates.some((item) => item.resolution === 'ACCEPTED') ? undefined : noCaseReason,
-        noSmokeReason: design.smokeCases.length ? undefined : noSmokeReason,
+        noCaseReason: (summary.acceptedCount ?? 0) > 0 ? undefined : noCaseReason,
+        noSmokeReason: smoke.total ? undefined : noSmokeReason,
       });
       setDesign(result);
       toast.success('测试设计已确认，可以用于提测');
@@ -153,6 +163,7 @@ function QualityTestDesignContent({ id }: { id: string }) {
     try {
       const result = await api.updateTestDesignSmoke(id, {
         revision: design.revision,
+        partial: true,
         cases: design.smokeCases.map((item) => ({
           id: item.id,
           title: item.title,
@@ -176,14 +187,12 @@ function QualityTestDesignContent({ id }: { id: string }) {
   if (loading && !design) return <LoadingState />;
   if (!design) return <EmptyState title="测试设计不存在" description="请检查链接或返回提测管理。" />;
 
-  const pendingCount = design.candidates.filter((item) =>
-    item.resolution === 'PENDING' || (item.resolution === 'ACCEPTED' && changedReuse(item)),
-  ).length;
-  const smokePending = design.smokeCases.some((item) => item.resolution !== 'ACCEPTED');
-  const hasAcceptedCases = design.candidates.some((item) => item.resolution === 'ACCEPTED' && item.action !== 'EXCLUDE');
+  const pendingCount = summary.pendingCount ?? 0;
+  const smokePending = (summary.smokePendingCount ?? smoke.summary?.pendingCount ?? 0) > 0;
+  const hasAcceptedCases = (summary.acceptedCount ?? 0) > 0;
   const reviewable = design.status === 'WAITING_REVIEW' || design.status === 'WAITING_CONFIRMATION';
   const confirmationIncomplete = !reviewable || pendingCount > 0 || smokePending ||
-    (!hasAcceptedCases && !noCaseReason.trim()) || (!design.smokeCases.length && !noSmokeReason.trim());
+    (!hasAcceptedCases && !noCaseReason.trim()) || (!smoke.total && !noSmokeReason.trim());
   const frozen = Boolean(design.testRequest);
 
   return (
@@ -191,7 +200,7 @@ function QualityTestDesignContent({ id }: { id: string }) {
       <PageHeader
         eyebrow="测试与质量"
         title="测试设计"
-        description={`第 ${design.revision} 版 · 候选 ${design.candidates.length} 条 · 冒烟 ${design.smokeCases.length} 条`}
+        description={`第 ${design.revision} 版 · 候选 ${candidates.total} 条 · 冒烟 ${smoke.total} 条`}
         actions={(
           <>
             <Button variant="outline" onClick={() => void load()}><RefreshCw className="h-4 w-4" />刷新</Button>
@@ -202,7 +211,7 @@ function QualityTestDesignContent({ id }: { id: string }) {
       />
 
       <ol className="grid gap-2 rounded-md border p-4 text-sm sm:grid-cols-4"><li>1 选择用例库</li><li className="font-medium text-primary">2 处理建议与补选</li><li>3 确认并提测</li><li>4 执行与报告</li></ol>
-      {design.status === 'CONFIRMED' ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-4"><p className="text-sm">测试设计已确认，下一步关联已完成研发的工作流发起提测。</p><Button asChild><Link to={design.testRequest ? `/quality/test-requests/${design.testRequest.id}` : `/quality/test-requests?${new URLSearchParams({ create: '1', projectId: design.projectId, projectVersionId: design.projectVersionId, ...(design.workflowRuns?.[0] ? { workflowRunId: design.workflowRuns[0].workflowRun.id } : {}) })}`}>{design.testRequest ? '查看提测详情' : '继续发起提测'}</Link></Button></div> : null}
+      {design.status === 'CONFIRMED' ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-4"><p className="text-sm">测试设计已确认，下一步关联已完成研发的工作流发起提测。</p><Button asChild><Link to={design.testRequest ? `/quality/test-requests/${design.testRequest.id}` : `/quality/test-requests?${new URLSearchParams({ create: '1', projectId: design.projectId, projectVersionId: design.projectVersionId, ...(workflows.items[0] ? { workflowRunId: workflows.items[0].workflowRun.id } : {}) })}`}>{design.testRequest ? '查看提测详情' : '继续发起提测'}</Link></Button></div> : null}
       <QualityScopePanel workspaceId={design.workspaceId} projectId={design.projectId} design={design} onDesignChange={setDesign} />
       {design.uncoveredItems?.length ? <section className="rounded-md border border-amber-500/40 p-4"><h2 className="font-medium">尚未覆盖的验收点</h2><ul className="mt-2 list-disc pl-5 text-sm">{design.uncoveredItems.map((item, index) => <li key={index}>{item}</li>)}</ul><p className="mt-2 text-xs text-muted-foreground">可从用例库补选；确认设计时会保留这些未覆盖项。</p></section> : null}
       {design.status === 'GENERATION_FAILED' ? (
@@ -223,6 +232,8 @@ function QualityTestDesignContent({ id }: { id: string }) {
         <CardContent className="space-y-6">
           <section aria-label="功能测试候选" className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-base font-semibold">功能测试候选</h2><Button size="sm" variant="outline" disabled={busy || !checked.length || !reviewable} onClick={() => void bulkExclude()}>批量排除</Button></div>
+            <Input aria-label="搜索候选用例" value={candidateQuery} onChange={event => { setCandidateQuery(event.target.value); setCandidatePage(1); }} placeholder="搜索候选用例" />
+            {candidates.error ? <p role="alert">{candidates.error}<Button onClick={() => void candidates.refresh()}>重试</Button></p> : null}
             {design.candidates.length ? design.candidates.map((candidate) => {
               const sourceDefinition = candidate.sourceDefinition;
               const reuseContentChanged = candidate.resolution !== 'REJECTED' && changedReuse(candidate);
@@ -270,12 +281,14 @@ function QualityTestDesignContent({ id }: { id: string }) {
                   <Button size="sm" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'OPTIMIZE')}>改为按建议优化</Button>
                 </div> : null}
               </article>
-            ); }) : <div className="space-y-2"><EmptyState title="暂无功能候选" description="确认时需要填写无功能用例原因。" /><Input value={noCaseReason} onChange={(event) => setNoCaseReason(event.target.value)} placeholder="无功能用例原因" /></div>}
+            ); }) : <div className="space-y-2"><EmptyState title={candidateQuery || (summary.candidateCount ?? 0) > 0 ? '当前页没有匹配候选' : '暂无功能候选'} description={candidateQuery || (summary.candidateCount ?? 0) > 0 ? '调整搜索条件或返回其他页查看。' : '确认时需要填写无功能用例原因。'} />{!candidateQuery && !(summary.candidateCount ?? 0) ? <Input value={noCaseReason} onChange={(event) => setNoCaseReason(event.target.value)} placeholder="无功能用例原因" /> : null}</div>}
+            <ListPagination page={candidatePage} total={candidates.total} pageSize={20} onPageChange={setCandidatePage} />
           </section>
 
           <section aria-label="本次冒烟用例" className="space-y-3 border-t border-border pt-6">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><h2 className="text-base font-semibold">本次冒烟用例</h2>{design.smokeCases.length ? <Button variant="outline" size="sm" onClick={() => void confirmSmoke()} disabled={busy || !smokePending}><Check className="h-4 w-4" />确认冒烟</Button> : null}</div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><h2 className="text-base font-semibold">本次冒烟用例</h2>{design.smokeCases.length ? <Button variant="outline" size="sm" onClick={() => void confirmSmoke()} disabled={busy || !smokePending}><Check className="h-4 w-4" />确认本页冒烟</Button> : null}</div>
             {design.smokeCases.length ? design.smokeCases.map((item) => <div key={item.id} className="rounded-md border border-border p-4"><div className="flex items-center justify-between gap-3"><p className="font-medium">{item.title}</p><Badge variant="outline">{item.resolution === 'ACCEPTED' ? '已确认' : '待确认'}</Badge></div><ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">{item.steps.map((step) => <li key={step}>{step}</li>)}</ol><p className="mt-2 text-sm">预期：{item.expected}</p></div>) : <div className="space-y-2"><p className="text-sm text-muted-foreground">本次未生成冒烟用例，请填写原因。</p><Input value={noSmokeReason} onChange={(event) => setNoSmokeReason(event.target.value)} placeholder="无冒烟场景原因" /></div>}
+            <ListPagination page={smokePage} total={smoke.total} pageSize={20} onPageChange={setSmokePage} />
           </section>
         </CardContent>
       </Card>
