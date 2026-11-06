@@ -19,6 +19,7 @@ import type {
   UpdateTestDesignSmokeDto,
 } from './dto/test-design.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { assignTestCaseNumbers } from './test-case-number';
 
 const designInclude = {
   requirements: { include: { requirement: true } },
@@ -509,13 +510,18 @@ export class TestDesignsService {
       if (!projectLibrary && acceptedCases.some((item) => item.action === 'CREATE')) {
         projectLibrary = await tx.testCaseLibrary.create({ data: { workspaceId: design.workspaceId, projectId: design.projectId, scope: 'PROJECT', name: '自动生成用例' } });
       }
+      const createCount = acceptedCases.filter(item => item.action === 'CREATE').length;
+      const numbers = projectLibrary && createCount
+        ? await assignTestCaseNumbers(tx, projectLibrary.id, Array.from({ length: createCount }, () => undefined))
+        : [];
+      let createdIndex = 0;
       for (const candidate of acceptedCases) {
         const proposed = normalizeCase(candidate.proposedCase);
         if (candidate.action === 'OPTIMIZE' && candidate.sourceDefinitionId) {
           const updated = await tx.testCaseDefinition.update({ where: { id: candidate.sourceDefinitionId }, data: { ...caseData(proposed), version: { increment: 1 } } });
           await tx.testDesignCandidate.update({ where: { id: candidate.id }, data: { sourceVersion: updated.version } });
         } else if (candidate.action === 'CREATE' && projectLibrary) {
-          const created = await tx.testCaseDefinition.create({ data: { libraryId: projectLibrary.id, ...caseData(proposed) } });
+          const created = await tx.testCaseDefinition.create({ data: { libraryId: projectLibrary.id, externalId: numbers[createdIndex++], ...caseData(proposed) } });
           await tx.testDesignCandidate.update({ where: { id: candidate.id }, data: { sourceDefinitionId: created.id, sourceVersion: created.version } });
         }
       }

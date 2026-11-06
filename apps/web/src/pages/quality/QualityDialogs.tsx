@@ -314,7 +314,6 @@ export function CreateCaseDialog({
   const [libraryId, setLibraryId] = useState('');
   const [modules, setModules] = useState<TestCaseModule[]>([]);
   const [moduleId, setModuleId] = useState(NO_MODULE);
-  const [externalId, setExternalId] = useState('');
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState('P2');
   const [precondition, setPrecondition] = useState('');
@@ -368,7 +367,6 @@ export function CreateCaseDialog({
     try {
       await api.createTestCase(libraryId, {
         moduleId: moduleId === NO_MODULE ? undefined : moduleId,
-        externalId: externalId.trim() || undefined,
         title: title.trim(),
         priority,
         precondition: precondition.trim() || undefined,
@@ -378,7 +376,6 @@ export function CreateCaseDialog({
         expected: expected.trim(),
         tags: tags.split(',').map((item) => item.trim()).filter(Boolean),
       });
-      setExternalId('');
       setTitle('');
       setPrecondition('');
       setTestData('');
@@ -426,8 +423,8 @@ export function CreateCaseDialog({
             </Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-[1fr_120px]">
-            <Field label="用例编号（可选）">
-              <Input value={externalId} onChange={(event) => setExternalId(event.target.value)} />
+            <Field label="用例编号">
+              <Input aria-label="用例编号" value="保存后自动生成" readOnly />
             </Field>
             <Field label="优先级">
               <Select value={priority} onValueChange={setPriority}>

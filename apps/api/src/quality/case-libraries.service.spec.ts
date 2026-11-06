@@ -8,7 +8,7 @@ function createService() {
       typeof operations === 'function' ? operations(prisma) : Promise.all(operations)),
     workspace: { findUnique: vi.fn() },
     project: { findFirst: vi.fn() },
-    testCaseLibrary: { create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
+    testCaseLibrary: { create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn().mockResolvedValue({ nextCaseNumber: 1 }) },
     testCaseModule: {
       findFirst: vi.fn(),
       findMany: vi.fn(),
@@ -21,7 +21,7 @@ function createService() {
       create: vi.fn(),
       createMany: vi.fn(),
       findFirst: vi.fn(),
-      findMany: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
       count: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),

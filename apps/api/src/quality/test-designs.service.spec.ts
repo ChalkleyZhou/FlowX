@@ -10,8 +10,8 @@ function setup() {
     testDesignCandidate: { deleteMany: vi.fn(), createMany: vi.fn(), create: vi.fn(), update: vi.fn() },
     testDesignSmokeCase: { deleteMany: vi.fn(), createMany: vi.fn() },
     testDesign: { update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }), findUnique: vi.fn() },
-    testCaseLibrary: { findFirst: vi.fn(), create: vi.fn() },
-    testCaseDefinition: { update: vi.fn(), create: vi.fn() },
+    testCaseLibrary: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn().mockResolvedValue({ nextCaseNumber: 1 }) },
+    testCaseDefinition: { update: vi.fn(), create: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
   };
   const prisma = {
     project: { findFirst: vi.fn() },
@@ -361,7 +361,7 @@ describe('TestDesignsService', () => {
     transaction.testCaseDefinition.create.mockResolvedValue({ id: 'case-1', version: 1 });
     await service.confirm('design-1', { revision: 1, coverageChecks: [], uncoveredItems: [], noSmokeReason: '无适用冒烟场景' });
     expect(transaction.testCaseDefinition.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ testData: null, targetKeys: [] }),
+      data: expect.objectContaining({ testData: null, targetKeys: [], externalId: 'TC-000001' }),
     }));
   });
 

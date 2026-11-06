@@ -1148,6 +1148,7 @@ model TestCaseLibrary {
   project         Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   scope           String
   name            String
+  nextCaseNumber  Int                  @default(1)
   status          String               @default("ACTIVE")
   createdByUserId String?
   createdByUser   User?                @relation("TestCaseLibraryCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)

@@ -1,0 +1,1 @@
+ALTER TABLE "TestCaseLibrary" ADD COLUMN "nextCaseNumber" INTEGER NOT NULL DEFAULT 1;

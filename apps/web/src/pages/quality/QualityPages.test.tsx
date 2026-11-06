@@ -552,6 +552,9 @@ describe('Quality pages', () => {
       )?.click();
     });
     const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+    expect((dialog.querySelector('input[aria-label="用例编号"]') as HTMLInputElement).value).toBe('保存后自动生成');
+    expect((dialog.querySelector('input[aria-label="用例编号"]') as HTMLInputElement).readOnly).toBe(true);
+    expect(dialog.textContent).not.toContain('用例编号（可选）');
     const fields = dialog.querySelectorAll('input');
     await act(async () => {
       setInputValue(fields[1] as HTMLInputElement, '新增认证用例');
@@ -571,6 +574,7 @@ describe('Quality pages', () => {
       steps: ['打开登录页'],
       expected: '页面打开成功',
     }));
+    expect(vi.mocked(api.createTestCase).mock.calls[0][1]).not.toHaveProperty('externalId');
     expect(api.getTestCasesPage).toHaveBeenLastCalledWith(expect.objectContaining({
       libraryId: 'library-1',
       moduleId: 'module-1',
@@ -617,6 +621,7 @@ describe('Quality pages', () => {
     expect(document.body.textContent).toContain('编辑测试用例');
     expect((document.body.querySelector('input[aria-label="编辑标题"]') as HTMLInputElement).value)
       .toBe('登录后恢复原访问页面');
+    expect((document.body.querySelector('input[aria-label="用例编号"]') as HTMLInputElement)?.readOnly).toBe(true);
 
     await act(async () => (document.querySelector('input[aria-label="适用端 Web"]') as HTMLInputElement).click());
     const saveButton = Array.from(document.body.querySelectorAll('button')).find(
@@ -631,13 +636,13 @@ describe('Quality pages', () => {
     expect(api.updateTestCase).toHaveBeenCalledWith('case-1', expect.objectContaining({
       libraryId: 'library-1',
       moduleId: 'module-1',
-      externalId: 'LOGIN-001',
       title: '登录后恢复原访问页面',
       targetKeys: ['web'],
       steps: ['打开受保护页面', '完成登录'],
       expected: '自动返回登录前页面',
     }));
     expect(successToast).toHaveBeenCalledWith('测试用例已更新至 v4');
+    expect(vi.mocked(api.updateTestCase).mock.calls[0][1]).not.toHaveProperty('externalId');
     expect(api.getTestCasesPage).toHaveBeenCalledTimes(2);
   });
 

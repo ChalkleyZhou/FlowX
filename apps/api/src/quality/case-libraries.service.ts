@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { assignTestCaseNumbers } from './test-case-number';
 import type {
   CreateCaseLibraryDto,
   CreateTestCaseDefinitionDto,
@@ -171,34 +172,37 @@ export class CaseLibrariesService {
         throw new BadRequestException('Module does not belong to the selected library.');
       }
     }
-    return this.prisma.testCaseDefinition.create({
-      data: {
-        libraryId,
-        moduleId: dto.moduleId ?? null,
-        externalId: dto.externalId?.trim() || null,
-        title: dto.title.trim(),
-        priority: dto.priority ?? 'P2',
-        precondition: dto.precondition?.trim() || null,
-        testData: dto.testData?.trim() || null,
-        targetKeys: dto.targetKeys,
-        steps: dto.steps as Prisma.InputJsonValue,
-        expected: dto.expected.trim(),
-        tags: dto.tags as Prisma.InputJsonValue | undefined,
-        metadata: dto.metadata as Prisma.InputJsonValue | undefined,
-        createdByUserId: userId ?? null,
-        coverageLinks: dto.coverageLinks?.length
-          ? {
-              create: dto.coverageLinks.map((link) => ({
-                targetType: link.targetType,
-                targetKey: link.targetKey.trim(),
-                source: link.source ?? 'MANUAL',
-                confidence: link.confidence,
-                evidence: link.evidence as Prisma.InputJsonValue | undefined,
-              })),
-            }
-          : undefined,
-      },
-      include: { module: true, coverageLinks: true },
+    return this.prisma.$transaction(async (tx) => {
+      const [externalId] = await assignTestCaseNumbers(tx, libraryId, [dto.externalId?.trim() || undefined]);
+      return tx.testCaseDefinition.create({
+        data: {
+          libraryId,
+          moduleId: dto.moduleId ?? null,
+          externalId,
+          title: dto.title.trim(),
+          priority: dto.priority ?? 'P2',
+          precondition: dto.precondition?.trim() || null,
+          testData: dto.testData?.trim() || null,
+          targetKeys: dto.targetKeys,
+          steps: dto.steps as Prisma.InputJsonValue,
+          expected: dto.expected.trim(),
+          tags: dto.tags as Prisma.InputJsonValue | undefined,
+          metadata: dto.metadata as Prisma.InputJsonValue | undefined,
+          createdByUserId: userId ?? null,
+          coverageLinks: dto.coverageLinks?.length
+            ? {
+                create: dto.coverageLinks.map((link) => ({
+                  targetType: link.targetType,
+                  targetKey: link.targetKey.trim(),
+                  source: link.source ?? 'MANUAL',
+                  confidence: link.confidence,
+                  evidence: link.evidence as Prisma.InputJsonValue | undefined,
+                })),
+              }
+            : undefined,
+        },
+        include: { module: true, coverageLinks: true },
+      });
     });
   }
 
@@ -237,62 +241,48 @@ export class CaseLibrariesService {
       externalIdRows.set(externalId, index + 2);
     }
 
-    if (externalIdRows.size) {
-      const existingCases = await this.prisma.testCaseDefinition.findMany({
-        where: {
-          libraryId,
-          status: 'ACTIVE',
-          externalId: { in: [...externalIdRows.keys()] },
-        },
-        select: { externalId: true },
-      });
-      const existingId = existingCases.find((item) => item.externalId)?.externalId;
-      if (existingId) {
-        throw new BadRequestException(`用例编号“${existingId}”已存在于目标用例库。`);
-      }
-    }
-
-    const writeCases = (moduleByKey: Map<string, { id: string; name: string; parentId: string | null }>) => ({
-      data: cases.map((item) => {
-        const moduleName = item.moduleName;
-        const parent = item.parentModuleName
-          ? moduleByKey.get(`:${item.parentModuleName}`)
-          : undefined;
-        return {
-          libraryId,
-          moduleId: moduleName ? moduleByKey.get(`${parent?.id ?? ''}:${moduleName}`)?.id ?? null : null,
-          externalId: item.externalId ?? null,
-          title: item.title,
-          priority: item.priority ?? 'P2',
-          precondition: item.precondition ?? null,
-          testData: item.testData ?? null,
-          targetKeys: item.targetKeys,
-          steps: item.steps as Prisma.InputJsonValue,
-          expected: item.expected,
-          tags: item.tags?.length
-            ? (item.tags as Prisma.InputJsonValue)
-            : undefined,
-          createdByUserId: userId ?? null,
-        };
-      }),
-    });
-
-    if (!dto.autoCreateModules) {
-      const modules = await this.prisma.testCaseModule.findMany({
-        where: { libraryId },
-        select: { id: true, name: true, parentId: true },
-      });
-      const moduleByKey = new Map(modules.map((module) => [`${module.parentId ?? ''}:${module.name}`, module]));
-      for (const [index, item] of cases.entries()) {
-        if (item.moduleName && !moduleByKey.has(`:${item.moduleName}`)) {
-          throw new BadRequestException(`第 ${index + 2} 行：模块“${item.moduleName}”不存在于目标用例库。`);
-        }
-      }
-      const result = await this.prisma.testCaseDefinition.createMany(writeCases(moduleByKey));
-      return { imported: result.count };
-    }
-
     const result = await this.prisma.$transaction(async (tx) => {
+      const externalIds = await assignTestCaseNumbers(tx, libraryId, cases.map(item => item.externalId));
+
+      const writeCases = (moduleByKey: Map<string, { id: string; name: string; parentId: string | null }>) => ({
+        data: cases.map((item, index) => {
+          const moduleName = item.moduleName;
+          const parent = item.parentModuleName
+            ? moduleByKey.get(`:${item.parentModuleName}`)
+            : undefined;
+          return {
+            libraryId,
+            moduleId: moduleName ? moduleByKey.get(`${parent?.id ?? ''}:${moduleName}`)?.id ?? null : null,
+            externalId: externalIds[index],
+            title: item.title,
+            priority: item.priority ?? 'P2',
+            precondition: item.precondition ?? null,
+            testData: item.testData ?? null,
+            targetKeys: item.targetKeys,
+            steps: item.steps as Prisma.InputJsonValue,
+            expected: item.expected,
+            tags: item.tags?.length
+              ? (item.tags as Prisma.InputJsonValue)
+              : undefined,
+            createdByUserId: userId ?? null,
+          };
+        }),
+      });
+
+      if (!dto.autoCreateModules) {
+        const modules = await tx.testCaseModule.findMany({
+          where: { libraryId },
+          select: { id: true, name: true, parentId: true },
+        });
+        const moduleByKey = new Map(modules.map((module) => [`${module.parentId ?? ''}:${module.name}`, module]));
+        for (const [index, item] of cases.entries()) {
+          if (item.moduleName && !moduleByKey.has(`:${item.moduleName}`)) {
+            throw new BadRequestException(`第 ${index + 2} 行：模块“${item.moduleName}”不存在于目标用例库。`);
+          }
+        }
+        return tx.testCaseDefinition.createMany(writeCases(moduleByKey));
+      }
+
       const existing = await tx.testCaseModule.findMany({
         where: { libraryId },
         select: { id: true, name: true, parentId: true },

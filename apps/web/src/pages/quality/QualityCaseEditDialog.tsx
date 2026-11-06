@@ -42,7 +42,6 @@ export function QualityCaseEditDialog({
   const [libraryId, setLibraryId] = useState('');
   const [modules, setModules] = useState<TestCaseModule[]>([]);
   const [moduleId, setModuleId] = useState(NO_MODULE);
-  const [externalId, setExternalId] = useState('');
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<TestCaseDefinition['priority']>('P2');
   const [precondition, setPrecondition] = useState('');
@@ -57,7 +56,6 @@ export function QualityCaseEditDialog({
     if (!open || !testCase) return;
     setLibraryId(testCase.libraryId);
     setModuleId(testCase.moduleId ?? NO_MODULE);
-    setExternalId(testCase.externalId ?? '');
     setTitle(testCase.title);
     setPriority(testCase.priority);
     setPrecondition(testCase.precondition ?? '');
@@ -99,7 +97,6 @@ export function QualityCaseEditDialog({
       const updated = await api.updateTestCase(testCase.id, {
         libraryId,
         moduleId: moduleId === NO_MODULE ? null : moduleId,
-        externalId: externalId.trim() || null,
         title: title.trim(),
         priority,
         precondition: precondition.trim() || null,
@@ -153,8 +150,8 @@ export function QualityCaseEditDialog({
             </Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-[1fr_120px]">
-            <Field label="用例编号（可选）">
-              <Input aria-label="编辑用例编号" value={externalId} disabled={saving} onChange={(event) => setExternalId(event.target.value)} />
+            <Field label="用例编号">
+              <Input aria-label="用例编号" value={testCase?.externalId ?? '历史用例未编号'} readOnly />
             </Field>
             <Field label="优先级">
               <Select value={priority} onValueChange={(value) => setPriority(value as TestCaseDefinition['priority'])} disabled={saving}>
