@@ -50,6 +50,11 @@ export class TestRequestsController {
     return this.requests.updateScopeDraft(id, dto);
   }
 
+  @Post(':id/scope-draft/cases')
+  addScopeDraftCases(@Param('id') id: string, @Body() dto: AddTestScopeCasesDto, @Req() req: QualityRequest) {
+    return this.requests.addScopeDraftCases(id, dto, req.authSession?.user.id);
+  }
+
   @Post(':id/scope-draft/:candidateId/save-to-library')
   saveGeneratedCase(
     @Param('id') id: string,
