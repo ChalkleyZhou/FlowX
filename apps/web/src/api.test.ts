@@ -296,6 +296,24 @@ describe('api helpers', () => {
     );
   });
 
+  it('adds selected library cases to a test request scope draft', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal('fetch', fetchMock);
+    await api.addTestRequestScopeDraftCases('request-1', {
+      selections: [
+        { caseId: 'case-1', reason: '人工补充', impactLevel: 'MEDIUM' },
+      ],
+    });
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:3000/quality/test-requests/request-1/scope-draft/cases',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ selections: [{ caseId: 'case-1', reason: '人工补充', impactLevel: 'MEDIUM' }] }),
+      }),
+    );
+  });
+
   it('paginates and deletes test cases through quality endpoints', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

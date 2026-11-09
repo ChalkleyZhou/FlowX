@@ -372,6 +372,41 @@ export class TestRequestsService {
     return this.getRequest(id);
   }
 
+  async addScopeDraftCases(id: string, dto: AddTestScopeCasesDto, userId?: string) {
+    const request = await this.prisma.testRequest.findUnique({
+      where: { id },
+      select: { id: true, status: true, workspaceId: true, projectId: true, testDesignId: true, scopeRevision: true, scopeGenerationStatus: true, testPlan: { select: { snapshots: { select: { id: true }, take: 1 } } } },
+    });
+    if (!request) throw new NotFoundException('Test request not found.');
+    if (request.status !== TestRequestStatus.DRAFT || !request.testDesignId) throw new BadRequestException('当前提测不允许补充范围。');
+    if (request.testPlan?.snapshots.length) throw new ConflictException('测试范围已确认，不能继续补充用例。');
+    const selections = dedupeSelections(dto.selections);
+    const caseIds = selections.map(selection => selection.caseId);
+    const definitions = await this.prisma.testCaseDefinition.findMany({
+      where: { id: { in: caseIds }, status: 'ACTIVE', library: { workspaceId: request.workspaceId, OR: [{ projectId: null }, { projectId: request.projectId }] } },
+      include: { library: true, module: true },
+    });
+    if (definitions.length !== caseIds.length) throw new BadRequestException('部分用例不属于当前项目或共享用例库。');
+    const existing = await this.prisma.testDesignCandidate.findMany({ where: { testDesignId: request.testDesignId, sourceDefinitionId: { in: caseIds } }, select: { sourceDefinitionId: true } });
+    const existingIds = new Set(existing.map(item => item.sourceDefinitionId).filter((value): value is string => Boolean(value)));
+    const additions = definitions.filter(definition => !existingIds.has(definition.id));
+    if (!additions.length) return this.getRequest(id);
+    await this.prisma.$transaction(async tx => {
+      const changed = await tx.testRequest.updateMany({ where: { id, status: TestRequestStatus.DRAFT, scopeRevision: request.scopeRevision }, data: { scopeRevision: { increment: 1 } } });
+      if (changed.count !== 1) throw new ConflictException('测试范围版本已变化，请刷新后重试。');
+      const current = await tx.testDesignCandidate.aggregate({ where: { testDesignId: request.testDesignId! }, _max: { sortOrder: true } });
+      const baseSortOrder = (current._max.sortOrder ?? -1) + 1;
+      const selectionByCase = new Map(selections.map(selection => [selection.caseId, selection]));
+      for (const [index, definition] of additions.entries()) {
+        const selection = selectionByCase.get(definition.id)!;
+        const proposedCase = { title: definition.title, priority: definition.priority, precondition: definition.precondition, testData: definition.testData, targetKeys: definition.targetKeys ?? [], steps: definition.steps, expected: definition.expected, tags: definition.tags ?? [] };
+        const candidate = await tx.testDesignCandidate.create({ data: { testDesignId: request.testDesignId!, sourceDefinitionId: definition.id, sourceVersion: definition.version, coverageKeys: [], action: 'REUSE', resolution: 'ACCEPTED', matchReason: selection.reason.trim() || '测试人员手工补选', sortOrder: baseSortOrder + index, proposedCase } });
+        await tx.testRequestScopeCase.create({ data: { testRequestId: id, sourceDefinitionId: definition.id, sourceVersion: definition.version, libraryId: definition.libraryId, moduleId: definition.moduleId, moduleName: definition.module?.name ?? null, action: 'REUSE', status: 'INCLUDED', title: definition.title, priority: definition.priority, precondition: definition.precondition, testData: definition.testData, targetKeys: definition.targetKeys ?? Prisma.DbNull, steps: definition.steps as Prisma.InputJsonValue, expected: definition.expected, metadata: { candidateId: candidate.id, kind: 'FUNCTIONAL', selectedBy: userId ?? null }, coverageKeys: [], matchReason: selection.reason.trim() || '测试人员手工补选', origin: 'LIBRARY', sortOrder: baseSortOrder + index } });
+      }
+    });
+    return this.getRequest(id);
+  }
+
   async saveGeneratedCaseToLibrary(id: string, candidateId: string, dto: SaveGeneratedTestCaseDto, userId?: string) {
     if (!this.caseLibraries) throw new BadRequestException('用例库服务暂不可用。');
     const request = await this.prisma.testRequest.findUnique({

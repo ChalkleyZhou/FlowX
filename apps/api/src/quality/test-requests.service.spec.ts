@@ -222,6 +222,59 @@ describe('TestRequestsService', () => {
     });
   });
 
+  it('adds manually selected library cases to the active request scope draft without creating snapshots', async () => {
+    const transaction = {
+      testRequest: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      testDesignCandidate: { create: vi.fn().mockResolvedValue({ id: 'candidate-manual' }), aggregate: vi.fn().mockResolvedValue({ _max: { sortOrder: 0 } }) },
+      testRequestScopeCase: { create: vi.fn() },
+    };
+    const prisma = {
+      testRequest: {
+        findUnique: vi.fn()
+          .mockResolvedValueOnce({
+            id: 'request-1',
+            status: 'DRAFT',
+            workspaceId: 'workspace-1',
+            projectId: 'project-1',
+            testDesignId: 'design-1',
+            scopeRevision: 3,
+            scopeGenerationStatus: 'COMPLETED',
+            testDesign: { id: 'design-1', status: 'WAITING_REVIEW' },
+          })
+          .mockResolvedValue({ id: 'request-1' }),
+      },
+      testCaseDefinition: {
+        findMany: vi.fn().mockResolvedValue([{
+          id: 'case-1', libraryId: 'library-1', moduleId: 'module-1', version: 2,
+          title: '人工补充登录用例', priority: 'P1', precondition: null, testData: null,
+          targetKeys: [], steps: ['输入账号'], expected: '进入首页', tags: [], metadata: null,
+          library: { id: 'library-1', name: '项目库' }, module: { id: 'module-1', name: '账号登录' },
+        }]),
+      },
+      testDesignCandidate: { findMany: vi.fn().mockResolvedValue([]) },
+      $transaction: vi.fn(async (callback: (tx: typeof transaction) => unknown) => callback(transaction)),
+    };
+    const service = new TestRequestsService(prisma as never, {} as never);
+
+    await service.addScopeDraftCases('request-1', {
+      selections: [{ caseId: 'case-1', reason: '人工补充提测范围', impactLevel: 'MEDIUM' }],
+    });
+
+    expect(transaction.testRequest.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'request-1', status: 'DRAFT', scopeRevision: 3 },
+      data: { scopeRevision: { increment: 1 } },
+    }));
+    expect(transaction.testDesignCandidate.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        testDesignId: 'design-1', sourceDefinitionId: 'case-1', action: 'REUSE',
+        resolution: 'ACCEPTED', matchReason: '人工补充提测范围',
+      }),
+    }));
+    expect(transaction.testRequestScopeCase.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ sourceDefinitionId: 'case-1', title: '人工补充登录用例', status: 'INCLUDED' }),
+    }));
+  });
+
   it('keeps a request in draft when any deterministic coverage check fails', async () => {
     const { service, prisma } = createService();
     prisma.testRequest.findUnique.mockResolvedValue({
