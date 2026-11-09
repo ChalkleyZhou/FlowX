@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { Check, Minus, Play, RefreshCw } from 'lucide-react';
+import { Play, RefreshCw, ArrowRight, CheckCircle2, CircleDashed, AlertCircle } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../../api';
-import { ListPagination } from '../../components/ListPagination';
 import { useQualityPage } from './use-quality-page';
 import { ONLINE_AI_UNAVAILABLE_MESSAGE, useOnlineAiProviders } from '../../online-ai';
 import { EmptyState } from '../../components/EmptyState';
@@ -10,310 +9,122 @@ import { PageHeader } from '../../components/PageHeader';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader } from '../../components/ui/card';
-import { Input } from '../../components/ui/input';
 import { useToast } from '../../components/ui/toast';
-import type { TestCaseDefinition, TestDesign, TestDesignCandidate } from '../../types';
-import { QualityScopePanel } from './QualityScopePanel';
 import { useQualityResource } from './use-quality-resource';
 import { LoadingState, statusBadgeVariant } from './quality-ui';
+import type { TestDesign } from '../../types';
 
 const statusLabels: Record<string, string> = {
-  NOT_STARTED: '未开始',
-  GENERATING: '生成中',
-  WAITING_REVIEW: '待处理',
-  WAITING_CONFIRMATION: '待确认',
-  CONFIRMED: '已确认',
-  STALE: '已过期',
-  GENERATION_FAILED: '生成失败',
+  NOT_STARTED: '等待分析',
+  GENERATING: 'AI 分析中',
+  WAITING_REVIEW: '分析完成，等待发起提测',
+  WAITING_CONFIRMATION: '分析完成，等待发起提测',
+  CONFIRMED: '已进入提测流程',
+  STALE: '分析已过期',
+  GENERATION_FAILED: '分析失败',
 };
-
-const actionLabels: Record<TestDesignCandidate['action'], string> = {
-  REUSE: '复用现有用例',
-  OPTIMIZE: '优化现有用例',
-  CREATE: '新增项目用例',
-  EXCLUDE: '不纳入本次范围',
-};
-
-function sourceCaseDraft(source: TestCaseDefinition): TestDesignCandidate['proposedCase'] {
-  return {
-    title: source.title,
-    priority: source.priority,
-    precondition: source.precondition ?? null,
-    ...(source.testData != null ? { testData: source.testData } : {}),
-    ...(source.targetKeys ? { targetKeys: source.targetKeys } : {}),
-    steps: source.steps,
-    expected: source.expected,
-    tags: source.tags ?? [],
-  };
-}
-
-function comparableCase(value: TestDesignCandidate['proposedCase']) {
-  return {
-    title: value.title.trim(),
-    priority: value.priority || 'P2',
-    precondition: value.precondition?.trim() || null,
-    testData: value.testData?.trim() || null,
-    targetKeys: [...(value.targetKeys ?? [])].sort(),
-    steps: value.steps.map((step) => step.trim()).filter(Boolean),
-    expected: value.expected.trim(),
-    tags: value.tags ?? [],
-  };
-}
-
-function changedReuse(candidate: TestDesignCandidate) {
-  if (candidate.action !== 'REUSE' || !candidate.sourceDefinition) return false;
-  return JSON.stringify(comparableCase(candidate.proposedCase)) !==
-    JSON.stringify(comparableCase(sourceCaseDraft(candidate.sourceDefinition)));
-}
 
 export function QualityTestDesignPage() {
   const { id = '' } = useParams<{ id: string }>();
   return <QualityTestDesignContent key={id} id={id} />;
 }
+
 function QualityTestDesignContent({ id }: { id: string }) {
   const toast = useToast();
   const onlineAi = useOnlineAiProviders();
   const resource = useQualityResource(id, api.getTestDesign, design => design.status === 'GENERATING', 2000);
-  const workflows = useQualityPage(`${id}:workflows`, () => api.getTestDesignWorkflows(id, { page: 1, pageSize: 1 }));
-  const [candidatePage, setCandidatePage] = useState(1);
-  const [candidateQuery, setCandidateQuery] = useState('');
-  const [smokePage, setSmokePage] = useState(1);
-  const candidates = useQualityPage(`${id}:${candidatePage}:${candidateQuery}:${resource.data?.revision}`, () => api.getTestDesignCandidates(id, { page: candidatePage, pageSize: 20, q: candidateQuery || undefined }), true, setCandidatePage);
-  const smoke = useQualityPage(`${id}:${smokePage}:${resource.data?.revision}`, () => api.getTestDesignSmokeCases(id, { page: smokePage, pageSize: 20 }), true, setSmokePage);
-  const design = resource.data ? { ...resource.data, candidates: candidates.items, smokeCases: smoke.items } : undefined;
-  const summary = resource.data?.summary ?? candidates.summary ?? {};
-  const setDesign = resource.setData;
-  const loading = resource.loading;
+  const workflows = useQualityPage(`${id}:workflows`, () => api.getTestDesignWorkflows(id, { page: 1, pageSize: 100 }));
+  const design = resource.data;
   const load = resource.reload;
   const [busy, setBusy] = useState(false);
-  const [noSmokeReason, setNoSmokeReason] = useState('');
-  const [noCaseReason, setNoCaseReason] = useState('');
-  const [checked, setChecked] = useState<string[]>([]);
-  async function bulkExclude() {
-    if (!design) return;
-    setBusy(true);
-    try {
-      let revision = design.revision;
-      for (const candidateId of checked) {
-        await api.updateTestDesignCandidate(id, candidateId, { revision, resolution: 'REJECTED' });
-        revision = (await api.getTestDesign(id)).revision;
-      }
-      setChecked([]); await load({ silent: true });
-    } catch (cause) { toast.error(cause instanceof Error ? cause.message : '批量排除失败，请刷新后重试'); }
-    finally { setBusy(false); }
-  }
 
   async function generate() {
     if (!id) return;
     setBusy(true);
     try {
-      setDesign(await api.generateTestDesign(id));
-      toast.success('已开始后台生成测试用例，页面会自动刷新结果');
+      resource.setData(await api.generateTestDesign(id));
+      toast.success('已开始 AI 分析，页面会自动刷新结果');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '生成测试设计失败');
+      toast.error(error instanceof Error ? error.message : '启动 AI 分析失败');
     } finally {
       setBusy(false);
     }
   }
 
-  async function resolveCandidate(
-    candidate: TestDesignCandidate,
-    resolution: 'ACCEPTED' | 'REJECTED',
-    action?: TestDesignCandidate['action'],
-    proposedCase?: TestDesignCandidate['proposedCase'],
-  ) {
-    if (!id || !design) return;
-    try {
-      await api.updateTestDesignCandidate(id, candidate.id, {
-        revision: design.revision,
-        resolution,
-        ...(action ? { action } : {}),
-        ...(proposedCase ? { proposedCase } : {}),
-      });
-      await load();
-      await candidates.refresh();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '更新候选失败');
-    }
-  }
+  if (resource.loading && !design) return <LoadingState />;
+  if (!design) return <EmptyState title="AI 测试分析不存在" description="请检查链接或返回提测管理。" />;
 
-  async function confirm() {
-    if (!id || !design) return;
-    setBusy(true);
-    try {
-      const result = await api.confirmTestDesign(id, {
-        revision: design.revision,
-        coverageChecks: [{ key: 'candidate-resolution', passed: (summary.pendingCount ?? 0) === 0 }],
-        uncoveredItems: design.uncoveredItems ?? [],
-        noCaseReason: (summary.acceptedCount ?? 0) > 0 ? undefined : noCaseReason,
-        noSmokeReason: smoke.total ? undefined : noSmokeReason,
-      });
-      setDesign(result);
-      toast.success('测试设计已确认，可以用于提测');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '确认测试设计失败');
-    } finally {
-      setBusy(false);
-    }
-  }
+  const summary = design.summary;
+  const candidateCount = summary?.candidateCount ?? 0;
+  const smokeCount = summary?.smokeCount ?? 0;
+  const source = design.sourceSummary ?? {};
+  const hasSource = (key: string) => Array.isArray(source[key]) ? (source[key] as unknown[]).length > 0 : Boolean(source[key]);
+  const hasRequest = Boolean(design.testRequest);
+  const canStartRequest = ['WAITING_REVIEW', 'WAITING_CONFIRMATION', 'CONFIRMED'].includes(design.status) && !hasRequest;
+  const analyzing = design.status === 'GENERATING' || design.status === 'NOT_STARTED';
+  const createParams = new URLSearchParams({
+    create: '1',
+    projectId: design.projectId,
+    projectVersionId: design.projectVersionId,
+    ...(design.requirements?.[0]?.requirement.id ? { requirementId: design.requirements[0].requirement.id } : {}),
+    ...(workflows.items[0]?.workflowRun.id ? { workflowRunId: workflows.items[0].workflowRun.id } : {}),
+  });
+  const nextHref = hasRequest
+    ? `/quality/test-requests/${design.testRequest?.id}`
+    : `/quality/test-requests?${createParams}`;
 
-  async function confirmSmoke() {
-    if (!id || !design || !design.smokeCases.length) return;
-    setBusy(true);
-    try {
-      const result = await api.updateTestDesignSmoke(id, {
-        revision: design.revision,
-        partial: true,
-        cases: design.smokeCases.map((item) => ({
-          id: item.id,
-          title: item.title,
-          priority: item.priority,
-          precondition: item.precondition,
-          steps: item.steps,
-          expected: item.expected,
-          blocking: item.blocking,
-          coverageKeys: item.coverageKeys,
-          resolution: 'ACCEPTED',
-        })),
-      });
-      setDesign(result);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '确认冒烟用例失败');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (loading && !design) return <LoadingState />;
-  if (!design) return <EmptyState title="测试设计不存在" description="请检查链接或返回提测管理。" />;
-
-  const pendingCount = summary.pendingCount ?? 0;
-  const smokePending = (summary.smokePendingCount ?? smoke.summary?.pendingCount ?? 0) > 0;
-  const hasAcceptedCases = (summary.acceptedCount ?? 0) > 0;
-  const reviewable = design.status === 'WAITING_REVIEW' || design.status === 'WAITING_CONFIRMATION';
-  const confirmationIncomplete = !reviewable || pendingCount > 0 || smokePending ||
-    (!hasAcceptedCases && !noCaseReason.trim()) || (!smoke.total && !noSmokeReason.trim());
-  const frozen = Boolean(design.testRequest);
+  const sources = [
+    { label: '需求', detail: design.requirements?.length ? `${design.requirements.length} 条需求` : '已关联需求', ready: Boolean(design.requirements?.length) || hasSource('requirementIds') },
+    { label: '技术方案', detail: '研发工作流设计产物', ready: hasSource('designs') },
+    { label: 'Spec & Plan', detail: '研发执行计划', ready: hasSource('specPlans') },
+    { label: '研发提交记录', detail: workflows.items.length ? `${workflows.items.length} 条已关联工作流` : '已关联研发工作流', ready: Boolean(workflows.items.length) || hasSource('workflowRunIds') },
+    { label: '代码变更', detail: typeof source.changeSummary === 'string' && source.changeSummary ? '已读取代码差异摘要' : '随研发交付记录读取', ready: Boolean(source.changeSummary) },
+    { label: '代码库上下文', detail: '用于补充影响范围和组件关系', ready: hasSource('designs') || hasSource('specPlans') },
+  ];
 
   return (
-    <>
+    <div className="space-y-5">
       <PageHeader
         eyebrow="测试与质量"
-        title="测试设计"
-        description={`第 ${design.revision} 版 · 候选 ${candidates.total} 条 · 冒烟 ${smoke.total} 条`}
+        title="AI 测试分析"
+        description={`${design.requirements?.[0]?.requirement.title ?? '当前需求'} · 第 ${design.revision} 版 AI 分析`}
         actions={(
           <>
-            <Button variant="outline" onClick={() => void load()}><RefreshCw className="h-4 w-4" />刷新</Button>
+            <Button variant="outline" onClick={() => void load()} disabled={busy}><RefreshCw className="h-4 w-4" />刷新</Button>
             {onlineAi && !onlineAi.onlineAvailable ? <p role="status" className="text-sm text-muted-foreground">{ONLINE_AI_UNAVAILABLE_MESSAGE}</p> : null}
-            <Button onClick={() => void generate()} disabled={busy || design.status === 'GENERATING' || frozen || (onlineAi !== null && !onlineAi.onlineAvailable)}><Play className="h-4 w-4" />{design.status === 'CONFIRMED' || design.status === 'STALE' ? '刷新影响分析' : '生成候选'}</Button>
+            {!hasRequest && design.status !== 'CONFIRMED' ? <Button variant="outline" onClick={() => void generate()} disabled={busy || analyzing || (onlineAi !== null && !onlineAi.onlineAvailable)}><Play className="h-4 w-4" />重新分析</Button> : null}
           </>
         )}
       />
 
-      <ol className="grid gap-2 rounded-md border p-4 text-sm sm:grid-cols-4"><li>1 选择用例库</li><li className="font-medium text-primary">2 处理建议与补选</li><li>3 确认并提测</li><li>4 执行与报告</li></ol>
-      {design.status === 'CONFIRMED' ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-4"><p className="text-sm">测试设计已确认，下一步关联已完成研发的工作流发起提测。</p><Button asChild><Link to={design.testRequest ? `/quality/test-requests/${design.testRequest.id}` : `/quality/test-requests?${new URLSearchParams({ create: '1', projectId: design.projectId, projectVersionId: design.projectVersionId, ...(workflows.items[0] ? { workflowRunId: workflows.items[0].workflowRun.id } : {}) })}`}>{design.testRequest ? '查看提测详情' : '继续发起提测'}</Link></Button></div> : null}
-      <QualityScopePanel workspaceId={design.workspaceId} projectId={design.projectId} design={design} onDesignChange={setDesign} />
-      {design.uncoveredItems?.length ? <section className="rounded-md border border-amber-500/40 p-4"><h2 className="font-medium">尚未覆盖的验收点</h2><ul className="mt-2 list-disc pl-5 text-sm">{design.uncoveredItems.map((item, index) => <li key={index}>{item}</li>)}</ul><p className="mt-2 text-xs text-muted-foreground">可从用例库补选；确认设计时会保留这些未覆盖项。</p></section> : null}
-      {design.status === 'GENERATION_FAILED' ? (
-        <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {design.generationError ?? '本次失败未记录原因。请重新生成；若再次失败，页面会显示诊断信息。'}
-          <p className="mt-1 text-xs">排查编号：{design.id}</p>
-        </div>
-      ) : null}
+      <ol aria-label="提测流程" className="grid gap-2 rounded-md border bg-muted/20 p-3 text-sm sm:grid-cols-4">
+        {['AI 分析', '发起提测', '范围确认与分派', '执行与报告'].map((label, index) => <li key={label} className={`rounded-md px-3 py-2 ${index === 0 ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}><span className="mr-1">{index + 1}</span>{label}</li>)}
+      </ol>
 
-      <Card className="rounded-md border border-border bg-card">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">当前状态</p>
-            <div className="mt-1 flex items-center gap-2"><Badge variant={statusBadgeVariant(design.status)}>{statusLabels[design.status] ?? design.status}</Badge><span className="text-sm text-muted-foreground">待处理 {pendingCount} 条</span></div>
-          </div>
-          <Button onClick={() => void confirm()} disabled={busy || confirmationIncomplete || design.status === 'CONFIRMED'}><Check className="h-4 w-4" />确认测试设计</Button>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <section aria-label="功能测试候选" className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-base font-semibold">功能测试候选</h2><Button size="sm" variant="outline" disabled={busy || !checked.length || !reviewable} onClick={() => void bulkExclude()}>批量排除</Button></div>
-            <Input aria-label="搜索候选用例" value={candidateQuery} onChange={event => { setCandidateQuery(event.target.value); setCandidatePage(1); }} placeholder="搜索候选用例" />
-            {candidates.error ? <p role="alert">{candidates.error}<Button onClick={() => void candidates.refresh()}>重试</Button></p> : null}
-            {design.candidates.length ? design.candidates.map((candidate) => {
-              const sourceDefinition = candidate.sourceDefinition;
-              const reuseContentChanged = candidate.resolution !== 'REJECTED' && changedReuse(candidate);
-              return (
-              <article key={candidate.id} className="min-w-0 space-y-3 rounded-md border border-border p-4 [overflow-wrap:anywhere]">
-                <header className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 space-y-2">
-                    <label className="flex items-center gap-2 font-medium">{reviewable ? <input type="checkbox" aria-label={`选择候选 ${candidate.proposedCase.title}`} checked={checked.includes(candidate.id)} onChange={e => setChecked(ids => e.target.checked ? [...ids, candidate.id] : ids.filter(id => id !== candidate.id))} /> : null}<span>{candidate.proposedCase.title}</span></label>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline">{candidate.action === 'EXCLUDE' && candidate.resolution === 'PENDING' ? 'AI 建议本次不测' : actionLabels[candidate.action]}</Badge>
-                      {candidate.sourceDefinition?.library ? <Badge variant="secondary">{candidate.sourceDefinition.library.projectId ? '项目库' : 'Workspace 共享库'}</Badge> : null}
-                    </div>
-                  </div>
-                  <Badge aria-label="处理状态" variant="outline" className="shrink-0 whitespace-nowrap">
-                    {candidate.resolution === 'PENDING' ? '待处理' : candidate.resolution === 'ACCEPTED' && candidate.action !== 'EXCLUDE' ? '已纳入' : '本次不测'}
-                  </Badge>
-                </header>
-                <p className="text-sm text-muted-foreground">
-                  {candidate.action === 'EXCLUDE'
-                    ? candidate.matchReason?.trim() ? `AI 建议不纳入的原因：${candidate.matchReason}` : 'AI 未提供不纳入原因'
-                    : candidate.matchReason ?? '暂无匹配说明'}
-                </p>
-                <div className="grid gap-4 text-sm lg:grid-cols-2">
-                  {sourceDefinition ? <CaseSummary label="现有用例" testCase={sourceDefinition} /> : null}
-                  <CaseSummary label={sourceDefinition ? '建议结果' : '生成用例'} testCase={candidate.proposedCase} />
-                </div>
-                {reuseContentChanged ? <p role="alert" className="text-sm text-destructive">建议结果与现有用例不同，不能按复用确认。按建议优化会更新现有用例版本。</p> : null}
-                {candidate.resolution === 'PENDING' ? <div className="flex flex-wrap justify-end gap-2">
-                  {candidate.resolution === 'PENDING' && candidate.action === 'EXCLUDE' ? (
-                    <>
-                      <Button size="sm" className="min-h-9 h-auto max-w-full whitespace-normal py-2" onClick={() => void resolveCandidate(candidate, 'ACCEPTED')}><Minus className="h-4 w-4 shrink-0" />本次不测</Button>
-                      {sourceDefinition ? <Button size="sm" variant="outline" className="min-h-9 h-auto max-w-full whitespace-normal py-2" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'REUSE', sourceCaseDraft(sourceDefinition))}><Check className="h-4 w-4 shrink-0" />按原用例复用</Button> : null}
-                    </>
-                  ) : null}
-                  {candidate.resolution === 'PENDING' && reuseContentChanged && sourceDefinition ? <>
-                    <Button size="sm" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'REUSE', sourceCaseDraft(sourceDefinition))}>按原用例复用</Button>
-                    <Button size="sm" variant="outline" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'OPTIMIZE')}>按建议优化</Button>
-                    <Button size="sm" variant="outline" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'EXCLUDE')}>本次不测</Button>
-                  </> : null}
-                  {candidate.resolution === 'PENDING' && candidate.action !== 'EXCLUDE' && !reuseContentChanged ? <><Button size="sm" onClick={() => void resolveCandidate(candidate, 'ACCEPTED')}>接受</Button><Button size="sm" variant="outline" onClick={() => void resolveCandidate(candidate, 'REJECTED')}>排除</Button></> : null}
-                </div> : null}
-                {candidate.resolution === 'ACCEPTED' && reuseContentChanged && sourceDefinition ? <div className="flex flex-wrap justify-end gap-2">
-                  <Button size="sm" variant="outline" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'EXCLUDE')}>改为本次不测</Button>
-                  <Button size="sm" variant="outline" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'REUSE', sourceCaseDraft(sourceDefinition))}>改为按原用例复用</Button>
-                  <Button size="sm" onClick={() => void resolveCandidate(candidate, 'ACCEPTED', 'OPTIMIZE')}>改为按建议优化</Button>
-                </div> : null}
-              </article>
-            ); }) : <div className="space-y-2"><EmptyState title={candidateQuery || (summary.candidateCount ?? 0) > 0 ? '当前页没有匹配候选' : '暂无功能候选'} description={candidateQuery || (summary.candidateCount ?? 0) > 0 ? '调整搜索条件或返回其他页查看。' : '确认时需要填写无功能用例原因。'} />{!candidateQuery && !(summary.candidateCount ?? 0) ? <Input value={noCaseReason} onChange={(event) => setNoCaseReason(event.target.value)} placeholder="无功能用例原因" /> : null}</div>}
-            <ListPagination page={candidatePage} total={candidates.total} pageSize={20} onPageChange={setCandidatePage} />
-          </section>
-
-          <section aria-label="本次冒烟用例" className="space-y-3 border-t border-border pt-6">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><h2 className="text-base font-semibold">本次冒烟用例</h2>{design.smokeCases.length ? <Button variant="outline" size="sm" onClick={() => void confirmSmoke()} disabled={busy || !smokePending}><Check className="h-4 w-4" />确认本页冒烟</Button> : null}</div>
-            {design.smokeCases.length ? design.smokeCases.map((item) => <div key={item.id} className="rounded-md border border-border p-4"><div className="flex items-center justify-between gap-3"><p className="font-medium">{item.title}</p><Badge variant="outline">{item.resolution === 'ACCEPTED' ? '已确认' : '待确认'}</Badge></div><ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">{item.steps.map((step) => <li key={step}>{step}</li>)}</ol><p className="mt-2 text-sm">预期：{item.expected}</p></div>) : <div className="space-y-2"><p className="text-sm text-muted-foreground">本次未生成冒烟用例，请填写原因。</p><Input value={noSmokeReason} onChange={(event) => setNoSmokeReason(event.target.value)} placeholder="无冒烟场景原因" /></div>}
-            <ListPagination page={smokePage} total={smoke.total} pageSize={20} onPageChange={setSmokePage} />
-          </section>
+      <Card className="rounded-md border-border bg-card shadow-none">
+        <CardHeader><h2 className="font-semibold">这次 AI 看了什么</h2><p className="text-sm text-muted-foreground">范围会在发起提测后生成，当前页面只展示分析依据。</p></CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {sources.map(item => <div key={item.label} className="rounded-md border bg-muted/10 p-3"><div className="flex items-center gap-2 font-medium">{item.ready ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <CircleDashed className="h-4 w-4 text-muted-foreground" />}{item.label}</div><p className="mt-1 text-xs text-muted-foreground">{item.detail}</p></div>)}
         </CardContent>
       </Card>
-    </>
+
+      <Card className="rounded-md border-border bg-card shadow-none">
+        <CardHeader className="flex flex-row items-start justify-between gap-3"><div><h2 className="font-semibold">分析结果</h2><p className="mt-1 text-sm text-muted-foreground">这里看结果规模；具体删改和分派进入提测详情完成。</p></div><Badge variant={statusBadgeVariant(design.status)}>{statusLabels[design.status] ?? design.status}</Badge></CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-3">
+          <Metric label="功能候选" value={candidateCount} />
+          <Metric label="冒烟用例" value={smokeCount} />
+          <Metric label="未覆盖验收点" value={design.uncoveredItems?.length ?? 0} />
+        </CardContent>
+      </Card>
+
+      {design.uncoveredItems?.length ? <section className="rounded-md border border-amber-500/40 bg-amber-500/5 p-4"><div className="flex items-center gap-2 font-medium"><AlertCircle className="h-4 w-4 text-amber-600" />有验收点暂未覆盖</div><ul className="mt-2 list-disc pl-5 text-sm">{design.uncoveredItems.slice(0, 5).map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul><p className="mt-2 text-xs text-muted-foreground">进入提测详情后可直接删除不需要的范围，或补充人工用例。</p></section> : null}
+      {design.status === 'GENERATION_FAILED' ? <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{design.generationError ?? '本次 AI 分析失败，请重新分析。'}<p className="mt-1 text-xs">排查编号：{design.id}</p></div> : null}
+
+      <section aria-label="下一步操作" className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-primary/5 p-4"><div><h2 className="font-semibold">下一步</h2><p className="mt-1 text-sm text-muted-foreground">{hasRequest ? '提测已创建，去详情页删除范围、确认并分派。' : analyzing ? 'AI 正在分析，完成后再发起提测。' : '发起提测后，AI 会生成默认范围，你只需要删除不满意的用例。'}</p></div>{hasRequest || canStartRequest ? <Button asChild disabled={analyzing}><Link to={nextHref}>{hasRequest ? '查看提测详情' : '发起提测'}<ArrowRight className="h-4 w-4" /></Link></Button> : <Button disabled>{design.status === 'GENERATION_FAILED' ? '请重新分析' : '等待 AI 分析完成'}</Button>}</section>
+    </div>
   );
 }
 
-function CaseSummary({
-  label,
-  testCase,
-}: {
-  label: string;
-  testCase: { title: string; precondition?: string | null; testData?: string | null; targetKeys?: string[]; steps: string[]; expected: string };
-}) {
-  return (
-    <div className="min-w-0 border-l-2 border-border pl-3">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-1 font-medium">{testCase.title}</p>
-      {testCase.precondition ? <p className="mt-1 text-muted-foreground">前置：{testCase.precondition}</p> : null}
-      {testCase.testData ? <p className="mt-1 text-muted-foreground">测试数据：{testCase.testData}</p> : null}
-      <p className="mt-1 text-muted-foreground">适用端：{testCase.targetKeys?.join('、') || '未确认'}</p>
-      <ol className="mt-1 list-decimal space-y-1 pl-5 text-muted-foreground">
-        {testCase.steps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}
-      </ol>
-      <p className="mt-1">预期：{testCase.expected}</p>
-    </div>
-  );
+function Metric({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-md border bg-muted/10 p-4"><p className="text-sm text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-semibold">{value}</p></div>;
 }
