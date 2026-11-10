@@ -95,37 +95,52 @@ afterEach(async () => {
   vi.clearAllMocks();
 });
 
-it('默认把 AI 结果放入右侧且列表不展示测试用例详情', async () => {
+it('默认把 AI 结果勾选到单列表且列表不展示测试用例详情', async () => {
   await act(async () => root.render(<QualityScopeDraftPanel request={request} onConfirmed={vi.fn()} />));
 
-  expect(container.textContent).toContain('本次提测范围');
+  expect(container.textContent).toContain('AI 提测范围');
+  expect(container.textContent).toContain('全部');
+  expect(container.textContent).toContain('已选');
+  expect(container.textContent).toContain('AI 推荐');
   expect(container.textContent).toContain('登录后返回首页');
   expect(container.textContent).toContain('验证码错误提示');
   expect(container.textContent).toContain('AI 新用例');
+  expect(container.querySelector<HTMLInputElement>('input[aria-label="选择范围用例 登录后返回首页"]')?.checked).toBe(true);
   expect(container.textContent).not.toContain('输入账号');
   expect(container.textContent).not.toContain('跳转首页');
   expect(container.textContent).not.toContain('覆盖登录回归');
 });
 
-it('可以从左侧树选择正式用例并加入范围', async () => {
+it('切换已选筛选不会丢失 AI 默认范围，点击列表行可以查看详情', async () => {
+  await act(async () => root.render(<QualityScopeDraftPanel request={request} onConfirmed={vi.fn()} />));
+
+  await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent === '已选')?.click());
+  expect(container.textContent).toContain('登录后返回首页');
+  expect(container.textContent).not.toContain('退出登录');
+
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="查看用例 登录后返回首页"]')?.click());
+  expect(container.textContent).toContain('输入账号');
+  expect(container.textContent).toContain('跳转首页');
+});
+
+it('可以从左侧树选择正式用例并直接加入范围', async () => {
   await act(async () => root.render(<QualityScopeDraftPanel request={request} onConfirmed={vi.fn()} />));
   await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="展开用例库 项目库"]')?.click());
   await act(async () => await Promise.resolve());
   await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="展开模块 账号登录"]')?.click());
   await act(async () => await Promise.resolve());
   await act(async () => container.querySelector<HTMLInputElement>('input[aria-label="选择用例 退出登录"]')?.click());
-  await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('加入范围'))?.click());
 
   expect(api.addTestRequestScopeDraftCases).toHaveBeenCalledWith('request-1', {
     selections: [{ caseId: 'case-extra', reason: '人工补充提测范围', impactLevel: 'MEDIUM' }],
   });
 });
 
-it('可以移出右侧 AI 用例并整体确认范围', async () => {
+it('取消勾选即可移出 AI 用例并整体确认范围', async () => {
   const onConfirmed = vi.fn();
   await act(async () => root.render(<QualityScopeDraftPanel request={request} onConfirmed={onConfirmed} />));
   await act(async () => container.querySelector<HTMLInputElement>('input[aria-label="选择范围用例 登录后返回首页"]')?.click());
-  await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('移出范围'))?.click());
+  await act(async () => await Promise.resolve());
   expect(api.updateTestRequestScopeDraft).toHaveBeenCalledWith('request-1', { scopeRevision: 4, removedCandidateIds: ['candidate-1'] });
 
   await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('确认范围并进入分派'))?.click());
