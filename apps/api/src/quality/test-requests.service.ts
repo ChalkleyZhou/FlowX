@@ -1,10 +1,11 @@
+import { browseScope, scopeModuleIds, type ScopeBrowseQuery } from './test-request-scope-browse';
 import { listReportBaselines, listReportSupersessions, listRequestCases, type ReportBrowseQuery } from './test-request-browse';
 import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import type { AddTestScopeCasesDto, AssignTestRequestCasesDto, CompleteTestScopeDto, CreateTestRequestDto, PrepareTestRequestDto, SaveGeneratedTestCaseDto, UpdateTestRequestScopeDraftDto } from './dto/test-request.dto';
+import type { AddTestScopeCasesDto, AssignTestRequestCasesDto, CompleteTestScopeDto, CreateTestRequestDto, PrepareTestRequestDto, SaveGeneratedTestCaseDto, UpdateTestRequestScopeDraftDto, UpdateTestScopeModuleDto } from './dto/test-request.dto';
 import { TestRequestStatus, assertTestRequestTransition } from './quality-status';
 import { TestDesignsService } from './test-designs.service';
 import { CaseLibrariesService } from './case-libraries.service';
@@ -319,7 +320,8 @@ export class TestRequestsService {
     return request;
   }
 
-  async getScopeDraft(id: string, query: PaginationQuery & { q?: string; action?: string } = {}) {
+  async getScopeDraft(id: string, query: ScopeBrowseQuery = {}) {
+    if (query.view) return browseScope(this.prisma, id, query);
     const request = await this.prisma.testRequest.findUnique({
       where: { id },
       select: { id: true, scopeRevision: true, scopeGenerationStatus: true, testDesignId: true },
@@ -348,12 +350,27 @@ export class TestRequestsService {
 
   async updateScopeDraft(id: string, dto: UpdateTestRequestScopeDraftDto) {
     const candidateIds = unique(dto.removedCandidateIds);
+    const restoredIds = unique(dto.restoredCandidateIds ?? []);
+    if (candidateIds.some(id => restoredIds.includes(id))) throw new BadRequestException('同一用例不能同时移除和恢复。');
     await this.prisma.$transaction(async tx => {
-      const request = await tx.testRequest.findUnique({ where: { id }, select: { status: true, scopeRevision: true, testDesignId: true } });
+      const request = await tx.testRequest.findUnique({ where: { id }, select: { status: true, scopeRevision: true, testDesignId: true, testPlan: { select: { snapshots: { take: 1, select: { id: true } } } } } });
       if (!request) throw new NotFoundException('Test request not found.');
       if (request.status !== TestRequestStatus.DRAFT || !request.testDesignId) throw new BadRequestException('当前提测不允许修改范围草稿。');
+      if (request.testPlan?.snapshots.length) throw new ConflictException('测试范围已确认，不能继续修改用例。');
       const changed = await tx.testRequest.updateMany({ where: { id, status: TestRequestStatus.DRAFT, scopeRevision: dto.scopeRevision }, data: { scopeRevision: { increment: 1 } } });
       if (changed.count !== 1) throw new ConflictException('测试范围版本已变化，请刷新后重试。');
+      if (restoredIds.length) {
+        const rows = await tx.testDesignCandidate.findMany({ where: { id: { in: restoredIds }, testDesignId: request.testDesignId } });
+        if (rows.length !== restoredIds.length) throw new BadRequestException('部分候选不属于当前提测范围。');
+        await tx.testDesignCandidate.updateMany({ where: { id: { in: restoredIds }, testDesignId: request.testDesignId, action: 'EXCLUDE' }, data: { action: 'REUSE' } });
+        await tx.testDesignCandidate.updateMany({ where: { id: { in: restoredIds }, testDesignId: request.testDesignId }, data: { resolution: 'ACCEPTED', decisionNote: '恢复到本次提测范围' } });
+        const scopeCases = await tx.testRequestScopeCase.findMany({ where: { testRequestId: id }, select: { id: true, metadata: true } });
+        const scopeIds = scopeCases.filter(row => {
+          const metadata = row.metadata as Record<string, unknown> | null;
+          return typeof metadata?.candidateId === 'string' && restoredIds.includes(metadata.candidateId);
+        }).map(row => row.id);
+        if (scopeIds.length) await tx.testRequestScopeCase.updateMany({ where: { id: { in: scopeIds }, testRequestId: id }, data: { status: 'INCLUDED' } });
+      }
       if (candidateIds.length) {
         const result = await tx.testDesignCandidate.updateMany({ where: { id: { in: candidateIds }, testDesignId: request.testDesignId }, data: { resolution: 'REJECTED', decisionNote: '从本次提测范围移除' } });
         if (result.count !== candidateIds.length) throw new BadRequestException('部分候选不属于当前提测范围。');
@@ -387,13 +404,21 @@ export class TestRequestsService {
       include: { library: true, module: true },
     });
     if (definitions.length !== caseIds.length) throw new BadRequestException('部分用例不属于当前项目或共享用例库。');
-    const existing = await this.prisma.testDesignCandidate.findMany({ where: { testDesignId: request.testDesignId, sourceDefinitionId: { in: caseIds } }, select: { sourceDefinitionId: true } });
+    const existing = await this.prisma.testDesignCandidate.findMany({ where: { testDesignId: request.testDesignId, sourceDefinitionId: { in: caseIds } }, select: { id: true, sourceDefinitionId: true, resolution: true, action: true } });
     const existingIds = new Set(existing.map(item => item.sourceDefinitionId).filter((value): value is string => Boolean(value)));
     const additions = definitions.filter(definition => !existingIds.has(definition.id));
-    if (!additions.length) return this.getRequest(id);
+    const restorations = existing.filter(item => item.resolution === 'REJECTED' || item.action === 'EXCLUDE');
+    if (dto.scopeRevision !== undefined && dto.scopeRevision !== request.scopeRevision) throw new ConflictException('测试范围版本已变化，请刷新后重试。');
+    if (!additions.length && !restorations.length) return this.getRequest(id);
     await this.prisma.$transaction(async tx => {
       const changed = await tx.testRequest.updateMany({ where: { id, status: TestRequestStatus.DRAFT, scopeRevision: request.scopeRevision }, data: { scopeRevision: { increment: 1 } } });
       if (changed.count !== 1) throw new ConflictException('测试范围版本已变化，请刷新后重试。');
+      if (restorations.length) {
+        const ids = restorations.map(item => item.id);
+        await tx.testDesignCandidate.updateMany({ where: { id: { in: ids }, testDesignId: request.testDesignId!, action: 'EXCLUDE' }, data: { action: 'REUSE' } });
+        await tx.testDesignCandidate.updateMany({ where: { id: { in: ids }, testDesignId: request.testDesignId! }, data: { resolution: 'ACCEPTED', decisionNote: '恢复到本次提测范围' } });
+        await tx.testRequestScopeCase.updateMany({ where: { testRequestId: id, sourceDefinitionId: { in: restorations.flatMap(item => item.sourceDefinitionId ? [item.sourceDefinitionId] : []) } }, data: { status: 'INCLUDED' } });
+      }
       const current = await tx.testDesignCandidate.aggregate({ where: { testDesignId: request.testDesignId! }, _max: { sortOrder: true } });
       const baseSortOrder = (current._max.sortOrder ?? -1) + 1;
       const selectionByCase = new Map(selections.map(selection => [selection.caseId, selection]));
@@ -403,8 +428,24 @@ export class TestRequestsService {
         const candidate = await tx.testDesignCandidate.create({ data: { testDesignId: request.testDesignId!, sourceDefinitionId: definition.id, sourceVersion: definition.version, coverageKeys: [], action: 'REUSE', resolution: 'ACCEPTED', matchReason: selection.reason.trim() || '测试人员手工补选', sortOrder: baseSortOrder + index, proposedCase } });
         await tx.testRequestScopeCase.create({ data: { testRequestId: id, sourceDefinitionId: definition.id, sourceVersion: definition.version, libraryId: definition.libraryId, moduleId: definition.moduleId, moduleName: definition.module?.name ?? null, action: 'REUSE', status: 'INCLUDED', title: definition.title, priority: definition.priority, precondition: definition.precondition, testData: definition.testData, targetKeys: definition.targetKeys ?? Prisma.DbNull, steps: definition.steps as Prisma.InputJsonValue, expected: definition.expected, metadata: { candidateId: candidate.id, kind: 'FUNCTIONAL', selectedBy: userId ?? null }, coverageKeys: [], matchReason: selection.reason.trim() || '测试人员手工补选', origin: 'LIBRARY', sortOrder: baseSortOrder + index } });
       }
-    });
+    }, { timeout: 30_000 });
     return this.getRequest(id);
+  }
+
+  async updateScopeModule(id: string, dto: UpdateTestScopeModuleDto, userId?: string) {
+    const request = await this.prisma.testRequest.findUnique({ where: { id }, select: { workspaceId: true, projectId: true, testDesignId: true, scopeRevision: true, status: true, testPlan: { select: { snapshots: { take: 1, select: { id: true } } } } } });
+    if (!request) throw new NotFoundException('Test request not found.');
+    if (request.status !== TestRequestStatus.DRAFT || !request.testDesignId) throw new BadRequestException('当前提测不允许修改范围草稿。');
+    if (request.testPlan?.snapshots.length) throw new ConflictException('测试范围已确认，不能继续修改用例。');
+    if (request.scopeRevision !== dto.scopeRevision) throw new ConflictException('测试范围版本已变化，请刷新后重试。');
+    const moduleIds = await scopeModuleIds(this.prisma, dto.moduleId, request.workspaceId, request.projectId);
+    if (dto.included) {
+      const cases = await this.prisma.testCaseDefinition.findMany({ where: { moduleId: { in: moduleIds }, status: 'ACTIVE', library: { workspaceId: request.workspaceId, OR: [{ projectId: null }, { projectId: request.projectId }] } }, select: { id: true } });
+      if (!cases.length) return this.getRequest(id);
+      return this.addScopeDraftCases(id, { scopeRevision: dto.scopeRevision, selections: cases.map(item => ({ caseId: item.id, reason: '人工补充提测范围', impactLevel: 'MEDIUM' })) }, userId);
+    }
+    const rows = await this.prisma.testDesignCandidate.findMany({ where: { testDesignId: request.testDesignId ?? '__none__', sourceDefinition: { moduleId: { in: moduleIds } }, resolution: { not: 'REJECTED' }, action: { not: 'EXCLUDE' } }, select: { id: true } });
+    return this.updateScopeDraft(id, { scopeRevision: dto.scopeRevision, removedCandidateIds: rows.map(row => row.id) });
   }
 
   async saveGeneratedCaseToLibrary(id: string, candidateId: string, dto: SaveGeneratedTestCaseDto, userId?: string) {

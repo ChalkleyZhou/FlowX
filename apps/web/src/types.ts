@@ -941,6 +941,7 @@ export interface TestRequest {
 }
 
 export interface TestRequestScopeDraft {
+  designStatus?: string;
   testRequestId?: string;
   scopeRevision: number;
   status: string;

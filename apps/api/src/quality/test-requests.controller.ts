@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
-import { AddTestScopeCasesDto, AssignTestRequestCasesDto, CompleteTestScopeDto, CreateTestRequestDto, PrepareTestRequestDto, SaveGeneratedTestCaseDto, UpdateTestRequestScopeDraftDto } from './dto/test-request.dto';
+import { AddTestScopeCasesDto, AssignTestRequestCasesDto, CompleteTestScopeDto, CreateTestRequestDto, PrepareTestRequestDto, SaveGeneratedTestCaseDto, UpdateTestRequestScopeDraftDto, UpdateTestScopeModuleDto } from './dto/test-request.dto';
 import { TestRequestsService } from './test-requests.service';
 
 @Controller('quality/test-requests')
@@ -41,13 +41,18 @@ export class TestRequestsController {
   }
 
   @Get(':id/scope-draft')
-  scopeDraft(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery & { q?: string; action?: string }) {
+  scopeDraft(@Param('id') id: string, @Query() query: import('./test-request-scope-browse').ScopeBrowseQuery) {
     return this.requests.getScopeDraft(id, query);
   }
 
   @Patch(':id/scope-draft')
   updateScopeDraft(@Param('id') id: string, @Body() dto: UpdateTestRequestScopeDraftDto) {
     return this.requests.updateScopeDraft(id, dto);
+  }
+
+  @Patch(':id/scope-draft/module')
+  updateScopeModule(@Param('id') id: string, @Body() dto: UpdateTestScopeModuleDto, @Req() req: QualityRequest) {
+    return this.requests.updateScopeModule(id, dto, req.authSession?.user.id);
   }
 
   @Post(':id/scope-draft/cases')

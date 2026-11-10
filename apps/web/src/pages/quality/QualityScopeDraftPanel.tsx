@@ -1,491 +1,214 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, FolderTree, Library, Save, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../api';
-import type { TestCaseDefinition, TestCaseLibrary, TestCaseModule, TestDesignCandidate, TestRequest, TestRequestScopeDraft } from '../../types';
+import type { TestDesignCandidate, TestRequest, TestRequestScopeDraft } from '../../types';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { useToast } from '../../components/ui/toast';
+import { cn } from '../../lib/utils';
+import { QualityScopeDirectory, type ScopeDirectorySelection } from './QualityScopeDirectory';
+import { QualityScopeCaseDetails } from './QualityScopeCaseDetails';
 
-type ViewFilter = 'ALL' | 'SELECTED' | 'AI';
+// 保存队列跨页签卸载继续完成；重新进入同一提测时，首读等待旧实例排空。
+const scopeWrites = new Map<string, { owner: symbol; promise: Promise<void> }>();
 
-type ScopeCase = {
-  key: string;
-  title: string;
-  priority?: string;
-  libraryId?: string;
-  libraryName?: string;
-  moduleId?: string | null;
-  moduleName?: string | null;
-  candidateId?: string;
-  caseId?: string;
-  action?: TestDesignCandidate['action'];
-  saved?: boolean;
-  isAiRecommended: boolean;
-  precondition?: string | null;
-  testData?: string | null;
-  steps: string[];
-  expected: string;
-  tags?: string[];
-};
-
-function TreeToggle({ expanded, label, onClick }: { expanded: boolean; label: string; onClick: () => void }) {
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon"
-      className="h-6 w-6 shrink-0"
-      aria-label={`${expanded ? '收起' : '展开'}${label}`}
-      onClick={onClick}
-    >
-      {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-    </Button>
-  );
-}
-
-function NodeCheckbox({
-  label,
-  checked,
-  onChange,
-  prefix = '选择',
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  prefix?: string;
-}) {
-  return <input type="checkbox" aria-label={`${prefix} ${label}`} checked={checked} onChange={event => onChange(event.target.checked)} />;
-}
+type Override = { item: TestDesignCandidate; included: boolean; wasIncluded: boolean };
+const included = (item: TestDesignCandidate) => item.action !== 'EXCLUDE' && item.resolution !== 'REJECTED';
+const itemKey = (item: TestDesignCandidate) => item.sourceDefinitionId ? `case:${item.sourceDefinitionId}` : item.id;
+const message = (reason: unknown) => reason instanceof Error ? reason.message : '操作失败，请重新同步后重试';
 
 export function QualityScopeDraftPanel({ request, onConfirmed }: { request: TestRequest; onConfirmed: (next: TestRequest) => void }) {
-  const toast = useToast();
   const [draft, setDraft] = useState<TestRequestScopeDraft>();
-  const [libraries, setLibraries] = useState<TestCaseLibrary[]>([]);
-  const [modulesByLibrary, setModulesByLibrary] = useState<Record<string, TestCaseModule[]>>({});
-  const [casesByModule, setCasesByModule] = useState<Record<string, TestCaseDefinition[]>>({});
-  const [expandedLibraries, setExpandedLibraries] = useState<string[]>([]);
-  const [expandedModules, setExpandedModules] = useState<string[]>([]);
-  const [activeLibraryId, setActiveLibraryId] = useState<string>();
-  const [activeModuleId, setActiveModuleId] = useState<string>();
-  const [selectedCaseKeys, setSelectedCaseKeys] = useState<string[]>([]);
-  const [manuallyAddedCaseIds, setManuallyAddedCaseIds] = useState<string[]>([]);
-  const [treeQuery, setTreeQuery] = useState('');
+  const [directory, setDirectory] = useState<ScopeDirectorySelection>({ label: '全部目录' });
+  const [view, setView] = useState<'selected' | 'library'>('selected');
   const [query, setQuery] = useState('');
-  const [viewFilter, setViewFilter] = useState<ViewFilter>('ALL');
-  const [selectedCase, setSelectedCase] = useState<ScopeCase>();
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [treeLoading, setTreeLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [savingCandidate, setSavingCandidate] = useState<string>();
-  const [saveLibraryId, setSaveLibraryId] = useState('');
-  const [saveModuleId, setSaveModuleId] = useState('');
-
-  async function loadDraft({ silent = false }: { silent?: boolean } = {}) {
+  const [error, setError] = useState('');
+  const [pending, setPending] = useState(0);
+  const [overrides, setOverrides] = useState<Record<string, Override>>({});
+  const [undo, setUndo] = useState<TestDesignCandidate>();
+  const [detail, setDetail] = useState<TestDesignCandidate>();
+  const [confirming, setConfirming] = useState(false);
+  const [savingDetail, setSavingDetail] = useState(false);
+  const revision = useRef(0);
+  const queued = useRef(0);
+  const queue = useRef(Promise.resolve());
+  const owner = useRef(Symbol('scope-workbench'));
+  const failed = useRef(false);
+  const epoch = useRef(0);
+  const alive = useRef(true);
+  const latestQuery = useRef({ view, q: query.trim() || undefined, page, pageSize: 20, libraryId: directory.libraryId, moduleId: directory.moduleId });
+  latestQuery.current = { view, q: query.trim() || undefined, page, pageSize: 20, libraryId: directory.libraryId, moduleId: directory.moduleId };
+  const liveOverrides = useRef(overrides);
+  const loadDraft = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    const version = ++epoch.current;
     if (!silent) setLoading(true);
     try {
-      setDraft(await api.getTestRequestScopeDraft(request.id, { page: 1, pageSize: 100 }));
-    } catch (error) {
-      if (!silent) toast.error(error instanceof Error ? error.message : '加载 AI 提测范围失败');
+      let previous = scopeWrites.get(request.id);
+      while (previous && previous.owner !== owner.current) {
+        await previous.promise;
+        previous = scopeWrites.get(request.id);
+      }
+      if (!alive.current || version !== epoch.current) return 'stale' as const;
+      const result = await api.getTestRequestScopeDraft(request.id, latestQuery.current);
+      // 写入开始后，旧查询不能覆盖用户已经做出的选择。
+      if (!alive.current || version !== epoch.current || queued.current) return 'stale' as const;
+      revision.current = result.scopeRevision;
+      setDraft(result);
+      if (result.totalPages > 0 && latestQuery.current.page > result.totalPages) setPage(result.totalPages);
+      liveOverrides.current = {}; setOverrides({});
+      return 'synced' as const;
+    } catch (reason) {
+      if (!alive.current || version !== epoch.current || queued.current) return 'stale' as const;
+      setError(message(reason));
+      return 'failed' as const;
     } finally {
-      if (!silent) setLoading(false);
+      if (alive.current && version === epoch.current) setLoading(false);
     }
-  }
-
-  useEffect(() => {
-    void loadDraft();
   }, [request.id]);
 
+  useEffect(() => { alive.current = true; return () => { alive.current = false; ++epoch.current; }; }, []);
   useEffect(() => {
-    if (!draft) return;
-    setSelectedCaseKeys(draft.items.filter(item => item.action !== 'EXCLUDE').map(item => candidateKey(item)));
-  }, [draft]);
+    setLoading(true);
+    if (!queued.current) void loadDraft();
+    return () => { ++epoch.current; };
+  }, [loadDraft, view, query, directory.libraryId, directory.moduleId, page]);
 
+  const status = draft?.designStatus ?? request.testDesign?.status ?? draft?.status ?? request.scopeGenerationStatus;
+  const analyzing = status === 'GENERATING' || (status === 'NOT_STARTED' && !draft?.items.length);
   useEffect(() => {
-    void api
-      .getTestCaseLibraries({ workspaceId: request.workspaceId, projectId: request.projectId, page: 1, pageSize: 100 })
-      .then(result => {
-        setLibraries(result.items);
-        setSaveLibraryId(current => current || result.items[0]?.id || '');
-      })
-      .catch(() => toast.error('加载用例库失败'));
-  }, [request.workspaceId, request.projectId]);
-
-  useEffect(() => {
-    if (!['GENERATING', 'NOT_STARTED'].includes(request.testDesign?.status ?? request.scopeGenerationStatus)) return;
-    const timer = window.setInterval(() => void loadDraft({ silent: true }), 2000);
-    return () => window.clearInterval(timer);
-  }, [request.id, request.testDesign?.status, request.scopeGenerationStatus]);
-
-  function candidateKey(item: TestDesignCandidate) {
-    return item.sourceDefinitionId ? `case:${item.sourceDefinitionId}` : `candidate:${item.id}`;
-  }
-
-  async function expandLibrary(libraryId: string) {
-    setExpandedLibraries(current => (current.includes(libraryId) ? current.filter(id => id !== libraryId) : [...current, libraryId]));
-    if (modulesByLibrary[libraryId]) return;
-    setTreeLoading(true);
-    try {
-      const result = await api.getTestCaseModules(libraryId, { page: 1, pageSize: 100 });
-      setModulesByLibrary(current => ({ ...current, [libraryId]: result.items }));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载用例模块失败');
-    } finally {
-      setTreeLoading(false);
+    if (!analyzing) return;
+    let cancelled = false;
+    let timer: number;
+    async function poll() {
+      if (!queued.current && !failed.current) await loadDraft({ silent: true });
+      if (!cancelled) timer = window.setTimeout(() => void poll(), 2000);
     }
-  }
+    timer = window.setTimeout(() => void poll(), 2000);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [analyzing, loadDraft]);
 
-  async function expandModule(module: TestCaseModule) {
-    setActiveLibraryId(module.libraryId);
-    setActiveModuleId(module.id);
-    setExpandedModules(current => (current.includes(module.id) ? current.filter(id => id !== module.id) : [...current, module.id]));
-    if (casesByModule[module.id]) return;
-    setTreeLoading(true);
-    try {
-      const result = await api.getTestCasesPage({
-        workspaceId: request.workspaceId,
-        projectId: request.projectId,
-        libraryId: module.libraryId,
-        moduleId: module.id,
-        page: 1,
-        pageSize: 100,
-      });
-      setCasesByModule(current => ({ ...current, [module.id]: result.items }));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '加载模块用例失败');
-    } finally {
-      setTreeLoading(false);
+  function enqueue(write: (scopeRevision: number) => Promise<TestRequest>, optimistic?: Override, removed?: TestDesignCandidate) {
+    if (failed.current || confirming || savingDetail) return;
+    ++epoch.current;
+    ++queued.current;
+    setLoading(false);
+    setPending(queued.current);
+    if (optimistic) {
+      const next = { ...liveOverrides.current, [itemKey(optimistic.item)]: optimistic };
+      liveOverrides.current = next; setOverrides(next);
     }
-  }
-
-  function selectLibrary(libraryId: string) {
-    setActiveLibraryId(libraryId);
-    setActiveModuleId(undefined);
-  }
-
-  const candidates = useMemo(() => (draft?.items ?? []).filter(item => item.action !== 'EXCLUDE'), [draft]);
-  const candidateByCaseId = useMemo(
-    () => new Map(candidates.flatMap(item => (item.sourceDefinitionId ? [[item.sourceDefinitionId, item] as const] : []))),
-    [candidates],
-  );
-  const scopeCases = useMemo<ScopeCase[]>(() => {
-    const fromCandidates = candidates.map(item => {
-      const source = item.sourceDefinition;
-      const isGenerated = !item.sourceDefinitionId;
-      return {
-        key: candidateKey(item),
-        title: item.proposedCase.title,
-        priority: item.proposedCase.priority,
-        libraryId: source?.libraryId,
-        libraryName: source?.library?.name,
-        moduleId: source?.moduleId,
-        moduleName: source?.module?.name,
-        candidateId: item.id,
-        caseId: item.sourceDefinitionId ?? undefined,
-        action: item.action,
-        saved: Boolean(item.sourceDefinitionId),
-        isAiRecommended: isGenerated || !manuallyAddedCaseIds.includes(item.sourceDefinitionId ?? ''),
-        precondition: item.proposedCase.precondition,
-        testData: item.proposedCase.testData,
-        steps: item.proposedCase.steps,
-        expected: item.proposedCase.expected,
-        tags: item.proposedCase.tags,
-      };
+    if (removed) setUndo(removed);
+    queue.current = queue.current.then(async () => {
+      if (failed.current) return;
+      try {
+        const result = await write(revision.current);
+        revision.current = result.scopeRevision;
+      } catch (reason) {
+        failed.current = true;
+        if (alive.current) { setError(message(reason)); setUndo(undefined); }
+      }
+    }).finally(async () => {
+      --queued.current;
+      if (!alive.current) return;
+      // 所有连续操作结束后统一重读，避免中途响应把后续操作回滚。
+      if (!queued.current) {
+        const synced = await loadDraft({ silent: true });
+        if (!alive.current) return;
+        if (synced === 'failed' && failed.current) { liveOverrides.current = {}; setOverrides({}); }
+        if (synced === 'failed' && !failed.current) { failed.current = true; setError('修改已提交，但刷新失败，请重新同步'); }
+      }
+      setPending(queued.current);
     });
-    const loadedCases = Object.values(casesByModule).flatMap(items => items);
-    const extraCases = loadedCases
-      .filter(item => !candidateByCaseId.has(item.id))
-      .map(item => ({
-        key: `case:${item.id}`,
-        title: item.title,
-        priority: item.priority,
-        libraryId: item.libraryId,
-        libraryName: item.library?.name ?? libraries.find(library => library.id === item.libraryId)?.name,
-        moduleId: item.moduleId,
-        moduleName: item.module?.name ?? modulesByLibrary[item.libraryId]?.find(module => module.id === item.moduleId)?.name,
-        caseId: item.id,
-        saved: true,
-        isAiRecommended: false,
-        precondition: item.precondition,
-        testData: item.testData,
-        steps: item.steps,
-        expected: item.expected,
-        tags: item.tags ?? undefined,
-      }));
-    return [...fromCandidates, ...extraCases];
-  }, [candidates, casesByModule, candidateByCaseId, libraries, modulesByLibrary, manuallyAddedCaseIds]);
-
-  const visibleCases = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    const normalizedTreeQuery = treeQuery.trim().toLowerCase();
-    return scopeCases.filter(item => {
-      if (activeModuleId && item.moduleId !== activeModuleId) return false;
-      if (!activeModuleId && activeLibraryId && item.libraryId !== activeLibraryId) return false;
-      if (normalizedQuery && ![item.title, item.moduleName, item.libraryName].filter(Boolean).some(value => value!.toLowerCase().includes(normalizedQuery))) return false;
-      if (viewFilter === 'SELECTED' && !selectedCaseKeys.includes(item.key)) return false;
-      if (viewFilter === 'AI' && !item.isAiRecommended) return false;
-      if (normalizedTreeQuery && ![item.title, item.moduleName, item.libraryName].filter(Boolean).some(value => value!.toLowerCase().includes(normalizedTreeQuery))) return false;
-      return true;
-    });
-  }, [scopeCases, activeLibraryId, activeModuleId, query, treeQuery, viewFilter, selectedCaseKeys]);
-
-  const filteredLibraries = useMemo(
-    () => libraries.filter(library => !treeQuery.trim() || library.name.toLowerCase().includes(treeQuery.trim().toLowerCase()) || (modulesByLibrary[library.id] ?? []).some(module => module.name.toLowerCase().includes(treeQuery.trim().toLowerCase()))),
-    [libraries, treeQuery, modulesByLibrary],
-  );
-
-  function isSelected(item: ScopeCase) {
-    return selectedCaseKeys.includes(item.key);
+    const tail = queue.current;
+    scopeWrites.set(request.id, { owner: owner.current, promise: tail });
+    void tail.then(() => { if (scopeWrites.get(request.id)?.promise === tail) scopeWrites.delete(request.id); });
   }
 
-  async function addCases(caseIds: string[]) {
-    const ids = [...new Set(caseIds)].filter(id => !selectedCaseKeys.includes(`case:${id}`));
-    if (!ids.length) return;
-    setSelectedCaseKeys(current => [...new Set([...current, ...ids.map(id => `case:${id}`)])]);
-    setManuallyAddedCaseIds(current => [...new Set([...current, ...ids])]);
-    setSaving(true);
-    try {
-      await api.addTestRequestScopeDraftCases(request.id, {
-        selections: ids.map(caseId => ({ caseId, reason: '人工补充提测范围', impactLevel: 'MEDIUM' as const })),
-      });
-      await loadDraft();
-      toast.success(`已加入 ${ids.length} 条用例`);
-    } catch (error) {
-      setSelectedCaseKeys(current => current.filter(key => !ids.includes(key.slice(5))));
-      toast.error(error instanceof Error ? error.message : '加入提测范围失败');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function removeCandidates(candidateIds: string[]) {
-    if (!draft || !candidateIds.length) return;
-    setSelectedCaseKeys(current => current.filter(key => !candidateIds.some(id => key === `candidate:${id}` || key === `case:${candidates.find(item => item.id === id)?.sourceDefinitionId}`)));
-    setSaving(true);
-    try {
-      await api.updateTestRequestScopeDraft(request.id, { scopeRevision: draft.scopeRevision, removedCandidateIds: candidateIds });
-      await loadDraft();
-      toast.success(`已移出 ${candidateIds.length} 条用例`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '移出提测范围失败');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function toggleItem(item: ScopeCase, checked: boolean) {
-    if (checked) {
-      if (item.caseId) await addCases([item.caseId]);
-      return;
-    }
-    if (item.candidateId) await removeCandidates([item.candidateId]);
-  }
-
-  async function toggleTreeRows(rows: ScopeCase[], checked: boolean) {
-    if (checked) {
-      await addCases(rows.filter(item => item.caseId && !isSelected(item)).map(item => item.caseId!));
+  function toggle(item: TestDesignCandidate, selected: boolean) {
+    const override = { item, included: selected, wasIncluded: included(item) };
+    if (!selected) {
+      enqueue(scopeRevision => api.updateTestRequestScopeDraft(request.id, { scopeRevision, removedCandidateIds: [item.id] }), override, item);
+    } else if (item.id.startsWith('library:')) {
+      enqueue(scopeRevision => api.addTestRequestScopeDraftCases(request.id, { scopeRevision, selections: [{ caseId: item.sourceDefinitionId!, reason: '人工补充提测范围', impactLevel: 'MEDIUM' }] }), override);
     } else {
-      await removeCandidates(rows.filter(item => isSelected(item) && item.candidateId).map(item => item.candidateId!));
+      enqueue(scopeRevision => api.updateTestRequestScopeDraft(request.id, { scopeRevision, removedCandidateIds: [], restoredCandidateIds: [item.id] }), override);
     }
   }
 
-  async function toggleLibrarySelection(library: TestCaseLibrary, checked: boolean) {
-    const rows = scopeCases.filter(item => item.libraryId === library.id);
-    await toggleTreeRows(rows, checked);
-  }
-
-  async function toggleModuleSelection(module: TestCaseModule, checked: boolean) {
-    const rows = scopeCases.filter(item => item.moduleId === module.id);
-    await toggleTreeRows(rows, checked);
-  }
-
-  async function saveGeneratedCase(candidateId: string) {
-    if (!saveLibraryId) {
-      toast.error('请先选择保存目标用例库');
-      return;
-    }
-    setSavingCandidate(candidateId);
-    try {
-      const result = await api.saveGeneratedTestRequestCase(request.id, candidateId, { libraryId: saveLibraryId, ...(saveModuleId ? { moduleId: saveModuleId } : {}) });
-      setDraft(current => current ? { ...current, items: current.items.map(item => item.id === candidateId ? { ...item, sourceDefinitionId: result.testCase.id } : item) } : current);
-      setSelectedCaseKeys(current => current.map(key => key === `candidate:${candidateId}` ? `case:${result.testCase.id}` : key));
-      toast.success('AI 新用例已保存到用例库');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '保存 AI 新用例失败');
-    } finally {
-      setSavingCandidate(undefined);
+  async function resync() {
+    if (await loadDraft({ silent: Boolean(draft) }) === 'synced') {
+      failed.current = false; setError(''); liveOverrides.current = {}; setOverrides({}); setUndo(undefined);
     }
   }
-
-  async function confirmScope() {
-    if (!draft) return;
-    setSaving(true);
-    try {
-      const next = await api.prepareTestRequest(request.id, { scopeRevision: draft.scopeRevision });
-      onConfirmed(next);
-      toast.success('范围已确认，请继续分派执行人');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '确认提测范围失败');
-    } finally {
-      setSaving(false);
-    }
+  async function confirm() {
+    if (pending || !draft || error) return;
+    setConfirming(true);
+    try { onConfirmed(await api.prepareTestRequest(request.id, { scopeRevision: revision.current })); }
+    catch (reason) { failed.current = true; setError(message(reason)); }
+    finally { if (alive.current) setConfirming(false); }
   }
 
-  function renderModule(module: TestCaseModule) {
-    const rows = scopeCases.filter(item => item.moduleId === module.id);
-    const selected = rows.length > 0 && rows.every(item => isSelected(item));
-    const visible = !treeQuery.trim() || module.name.toLowerCase().includes(treeQuery.trim().toLowerCase()) || rows.some(item => item.title.toLowerCase().includes(treeQuery.trim().toLowerCase()));
-    if (!visible) return null;
-    return (
-      <div key={module.id} className="space-y-1">
-        <div className="flex items-center gap-1 rounded px-1 py-1 hover:bg-muted/40">
-          <NodeCheckbox label={module.name} prefix="选择模块" checked={selected} onChange={checked => void toggleModuleSelection(module, checked)} />
-          <TreeToggle expanded={expandedModules.includes(module.id)} label={`模块 ${module.name}`} onClick={() => void expandModule(module)} />
-          <FolderTree className="h-4 w-4 text-muted-foreground" />
-          <button type="button" className="min-w-0 flex-1 truncate text-left text-sm hover:underline" onClick={() => { setActiveLibraryId(module.libraryId); setActiveModuleId(module.id); }} aria-label={`筛选模块 ${module.name}`}>{module.name}</button>
-          <span className="text-xs text-muted-foreground">{module._count?.cases ?? rows.length}</span>
-        </div>
-        {expandedModules.includes(module.id) ? (
-          <div className="ml-5 space-y-1">
-            {(casesByModule[module.id] ?? []).map(item => {
-              const row = scopeCases.find(scopeCase => scopeCase.key === `case:${item.id}`);
-              if (!row) return null;
-              return (
-                <label key={item.id} className="flex items-center gap-2 rounded px-1 py-1 text-sm hover:bg-muted/40">
-                  <NodeCheckbox label={item.title} prefix="选择用例" checked={isSelected(row)} onChange={checked => void toggleItem(row, checked)} />
-                  <button type="button" className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => setSelectedCase(row)} aria-label={`查看用例 ${item.title}`}>{item.title}</button>
-                  <span className="text-xs text-muted-foreground">{item.priority}</span>
-                </label>
-              );
-            })}
-          </div>
-        ) : null}
-      </div>
-    );
+  const rows = [...(draft?.items ?? [])];
+  for (const change of Object.values(overrides)) {
+    const index = rows.findIndex(item => itemKey(item) === itemKey(change.item));
+    const next = { ...change.item, action: change.item.action === 'EXCLUDE' ? 'REUSE' as const : change.item.action, resolution: change.included ? 'ACCEPTED' as const : 'REJECTED' as const };
+    if (index >= 0) rows[index] = next;
+    else if (change.included && view === 'selected') rows.push(next);
   }
+  const visible = view === 'selected' ? rows.filter(included) : rows;
+  const selectedCount = Math.max(0, (draft?.summary?.included ?? draft?.items.filter(included).length ?? 0) + Object.values(overrides).reduce((sum, change) => sum + Number(change.included) - Number(change.wasIncluded), 0));
+  const detailIndex = detail ? visible.findIndex(item => item.id === detail.id || itemKey(item) === itemKey(detail)) : -1;
+  const currentDetail = detailIndex >= 0 ? visible[detailIndex] : detail;
+  const totalPages = draft?.totalPages ?? 0;
+  const locked = Boolean(error) || confirming || savingDetail || analyzing;
 
-  function renderLibrary(library: TestCaseLibrary) {
-    const modules = (modulesByLibrary[library.id] ?? []).filter(module => !module.parentId);
-    const rows = scopeCases.filter(item => item.libraryId === library.id);
-    const selected = rows.length > 0 && rows.every(item => isSelected(item));
-    return (
-      <div key={library.id} className="space-y-1">
-        <div className="flex items-center gap-1 rounded px-1 py-1 hover:bg-muted/40">
-          <NodeCheckbox label={library.name} prefix="选择用例库" checked={selected} onChange={checked => void toggleLibrarySelection(library, checked)} />
-          <TreeToggle expanded={expandedLibraries.includes(library.id)} label={`用例库 ${library.name}`} onClick={() => void expandLibrary(library.id)} />
-          <Library className="h-4 w-4 text-muted-foreground" />
-          <button type="button" className="min-w-0 flex-1 truncate text-left text-sm font-medium hover:underline" onClick={() => selectLibrary(library.id)} aria-label={`筛选用例库 ${library.name}`}>{library.name}</button>
-          <Badge variant="outline">{library.scope === 'WORKSPACE' ? '共享' : '项目'}</Badge>
-        </div>
-        {expandedLibraries.includes(library.id) ? <div className="ml-4 space-y-1">{modules.map(renderModule)}</div> : null}
-      </div>
-    );
-  }
-
-  const analyzing = request.testDesign?.status === 'GENERATING' || request.scopeGenerationStatus === 'GENERATING';
-  const selectedCount = scopeCases.filter(isSelected).length;
-  const removedCount = draft ? (draft.summary?.EXCLUDE ?? 0) + (draft.summary?.REJECTED ?? 0) : 0;
-
-  return (
-    <section className="space-y-4 rounded-md border p-4" aria-label="AI 提测范围">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="font-semibold">AI 提测范围</h2>
-          <p className="mt-1 text-sm text-muted-foreground">从左侧用例树定位范围，右侧列表勾选即加入；AI 推荐已默认勾选。</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">已选 {selectedCount}</Badge>
-          <Badge variant="outline">AI 推荐 {scopeCases.filter(item => item.isAiRecommended).length}</Badge>
-          <Badge variant="outline">已移除 {removedCount}</Badge>
-        </div>
-      </div>
-
-      {analyzing ? <p role="status" className="rounded-md bg-muted/40 p-3 text-sm">AI 正在读取需求、方案和代码变更并生成范围…</p> : null}
-
-      <div className="grid gap-3 lg:grid-cols-[minmax(180px,260px)_minmax(0,1fr)]">
-        <aside className="min-h-[360px] rounded-md border p-3">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <h3 className="font-medium">用例目录</h3>
-            <span className="text-xs text-muted-foreground">{libraries.length} 个库</span>
-          </div>
-          <Input aria-label="搜索用例库或模块" placeholder="搜索用例库或模块" value={treeQuery} onChange={event => setTreeQuery(event.target.value)} />
-          {treeLoading ? <p className="mt-2 text-xs text-muted-foreground">树节点加载中…</p> : null}
-          <div className="mt-3 space-y-1">{filteredLibraries.map(renderLibrary)}{!filteredLibraries.length ? <p className="py-8 text-center text-sm text-muted-foreground">暂无匹配用例库</p> : null}</div>
-        </aside>
-
-        <div className="min-h-[360px] rounded-md border p-3">
+  return <section className="space-y-3 rounded-md border p-4" aria-label="AI 提测范围">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h2 className="font-semibold">提测范围</h2>
+      <span role="status" className={cn('text-xs text-muted-foreground', error && 'text-destructive')}>{pending || confirming || savingDetail ? '保存中…' : error ? '同步失败' : draft ? '已保存' : '加载中…'}</span>
+    </div>
+    {analyzing ? <p role="status" className="rounded bg-muted/40 p-3 text-sm">AI 正在根据需求和代码变更生成第一版范围…</p> : null}
+    {status === 'GENERATION_FAILED' ? <p role="alert" className="rounded border border-destructive/30 p-3 text-sm text-destructive">AI 范围生成失败，请检查测试设计后重新分析。</p> : null}
+    {error ? <div role="alert" className="flex items-center justify-between gap-2 rounded border border-destructive/30 p-2 text-sm text-destructive"><span>{error}</span><Button type="button" size="sm" variant="outline" disabled={Boolean(pending)} onClick={() => void resync()}>重新同步</Button></div> : null}
+    <div className={cn('grid items-start gap-3 lg:grid-cols-[220px_minmax(0,1fr)]', detail && 'xl:grid-cols-[200px_minmax(300px,1fr)_minmax(280px,360px)]')}>
+      <QualityScopeDirectory request={request} selection={directory} onSelect={next => { setDirectory(next); setPage(1); setDetail(undefined); }} />
+      <div className="min-w-0 rounded-md border">
+        <div className="space-y-3 border-b p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h3 className="font-medium">{activeModuleId ? '当前模块用例' : activeLibraryId ? '当前用例库用例' : '全部可选用例'}</h3>
-              <p className="text-xs text-muted-foreground">共 {visibleCases.length} 条 · 勾选状态就是本次提测范围</p>
+            <div role="group" aria-label="范围视图" className="flex rounded-md bg-muted/50 p-1">
+              {([['selected', '本次范围'], ['library', '全部用例']] as const).map(([value, label]) => <Button key={value} type="button" size="sm" variant={view === value ? 'secondary' : 'ghost'} aria-pressed={view === value} onClick={() => { setView(value); setPage(1); setDetail(undefined); }}>{label}</Button>)}
             </div>
-            <div className="flex items-center gap-1" role="group" aria-label="范围筛选">
-              {([
-                ['ALL', '全部'],
-                ['SELECTED', '已选'],
-                ['AI', 'AI 推荐'],
-              ] as const).map(([value, label]) => (
-                <Button key={value} type="button" size="sm" variant={viewFilter === value ? 'default' : 'ghost'} onClick={() => setViewFilter(value)}>{label}</Button>
-              ))}
-            </div>
+            <span className="text-xs text-muted-foreground">{directory.label}</span>
           </div>
-          <Input className="mt-3" aria-label="搜索用例" placeholder="搜索用例标题、模块或用例库" value={query} onChange={event => setQuery(event.target.value)} />
-          {loading ? <p role="status" className="py-8 text-center text-sm text-muted-foreground">范围加载中…</p> : (
-            <div className="mt-3 space-y-1">
-              {visibleCases.map(item => (
-                <div key={item.key} data-case-row={item.key} className="flex items-center gap-2 rounded-md border border-transparent px-2 py-2 hover:border-border hover:bg-muted/30">
-                  <NodeCheckbox label={item.title} prefix="选择范围用例" checked={isSelected(item)} onChange={checked => void toggleItem(item, checked)} />
-                  <button type="button" className="min-w-0 flex-1 truncate text-left text-sm hover:underline" onClick={() => setSelectedCase(item)} aria-label={`查看用例 ${item.title}`}>{item.title}</button>
-                  {item.moduleName ? <span className="hidden max-w-40 truncate text-xs text-muted-foreground md:inline">{item.moduleName}</span> : null}
-                  {item.priority ? <span className="text-xs text-muted-foreground">{item.priority}</span> : null}
-                  {item.isAiRecommended ? <Badge variant="secondary">AI 推荐</Badge> : null}
-                  {item.action === 'CREATE' ? <Badge variant="secondary">AI 新用例</Badge> : null}
-                  {item.action === 'CREATE' ? <Button type="button" size="sm" variant="ghost" className="h-7 px-2" title="保存到用例库" aria-label={`保存 ${item.title} 到用例库`} disabled={Boolean(item.saved) || savingCandidate === item.candidateId} onClick={() => void saveGeneratedCase(item.candidateId!)}><Save className="mr-1 h-3.5 w-3.5" />{item.saved ? '已保存' : '保存到用例库'}</Button> : null}
-                </div>
-              ))}
-              {!visibleCases.length ? <p className="py-10 text-center text-sm text-muted-foreground">{viewFilter === 'SELECTED' ? '还没有选中的用例' : '暂无匹配用例'}</p> : null}
-            </div>
-          )}
+          <Input aria-label="搜索用例" placeholder="搜索用例标题" value={query} onChange={event => { setQuery(event.target.value); setPage(1); setDetail(undefined); }} />
+          {directory.moduleId ? <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span>已选 {draft?.summary?.matchingIncluded ?? 0} / {draft?.summary?.available ?? 0} 条（含子模块）</span>
+            <Button type="button" variant="ghost" size="sm" disabled={locked || Boolean(pending) || loading} onClick={() => { setUndo(undefined); enqueue(scopeRevision => api.updateTestRequestScopeModule(request.id, { scopeRevision, moduleId: directory.moduleId!, included: true })); }}>纳入整个模块</Button>
+            <Button type="button" variant="ghost" size="sm" disabled={locked || Boolean(pending) || loading} onClick={() => { setUndo(undefined); enqueue(scopeRevision => api.updateTestRequestScopeModule(request.id, { scopeRevision, moduleId: directory.moduleId!, included: false })); }}>移除整个模块</Button>
+          </div> : null}
         </div>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-muted/30 p-3 text-sm">
-        <span>已选 {selectedCount} 条用例{removedCount ? ` · 已移除 ${removedCount} 条` : ''}</span>
-        <Button disabled={saving || loading || analyzing || !draft?.total} onClick={() => void confirmScope()}>确认范围并进入分派</Button>
-      </div>
-
-      {scopeCases.some(item => item.action === 'CREATE') ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-md bg-muted/20 p-2 text-xs text-muted-foreground">
-          <span>AI 新用例保存到长期库：</span>
-          <select className="rounded border bg-background px-2 py-1" aria-label="保存目标用例库" value={saveLibraryId} onChange={event => setSaveLibraryId(event.target.value)}>
-            <option value="">选择用例库</option>
-            {libraries.map(library => <option key={library.id} value={library.id}>{library.name}</option>)}
-          </select>
-          <select className="rounded border bg-background px-2 py-1" aria-label="保存目标用例模块" value={saveModuleId} onChange={event => setSaveModuleId(event.target.value)} disabled={!saveLibraryId}>
-            <option value="">不指定模块</option>
-            {(modulesByLibrary[saveLibraryId] ?? []).map(module => <option key={module.id} value={module.id}>{module.name}</option>)}
-          </select>
+        <div className="max-h-[440px] min-h-[300px] overflow-y-auto p-2" aria-busy={loading}>
+          {loading ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">用例加载中…</p> : visible.map(item => <div key={itemKey(item)} className="flex items-center gap-3 rounded px-2 py-3 hover:bg-muted/40">
+            <input type="checkbox" className="h-4 w-4 shrink-0 accent-primary" aria-label={`选择范围用例 ${item.proposedCase.title}`} checked={included(item)} disabled={locked || Boolean(overrides[itemKey(item)])} onChange={event => toggle(item, event.target.checked)} />
+            <button type="button" className="min-w-0 flex-1 truncate text-left text-sm hover:text-primary hover:underline" aria-label={`查看用例 ${item.proposedCase.title}`} onClick={() => setDetail(item)}>{item.proposedCase.title}</button>
+            <span className="hidden max-w-28 truncate text-xs text-muted-foreground md:inline">{item.sourceDefinition?.module?.name}</span>
+            <span className="text-xs text-muted-foreground">{item.proposedCase.priority}</span>
+            {item.action === 'CREATE' && !item.sourceDefinitionId ? <Badge variant="secondary">AI 新用例</Badge> : null}
+          </div>)}
+          {!loading && !visible.length ? <div className="py-14 text-center text-sm text-muted-foreground"><p>{view === 'selected' ? '当前没有选中的用例' : '暂无匹配用例'}</p>{view === 'selected' ? <Button type="button" variant="ghost" size="sm" onClick={() => { setView('library'); setPage(1); }}>从全部用例中添加</Button> : null}</div> : null}
         </div>
-      ) : null}
-
-      {selectedCase ? (
-        <aside role="dialog" aria-label="用例详情" className="fixed inset-y-0 right-0 z-40 w-full max-w-xl overflow-y-auto border-l bg-background p-6 shadow-xl">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs text-muted-foreground">{selectedCase.libraryName ?? 'AI 生成'}{selectedCase.moduleName ? ` · ${selectedCase.moduleName}` : ''}</p>
-              <h3 className="mt-1 text-lg font-semibold">{selectedCase.title}</h3>
-            </div>
-            <Button type="button" variant="ghost" size="icon" aria-label="关闭用例详情" onClick={() => setSelectedCase(undefined)}><X className="h-4 w-4" /></Button>
-          </div>
-          <div className="mt-5 space-y-4 text-sm">
-            {selectedCase.precondition ? <div><p className="font-medium">前置条件</p><p className="mt-1 whitespace-pre-wrap text-muted-foreground">{selectedCase.precondition}</p></div> : null}
-            {selectedCase.testData ? <div><p className="font-medium">测试数据</p><p className="mt-1 whitespace-pre-wrap text-muted-foreground">{selectedCase.testData}</p></div> : null}
-            <div><p className="font-medium">测试步骤</p><ol className="mt-1 list-decimal space-y-1 pl-5">{selectedCase.steps.map((step, index) => <li key={`${selectedCase.key}-step-${index}`}>{step}</li>)}</ol></div>
-            <div><p className="font-medium">预期结果</p><p className="mt-1 whitespace-pre-wrap">{selectedCase.expected}</p></div>
-            {selectedCase.tags?.length ? <div><p className="font-medium">标签</p><div className="mt-1 flex flex-wrap gap-1">{selectedCase.tags.map(tag => <Badge key={tag} variant="outline">{tag}</Badge>)}</div></div> : null}
-          </div>
-        </aside>
-      ) : null}
-    </section>
-  );
+        {totalPages > 1 ? <div className="flex items-center justify-end gap-3 border-t p-2 text-xs text-muted-foreground">
+          <Button type="button" variant="ghost" size="sm" disabled={loading || page <= 1} onClick={() => { setPage(p => p - 1); setDetail(undefined); }}>上一页</Button>
+          <span>第 {page} / {totalPages} 页</span>
+          <Button type="button" variant="ghost" size="sm" disabled={loading || page >= totalPages} onClick={() => { setPage(p => p + 1); setDetail(undefined); }}>下一页</Button>
+        </div> : null}
+      </div>
+      {currentDetail ? <QualityScopeCaseDetails key={currentDetail.id} request={request} item={currentDetail} previous={detailIndex > 0 ? visible[detailIndex - 1] : undefined} next={detailIndex >= 0 ? visible[detailIndex + 1] : undefined} onBusyChange={setSavingDetail} onNavigate={setDetail} onClose={() => setDetail(undefined)} disabled={Boolean(pending) || locked} onSaved={async () => { await loadDraft({ silent: true }); }} /> : null}
+    </div>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-sm">
+      <div className="flex min-w-0 items-center gap-3"><span className="shrink-0">已选 {selectedCount} 条</span>{undo ? <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground"><span className="max-w-48 truncate">已移除「{undo.proposedCase.title}」</span><Button type="button" variant="ghost" size="sm" disabled={Boolean(pending) || locked} onClick={() => { toggle({ ...undo, resolution: 'REJECTED' }, true); setUndo(undefined); }}>撤销</Button></span> : null}</div>
+      <Button type="button" disabled={Boolean(pending) || locked || loading || !draft || selectedCount === 0} onClick={() => void confirm()}>确认范围并进入分派</Button>
+    </div>
+  </section>;
 }

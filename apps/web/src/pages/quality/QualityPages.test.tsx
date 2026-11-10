@@ -286,7 +286,12 @@ describe('Quality pages', () => {
     vi.mocked(api.saveGeneratedTestRequestCase).mockResolvedValue({ candidateId: 'candidate-create', testCase });
     await act(async () => root?.render(<MemoryRouter initialEntries={['/quality/test-requests/request-1?tab=scope']}><Routes><Route path="/quality/test-requests/:id" element={<QualityRequestDetailPage />} /></Routes></MemoryRouter>));
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-    await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent === '保存到用例库')?.click());
+    expect(api.saveGeneratedTestRequestCase).not.toHaveBeenCalled();
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="查看用例 AI 新用例"]')!.click());
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="保存目标用例库"]')!.click());
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+    await act(async () => container.querySelector<HTMLButtonElement>('[role="option"]')!.click());
+    await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent === '保存到用例库')!.click());
     expect(api.saveGeneratedTestRequestCase).toHaveBeenCalledWith('request-1', 'candidate-create', { libraryId: 'library-1' });
   });
   it('提测详情以URL保存五个页签，并链接独立执行详情', async () => {

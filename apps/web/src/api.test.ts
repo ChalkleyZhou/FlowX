@@ -296,6 +296,19 @@ describe('api helpers', () => {
     );
   });
 
+  it('透传范围视图、恢复、版本和完整模块操作', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal('fetch', fetchMock);
+    await api.getTestRequestScopeDraft('r', { view: 'selected', libraryId: 'l', moduleId: 'm', page: 2 });
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toContain('view=selected&libraryId=l&moduleId=m');
+    await api.updateTestRequestScopeDraft('r', { scopeRevision: 3, removedCandidateIds: [], restoredCandidateIds: ['c'] });
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)?.[1].body)).toEqual({ scopeRevision: 3, removedCandidateIds: [], restoredCandidateIds: ['c'] });
+    await api.updateTestRequestScopeModule('r', { scopeRevision: 4, moduleId: 'm', included: true });
+    expect(fetchMock.mock.calls.at(-1)).toEqual(['http://localhost:3000/quality/test-requests/r/scope-draft/module', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ scopeRevision: 4, moduleId: 'm', included: true }) })]);
+    await api.addTestRequestScopeDraftCases('r', { scopeRevision: 5, selections: [{ caseId: 'c', reason: '补选', impactLevel: 'MEDIUM' }] });
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)?.[1].body).scopeRevision).toBe(5);
+  });
+
   it('adds selected library cases to a test request scope draft', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
     vi.stubGlobal('fetch', fetchMock);

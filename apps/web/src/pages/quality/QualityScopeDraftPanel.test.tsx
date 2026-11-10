@@ -16,6 +16,7 @@ vi.mock('../../api', () => ({
     getTestCaseModules: vi.fn(),
     getTestCasesPage: vi.fn(),
     saveGeneratedTestRequestCase: vi.fn(),
+    updateTestRequestScopeModule: vi.fn(),
   },
 }));
 vi.mock('../../components/ui/toast', () => ({ useToast: () => ({ error: vi.fn(), success: vi.fn() }) }));
@@ -72,6 +73,7 @@ const draft: TestRequestScopeDraft = {
   ],
 };
 
+let state: TestRequestScopeDraft;
 let root: Root;
 let container: HTMLDivElement;
 
@@ -80,11 +82,21 @@ beforeEach(() => {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
-  vi.mocked(api.getTestRequestScopeDraft).mockResolvedValue(draft);
+  state = structuredClone(draft);
+  vi.mocked(api.getTestRequestScopeDraft).mockImplementation(async (_id, query) => {
+    const included = state.items.filter(item => item.action !== 'EXCLUDE' && item.resolution !== 'REJECTED');
+    return structuredClone({ ...state, items: query?.view === 'library' ? state.items.filter(item => item.sourceDefinitionId) : included, total: query?.view === 'library' ? 1 : included.length, summary: { included: included.length, matchingIncluded: included.length, available: 1 } });
+  });
   vi.mocked(api.getTestCaseLibraries).mockResolvedValue({ items: [{ id: 'library-project', workspaceId: 'workspace-1', projectId: 'project-1', scope: 'PROJECT', name: '项目库', status: 'ACTIVE' }], total: 1, page: 1, pageSize: 100, totalPages: 1 });
   vi.mocked(api.getTestCaseModules).mockResolvedValue({ items: [{ id: 'module-auth', libraryId: 'library-project', parentId: null, name: '账号登录', sortOrder: 0 }], total: 1, page: 1, pageSize: 100, totalPages: 1 });
   vi.mocked(api.getTestCasesPage).mockResolvedValue({ items: [{ id: 'case-extra', libraryId: 'library-project', moduleId: 'module-auth', title: '退出登录', priority: 'P1', status: 'ACTIVE', version: 1, steps: ['点击退出'], expected: '返回登录页' }], total: 1, page: 1, pageSize: 100, totalPages: 1, summary: { p0Count: 0, linkedCount: 0 } });
-  vi.mocked(api.updateTestRequestScopeDraft).mockResolvedValue(request);
+  vi.mocked(api.updateTestRequestScopeDraft).mockImplementation(async (_id, payload) => {
+    for (const item of state.items) {
+      if (payload.removedCandidateIds.includes(item.id)) item.resolution = 'REJECTED';
+      if (payload.restoredCandidateIds?.includes(item.id)) item.resolution = 'ACCEPTED';
+    }
+    return { ...request, scopeRevision: ++state.scopeRevision };
+  });
   vi.mocked(api.addTestRequestScopeDraftCases).mockResolvedValue(request);
   vi.mocked(api.prepareTestRequest).mockResolvedValue({ ...request, status: 'READY' } as TestRequest);
 });
@@ -95,55 +107,161 @@ afterEach(async () => {
   vi.clearAllMocks();
 });
 
-it('默认把 AI 结果勾选到单列表且列表不展示测试用例详情', async () => {
-  await act(async () => root.render(<QualityScopeDraftPanel request={request} onConfirmed={vi.fn()} />));
+function button(label: string) { return Array.from(container.querySelectorAll('button')).find(node => node.textContent === label)!; }
+function checkbox(title: string) { return container.querySelector<HTMLInputElement>(`input[aria-label="选择范围用例 ${title}"]`)!; }
+async function renderPanel() { await act(async () => root.render(<QualityScopeDraftPanel request={request} onConfirmed={vi.fn()} />)); }
 
-  expect(container.textContent).toContain('AI 提测范围');
-  expect(container.textContent).toContain('全部');
-  expect(container.textContent).toContain('已选');
-  expect(container.textContent).toContain('AI 推荐');
-  expect(container.textContent).toContain('登录后返回首页');
-  expect(container.textContent).toContain('验证码错误提示');
-  expect(container.textContent).toContain('AI 新用例');
-  expect(container.querySelector<HTMLInputElement>('input[aria-label="选择范围用例 登录后返回首页"]')?.checked).toBe(true);
+it('默认仅展示本次范围，目录不含复选框，列表不展示详情', async () => {
+  await renderPanel();
+  expect(button('本次范围').getAttribute('aria-pressed')).toBe('true');
+  expect(checkbox('登录后返回首页').checked).toBe(true);
+  expect(container.querySelector('aside[aria-label="用例目录"] input[type="checkbox"]')).toBeNull();
   expect(container.textContent).not.toContain('输入账号');
-  expect(container.textContent).not.toContain('跳转首页');
-  expect(container.textContent).not.toContain('覆盖登录回归');
+  expect(container.textContent).not.toContain('已移除 0');
 });
 
-it('切换已选筛选不会丢失 AI 默认范围，点击列表行可以查看详情', async () => {
-  await act(async () => root.render(<QualityScopeDraftPanel request={request} onConfirmed={vi.fn()} />));
-
-  await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent === '已选')?.click());
-  expect(container.textContent).toContain('登录后返回首页');
-  expect(container.textContent).not.toContain('退出登录');
-
-  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="查看用例 登录后返回首页"]')?.click());
-  expect(container.textContent).toContain('输入账号');
-  expect(container.textContent).toContain('跳转首页');
+it('取消后立即消失，重读仍保持移除，全部用例未勾选，撤销可恢复', async () => {
+  await renderPanel();
+  await act(async () => checkbox('登录后返回首页').click());
+  expect(checkbox('登录后返回首页')).toBeNull();
+  expect(container.textContent).toContain('已选 1 条');
+  await act(async () => button('全部用例').click());
+  expect(checkbox('登录后返回首页').checked).toBe(false);
+  await act(async () => button('撤销').click());
+  expect(checkbox('登录后返回首页').checked).toBe(true);
+  expect(api.updateTestRequestScopeDraft).toHaveBeenLastCalledWith('request-1', { scopeRevision: 5, removedCandidateIds: [], restoredCandidateIds: ['candidate-1'] });
 });
 
-it('可以从左侧树选择正式用例并直接加入范围', async () => {
-  await act(async () => root.render(<QualityScopeDraftPanel request={request} onConfirmed={vi.fn()} />));
-  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="展开用例库 项目库"]')?.click());
-  await act(async () => await Promise.resolve());
-  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="展开模块 账号登录"]')?.click());
-  await act(async () => await Promise.resolve());
-  await act(async () => container.querySelector<HTMLInputElement>('input[aria-label="选择用例 退出登录"]')?.click());
+it('AI 新用例可以撤销移除，不需要先保存到用例库', async () => {
+  await renderPanel();
+  await act(async () => checkbox('验证码错误提示').click());
+  await act(async () => button('撤销').click());
+  expect(checkbox('验证码错误提示').checked).toBe(true);
+  expect(api.saveGeneratedTestRequestCase).not.toHaveBeenCalled();
+});
 
-  expect(api.addTestRequestScopeDraftCases).toHaveBeenCalledWith('request-1', {
-    selections: [{ caseId: 'case-extra', reason: '人工补充提测范围', impactLevel: 'MEDIUM' }],
+it('写入失败恢复勾选状态，并阻止确认直至重新同步', async () => {
+  vi.mocked(api.updateTestRequestScopeDraft).mockRejectedValueOnce(new Error('保存失败'));
+  await renderPanel();
+  await act(async () => checkbox('登录后返回首页').click());
+  expect(checkbox('登录后返回首页').checked).toBe(true);
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('保存失败');
+  expect(button('确认范围并进入分派').disabled).toBe(true);
+  await act(async () => button('重新同步').click());
+  expect(button('确认范围并进入分派').disabled).toBe(false);
+});
+
+it('快速连续取消按顺序保存最新 revision，不会被旧查询重新选中', async () => {
+  let finish!: () => void;
+  const original = vi.mocked(api.updateTestRequestScopeDraft).getMockImplementation()!;
+  vi.mocked(api.updateTestRequestScopeDraft).mockImplementationOnce(async (...args) => {
+    await new Promise<void>(resolve => { finish = resolve; });
+    return original(...args);
   });
+  await renderPanel();
+  await act(async () => { checkbox('登录后返回首页').click(); checkbox('验证码错误提示').click(); });
+  expect(container.textContent).toContain('保存中');
+  expect(button('确认范围并进入分派').disabled).toBe(true);
+  await act(async () => finish());
+  expect(api.updateTestRequestScopeDraft).toHaveBeenNthCalledWith(2, 'request-1', { scopeRevision: 5, removedCandidateIds: ['candidate-2'] });
+  expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+  expect(container.textContent).toContain('已选 0 条');
 });
 
-it('取消勾选即可移出 AI 用例并整体确认范围', async () => {
-  const onConfirmed = vi.fn();
-  await act(async () => root.render(<QualityScopeDraftPanel request={request} onConfirmed={onConfirmed} />));
-  await act(async () => container.querySelector<HTMLInputElement>('input[aria-label="选择范围用例 登录后返回首页"]')?.click());
-  await act(async () => await Promise.resolve());
-  expect(api.updateTestRequestScopeDraft).toHaveBeenCalledWith('request-1', { scopeRevision: 4, removedCandidateIds: ['candidate-1'] });
+it('点击标题连续浏览详情，不改变范围和筛选', async () => {
+  await renderPanel();
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="查看用例 登录后返回首页"]')!.click());
+  expect(container.querySelector('[aria-label="用例详情"]')?.textContent).toContain('输入账号');
+  await act(async () => button('下一条').click());
+  expect(container.querySelector('[aria-label="用例详情"]')?.textContent).toContain('输入错误验证码');
+  expect(api.updateTestRequestScopeDraft).not.toHaveBeenCalled();
+  expect(api.saveGeneratedTestRequestCase).not.toHaveBeenCalled();
+});
 
-  await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('确认范围并进入分派'))?.click());
-  expect(api.prepareTestRequest).toHaveBeenCalledWith('request-1', { scopeRevision: 4 });
-  expect(onConfirmed).toHaveBeenCalled();
+it('模块操作交由服务端覆盖完整模块，包含分页外用例', async () => {
+  await renderPanel();
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="展开用例库 项目库"]')!.click());
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="筛选模块 账号登录"]')!.click());
+  vi.mocked(api.updateTestRequestScopeModule).mockResolvedValue({ ...request, scopeRevision: 5 });
+  await act(async () => button('纳入整个模块').click());
+  expect(api.updateTestRequestScopeModule).toHaveBeenCalledWith('request-1', { scopeRevision: 4, moduleId: 'module-auth', included: true });
+  expect(api.getTestCasesPage).not.toHaveBeenCalled();
+});
+
+it('保存后的刷新未返回时继续取消，不中断后续操作', async () => {
+  const original = vi.mocked(api.getTestRequestScopeDraft).getMockImplementation()!;
+  let release!: () => void;
+  vi.mocked(api.getTestRequestScopeDraft).mockImplementationOnce(original).mockImplementationOnce(async (...args) => {
+    const result = await original(...args);
+    await new Promise<void>(resolve => { release = resolve; });
+    return result;
+  });
+  await renderPanel();
+  await act(async () => checkbox('登录后返回首页').click());
+  await act(async () => checkbox('验证码错误提示').click());
+  await act(async () => release());
+  expect(api.updateTestRequestScopeDraft).toHaveBeenCalledTimes(2);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.textContent).toContain('已选 0 条');
+});
+
+it('旧刷新失败不会阻断已经排队的新操作', async () => {
+  const original = vi.mocked(api.getTestRequestScopeDraft).getMockImplementation()!;
+  let reject!: (reason: Error) => void;
+  vi.mocked(api.getTestRequestScopeDraft).mockImplementationOnce(original).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+  await renderPanel();
+  await act(async () => checkbox('登录后返回首页').click());
+  await act(async () => checkbox('验证码错误提示').click());
+  await act(async () => reject(new Error('旧查询网络断开')));
+  expect(api.updateTestRequestScopeDraft).toHaveBeenCalledTimes(2);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.textContent).toContain('已选 0 条');
+});
+
+it('AI 新用例入库刷新后仍能连续浏览详情', async () => {
+  await renderPanel();
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="查看用例 验证码错误提示"]')!.click());
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="保存目标用例库"]')!.click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+  await act(async () => container.querySelector<HTMLButtonElement>('[role="option"]')!.click());
+  vi.mocked(api.saveGeneratedTestRequestCase).mockImplementationOnce(async () => {
+    state.items[1].sourceDefinitionId = 'saved-case';
+    return { candidateId: 'candidate-2', testCase: { id: 'saved-case' } } as Awaited<ReturnType<typeof api.saveGeneratedTestRequestCase>>;
+  });
+  await act(async () => button('保存到用例库').click());
+  expect(button('上一条').disabled).toBe(false);
+  await act(async () => button('上一条').click());
+  expect(container.querySelector('[aria-label="用例详情"]')?.textContent).toContain('输入账号');
+});
+
+it('切换页面卸载组件后，已经接受的保存仍按顺序完成', async () => {
+  const original = vi.mocked(api.updateTestRequestScopeDraft).getMockImplementation()!;
+  let release!: () => void;
+  vi.mocked(api.updateTestRequestScopeDraft).mockImplementationOnce(async (...args) => {
+    await new Promise<void>(resolve => { release = resolve; });
+    return original(...args);
+  });
+  await renderPanel();
+  await act(async () => { checkbox('登录后返回首页').click(); checkbox('验证码错误提示').click(); });
+  await act(async () => root.render(null));
+  await act(async () => release());
+  expect(api.updateTestRequestScopeDraft).toHaveBeenCalledTimes(2);
+  expect(state.items.every(item => item.resolution === 'REJECTED')).toBe(true);
+});
+
+it('慢网下切出再切回，等待旧保存队列完成后读取真实范围', async () => {
+  const original = vi.mocked(api.updateTestRequestScopeDraft).getMockImplementation()!;
+  let release!: () => void;
+  vi.mocked(api.updateTestRequestScopeDraft).mockImplementationOnce(async (...args) => {
+    await new Promise<void>(resolve => { release = resolve; });
+    return original(...args);
+  });
+  await renderPanel();
+  await act(async () => { checkbox('登录后返回首页').click(); checkbox('验证码错误提示').click(); });
+  await act(async () => root.render(null));
+  await renderPanel();
+  await act(async () => release());
+  expect(container.textContent).toContain('已选 0 条');
+  expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
 });

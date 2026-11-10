@@ -68,6 +68,11 @@ export class TestCaseSelectionDto {
 }
 
 export class AddTestScopeCasesDto {
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  scopeRevision?: number;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
@@ -102,6 +107,20 @@ export class UpdateTestRequestScopeDraftDto {
   @IsArray()
   @IsString({ each: true })
   removedCandidateIds!: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  restoredCandidateIds?: string[];
+}
+
+export class UpdateTestScopeModuleDto extends PrepareTestRequestDto {
+  @IsString()
+  @MinLength(1)
+  moduleId!: string;
+
+  @IsBoolean()
+  included!: boolean;
 }
 
 export class SaveGeneratedTestCaseDto {

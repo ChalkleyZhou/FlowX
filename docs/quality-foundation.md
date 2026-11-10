@@ -54,6 +54,21 @@ AI 负责生成和解释测试范围，确定性规则负责从 `DRAFT` 进入 `
 
 测试设计在 Spec & Plan 确认后可与开发执行并行生成。AI 会同时比对项目库和 Workspace 共享库，输出复用、优化、新增和不纳入候选；测试人员确认后才更新正式用例。冒烟用例按本次改动动态生成，只写入当前测试计划快照，不进入长期用例库。提测前必须存在已确认且未过期的测试设计，历史快照保持不变。
 
+## 提测范围工作台
+
+AI 推荐的非 EXCLUDE、非 REJECTED 候选默认纳入。目录仅定位用例库和模块，列表默认显示本次范围，切到全部用例后补选。取消在本次范围立即消失，在全部用例保留未选行；撤销通过候选 ID 恢复，包含尚未保存到用例库的 AI 新用例。详情在侧面展开并支持当前页连续浏览，不在列表展示步骤、预期结果或匹配理由。AI 新用例必须由人工在详情中点击保存，未保存的用例仅属于本次提测。
+
+修改自动保存，Web 串行提交并使用最新 `scopeRevision`；旧查询不能覆盖待保存的选择，失败恢复服务端状态并阻止继续确认，重新同步后可重试。整模块操作由服务端读取全部后代和用例，不受列表分页或搜索影响。已有确认快照时，即使冒烟门禁使提测保持 DRAFT，也拒绝继续改草稿。
+
+| 方法 | 路径 | 契约 |
+| --- | --- | --- |
+| `GET` | `/quality/test-requests/:id/scope-draft` | 兼容原查询；可选 `view=selected/library`、`libraryId`、`moduleId`、`q`、`page`、`pageSize`。selected 只返回已纳入候选，library 返回有效库用例及勾选状态；`summary.included` 为全局已选数量，`matchingIncluded/available` 为当前目录数量（不受搜索影响）。`designStatus` 表示 AI 生成状态，`status` 保持原提测准备状态语义 |
+| `PATCH` | `/quality/test-requests/:id/scope-draft` | `{ scopeRevision, removedCandidateIds, restoredCandidateIds? }`；候选与范围记录在同一事务更新，旧版本返回 409 |
+| `POST` | `/quality/test-requests/:id/scope-draft/cases` | `{ scopeRevision?, selections }`；已有移除候选恢复，不重复新建。旧客户端可省略版本号 |
+| `PATCH` | `/quality/test-requests/:id/scope-draft/module` | `{ scopeRevision, moduleId, included }`；原子纳入或移除整个模块及后代 |
+
+本轮适配结论：**复用现有能力**。网页人工圈定范围不新增 MCP/CLI/Skill/Adapter 入口；`flowx_test_requests` 继续读取提测、确认后的计划/快照并调用 prepare，`flowx_create_test_run` 和后续领取回传契约不变。`flowx-local`、`@flowx-ai/protocol` 无字段变更，旧草稿查询和补选请求保持兼容；Web 和 API 的新工作台需配套部署，本轮不要求本地 npm 包升级。验证包含真实 HTTP/SQLite 的移除、恢复、版本冲突、跨项目拒绝、确认后拒绝以及超过 100 条的完整模块。
+
 ## 用例编号
 
 `externalId` 由服务端在正式用例写入时分配，格式为 `TC-000001`，按用例库递增，不同模块共用序号。网页新建、CSV/XLSX 导入空编号及测试设计确认的 CREATE 候选统一调用编号分配函数；已有编号、REUSE/OPTIMIZE 候选及历史快照保持原样。网页编辑编号为只读。
