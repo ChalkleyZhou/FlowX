@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboard
 import { Check, ChevronDown } from 'lucide-react';
 import type { PageQuery, PageResult } from '../types';
 import { cn } from '../lib/utils';
+import { Spinner } from './ui/spinner';
 
 type Option = { id: string; name: string };
 
@@ -25,6 +26,7 @@ export function PagedSelect({ value, onValueChange, loadPage, placeholder = '请
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [keyNav, setKeyNav] = useState(false);
   const load = useRef(loadPage); load.current = loadPage;
   const epoch = useRef(0);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -61,7 +63,7 @@ export function PagedSelect({ value, onValueChange, loadPage, placeholder = '请
   }, [open, page, q, scopeKey, retry]);
 
   useEffect(() => { setItems([]); setPage(1); setQ(''); setSelected(null); }, [scopeKey]);
-  useEffect(() => { if (open) searchRef.current?.focus(); }, [open]);
+  useEffect(() => { if (open) searchRef.current?.focus(); else setKeyNav(false); }, [open]);
   const firstPageKey = page === 1 ? items.map(item => item.id).join('\0') : '';
   useEffect(() => {
     if (!open || page !== 1) return;
@@ -124,9 +126,11 @@ export function PagedSelect({ value, onValueChange, loadPage, placeholder = '请
   function onSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
+      setKeyNav(true);
       setActiveIndex(index => Math.min(index + 1, Math.max(choices.length - 1, 0)));
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
+      setKeyNav(true);
       setActiveIndex(index => Math.max(index - 1, 0));
     } else if (event.key === 'Enter' && choices[activeIndex]) {
       event.preventDefault();
@@ -140,21 +144,22 @@ export function PagedSelect({ value, onValueChange, loadPage, placeholder = '请
   return <div ref={rootRef} className={cn('relative min-w-0', className)}>
     <div className={cn(triggerClass, 'relative', disabled && 'cursor-not-allowed opacity-50')}>
       <button type="button" id={id} className="absolute inset-0 flex items-center rounded-md px-3 pr-8 text-left outline-none disabled:cursor-not-allowed" aria-label={label ?? placeholder} aria-expanded={open} aria-haspopup="listbox" disabled={disabled} onClick={() => { if (!open) openMenu(); }}>
-        <span className={cn('truncate', !value && 'text-muted-foreground', open && 'invisible')}>{value ? currentLabel || placeholder : placeholder}</span>
+        <span className={cn('truncate', !value && 'text-muted-foreground', open && q && 'invisible')}>{value ? currentLabel || placeholder : placeholder}</span>
       </button>
-      {open ? <input ref={searchRef} role="combobox" aria-expanded aria-controls={listId} aria-autocomplete="list" aria-activedescendant={choices.length ? `${listId}-option-${activeIndex}` : undefined} aria-label={`${label ?? placeholder}搜索`} value={q} placeholder={value ? currentLabel || placeholder : placeholder} className="absolute inset-y-0 left-3 right-8 z-10 bg-transparent outline-none placeholder:text-muted-foreground" onChange={event => { setQ(event.target.value); setPage(1); }} onKeyDown={onSearchKeyDown} /> : null}
+      {open ? <input ref={searchRef} role="combobox" aria-expanded aria-controls={listId} aria-autocomplete="list" aria-activedescendant={choices.length ? `${listId}-option-${activeIndex}` : undefined} aria-label={`${label ?? placeholder}搜索`} value={q} placeholder={value ? '' : placeholder} className="absolute inset-y-0 left-3 right-8 z-10 bg-transparent text-sm outline-none placeholder:text-muted-foreground" onChange={event => { setQ(event.target.value); setPage(1); setKeyNav(false); }} onKeyDown={onSearchKeyDown} /> : null}
       <ChevronDown className={cn('relative z-10 ml-auto h-4 w-4 shrink-0 opacity-50', open && 'rotate-180')} aria-hidden="true" onMouseDown={event => { event.preventDefault(); event.stopPropagation(); if (disabled) return; if (open) setOpen(false); else openMenu(); }} />
     </div>
     {open ? <div className="absolute left-0 top-full z-50 mt-1 w-full min-w-[8rem] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md">
       <div ref={listRef} id={listId} role="listbox" aria-label={label ?? placeholder} className="max-h-64 overflow-y-auto p-1" onWheel={onListWheel} onScroll={onListScroll}>
-        {choices.map((item, index) => <button type="button" key={item.id || '__empty__'} id={`${listId}-option-${index}`} role="option" aria-selected={value === item.id} data-active={index === activeIndex ? 'true' : undefined} className={cn('relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-left text-sm outline-none', index === activeIndex && 'bg-accent text-accent-foreground')} onMouseEnter={() => setActiveIndex(index)} onClick={() => selectChoice(item)}>
+        {choices.map((item, index) => <button type="button" key={item.id || '__empty__'} id={`${listId}-option-${index}`} role="option" aria-selected={value === item.id} data-active={keyNav && index === activeIndex ? 'true' : undefined} className={cn('relative flex w-full cursor-default select-none items-center rounded-sm bg-transparent py-1.5 pl-8 pr-2 text-left text-sm outline-none hover:bg-accent hover:text-accent-foreground', keyNav && index === activeIndex && 'bg-accent text-accent-foreground')} onMouseEnter={() => { setKeyNav(false); setActiveIndex(index); }} onClick={() => selectChoice(item)}>
           <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">{value === item.id ? <Check className="h-4 w-4" /> : null}</span>
           <span className="truncate">{item.name}</span>
         </button>)}
+        {loading && items.length > 0 && page > 1 ? <div role="status" className="flex justify-center py-2"><Spinner className="h-3.5 w-3.5" /><span className="sr-only">加载中</span></div> : null}
       </div>
-      {loading ? <p role="status" className="px-3 py-2 text-sm text-muted-foreground">加载中…</p> : null}
+      {loading && items.length === 0 ? <div role="status" className="flex justify-center py-6"><Spinner className="h-4 w-4" /><span className="sr-only">加载中</span></div> : null}
       {error ? <p role="alert" className="px-3 py-2 text-sm text-destructive">{error}<button type="button" className="ml-2 underline" onClick={() => setRetry(count => count + 1)}>重试</button></p> : null}
-      {!loading && !error && items.length === 0 ? <p className="px-3 py-2 text-sm text-muted-foreground">没有匹配记录</p> : null}
+      {!loading && !error && items.length === 0 ? <p className="px-3 py-2 text-center text-sm text-muted-foreground">没有匹配记录</p> : null}
     </div> : null}
   </div>;
 }
