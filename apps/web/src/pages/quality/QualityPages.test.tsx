@@ -287,7 +287,7 @@ describe('Quality pages', () => {
     await act(async () => root?.render(<QualityAssignmentPanel request={testRequest} onCompleted={vi.fn()} />));
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
     expect(container.textContent).toContain('提测已开始或已结束，分派已锁定');
-    expect(container.querySelector('[role="combobox"]')?.getAttribute('disabled')).toBe('');
+    expect(container.querySelector('button[aria-label="模块 认证 默认负责人"]')?.getAttribute('disabled')).toBe('');
     expect(Array.from(container.querySelectorAll('button')).find(button => button.textContent === '保存分派')?.disabled).toBe(true);
     expect(api.updateTestRequestAssignments).not.toHaveBeenCalled();
   });
@@ -311,9 +311,9 @@ describe('Quality pages', () => {
     await act(async () => root?.render(<QualityAssignmentPanel request={assignmentRequest} onCompleted={vi.fn()} />));
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
     expect(container.textContent).toContain('已分派 2');
-    expect(container.querySelector('[role="combobox"][aria-label="用例 登录回归 执行人"]')).toBeNull();
+    expect(container.querySelector('button[aria-label="用例 登录回归 执行人"]')).toBeNull();
     await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('查看用例'))?.click());
-    expect(container.querySelector('[role="combobox"][aria-label="用例 登录回归 执行人"]')).toBeTruthy();
+    expect(container.querySelector('button[aria-label="用例 登录回归 执行人"]')).toBeTruthy();
   });
   it('AI 新用例默认只留在本次提测，人工点击后才保存到用例库', async () => {
     const draft: TestRequest = { ...testRequest, status: 'DRAFT', testDesignId: 'design-1', scopeGenerationStatus: 'NOT_STARTED', testPlan: { id: 'plan-1', status: 'DRAFT', snapshots: [], runs: [] } };

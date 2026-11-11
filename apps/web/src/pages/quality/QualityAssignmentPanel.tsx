@@ -4,7 +4,7 @@ import { api } from '../../api';
 import type { OrganizationMember, TestRequest, TestRequestAssignmentSummary, TestRequestAssignmentsPage } from '../../types';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { PagedSelect } from '../../components/PagedSelect';
 import { useToast } from '../../components/ui/toast';
 import { cn } from '../../lib/utils';
 
@@ -18,7 +18,6 @@ type AssignmentGroup = {
 };
 
 const memberName = (member: OrganizationMember) => member.displayName ?? member.account ?? member.id;
-const EMPTY_ASSIGNEE = '__empty_assignee__';
 
 export function QualityAssignmentPanel({ request, onCompleted }: { request: TestRequest; onCompleted: (next: TestRequest) => void }) {
   const toast = useToast();
@@ -111,15 +110,22 @@ export function QualityAssignmentPanel({ request, onCompleted }: { request: Test
   }
 
   function assigneeOptions(value: string, emptyLabel: string, onChange: (userId: string) => void, label: string, compact = false) {
-    return <Select value={value || EMPTY_ASSIGNEE} onValueChange={next => onChange(next === EMPTY_ASSIGNEE ? '' : next)} disabled={readOnly || saving}>
-      <SelectTrigger className={compact ? 'h-8 max-w-48 text-xs' : 'h-9 w-48 text-sm'} aria-label={label}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={EMPTY_ASSIGNEE}>{emptyLabel}</SelectItem>
-        {members.map(member => <SelectItem key={member.id} value={member.id}>{memberName(member)}</SelectItem>)}
-      </SelectContent>
-    </Select>;
+    const selectedMember = value ? members.find(member => member.id === value) : undefined;
+    return <PagedSelect
+      label={label}
+      value={value}
+      selectedLabel={selectedMember ? memberName(selectedMember) : undefined}
+      onValueChange={onChange}
+      allowClear
+      emptyLabel={emptyLabel}
+      placeholder={emptyLabel}
+      className={cn('w-48', compact && 'text-xs')}
+      disabled={readOnly || saving}
+      loadPage={async query => {
+        const result = await api.getOrganizationMembers({ ...query, status: 'ACTIVE' });
+        return { ...result, items: result.items.map(member => ({ id: member.id, name: memberName(member) })) };
+      }}
+    />;
   }
 
   return (
