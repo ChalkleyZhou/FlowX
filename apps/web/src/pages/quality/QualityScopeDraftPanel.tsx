@@ -7,6 +7,7 @@ import { Input } from '../../components/ui/input';
 import { cn } from '../../lib/utils';
 import { QualityScopeDirectory, type ScopeDirectorySelection } from './QualityScopeDirectory';
 import { QualityScopeCaseDetails } from './QualityScopeCaseDetails';
+import { QualityScopeModuleOverview, type ScopeModuleBatchAction } from './QualityScopeModuleOverview';
 
 // 保存队列跨页签卸载继续完成；重新进入同一提测时，首读等待旧实例排空。
 const scopeWrites = new Map<string, { owner: symbol; promise: Promise<void> }>();
@@ -19,7 +20,7 @@ const message = (reason: unknown) => reason instanceof Error ? reason.message : 
 export function QualityScopeDraftPanel({ request, onConfirmed }: { request: TestRequest; onConfirmed: (next: TestRequest) => void }) {
   const [draft, setDraft] = useState<TestRequestScopeDraft>();
   const [directory, setDirectory] = useState<ScopeDirectorySelection>({ label: '全部目录' });
-  const [view, setView] = useState<'selected' | 'library'>('selected');
+  const [view, setView] = useState<'exceptions' | 'library'>('exceptions');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -152,17 +153,26 @@ export function QualityScopeDraftPanel({ request, onConfirmed }: { request: Test
   const rows = [...(draft?.items ?? [])];
   for (const change of Object.values(overrides)) {
     const index = rows.findIndex(item => itemKey(item) === itemKey(change.item));
-    const next = { ...change.item, action: change.item.action === 'EXCLUDE' ? 'REUSE' as const : change.item.action, resolution: change.included ? 'ACCEPTED' as const : 'REJECTED' as const };
+    const next = { ...change.item, action: change.item.action === 'EXCLUDE' ? 'REUSE' as const : change.item.action, resolution: change.included ? 'ACCEPTED' as const : 'REJECTED' as const, decisionNote: change.included ? '恢复到本次提测范围' : '从本次提测范围移除', exceptionReason: null };
     if (index >= 0) rows[index] = next;
-    else if (change.included && view === 'selected') rows.push(next);
+    else if (change.included && (view === 'library' || view === 'exceptions')) rows.push(next);
   }
-  const visible = view === 'selected' ? rows.filter(included) : rows;
+  const visible = view === 'exceptions' ? rows.filter(item => item.exceptionReason || (item.action === 'CREATE' && !item.sourceDefinitionId) || (item.resolution === 'PENDING' && !item.decisionNote) || (item.action === 'EXCLUDE' && !item.decisionNote)) : rows;
   const selectedCount = Math.max(0, (draft?.summary?.included ?? draft?.items.filter(included).length ?? 0) + Object.values(overrides).reduce((sum, change) => sum + Number(change.included) - Number(change.wasIncluded), 0));
   const detailIndex = detail ? visible.findIndex(item => item.id === detail.id || itemKey(item) === itemKey(detail)) : -1;
   const currentDetail = detailIndex >= 0 ? visible[detailIndex] : detail;
   const totalPages = draft?.totalPages ?? 0;
   const confirmed = Boolean((request.testPlan?._count?.snapshots ?? request.testPlan?.snapshots.length ?? 0) > 0);
   const locked = confirmed || Boolean(error) || confirming || savingDetail || analyzing;
+
+  const coverageChanges = new Set(rows.flatMap(item => item.coverageKeys ?? [])).size;
+  const moduleSummary = directory.summary;
+  const exceptionLabel: Record<string, string> = { AI_NEW_CASE: 'AI 新用例', PENDING_REVIEW: '待审阅', AI_EXCLUDED: 'AI 排除' };
+  function batchModule(action: ScopeModuleBatchAction) {
+    if (!directory.moduleId) return;
+    setUndo(undefined);
+    enqueue(scopeRevision => api.updateTestRequestScopeModule(request.id, { scopeRevision, moduleId: directory.moduleId!, included: action.included, ...(action.strategy ? { strategy: action.strategy } : {}) }));
+  }
 
   return <section className="space-y-3 rounded-md border p-4" aria-label="AI 提测范围">
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -173,22 +183,26 @@ export function QualityScopeDraftPanel({ request, onConfirmed }: { request: Test
     {confirmed ? <p role="status" className="rounded border border-primary/20 bg-primary/5 p-3 text-sm">范围已确认，仅可查看。需要调整时请新建回归提测。</p> : null}
     {status === 'GENERATION_FAILED' ? <p role="alert" className="rounded border border-destructive/30 p-3 text-sm text-destructive">AI 范围生成失败，请检查测试设计后重新分析。</p> : null}
     {error ? <div role="alert" className="flex items-center justify-between gap-2 rounded border border-destructive/30 p-2 text-sm text-destructive"><span>{error}</span><Button type="button" size="sm" variant="outline" disabled={Boolean(pending)} onClick={() => void resync()}>重新同步</Button></div> : null}
+    <div className="grid gap-2 sm:grid-cols-4" aria-label="范围摘要">
+      {[
+        ['预计提测', draft?.summary?.included],
+        ['AI 推荐', draft?.summary?.aiRecommended],
+        ['待处理例外', draft?.summary?.exceptionCount],
+        ['覆盖变更点', coverageChanges || undefined],
+      ].map(([label, value]) => <div key={label} className="rounded-md border bg-muted/20 px-3 py-2"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-lg font-semibold">{value ?? '—'}</p></div>)}
+    </div>
     <div className={cn('grid items-start gap-3 lg:grid-cols-[220px_minmax(0,1fr)]', detail && 'xl:grid-cols-[200px_minmax(300px,1fr)_minmax(280px,360px)]')}>
       <QualityScopeDirectory request={request} selection={directory} onSelect={next => { setDirectory(next); setPage(1); setDetail(undefined); }} />
       <div className="min-w-0 rounded-md border">
         <div className="space-y-3 border-b p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div role="group" aria-label="范围视图" className="flex rounded-md bg-muted/50 p-1">
-              {([['selected', '本次范围'], ['library', '全部用例']] as const).map(([value, label]) => <Button key={value} type="button" size="sm" variant={view === value ? 'secondary' : 'ghost'} aria-pressed={view === value} onClick={() => { setView(value); setPage(1); setDetail(undefined); }}>{label}</Button>)}
+              {([['exceptions', '只显示例外'], ['library', '全部用例']] as const).map(([value, label]) => <Button key={value} type="button" size="sm" variant={view === value ? 'secondary' : 'ghost'} aria-pressed={view === value} onClick={() => { setView(value); setPage(1); setDetail(undefined); }}>{label}</Button>)}
             </div>
             <span className="text-xs text-muted-foreground">{directory.label}</span>
           </div>
           <Input aria-label="搜索用例" placeholder="搜索用例标题" value={query} onChange={event => { setQuery(event.target.value); setPage(1); setDetail(undefined); }} />
-          {directory.moduleId ? <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span>已选 {draft?.summary?.matchingIncluded ?? 0} / {draft?.summary?.available ?? 0} 条（含子模块）</span>
-            <Button type="button" variant="ghost" size="sm" disabled={locked || Boolean(pending) || loading} onClick={() => { setUndo(undefined); enqueue(scopeRevision => api.updateTestRequestScopeModule(request.id, { scopeRevision, moduleId: directory.moduleId!, included: true })); }}>纳入整个模块</Button>
-            <Button type="button" variant="ghost" size="sm" disabled={locked || Boolean(pending) || loading} onClick={() => { setUndo(undefined); enqueue(scopeRevision => api.updateTestRequestScopeModule(request.id, { scopeRevision, moduleId: directory.moduleId!, included: false })); }}>移除整个模块</Button>
-          </div> : null}
+          {directory.moduleId && moduleSummary ? <QualityScopeModuleOverview summary={moduleSummary} disabled={locked || Boolean(pending) || loading} pending={Boolean(pending)} onBatch={batchModule} /> : directory.moduleId ? <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span>已选 {draft?.summary?.matchingIncluded ?? 0} / {draft?.summary?.available ?? 0} 条（含子模块）</span><Button type="button" variant="ghost" size="sm" disabled={locked || Boolean(pending) || loading} onClick={() => batchModule({ included: true, strategy: 'AI_RECOMMENDED' })}>纳入 AI 推荐</Button><Button type="button" variant="ghost" size="sm" disabled={locked || Boolean(pending) || loading} onClick={() => batchModule({ included: false })}>移除全部</Button></div> : null}
         </div>
         <div className="max-h-[440px] min-h-[300px] overflow-y-auto p-2" aria-busy={loading}>
           {loading ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">用例加载中…</p> : visible.map(item => <div key={itemKey(item)} className="flex items-center gap-3 rounded px-2 py-3 hover:bg-muted/40">
@@ -196,9 +210,9 @@ export function QualityScopeDraftPanel({ request, onConfirmed }: { request: Test
             <button type="button" className="min-w-0 flex-1 truncate text-left text-sm hover:text-primary hover:underline" aria-label={`查看用例 ${item.proposedCase.title}`} onClick={() => setDetail(item)}>{item.proposedCase.title}</button>
             <span className="hidden max-w-28 truncate text-xs text-muted-foreground md:inline">{item.sourceDefinition?.module?.name}</span>
             <span className="text-xs text-muted-foreground">{item.proposedCase.priority}</span>
-            {item.action === 'CREATE' && !item.sourceDefinitionId ? <Badge variant="secondary">AI 新用例</Badge> : null}
+            {item.exceptionReason ? <Badge variant="secondary">{exceptionLabel[item.exceptionReason] ?? item.exceptionReason}</Badge> : item.action === 'CREATE' && !item.sourceDefinitionId ? <Badge variant="secondary">AI 新用例</Badge> : null}
           </div>)}
-          {!loading && !visible.length ? <div className="py-14 text-center text-sm text-muted-foreground"><p>{view === 'selected' ? '当前没有选中的用例' : '暂无匹配用例'}</p>{view === 'selected' ? <Button type="button" variant="ghost" size="sm" onClick={() => { setView('library'); setPage(1); }}>从全部用例中添加</Button> : null}</div> : null}
+          {!loading && !visible.length ? <div className="py-14 text-center text-sm text-muted-foreground"><p>{view === 'exceptions' ? '当前没有待处理例外' : '暂无匹配用例'}</p>{view === 'exceptions' ? <Button type="button" variant="ghost" size="sm" onClick={() => { setView('library'); setPage(1); }}>查看全部用例</Button> : null}</div> : null}
         </div>
         {totalPages > 1 ? <div className="flex items-center justify-end gap-3 border-t p-2 text-xs text-muted-foreground">
           <Button type="button" variant="ghost" size="sm" disabled={loading || page <= 1} onClick={() => { setPage(p => p - 1); setDetail(undefined); }}>上一页</Button>

@@ -111,9 +111,9 @@ function button(label: string) { return Array.from(container.querySelectorAll('b
 function checkbox(title: string) { return container.querySelector<HTMLInputElement>(`input[aria-label="选择范围用例 ${title}"]`)!; }
 async function renderPanel() { await act(async () => root.render(<QualityScopeDraftPanel request={request} onConfirmed={vi.fn()} />)); }
 
-it('默认仅展示本次范围，目录不含复选框，列表不展示详情', async () => {
+it('默认仅展示待处理例外，目录不含复选框，列表不展示详情', async () => {
   await renderPanel();
-  expect(button('本次范围').getAttribute('aria-pressed')).toBe('true');
+  expect(button('只显示例外').getAttribute('aria-pressed')).toBe('true');
   expect(checkbox('登录后返回首页').checked).toBe(true);
   expect(container.querySelector('aside[aria-label="用例目录"] input[type="checkbox"]')).toBeNull();
   expect(container.textContent).not.toContain('输入账号');
@@ -183,9 +183,36 @@ it('模块操作交由服务端覆盖完整模块，包含分页外用例', asyn
   await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="展开用例库 项目库"]')!.click());
   await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="筛选模块 账号登录"]')!.click());
   vi.mocked(api.updateTestRequestScopeModule).mockResolvedValue({ ...request, scopeRevision: 5 });
-  await act(async () => button('纳入整个模块').click());
-  expect(api.updateTestRequestScopeModule).toHaveBeenCalledWith('request-1', { scopeRevision: 4, moduleId: 'module-auth', included: true });
+  await act(async () => button('纳入 AI 推荐').click());
+  expect(api.updateTestRequestScopeModule).toHaveBeenCalledWith('request-1', { scopeRevision: 4, moduleId: 'module-auth', included: true, strategy: 'AI_RECOMMENDED' });
   expect(api.getTestCasesPage).not.toHaveBeenCalled();
+});
+
+it('模块摘要展示批量操作，纳入 AI 推荐显式传递策略', async () => {
+  vi.mocked(api.getTestCaseModules).mockResolvedValue({ items: [{ id: 'module-auth', libraryId: 'library-project', parentId: null, name: '账号登录', sortOrder: 0, scopeSummary: { moduleId: 'module-auth', libraryId: 'library-project', moduleName: '账号登录', totalCount: 12, includedCount: 4, aiRecommendedCount: 6, exceptionCount: 2, status: 'PARTIAL' } }], total: 1, page: 1, pageSize: 100, totalPages: 1 });
+  vi.mocked(api.updateTestRequestScopeModule).mockResolvedValue({ ...request, scopeRevision: 5 });
+  await renderPanel();
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="展开用例库 项目库"]')!.click());
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="筛选模块 账号登录"]')!.click());
+  expect(container.querySelector('[aria-label="模块范围 账号登录"]')?.textContent).toContain('已纳入 4 / 12 条');
+  expect(container.textContent).toContain('待处理例外 2 条');
+  await act(async () => button('纳入 AI 推荐').click());
+  expect(api.updateTestRequestScopeModule).toHaveBeenCalledWith('request-1', { scopeRevision: 4, moduleId: 'module-auth', included: true, strategy: 'AI_RECOMMENDED' });
+});
+
+it('移除全部必须二次确认，取消不写入', async () => {
+  vi.mocked(api.getTestCaseModules).mockResolvedValue({ items: [{ id: 'module-auth', libraryId: 'library-project', parentId: null, name: '账号登录', sortOrder: 0, scopeSummary: { moduleId: 'module-auth', libraryId: 'library-project', moduleName: '账号登录', totalCount: 12, includedCount: 4, aiRecommendedCount: 6, exceptionCount: 2, status: 'PARTIAL' } }], total: 1, page: 1, pageSize: 100, totalPages: 1 });
+  await renderPanel();
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="展开用例库 项目库"]')!.click());
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="筛选模块 账号登录"]')!.click());
+  await act(async () => button('移除全部').click());
+  expect(container.querySelector('[role="alertdialog"]')?.textContent).toContain('账号登录');
+  await act(async () => button('取消').click());
+  expect(api.updateTestRequestScopeModule).not.toHaveBeenCalled();
+  await act(async () => button('移除全部').click());
+  const confirmButtons = Array.from(container.querySelectorAll('button')).filter(node => node.textContent === '移除全部');
+  await act(async () => (confirmButtons.at(-1) as HTMLButtonElement).click());
+  expect(api.updateTestRequestScopeModule).toHaveBeenCalledWith('request-1', { scopeRevision: 4, moduleId: 'module-auth', included: false });
 });
 
 it('保存后的刷新未返回时继续取消，不中断后续操作', async () => {

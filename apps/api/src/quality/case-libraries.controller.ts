@@ -28,7 +28,7 @@ export class CaseLibrariesController {
   }
 
   @Get('case-libraries/:libraryId/modules')
-  listModules(@Param('libraryId') libraryId: string, @Query() query: import('../common/pagination').PaginationQuery & { q?: string; parentId?: string; excludeId?: string }) {
+  listModules(@Param('libraryId') libraryId: string, @Query() query: import('../common/pagination').PaginationQuery & { q?: string; parentId?: string; excludeId?: string; testRequestId?: string }) {
     return this.libraries.listModules(libraryId, query);
   }
 

@@ -56,16 +56,18 @@ AI 负责生成和解释测试范围，确定性规则负责从 `DRAFT` 进入 `
 
 ## 提测范围工作台
 
-AI 推荐的非 EXCLUDE、非 REJECTED 候选默认纳入。目录仅定位用例库和模块，列表默认显示本次范围，切到全部用例后补选。取消在本次范围立即消失，在全部用例保留未选行；撤销通过候选 ID 恢复，包含尚未保存到用例库的 AI 新用例。详情在侧面展开并支持当前页连续浏览，不在列表展示步骤、预期结果或匹配理由。AI 新用例必须由人工在详情中点击保存，未保存的用例仅属于本次提测。
+AI 推荐的非 EXCLUDE、非 REJECTED 候选默认纳入。工作台先展示预计提测、AI 推荐、待处理例外和覆盖变更点四项摘要；目录节点可带当前提测的模块摘要，显示全量后代用例的纳入数、AI 推荐数和例外数。模块内默认只审阅例外，支持“纳入 AI 推荐”和“移除全部”；移除全部需要二次确认，纳入 AI 推荐只恢复该模块中已有的 AI 候选，不会把未被 AI 推荐的库用例批量加入。切到全部用例后仍可补选。取消在列表中立即消失，在全部用例保留未选行；撤销通过候选 ID 恢复，包含尚未保存到用例库的 AI 新用例。详情在侧面展开并支持当前页连续浏览，不在列表展示步骤、预期结果或匹配理由。AI 新用例必须由人工在详情中点击保存，未保存的用例仅属于本次提测。
 
 修改自动保存，Web 串行提交并使用最新 `scopeRevision`；旧查询不能覆盖待保存的选择，失败恢复服务端状态并阻止继续确认，重新同步后可重试。整模块操作由服务端读取全部后代和用例，不受列表分页或搜索影响。已有确认快照时，即使冒烟门禁使提测保持 DRAFT，也拒绝继续改草稿，Web 首屏直接显示只读。提测进入执行或结束状态后，人员分派控件同样只读；目录、搜索和详情查看不受影响。
 
 | 方法 | 路径 | 契约 |
 | --- | --- | --- |
-| `GET` | `/quality/test-requests/:id/scope-draft` | 兼容原查询；可选 `view=selected/library`、`libraryId`、`moduleId`、`q`、`page`、`pageSize`。selected 只返回已纳入候选，library 返回有效库用例及勾选状态；`summary.included` 为全局已选数量，`matchingIncluded/available` 为当前目录数量（不受搜索影响）。`designStatus` 表示 AI 生成状态，`status` 保持原提测准备状态语义 |
+| `GET` | `/quality/test-requests/:id/scope-draft` | 兼容原查询；可选 `view=selected/library/exceptions`、`libraryId`、`moduleId`、`q`、`page`、`pageSize`。exceptions 只返回待审阅例外并附 `exceptionReason`（`AI_NEW_CASE`、`PENDING_REVIEW`、`AI_EXCLUDED`）；selected 只返回已纳入候选，library 返回有效库用例及勾选状态；`summary.included` 为全局已选数量，`matchingIncluded/available` 为当前目录数量（不受搜索影响），并补充 `aiRecommended`、`exceptionCount`。`designStatus` 表示 AI 生成状态，`status` 保持原提测准备状态语义 |
 | `PATCH` | `/quality/test-requests/:id/scope-draft` | `{ scopeRevision, removedCandidateIds, restoredCandidateIds? }`；候选与范围记录在同一事务更新，旧版本返回 409 |
 | `POST` | `/quality/test-requests/:id/scope-draft/cases` | `{ scopeRevision?, selections }`；已有移除候选恢复，不重复新建。旧客户端可省略版本号 |
-| `PATCH` | `/quality/test-requests/:id/scope-draft/module` | `{ scopeRevision, moduleId, included }`；原子纳入或移除整个模块及后代 |
+| `PATCH` | `/quality/test-requests/:id/scope-draft/module` | `{ scopeRevision, moduleId, included, strategy? }`；原子纳入或移除整个模块及后代。`strategy=AI_RECOMMENDED` 只恢复已有 AI 推荐候选，`strategy=ALL` 或未传策略保持整模块纳入的兼容语义 |
+
+`GET /quality/case-libraries/:libraryId/modules?testRequestId=...` 可在目录节点返回 `scopeSummary`。服务端按模块及全部后代计算摘要，不受当前分页影响，并校验提测、工作区、项目库权限；确认快照后仍拒绝所有范围写入。
 
 本轮适配结论：**复用现有能力**。网页人工圈定范围不新增 MCP/CLI/Skill/Adapter 入口；`flowx_test_requests` 继续读取提测、确认后的计划/快照并调用 prepare，`flowx_create_test_run` 和后续领取回传契约不变。`flowx-local`、`@flowx-ai/protocol` 无字段变更，旧草稿查询和补选请求保持兼容；Web 和 API 的新工作台需配套部署，本轮不要求本地 npm 包升级。验证包含真实 HTTP/SQLite 的移除、恢复、版本冲突、跨项目拒绝、确认后拒绝以及超过 100 条的完整模块。
 

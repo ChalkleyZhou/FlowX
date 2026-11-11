@@ -7,11 +7,13 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { TestRequestsService } from './test-requests.service';
+import { CaseLibrariesService } from './case-libraries.service';
 
 const directory = mkdtempSync(join(tmpdir(), 'flowx-scope-workbench-'));
 const url = `file:${join(directory, 'test.db')}`;
 const prisma = new PrismaClient({ datasources: { db: { url } } });
 const service = new TestRequestsService(prisma as never, {} as never);
+const caseLibraries = new CaseLibrariesService(prisma as never);
 let revision = 0;
 let workspaceId: string;
 let projectId: string;
@@ -82,6 +84,27 @@ it('完整模块包含子模块和第二页；移除和重新纳入保持候选�
   expect(await prisma.testRequestScopeCase.count({ where: { testRequestId: request.id, status: 'INCLUDED' } })).toBe(105);
 });
 
+it('纳入 AI 推荐只恢复已存在的 AI 候选，不创建未推荐的库内用例', async () => {
+  const { request, module, candidate, definition } = await fixture();
+  const libraryOnly = await prisma.testCaseDefinition.create({ data: { libraryId: definition.libraryId, moduleId: module.id, title: '库内未推荐', steps: ['执行'], expected: '通过' } });
+  await service.updateScopeDraft(request.id, { scopeRevision: 1, removedCandidateIds: [candidate.id] });
+  await service.updateScopeModule(request.id, { scopeRevision: 2, moduleId: module.id, included: true, strategy: 'AI_RECOMMENDED' });
+  expect(await prisma.testDesignCandidate.findUnique({ where: { id: candidate.id } })).toMatchObject({ resolution: 'ACCEPTED', action: 'REUSE' });
+  expect(await prisma.testDesignCandidate.findFirst({ where: { testDesignId: candidate.testDesignId, sourceDefinitionId: libraryOnly.id } })).toBeNull();
+  expect(await prisma.testRequestScopeCase.count({ where: { testRequestId: request.id, status: 'INCLUDED' } })).toBe(1);
+});
+
+it('例外视图返回待审阅候选，模块摘要统计完整后代范围', async () => {
+  const { request, library, module, design } = await fixture();
+  await prisma.testDesignCandidate.create({ data: { testDesignId: design.id, action: 'CREATE', resolution: 'PENDING', coverageKeys: [], proposedCase: { title: 'AI 新增', priority: 'P1', steps: ['执行'], expected: '成功' } } });
+  const exceptions = await service.getScopeDraft(request.id, { view: 'exceptions' });
+  expect(exceptions).toMatchObject({ summary: { exceptionCount: 1 } });
+  expect(exceptions.items).toEqual(expect.arrayContaining([expect.objectContaining({ exceptionReason: 'AI_NEW_CASE' })]));
+  const modules = await caseLibraries.listModules(library.id, { testRequestId: request.id, parentId: 'null' });
+  expect(modules.items[0]).toMatchObject({ scopeSummary: { totalCount: 1, includedCount: 1, aiRecommendedCount: 1, status: 'ALL' } });
+  expect(module.id).toBe(modules.items[0].id);
+});
+
 it('跨项目模块与用例不允许纳入，确认快照后仍为 DRAFT 也不允许删改', async () => {
   const { request, design, candidate, definition, module: currentModule } = await fixture();
   const otherProject = await prisma.project.create({ data: { workspaceId, name: '其它项目' } });
@@ -117,6 +140,7 @@ it('真实 HTTP 校验视图和写入 DTO，恢复与模块路由透传版本并
     const write = (path: string, body: unknown, method = 'PATCH') => fetch(`${base}${path}`, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     expect((await write('/module', { moduleId: module.id, included: true })).status).toBe(400);
     expect((await write('/module', { scopeRevision: 1, moduleId: module.id, included: 'false' })).status).toBe(400);
+    expect((await write('/module', { scopeRevision: 1, moduleId: module.id, included: true, strategy: 'BAD' })).status).toBe(400);
     expect((await write('', { scopeRevision: 1, removedCandidateIds: [], restoredCandidateIds: 'bad' })).status).toBe(400);
     expect((await fetch(`${base}?view=unsupported`)).status).toBe(400);
     expect((await write('', { scopeRevision: 1, removedCandidateIds: [candidate.id] })).status).toBe(200);

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, Folder, Library } from 'lucide-react';
 import { api } from '../../api';
-import type { PageResult, TestCaseLibrary, TestCaseModule, TestRequest } from '../../types';
+import type { PageResult, TestCaseLibrary, TestCaseModule, TestRequest, TestRequestScopeModuleSummary } from '../../types';
 import { Button } from '../../components/ui/button';
 import { cn } from '../../lib/utils';
 
-export type ScopeDirectorySelection = { libraryId?: string; moduleId?: string; label: string };
+export type ScopeDirectorySelection = { libraryId?: string; moduleId?: string; label: string; summary?: TestRequestScopeModuleSummary };
 
 /** 每层独立分页，展开才读取；目录只负责定位，不改变提测范围。 */
 function DirectoryLevel({ request, libraryId, parentId, selection, onSelect }: {
@@ -23,7 +23,7 @@ function DirectoryLevel({ request, libraryId, parentId, selection, onSelect }: {
     let active = true;
     setLoading(true); setError('');
     const load: Promise<PageResult<TestCaseLibrary | TestCaseModule>> = libraryId
-      ? api.getTestCaseModules(libraryId, { parentId: parentId ?? 'null', page, pageSize: 20 })
+      ? api.getTestCaseModules(libraryId, { parentId: parentId ?? 'null', page, pageSize: 20, testRequestId: request.id })
       : api.getTestCaseLibraries({ workspaceId: request.workspaceId, projectId: request.projectId, status: 'ACTIVE', page, pageSize: 20 });
     void load.then(result => {
       if (!active) return;
@@ -32,7 +32,7 @@ function DirectoryLevel({ request, libraryId, parentId, selection, onSelect }: {
     }).catch(reason => { if (active) setError(reason instanceof Error ? reason.message : '加载目录失败'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [request.workspaceId, request.projectId, libraryId, parentId, page, retry]);
+  }, [request.id, request.workspaceId, request.projectId, libraryId, parentId, page, retry]);
   return <div className="space-y-1">
     {items.map(item => {
       const open = expanded.includes(item.id);
@@ -44,7 +44,8 @@ function DirectoryLevel({ request, libraryId, parentId, selection, onSelect }: {
             {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
           </Button>
           {libraryId ? <Folder className="h-4 w-4 shrink-0 text-muted-foreground" /> : <Library className="h-4 w-4 shrink-0 text-muted-foreground" />}
-          <button type="button" className="min-w-0 flex-1 truncate px-2 py-2 text-left text-sm" aria-label={`筛选${label} ${item.name}`} aria-current={selected ? 'true' : undefined} onClick={() => onSelect({ libraryId: libraryId ?? item.id, moduleId: libraryId ? item.id : undefined, label: item.name })}>{item.name}</button>
+          <button type="button" className="min-w-0 flex-1 truncate px-2 py-2 text-left text-sm" aria-label={`筛选${label} ${item.name}`} aria-current={selected ? 'true' : undefined} onClick={() => onSelect({ libraryId: libraryId ?? item.id, moduleId: libraryId ? item.id : undefined, label: item.name, summary: libraryId ? (item as TestCaseModule).scopeSummary : undefined })}>{item.name}</button>
+          {libraryId && (item as TestCaseModule).scopeSummary ? <span className="mr-2 shrink-0 text-[11px] text-muted-foreground" title="模块范围摘要">{(item as TestCaseModule).scopeSummary!.includedCount}/{(item as TestCaseModule).scopeSummary!.totalCount} · 例外 {(item as TestCaseModule).scopeSummary!.exceptionCount}</span> : null}
         </div>
         {open ? <div className="ml-3 border-l pl-1"><DirectoryLevel request={request} libraryId={libraryId ?? item.id} parentId={libraryId ? item.id : undefined} selection={selection} onSelect={onSelect} /></div> : null}
       </div>;

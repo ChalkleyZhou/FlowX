@@ -1150,7 +1150,7 @@ export const api = {
     }),
   getBugs: (query?: ListQuery) => requestPage<Bug>('/bugs', query),
   getTestCaseLibraries: (query: ListQuery & { workspaceId: string }) => requestPage<TestCaseLibrary>('/quality/case-libraries', query),
-  getTestCaseModules: (libraryId: string, query?: ListQuery) => requestPage<TestCaseModule>(`/quality/case-libraries/${libraryId}/modules`, query),
+  getTestCaseModules: (libraryId: string, query?: ListQuery & { testRequestId?: string }) => requestPage<TestCaseModule>(`/quality/case-libraries/${libraryId}/modules`, query),
   createTestCaseModule: (
     libraryId: string,
     payload: { name: string; parentId?: string; sortOrder?: number },
@@ -1256,9 +1256,9 @@ export const api = {
     }),
   prepareTestRequest: (id: string, payload: { scopeRevision: number }) =>
     request<TestRequest>(`/quality/test-requests/${id}/prepare`, { method: 'POST', body: JSON.stringify(payload) }),
-  getTestRequestScopeDraft: (id: string, query?: ListQuery & { action?: string; view?: 'selected' | 'library'; libraryId?: string; moduleId?: string }) => request<TestRequestScopeDraft>(`/quality/test-requests/${id}/scope-draft?${queryString({ page: 1, pageSize: 20, ...query })}`),
+  getTestRequestScopeDraft: (id: string, query?: ListQuery & { action?: string; view?: 'selected' | 'library' | 'exceptions'; libraryId?: string; moduleId?: string }) => request<TestRequestScopeDraft>(`/quality/test-requests/${id}/scope-draft?${queryString({ page: 1, pageSize: 20, ...query })}`),
   updateTestRequestScopeDraft: (id: string, payload: { scopeRevision: number; removedCandidateIds: string[]; restoredCandidateIds?: string[] }) => request<TestRequest>(`/quality/test-requests/${id}/scope-draft`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  updateTestRequestScopeModule: (id: string, payload: { scopeRevision: number; moduleId: string; included: boolean }) => request<TestRequest>(`/quality/test-requests/${id}/scope-draft/module`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  updateTestRequestScopeModule: (id: string, payload: { scopeRevision: number; moduleId: string; included: boolean; strategy?: 'AI_RECOMMENDED' | 'ALL' }) => request<TestRequest>(`/quality/test-requests/${id}/scope-draft/module`, { method: 'PATCH', body: JSON.stringify(payload) }),
   addTestRequestScopeDraftCases: (id: string, payload: { scopeRevision?: number; selections: Array<{ caseId: string; reason: string; impactLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' }> }) => request<TestRequest>(`/quality/test-requests/${id}/scope-draft/cases`, { method: 'POST', body: JSON.stringify(payload) }),
   saveGeneratedTestRequestCase: (id: string, candidateId: string, payload: { libraryId: string; moduleId?: string }) => request<{ candidateId: string; testCase: TestCaseDefinition }>(`/quality/test-requests/${id}/scope-draft/${candidateId}/save-to-library`, { method: 'POST', body: JSON.stringify(payload) }),
   getTestRequestAssignments: (id: string, query?: ListQuery & { unassigned?: string }) => request<TestRequestAssignmentsPage>(`/quality/test-requests/${id}/assignments?${queryString({ page: 1, pageSize: 20, ...query })}`),
