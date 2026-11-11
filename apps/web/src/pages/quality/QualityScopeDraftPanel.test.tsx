@@ -249,6 +249,16 @@ it('切换页面卸载组件后，已经接受的保存仍按顺序完成', asyn
   expect(state.items.every(item => item.resolution === 'REJECTED')).toBe(true);
 });
 
+it('已有确认快照时首屏直接只读，不发送范围修改请求', async () => {
+  const confirmedRequest = { ...request, testPlan: { id: 'plan-1', status: 'DRAFT', snapshots: [], runs: [], _count: { snapshots: 1, runs: 0 } } } as TestRequest;
+  await act(async () => root.render(<QualityScopeDraftPanel request={confirmedRequest} onConfirmed={vi.fn()} />));
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+  expect(container.textContent).toContain('范围已确认，仅可查看');
+  expect(checkbox('登录后返回首页').disabled).toBe(true);
+  expect(button('确认范围并进入分派').disabled).toBe(true);
+  expect(api.updateTestRequestScopeDraft).not.toHaveBeenCalled();
+});
+
 it('慢网下切出再切回，等待旧保存队列完成后读取真实范围', async () => {
   const original = vi.mocked(api.updateTestRequestScopeDraft).getMockImplementation()!;
   let release!: () => void;

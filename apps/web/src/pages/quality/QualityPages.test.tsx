@@ -13,6 +13,7 @@ import { QualityCasesPage } from './QualityCasesPage';
 import { QualityRequestsPage } from './QualityRequestsPage';
 import { QualityRequestDetailPage } from './QualityRequestDetailPage';
 import { QualityRunsPage } from './QualityRunsPage';
+import { QualityAssignmentPanel } from './QualityAssignmentPanel';
 
 const { errorToast, successToast } = vi.hoisted(() => ({
   errorToast: vi.fn(),
@@ -66,6 +67,7 @@ vi.mock('../../api', async (importOriginal) => ({
     updateTestRequestScopeDraft: vi.fn(),
     saveGeneratedTestRequestCase: vi.fn(),
     getTestRequestAssignments: vi.fn(),
+    getOrganizationMembers: vi.fn(),
     updateTestRequestAssignments: vi.fn(),
     completeTestRequestAssignments: vi.fn(),
     prepareTestRequest: vi.fn(),
@@ -263,8 +265,8 @@ describe('Quality pages', () => {
 
   it('DRAFT提测先确认 AI 范围，服务端准备完成后才开放功能测试轮次', async () => {
     const snapshot = { id: 'snapshot-1', title: '功能测试', priority: 'P0', kind: 'FUNCTIONAL' as const, steps: ['登录'], expected: '成功', selectedBy: 'MANUAL' };
-    const draft: TestRequest = { ...testRequest, status: 'DRAFT', testDesignId: 'design-1', scopeGenerationStatus: 'NOT_STARTED', testPlan: { id: 'plan-1', status: 'DRAFT', snapshots: [snapshot], runs: [] } };
-    const ready: TestRequest = { ...draft, status: 'READY', scopeGenerationStatus: 'COMPLETED', scopeRevision: 2, testPlan: { ...draft.testPlan!, status: 'READY' } };
+    const draft: TestRequest = { ...testRequest, status: 'DRAFT', testDesignId: 'design-1', scopeGenerationStatus: 'NOT_STARTED', testPlan: { id: 'plan-1', status: 'DRAFT', snapshots: [], runs: [], _count: { snapshots: 0, runs: 0 } } };
+    const ready: TestRequest = { ...draft, status: 'READY', scopeGenerationStatus: 'COMPLETED', scopeRevision: 2, testPlan: { ...draft.testPlan!, status: 'READY', snapshots: [snapshot] } };
     vi.mocked(api.getTestRequestSnapshots).mockResolvedValue(pageResult([snapshot], { summary: { functionalCount: 1, smokeCount: 0 } }));
     vi.mocked(api.getTestRequest).mockResolvedValue(draft);
     vi.mocked(api.getTestRequestScopeDraft).mockResolvedValue({ items: [{ id: 'candidate-1', action: 'REUSE', resolution: 'PENDING', coverageKeys: [], proposedCase: { title: '功能测试', priority: 'P0', steps: ['登录'], expected: '成功' } }], total: 1, page: 1, pageSize: 50, totalPages: 1, scopeRevision: 1, status: 'NOT_STARTED' });
@@ -278,6 +280,16 @@ describe('Quality pages', () => {
     await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent === '确认范围并进入分派')?.click());
     expect(api.prepareTestRequest).toHaveBeenCalledWith('request-1', { scopeRevision: 1 });
     expect(formalButton()?.disabled).toBe(false);
+  });
+  it('提测开始后分派控件首屏只读，不发送保存请求', async () => {
+    vi.mocked(api.getTestRequestAssignments).mockResolvedValue({ items: [{ id: 'snapshot-1', title: '登录回归', moduleName: '认证', assignedToUserId: null }], total: 1, page: 1, pageSize: 100, totalPages: 1, scopeRevision: 1, summary: { total: 1, assigned: 0, unassigned: 1 } });
+    vi.mocked(api.getOrganizationMembers).mockResolvedValue({ items: [{ id: 'user-1', account: 'qa', displayName: '测试同学', status: 'ACTIVE' }], total: 1, page: 1, pageSize: 100, totalPages: 1 });
+    await act(async () => root?.render(<QualityAssignmentPanel request={testRequest} onCompleted={vi.fn()} />));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(container.textContent).toContain('提测已开始或已结束，分派已锁定');
+    expect(container.querySelector('select')?.disabled).toBe(true);
+    expect(Array.from(container.querySelectorAll('button')).find(button => button.textContent === '保存分派')?.disabled).toBe(true);
+    expect(api.updateTestRequestAssignments).not.toHaveBeenCalled();
   });
   it('AI 新用例默认只留在本次提测，人工点击后才保存到用例库', async () => {
     const draft: TestRequest = { ...testRequest, status: 'DRAFT', testDesignId: 'design-1', scopeGenerationStatus: 'NOT_STARTED', testPlan: { id: 'plan-1', status: 'DRAFT', snapshots: [], runs: [] } };

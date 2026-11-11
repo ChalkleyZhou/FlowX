@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { TestRequestsService } from './test-requests.service';
+import { TestRequestStatus } from './quality-status';
 
 function createService() {
   const transaction = {
@@ -14,7 +15,7 @@ function createService() {
     requirement: { findMany: vi.fn() },
     workflowRun: { findMany: vi.fn() },
     artifact: { findMany: vi.fn() },
-    testRequest: { findUnique: transaction.testRequest.findUnique, update: vi.fn(), create: vi.fn() },
+    testRequest: { findUnique: transaction.testRequest.findUnique, update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }), create: vi.fn() },
     testCaseDefinition: { findMany: vi.fn() },
     testDesign: { findUnique: vi.fn() },
     testPlan: { update: vi.fn() },
@@ -322,6 +323,21 @@ describe('TestRequestsService', () => {
         data: expect.objectContaining({ status: 'READY', scopeGenerationStatus: 'COMPLETED' }),
       }),
     );
+  });
+
+  it('拒绝在提测开始后完成分派，状态条件与版本一起原子校验', async () => {
+    const { service, prisma } = createService();
+    vi.spyOn(service, 'listAssignments').mockResolvedValue({
+      items: [], total: 1, page: 1, pageSize: 1, totalPages: 1, scopeRevision: 3,
+      summary: { total: 1, assigned: 1, unassigned: 0 },
+    });
+    prisma.testRequest.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(service.completeAssignments('request-1', 3)).rejects.toMatchObject({ status: 409 });
+    expect(prisma.testRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: 'request-1', scopeRevision: 3, status: { in: [TestRequestStatus.DRAFT, TestRequestStatus.READY] } },
+      data: { scopeSummary: '1 条功能用例已完成分派' },
+    });
   });
 
   it('keeps the request in draft until an existing local smoke run is finalized', async () => {

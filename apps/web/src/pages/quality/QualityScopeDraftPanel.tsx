@@ -161,7 +161,8 @@ export function QualityScopeDraftPanel({ request, onConfirmed }: { request: Test
   const detailIndex = detail ? visible.findIndex(item => item.id === detail.id || itemKey(item) === itemKey(detail)) : -1;
   const currentDetail = detailIndex >= 0 ? visible[detailIndex] : detail;
   const totalPages = draft?.totalPages ?? 0;
-  const locked = Boolean(error) || confirming || savingDetail || analyzing;
+  const confirmed = Boolean((request.testPlan?._count?.snapshots ?? request.testPlan?.snapshots.length ?? 0) > 0);
+  const locked = confirmed || Boolean(error) || confirming || savingDetail || analyzing;
 
   return <section className="space-y-3 rounded-md border p-4" aria-label="AI 提测范围">
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -169,6 +170,7 @@ export function QualityScopeDraftPanel({ request, onConfirmed }: { request: Test
       <span role="status" className={cn('text-xs text-muted-foreground', error && 'text-destructive')}>{pending || confirming || savingDetail ? '保存中…' : error ? '同步失败' : draft ? '已保存' : '加载中…'}</span>
     </div>
     {analyzing ? <p role="status" className="rounded bg-muted/40 p-3 text-sm">AI 正在根据需求和代码变更生成第一版范围…</p> : null}
+    {confirmed ? <p role="status" className="rounded border border-primary/20 bg-primary/5 p-3 text-sm">范围已确认，仅可查看。需要调整时请新建回归提测。</p> : null}
     {status === 'GENERATION_FAILED' ? <p role="alert" className="rounded border border-destructive/30 p-3 text-sm text-destructive">AI 范围生成失败，请检查测试设计后重新分析。</p> : null}
     {error ? <div role="alert" className="flex items-center justify-between gap-2 rounded border border-destructive/30 p-2 text-sm text-destructive"><span>{error}</span><Button type="button" size="sm" variant="outline" disabled={Boolean(pending)} onClick={() => void resync()}>重新同步</Button></div> : null}
     <div className={cn('grid items-start gap-3 lg:grid-cols-[220px_minmax(0,1fr)]', detail && 'xl:grid-cols-[200px_minmax(300px,1fr)_minmax(280px,360px)]')}>

@@ -543,7 +543,11 @@ export class TestRequestsService {
     const assignments = await this.listAssignments(id, { page: 1, pageSize: 1 });
     if (assignments.scopeRevision !== scopeRevision) throw new ConflictException('测试范围版本已变化，请刷新后重试。');
     if (assignments.summary.unassigned > 0) throw new BadRequestException('仍有未分派的功能用例。');
-    await this.prisma.testRequest.update({ where: { id, scopeRevision }, data: { scopeSummary: `${assignments.summary.total} 条功能用例已完成分派` } });
+    const changed = await this.prisma.testRequest.updateMany({
+      where: { id, scopeRevision, status: { in: [TestRequestStatus.DRAFT, TestRequestStatus.READY] } },
+      data: { scopeSummary: `${assignments.summary.total} 条功能用例已完成分派` },
+    });
+    if (changed.count !== 1) throw new ConflictException('当前提测已开始执行或状态已变化，不能完成分派。');
     return this.getRequest(id);
   }
 

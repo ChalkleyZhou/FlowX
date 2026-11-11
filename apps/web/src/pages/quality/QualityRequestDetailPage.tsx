@@ -205,12 +205,15 @@ function QualityRequestDetailContent({ id }: { id: string }) {
     )} />;
   }
 
-  const canCreateFormal = request.testPlan?.status === 'READY' && request.scopeGenerationStatus === 'COMPLETED'
+  const scopeConfirmed = request.scopeGenerationStatus === 'COMPLETED'
+    || request.testPlan?.status === 'READY'
+    || (request.testPlan?._count?.snapshots ?? request.testPlan?.snapshots.length ?? 0) > 0;
+  const canCreateFormal = request.testPlan?.status === 'READY' && scopeConfirmed
     && ['READY', 'IN_TEST', 'PASSED', 'FAILED', 'BLOCKED'].includes(request.status)
     && (snapshots.summary?.functionalCount ?? 0) > 0;
   const formalRuns = (formal.data ?? request.testPlan?.runs ?? []);
   const activeFormal = (formal.summary?.activeCount ?? 0) > 0;
-  const flowStep = request.scopeGenerationStatus !== 'COMPLETED'
+  const flowStep = !scopeConfirmed
     ? 0
     : request.status === 'DRAFT'
       ? 1
@@ -220,7 +223,7 @@ function QualityRequestDetailContent({ id }: { id: string }) {
           ? 3
           : 4;
   const flowSteps = [
-    { label: 'AI 分析范围', detail: request.scopeGenerationStatus === 'COMPLETED' ? '范围已确认' : '等待 AI 生成或人工删改' },
+    { label: 'AI 分析范围', detail: scopeConfirmed ? '范围已确认' : '等待 AI 生成或人工删改' },
     { label: '分派执行人', detail: request.status === 'DRAFT' ? '按模块设置负责人' : '范围已确认' },
     { label: '设置执行', detail: formal.total ? `${formal.total} 个执行轮次` : '选择执行方式和执行人' },
     { label: '执行与报告', detail: activeFormal ? '执行中，等待逐例结果' : formal.total ? '可查看执行结果和报告' : '完成执行后生成报告' },
@@ -277,8 +280,8 @@ function QualityRequestDetailContent({ id }: { id: string }) {
 
       <Tabs value={['overview', 'scope', 'runs', 'bugs', 'reports'].includes(tab) ? tab : 'overview'} onValueChange={value => setParams(current => { const next = new URLSearchParams(current); next.set('tab', value); return next; }, { replace: true })}>
         <TabsList aria-label="提测详情页签"><TabsTrigger value="overview">概览</TabsTrigger><TabsTrigger value="scope">测试范围</TabsTrigger><TabsTrigger value="runs">执行轮次</TabsTrigger><TabsTrigger value="bugs">缺陷</TabsTrigger><TabsTrigger value="reports">测试报告</TabsTrigger></TabsList>
-        <TabsContent value="overview"><section className="rounded-md border p-4 space-y-3"><h2 className="font-semibold">下一步</h2>{requirements.error ? <LoadError error={new Error(requirements.error)} retained={requirements.hasLoaded} loading={requirements.refreshing} label="关联需求" retry={() => void requirements.refresh()} /> : null}<p className="text-sm">{request.scopeGenerationStatus !== 'COMPLETED' ? 'AI 正在生成或等待你删改本次提测范围。' : request.status === 'DRAFT' ? '范围已确认，请完成模块和用例分派。' : !formal.total ? '范围和分派已完成，可以创建功能测试轮次。' : active ? '进入执行轮次查看逐例进度与待回传范围。' : '执行已结束，可生成轮次或任务汇总报告。'}</p><div className="flex flex-wrap gap-2">{request.testDesignId ? <Button variant="outline" size="sm" asChild><Link to={`/quality/test-designs/${request.testDesignId}`}>查看 AI 来源</Link></Button> : null}{request.requirementLinks.map(link => <Button key={link.requirement.id} variant="outline" size="sm" asChild><Link to={`/requirements/${link.requirement.id}`}>{link.requirement.title}</Link></Button>)}</div><p className="text-xs text-muted-foreground">范围 {snapshots.summary?.functionalCount ?? 0} 条功能用例 · 正式轮次 {formal.total} 个。</p><ListPagination page={requirementPage} total={requirements.total} pageSize={10} onPageChange={setRequirementPage} /></section></TabsContent>
-        <TabsContent value="scope"><div className="space-y-4">{request.scopeGenerationStatus !== 'COMPLETED' ? <QualityScopeDraftPanel request={request} onConfirmed={next => detail.setData(next)} /> : <QualityAssignmentPanel request={request} onCompleted={next => detail.setData(next)} />}</div></TabsContent>
+        <TabsContent value="overview"><section className="rounded-md border p-4 space-y-3"><h2 className="font-semibold">下一步</h2>{requirements.error ? <LoadError error={new Error(requirements.error)} retained={requirements.hasLoaded} loading={requirements.refreshing} label="关联需求" retry={() => void requirements.refresh()} /> : null}<p className="text-sm">{!scopeConfirmed ? 'AI 正在生成或等待你删改本次提测范围。' : request.status === 'DRAFT' ? '范围已确认，请完成模块和用例分派。' : !formal.total ? '范围和分派已完成，可以创建功能测试轮次。' : active ? '进入执行轮次查看逐例进度与待回传范围。' : '执行已结束，可生成轮次或任务汇总报告。'}</p><div className="flex flex-wrap gap-2">{request.testDesignId ? <Button variant="outline" size="sm" asChild><Link to={`/quality/test-designs/${request.testDesignId}`}>查看 AI 来源</Link></Button> : null}{request.requirementLinks.map(link => <Button key={link.requirement.id} variant="outline" size="sm" asChild><Link to={`/requirements/${link.requirement.id}`}>{link.requirement.title}</Link></Button>)}</div><p className="text-xs text-muted-foreground">范围 {snapshots.summary?.functionalCount ?? 0} 条功能用例 · 正式轮次 {formal.total} 个。</p><ListPagination page={requirementPage} total={requirements.total} pageSize={10} onPageChange={setRequirementPage} /></section></TabsContent>
+          <TabsContent value="scope"><div className="space-y-4">{scopeConfirmed ? <QualityAssignmentPanel request={request} onCompleted={next => detail.setData(next)} /> : <QualityScopeDraftPanel request={request} onConfirmed={next => detail.setData(next)} />}</div></TabsContent>
         <TabsContent value="runs"><section className="space-y-3"><h2 className="font-semibold">功能测试与回归轮次</h2>{formal.error ? <LoadError error={formal.error} retained={Boolean(formal.data)} loading={formal.loading} label="正式轮次" retry={() => void formal.reload()} /> : null}{(formal.data ?? request.testPlan?.runs ?? []).map(run => <article className="rounded-md border p-4" key={run.id}><div className="flex justify-between gap-3"><Link className="font-medium text-primary hover:underline" to={`/quality/test-runs/${run.id}`}>{run.name}</Link><Badge variant={statusBadgeVariant(run.status)}>{runStatusLabels[run.status] ?? run.status}</Badge></div><p className="mt-2 text-sm text-muted-foreground">{run.runType === 'REGRESSION' ? '缺陷回归' : '功能初测'} · {run.executionMode === 'LOCAL' ? '本地执行' : '历史执行'} · {run.summary?.completedCount ?? 0}/{run.summary?.caseCount ?? 0} 项已回传</p></article>)}<ListPagination page={formalPage} total={formal.total} pageSize={10} onPageChange={setFormalPage} /></section></TabsContent>
         <TabsContent value="bugs"><section className="space-y-3"><h2 className="font-semibold">失败、阻塞项与关联缺陷</h2>{bugs.error ? <LoadError error={new Error(bugs.error)} retained={bugs.hasLoaded} loading={bugs.refreshing} label="异常用例" retry={() => void bugs.refresh()} /> : null}{bugs.items.map(row => <article className="rounded-md border p-4 space-y-2" key={row.id}><p className="font-medium">{row.snapshot.title}</p><p className="text-sm text-muted-foreground">{row.result?.actualResult || '未记录实际结果'}</p>{row.result?.bug ? <Link className="text-sm text-primary underline" to={`/bugs/${row.result.bug.id}`}>{row.result.bug.title}</Link> : <p className="text-sm">尚未关联缺陷</p>}<p><Link className="text-sm text-primary underline" to={`/quality/test-runs/${row.testRun.id}`}>进入执行详情关联缺陷或创建独立回归</Link></p></article>)}{bugs.hasLoaded && !bugs.error && !bugs.total ? <p className="text-sm text-muted-foreground">暂无失败或阻塞项，异常用例将在此集中展示。</p> : null}<ListPagination page={bugPage} total={bugs.total} pageSize={20} onPageChange={setBugPage} /></section></TabsContent>
         <TabsContent value="reports"><QualityReportsPanel requestId={id} runs={formal.data ?? []} /></TabsContent>
