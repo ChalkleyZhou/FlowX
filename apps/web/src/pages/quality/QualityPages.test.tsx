@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError } from '../../api';
 import { ProjectScopeProvider } from '../../project-scope-context';
 import { ConfirmProvider } from '../../components/ConfirmDialog';
-import type { Project, TestCaseDefinition, TestCaseLibrary, TestDesign, TestRequest, WorkflowRun, Workspace } from '../../types';
+import type { Project, TestCaseDefinition, TestCaseLibrary, TestDesign, TestRequest, TestRequestAssignmentsPage, WorkflowRun, Workspace } from '../../types';
 import { QualityCasesPage } from './QualityCasesPage';
 import { QualityRequestsPage } from './QualityRequestsPage';
 import { QualityRequestDetailPage } from './QualityRequestDetailPage';
@@ -291,6 +291,30 @@ describe('Quality pages', () => {
     expect(Array.from(container.querySelectorAll('button')).find(button => button.textContent === '保存分派')?.disabled).toBe(true);
     expect(api.updateTestRequestAssignments).not.toHaveBeenCalled();
   });
+  it('模块负责人统一分派时默认收起重复明细，展开后仍可单条覆盖', async () => {
+    const assignmentRequest = { ...testRequest, status: 'READY' as const };
+    vi.mocked(api.getTestRequestAssignments).mockResolvedValue({
+      items: [
+        { id: 'snapshot-1', title: '登录回归', moduleName: '认证', assignedToUserId: 'user-1' },
+        { id: 'snapshot-2', title: '退出回归', moduleName: '认证', assignedToUserId: 'user-1' },
+      ], total: 2, page: 1, pageSize: 100, totalPages: 1, scopeRevision: 2,
+      summary: { total: 2, assigned: 2, unassigned: 0 },
+    });
+    vi.mocked(api.getOrganizationMembers).mockResolvedValue({ items: [
+      { id: 'user-1', account: 'qa-1', displayName: '测试同学', status: 'ACTIVE' },
+      { id: 'user-2', account: 'qa-2', displayName: '另一位同学', status: 'ACTIVE' },
+    ], total: 2, page: 1, pageSize: 100, totalPages: 1 });
+    vi.mocked(api.updateTestRequestAssignments).mockResolvedValue({
+      items: [], total: 0, page: 1, pageSize: 100, totalPages: 0, scopeRevision: 3,
+      summary: { total: 0, assigned: 0, unassigned: 0 },
+    } satisfies TestRequestAssignmentsPage);
+    await act(async () => root?.render(<QualityAssignmentPanel request={assignmentRequest} onCompleted={vi.fn()} />));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(container.textContent).toContain('已分派 2');
+    expect(container.querySelector('select[aria-label="用例 登录回归 执行人"]')).toBeNull();
+    await act(async () => Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('查看用例'))?.click());
+    expect(container.querySelector('select[aria-label="用例 登录回归 执行人"]')).toBeTruthy();
+  });
   it('AI 新用例默认只留在本次提测，人工点击后才保存到用例库', async () => {
     const draft: TestRequest = { ...testRequest, status: 'DRAFT', testDesignId: 'design-1', scopeGenerationStatus: 'NOT_STARTED', testPlan: { id: 'plan-1', status: 'DRAFT', snapshots: [], runs: [] } };
     vi.mocked(api.getTestRequest).mockResolvedValue(draft);
@@ -308,7 +332,7 @@ describe('Quality pages', () => {
   });
   it('提测详情以URL保存五个页签，并链接独立执行详情', async () => {
     await act(async () => root?.render(<MemoryRouter initialEntries={['/quality/test-requests/request-1?tab=runs']}><Routes><Route path="/quality/test-requests/:id" element={<QualityRequestDetailPage />} /></Routes></MemoryRouter>));
-    expect(Array.from(container.querySelectorAll('[role="tab"]')).map(item => item.textContent)).toEqual(['概览', '测试范围', '执行轮次', '缺陷', '测试报告']);
+    expect(Array.from(container.querySelectorAll('[role="tab"]')).map(item => item.textContent)).toEqual(['概览', '分派执行人', '执行轮次', '缺陷', '测试报告']);
     expect(container.querySelector('a[href="/quality/test-runs/run-1"]')?.textContent).toContain('缺陷修复回归');
     expect(container.textContent).toContain('执行与报告');
   });
