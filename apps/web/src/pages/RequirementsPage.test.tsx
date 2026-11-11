@@ -178,7 +178,7 @@ describe('RequirementsPage', () => {
     const dialog = document.querySelector('[role="dialog"]')!;
     await act(async () => { (dialog.querySelector('[aria-label="发布版本"]') as HTMLElement).click(); });
     await act(async () => { await new Promise(resolve=>setTimeout(resolve,10)); });
-    await act(async () => { Array.from(dialog.querySelectorAll('button')).find(button=>button.textContent==='加载更多')?.click(); });
+    await act(async () => { dialog.querySelector('[role="listbox"]')!.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 40 })); });
     await act(async () => { await new Promise(resolve=>setTimeout(resolve,10)); });
     expect(api.listProjectVersions).toHaveBeenLastCalledWith('project-1',expect.objectContaining({page:2}));
     await act(async () => { (Array.from(dialog.querySelectorAll('[role="option"]')).find(option=>option.textContent==='第21版') as HTMLElement).click(); });

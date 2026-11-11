@@ -247,7 +247,7 @@ describe('质量执行与报告', () => {
     for (const label of ['启动目标端', '按目标端筛选']) {
       await act(async () => document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)?.click());
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-      await act(async () => Array.from(document.querySelectorAll('button')).find(item => item.textContent === '加载更多')?.click());
+      await act(async () => document.querySelector('[role="listbox"]')?.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 40 })));
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
       expect(api.getTestRunTargets).toHaveBeenLastCalledWith('run-1', { page: 2, pageSize: 20, q: undefined });
       await act(async () => Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(item => item.textContent === '后页API')?.click());
