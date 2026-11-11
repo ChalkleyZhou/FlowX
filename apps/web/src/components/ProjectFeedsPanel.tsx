@@ -14,6 +14,8 @@ import { useQualityPage } from '../pages/quality/use-quality-page';
 
 type FeedKind = 'briefing' | 'codeReview';
 
+const PAGE_SIZE = 20;
+
 const copy = {
   briefing: {
     eyebrow: 'Briefings',
@@ -42,7 +44,7 @@ export function ProjectFeedsPanel({
 }) {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState('');
-  const result = useQualityPage(JSON.stringify([projectId, kind, page, query]), () => (kind === 'briefing' ? api.listBriefingFeeds : api.listCodeReviewFeeds)(projectId, { page, pageSize: 20, q: query || undefined }), true, setPage);
+  const result = useQualityPage(JSON.stringify([projectId, kind, page, query]), () => (kind === 'briefing' ? api.listBriefingFeeds : api.listCodeReviewFeeds)(projectId, { page, pageSize: PAGE_SIZE, q: query || undefined }), true, setPage);
   const feeds = result.items;
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -116,10 +118,17 @@ export function ProjectFeedsPanel({
             />
           ))
         )}
-        <ListPagination page={page} total={result.total} loading={result.refreshing} onPageChange={setPage} label="配置列表分页" />
+        <FeedPagination page={page} total={result.total} loading={result.refreshing} onPageChange={setPage} label="配置列表分页" />
       </CardContent>
     </Card>
   );
+}
+
+function FeedPagination({ page, total, loading, onPageChange, label }: {
+  page: number; total: number; loading?: boolean; onPageChange: (page: number) => void; label: string;
+}) {
+  if (total <= PAGE_SIZE) return null;
+  return <ListPagination page={page} total={total} pageSize={PAGE_SIZE} loading={loading} onPageChange={onPageChange} label={label} />;
 }
 
 function FeedEditor({
@@ -140,8 +149,8 @@ function FeedEditor({
   const [repoQuery, setRepoQuery] = useState('');
   const [targetPage, setTargetPage] = useState(1);
   const [targetQuery, setTargetQuery] = useState('');
-  const repositoryResult = useQualityPage(JSON.stringify([workspaceId, repoPage, repoQuery]), () => api.getWorkspaceRepositories(workspaceId, { page: repoPage, pageSize: 20, q: repoQuery || undefined }), true, setRepoPage);
-  const targetResult = useQualityPage(JSON.stringify([feed.projectId, kind, targetPage, targetQuery]), () => api.getDeliveryTargets({ projectId: feed.projectId, purpose: kind, page: targetPage, pageSize: 20, q: targetQuery || undefined }), true, setTargetPage);
+  const repositoryResult = useQualityPage(JSON.stringify([workspaceId, repoPage, repoQuery]), () => api.getWorkspaceRepositories(workspaceId, { page: repoPage, pageSize: PAGE_SIZE, q: repoQuery || undefined }), true, setRepoPage);
+  const targetResult = useQualityPage(JSON.stringify([feed.projectId, kind, targetPage, targetQuery]), () => api.getDeliveryTargets({ projectId: feed.projectId, purpose: kind, page: targetPage, pageSize: PAGE_SIZE, q: targetQuery || undefined }), true, setTargetPage);
   const repositories = repositoryResult.items;
   const visibleTargets = targetResult.items;
   const unassigned = repositories.filter((repository) => !feed.repositoryIds.includes(repository.id));
@@ -254,7 +263,7 @@ function FeedEditor({
             本页尚未加入：{unassigned.map((repository) => repository.name).join('、')}
           </p>
         ) : null}
-        <ListPagination page={repoPage} total={repositoryResult.total} loading={repositoryResult.refreshing} onPageChange={setRepoPage} label="仓库候选分页" />
+        <FeedPagination page={repoPage} total={repositoryResult.total} loading={repositoryResult.refreshing} onPageChange={setRepoPage} label="仓库候选分页" />
       </div>
       <div className="flex flex-col gap-2">
         <span className="text-xs font-medium text-muted-foreground">投递目标 · 已选 {feed.deliveryTargetIds.length} 个</span>
@@ -283,7 +292,7 @@ function FeedEditor({
             })}
           </div>
         )}
-        <ListPagination page={targetPage} total={targetResult.total} loading={targetResult.refreshing} onPageChange={setTargetPage} label="投递目标候选分页" />
+        <FeedPagination page={targetPage} total={targetResult.total} loading={targetResult.refreshing} onPageChange={setTargetPage} label="投递目标候选分页" />
       </div>
       {feed.enabled ? (
         <p className="text-sm text-muted-foreground">

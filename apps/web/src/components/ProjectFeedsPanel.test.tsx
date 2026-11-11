@@ -87,6 +87,9 @@ describe('ProjectFeedsPanel', () => {
     const nameInput = container.querySelector('input[aria-label="名称"]') as HTMLInputElement | null;
     expect(nameInput?.value).toBe('前端');
     expect(document.body.textContent).toContain('本页尚未加入：web');
+    expect(container.querySelector('nav[aria-label="仓库候选分页"]')).toBeNull();
+    expect(container.querySelector('nav[aria-label="投递目标候选分页"]')).toBeNull();
+    expect(container.querySelector('nav[aria-label="配置列表分页"]')).toBeNull();
   });
   it('按服务端页加载独立配置，选仓库时保留其他页已选ID', async () => {
     vi.mocked(api.listBriefingFeeds).mockResolvedValue(pageResult([{ id: 'feed-1', projectId: 'project-1', name: '配置', enabled: false, dailyHour: 22, timezone: 'Asia/Shanghai', autoSend: false, repositoryIds: ['outside-page'], deliveryTargetIds: [] }], { total: 21, totalPages: 2 }));
@@ -114,7 +117,7 @@ describe('ProjectFeedsPanel', () => {
     expect(api.deleteBriefingFeed).toHaveBeenCalledWith('last-feed');
     expect(api.listBriefingFeeds).toHaveBeenLastCalledWith('project-1', { page: 1, pageSize: 20, q: undefined });
     expect(container.querySelector<HTMLInputElement>('input[aria-label="名称"]')?.value).toBe('首页配置');
-    expect(container.querySelector('nav[aria-label="配置列表分页"]')?.textContent).toContain('第 1 / 1 页');
+    expect(container.querySelector('nav[aria-label="配置列表分页"]')).toBeNull();
     expect(api.listBriefingFeeds).toHaveBeenCalledTimes(4);
   });
 
