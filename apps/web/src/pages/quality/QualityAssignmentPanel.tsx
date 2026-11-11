@@ -4,6 +4,7 @@ import { api } from '../../api';
 import type { OrganizationMember, TestRequest, TestRequestAssignmentSummary, TestRequestAssignmentsPage } from '../../types';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { useToast } from '../../components/ui/toast';
 import { cn } from '../../lib/utils';
 
@@ -17,6 +18,7 @@ type AssignmentGroup = {
 };
 
 const memberName = (member: OrganizationMember) => member.displayName ?? member.account ?? member.id;
+const EMPTY_ASSIGNEE = '__empty_assignee__';
 
 export function QualityAssignmentPanel({ request, onCompleted }: { request: TestRequest; onCompleted: (next: TestRequest) => void }) {
   const toast = useToast();
@@ -108,6 +110,18 @@ export function QualityAssignmentPanel({ request, onCompleted }: { request: Test
     setValues(current => ({ ...current, [itemId]: userId }));
   }
 
+  function assigneeOptions(value: string, emptyLabel: string, onChange: (userId: string) => void, label: string, compact = false) {
+    return <Select value={value || EMPTY_ASSIGNEE} onValueChange={next => onChange(next === EMPTY_ASSIGNEE ? '' : next)} disabled={readOnly || saving}>
+      <SelectTrigger className={compact ? 'h-8 max-w-48 text-xs' : 'h-9 w-48 text-sm'} aria-label={label}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={EMPTY_ASSIGNEE}>{emptyLabel}</SelectItem>
+        {members.map(member => <SelectItem key={member.id} value={member.id}>{memberName(member)}</SelectItem>)}
+      </SelectContent>
+    </Select>;
+  }
+
   return (
     <section className="space-y-4 rounded-md border p-4" aria-label="提测人员分派">
       {readOnly ? <p role="status" className="rounded border border-primary/20 bg-primary/5 p-3 text-sm">提测已开始或已结束，分派已锁定，仅可查看。</p> : null}
@@ -126,9 +140,9 @@ export function QualityAssignmentPanel({ request, onCompleted }: { request: Test
         const expanded = expandedModules.includes(group.module) || !group.defaultUserId;
         const visibleItems = expanded ? group.items : group.exceptionItems;
         return <article className="rounded-md border bg-card" key={group.module}>
-          <div className="flex flex-wrap items-center justify-between gap-3 p-3"><div className="flex min-w-0 items-start gap-2"><div className="mt-0.5 rounded bg-muted p-1.5"><Layers3 className="h-4 w-4 text-muted-foreground" aria-hidden="true" /></div><div className="min-w-0"><h3 className="truncate font-medium">{group.module}</h3><p className="mt-1 text-xs text-muted-foreground">{group.items.length} 条用例 · 已分派 {group.assignedCount} · {group.defaultUserId ? `覆盖 ${group.exceptionItems.length} 条` : '尚未设置模块默认负责人'}</p></div></div><div className="flex flex-wrap items-center gap-2">{group.defaultUserId && group.exceptionItems.length ? <Badge variant="secondary">例外 {group.exceptionItems.length}</Badge> : null}<select className="rounded border bg-background px-2 py-1.5 text-sm" aria-label={`模块 ${group.module} 默认负责人`} value={group.defaultUserId} disabled={readOnly || saving} onChange={event => assignModule(group.module, group.items, event.target.value)}><option value="">选择负责人</option>{members.map(member => <option key={member.id} value={member.id}>{memberName(member)}</option>)}</select></div></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3"><div className="flex min-w-0 items-start gap-2"><div className="mt-0.5 rounded bg-muted p-1.5"><Layers3 className="h-4 w-4 text-muted-foreground" aria-hidden="true" /></div><div className="min-w-0"><h3 className="truncate font-medium">{group.module}</h3><p className="mt-1 text-xs text-muted-foreground">{group.items.length} 条用例 · 已分派 {group.assignedCount} · {group.defaultUserId ? `覆盖 ${group.exceptionItems.length} 条` : '尚未设置模块默认负责人'}</p></div></div><div className="flex flex-wrap items-center gap-2">{group.defaultUserId && group.exceptionItems.length ? <Badge variant="secondary">例外 {group.exceptionItems.length}</Badge> : null}{assigneeOptions(group.defaultUserId, '选择负责人', userId => assignModule(group.module, group.items, userId), `模块 ${group.module} 默认负责人`)}</div></div>
           <div className="flex items-center justify-between border-t bg-muted/10 px-3 py-2 text-xs"><span className="text-muted-foreground">{group.defaultUserId && group.exceptionItems.length ? `默认负责人之外有 ${group.exceptionItems.length} 条需要确认` : expanded ? '正在查看用例明细' : '用例已按模块负责人统一分派'}</span><Button type="button" variant="ghost" size="sm" onClick={() => setExpandedModules(current => expanded ? current.filter(module => module !== group.module) : [...current, group.module])}>{expanded ? <ChevronDown className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> : <ChevronRight className="mr-1 h-3.5 w-3.5" aria-hidden="true" />}{expanded ? '收起用例' : group.exceptionItems.length ? `查看 ${group.exceptionItems.length} 条例外` : '查看用例'}</Button></div>
-          {visibleItems.length ? <div className="space-y-1 border-t p-2">{visibleItems.map(item => <div key={item.id} className={cn('flex items-center justify-between gap-3 rounded px-2 py-2 text-sm', group.defaultUserId && values[item.id] !== group.defaultUserId && 'bg-amber-50/70 dark:bg-amber-950/20')}><span className="min-w-0 truncate">{item.title}</span><select className="max-w-48 rounded border bg-background px-2 py-1 text-xs" aria-label={`用例 ${item.title} 执行人`} value={values[item.id] ?? ''} disabled={readOnly || saving} onChange={event => assignCase(group.module, item.id, event.target.value)}><option value="">未分派</option>{members.map(member => <option key={member.id} value={member.id}>{memberName(member)}</option>)}</select></div>)}</div> : null}
+          {visibleItems.length ? <div className="space-y-1 border-t p-2">{visibleItems.map(item => <div key={item.id} className={cn('flex items-center justify-between gap-3 rounded px-2 py-2 text-sm', group.defaultUserId && values[item.id] !== group.defaultUserId && 'bg-amber-50/70 dark:bg-amber-950/20')}><span className="min-w-0 truncate">{item.title}</span>{assigneeOptions(values[item.id] ?? '', '未分派', userId => assignCase(group.module, item.id, userId), `用例 ${item.title} 执行人`, true)}</div>)}</div> : null}
         </article>;
       })}
       {!groups.length ? <p className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">确认范围后暂无功能用例可分派。</p> : null}
