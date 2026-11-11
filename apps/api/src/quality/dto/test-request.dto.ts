@@ -11,6 +11,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+import type { ScopeModuleStrategy } from '../test-request-scope-summary';
 
 export class CreateTestRequestDto {
   @IsString()
@@ -121,6 +122,10 @@ export class UpdateTestScopeModuleDto extends PrepareTestRequestDto {
 
   @IsBoolean()
   included!: boolean;
+
+  @IsOptional()
+  @IsIn(['AI_RECOMMENDED', 'ALL'])
+  strategy?: ScopeModuleStrategy;
 }
 
 export class SaveGeneratedTestCaseDto {

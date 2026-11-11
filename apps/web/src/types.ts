@@ -688,6 +688,18 @@ export interface TestCaseModule {
   name: string;
   sortOrder: number;
   _count?: { cases: number; children: number };
+  scopeSummary?: TestRequestScopeModuleSummary;
+}
+
+export interface TestRequestScopeModuleSummary {
+  moduleId: string;
+  libraryId: string;
+  moduleName: string;
+  totalCount: number;
+  includedCount: number;
+  aiRecommendedCount: number;
+  exceptionCount: number;
+  status: 'ALL' | 'PARTIAL' | 'NONE';
 }
 
 export interface QualityCaseSelection {
@@ -945,7 +957,14 @@ export interface TestRequestScopeDraft {
   testRequestId?: string;
   scopeRevision: number;
   status: string;
-  summary?: Record<string, number>;
+  summary?: {
+    included?: number;
+    matchingIncluded?: number;
+    available?: number;
+    aiRecommended?: number;
+    exceptionCount?: number;
+    [key: string]: number | undefined;
+  };
   items: TestDesignCandidate[];
   total: number;
   page: number;
@@ -1002,6 +1021,7 @@ export interface TestDesignCandidate {
   };
   sourceDefinition?: (TestCaseDefinition & { library: TestCaseLibrary }) | null;
   decisionNote?: string | null;
+  exceptionReason?: 'AI_NEW_CASE' | 'PENDING_REVIEW' | 'AI_EXCLUDED' | null;
 }
 
 export interface TestDesignSmokeCase {

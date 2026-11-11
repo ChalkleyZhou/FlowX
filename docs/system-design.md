@@ -292,4 +292,4 @@ FlowX 端侧执行平面
 
 ### 提测范围工作台补充（2026-11-10）
 
-提测草稿沿用候选和范围记录，纳入条件统一为 `action != EXCLUDE && resolution != REJECTED`。Web 通过草稿 API 的可选 `view=selected/library` 查询服务端分页、目录筛选和全局数量；移除/恢复与范围记录在同一事务更新，以 `scopeRevision` 防止旧操作覆盖。整模块纳入或移除在服务端包含全部后代，确认快照后拒绝修改。AI 生成状态通过新增可选 `designStatus` 返回，与原准备状态区分；原草稿查询及本地提测、执行协议保持兼容。人工入库入口保留在详情，确认提测不自动维护长期用例库。具体契约见 [测试与质量中心基础设计](quality-foundation.md#提测范围工作台)。
+提测草稿沿用候选和范围记录，纳入条件统一为 `action != EXCLUDE && resolution != REJECTED`。Web 通过草稿 API 的可选 `view=selected/library/exceptions` 查询服务端分页、目录筛选和全局数量；默认只审阅例外，服务端为例外返回 `exceptionReason`。目录通过 `testRequestId` 获取按模块及全部后代计算的 `scopeSummary`。模块批量写入支持 `AI_RECOMMENDED` 和 `ALL`，前者只恢复已有 AI 候选，未传策略继续保持旧客户端整模块纳入语义。移除/恢复与范围记录在同一事务更新，以 `scopeRevision` 防止旧操作覆盖；整模块操作在服务端包含全部后代，不受列表分页影响，确认快照后拒绝修改。AI 生成状态通过新增可选 `designStatus` 返回，与原准备状态区分；原草稿查询及本地提测、执行协议保持兼容。人工入库入口保留在详情，确认提测不自动维护长期用例库。具体契约见 [测试与质量中心基础设计](quality-foundation.md#提测范围工作台)。

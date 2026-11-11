@@ -297,7 +297,10 @@ describe('api helpers', () => {
   });
 
   it('透传范围视图、恢复、版本和完整模块操作', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => url.includes('/modules') ? pageResult([]) : {},
+    }));
     vi.stubGlobal('fetch', fetchMock);
     await api.getTestRequestScopeDraft('r', { view: 'selected', libraryId: 'l', moduleId: 'm', page: 2 });
     expect(fetchMock.mock.calls.at(-1)?.[0]).toContain('view=selected&libraryId=l&moduleId=m');
@@ -307,6 +310,34 @@ describe('api helpers', () => {
     expect(fetchMock.mock.calls.at(-1)).toEqual(['http://localhost:3000/quality/test-requests/r/scope-draft/module', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ scopeRevision: 4, moduleId: 'm', included: true }) })]);
     await api.addTestRequestScopeDraftCases('r', { scopeRevision: 5, selections: [{ caseId: 'c', reason: '补选', impactLevel: 'MEDIUM' }] });
     expect(JSON.parse(fetchMock.mock.calls.at(-1)?.[1].body).scopeRevision).toBe(5);
+  });
+
+  it('透传提测范围例外视图、模块摘要上下文和 AI 批量策略', async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => url.includes('/modules') ? pageResult([]) : {},
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.getTestRequestScopeDraft('request-1', { view: 'exceptions', moduleId: 'module-1' });
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toContain('view=exceptions&moduleId=module-1');
+
+    await api.getTestCaseModules('library-1', { testRequestId: 'request-1', parentId: 'null' });
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toContain('testRequestId=request-1');
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toContain('parentId=null');
+
+    await api.updateTestRequestScopeModule('request-1', {
+      scopeRevision: 4,
+      moduleId: 'module-1',
+      included: true,
+      strategy: 'AI_RECOMMENDED',
+    });
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)?.[1].body)).toEqual({
+      scopeRevision: 4,
+      moduleId: 'module-1',
+      included: true,
+      strategy: 'AI_RECOMMENDED',
+    });
   });
 
   it('adds selected library cases to a test request scope draft', async () => {

@@ -11,6 +11,7 @@ import type {
   UpdateTestCaseDefinitionDto,
   UpdateTestCaseModuleDto,
 } from './dto/case-library.dto';
+import { summarizeScopeModules } from './test-request-scope-summary';
 
 @Injectable()
 export class CaseLibrariesService {
@@ -76,8 +77,18 @@ export class CaseLibrariesService {
     });
   }
 
-  async listModules(libraryId: string, query: PaginationQuery & { q?: string; parentId?: string; excludeId?: string } = {}) {
+  async listModules(libraryId: string, query: PaginationQuery & { q?: string; parentId?: string; excludeId?: string; testRequestId?: string } = {}) {
     await this.requireLibrary(libraryId);
+    const request = query.testRequestId
+      ? await this.prisma.testRequest.findUnique({ where: { id: query.testRequestId }, select: { workspaceId: true, projectId: true, testDesignId: true } })
+      : null;
+    if (query.testRequestId && !request) throw new NotFoundException('Test request not found.');
+    const scopedLibrary = request
+      ? await this.prisma.testCaseLibrary.findUnique({ where: { id: libraryId }, select: { workspaceId: true, projectId: true } })
+      : null;
+    if (request && (!scopedLibrary || scopedLibrary.workspaceId !== request.workspaceId || (scopedLibrary.projectId !== null && scopedLibrary.projectId !== request.projectId))) {
+      throw new BadRequestException('用例库不属于当前提测工作区。');
+    }
     const paging = parsePagination(query);
     const excluded = query.excludeId ? await this.prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`WITH RECURSIVE descendants(id) AS (SELECT id FROM TestCaseModule WHERE id = ${query.excludeId} UNION SELECT m.id FROM TestCaseModule m JOIN descendants d ON m.parentId = d.id) SELECT id FROM descendants`) : [];
     const where = { libraryId, ...(excluded.length ? { id: { notIn: excluded.map(item => item.id) } } : {}), ...(query.parentId !== undefined ? { parentId: query.parentId === 'null' ? null : query.parentId || null } : {}), ...(query.q?.trim() ? { name: { contains: query.q.trim() } } : {}) };
@@ -85,7 +96,10 @@ export class CaseLibrariesService {
       this.prisma.testCaseModule.findMany({ where, include: { _count: { select: { cases: { where: { status: 'ACTIVE' } }, children: true } } }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }], skip: paging.skip, take: paging.take }),
       this.prisma.testCaseModule.count({ where }),
     ]);
-    return pageResult(items, total, paging);
+    if (!request) return pageResult(items, total, paging);
+    const summaries = await summarizeScopeModules(this.prisma, request, items);
+    const summaryById = new Map(summaries.map(summary => [summary.moduleId, summary]));
+    return pageResult(items.map(item => ({ ...item, scopeSummary: summaryById.get(item.id) })), total, paging);
   }
 
   async updateModule(id: string, dto: UpdateTestCaseModuleDto) {

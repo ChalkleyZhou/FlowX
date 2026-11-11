@@ -439,6 +439,19 @@ export class TestRequestsService {
     if (request.testPlan?.snapshots.length) throw new ConflictException('测试范围已确认，不能继续修改用例。');
     if (request.scopeRevision !== dto.scopeRevision) throw new ConflictException('测试范围版本已变化，请刷新后重试。');
     const moduleIds = await scopeModuleIds(this.prisma, dto.moduleId, request.workspaceId, request.projectId);
+    if (dto.included && dto.strategy === 'AI_RECOMMENDED') {
+      const candidates = await this.prisma.testDesignCandidate.findMany({
+        where: {
+          testDesignId: request.testDesignId ?? '__none__',
+          sourceDefinition: { moduleId: { in: moduleIds } },
+          action: { not: 'EXCLUDE' },
+          resolution: 'REJECTED',
+        },
+        select: { id: true },
+      });
+      if (!candidates.length) return this.getRequest(id);
+      return this.updateScopeDraft(id, { scopeRevision: dto.scopeRevision, removedCandidateIds: [], restoredCandidateIds: candidates.map(candidate => candidate.id) });
+    }
     if (dto.included) {
       const cases = await this.prisma.testCaseDefinition.findMany({ where: { moduleId: { in: moduleIds }, status: 'ACTIVE', library: { workspaceId: request.workspaceId, OR: [{ projectId: null }, { projectId: request.projectId }] } }, select: { id: true } });
       if (!cases.length) return this.getRequest(id);
