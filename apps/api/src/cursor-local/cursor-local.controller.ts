@@ -20,9 +20,9 @@ export class CursorLocalController {
     return this.cursorLocalService.startHandoff(dto, req.authSession);
   }
 
-  @Get('tasks/:type/:id/context')
-  getTaskContext(@Param('type') type: 'requirement' | 'bug', @Param('id') id: string) {
-    return this.cursorLocalService.getTaskContext(type, id);
+  @Get('execution-items/:executionItemId/context')
+  getTaskContext(@Param('executionItemId') executionItemId: string) {
+    return this.cursorLocalService.getTaskContext(executionItemId);
   }
 }
 

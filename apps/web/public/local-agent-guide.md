@@ -104,3 +104,7 @@ flowx-local login
 HTTP 记录列表默认 `page=1&pageSize=20`，`pageSize` 最大 100，并要求 `X-FlowX-List-Contract: pagination-v1`。新版本地客户端自动发送该标记。旧客户端会收到 `426 / PAGINATION_UPGRADE_REQUIRED`，应更新 `@flowx-ai/local`、重新加载 IDE MCP 后重试；不要解析网页或直接读取数据库来绕过接口。更新源码不等于已发布 npm 版本，请安装包含该分页契约的配套构建。
 
 `flowx_list_projects` 可通过 `resource` 选择项目、版本或仓库，配合明确的项目/工作区 ID 查询对应页。用例模块按 `parentId` 分层读取，根层可传 `null`；搜索和页面选择不会改变服务端冻结范围、门禁和权限。
+
+## 版本工作项与端侧执行项
+
+本地 Agent 可以通过 FlowX MCP 查询版本工作项并领取执行项。领取、完成、阻塞和取消都使用 `executionItemId`；领取和完成使用 `claimKey`，完成时可附带 `evidence`。领取成功后服务端会创建并返回绑定该执行项的 `executionSessionId`，用于端云执行追踪。多执行项计划不能通过工作流级入口整包领取，必须逐项领取；只有单执行项计划才允许工作流级本地启动。服务端负责依赖检查、并发保护、权限校验和幂等重试；Agent 不直接操作数据库，也不自行判断是否可以合并提测。常用工具为 `flowx_list_version_work_items`、`flowx_claim_execution_item`、`flowx_complete_execution_item`、`flowx_block_execution_item` 和 `flowx_cancel_execution_item`。

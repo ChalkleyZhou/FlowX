@@ -22,12 +22,13 @@ export function localDesignRelPath(runId: string): string {
 
 /** Prompt handed to the local agent (with OpenDesign MCP) to generate the design and write it to disk. */
 export function buildLocalDesignPrompt(task: FlowXTaskItem, runId: string, relFilePath: string): string {
-  const taskLabel = task.type === 'bug' ? 'Bug' : 'Requirement';
+  const taskLabel = task.kind === 'ISSUE' ? 'Issue' : 'Requirement';
   return [
     `# FlowX 本地设计生成（OpenDesign MCP）: ${task.title.trim()}`,
     '',
     '## 上下文',
-    `- ${taskLabel} id: ${task.id}`,
+    `- ${taskLabel} work item id: ${task.workItemId}`,
+    `- Execution item id: ${task.id}`,
     `- Workflow run id: ${runId}`,
     '',
     '## 任务',

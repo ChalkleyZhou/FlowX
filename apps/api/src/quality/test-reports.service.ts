@@ -12,7 +12,7 @@ import { summarizeQualityResults } from './test-report-summary';
 import { renderQualityTestReport, type QualityReportSnapshot } from './test-report.render';
 
 const reportRunInclude = {
-  testPlan: { include: { snapshots: true, testRequest: { include: { project: true, projectVersion: true, testDesign: { select: { coverageChecks: true, uncoveredItems: true } }, requirementLinks: { include: { requirement: { select: { id: true, title: true } } } } } } } },
+  testPlan: { include: { snapshots: true, testRequest: { include: { project: true, projectVersion: true, testDesign: { select: { coverageChecks: true, uncoveredItems: true } }, workItemLinks: { include: { workItem: { select: { id: true, title: true } } } } } } } },
   targets: true, sourceBug: { include: { fixWorkflowRun: { select: { status: true } } } },
   cases: { include: { snapshot: true, result: true, target: true } },
   executions: { include: { results: true, claimedByUser: { select: { displayName: true } } } },
@@ -84,7 +84,7 @@ export class TestReportsService {
     }));
     const snapshot: QualityReportSnapshot = {
       mode: dto.mode, generatedAt: new Date().toISOString(),
-      request: { id: request.id, title: request.title, project: request.project.name, version: request.projectVersion.name, requirements: request.requirementLinks.map(link => link.requirement), coverageChecks: request.testDesign?.coverageChecks, uncoveredItems: request.testDesign?.uncoveredItems },
+      request: { id: request.id, title: request.title, project: request.project.name, version: request.projectVersion.name, workItems: request.workItemLinks.map(link => link.workItem), coverageChecks: request.testDesign?.coverageChecks, uncoveredItems: request.testDesign?.uncoveredItems },
       summary: summarizeQualityResults(results), ...extra,
       scopeRunFacts: Object.fromEntries(runs.map(run => [run.id, runScopeFingerprint(run)])),
       runs: runs.map(run => ({ id: run.id, name: run.name, runType: run.runType, status: run.status,

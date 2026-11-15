@@ -114,7 +114,7 @@ function RepositoryChoices({ scopeKey, selectedIds, onToggle, loadPage }: {
 }
 
 function ActiveWorkflows({requirementId}:{requirementId:string}) {
-  const list = useListPage(api.getWorkflowRuns, {requirementId,activeOnly:true,excludeSuperseded:true}, {pageKey:'activePage'});
+  const list = useListPage(api.getWorkflowRuns, {workItemId: requirementId,activeOnly:true,excludeSuperseded:true}, {pageKey:'activePage'});
   if (!list.loading && !list.error && !list.total) return null;
   return <div className="rounded-md border border-border p-3">
     <p className="text-sm font-semibold">已有活跃工作流</p>
@@ -252,7 +252,7 @@ export function RequirementsPage() {
     const next = new URLSearchParams(searchParams); next.delete('launchRequirementId'); setSearchParams(next, {replace:true});
     // 深链目标可能不在当前页，始终按ID解析完整详情。
     void api.getRequirement(launchRequestId).then(target => {
-      if (target.prototypeImport && target.prototypeImport.status !== 'CONFIRMED') { navigate(`/requirements/${target.id}`); return; }
+      if (target.prototypeImport && target.prototypeImport.status !== 'CONFIRMED') { navigate(`/work-items/${target.id}`); return; }
       setLaunchModalRequirement(target); setLaunchRepositoryIds([]); setLaunchAiProvider(defaultAiProvider);
     }).catch(error => toast.error(error instanceof Error ? error.message : '未找到要启动的需求，请刷新后重试'));
   }, [hasLoaded, launchRequestId]);
@@ -340,7 +340,7 @@ export function RequirementsPage() {
       setPrototypeError(null);
       try {
         const imported = await api.createPrototypeImport({ projectId: createDraft.projectId, versionId: createDraft.versionId, goal: prototypeGoal.trim(), aiProvider: prototypeProvider }, prototypeFile);
-        navigate(`/requirements/${imported.requirementId}?importing=1`);
+        navigate(`/work-items/${imported.workItemId}?importing=1`);
       } catch (error) {
         setPrototypeError(error instanceof Error ? error.message : '上传原型失败，请重试');
       } finally {
@@ -757,7 +757,7 @@ export function RequirementsPage() {
                     <tr key={item.id} className="border-t border-border">
                       <td className="whitespace-nowrap px-4 py-3 font-medium">
                         <div className="flex items-center gap-2">
-                          <Link to={`/requirements/${item.id}`} className="text-foreground no-underline hover:text-primary">{item.title}</Link>
+                          <Link to={`/work-items/${item.id}`} className="text-foreground no-underline hover:text-primary">{item.title}</Link>
                           {item.prototypeImport && item.prototypeImport.status !== 'CONFIRMED' ? (
                             <Badge variant="warning">{item.prototypeImport.status === 'FAILED' ? '导入失败' : '原型导入中'}</Badge>
                           ) : null}
@@ -773,7 +773,7 @@ export function RequirementsPage() {
                       <td className="sticky right-0 z-10 whitespace-nowrap border-l border-t border-border bg-card px-4 py-3">
                         <div className="flex flex-nowrap gap-2">
                           <UiButton variant="default" size="sm" asChild>
-                            <Link to={`/requirements/${item.id}`}>详情</Link>
+                            <Link to={`/work-items/${item.id}`}>详情</Link>
                           </UiButton>
                           <UiButton variant="outline" size="sm" type="button" onClick={() => setEditingRequirement(item)}>
                             编辑

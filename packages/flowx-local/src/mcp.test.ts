@@ -73,6 +73,11 @@ describe('flowx-local MCP server', () => {
     expect(client.getServerVersion()).toMatchObject({ name: 'flowx-local', version: PACKAGE_VERSION });
     const result = await client.listTools();
     expect(result.tools.map((tool) => tool.name)).toEqual([
+      'flowx_list_version_work_items',
+      'flowx_claim_execution_item',
+      'flowx_complete_execution_item',
+      'flowx_block_execution_item',
+      'flowx_cancel_execution_item',
       'flowx_get_active_design_session',
       'flowx_bind_workflow',
       'flowx_get_design_handoff',
@@ -109,12 +114,12 @@ describe('flowx-local MCP server', () => {
       'flowx_submit_brainstorm',
       'flowx_list_projects',
       'flowx_create_project_version',
-      'flowx_create_requirement',
-      'flowx_update_requirement',
-      'flowx_delete_requirement',
-      'flowx_submit_requirement_change',
-      'flowx_retry_requirement_change',
-      'flowx_submit_requirement_prototype_change',
+      'flowx_create_work_item',
+      'flowx_update_work_item',
+      'flowx_delete_work_item',
+      'flowx_submit_work_item_change',
+      'flowx_retry_work_item_change',
+      'flowx_submit_work_item_prototype_change',
       'flowx_start_workflow',
       'flowx_get_workflow_position',
       'flowx_list_tasks',
@@ -128,11 +133,42 @@ describe('flowx-local MCP server', () => {
       'only after the user explicitly asked',
     );
     expect(
-      result.tools.find((tool) => tool.name === 'flowx_create_requirement')?.description,
+      result.tools.find((tool) => tool.name === 'flowx_create_work_item')?.description,
     ).toContain('Never interpret ordinary code changes');
 
     await client.close();
     await server.close();
+  });
+
+  it('透传执行项完成证据、阻塞和取消请求', async () => {
+    process.env.FLOWX_API_TOKEN = 'test-token';
+    process.env.FLOWX_API_BASE_URL = 'https://flowx.example/api';
+    const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : {} });
+      return Response.json({ id: 'execution-item-1', status: 'COMPLETED' });
+    });
+    const { client, server } = await connectClient(makeHome());
+    try {
+      await client.callTool({ name: 'flowx_complete_execution_item', arguments: {
+        executionItemId: 'execution-item-1', claimKey: 'claim-1',
+        summary: '完成', evidence: { command: 'pnpm test', passed: true },
+      } });
+      await client.callTool({ name: 'flowx_block_execution_item', arguments: {
+        executionItemId: 'execution-item-1', claimKey: 'claim-1', reason: '等待依赖',
+      } });
+      await client.callTool({ name: 'flowx_cancel_execution_item', arguments: {
+        executionItemId: 'execution-item-1', reason: '取消',
+      } });
+      expect(calls).toEqual([
+        expect.objectContaining({ url: 'https://flowx.example/api/execution-items/execution-item-1/complete', body: expect.objectContaining({ evidence: { command: 'pnpm test', passed: true } }) }),
+        expect.objectContaining({ url: 'https://flowx.example/api/execution-items/execution-item-1/block', body: expect.objectContaining({ reason: '等待依赖' }) }),
+        expect.objectContaining({ url: 'https://flowx.example/api/execution-items/execution-item-1/cancel', body: expect.objectContaining({ reason: '取消' }) }),
+      ]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
   });
 
   it('returns credentials + binding status when no short-lived session is active', async () => {
@@ -436,7 +472,7 @@ describe('flowx-local MCP server', () => {
     await server.close();
   });
 
-  it('lists projects via GET /projects and creates requirements via POST /requirements', async () => {
+  it('lists projects via GET /projects and creates WorkItems via the version workbench', async () => {
     const homeDir = makeHome();
     delete process.env.FLOWX_API_TOKEN;
     await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
@@ -461,10 +497,10 @@ describe('flowx-local MCP server', () => {
           { status: 200 },
         );
       }
-      if (url.endsWith('/requirements') && init?.method === 'POST') {
+      if (url.endsWith('/projects/proj_1/versions/ver-1/work-items') && init?.method === 'POST') {
         const body = JSON.parse(String(init.body));
         expect(body).toMatchObject({
-          projectId: 'proj_1',
+          kind: 'REQUIREMENT',
           title: '本地发起',
           description: '描述',
           acceptanceCriteria: '可在列表看到该需求',
@@ -491,19 +527,20 @@ describe('flowx-local MCP server', () => {
     });
 
     const created = await client.callTool({
-      name: 'flowx_create_requirement',
+      name: 'flowx_create_work_item',
       arguments: {
         projectId: 'proj_1',
+        kind: 'REQUIREMENT',
         title: '本地发起',
         description: '描述',
         acceptanceCriteria: '可在列表看到该需求',
+        versionId: 'ver-1',
       },
     });
     expect(created.isError).toBeUndefined();
     expect(JSON.parse(String((created.content as Array<{ text: string }>)[0].text))).toMatchObject({
       id: 'req_1',
       title: '本地发起',
-      projectId: 'proj_1',
     });
 
     expect(fetchMock).toHaveBeenCalled();
@@ -556,9 +593,9 @@ describe('flowx-local MCP server', () => {
     await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith('/requirements') && init?.method === 'POST') {
+      if (url.endsWith('/projects/proj_1/versions/ver-1/work-items') && init?.method === 'POST') {
         const body = JSON.parse(String(init.body));
-        expect(body).toEqual({ projectId: 'proj_1', title: '本地发起', versionId: 'ver-1' });
+        expect(body).toEqual({ kind: 'REQUIREMENT', title: '本地发起' });
         return new Response(JSON.stringify({ id: 'req_1', title: body.title, versionId: body.versionId }), { status: 201 });
       }
       throw new Error(`unexpected url: ${url}`);
@@ -567,15 +604,16 @@ describe('flowx-local MCP server', () => {
     const { client, server } = await connectClient(homeDir);
 
     const created = await client.callTool({
-      name: 'flowx_create_requirement',
+      name: 'flowx_create_work_item',
       arguments: {
         projectId: 'proj_1',
+        kind: 'REQUIREMENT',
         title: '本地发起',
         versionId: 'ver-1',
       },
     });
     expect(created.isError).toBeUndefined();
-    const invalid = await client.callTool({ name: 'flowx_create_requirement', arguments: { projectId: 'proj_1', title: '无版本', versionId: null } });
+    const invalid = await client.callTool({ name: 'flowx_create_work_item', arguments: { projectId: 'proj_1', title: '无版本', versionId: null } });
     expect(invalid.isError).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
@@ -590,9 +628,9 @@ describe('flowx-local MCP server', () => {
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-      if (url.endsWith('/requirements') && init?.method === 'POST') {
+      if (url.endsWith('/projects/proj_1/versions/ver-1/work-items') && init?.method === 'POST') {
         expect(body).toMatchObject({
-          projectId: 'proj_1',
+          kind: 'REQUIREMENT',
           title: '本地发起',
           priority: 'HIGH',
           functionalModule: '导出',
@@ -600,18 +638,18 @@ describe('flowx-local MCP server', () => {
         });
         return new Response(JSON.stringify({ id: 'req_1' }), { status: 201 });
       }
-      if (url.endsWith('/requirements/req_1') && init?.method === 'PATCH') {
+      if (url.endsWith('/work-items/req_1') && init?.method === 'PATCH') {
         expect(body).toEqual({ priority: 'LOW', remark: '' });
         return new Response(JSON.stringify({ id: 'req_1', priority: 'LOW' }), { status: 200 });
       }
-      if (url.endsWith('/requirements/req_1') && init?.method === 'DELETE') {
+      if (url.endsWith('/work-items/req_1') && init?.method === 'DELETE') {
         return new Response(JSON.stringify({ success: true }), { status: 200 });
       }
-      if (url.endsWith('/requirements/req_1/changes') && init?.method === 'POST') {
+      if (url.endsWith('/work-items/req_1/changes') && init?.method === 'POST') {
         expect(body).toEqual({ content: '增加 Excel', mode: 'SUPPLEMENT', requestId: 'change-1' });
         return new Response(JSON.stringify({ id: 'change_1', mode: 'SUPPLEMENT' }), { status: 201 });
       }
-      if (url.endsWith('/requirements/req_1/changes/change_1/restart') && init?.method === 'POST') {
+      if (url.endsWith('/work-items/req_1/changes/change_1/restart') && init?.method === 'POST') {
         return new Response(JSON.stringify({ id: 'change_1', restartStatus: 'STARTED' }), { status: 200 });
       }
       throw new Error(`unexpected url: ${url} ${init?.method}`);
@@ -620,50 +658,52 @@ describe('flowx-local MCP server', () => {
     const { client, server } = await connectClient(homeDir);
 
     const created = await client.callTool({
-      name: 'flowx_create_requirement',
+      name: 'flowx_create_work_item',
       arguments: {
         projectId: 'proj_1',
+        kind: 'REQUIREMENT',
         title: '本地发起',
         priority: 'HIGH',
         functionalModule: '导出',
         remark: '先做 CSV',
+        versionId: 'ver-1',
       },
     });
     expect(created.isError).toBeUndefined();
 
     const updated = await client.callTool({
-      name: 'flowx_update_requirement',
-      arguments: { requirementId: 'req_1', priority: 'LOW', remark: '' },
+      name: 'flowx_update_work_item',
+      arguments: { workItemId: 'req_1', priority: 'LOW', remark: '' },
     });
     expect(updated.isError).toBeUndefined();
 
     const denied = await client.callTool({
-      name: 'flowx_delete_requirement',
-      arguments: { requirementId: 'req_1', userConfirmedDelete: false },
+      name: 'flowx_delete_work_item',
+      arguments: { workItemId: 'req_1', userConfirmedDelete: false },
     });
     expect(denied.isError).toBe(true);
 
     const deleted = await client.callTool({
-      name: 'flowx_delete_requirement',
-      arguments: { requirementId: 'req_1', userConfirmedDelete: true },
+      name: 'flowx_delete_work_item',
+      arguments: { workItemId: 'req_1', userConfirmedDelete: true },
     });
     expect(deleted.isError).toBeUndefined();
 
     const unconfirmed = await client.callTool({
-      name: 'flowx_submit_requirement_change',
-      arguments: { requirementId: 'req_1', content: '增加 Excel', mode: 'SUPPLEMENT', requestId: 'change-1', userConfirmedChange: false },
+      name: 'flowx_submit_work_item_change',
+      arguments: { workItemId: 'req_1', content: '增加 Excel', mode: 'SUPPLEMENT', requestId: 'change-1', userConfirmedChange: false },
     });
     expect(unconfirmed.isError).toBe(true);
 
     const changed = await client.callTool({
-      name: 'flowx_submit_requirement_change',
-      arguments: { requirementId: 'req_1', content: '增加 Excel', mode: 'SUPPLEMENT', requestId: 'change-1', userConfirmedChange: true },
+      name: 'flowx_submit_work_item_change',
+      arguments: { workItemId: 'req_1', content: '增加 Excel', mode: 'SUPPLEMENT', requestId: 'change-1', userConfirmedChange: true },
     });
     expect(changed.isError).toBeUndefined();
 
     const retried = await client.callTool({
-      name: 'flowx_retry_requirement_change',
-      arguments: { requirementId: 'req_1', changeId: 'change_1', userConfirmedRetry: true },
+      name: 'flowx_retry_work_item_change',
+      arguments: { workItemId: 'req_1', changeId: 'change_1', userConfirmedRetry: true },
     });
     expect(retried.isError).toBeUndefined();
     expect(fetchMock).toHaveBeenCalledTimes(5);
@@ -680,7 +720,7 @@ describe('flowx-local MCP server', () => {
     await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
-      expect(url).toContain('/requirements/req_1/changes/prototype');
+      expect(url).toContain('/work-items/req_1/changes/prototype');
       expect(init?.method).toBe('POST');
       expect(init?.body).toBeInstanceOf(FormData);
       const form = init?.body as FormData;
@@ -696,15 +736,15 @@ describe('flowx-local MCP server', () => {
     const { client, server } = await connectClient(homeDir);
 
     const denied = await client.callTool({
-      name: 'flowx_submit_requirement_prototype_change',
-      arguments: { requirementId: 'req_1', zipPath, requestId: 'zip-1', userConfirmedChange: false },
+      name: 'flowx_submit_work_item_prototype_change',
+      arguments: { workItemId: 'req_1', zipPath, requestId: 'zip-1', userConfirmedChange: false },
     });
     expect(denied.isError).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
 
     const submitted = await client.callTool({
-      name: 'flowx_submit_requirement_prototype_change',
-      arguments: { requirementId: 'req_1', zipPath, requestId: 'zip-1', aiProvider: 'cursor', userConfirmedChange: true },
+      name: 'flowx_submit_work_item_prototype_change',
+      arguments: { workItemId: 'req_1', zipPath, requestId: 'zip-1', aiProvider: 'cursor', userConfirmedChange: true },
     });
     expect(submitted.isError).toBeUndefined();
 
@@ -720,9 +760,9 @@ describe('flowx-local MCP server', () => {
       const url = String(input);
       if (url.endsWith('/workflow-runs') && init?.method === 'POST') {
         const body = JSON.parse(String(init.body));
-        expect(body).toMatchObject({ requirementId: 'req_1', aiProvider: 'cursor' });
+        expect(body).toMatchObject({ workItemId: 'req_1', aiProvider: 'cursor' });
         expect(body.userConfirmedStart).toBeUndefined();
-        return new Response(JSON.stringify({ id: 'wr_1', requirementId: 'req_1' }), { status: 201 });
+        return new Response(JSON.stringify({ id: 'wr_1', workItemId: 'req_1' }), { status: 201 });
       }
       throw new Error(`unexpected url: ${url}`);
     });
@@ -731,7 +771,7 @@ describe('flowx-local MCP server', () => {
 
     const denied = await client.callTool({
       name: 'flowx_start_workflow',
-      arguments: { requirementId: 'req_1', userConfirmedStart: false },
+      arguments: { workItemId: 'req_1', userConfirmedStart: false },
     });
     expect(denied.isError).toBe(true);
     expect(String((denied.content as Array<{ text: string }>)[0].text)).toMatch(/userConfirmedStart/);
@@ -740,7 +780,7 @@ describe('flowx-local MCP server', () => {
     const started = await client.callTool({
       name: 'flowx_start_workflow',
       arguments: {
-        requirementId: 'req_1',
+        workItemId: 'req_1',
         userConfirmedStart: true,
         aiProvider: 'cursor',
       },
@@ -748,7 +788,7 @@ describe('flowx-local MCP server', () => {
     expect(started.isError).toBeUndefined();
     expect(JSON.parse(String((started.content as Array<{ text: string }>)[0].text))).toMatchObject({
       id: 'wr_1',
-      requirementId: 'req_1',
+      workItemId: 'req_1',
     });
 
     await client.close();
@@ -812,7 +852,7 @@ describe('flowx-local MCP server', () => {
             {
               kind: 'opendesign-workflow',
               workflowRunId: 'wf-1',
-              requirementId: 'req-1',
+              workItemId: 'req-1',
               title: 'Idea',
               status: 'BRAINSTORM_PENDING',
               suggestedAction: 'brainstorm',
@@ -837,7 +877,7 @@ describe('flowx-local MCP server', () => {
         {
           kind: 'opendesign-workflow',
           workflowRunId: 'wf-1',
-          requirementId: 'req-1',
+          workItemId: 'req-1',
           title: 'Idea',
           status: 'BRAINSTORM_PENDING',
           suggestedAction: 'brainstorm',
@@ -1310,7 +1350,7 @@ it('提测单工具按动作透传发现、创建与显式准备，候选保留�
     expect((await client.listTools()).tools.map(tool => tool.name)).toContain('flowx_test_requests');
     expect((await client.callTool({ name: 'flowx_test_requests', arguments: { action: 'list', projectId: 'p/1', projectVersionId: 'v1', status: 'DRAFT' } })).isError).not.toBe(true);
     expect((await client.callTool({ name: 'flowx_test_requests', arguments: { action: 'get', testRequestId: 'request/1' } })).isError).not.toBe(true);
-    const request = { workspaceId: 'ws', projectId: 'p', projectVersionId: 'v', title: '功能提测', description: '已确认范围', requirementIds: ['req'], workflowRunIds: ['workflow'], artifactIds: ['artifact'], testDesignId: 'design' };
+    const request = { workspaceId: 'ws', projectId: 'p', projectVersionId: 'v', title: '功能提测', description: '已确认范围', workItemIds: ['req'], workflowRunIds: ['workflow'], artifactIds: ['artifact'], testDesignId: 'design' };
     expect((await client.callTool({ name: 'flowx_test_requests', arguments: { action: 'create', request } })).isError).not.toBe(true);
     expect(calls.some(call => call.url.endsWith('/prepare'))).toBe(false);
     expect((await client.callTool({ name: 'flowx_test_requests', arguments: { action: 'prepare', testRequestId: 'request/1', scopeRevision: 2 } })).isError).not.toBe(true);
@@ -1323,7 +1363,7 @@ it('提测单工具按动作透传发现、创建与显式准备，候选保留�
     expect(calls).toContainEqual({ url: 'https://flowx.example/api/quality/test-designs/design/candidates/candidate', method: 'PATCH', body: { revision: 3, proposedCase } });
     expect((await client.callTool({ name: 'flowx_update_test_candidate', arguments: { testDesignId: 'design', candidateId: 'candidate', revision: 4, proposedCase: { ...proposedCase, testData: null } } })).isError).not.toBe(true);
     const beforeInvalid = calls.length;
-    for (const args of [{ action: 'prepare', testRequestId: 'request/1' }, { action: 'get' }, { action: 'create', request: { ...request, requirementIds: [] } }, { action: 'list', scopeRevision: 1 }, { action: 'create', request: { ...request, status: 'READY' } }]) {
+    for (const args of [{ action: 'prepare', testRequestId: 'request/1' }, { action: 'get' }, { action: 'create', request: { ...request, workItemIds: [] } }, { action: 'list', scopeRevision: 1 }, { action: 'create', request: { ...request, status: 'READY' } }]) {
       expect((await client.callTool({ name: 'flowx_test_requests', arguments: args })).isError).toBe(true);
     }
     expect(calls).toHaveLength(beforeInvalid);

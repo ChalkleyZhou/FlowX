@@ -62,10 +62,10 @@ describe('api helpers', () => {
     await api.getRequirementChanges('req-1', 'run-1');
     await api.createRequirementChange('req-1', { content: '导出增加 Excel 格式', mode: 'SUPPLEMENT', requestId: 'request-1', sourceWorkflowRunId: 'run-1' });
     await api.restartRequirementChange('req-1', 'change-1');
-    expect(fetchMock.mock.calls[0][0]).toContain('/requirements/req-1/changes?page=1&pageSize=20&workflowRunId=run-1');
+    expect(fetchMock.mock.calls[0][0]).toContain('/work-items/req-1/changes?page=1&pageSize=20&workflowRunId=run-1');
     expect(fetchMock.mock.calls[1][1].method).toBe('POST');
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ content: '导出增加 Excel 格式', mode: 'SUPPLEMENT', requestId: 'request-1', sourceWorkflowRunId: 'run-1' });
-    expect(fetchMock.mock.calls[2][0]).toContain('/requirements/req-1/changes/change-1/restart');
+    expect(fetchMock.mock.calls[2][0]).toContain('/work-items/req-1/changes/change-1/restart');
     expect(fetchMock.mock.calls[2][1].method).toBe('POST');
   });
   it('重新导入换包显式整体替换，正式变更通过 multipart 传递 ZIP 与 AI', async () => {
@@ -76,7 +76,7 @@ describe('api helpers', () => {
     const retry = fetchMock.mock.calls[0][1].body as FormData;
     expect(retry.get('replace')).toBe('true'); expect(retry.get('revision')).toBe('3'); expect(retry.get('aiProvider')).toBe('cursor');
     await api.createPrototypeRequirementChange('req-1', { content: '更新原型', mode: 'RESTART', requestId: 'zip-request', sourceWorkflowRunId: 'old-run', aiProvider: 'cursor' }, file);
-    expect(fetchMock.mock.calls[1][0]).toContain('/requirements/req-1/changes/prototype');
+    expect(fetchMock.mock.calls[1][0]).toContain('/work-items/req-1/changes/prototype');
     const change = fetchMock.mock.calls[1][1].body as FormData;
     expect(change.get('file')).toBe(file); expect(change.get('mode')).toBe('RESTART'); expect(change.get('requestId')).toBe('zip-request'); expect(change.get('sourceWorkflowRunId')).toBe('old-run'); expect(change.get('aiProvider')).toBe('cursor');
   });
@@ -114,7 +114,7 @@ describe('api helpers', () => {
   });
 
   it('builds localhost api urls by default in non-browser environments', () => {
-    expect(toApiUrl('/requirements')).toBe('http://localhost:3000/requirements');
+    expect(toApiUrl('/work-items')).toBe('http://localhost:3000/work-items');
     expect(toApiUrl('workflow-runs')).toBe('http://localhost:3000/workflow-runs');
   });
 
@@ -270,7 +270,7 @@ describe('api helpers', () => {
       projectId: 'project-1',
       projectVersionId: 'version-1',
       title: '2.6.0 提测',
-      requirementIds: ['requirement-1'],
+      workItemIds: ['requirement-1'],
       workflowRunIds: ['workflow-1'],
     });
 
@@ -289,7 +289,7 @@ describe('api helpers', () => {
           projectId: 'project-1',
           projectVersionId: 'version-1',
           title: '2.6.0 提测',
-          requirementIds: ['requirement-1'],
+          workItemIds: ['requirement-1'],
           workflowRunIds: ['workflow-1'],
         }),
       }),
@@ -490,7 +490,7 @@ describe('api helpers', () => {
       'http://localhost:3000/edge/design-handoffs',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ requirementId: 'req-1', repositoryIds: ['repo-1'] }),
+        body: JSON.stringify({ workItemId: 'req-1', repositoryIds: ['repo-1'] }),
       }),
     );
   });
@@ -752,7 +752,7 @@ describe('记录列表分页边界', () => {
     const result = await api.getRequirements({ page: 2, pageSize: 20, projectId: 'project-1', priority: 'HIGH' });
     expect(result).toEqual(payload);
     const [url, init] = send.mock.calls[0];
-    expect(Object.fromEntries(new URL(url).searchParams)).toEqual({ page: '2', pageSize: '20', projectId: 'project-1', priority: 'HIGH' });
+    expect(Object.fromEntries(new URL(url).searchParams)).toEqual({ page: '2', pageSize: '20', projectId: 'project-1', priority: 'HIGH', kind: 'REQUIREMENT' });
     expect(new Headers(init.headers).get('X-FlowX-List-Contract')).toBe('pagination-v1');
   });
   it('默认列表请求也显式限量，旧服务端的数组响应明确提示升级', async () => {

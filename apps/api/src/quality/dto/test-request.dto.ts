@@ -37,7 +37,7 @@ export class CreateTestRequestDto {
   @IsArray()
   @ArrayMinSize(1)
   @IsString({ each: true })
-  requirementIds!: string[];
+  workItemIds!: string[];
 
   @IsArray()
   @ArrayMinSize(1)

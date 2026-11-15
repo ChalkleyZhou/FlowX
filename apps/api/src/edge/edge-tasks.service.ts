@@ -11,7 +11,7 @@ import {
   type WorkflowPositionPriorOutput,
 } from './workflow-position';
 
-export type EdgeTaskType = 'requirement' | 'bug';
+export type EdgeTaskKind = 'REQUIREMENT' | 'ISSUE';
 
 export type EdgeWorkflowSession = {
   user: { id: string; displayName: string };
@@ -24,9 +24,13 @@ export type EdgeWorkflowSession = {
 
 export interface EdgeTaskItem {
   id: string;
-  type: EdgeTaskType;
+  workItemId: string;
+  kind: EdgeTaskKind;
   title: string;
+  workItemTitle: string;
   status: string;
+  target: string;
+  ownerUserId: string | null;
   priority?: string | null;
   scheduleSignal?: string | null;
   repository: { id: string; name: string; url: string | null } | null;
@@ -47,7 +51,7 @@ export interface WorkflowPositionSessionRef {
 
 export interface WorkflowPositionItem {
   workflowRunId: string;
-  requirementId: string;
+  workItemId: string;
   title: string;
   status: string;
   localAction: ReturnType<typeof resolveLocalPosition>['localAction'];
@@ -64,7 +68,7 @@ export type OpenDesignSuggestedAction = 'brainstorm' | 'design';
 export interface OpenDesignWorkflowItem {
   kind: 'opendesign-workflow';
   workflowRunId: string;
-  requirementId: string;
+  workItemId: string;
   title: string;
   status: string;
   suggestedAction: OpenDesignSuggestedAction;
@@ -97,132 +101,77 @@ export class EdgeTasksService {
     if (planningStatus && !Object.values(RequirementPlanningStatus).includes(planningStatus as RequirementPlanningStatus)) {
       throw new BadRequestException('规划状态无效。');
     }
-    const workspaceFilter = workspaceId ? { workspaceId } : {};
-    const requirementWhere = {
-      status: 'ACTIVE',
-      ...workspaceFilter,
-      ...(projectId ? { projectId } : {}),
-      ...(versionId ? { versionId } : {}),
-      ...(planningStatus ? { planningStatus } : {}),
-      ...(priority ? { priority } : {}),
-    };
-    const includeBugs = !versionId && !planningStatus;
-    // 在数据库中对跨表任务统一排序分页，再仅补齐本页的关联信息。
     const organizationId = filters.session?.organization?.id;
-    const shared = [
-      ...(workspaceId ? [Prisma.sql`workspaceId = ${workspaceId}`] : []),
-      ...(projectId ? [Prisma.sql`projectId = ${projectId}`] : []),
-      ...(priority ? [Prisma.sql`priority = ${priority}`] : []),
-      ...(filters.q?.trim() ? [Prisma.sql`instr(title, ${filters.q.trim()}) > 0`] : []),
-      ...(organizationId ? [Prisma.sql`workspaceId IN (SELECT id FROM Workspace WHERE organizationId = ${organizationId})`] : []),
-    ];
-    const requirementConditions = [Prisma.sql`status = 'ACTIVE'`, ...shared,
-      ...(versionId ? [Prisma.sql`versionId = ${versionId}`] : []),
-      ...(planningStatus ? [Prisma.sql`planningStatus = ${planningStatus}`] : []),
-    ];
-    const requirementsQuery = Prisma.sql`SELECT id, 'requirement' AS taskType, updatedAt FROM Requirement WHERE ${Prisma.join(requirementConditions, ' AND ')}`;
-    const union = includeBugs ? Prisma.sql`${requirementsQuery} UNION ALL SELECT id, 'bug' AS taskType, updatedAt FROM Bug WHERE ${Prisma.join([Prisma.sql`status IN ('OPEN', 'CONFIRMED')`, ...shared], ' AND ')}` : requirementsQuery;
-    const [keys, totals] = await Promise.all([
-      this.prisma.$queryRaw<Array<{ id: string; taskType: EdgeTaskType }>>(Prisma.sql`SELECT id, taskType FROM (${union}) ORDER BY updatedAt DESC, taskType ASC, id DESC LIMIT ${paging.take} OFFSET ${paging.skip}`),
-      this.prisma.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`SELECT COUNT(*) AS total FROM (${union})`),
-    ]);
-    const requirementIds = keys.filter(item => item.taskType === 'requirement').map(item => item.id);
-    const bugIds = keys.filter(item => item.taskType === 'bug').map(item => item.id);
-    const [requirements, bugs] = await Promise.all([
-      this.prisma.requirement.findMany({
-        where: { ...requirementWhere, id: { in: requirementIds } },
-        include: {
-          requirementRepositories: {
-            take: 1,
-            include: { repository: true },
-            orderBy: { createdAt: 'asc' },
-          },
-          workflowRuns: {
-            where: { status: { notIn: ['DONE', 'FAILED'] } },
-            take: 1,
-            include: {
-              executionSessions: {
-                where: { status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] } },
-                take: 1,
-                orderBy: { createdAt: 'desc' },
-                select: { id: true, sourceTool: true, status: true, metadata: true },
-              },
-            },
-            orderBy: { createdAt: 'desc' },
-          },
-        },
-        orderBy: { updatedAt: 'desc' },
-      }),
-      includeBugs ? this.prisma.bug.findMany({
-        where: {
-          id: { in: bugIds },
-          status: { in: ['OPEN', 'CONFIRMED'] },
-          ...workspaceFilter,
+    const where: Prisma.ExecutionItemWhereInput = {
+      target: 'LOCAL',
+      status: { in: ['READY', 'IN_PROGRESS', 'BLOCKED'] },
+      executionPlan: {
+        status: 'CONFIRMED',
+        workflowRunId: { not: null },
+        workItem: {
+          ...(workspaceId ? { workspaceId } : {}),
           ...(projectId ? { projectId } : {}),
+          ...(versionId ? { versionId } : {}),
+          ...(planningStatus ? { planningStatus } : {}),
           ...(priority ? { priority } : {}),
+          ...(filters.q?.trim() ? { OR: [{ title: { contains: filters.q.trim() } }, { description: { contains: filters.q.trim() } }] } : {}),
+          ...(organizationId ? { workspace: { organizationId } } : {}),
         },
-        include: { repository: true, fixWorkflowRun: true },
-        orderBy: { updatedAt: 'desc' },
-      }) : Promise.resolve([]),
+      },
+    };
+    const [rows, total] = await Promise.all([
+      this.prisma.executionItem.findMany({
+        where,
+        skip: paging.skip,
+        take: paging.take,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        include: {
+          executionPlan: {
+            include: {
+              workItem: {
+                include: {
+                  repository: true,
+                  requirementRepositories: { take: 1, include: { repository: true }, orderBy: { createdAt: 'asc' } },
+                },
+              },
+              workflowRun: { select: { id: true, status: true } },
+            },
+          },
+          sessions: {
+            where: { status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] } },
+            take: 1,
+            orderBy: { createdAt: 'desc' },
+            select: { id: true },
+          },
+        },
+      }),
+      this.prisma.executionItem.count({ where }),
     ]);
-
-    const items: EdgeTaskItem[] = [
-      ...requirements.map((requirement) => {
-        const repository = requirement.requirementRepositories[0]?.repository ?? null;
-        const localWorkflow = requirement.workflowRuns.find((workflow) => this.isReportableLocalWorkflow(workflow));
-        const localSpecPlanWorkflow = requirement.workflowRuns.find((workflow) =>
-          this.isReportableLocalSpecPlanWorkflow(workflow),
-        );
-        const localExecutionWorkflow = localWorkflow ?? localSpecPlanWorkflow;
-        const activeWorkflow =
-          localExecutionWorkflow ??
-          requirement.workflowRuns.find((workflow) => this.isActiveWorkflow(workflow));
-        return this.buildTaskItem({
-          id: requirement.id,
-          type: 'requirement',
-          title: requirement.title,
-          status: requirement.status,
-          priority: requirement.priority,
-          scheduleSignal: requirement.planningStatus,
-          repository,
-          workflowRunId: localExecutionWorkflow?.id ?? null,
-          executionSessionId:
-            localExecutionWorkflow?.executionSessions?.find((session) => this.isLocalSession(session))?.id ?? null,
-          workflowStage: localWorkflow ? 'EXECUTION' : localSpecPlanWorkflow ? 'SPEC_PLAN' : null,
-          eligible: !!repository && !activeWorkflow,
-          ineligibleReason: !repository
-            ? 'No active repository is bound to this requirement.'
-            : activeWorkflow
-              ? `Active workflow ${activeWorkflow.id} already exists.`
-              : undefined,
-        });
-      }),
-      ...bugs.map((bug) => {
-        const activeFixWorkflow =
-          bug.fixWorkflowRun && this.isActiveWorkflow(bug.fixWorkflowRun)
-            ? bug.fixWorkflowRun
-            : null;
-        return this.buildTaskItem({
-          id: bug.id,
-          type: 'bug',
-          title: bug.title,
-          status: bug.status,
-          priority: bug.priority,
-          scheduleSignal: null,
-          repository: bug.repository,
-          workflowRunId:
-            activeFixWorkflow && this.isReportableLocalWorkflow(activeFixWorkflow) ? activeFixWorkflow.id : null,
-          eligible: !!bug.repository && !activeFixWorkflow,
-          ineligibleReason: !bug.repository
-            ? 'No repository is bound to this bug.'
-            : activeFixWorkflow
-              ? `Active fix workflow ${activeFixWorkflow.id} already exists.`
-              : undefined,
-        });
-      }),
-    ];
-    const byKey = new Map(items.map(item => [`${item.type}:${item.id}`, item]));
-    return pageResult(keys.map(key => byKey.get(`${key.taskType}:${key.id}`)).filter((item): item is EdgeTaskItem => item !== undefined), Number(totals[0]?.total ?? 0), paging);
+    return pageResult(rows.map((item) => {
+      const workItem = item.executionPlan.workItem;
+      const repository = workItem.repository ?? workItem.requirementRepositories[0]?.repository ?? null;
+      const workflow = item.executionPlan.workflowRun;
+      const session = item.sessions[0] ?? null;
+      const eligible = !!repository && item.status === 'READY' && !session && ['EXECUTION_PENDING', 'EXECUTION_RUNNING'].includes(workflow?.status ?? '');
+      return {
+        id: item.id,
+        workItemId: workItem.id,
+        kind: workItem.kind as EdgeTaskKind,
+        title: item.title,
+        workItemTitle: workItem.title,
+        status: item.status,
+        target: item.target,
+        ownerUserId: item.ownerUserId,
+        priority: workItem.priority,
+        scheduleSignal: workItem.planningStatus,
+        repository,
+        workflowRunId: workflow?.id ?? null,
+        executionSessionId: session?.id ?? null,
+        workflowStage: workflow?.status === 'EXECUTION_PENDING' ? 'EXECUTION' : null,
+        eligible,
+        ineligibleReason: !repository ? '当前工作项未绑定代码仓库。' : !eligible ? '执行项当前不可领取。' : undefined,
+      } satisfies EdgeTaskItem;
+    }), total, paging);
   }
 
 
@@ -238,17 +187,17 @@ export class EdgeTasksService {
     const organizationId = filters.session?.organization?.id?.trim() || undefined;
     const where: Prisma.WorkflowRunWhereInput = {
         ...(workflowRunId ? { id: workflowRunId } : { status: { notIn: ['DONE', 'FAILED'] } }),
-        ...(workspaceId || organizationId ? { requirement: {
+        ...(workspaceId || organizationId ? { workItem: {
           ...(workspaceId ? { workspaceId } : {}),
           ...(organizationId ? { project: { workspace: { organizationId } } } : {}),
         } } : {}),
       };
-    if (filters.q?.trim()) where.requirement = { ...((where.requirement ?? {}) as Prisma.RequirementWhereInput), title: { contains: filters.q.trim() } };
+    if (filters.q?.trim()) where.workItem = { ...((where.workItem ?? {}) as Prisma.WorkItemWhereInput), title: { contains: filters.q.trim() } };
     const total = await this.prisma.workflowRun.count({ where });
     const workflows = await this.prisma.workflowRun.findMany({ where, skip: paging.skip, take: paging.take,
 
       include: {
-        requirement: { select: { id: true, title: true } },
+        workItem: { select: { id: true, title: true } },
         stageExecutions: {
           select: { id: true, stage: true, status: true, attempt: true, input: true, output: true },
         },
@@ -325,8 +274,8 @@ export class EdgeTasksService {
       }).map(({ id, artifactType, name }) => ({ id, artifactType, name }));
       return {
         workflowRunId: workflow.id,
-        requirementId: workflow.requirement.id,
-        title: workflow.requirement.title,
+        workItemId: workflow.workItem.id,
+        title: workflow.workItem.title,
         status: workflow.status,
         localAction: position.localAction,
         stage: position.stage,
@@ -412,7 +361,7 @@ export class EdgeTasksService {
           in: [WorkflowRunType.LOCAL_DESIGN, WorkflowRunType.FULL],
         },
         status: { in: [...OPEN_DESIGN_CANDIDATE_STATUSES] },
-        ...(workspaceId ? { requirement: { workspaceId } } : {}),
+        ...(workspaceId ? { workItem: { workspaceId } } : {}),
         ...(organizationId
           ? {
               OR: [
@@ -422,12 +371,12 @@ export class EdgeTasksService {
             }
           : {}),
       };
-    if (filters.q?.trim()) where.requirement = { workspaceId, title: { contains: filters.q.trim() } };
+    if (filters.q?.trim()) where.workItem = { workspaceId, title: { contains: filters.q.trim() } };
     const total = await this.prisma.workflowRun.count({ where });
     const workflows = await this.prisma.workflowRun.findMany({ where, skip: paging.skip, take: paging.take,
 
       include: {
-        requirement: {
+        workItem: {
           select: { id: true, title: true },
         },
       },
@@ -437,8 +386,8 @@ export class EdgeTasksService {
     const items = workflows.map((workflow) => ({
       kind: 'opendesign-workflow' as const,
       workflowRunId: workflow.id,
-      requirementId: workflow.requirementId,
-      title: workflow.requirement.title,
+      workItemId: workflow.workItemId,
+      title: workflow.workItem.title,
       status: workflow.status,
       suggestedAction: this.suggestedOpenDesignAction(workflow.status),
     }));

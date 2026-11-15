@@ -74,7 +74,7 @@ export class LocalLaunchService {
       chatPrompt = buildLocalSpecPlanPrompt(specPlanHandoff);
     } else {
       const executionHandoff = await this.workflowService.getLocalHandoff(record.workflowRunId);
-      if (this.isExecutionSessionProjectionEnabled() && !executionHandoff.executionSessionId?.trim()) {
+      if (!executionHandoff.executionSessionId?.trim()) {
         throw new BadRequestException(
           'Local execution handoff is missing an execution session id. Create a new local launch ticket.',
         );
@@ -82,14 +82,15 @@ export class LocalLaunchService {
       const repository = executionHandoff.repositories[0];
       handoff = executionHandoff;
       chatPrompt = buildLocalChatPrompt({
-        taskType: 'requirement',
-        taskId: executionHandoff.requirement.id,
+        kind: (executionHandoff.workItem.kind as 'REQUIREMENT' | 'ISSUE' | undefined) ?? 'REQUIREMENT',
+        workItemId: executionHandoff.workItem.id,
+        executionItemId: executionHandoff.executionItem?.id ?? executionHandoff.workItem.id,
         workflowRunId: executionHandoff.workflowRunId,
         executionSessionId: executionHandoff.executionSessionId,
         workflowRepositoryId: repository?.workflowRepositoryId,
-        title: executionHandoff.requirement.title,
-        description: executionHandoff.requirement.description,
-        acceptanceCriteria: executionHandoff.requirement.acceptanceCriteria,
+        title: executionHandoff.workItem.title,
+        description: executionHandoff.workItem.description,
+        acceptanceCriteria: executionHandoff.workItem.acceptanceCriteria,
         repository: {
           name: repository?.name ?? 'unknown',
           url: repository?.url ?? null,
@@ -114,20 +115,16 @@ export class LocalLaunchService {
     };
   }
 
-  private isExecutionSessionProjectionEnabled() {
-    return process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED?.trim().toLowerCase() !== 'false';
-  }
-
 }
 
 function buildLocalSpecPlanPrompt(handoff: {
   workflowRunId: string;
   executionSessionId: string;
   contextPackage: {
-    requirement: { title: string; description: string; acceptanceCriteria: string };
+    workItem: { title: string; description: string; acceptanceCriteria: string };
   };
 }) {
-  const requirement = handoff.contextPackage.requirement;
+  const requirement = handoff.contextPackage.workItem;
   return [
     `# FlowX Spec & Plan: ${requirement.title}`,
     '',

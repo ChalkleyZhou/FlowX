@@ -14,7 +14,7 @@ const handoff = {
   executionSessionId: 'session-1',
   status: 'EXECUTION_RUNNING',
   executor: 'LOCAL' as const,
-  requirement: {
+  workItem: {
     id: 'req-1',
     title: 'Export CSV',
     description: 'Add CSV export for reports',
@@ -115,7 +115,7 @@ describe('LocalLaunchService', () => {
       workflowRunId: 'run-spec',
       executionSessionId: 'session-spec',
       contextPackage: {
-        requirement: {
+        workItem: {
           id: 'req-spec',
           title: 'Spec task',
           description: 'Define the implementation boundary',
@@ -141,41 +141,12 @@ describe('LocalLaunchService', () => {
     expect(redeemed.chatPrompt).toContain('flowx_submit_spec_plan');
   });
 
-  it('rejects redemption without an execution session when projection is enabled', async () => {
+  it('rejects redemption without an execution session', async () => {
     const { executionSessionId: _executionSessionId, ...handoffWithoutSession } = handoff;
-    const original = process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED;
-    process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED = 'true';
-    try {
-      const { service } = createService(handoffWithoutSession);
-      const issued = await service.issueTicket('run-1', session);
+    const { service } = createService(handoffWithoutSession);
+    const issued = await service.issueTicket('run-1', session);
 
-      await expect(service.redeemTicket(issued.ticket)).rejects.toThrow(/execution session/i);
-    } finally {
-      if (original === undefined) {
-        delete process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED;
-      } else {
-        process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED = original;
-      }
-    }
-  });
-
-  it('keeps legacy execution launch compatible when session projection is disabled', async () => {
-    const { executionSessionId: _executionSessionId, ...handoffWithoutSession } = handoff;
-    const original = process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED;
-    process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED = 'false';
-    try {
-      const { service, workflowService } = createService();
-      Object.assign(workflowService, {
-        getLocalHandoff: vi.fn().mockResolvedValue(handoffWithoutSession),
-      });
-      const issued = await service.issueTicket('run-1', session);
-      await expect(service.redeemTicket(issued.ticket)).resolves.toMatchObject({
-        workflowRunId: 'run-1',
-      });
-    } finally {
-      if (original === undefined) delete process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED;
-      else process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED = original;
-    }
+    await expect(service.redeemTicket(issued.ticket)).rejects.toThrow(/execution session/i);
   });
 
   it('rejects expired tickets', async () => {

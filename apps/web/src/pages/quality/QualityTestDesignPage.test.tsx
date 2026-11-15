@@ -22,10 +22,10 @@ vi.mock('../../components/ui/toast', () => ({ useToast: () => ({ error: errorToa
 const baseDesign: TestDesign = {
   id: 'design-1', workspaceId: 'workspace-1', projectId: 'project-1', projectVersionId: 'version-1',
   status: 'WAITING_REVIEW', revision: 3, sourceFingerprint: 'fingerprint',
-  sourceSummary: { requirementIds: ['requirement-1'], workflowRunIds: ['workflow-1'], designs: [{ title: '技术方案' }], specPlans: [{ title: '执行计划' }], changeSummary: '修改登录鉴权' },
+  sourceSummary: { workItemIds: ['requirement-1'], workflowRunIds: ['workflow-1'], designs: [{ title: '技术方案' }], specPlans: [{ title: '执行计划' }], changeSummary: '修改登录鉴权' },
   summary: { pendingCount: 2, acceptedCount: 0, smokePendingCount: 1, candidateCount: 8, smokeCount: 2 },
   uncoveredItems: ['异常登录提示'], candidates: [], smokeCases: [],
-  requirements: [{ requirement: { id: 'requirement-1', title: '登录体验优化' } }],
+  workItems: [{ workItem: { id: 'requirement-1', title: '登录体验优化', kind: 'REQUIREMENT' } }],
   testRequest: null,
 };
 

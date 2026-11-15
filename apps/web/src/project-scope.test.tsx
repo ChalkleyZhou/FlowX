@@ -81,8 +81,8 @@ describe('project scope', () => {
 
   it('把本机当前项目写进项目级列表地址', async () => {
     window.localStorage.setItem(CURRENT_PROJECT_STORAGE_KEY, 'project-1');
-    await renderAt('/requirements?priority=HIGH');
-    expect(container.querySelector('[data-location]')?.textContent).toBe('/requirements?priority=HIGH&projectId=project-1');
+    await renderAt('/work-items?priority=HIGH');
+    expect(container.querySelector('[data-location]')?.textContent).toBe('/work-items?priority=HIGH&projectId=project-1');
     expect(container.querySelector('[data-project]')?.textContent).toBe('project-1');
   });
 
@@ -145,17 +145,17 @@ describe('project scope', () => {
   it('地址栏里的项目不存在时，改用本机仍有效的项目', async () => {
     vi.mocked(api.getProject).mockImplementation(async id => {if(id === 'missing') throw {status:404};return {...project,id};});
     window.localStorage.setItem(CURRENT_PROJECT_STORAGE_KEY, 'project-1');
-    await renderAt('/requirements?projectId=missing');
-    expect(container.querySelector('[data-location]')?.textContent).toBe('/requirements?projectId=project-1');
+    await renderAt('/work-items?projectId=missing');
+    expect(container.querySelector('[data-location]')?.textContent).toBe('/work-items?projectId=project-1');
     expect(window.localStorage.getItem(CURRENT_PROJECT_STORAGE_KEY)).toBe('project-1');
   });
 
   it('从详情切换时回到同类列表并清掉版本', () => {
-    expect(buildProjectSwitchLocation('/requirements/req-1', '?projectId=project-1', 'project-2'))
-      .toBe('/requirements?projectId=project-2');
-    expect(buildProjectSwitchLocation('/requirements', '?projectId=project-1&versionId=ver-1&priority=HIGH', 'project-2'))
-      .toBe('/requirements?projectId=project-2&priority=HIGH');
-    expect(buildProjectSwitchLocation('/issues', '', 'project-2')).toBeNull();
+    expect(buildProjectSwitchLocation('/work-items/req-1', '?projectId=project-1', 'project-2'))
+      .toBe('/work-items?projectId=project-2');
+    expect(buildProjectSwitchLocation('/work-items', '?projectId=project-1&versionId=ver-1&priority=HIGH', 'project-2'))
+      .toBe('/work-items?projectId=project-2&priority=HIGH');
+    expect(buildProjectSwitchLocation('/work-items', '', 'project-2')).toBe('/work-items?projectId=project-2');
     expect(withCurrentProject('/quality', 'project-1')).toBe('/quality?projectId=project-1');
     expect(withCurrentProject('/projects', 'project-1')).toBe('/projects');
   });

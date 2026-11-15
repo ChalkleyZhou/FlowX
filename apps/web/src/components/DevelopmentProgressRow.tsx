@@ -44,7 +44,7 @@ export function DevelopmentProgressRow({ session, search, detail = false }: { se
     <CardContent className="space-y-3 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-2">
-          <div className="flex flex-wrap items-center gap-2"><h2 className="break-words font-semibold">{session.workflowRun?.requirement.title ?? '未命名任务'}</h2><Badge variant={status.tone}>{stageLabels[session.status]}</Badge></div>
+          <div className="flex flex-wrap items-center gap-2"><h2 className="break-words font-semibold">{session.workflowRun?.workItem.title ?? '未命名任务'}</h2><Badge variant={status.tone}>{stageLabels[session.status]}</Badge></div>
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted-foreground"><span>{session.project?.name ?? '未记录项目'}</span><span>{session.claimedByUser?.displayName ?? '未记录执行人'}</span><span>{toolLabels[session.sourceTool]}</span></div>
         </div>
         {!detail ? <Button asChild variant="outline" size="sm"><Link to={`/execution-sessions/${session.id}${search}`}>查看进展<ExternalLink /></Link></Button> : null}

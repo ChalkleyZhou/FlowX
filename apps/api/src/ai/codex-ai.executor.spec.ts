@@ -119,7 +119,7 @@ describe('CodexAiExecutor', () => {
       });
 
     await executor.generateTestDesign({
-      requirement: {
+      workItem: {
         id: 'requirement-1',
         title: '登录改造',
         description: '支持新的登录流程',

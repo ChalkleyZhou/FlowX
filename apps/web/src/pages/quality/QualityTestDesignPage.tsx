@@ -66,7 +66,7 @@ function QualityTestDesignContent({ id }: { id: string }) {
     create: '1',
     projectId: design.projectId,
     projectVersionId: design.projectVersionId,
-    ...(design.requirements?.[0]?.requirement.id ? { requirementId: design.requirements[0].requirement.id } : {}),
+    ...(design.workItems?.[0]?.workItem.id ? { workItemId: design.workItems[0].workItem.id } : {}),
     ...(workflows.items[0]?.workflowRun.id ? { workflowRunId: workflows.items[0].workflowRun.id } : {}),
   });
   const nextHref = hasRequest
@@ -74,7 +74,7 @@ function QualityTestDesignContent({ id }: { id: string }) {
     : `/quality/test-requests?${createParams}`;
 
   const sources = [
-    { label: '需求', detail: design.requirements?.length ? `${design.requirements.length} 条需求` : '已关联需求', ready: Boolean(design.requirements?.length) || hasSource('requirementIds') },
+    { label: '工作项', detail: design.workItems?.length ? `${design.workItems.length} 条工作项` : '已关联工作项', ready: Boolean(design.workItems?.length) || hasSource('workItemIds') },
     { label: '技术方案', detail: '研发工作流设计产物', ready: hasSource('designs') },
     { label: 'Spec & Plan', detail: '研发执行计划', ready: hasSource('specPlans') },
     { label: '研发提交记录', detail: workflows.items.length ? `${workflows.items.length} 条已关联工作流` : '已关联研发工作流', ready: Boolean(workflows.items.length) || hasSource('workflowRunIds') },
@@ -87,7 +87,7 @@ function QualityTestDesignContent({ id }: { id: string }) {
       <PageHeader
         eyebrow="测试与质量"
         title="AI 测试分析"
-        description={`${design.requirements?.[0]?.requirement.title ?? '当前需求'} · 第 ${design.revision} 版 AI 分析`}
+        description={`${design.workItems?.[0]?.workItem.title ?? '当前工作项'} · 第 ${design.revision} 版 AI 分析`}
         actions={(
           <>
             <Button variant="outline" onClick={() => void load()} disabled={busy}><RefreshCw className="h-4 w-4" />刷新</Button>

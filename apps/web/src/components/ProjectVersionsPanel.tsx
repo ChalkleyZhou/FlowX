@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useListPage } from '../hooks/use-list-page';
 import { ListPagination } from './ListPagination';
@@ -125,6 +126,9 @@ export function ProjectVersionsPanel({
                     {isCurrent ? <Badge variant="secondary">当前</Badge> : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to={`/projects/${projectId}/versions/${version.id}/work-items`}>工作项看板</Link>
+                    </Button>
                     <Button variant="outline" size="sm" disabled={saving || isCurrent} onClick={() => void setCurrent(version.id)}>
                       设为当前
                     </Button>

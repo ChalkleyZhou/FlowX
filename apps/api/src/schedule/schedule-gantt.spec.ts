@@ -4,7 +4,7 @@ import { ScheduleService } from './schedule.service';
 describe('ScheduleService.buildGanttPayload', () => {
   let prisma: {
     project: { findUnique: ReturnType<typeof vi.fn> };
-    requirement: { findMany: ReturnType<typeof vi.fn>; count: ReturnType<typeof vi.fn> };
+    workItem: { findMany: ReturnType<typeof vi.fn>; count: ReturnType<typeof vi.fn> };
     requirementAssignment: { findMany: ReturnType<typeof vi.fn> };
   };
   let service: ScheduleService;
@@ -12,7 +12,7 @@ describe('ScheduleService.buildGanttPayload', () => {
   beforeEach(() => {
     prisma = {
       project: { findUnique: vi.fn().mockResolvedValue({ id: 'proj-1' }) },
-      requirement: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(0) },
+      workItem: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(0) },
       requirementAssignment: { findMany: vi.fn().mockResolvedValue([]) },
     };
     service = new ScheduleService(prisma as never);
@@ -22,14 +22,14 @@ describe('ScheduleService.buildGanttPayload', () => {
     prisma.requirementAssignment.findMany.mockResolvedValue([
       {
         id: 'a1',
-        requirementId: 'req-1',
+        workItemId: 'req-1',
         userId: 'u1',
         role: 'FRONTEND',
         plannedStartDate: new Date('2026-05-18T00:00:00.000Z'),
         plannedEndDate: new Date('2026-05-20T00:00:00.000Z'),
         colorToken: null,
         user: { displayName: 'Alice' },
-        requirement: {
+        workItem: {
           title: '登录优化',
           projectId: 'proj-1',
           project: { id: 'proj-1', name: 'FlowX' },
@@ -59,14 +59,14 @@ describe('ScheduleService.buildGanttPayload', () => {
     prisma.requirementAssignment.findMany.mockResolvedValue([
       {
         id: 'a1',
-        requirementId: 'req-1',
+        workItemId: 'req-1',
         userId: 'u1',
         role: 'BACKEND',
         plannedStartDate: new Date('2026-05-18T00:00:00.000Z'),
         plannedEndDate: new Date('2026-05-19T00:00:00.000Z'),
         colorToken: null,
         user: { displayName: 'Bob' },
-        requirement: {
+        workItem: {
           title: 'API 限流',
           projectId: 'proj-1',
           project: { id: 'proj-1', name: 'FlowX' },
@@ -92,14 +92,14 @@ describe('ScheduleService.buildGanttPayload', () => {
     prisma.requirementAssignment.findMany.mockResolvedValue([
       {
         id: 'a1',
-        requirementId: 'req-1',
+        workItemId: 'req-1',
         userId: 'u1',
         role: 'QA',
         plannedStartDate: new Date('2026-06-01T00:00:00.000Z'),
         plannedEndDate: new Date('2026-06-05T00:00:00.000Z'),
         colorToken: null,
         user: { displayName: 'Alice' },
-        requirement: {
+        workItem: {
           title: '六月需求',
           projectId: 'proj-1',
           project: { id: 'proj-1', name: 'FlowX' },
@@ -121,14 +121,14 @@ describe('ScheduleService.buildGanttPayload', () => {
     prisma.requirementAssignment.findMany.mockResolvedValue([
       {
         id: 'a1',
-        requirementId: 'req-1',
+        workItemId: 'req-1',
         userId: 'u1',
         role: 'FRONTEND',
         plannedStartDate: new Date('2026-05-18T00:00:00.000Z'),
         plannedEndDate: new Date('2026-05-20T00:00:00.000Z'),
         colorToken: null,
         user: { displayName: 'Alice' },
-        requirement: {
+        workItem: {
           title: '登录优化',
           projectId: 'proj-a',
           project: { id: 'proj-a', name: '产品 A' },
@@ -136,14 +136,14 @@ describe('ScheduleService.buildGanttPayload', () => {
       },
       {
         id: 'a2',
-        requirementId: 'req-2',
+        workItemId: 'req-2',
         userId: 'u1',
         role: 'BACKEND',
         plannedStartDate: new Date('2026-05-22T00:00:00.000Z'),
         plannedEndDate: new Date('2026-05-24T00:00:00.000Z'),
         colorToken: null,
         user: { displayName: 'Alice' },
-        requirement: {
+        workItem: {
           title: '支付接口',
           projectId: 'proj-b',
           project: { id: 'proj-b', name: '产品 B' },
@@ -172,14 +172,14 @@ describe('ScheduleService.buildGanttPayload', () => {
     prisma.requirementAssignment.findMany.mockResolvedValue([
       {
         id: 'a1',
-        requirementId: 'req-1',
+        workItemId: 'req-1',
         userId: 'u1',
         role: 'FRONTEND',
         plannedStartDate: new Date('2026-05-18T00:00:00.000Z'),
         plannedEndDate: new Date('2026-05-20T00:00:00.000Z'),
         colorToken: null,
         user: { displayName: 'Alice' },
-        requirement: {
+        workItem: {
           title: '登录优化',
           projectId: 'proj-a',
           project: { id: 'proj-a', name: '产品 A' },
@@ -213,7 +213,7 @@ describe('ScheduleService.buildGanttPayload', () => {
     expect(prisma.requirementAssignment.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          requirement: { projectId: 'proj-a' },
+          workItem: { projectId: 'proj-a' },
         }),
       }),
     );
@@ -242,14 +242,14 @@ describe('ScheduleService.buildGanttPayload', () => {
     prisma.requirementAssignment.findMany.mockResolvedValue([
       {
         id: 'a1',
-        requirementId: 'req-1',
+        workItemId: 'req-1',
         userId: 'u1',
         role: 'QA',
         plannedStartDate: new Date('2026-05-18T00:00:00.000Z'),
         plannedEndDate: new Date('2026-05-20T00:00:00.000Z'),
         colorToken: null,
         user: { displayName: 'Carol' },
-        requirement: {
+        workItem: {
           title: '测试',
           projectId: 'proj-1',
           project: { id: 'proj-1', name: 'FlowX' },
@@ -269,13 +269,13 @@ describe('ScheduleService.buildGanttPayload', () => {
     expect(payload.bars[0].start).toBe('2026-05-18');
   });
 
-  it('supports requirementId filter on organization scope', async () => {
+  it('supports workItemId filter on organization scope', async () => {
     prisma.requirementAssignment.findMany.mockResolvedValue([]);
 
     await service.buildGanttPayload({
       view: 'member',
       scope: 'organization',
-      requirementId: 'req-1',
+      workItemId: 'req-1',
       from: '2026-05-01',
       to: '2026-05-31',
     });
@@ -283,19 +283,19 @@ describe('ScheduleService.buildGanttPayload', () => {
     expect(prisma.requirementAssignment.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          requirement: { id: 'req-1' },
+          workItem: { id: 'req-1' },
         }),
       }),
     );
   });
   it('在需求层分页并保留本页需求的完整分配，不把assignment页伪装成需求页', async () => {
-    prisma.requirement.findMany.mockResolvedValue([{ id: 'req-21' }]);
-    prisma.requirement.count.mockResolvedValue(41);
-    prisma.requirementAssignment.findMany.mockResolvedValue([1, 2].map(index => ({ id: `a${index}`, requirementId: 'req-21', userId: 'u1', role: 'QA', plannedStartDate: new Date('2026-05-18'), plannedEndDate: new Date('2026-05-20'), colorToken: null, user: { displayName: '测试人' }, requirement: { title: '同需求完整分配', projectId: 'proj-1', project: { id: 'proj-1', name: 'FlowX' } } })));
+    prisma.workItem.findMany.mockResolvedValue([{ id: 'req-21' }]);
+    prisma.workItem.count.mockResolvedValue(41);
+    prisma.requirementAssignment.findMany.mockResolvedValue([1, 2].map(index => ({ id: `a${index}`, workItemId: 'req-21', userId: 'u1', role: 'QA', plannedStartDate: new Date('2026-05-18'), plannedEndDate: new Date('2026-05-20'), colorToken: null, user: { displayName: '测试人' }, workItem: { title: '同需求完整分配', projectId: 'proj-1', project: { id: 'proj-1', name: 'FlowX' } } })));
     const payload = await service.buildGanttPayload({ view: 'requirement', projectId: 'proj-1', from: '2026-05-01', to: '2026-05-31', page: 2, pageSize: 20 } as never);
     expect(payload).toHaveProperty('pagination', { total: 41, page: 2, pageSize: 20, totalPages: 3 });
-    expect(prisma.requirement.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 20, take: 20, where: expect.objectContaining({ assignments: { some: expect.objectContaining({ plannedStartDate: { lte: new Date('2026-05-31T00:00:00.000Z') }, plannedEndDate: { gte: new Date('2026-05-01T00:00:00.000Z') } }) } }) }));
-    expect(prisma.requirementAssignment.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ requirementId: { in: ['req-21'] } }) }));
+    expect(prisma.workItem.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 20, take: 20, where: expect.objectContaining({ assignments: { some: expect.objectContaining({ plannedStartDate: { lte: new Date('2026-05-31T00:00:00.000Z') }, plannedEndDate: { gte: new Date('2026-05-01T00:00:00.000Z') } }) } }) }));
+    expect(prisma.requirementAssignment.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ workItemId: { in: ['req-21'] } }) }));
     expect(payload.bars.filter(item => item.meta.role !== 'AGGREGATE')).toHaveLength(2);
   });
 

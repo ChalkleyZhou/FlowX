@@ -60,9 +60,9 @@ describe('RequirementDetailPage 流程接续', () => {
   });
   async function renderPage() {
     await act(async () => {
-      root.render(<MemoryRouter initialEntries={['/requirements/requirement-1']}><Routes>
-        <Route path="/requirements/:id" element={<RequirementDetailPage />} />
-        <Route path="/requirements" element={<Location />} />
+      root.render(<MemoryRouter initialEntries={['/work-items/requirement-1']}><Routes>
+        <Route path="/work-items/:id" element={<RequirementDetailPage />} />
+        <Route path="/work-items" element={<Location />} />
         <Route path="/workflow-runs/:id" element={<Location />} />
       </Routes></MemoryRouter>);
     });
@@ -73,7 +73,7 @@ describe('RequirementDetailPage 流程接续', () => {
     await renderPage();
     expect(container.textContent).toContain('选择要继续的工作流');
     await act(async () => { container.querySelector<HTMLButtonElement>('[aria-label="第 2 页"]')!.click(); });
-    expect(api.getWorkflowRuns).toHaveBeenCalledWith(expect.objectContaining({ requirementId: 'requirement-1', activeOnly: true, page: 2, pageSize: 20 }));
+    expect(api.getWorkflowRuns).toHaveBeenCalledWith(expect.objectContaining({ workItemId: 'requirement-1', activeOnly: true, page: 2, pageSize: 20 }));
     expect(container.textContent).toContain('仓库2');
   });
 
@@ -83,7 +83,7 @@ describe('RequirementDetailPage 流程接续', () => {
     const link = Array.from(container.querySelectorAll('a')).find(item => item.textContent === '准备测试');
     const url = new URL(link?.getAttribute('href') ?? '/', 'http://localhost');
     expect(url.pathname).toBe('/quality/test-designs/new');
-    expect(Object.fromEntries(url.searchParams)).toEqual({ projectId: 'project-1', projectVersionId: 'version-1', requirementId: 'requirement-1' });
+    expect(Object.fromEntries(url.searchParams)).toEqual({ projectId: 'project-1', projectVersionId: 'version-1', workItemId: 'requirement-1' });
   });
   it('单条活跃流作为主操作，并显示真实状态与仓库范围', async () => {
     vi.mocked(api.getRequirement).mockResolvedValue({ ...requirement, workflowRuns: [run('run-web', 'SPEC_PLAN_WAITING_CONFIRMATION', 'flowx-web')] });
@@ -151,7 +151,7 @@ describe('RequirementDetailPage 流程接续', () => {
     const launch = Array.from(container.querySelectorAll('a,button')).find((item) => item.textContent === '启动研发工作流');
     expect(launch).toBeTruthy();
     await act(async () => { (launch as HTMLElement).click(); });
-    expect(container.textContent).toBe('/requirements?projectId=project-1&launchRequirementId=requirement-1');
+    expect(container.textContent).toBe('/work-items?projectId=project-1&launchRequirementId=requirement-1');
     expect(api.createWorkflowRun).not.toHaveBeenCalled();
   });
 
@@ -182,9 +182,9 @@ describe('RequirementDetailPage 流程接续', () => {
       .mockReturnValueOnce(previousRequest)
       .mockResolvedValueOnce({ ...requirement, id: 'requirement-2', title: '第二条需求', workflowRuns: [run('run-second', 'DESIGN_PENDING', 'flowx-api')] });
     await act(async () => {
-      root.render(<MemoryRouter initialEntries={['/requirements/requirement-1']}>
-        <Link to="/requirements/requirement-2">切换需求</Link>
-        <Routes><Route path="/requirements/:id" element={<RequirementDetailPage />} /></Routes>
+      root.render(<MemoryRouter initialEntries={['/work-items/requirement-1']}>
+        <Link to="/work-items/requirement-2">切换需求</Link>
+        <Routes><Route path="/work-items/:id" element={<RequirementDetailPage />} /></Routes>
       </MemoryRouter>);
     });
     await act(async () => { (container.querySelector('a') as HTMLElement).click(); });
@@ -258,7 +258,7 @@ describe('RequirementDetailPage 流程接续', () => {
     confirmDialog.mockResolvedValueOnce(false);
     await act(async () => { deleteButton().click(); });
     expect(api.deleteRequirement).not.toHaveBeenCalled();
-    expect(container.querySelector('output')?.textContent ?? '').not.toBe('/requirements');
+    expect(container.querySelector('output')?.textContent ?? '').not.toBe('/work-items');
 
     confirmDialog.mockResolvedValueOnce(true);
     vi.mocked(api.deleteRequirement).mockRejectedValueOnce(new Error('该需求或它的工作流已关联测试设计或提测，请先解除关联后再删除。'));
@@ -270,7 +270,7 @@ describe('RequirementDetailPage 流程接续', () => {
     await act(async () => { deleteButton().click(); });
     expect(api.deleteRequirement).toHaveBeenCalledWith('requirement-1');
     expect(successToast).toHaveBeenCalledWith('需求已删除');
-    expect(container.querySelector('output')?.textContent).toBe('/requirements');
+    expect(container.querySelector('output')?.textContent).toBe('/work-items');
   });
 
 });

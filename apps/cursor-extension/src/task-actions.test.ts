@@ -5,6 +5,9 @@ import type { FlowXTaskItem } from './flowx-client';
 const readyTask: FlowXTaskItem = {
   eligible: true,
   id: 'req-1',
+  workItemId: 'work-1',
+  kind: 'REQUIREMENT',
+  workItemTitle: '导出 CSV',
   repository: {
     id: 'repo-1',
     name: 'FlowX',
@@ -12,7 +15,6 @@ const readyTask: FlowXTaskItem = {
   },
   status: 'ACTIVE',
   title: 'Add local handoff',
-  type: 'requirement',
   workflowRunId: null,
 };
 

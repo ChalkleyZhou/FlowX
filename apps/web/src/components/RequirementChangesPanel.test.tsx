@@ -12,7 +12,7 @@ vi.mock('react-router-dom', async original => ({ ...await original<typeof import
 vi.mock('../api', () => ({ api: { getRequirementChanges: vi.fn(), createRequirementChange: vi.fn(), createPrototypeRequirementChange: vi.fn(), downloadRequirementChangePrototype: vi.fn(), restartRequirementChange: vi.fn() } }));
 
 const change = (overrides: Partial<RequirementChange> = {}): RequirementChange => ({
-  id: 'change-1', requirementId: 'req-1', revision: 1, content: '导出增加 Excel 格式', mode: 'SUPPLEMENT',
+  id: 'change-1', workItemId: 'req-1', revision: 1, content: '导出增加 Excel 格式', mode: 'SUPPLEMENT',
   createdByName: '产品甲', createdAt: '2026-10-23T08:00:00Z', sourceWorkflowRunId: null,
   restartWorkflowRunId: null, restartStatus: 'NOT_REQUESTED', errorMessage: null, ...overrides,
 });

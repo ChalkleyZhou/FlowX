@@ -126,7 +126,7 @@ describe('flowx protocol', () => {
       workflowRunId: 'workflow-1',
       executionSessionId: 'session-1',
       traceId: 'trace-1',
-      requirement: {
+      workItem: {
         id: 'req-1',
         title: 'Design export page',
         description: 'Create an export experience.',

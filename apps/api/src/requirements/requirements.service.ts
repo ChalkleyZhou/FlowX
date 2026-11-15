@@ -127,8 +127,10 @@ export class RequirementsService {
       throw new BadRequestException('请选择发布版本；项目没有当前版本时，请先在项目中设置');
     }
 
-    return this.prisma.requirement.create({
+    return this.prisma.workItem.create({
       data: {
+        kind: 'REQUIREMENT',
+        status: 'ACTIVE',
         projectId: dto.projectId,
         title,
         description: dto.description?.trim() ?? '',
@@ -151,6 +153,22 @@ export class RequirementsService {
                 })),
               }
             : undefined,
+        // 每个 WorkItem 从创建时就拥有统一的执行计划；默认单执行项
+        // 代表“不需要拆分”，后续仍可在详情页改为人工或 AI 拆解。
+        executionPlans: {
+          create: {
+            status: 'CONFIRMED',
+            strategy: 'SINGLE',
+            items: {
+              create: {
+                title,
+                description: dto.description?.trim() ?? '',
+                target: 'LOCAL',
+                status: 'READY',
+              },
+            },
+          },
+        },
       },
       include: {
         project: {
@@ -180,6 +198,10 @@ export class RequirementsService {
 
   private readonly requirementRelationsInclude = {
     version: { select: { id: true, name: true } },
+    executionPlans: {
+      orderBy: [{ createdAt: 'desc' as const }, { id: 'desc' as const }],
+      include: { items: { orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }] } },
+    },
     assignments: {
       include: { user: true },
       orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }],
@@ -187,14 +209,14 @@ export class RequirementsService {
   };
 
   private enrichRequirement<T extends { assignments?: Array<Parameters<typeof toRequirementAssignmentResponse>[0]> }>(
-    requirement: T,
+    workItem: T,
   ) {
-    if (!requirement.assignments) {
-      return requirement;
+    if (!workItem.assignments) {
+      return workItem;
     }
     return {
-      ...requirement,
-      assignments: requirement.assignments.map((row) => toRequirementAssignmentResponse(row)),
+      ...workItem,
+      assignments: workItem.assignments.map((row) => toRequirementAssignmentResponse(row)),
     };
   }
 
@@ -208,7 +230,7 @@ export class RequirementsService {
       throw new BadRequestException('请填写需求名称');
     }
     const text = (value: string) => value.trim();
-    const updated = await this.prisma.requirement.update({
+    const updated = await this.prisma.workItem.update({
       where: { id },
       data: {
         ...(title ? { title } : {}),
@@ -246,7 +268,7 @@ export class RequirementsService {
   }
 
   async remove(id: string) {
-    const requirement = await this.prisma.requirement.findUnique({
+    const workItem = await this.prisma.workItem.findUnique({
       where: { id },
       select: {
         id: true,
@@ -260,18 +282,18 @@ export class RequirementsService {
         },
       },
     });
-    if (!requirement) {
+    if (!workItem) {
       throw new NotFoundException('需求不存在。');
     }
 
-    if (requirement.workflowRuns.some((workflow) => workflow.stageExecutions.some((stage) => stage.status === 'RUNNING'))) {
+    if (workItem.workflowRuns.some((workflow) => workflow.stageExecutions.some((stage) => stage.status === 'RUNNING'))) {
       throw new BadRequestException('当前需求仍有工作流阶段在执行中，请等待完成后再删除。');
     }
 
-    const workflowIds = requirement.workflowRuns.map((workflow) => workflow.id);
+    const workflowIds = workItem.workflowRuns.map((workflow) => workflow.id);
     const [testDesignCount, testRequestCount, designWorkflowCount, requestWorkflowCount] = await Promise.all([
-      this.prisma.testDesignRequirement.count({ where: { requirementId: id } }),
-      this.prisma.testRequestRequirement.count({ where: { requirementId: id } }),
+      this.prisma.testDesignWorkItem.count({ where: { workItemId: id } }),
+      this.prisma.testRequestWorkItem.count({ where: { workItemId: id } }),
       workflowIds.length === 0
         ? Promise.resolve(0)
         : this.prisma.testDesignWorkflowRun.count({ where: { workflowRunId: { in: workflowIds } } }),
@@ -295,28 +317,28 @@ export class RequirementsService {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.issue.updateMany({ where: { requirementId: id }, data: { requirementId: null } });
-      await tx.bug.updateMany({ where: { requirementId: id }, data: { requirementId: null } });
-      await tx.bug.updateMany({ where: { fixRequirementId: id }, data: { fixRequirementId: null } });
-      await tx.requirementRepository.deleteMany({ where: { requirementId: id } });
-      await tx.requirement.delete({ where: { id } });
+      await tx.reviewFinding.updateMany({ where: { convertedWorkItemId: id }, data: { convertedWorkItemId: null } });
+      await tx.bug.updateMany({ where: { workItemId: id }, data: { workItemId: null } });
+      await tx.bug.updateMany({ where: { fixWorkItemId: id }, data: { fixWorkItemId: null } });
+      await tx.requirementRepository.deleteMany({ where: { workItemId: id } });
+      await tx.workItem.delete({ where: { id } });
     });
-    await this.removePrototypeFiles(requirement);
+    await this.removePrototypeFiles(workItem);
 
     return { success: true };
   }
 
-  private async removePrototypeFiles(requirement: {
+  private async removePrototypeFiles(workItem: {
     prototypeImport: { id: string; materialRevision: number } | null;
     changes: Array<{ prototype: unknown }>;
   }) {
     const archive = new PrototypeArchive();
-    const revisions = requirement.prototypeImport
-      ? Array.from({ length: Math.max(requirement.prototypeImport.materialRevision, 1) }, (_, index) => index + 1)
+    const revisions = workItem.prototypeImport
+      ? Array.from({ length: Math.max(workItem.prototypeImport.materialRevision, 1) }, (_, index) => index + 1)
       : [];
     const jobs = [
-      ...revisions.map((revision) => archive.remove(requirement.prototypeImport!.id, revision)),
-      ...requirement.changes.flatMap((change) => {
+      ...revisions.map((revision) => archive.remove(workItem.prototypeImport!.id, revision)),
+      ...workItem.changes.flatMap((change) => {
         const archiveId = this.prototypeArchiveId(change.prototype);
         return archiveId ? [archive.remove(archiveId, 1)] : [];
       }),
@@ -341,19 +363,19 @@ export class RequirementsService {
   async findPage(query: PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; planningStatus?: string; priority?: string; status?: string; q?: string } = {}) {
     const paging = parsePagination(query);
     const scope = { ...(query.workspaceId ? { project: { workspaceId: query.workspaceId } } : {}), ...(query.projectId ? { projectId: query.projectId } : {}) };
-    const where = { ...scope, ...(query.versionId ? { versionId: query.versionId === '__unassigned__' ? null : query.versionId } : {}), ...(query.planningStatus ? { planningStatus: query.planningStatus } : {}), ...(query.priority ? { priority: query.priority } : {}), ...(query.status ? { status: query.status } : {}), ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }] } : {}) };
+    const where = { kind: 'REQUIREMENT', ...scope, ...(query.versionId ? { versionId: query.versionId === '__unassigned__' ? null : query.versionId } : {}), ...(query.planningStatus ? { planningStatus: query.planningStatus } : {}), ...(query.priority ? { priority: query.priority } : {}), ...(query.status ? { status: query.status } : {}), ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }] } : {}) };
     const [rows, total, requirementCount, workspaceCount, projectCount] = await Promise.all([
-      this.prisma.requirement.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { version: { select: { id: true, name: true } }, project: { include: { workspace: true } }, workspace: true, prototypeImport: { select: { id: true, status: true } }, workflowRuns: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1 }, changes: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1, select: { createdAt: true, content: true } }, _count: { select: { workflowRuns: true, assignments: true, requirementRepositories: true } } } }),
-      this.prisma.requirement.count({ where }), this.prisma.requirement.count({ where: scope }),
-      this.prisma.workspace.count({ where: { projects: { some: { requirements: { some: scope } } } } }),
-      this.prisma.project.count({ where: { requirements: { some: scope } } }),
+      this.prisma.workItem.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { version: { select: { id: true, name: true } }, project: { include: { workspace: true } }, workspace: true, prototypeImport: { select: { id: true, status: true } }, workflowRuns: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1 }, changes: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1, select: { createdAt: true, content: true } }, _count: { select: { workflowRuns: true, assignments: true, requirementRepositories: true } } } }),
+      this.prisma.workItem.count({ where }), this.prisma.workItem.count({ where: scope }),
+      this.prisma.workspace.count({ where: { projects: { some: { workItems: { some: { ...scope, kind: 'REQUIREMENT' } } } } } }),
+      this.prisma.project.count({ where: { workItems: { some: { ...scope, kind: 'REQUIREMENT' } } } }),
     ]);
     const items = rows.map(({ changes, ...row }) => ({ ...row, latestChangeAt: changes[0]?.createdAt ?? null, latestChangeContent: changes[0]?.content ?? null }));
     return { ...pageResult(items, total, paging), summary: { requirementCount, visibleCount: total, workspaceCount, projectCount } };
   }
 
   async findAll() {
-    const rows = await this.prisma.requirement.findMany({
+    const rows = await this.prisma.workItem.findMany({
       orderBy: {
         createdAt: 'desc',
       },
@@ -415,32 +437,32 @@ export class RequirementsService {
     });
   }
 
-  async listRepositoriesPage(requirementId: string, query: PaginationQuery & { q?: string } = {}) {
+  async listRepositoriesPage(workItemId: string, query: PaginationQuery & { q?: string } = {}) {
     const paging = parsePagination(query);
-    await this.prisma.requirement.findUniqueOrThrow({ where: { id: requirementId }, select: { id: true } });
-    const where = { requirementId, ...(query.q?.trim() ? { repository: { name: { contains: query.q.trim() } } } : {}) };
+    await this.prisma.workItem.findUniqueOrThrow({ where: { id: workItemId }, select: { id: true } });
+    const where = { workItemId, ...(query.q?.trim() ? { repository: { name: { contains: query.q.trim() } } } : {}) };
     const [items, total] = await Promise.all([this.prisma.requirementRepository.findMany({ where, skip: paging.skip, take: paging.take, include: { repository: true }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }), this.prisma.requirementRepository.count({ where })]);
     return pageResult(items.map((row) => row.repository), total, paging);
   }
 
-  async listIdeationSessionsPage(requirementId: string, query: PaginationQuery = {}) {
+  async listIdeationSessionsPage(workItemId: string, query: PaginationQuery = {}) {
     const paging = parsePagination(query);
-    await this.prisma.requirement.findUniqueOrThrow({ where: { id: requirementId }, select: { id: true } });
-    const where = { requirementId };
+    await this.prisma.workItem.findUniqueOrThrow({ where: { id: workItemId }, select: { id: true } });
+    const where = { workItemId };
     const [items, total] = await Promise.all([this.prisma.ideationSession.findMany({ where, skip: paging.skip, take: paging.take,  orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }), this.prisma.ideationSession.count({ where })]);
     return pageResult(items, total, paging);
   }
 
-  async listIdeationArtifactsPage(requirementId: string, query: PaginationQuery = {}) {
+  async listIdeationArtifactsPage(workItemId: string, query: PaginationQuery = {}) {
     const paging = parsePagination(query);
-    await this.prisma.requirement.findUniqueOrThrow({ where: { id: requirementId }, select: { id: true } });
-    const where = { requirementId };
+    await this.prisma.workItem.findUniqueOrThrow({ where: { id: workItemId }, select: { id: true } });
+    const where = { workItemId };
     const [items, total] = await Promise.all([this.prisma.ideationArtifact.findMany({ where, skip: paging.skip, take: paging.take,  orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] }), this.prisma.ideationArtifact.count({ where })]);
     return pageResult(items, total, paging);
   }
 
   async findDetail(id: string) {
-    const row = await this.prisma.requirement.findUniqueOrThrow({ where: { id }, include: {
+    const row = await this.prisma.workItem.findFirstOrThrow({ where: { id, kind: 'REQUIREMENT' }, include: {
       project: { include: { workspace: true } }, workspace: true, version: { select: { id: true, name: true } }, prototypeImport: { select: { id: true, status: true } },
       changes: { take: 1, orderBy: [{ revision: 'desc' }, { id: 'desc' }] },
       workflowRuns: { take: 1, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] },
@@ -448,14 +470,15 @@ export class RequirementsService {
       requirementRepositories: { take: 20, include: { repository: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
       ideationSessions: { take: 20, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] },
       ideationArtifacts: { take: 20, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] },
+      executionPlans: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { items: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } } },
       _count: { select: { changes: true, workflowRuns: true, assignments: true, requirementRepositories: true, ideationSessions: true, ideationArtifacts: true } },
     } });
     return this.enrichRequirement(row);
   }
 
   async findOne(id: string) {
-    const requirement = await this.prisma.requirement.findUniqueOrThrow({
-      where: { id },
+    const workItem = await this.prisma.workItem.findUniqueOrThrow({
+      where: { id, kind: 'REQUIREMENT' },
       include: {
         changes: { orderBy: { revision: 'asc' } },
         project: {
@@ -510,7 +533,7 @@ export class RequirementsService {
         ...this.requirementRelationsInclude,
       },
     });
-    return this.enrichRequirement(requirement);
+    return this.enrichRequirement(workItem);
   }
 
   private async assertVersionOwned(projectId: string, versionId: string) {
@@ -522,9 +545,9 @@ export class RequirementsService {
 
   // ── Ideation methods ──
 
-  async startBrainstorm(requirementId: string, hint?: string, authSession?: IdeationAuthSession) {
-    const requirement = await this.findOne(requirementId);
-    const currentStatus = requirement.ideationStatus as IdeationStatus;
+  async startBrainstorm(workItemId: string, hint?: string, authSession?: IdeationAuthSession) {
+    const workItem = await this.findOne(workItemId);
+    const currentStatus = workItem.ideationStatus as IdeationStatus;
 
     if (currentStatus !== IdeationStatus.NONE && currentStatus !== IdeationStatus.BRAINSTORM_WAITING_CONFIRMATION) {
       throw new BadRequestException(
@@ -532,23 +555,23 @@ export class RequirementsService {
       );
     }
 
-    const previousBriefs = await this.getPreviousBriefs(requirementId);
+    const previousBriefs = await this.getPreviousBriefs(workItemId);
     const previousAttemptCount = previousBriefs.length;
     const online = await this.resolveIdeationOnline(authSession);
     const executor = online.executor;
     const session = await this.prisma.ideationSession.create({
       data: {
-        requirementId,
+        workItemId,
         stage: 'BRAINSTORM',
         attempt: previousAttemptCount + 1,
         status: ideationSessionStatusMap[IdeationSessionStatus.RUNNING],
-        input: { requirementRevision: requirement.revision ?? 0, requirementTitle: requirement.title, requirementDescription: effectiveRequirementDescription(requirement), humanHint: hint },
+        input: { requirementRevision: workItem.revision ?? 0, requirementTitle: workItem.title, requirementDescription: effectiveRequirementDescription(workItem), humanHint: hint },
         startedAt: new Date(),
       },
     });
 
-    await this.prisma.requirement.update({
-      where: { id: requirementId },
+    await this.prisma.workItem.update({
+      where: { id: workItemId },
       data: { ideationStatus: ideationStatusMap[IdeationStatus.BRAINSTORM_PENDING] },
     });
 
@@ -560,11 +583,11 @@ export class RequirementsService {
       );
       const result = await executor.brainstorm(
         {
-          requirementTitle: requirement.title,
-          requirementDescription: effectiveRequirementDescription(requirement),
+          requirementTitle: workItem.title,
+          requirementDescription: effectiveRequirementDescription(workItem),
           previousBriefs: previousBriefs.length > 0 ? previousBriefs : undefined,
           humanFeedback: hint || undefined,
-          workspaceContext: requirement.workspace?.name || undefined,
+          workspaceContext: workItem.workspace?.name || undefined,
         },
         invocationContext,
       );
@@ -579,15 +602,15 @@ export class RequirementsService {
           statusMessage: 'Brainstorm completed, waiting for confirmation.',
         },
       });
-      await this.markSupersededWaitingSessions(requirementId, 'BRAINSTORM', session.id);
+      await this.markSupersededWaitingSessions(workItemId, 'BRAINSTORM', session.id);
 
-      await this.prisma.requirement.update({
-        where: { id: requirementId },
+      await this.prisma.workItem.update({
+        where: { id: workItemId },
         data: { ideationStatus: ideationStatusMap[IdeationStatus.BRAINSTORM_WAITING_CONFIRMATION] },
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown brainstorm error';
-      this.logger.error(`Brainstorm failed for requirement ${requirementId}: ${message}`);
+      this.logger.error(`Brainstorm failed for workItem ${workItemId}: ${message}`);
 
       await this.prisma.ideationSession.update({
         where: { id: session.id },
@@ -598,19 +621,19 @@ export class RequirementsService {
         },
       });
 
-      await this.prisma.requirement.update({
-        where: { id: requirementId },
+      await this.prisma.workItem.update({
+        where: { id: workItemId },
         data: { ideationStatus: ideationStatusMap[IdeationStatus.NONE] },
       });
     }
     });
 
-    return this.findOne(requirementId);
+    return this.findOne(workItemId);
   }
 
-  async reviseBrainstorm(requirementId: string, feedback: string, authSession?: IdeationAuthSession) {
-    const requirement = await this.findOne(requirementId);
-    const currentStatus = requirement.ideationStatus as IdeationStatus;
+  async reviseBrainstorm(workItemId: string, feedback: string, authSession?: IdeationAuthSession) {
+    const workItem = await this.findOne(workItemId);
+    const currentStatus = workItem.ideationStatus as IdeationStatus;
 
     if (currentStatus !== IdeationStatus.BRAINSTORM_WAITING_CONFIRMATION) {
       throw new BadRequestException(
@@ -620,20 +643,20 @@ export class RequirementsService {
 
     const online = await this.resolveIdeationOnline(authSession);
     const executor = online.executor;
-    const previousBriefs = await this.getPreviousBriefs(requirementId);
+    const previousBriefs = await this.getPreviousBriefs(workItemId);
     const session = await this.prisma.ideationSession.create({
       data: {
-        requirementId,
+        workItemId,
         stage: 'BRAINSTORM',
         attempt: previousBriefs.length + 1,
         status: ideationSessionStatusMap[IdeationSessionStatus.RUNNING],
-        input: { requirementRevision: requirement.revision ?? 0, feedback },
+        input: { requirementRevision: workItem.revision ?? 0, feedback },
         startedAt: new Date(),
       },
     });
 
-    await this.prisma.requirement.update({
-      where: { id: requirementId },
+    await this.prisma.workItem.update({
+      where: { id: workItemId },
       data: { ideationStatus: ideationStatusMap[IdeationStatus.BRAINSTORM_PENDING] },
     });
 
@@ -645,11 +668,11 @@ export class RequirementsService {
       );
       const result = await executor.brainstorm(
         {
-          requirementTitle: requirement.title,
-          requirementDescription: effectiveRequirementDescription(requirement),
+          requirementTitle: workItem.title,
+          requirementDescription: effectiveRequirementDescription(workItem),
           previousBriefs,
           humanFeedback: feedback,
-          workspaceContext: requirement.workspace?.name || undefined,
+          workspaceContext: workItem.workspace?.name || undefined,
         },
         invocationContext,
       );
@@ -664,15 +687,15 @@ export class RequirementsService {
           statusMessage: 'Brainstorm revised, waiting for confirmation.',
         },
       });
-      await this.markSupersededWaitingSessions(requirementId, 'BRAINSTORM', session.id);
+      await this.markSupersededWaitingSessions(workItemId, 'BRAINSTORM', session.id);
 
-      await this.prisma.requirement.update({
-        where: { id: requirementId },
+      await this.prisma.workItem.update({
+        where: { id: workItemId },
         data: { ideationStatus: ideationStatusMap[IdeationStatus.BRAINSTORM_WAITING_CONFIRMATION] },
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown brainstorm revision error';
-      this.logger.error(`Brainstorm revision failed for requirement ${requirementId}: ${message}`);
+      this.logger.error(`Brainstorm revision failed for workItem ${workItemId}: ${message}`);
 
       await this.prisma.ideationSession.update({
         where: { id: session.id },
@@ -683,19 +706,19 @@ export class RequirementsService {
         },
       });
 
-      await this.prisma.requirement.update({
-        where: { id: requirementId },
+      await this.prisma.workItem.update({
+        where: { id: workItemId },
         data: { ideationStatus: ideationStatusMap[IdeationStatus.BRAINSTORM_WAITING_CONFIRMATION] },
       });
     }
     });
 
-    return this.findOne(requirementId);
+    return this.findOne(workItemId);
   }
 
-  async confirmBrainstorm(requirementId: string) {
-    const requirement = await this.findOne(requirementId);
-    const currentStatus = requirement.ideationStatus as IdeationStatus;
+  async confirmBrainstorm(workItemId: string) {
+    const workItem = await this.findOne(workItemId);
+    const currentStatus = workItem.ideationStatus as IdeationStatus;
 
     if (currentStatus !== IdeationStatus.BRAINSTORM_WAITING_CONFIRMATION) {
       throw new BadRequestException(
@@ -703,7 +726,7 @@ export class RequirementsService {
       );
     }
 
-    const brainstormSessions = (requirement.ideationSessions ?? [])
+    const brainstormSessions = (workItem.ideationSessions ?? [])
       .filter((session: { stage: string }) => session.stage === 'BRAINSTORM')
       .sort((a: { attempt: number }, b: { attempt: number }) => b.attempt - a.attempt);
     const waitingSessionWithBrief = brainstormSessions.find((session: { status?: string; output?: unknown }) => {
@@ -721,7 +744,7 @@ export class RequirementsService {
 
     await this.prisma.ideationArtifact.create({
       data: {
-        requirementId,
+        workItemId,
         type: 'BRAINSTORM_BRIEF',
         content: brief as any,
       },
@@ -734,19 +757,19 @@ export class RequirementsService {
         statusMessage: 'Confirmed by user.',
       },
     });
-    await this.markSupersededWaitingSessions(requirementId, 'BRAINSTORM', lastSession.id);
+    await this.markSupersededWaitingSessions(workItemId, 'BRAINSTORM', lastSession.id);
 
-    await this.prisma.requirement.update({
-      where: { id: requirementId },
+    await this.prisma.workItem.update({
+      where: { id: workItemId },
       data: { ideationStatus: ideationStatusMap[IdeationStatus.BRAINSTORM_CONFIRMED] },
     });
 
-    return this.findOne(requirementId);
+    return this.findOne(workItemId);
   }
 
-  async startDesign(requirementId: string, hint?: string, authSession?: IdeationAuthSession) {
-    let requirement = await this.findOne(requirementId);
-    const currentStatus = requirement.ideationStatus as IdeationStatus;
+  async startDesign(workItemId: string, hint?: string, authSession?: IdeationAuthSession) {
+    let workItem = await this.findOne(workItemId);
+    const currentStatus = workItem.ideationStatus as IdeationStatus;
 
     if (currentStatus !== IdeationStatus.BRAINSTORM_CONFIRMED && currentStatus !== IdeationStatus.DESIGN_WAITING_CONFIRMATION) {
       throw new BadRequestException(
@@ -754,28 +777,28 @@ export class RequirementsService {
       );
     }
 
-    const confirmedBrief = await this.getConfirmedBrief(requirementId);
+    const confirmedBrief = await this.getConfirmedBrief(workItemId);
     if (!confirmedBrief) {
       throw new BadRequestException('No confirmed brainstorm brief found. Confirm brainstorm first.');
     }
-    requirement = await this.ensureIdeationRepositoriesReady(requirement);
+    workItem = await this.ensureIdeationRepositoriesReady(workItem);
 
-    const previousDesigns = await this.getPreviousDesigns(requirementId);
+    const previousDesigns = await this.getPreviousDesigns(workItemId);
     const online = await this.resolveIdeationOnline(authSession);
     const executor = online.executor;
     const session = await this.prisma.ideationSession.create({
       data: {
-        requirementId,
+        workItemId,
         stage: 'DESIGN',
         attempt: previousDesigns.length + 1,
         status: ideationSessionStatusMap[IdeationSessionStatus.RUNNING],
-        input: { requirementRevision: requirement.revision ?? 0, humanHint: hint },
+        input: { requirementRevision: workItem.revision ?? 0, humanHint: hint },
         startedAt: new Date(),
       },
     });
 
-    await this.prisma.requirement.update({
-      where: { id: requirementId },
+    await this.prisma.workItem.update({
+      where: { id: workItemId },
       data: { ideationStatus: ideationStatusMap[IdeationStatus.DESIGN_PENDING] },
     });
 
@@ -785,15 +808,15 @@ export class RequirementsService {
         online.provider,
         online.recipient,
       );
-      const readyRepos = this.resolveReadyRepositories(requirement);
+      const readyRepos = this.resolveReadyRepositories(workItem);
       this.logger.log(
-        `Ideation design start requirement=${requirementId} session=${session.id} executor=${executor.constructor?.name ?? 'unknown'} readyRepoCount=${readyRepos.length}${readyRepos[0] ? ` primaryRepo=${readyRepos[0].id}` : ''}`,
+        `Ideation design start workItem=${workItemId} session=${session.id} executor=${executor.constructor?.name ?? 'unknown'} readyRepoCount=${readyRepos.length}${readyRepos[0] ? ` primaryRepo=${readyRepos[0].id}` : ''}`,
       );
 
       const rawResult = await executor.generateDesign(
         {
-          requirementTitle: requirement.title,
-          requirementDescription: effectiveRequirementDescription(requirement),
+          requirementTitle: workItem.title,
+          requirementDescription: effectiveRequirementDescription(workItem),
           confirmedBrief,
           previousDesigns: previousDesigns.length > 0 ? previousDesigns : undefined,
           humanFeedback: hint || undefined,
@@ -803,7 +826,7 @@ export class RequirementsService {
       );
       const result = this.normalizeDesignOutput(rawResult);
       this.logger.log(
-        `Ideation design AI returned requirement=${requirementId} session=${session.id} overviewLen=${result.design.overview?.length ?? 0}`,
+        `Ideation design AI returned workItem=${workItemId} session=${session.id} overviewLen=${result.design.overview?.length ?? 0}`,
       );
       const designOnlyOutput = { design: result.design };
       const statusMessage = 'Design generation completed, waiting for confirmation.';
@@ -817,16 +840,16 @@ export class RequirementsService {
           statusMessage,
         },
       });
-      await this.markSupersededWaitingSessions(requirementId, 'DESIGN', session.id);
-      await this.closeStaleBrainstormWaitingSessions(requirementId);
+      await this.markSupersededWaitingSessions(workItemId, 'DESIGN', session.id);
+      await this.closeStaleBrainstormWaitingSessions(workItemId);
 
-      await this.prisma.requirement.update({
-        where: { id: requirementId },
+      await this.prisma.workItem.update({
+        where: { id: workItemId },
         data: { ideationStatus: ideationStatusMap[IdeationStatus.DESIGN_WAITING_CONFIRMATION] },
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown design generation error';
-      this.logger.error(`Design generation failed for requirement ${requirementId}: ${message}`);
+      this.logger.error(`Design generation failed for workItem ${workItemId}: ${message}`);
 
       await this.prisma.ideationSession.update({
         where: { id: session.id },
@@ -837,19 +860,19 @@ export class RequirementsService {
         },
       });
 
-      await this.prisma.requirement.update({
-        where: { id: requirementId },
+      await this.prisma.workItem.update({
+        where: { id: workItemId },
         data: { ideationStatus: ideationStatusMap[IdeationStatus.BRAINSTORM_CONFIRMED] },
       });
     }
     });
 
-    return this.findOne(requirementId);
+    return this.findOne(workItemId);
   }
 
-  async reviseDesign(requirementId: string, feedback: string, authSession?: IdeationAuthSession) {
-    let requirement = await this.findOne(requirementId);
-    const currentStatus = requirement.ideationStatus as IdeationStatus;
+  async reviseDesign(workItemId: string, feedback: string, authSession?: IdeationAuthSession) {
+    let workItem = await this.findOne(workItemId);
+    const currentStatus = workItem.ideationStatus as IdeationStatus;
 
     if (currentStatus !== IdeationStatus.DESIGN_WAITING_CONFIRMATION) {
       throw new BadRequestException(
@@ -857,14 +880,14 @@ export class RequirementsService {
       );
     }
 
-    const confirmedBrief = await this.getConfirmedBrief(requirementId);
+    const confirmedBrief = await this.getConfirmedBrief(workItemId);
     if (!confirmedBrief) {
       throw new BadRequestException('No confirmed brainstorm brief found.');
     }
-    requirement = await this.ensureIdeationRepositoriesReady(requirement);
+    workItem = await this.ensureIdeationRepositoriesReady(workItem);
 
-    const previousDesigns = await this.getPreviousDesigns(requirementId);
-    const latestDesignSessionWithOutput = requirement.ideationSessions
+    const previousDesigns = await this.getPreviousDesigns(workItemId);
+    const latestDesignSessionWithOutput = workItem.ideationSessions
       ?.filter((session) => session.stage === 'DESIGN' && !!session.output)
       .sort((a, b) => b.attempt - a.attempt)[0];
     const previousLatestDesign = this.extractDesignSpecFromSessionOutput(
@@ -874,17 +897,17 @@ export class RequirementsService {
     const executor = online.executor;
     const session = await this.prisma.ideationSession.create({
       data: {
-        requirementId,
+        workItemId,
         stage: 'DESIGN',
         attempt: previousDesigns.length + 1,
         status: ideationSessionStatusMap[IdeationSessionStatus.RUNNING],
-        input: { requirementRevision: requirement.revision ?? 0, feedback },
+        input: { requirementRevision: workItem.revision ?? 0, feedback },
         startedAt: new Date(),
       },
     });
 
-    await this.prisma.requirement.update({
-      where: { id: requirementId },
+    await this.prisma.workItem.update({
+      where: { id: workItemId },
       data: { ideationStatus: ideationStatusMap[IdeationStatus.DESIGN_PENDING] },
     });
 
@@ -894,15 +917,15 @@ export class RequirementsService {
         online.provider,
         online.recipient,
       );
-      const readyRepos = this.resolveReadyRepositories(requirement);
+      const readyRepos = this.resolveReadyRepositories(workItem);
       this.logger.log(
-        `Ideation design revise start requirement=${requirementId} session=${session.id} executor=${executor.constructor?.name ?? 'unknown'} readyRepoCount=${readyRepos.length}${readyRepos[0] ? ` primaryRepo=${readyRepos[0].id}` : ''}`,
+        `Ideation design revise start workItem=${workItemId} session=${session.id} executor=${executor.constructor?.name ?? 'unknown'} readyRepoCount=${readyRepos.length}${readyRepos[0] ? ` primaryRepo=${readyRepos[0].id}` : ''}`,
       );
 
       const rawResult = await executor.generateDesign(
         {
-          requirementTitle: requirement.title,
-          requirementDescription: effectiveRequirementDescription(requirement),
+          requirementTitle: workItem.title,
+          requirementDescription: effectiveRequirementDescription(workItem),
           confirmedBrief,
           previousDesigns,
           humanFeedback: feedback,
@@ -915,8 +938,8 @@ export class RequirementsService {
       if (previousLatestDesign && this.isSameDesignSpec(result.design, previousLatestDesign)) {
         const retryRawResult = await executor.generateDesign(
           {
-            requirementTitle: requirement.title,
-            requirementDescription: effectiveRequirementDescription(requirement),
+            requirementTitle: workItem.title,
+            requirementDescription: effectiveRequirementDescription(workItem),
             confirmedBrief,
             previousDesigns,
             humanFeedback: `${feedback}\n\n请确保本次修订与上一版有明确可见差异：至少调整 2 个页面的布局、关键组件或交互说明，并在 designRationale 开头总结本次具体变更点。`,
@@ -933,7 +956,7 @@ export class RequirementsService {
         );
       }
       this.logger.log(
-        `Ideation design revise final requirement=${requirementId} session=${session.id} overviewLen=${result.design.overview?.length ?? 0}`,
+        `Ideation design revise final workItem=${workItemId} session=${session.id} overviewLen=${result.design.overview?.length ?? 0}`,
       );
 
       const statusMessage = 'Design revised, waiting for confirmation.';
@@ -948,16 +971,16 @@ export class RequirementsService {
           statusMessage,
         },
       });
-      await this.markSupersededWaitingSessions(requirementId, 'DESIGN', session.id);
-      await this.closeStaleBrainstormWaitingSessions(requirementId);
+      await this.markSupersededWaitingSessions(workItemId, 'DESIGN', session.id);
+      await this.closeStaleBrainstormWaitingSessions(workItemId);
 
-      await this.prisma.requirement.update({
-        where: { id: requirementId },
+      await this.prisma.workItem.update({
+        where: { id: workItemId },
         data: { ideationStatus: ideationStatusMap[IdeationStatus.DESIGN_WAITING_CONFIRMATION] },
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown design revision error';
-      this.logger.error(`Design revision failed for requirement ${requirementId}: ${message}`);
+      this.logger.error(`Design revision failed for workItem ${workItemId}: ${message}`);
 
       await this.prisma.ideationSession.update({
         where: { id: session.id },
@@ -968,19 +991,19 @@ export class RequirementsService {
         },
       });
 
-      await this.prisma.requirement.update({
-        where: { id: requirementId },
+      await this.prisma.workItem.update({
+        where: { id: workItemId },
         data: { ideationStatus: ideationStatusMap[IdeationStatus.DESIGN_WAITING_CONFIRMATION] },
       });
     }
     });
 
-    return this.findOne(requirementId);
+    return this.findOne(workItemId);
   }
 
-  async confirmDesign(requirementId: string) {
-    const requirement = await this.findOne(requirementId);
-    const currentStatus = requirement.ideationStatus as IdeationStatus;
+  async confirmDesign(workItemId: string) {
+    const workItem = await this.findOne(workItemId);
+    const currentStatus = workItem.ideationStatus as IdeationStatus;
 
     if (currentStatus !== IdeationStatus.DESIGN_WAITING_CONFIRMATION) {
       throw new BadRequestException(
@@ -988,7 +1011,7 @@ export class RequirementsService {
       );
     }
 
-    const lastSession = requirement.ideationSessions
+    const lastSession = workItem.ideationSessions
       ?.filter((s: { stage: string }) => s.stage === 'DESIGN')
       .sort((a: { attempt: number }, b: { attempt: number }) => b.attempt - a.attempt)[0];
 
@@ -997,7 +1020,7 @@ export class RequirementsService {
       if (output.design) {
         await this.prisma.ideationArtifact.create({
           data: {
-            requirementId,
+            workItemId,
             type: 'DESIGN_SPEC',
             content: output.design as any,
           },
@@ -1011,40 +1034,40 @@ export class RequirementsService {
           statusMessage: 'Confirmed by user.',
         },
       });
-      await this.markSupersededWaitingSessions(requirementId, 'DESIGN', lastSession.id);
+      await this.markSupersededWaitingSessions(workItemId, 'DESIGN', lastSession.id);
     }
 
-    await this.prisma.requirement.update({
-      where: { id: requirementId },
+    await this.prisma.workItem.update({
+      where: { id: workItemId },
       data: { ideationStatus: ideationStatusMap[IdeationStatus.DESIGN_CONFIRMED] },
     });
 
-    return this.findOne(requirementId);
+    return this.findOne(workItemId);
   }
 
-  async getIdeationSessionEventsPage(requirementId: string, sessionId: string, query: PaginationQuery = {}) {
+  async getIdeationSessionEventsPage(workItemId: string, sessionId: string, query: PaginationQuery = {}) {
     const paging = parsePagination(query);
-    const session = await this.prisma.ideationSession.findFirst({ where: { id: sessionId, requirementId }, select: { id: true } });
-    if (!session) throw new NotFoundException('Ideation session not found for this requirement.');
+    const session = await this.prisma.ideationSession.findFirst({ where: { id: sessionId, workItemId }, select: { id: true } });
+    if (!session) throw new NotFoundException('Ideation session not found for this workItem.');
     const where = { sessionId };
     const [items, total] = await Promise.all([this.prisma.ideationSessionEvent.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }), this.prisma.ideationSessionEvent.count({ where })]);
     return pageResult(items, total, paging);
   }
 
-  async getIdeationSessionEvents(requirementId: string, sessionId: string) {
+  async getIdeationSessionEvents(workItemId: string, sessionId: string) {
     const session = await this.prisma.ideationSession.findFirst({
-      where: { id: sessionId, requirementId },
+      where: { id: sessionId, workItemId },
       select: { id: true },
     });
     if (!session) {
-      throw new NotFoundException('Ideation session not found for this requirement.');
+      throw new NotFoundException('Ideation session not found for this workItem.');
     }
     return this.ideationSessionEventsRepository.list(sessionId);
   }
 
-  async finalizeIdeation(requirementId: string) {
-    const requirement = await this.findOne(requirementId);
-    const currentStatus = requirement.ideationStatus as IdeationStatus;
+  async finalizeIdeation(workItemId: string) {
+    const workItem = await this.findOne(workItemId);
+    const currentStatus = workItem.ideationStatus as IdeationStatus;
 
     if (currentStatus !== IdeationStatus.DESIGN_CONFIRMED) {
       throw new BadRequestException(
@@ -1052,16 +1075,16 @@ export class RequirementsService {
       );
     }
 
-    const confirmedBrief = await this.getConfirmedBrief(requirementId);
+    const confirmedBrief = await this.getConfirmedBrief(workItemId);
 
-    // Enrich the requirement with brainstorm content
+    // Enrich the workItem with brainstorm content
     const updateData: { description?: string; acceptanceCriteria?: string; ideationStatus: string } = {
       ideationStatus: ideationStatusMap[IdeationStatus.FINALIZED],
     };
 
     if (confirmedBrief) {
       const enrichedDescription = [
-        requirement.description,
+        workItem.description,
         '',
         '--- 产品简报 ---',
         confirmedBrief.expandedDescription,
@@ -1074,7 +1097,7 @@ export class RequirementsService {
       ].join('\n');
 
       const enrichedCriteria = [
-        requirement.acceptanceCriteria,
+        workItem.acceptanceCriteria,
         '',
         '--- 成功指标 ---',
         ...confirmedBrief.successMetrics.map((metric: string) => `- ${metric}`),
@@ -1084,12 +1107,12 @@ export class RequirementsService {
       updateData.acceptanceCriteria = enrichedCriteria;
     }
 
-    await this.prisma.requirement.update({
-      where: { id: requirementId },
+    await this.prisma.workItem.update({
+      where: { id: workItemId },
       data: updateData,
     });
 
-    return this.findOne(requirementId);
+    return this.findOne(workItemId);
   }
 
   // ── Ideation helpers ──
@@ -1223,7 +1246,7 @@ export class RequirementsService {
   }
 
   private assertDesignHasComponentContextWhenNeeded(
-    requirementId: string,
+    workItemId: string,
     sessionId: string,
     readyRepos: Array<{ id: string; name: string; localPath: string }>,
     repositoryComponentContext: RepositoryComponentContext | null,
@@ -1231,12 +1254,12 @@ export class RequirementsService {
   ): void {
     const isMockExecutor = executor instanceof MockAiExecutor;
     this.logger.log(
-      `Ideation design trace requirement=${requirementId} session=${sessionId} executor=${executor.constructor?.name ?? 'unknown'} readyRepoCount=${readyRepos.length} componentContext=${repositoryComponentContext ? 'present' : 'absent'} mock=${isMockExecutor}`,
+      `Ideation design trace workItem=${workItemId} session=${sessionId} executor=${executor.constructor?.name ?? 'unknown'} readyRepoCount=${readyRepos.length} componentContext=${repositoryComponentContext ? 'present' : 'absent'} mock=${isMockExecutor}`,
     );
 
     if (readyRepos.length === 0) {
       this.logger.warn(
-        `Ideation design trace requirement=${requirementId} session=${sessionId}: no READY repositories (need localPath + syncStatus=READY). The model will not receive repo component context.`,
+        `Ideation design trace workItem=${workItemId} session=${sessionId}: no READY repositories (need localPath + syncStatus=READY). The model will not receive repo component context.`,
       );
       return;
     }
@@ -1251,20 +1274,20 @@ export class RequirementsService {
         ? `Scanned ${primary.name} (${primary.id}) at ${primary.localPath} but found no .tsx under known component/page paths (src/components, src/pages, apps/*/src/...).`
         : `Executor ${executor.constructor?.name ?? 'unknown'} has no buildRepositoryComponentContext.`;
       const msg = `DESIGN_COMPONENT_CONTEXT_EMPTY: ${detail}`;
-      this.logger.error(`${msg} requirement=${requirementId} session=${sessionId}`);
+      this.logger.error(`${msg} workItem=${workItemId} session=${sessionId}`);
       throw new Error(msg);
     }
   }
 
 
   private async markSupersededWaitingSessions(
-    requirementId: string,
+    workItemId: string,
     stage: 'BRAINSTORM' | 'DESIGN',
     keepSessionId: string,
   ) {
     await this.prisma.ideationSession.updateMany({
       where: {
-        requirementId,
+        workItemId,
         stage,
         status: ideationSessionStatusMap[IdeationSessionStatus.WAITING_CONFIRMATION],
         id: { not: keepSessionId },
@@ -1277,10 +1300,10 @@ export class RequirementsService {
   }
 
   /** Brainstorm sessions can be left WAITING_CONFIRMATION after manual DB fixes or edge paths; design cannot coexist with them. */
-  private async closeStaleBrainstormWaitingSessions(requirementId: string) {
+  private async closeStaleBrainstormWaitingSessions(workItemId: string) {
     await this.prisma.ideationSession.updateMany({
       where: {
-        requirementId,
+        workItemId,
         stage: 'BRAINSTORM',
         status: ideationSessionStatusMap[IdeationSessionStatus.WAITING_CONFIRMATION],
       },
@@ -1292,33 +1315,33 @@ export class RequirementsService {
     });
   }
 
-  private async getPreviousBriefs(requirementId: string): Promise<BrainstormBrief[]> {
+  private async getPreviousBriefs(workItemId: string): Promise<BrainstormBrief[]> {
     const artifacts = await this.prisma.ideationArtifact.findMany({
-      where: { requirementId, type: 'BRAINSTORM_BRIEF' },
+      where: { workItemId, type: 'BRAINSTORM_BRIEF' },
       orderBy: { version: 'asc' },
     });
     return artifacts.map((a) => a.content as unknown as BrainstormBrief);
   }
 
-  private async getConfirmedBrief(requirementId: string): Promise<BrainstormBrief | null> {
+  private async getConfirmedBrief(workItemId: string): Promise<BrainstormBrief | null> {
     const artifact = await this.prisma.ideationArtifact.findFirst({
-      where: { requirementId, type: 'BRAINSTORM_BRIEF' },
+      where: { workItemId, type: 'BRAINSTORM_BRIEF' },
       orderBy: { version: 'desc' },
     });
     return artifact ? (artifact.content as unknown as BrainstormBrief) : null;
   }
 
-  private async getConfirmedDesign(requirementId: string): Promise<DesignSpec | null> {
+  private async getConfirmedDesign(workItemId: string): Promise<DesignSpec | null> {
     const artifact = await this.prisma.ideationArtifact.findFirst({
-      where: { requirementId, type: 'DESIGN_SPEC' },
+      where: { workItemId, type: 'DESIGN_SPEC' },
       orderBy: { version: 'desc' },
     });
     return artifact ? (artifact.content as unknown as DesignSpec) : null;
   }
 
-  private async getPreviousDesigns(requirementId: string): Promise<DesignSpec[]> {
+  private async getPreviousDesigns(workItemId: string): Promise<DesignSpec[]> {
     const artifacts = await this.prisma.ideationArtifact.findMany({
-      where: { requirementId, type: 'DESIGN_SPEC' },
+      where: { workItemId, type: 'DESIGN_SPEC' },
       orderBy: { version: 'asc' },
     });
     return artifacts.map((a) => a.content as unknown as DesignSpec);
@@ -1326,7 +1349,7 @@ export class RequirementsService {
 
 
   private resolveReadyRepositories(
-    requirement: Awaited<ReturnType<typeof this.findOne>>,
+    workItem: Awaited<ReturnType<typeof this.findOne>>,
   ): Array<{
     id: string;
     name: string;
@@ -1335,7 +1358,7 @@ export class RequirementsService {
     localPath: string;
     syncStatus: string;
   }> {
-    const explicit = (requirement.requirementRepositories ?? [])
+    const explicit = (workItem.requirementRepositories ?? [])
       .map(
         (rr: {
           repository: {
@@ -1351,8 +1374,8 @@ export class RequirementsService {
       .filter((repo) => Boolean(repo.id));
 
     const fallback = (
-      requirement.project?.workspace?.repositories ??
-      requirement.workspace?.repositories ??
+      workItem.project?.workspace?.repositories ??
+      workItem.workspace?.repositories ??
       []
     )
       .map((repo: {
@@ -1394,29 +1417,29 @@ export class RequirementsService {
       }));
   }
 
-  private getFirstReadyRepositoryId(requirement: Awaited<ReturnType<typeof this.findOne>>): string | null {
-    const repositories = this.resolveReadyRepositories(requirement);
+  private getFirstReadyRepositoryId(workItem: Awaited<ReturnType<typeof this.findOne>>): string | null {
+    const repositories = this.resolveReadyRepositories(workItem);
     const first = repositories?.[0];
     return first?.id ?? null;
   }
 
   private async ensureIdeationRepositoriesReady(
-    requirement: Awaited<ReturnType<typeof this.findOne>>,
+    workItem: Awaited<ReturnType<typeof this.findOne>>,
   ): Promise<Awaited<ReturnType<typeof this.findOne>>> {
-    if (this.resolveReadyRepositories(requirement).length > 0) {
-      return requirement;
+    if (this.resolveReadyRepositories(workItem).length > 0) {
+      return workItem;
     }
 
     const repositoryIds = Array.from(
       new Set(
-        (requirement.requirementRepositories ?? [])
+        (workItem.requirementRepositories ?? [])
           .map((item: { repository?: { id?: string } }) => item.repository?.id)
           .filter((id): id is string => Boolean(id)),
       ),
     );
     if (repositoryIds.length === 0) {
       throw new BadRequestException(
-        'IDEATION_REPOSITORY_MISSING: No repositories are associated with this requirement. Link a workspace repository and retry.',
+        'IDEATION_REPOSITORY_MISSING: No repositories are associated with this workItem. Link a workspace repository and retry.',
       );
     }
 
@@ -1443,7 +1466,7 @@ export class RequirementsService {
       }
     }
 
-    const refreshedRequirement = await this.findOne(requirement.id);
+    const refreshedRequirement = await this.findOne(workItem.id);
     if (this.resolveReadyRepositories(refreshedRequirement).length > 0) {
       return refreshedRequirement;
     }
@@ -1459,9 +1482,9 @@ export class RequirementsService {
   }
 
   private buildIdeationRepositoryReadinessSummary(
-    requirement: Awaited<ReturnType<typeof this.findOne>>,
+    workItem: Awaited<ReturnType<typeof this.findOne>>,
   ): string {
-    const repositories = (requirement.requirementRepositories ?? [])
+    const repositories = (workItem.requirementRepositories ?? [])
       .map((item: { repository?: Record<string, unknown> }) => item.repository)
       .filter((repo): repo is Record<string, unknown> => Boolean(repo));
     if (repositories.length === 0) {
@@ -1486,13 +1509,13 @@ export class RequirementsService {
 
   private async buildRepositoryComponentContext(
     executor: AIExecutor,
-    requirement: Awaited<ReturnType<typeof this.findOne>>,
+    workItem: Awaited<ReturnType<typeof this.findOne>>,
   ): Promise<import('../common/types').RepositoryComponentContext | null> {
-    const repositories = this.resolveReadyRepositories(requirement);
+    const repositories = this.resolveReadyRepositories(workItem);
 
     if (!repositories || repositories.length === 0) {
       this.logger.warn(
-        `Ideation component context skipped requirement=${requirement.id}: no READY repositories (localPath + syncStatus=READY).`,
+        `Ideation component context skipped workItem=${workItem.id}: no READY repositories (localPath + syncStatus=READY).`,
       );
       return null;
     }
@@ -1517,18 +1540,18 @@ export class RequirementsService {
         const files = Array.isArray(built.componentFiles) ? built.componentFiles.length : 0;
         const pages = Array.isArray(built.pageExamples) ? built.pageExamples.length : 0;
         this.logger.log(
-          `Ideation component context built requirement=${requirement.id} repo=${repo.id} componentFiles=${files} pageExamples=${pages}`,
+          `Ideation component context built workItem=${workItem.id} repo=${repo.id} componentFiles=${files} pageExamples=${pages}`,
         );
       } else {
         this.logger.warn(
-          `Ideation component context empty after scan requirement=${requirement.id} repo=${repo.id} localPath=${repo.localPath}`,
+          `Ideation component context empty after scan workItem=${workItem.id} repo=${repo.id} localPath=${repo.localPath}`,
         );
       }
       return built as import('../common/types').RepositoryComponentContext | null;
     }
 
     this.logger.warn(
-      `Ideation component context unavailable requirement=${requirement.id}: executor ${executor.constructor?.name ?? 'unknown'} has no buildRepositoryComponentContext.`,
+      `Ideation component context unavailable workItem=${workItem.id}: executor ${executor.constructor?.name ?? 'unknown'} has no buildRepositoryComponentContext.`,
     );
     return null;
   }

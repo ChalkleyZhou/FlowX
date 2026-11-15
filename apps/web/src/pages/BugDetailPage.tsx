@@ -467,7 +467,7 @@ export function BugDetailPage() {
                     修复需求
                   </div>
                   <div className="break-words text-sm font-medium text-foreground">
-                    {bug?.fixRequirement?.title ?? '尚未发起修复'}
+                    {bug?.fixWorkItem?.title ?? '尚未发起修复'}
                   </div>
                 </div>
                 <div className="rounded-lg border border-border bg-muted p-4">
@@ -491,7 +491,7 @@ export function BugDetailPage() {
               <div className="space-y-4">
                 <div className="rounded-lg border border-border bg-muted p-4">
                   <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">来源需求</div>
-                  <div className="break-words text-sm font-medium text-foreground">{bug?.requirement?.title ?? '未关联需求'}</div>
+                  <div className="break-words text-sm font-medium text-foreground">{bug?.workItem?.title ?? '未关联工作项'}</div>
                 </div>
                 <div className="rounded-lg border border-border bg-muted p-4">
                   <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">来源分支</div>

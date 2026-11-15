@@ -36,7 +36,7 @@ export class ProjectsService {
         versions: { select: { id: true, name: true }, orderBy: { createdAt: 'asc' as const } },
         _count: {
           select: {
-            requirements: true,
+            workItems: true,
           },
         },
       },
@@ -47,17 +47,17 @@ export class ProjectsService {
     const paging = parsePagination(query);
     const where = { ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}), ...(query.q?.trim() ? { OR: [{ name: { contains: query.q.trim() } }, { code: { contains: query.q.trim() } }] } : {}) };
     const [items, total, scopeTotal, workspaceCount, requirementCount] = await Promise.all([
-      this.prisma.project.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { workspace: true, currentVersion: { select: { id: true, name: true } }, _count: { select: { requirements: true, versions: true } } } }),
+      this.prisma.project.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { workspace: true, currentVersion: { select: { id: true, name: true } }, _count: { select: { workItems: true, versions: true } } } }),
       this.prisma.project.count({ where }),
       this.prisma.project.count({ where: query.workspaceId ? { workspaceId: query.workspaceId } : {} }),
       this.prisma.workspace.count({ where: { projects: { some: where } } }),
-      this.prisma.requirement.count({ where: { project: where } }),
+      this.prisma.workItem.count({ where: { project: where, kind: 'REQUIREMENT' } }),
     ]);
     return { ...pageResult(items, total, paging), summary: { total: scopeTotal, visible: total, workspaceCount, requirementCount } };
   }
 
   async findDetail(id: string) {
-    const project = await this.prisma.project.findUnique({ where: { id }, include: { workspace: true, currentVersion: { select: { id: true, name: true } }, _count: { select: { requirements: true, versions: true } } } });
+    const project = await this.prisma.project.findUnique({ where: { id }, include: { workspace: true, currentVersion: { select: { id: true, name: true } }, _count: { select: { workItems: true, versions: true } } } });
     if (!project) throw new NotFoundException('Project not found.');
     return project;
   }
@@ -79,7 +79,7 @@ export class ProjectsService {
         versions: { select: { id: true, name: true }, orderBy: { createdAt: 'asc' as const } },
         _count: {
           select: {
-            requirements: true,
+            workItems: true,
           },
         },
       },
@@ -99,7 +99,7 @@ export class ProjectsService {
         },
         currentVersion: { select: { id: true, name: true } },
         versions: { select: { id: true, name: true }, orderBy: { createdAt: 'asc' as const } },
-        requirements: {
+        workItems: {
           orderBy: { createdAt: 'desc' },
           include: {
             version: { select: { id: true, name: true } },
@@ -111,7 +111,7 @@ export class ProjectsService {
         },
         _count: {
           select: {
-            requirements: true,
+            workItems: true,
           },
         },
       },
@@ -119,9 +119,9 @@ export class ProjectsService {
 
     return {
       ...project,
-      requirements: project.requirements.map((requirement) => ({
-        ...requirement,
-        assignments: requirement.assignments.map((assignment) => ({
+        workItems: project.workItems.filter((item) => item.kind === 'REQUIREMENT').map((workItem) => ({
+        ...workItem,
+        assignments: workItem.assignments.map((assignment) => ({
           id: assignment.id,
           userId: assignment.userId,
           role: assignment.role,
@@ -136,7 +136,7 @@ export class ProjectsService {
             avatarUrl: assignment.user.avatarUrl,
           },
         })),
-        scheduleSummary: summarizeRequirementSchedule(requirement.assignments),
+        scheduleSummary: summarizeRequirementSchedule(workItem.assignments),
       })),
     };
   }

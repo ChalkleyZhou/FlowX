@@ -11,8 +11,8 @@ function buildScheduleSearch(
   if (params.projectId) {
     next.set('projectId', params.projectId);
   }
-  if (params.requirementId) {
-    next.set('requirementId', params.requirementId);
+  if (params.workItemId) {
+    next.set('workItemId', params.workItemId);
   }
   if (params.onlyMe) {
     next.set('onlyMe', '1');

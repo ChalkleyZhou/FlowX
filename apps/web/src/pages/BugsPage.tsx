@@ -369,7 +369,7 @@ export function BugsPage() {
                 description={<p className="leading-6">{item.description}</p>}
                 details={
                   <>
-                    <p className="text-sm leading-6 text-muted-foreground">来源需求：{item.requirement?.title ?? '未关联需求'}</p>
+                    <p className="text-sm leading-6 text-muted-foreground">来源工作项：{item.workItem?.title ?? '未关联工作项'}</p>
                     <p className="text-sm leading-6 text-muted-foreground">分支：{item.branchName ?? '未记录分支'}</p>
                   </>
                 }

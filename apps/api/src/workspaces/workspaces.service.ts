@@ -34,7 +34,7 @@ export class WorkspacesService {
         _count: {
           select: {
             projects: true,
-            requirements: true,
+            workItems: true,
           },
         },
       },
@@ -45,15 +45,15 @@ export class WorkspacesService {
     const paging = parsePagination(query);
     const where = query.q?.trim() ? { name: { contains: query.q.trim() } } : {};
     const [items, total, workspaceCount, repositoryCount, projectCount, requirementCount] = await Promise.all([
-      this.prisma.workspace.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { _count: { select: { projects: true, requirements: true, repositories: true } } } }),
+      this.prisma.workspace.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { _count: { select: { projects: true, workItems: true, repositories: true } } } }),
       this.prisma.workspace.count({ where }),
-      this.prisma.workspace.count(), this.prisma.repository.count(), this.prisma.project.count(), this.prisma.requirement.count(),
+      this.prisma.workspace.count(), this.prisma.repository.count(), this.prisma.project.count(), this.prisma.workItem.count(),
     ]);
     return { ...pageResult(items, total, paging), summary: { workspaceCount, repositoryCount, projectCount, requirementCount } };
   }
 
   findDetail(id: string) {
-    return this.prisma.workspace.findUniqueOrThrow({ where: { id }, include: { _count: { select: { projects: true, requirements: true, repositories: true } } } });
+    return this.prisma.workspace.findUniqueOrThrow({ where: { id }, include: { _count: { select: { projects: true, workItems: true, repositories: true } } } });
   }
 
   async listRepositories(workspaceId: string, query: PaginationQuery & { q?: string; status?: string } = {}) {
@@ -85,7 +85,7 @@ export class WorkspacesService {
         _count: {
           select: {
             projects: true,
-            requirements: true,
+            workItems: true,
           },
         },
       },
@@ -227,7 +227,7 @@ export class WorkspacesService {
         where: { repositoryId },
         data: { repositoryId: null },
       });
-      await tx.issue.updateMany({
+      await tx.workItem.updateMany({
         where: { repositoryId },
         data: { repositoryId: null },
       });

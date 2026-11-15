@@ -19,7 +19,7 @@ Cursor local Chat uses this same local execution contract with a shorter task pi
 6. If the repository has a registered **remote URL**, the API verifies the branch tip with `git ls-remote` before completing.
 7. Workflow moves to review (same path as cloud execution). An **execution HTML artifact** may be written under `.flowx-data` (see [workflow-artifacts.md](./workflow-artifacts.md)).
 
-**`POST /workflow-runs/:id/execution/complete-local`** remains a compatibility wrapper for old Web, MCP, and Extension clients without cooperative control. Controlled sessions and retry sessions must use the explicit session endpoint, so an old Agent cannot submit a result into a replacement session.
+本地执行完成统一通过 **`POST /execution-sessions/:executionSessionId/complete`** 提交。工作流级领取、Web、本地 Agent 和 Extension 都必须使用 handoff 返回的 `executionSessionId`；缺少会话时应重新领取具体执行项，不能按工作流直接回传。
 
 Cancel with **`POST /workflow-runs/:id/execution/cancel-local`** to return to `EXECUTION_PENDING`.
 
@@ -37,7 +37,7 @@ Example: `flowx/work/local-handoff/ocal-001` for run id ending in `ocal-001`.
 
 ## API: session complete body
 
-Use the same body for **`POST /execution-sessions/:executionSessionId/complete`**. The compatibility endpoint accepts it only for non-controlled sessions.
+Use this body for **`POST /execution-sessions/:executionSessionId/complete`**.
 
 ```json
 {
@@ -72,5 +72,5 @@ Rules:
 
 - Handoff builder: `apps/api/src/workflow/workflow-local-handoff.ts`
 - Remote verify: `apps/api/src/workflow/workflow-git-remote.service.ts`
-- Orchestration: `apps/api/src/workflow/workflow.service.ts` (`claimLocalExecution`, `completeLocalExecution`, …)
+- Orchestration: `apps/api/src/workflow/workflow.service.ts` (`claimLocalExecution`, `completeLocalExecutionBySession`, …)
 - Web UI: `apps/web/src/pages/WorkflowRunDetailPage.tsx`

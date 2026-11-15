@@ -3,7 +3,7 @@
 FlowX local Chat is the lightweight path for Cursor-based development:
 
 ```text
-Pick requirement or bug -> match local repository -> open Cursor Chat context -> report completion to FlowX
+Pick execution item -> match local repository -> open Cursor Chat context -> report completion to FlowX
 ```
 
 The developer keeps working in Cursor Chat/Agent. FlowX keeps the task, workflow, handoff, completion, and review state.
@@ -12,13 +12,15 @@ The developer keeps working in Cursor Chat/Agent. FlowX keeps the task, workflow
 
 ### `GET /cursor-local/tasks?workspaceId=...`
 
-Returns requirements and bugs that can be started from Cursor.
+Returns confirmed, local capable execution items whose parent WorkItem workflow has reached `EXECUTION_PENDING`.
 
 Each item includes:
 
-- `id`
-- `type`: `requirement` or `bug`
-- `title`
+- `id`: execution item id
+- `workItemId`
+- `kind`: `REQUIREMENT` or `ISSUE`
+- `title`: execution item title
+- `workItemTitle`
 - `status`
 - `priority`
 - `scheduleSignal`
@@ -29,44 +31,41 @@ Each item includes:
 
 ### `POST /cursor-local/handoff`
 
-Creates or starts a local Chat workflow, claims local execution, and returns:
+Claims the selected execution item, starts its execution session, and returns:
 
 - `workflow`
 - `handoff`
 - `chatPrompt`
-- `taskType`
-- `taskId`
+- `executionItemId`
+- `workItemId`
 
 Example body:
 
 ```json
 {
-  "taskType": "requirement",
-  "taskId": "req-1",
-  "repositoryIds": ["repo-1"],
+  "executionItemId": "execution-item-1",
+  "claimKey": "cursor-device-claim-1",
   "aiProvider": "codex"
 }
 ```
 
-For bugs, use `"taskType": "bug"` and the bug id. FlowX creates a `LOCAL_CHAT` run backed by a bug-fix requirement, but it does not auto-run cloud execution.
+### `GET /cursor-local/execution-items/:executionItemId/context`
 
-### `GET /cursor-local/tasks/:type/:id/context`
-
-Returns the raw requirement or bug context for MCP tools or extension previews.
+Returns the WorkItem and execution item context for MCP tools or extension previews.
 
 ## Relationship to local execution APIs
 
-`/cursor-local/handoff` is a convenience endpoint over the existing local execution path:
+`/cursor-local/handoff` is the execution-item entry point:
 
-1. Create or reuse a `LOCAL_CHAT` workflow.
-2. Bootstrap it directly to `EXECUTION_PENDING`.
-3. Call `POST /workflow-runs/:id/execution/claim-local`.
+1. Validate that the execution plan is confirmed and linked to a workflow.
+2. Claim the selected execution item with a user and idempotency key.
+3. Create the execution session and transition the workflow to `EXECUTION_RUNNING`.
 4. Return the local handoff plus a Cursor Chat prompt.
 
-When the developer finishes, the extension or MCP server should call:
+When the developer finishes, the extension or MCP server calls:
 
 ```text
-POST /workflow-runs/:id/execution/complete-local
+POST /execution-sessions/:executionSessionId/complete
 ```
 
 The body can include local Chat metadata:
@@ -89,7 +88,7 @@ The body can include local Chat metadata:
 }
 ```
 
-If a full FlowX workflow is already in `EXECUTION_PENDING`, Cursor integrations can call `claim-local` directly and do not need to create a new `LOCAL_CHAT` run.
+For a WorkItem with multiple execution items, each Cursor or local Agent session claims its own execution item. The workflow enters review only after all required execution items complete.
 
 ## MCP role
 
@@ -124,13 +123,13 @@ In the FlowX activity bar:
 4. Return to Cursor after the plugin reports that sign-in is complete.
 5. Open the local Git repository that matches the FlowX task repository URL.
 6. Use `FlowX: Refresh Tasks`.
-7. Select a requirement or bug and run `FlowX: Start in Chat`.
+7. Select an execution item and run `FlowX: Start in Chat`.
 8. Paste the copied prompt into Cursor Chat/Agent and implement the change.
 9. When the task is ready, run `FlowX: Report Completion` from the active task.
 
 The extension stores the FlowX API URL and session token locally. Users do not need to enter a workspace id; FlowX resolves visible tasks from the signed-in session.
 
-`Start in Chat` writes `.flowx/tasks/<task-id>.md` plus a small JSON handoff snapshot. `Report Completion` collects local Git state, sends `complete-local`, and saves `.flowx/completion-drafts/<workflowRunId>.json` if the API call fails.
+`Start in Chat` writes `.flowx/tasks/<execution-item-id>.md` plus a small JSON handoff snapshot. `Report Completion` collects local Git state and submits it with the handoff `executionSessionId`; network failures are reported for retry after reconnection.
 
 ### Cursor MCP setup
 

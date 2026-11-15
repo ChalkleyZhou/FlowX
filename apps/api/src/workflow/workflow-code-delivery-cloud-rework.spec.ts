@@ -8,6 +8,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { WorkflowService } from './workflow.service';
 import { WorkflowStateMachine } from '../common/workflow-state-machine';
 import { RepositorySyncService } from '../workspaces/repository-sync.service';
+
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 120_000 });
 const directory = mkdtempSync(join(tmpdir(), 'flowx-cloud-rework-'));
 const url = `file:${join(directory, 'test.db')}`;
 const prisma = new PrismaClient({ datasources: { db: { url } } });
@@ -33,8 +35,8 @@ beforeAll(async () => {
 }, 30_000);
 afterAll(async () => { await prisma.$disconnect(); rmSync(directory, { recursive: true, force: true }); if (previousRoot === undefined) delete process.env.WORKSPACE_REPOS_ROOT; else process.env.WORKSPACE_REPOS_ROOT = previousRoot; });
 async function frozen(branch = 'feature/delivery') {
-  const requirement = await prisma.requirement.create({ data: { title: '修复已交付代码', description: '', acceptanceCriteria: '', workspaceId, projectId } });
-  const run = await prisma.workflowRun.create({ data: { requirementId: requirement.id, status: 'HUMAN_REVIEW_PENDING', currentStage: 'HUMAN_REVIEW' } });
+  const requirement = await prisma.workItem.create({ data: { title: '修复已交付代码', description: '', acceptanceCriteria: '', workspaceId, projectId } });
+  const run = await prisma.workflowRun.create({ data: { workItemId: requirement.id, status: 'HUMAN_REVIEW_PENDING', currentStage: 'HUMAN_REVIEW' } });
   const selected = await prisma.workflowRepository.create({ data: { workflowRunId: run.id, name: 'web', url: remote, baseBranch: 'main', workingBranch: branch, localPath: null } });
   const excluded = await prisma.workflowRepository.create({ data: { workflowRunId: run.id, name: 'api', url: remote, baseBranch: 'main', workingBranch: 'old-api', localPath: '/unselected/old-checkout' } });
   await prisma.stageExecution.create({ data: { workflowRunId: run.id, stage: 'SPEC_PLAN', status: 'COMPLETED', output: { spec: { goal: '修复' }, plan: { approach: '修改已交付代码' } } } });

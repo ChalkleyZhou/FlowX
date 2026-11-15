@@ -14,8 +14,8 @@ describe('handoff snapshots', () => {
         workflowRepositoryId: 'workflow-repo-1',
         workflowRunId: 'workflow-1',
       },
-      taskId: 'req-1',
-      taskType: 'requirement',
+      executionItemId: 'req-1',
+      workItemId: 'work-1',
       workflow: { id: 'workflow-1' },
     });
 
@@ -32,15 +32,18 @@ describe('handoff snapshots', () => {
       {
         eligible: true,
         id: 'req-1',
+        workItemId: 'work-1',
+        kind: 'REQUIREMENT',
+        workItemTitle: 'Add local handoff',
         repository: null,
         status: 'IN_PROGRESS',
         title: 'Add local handoff',
-        type: 'requirement',
         workflowRunId: 'workflow-1',
       },
       {
         executionSessionId: 'session-1',
-        requirement: { acceptanceCriteria: '', description: '', id: 'req-1', title: 'Add local handoff' },
+        workItem: { acceptanceCriteria: '', description: '', id: 'work-1', kind: 'REQUIREMENT', title: 'Add local handoff' },
+        executionItem: { id: 'req-1', title: 'Add local handoff', description: '' },
         specPlan: {
           spec: { goal: 'Goal', scope: ['scope'], acceptanceCriteria: ['AC'] },
           plan: {

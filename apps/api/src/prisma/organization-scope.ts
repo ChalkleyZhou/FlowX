@@ -29,11 +29,15 @@ function projectScope(organizationId: string) {
 }
 
 function requirementScope(organizationId: string) {
+  return { kind: 'REQUIREMENT', project: projectScope(organizationId) };
+}
+
+function workItemScope(organizationId: string) {
   return { project: projectScope(organizationId) };
 }
 
 function workflowScope(organizationId: string) {
-  return { requirement: requirementScope(organizationId) };
+  return { workItem: workItemScope(organizationId) };
 }
 
 function executionSessionScope(organizationId: string) {
@@ -46,15 +50,15 @@ function executionSessionScope(organizationId: string) {
 }
 
 const scopeFactories: Record<string, (organizationId: string) => Record<string, unknown>> = {
+  WorkItem: workItemScope,
   Workspace: workspaceScope,
   Project: projectScope,
   ProjectVersion: (organizationId) => ({ project: projectScope(organizationId) }),
   Repository: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
-  Requirement: requirementScope,
-  RequirementChange: (organizationId) => ({ requirement: requirementScope(organizationId) }),
-  PrototypeImport: (organizationId) => ({ requirement: requirementScope(organizationId) }),
-  RequirementAssignment: (organizationId) => ({ requirement: requirementScope(organizationId) }),
-  RequirementRepository: (organizationId) => ({ requirement: requirementScope(organizationId) }),
+  RequirementChange: (organizationId) => ({ workItem: requirementScope(organizationId) }),
+  PrototypeImport: (organizationId) => ({ workItem: requirementScope(organizationId) }),
+  RequirementAssignment: (organizationId) => ({ workItem: requirementScope(organizationId) }),
+  RequirementRepository: (organizationId) => ({ workItem: requirementScope(organizationId) }),
   BriefingSource: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
   BriefingEvent: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
   BriefingFeed: (organizationId) => ({ project: projectScope(organizationId) }),
@@ -85,12 +89,11 @@ const scopeFactories: Record<string, (organizationId: string) => Record<string, 
   CodeExecution: (organizationId) => ({ workflowRun: workflowScope(organizationId) }),
   ReviewReport: (organizationId) => ({ workflowRun: workflowScope(organizationId) }),
   ReviewFinding: (organizationId) => ({ workflowRun: workflowScope(organizationId) }),
-  Issue: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
-  IdeationSession: (organizationId) => ({ requirement: requirementScope(organizationId) }),
+  IdeationSession: (organizationId) => ({ workItem: requirementScope(organizationId) }),
   IdeationSessionEvent: (organizationId) => ({
-    session: { requirement: requirementScope(organizationId) },
+    session: { workItem: requirementScope(organizationId) },
   }),
-  IdeationArtifact: (organizationId) => ({ requirement: requirementScope(organizationId) }),
+  IdeationArtifact: (organizationId) => ({ workItem: requirementScope(organizationId) }),
   Bug: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
   TestCaseLibrary: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
   TestCaseModule: (organizationId) => ({ library: { workspace: workspaceScope(organizationId) } }),
@@ -101,7 +104,7 @@ const scopeFactories: Record<string, (organizationId: string) => Record<string, 
     testCaseDefinition: { library: { workspace: workspaceScope(organizationId) } },
   }),
   TestDesign: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
-  TestDesignRequirement: (organizationId) => ({
+  TestDesignWorkItem: (organizationId) => ({
     testDesign: { workspace: workspaceScope(organizationId) },
   }),
   TestDesignWorkflowRun: (organizationId) => ({
@@ -118,7 +121,7 @@ const scopeFactories: Record<string, (organizationId: string) => Record<string, 
     testRun: { testPlan: { testRequest: { workspace: workspaceScope(organizationId) } } },
   } }),
   TestRequest: (organizationId) => ({ workspace: workspaceScope(organizationId) }),
-  TestRequestRequirement: (organizationId) => ({
+  TestRequestWorkItem: (organizationId) => ({
     testRequest: { workspace: workspaceScope(organizationId) },
   }),
   TestRequestWorkflowRun: (organizationId) => ({

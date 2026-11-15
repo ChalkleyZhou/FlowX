@@ -56,7 +56,7 @@ export class ProjectVersionsService {
     if (project.currentVersionId === versionId) {
       throw new ConflictException("Cannot delete the project's current version.");
     }
-    const assigned = await this.prisma.requirement.count({ where: { versionId } });
+    const assigned = await this.prisma.workItem.count({ where: { versionId } });
     if (assigned > 0) {
       throw new ConflictException('Cannot delete a version that is still assigned to requirements.');
     }

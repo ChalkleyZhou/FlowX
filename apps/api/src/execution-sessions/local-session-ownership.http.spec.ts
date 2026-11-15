@@ -190,8 +190,8 @@ describe('LOCAL NONE 会话通用写入口真实 HTTP 与 SQLite 归属边界', 
 
   it.each(['BRAINSTORM', 'DESIGN', 'SPEC_PLAN'])('专用 %s 阶段不能用通用终态接口绕过编排', async (stage) => {
     const project = await prisma.project.create({ data: { workspaceId: workspace, name: '阶段测试' } });
-    const requirement = await prisma.requirement.create({ data: { workspaceId: workspace, projectId: project.id, title: '测试', description: '', acceptanceCriteria: '' } });
-    const workflow = await prisma.workflowRun.create({ data: { requirementId: requirement.id, currentStage: stage, status: `${stage}_PENDING` } });
+    const requirement = await prisma.workItem.create({ data: { workspaceId: workspace, projectId: project.id, title: '测试', description: '', acceptanceCriteria: '' } });
+    const workflow = await prisma.workflowRun.create({ data: { workItemId: requirement.id, currentStage: stage, status: `${stage}_PENDING` } });
     const execution = await prisma.stageExecution.create({ data: { workflowRunId: workflow.id, stage, status: 'RUNNING' } });
     for (const action of ['complete', 'cancel', 'fail']) {
       const session = await createSession();
@@ -220,8 +220,8 @@ describe('LOCAL NONE 会话通用写入口真实 HTTP 与 SQLite 归属边界', 
 
 async function legacyDesignArtifact(createdByUserId: string | null) {
   const project = await prisma.project.create({ data: { workspaceId: workspace, name: '兼容设计稿测试' } });
-  const requirement = await prisma.requirement.create({ data: { workspaceId: workspace, projectId: project.id, title: '旧设计稿', description: '', acceptanceCriteria: '' } });
-  const workflow = await prisma.workflowRun.create({ data: { requirementId: requirement.id, currentStage: 'DESIGN', status: 'DESIGN_WAITING_CONFIRMATION' } });
+  const requirement = await prisma.workItem.create({ data: { workspaceId: workspace, projectId: project.id, title: '旧设计稿', description: '', acceptanceCriteria: '' } });
+  const workflow = await prisma.workflowRun.create({ data: { workItemId: requirement.id, currentStage: 'DESIGN', status: 'DESIGN_WAITING_CONFIRMATION' } });
   return prisma.artifact.create({ data: {
     workflowRunId: workflow.id, workspaceId: workspace, artifactType: 'DESIGN_HTML', name: 'design.html', storageProvider: 'local',
     storageKey: `managed/legacy/${randomUUID()}/design.html`, status: 'PENDING', version: '1', byteSize: 4, createdByUserId,

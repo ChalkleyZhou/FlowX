@@ -32,7 +32,7 @@ import { useRememberedSearchFilters } from '../utils/list-filter-storage';
 
 export function ScheduleHubPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  useRememberedSearchFilters('schedule', ['requirementId', 'role', 'onlyMe', 'from', 'to'], (params) => {
+  useRememberedSearchFilters('schedule', ['workItemId', 'role', 'onlyMe', 'from', 'to'], (params) => {
     if (params.get('from') && params.get('to')) return params;
     const next = new URLSearchParams(params);
     const fallback = defaultScheduleRange();
@@ -47,7 +47,7 @@ export function ScheduleHubPage() {
   const [ganttRefreshToken, setGanttRefreshToken] = useState(0);
 
   const projectId = useScopedProjectId();
-  const requirementId = searchParams.get('requirementId') ?? '';
+  const workItemId = searchParams.get('workItemId') ?? '';
   const role = searchParams.get('role') ?? '';
   const onlyMe = searchParams.get('onlyMe') === '1' || searchParams.get('onlyMe') === 'true';
   const { from, to } = parseScheduleRange(searchParams);
@@ -55,14 +55,14 @@ export function ScheduleHubPage() {
   useEffect(() => {
     let cancelled = false;
     setSelectedRequirement(null);
-    if (requirementId) void api.getRequirement(requirementId).then(item => {
+    if (workItemId) void api.getRequirement(workItemId).then(item => {
       if (!cancelled) {
         setSelectedRequirement(item);
-        if (projectId && item.project.id !== projectId) updateParams({requirementId:null});
+        if (projectId && item.project.id !== projectId) updateParams({workItemId:null});
       }
     }).catch(error => { if (!cancelled) toast.error(error instanceof Error ? error.message : '加载需求失败'); });
     return () => { cancelled = true; };
-  }, [requirementId,projectId]);
+  }, [workItemId,projectId]);
 
   function updateParams(patch: Record<string, string | null>) {
     const next = new URLSearchParams(searchParams);
@@ -102,13 +102,13 @@ export function ScheduleHubPage() {
     () => ({
       scope: 'project' as const,
       projectId: projectId || undefined,
-      requirementId: requirementId || undefined,
+      workItemId: workItemId || undefined,
       role: role || undefined,
       onlyMe: onlyMe || undefined,
       from,
       to,
     }),
-    [projectId, requirementId, role, onlyMe, from, to],
+    [projectId, workItemId, role, onlyMe, from, to],
   );
 
   return (
@@ -123,7 +123,7 @@ export function ScheduleHubPage() {
               新建排期
             </Button>
             <Button variant="outline" asChild>
-              <Link to="/requirements">需求列表</Link>
+              <Link to="/work-items">工作项列表</Link>
             </Button>
           </>
         )}
@@ -132,9 +132,9 @@ export function ScheduleHubPage() {
       <Card className="mb-4 rounded-md border border-border bg-card">
         <CardContent className="space-y-4 p-4">
           <div className="flex flex-wrap items-end gap-4">
-            <FilterField label="需求">
-              <PagedSelect value={requirementId} onValueChange={value => updateParams({requirementId:value})}
-                label="筛选需求" placeholder={projectId ? '全部需求' : '请先选择项目'} disabled={!projectId}
+            <FilterField label="工作项">
+              <PagedSelect value={workItemId} onValueChange={value => updateParams({workItemId:value})}
+                label="筛选工作项" placeholder={projectId ? '全部工作项' : '请先选择项目'} disabled={!projectId}
                 selectedLabel={selectedRequirement?.title} scopeKey={projectId} allowClear emptyLabel="全部需求"
                 loadPage={async query => { const result = await api.getRequirements({...query,projectId}); return {...result,items:result.items.map(item => ({id:item.id,name:item.title}))}; }} />
             </FilterField>
@@ -224,7 +224,7 @@ export function ScheduleHubPage() {
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
         initialProjectId={projectId}
-        initialRequirementId={requirementId}
+        initialRequirementId={workItemId}
         onSaved={() => setGanttRefreshToken((n) => n + 1)}
       />
     </>

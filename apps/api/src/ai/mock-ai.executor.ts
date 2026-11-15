@@ -8,6 +8,8 @@ import {
   GenerateDesignOptions,
   GenerateDesignOutput,
   GenerateSpecPlanInput,
+  GenerateExecutionSplitInput,
+  ExecutionSplitOutput,
   GenerateTestDesignInput,
   RepositoryComponentContext,
   RepositoryContext,
@@ -225,8 +227,8 @@ footer { padding: 20px 40px 40px; color: #64748b; font-size: 13px; }
   ): Promise<SpecPlanOutput> {
     return {
       spec: {
-        goal: input.requirement.title,
-        scope: [input.requirement.description || '实现已确认需求'],
+        goal: input.workItem.title,
+        scope: [input.workItem.description || '实现已确认需求'],
         nonGoals: ['本阶段不扩展无关功能'],
         acceptanceCriteria: ['核心路径可用', '关键验收可验证'],
         constraints: [],
@@ -239,6 +241,26 @@ footer { padding: 20px 40px 40px; color: #64748b; font-size: 13px; }
         verification: ['对照 acceptanceCriteria 自检'],
       },
       notes: { checklist: [], openQuestions: [] },
+    };
+  }
+
+  async splitExecutionPlan(
+    input: GenerateExecutionSplitInput,
+    _context?: AIInvocationContext,
+  ): Promise<ExecutionSplitOutput> {
+    const description = input.workItem.description || input.workItem.title;
+    return {
+      items: [{
+        title: input.workItem.title,
+        description,
+        target: 'LOCAL',
+        ownerHint: null,
+        required: true,
+        dependsOnIndexes: [],
+        verification: input.workItem.acceptanceCriteria
+          ? [input.workItem.acceptanceCriteria]
+          : ['完成本地实现并通过相关测试'],
+      }],
     };
   }
 
@@ -268,7 +290,7 @@ footer { padding: 20px 40px 40px; color: #64748b; font-size: 13px; }
           action: 'CREATE' as const,
           coverageKeys: ['acceptance'],
           proposedCase: {
-            title: `${input.requirement.title} 主流程`,
+            title: `${input.workItem.title} 主流程`,
             priority: 'P1',
             precondition: '测试环境可用',
             steps: ['准备需求所需数据', '执行主流程操作'],
@@ -277,11 +299,11 @@ footer { padding: 20px 40px 40px; color: #64748b; font-size: 13px; }
           },
         }];
     return {
-      sourceSummary: { generatedBy: 'mock', requirementId: input.requirement.id },
+      sourceSummary: { generatedBy: 'mock', workItemId: input.workItem.id },
       coverageSummary: { mainFlow: 1, acceptance: 1 },
       candidates: functional,
       smokeCases: [{
-        title: `${input.requirement.title} 冒烟验证`,
+        title: `${input.workItem.title} 冒烟验证`,
         priority: 'P0',
         precondition: '测试环境可用',
         steps: ['进入改动涉及的入口', '执行最短关键路径'],
@@ -304,7 +326,7 @@ footer { padding: 20px 40px 40px; color: #64748b; font-size: 13px; }
           ];
 
     return {
-      patchSummary: `Execute approved Spec&Plan for "${input.requirement.title}" across backend workflow orchestration and operator UI.`,
+      patchSummary: `Execute approved Spec&Plan for "${input.workItem.title}" across backend workflow orchestration and operator UI.`,
       changedFiles: touchpoints,
       codeChanges: touchpoints.slice(0, 3).map((file) => ({
         file,

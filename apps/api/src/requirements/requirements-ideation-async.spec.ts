@@ -8,7 +8,7 @@ function setup() {
       update: vi.fn().mockResolvedValue({}),
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
-    requirement: { update: vi.fn().mockResolvedValue({}) },
+    workItem: { update: vi.fn().mockResolvedValue({}) },
   };
   const executor = { brainstorm: vi.fn(), generateDesign: vi.fn() };
   const service = new RequirementsService(
@@ -32,7 +32,7 @@ describe('RequirementsService asynchronous ideation', () => {
 
     await expect(service.startBrainstorm('req-1')).resolves.toMatchObject({ id: 'req-1' });
     expect(executor.brainstorm).not.toHaveBeenCalled();
-    expect(prisma.requirement.update).toHaveBeenCalledWith({
+    expect(prisma.workItem.update).toHaveBeenCalledWith({
       where: { id: 'req-1' }, data: { ideationStatus: 'BRAINSTORM_PENDING' },
     });
     await vi.waitFor(() => expect(executor.brainstorm).toHaveBeenCalledOnce());
@@ -51,7 +51,7 @@ describe('RequirementsService asynchronous ideation', () => {
     await vi.waitFor(() => expect(prisma.ideationSession.update).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ status: 'FAILED', errorMessage: 'provider unavailable' }),
     })));
-    expect(prisma.requirement.update).toHaveBeenLastCalledWith({
+    expect(prisma.workItem.update).toHaveBeenLastCalledWith({
       where: { id: 'req-1' }, data: { ideationStatus: 'NONE' },
     });
   });

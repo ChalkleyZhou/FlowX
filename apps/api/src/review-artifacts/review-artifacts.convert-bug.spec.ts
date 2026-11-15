@@ -8,7 +8,7 @@ describe('ReviewArtifactsService.convertReviewFindingToBug', () => {
         findUnique: vi.fn().mockResolvedValue({
           id: 'finding-1',
           convertedBugId: null,
-          convertedIssueId: null,
+          convertedWorkItemId: null,
           workflowRunId: 'run-1',
           severity: 'HIGH',
           title: '登录失败',
@@ -20,8 +20,8 @@ describe('ReviewArtifactsService.convertReviewFindingToBug', () => {
       workflowRun: {
         findUnique: vi.fn().mockResolvedValue({
           id: 'run-1',
-          requirementId: 'req-1',
-          requirement: { workspaceId: 'workspace-1', projectId: 'project-1' },
+          workItemId: 'req-1',
+          workItem: { workspaceId: 'workspace-1', projectId: 'project-1' },
         }),
       },
       bug: {
@@ -36,7 +36,7 @@ describe('ReviewArtifactsService.convertReviewFindingToBug', () => {
       data: expect.objectContaining({
         workspaceId: 'workspace-1',
         projectId: 'project-1',
-        requirementId: 'req-1',
+        workItemId: 'req-1',
         workflowRunId: 'run-1',
       }),
     }));

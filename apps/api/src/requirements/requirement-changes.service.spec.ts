@@ -36,7 +36,7 @@ beforeAll(async () => {
   projectId = (await prisma.project.create({ data: { name: '变更项目', workspaceId: workspace.id } })).id;
 }, 30_000);
 afterAll(async () => { await prisma.$disconnect(); rmSync(directory, { recursive: true, force: true }); });
-async function requirement() { return prisma.requirement.create({ data: { title: '导出', description: '原始描述', acceptanceCriteria: '', projectId } }); }
+async function requirement() { return prisma.workItem.create({ data: { kind: 'REQUIREMENT', title: '导出', description: '原始描述', acceptanceCriteria: '', projectId, workspaceId: (await prisma.project.findUniqueOrThrow({ where: { id: projectId } })).workspaceId } }); }
 
 describe('正式需求变更', () => {
   it('列表和重启按组织隔离，其他组织不能触发流程或读取原型元数据', async () => {
@@ -63,7 +63,7 @@ describe('正式需求变更', () => {
     const rows = await new RequirementChangesService(prisma as never, workflow as never).list(req.id);
     expect(rows.changes.map((row) => row.revision)).toEqual([1, 2]);
     expect(rows.revision).toBe(2);
-    expect((await prisma.requirement.findUniqueOrThrow({ where: { id: req.id } })).description).toBe('原始描述');
+    expect((await prisma.workItem.findUniqueOrThrow({ where: { id: req.id } })).description).toBe('原始描述');
   });
   it('并发提交维持连续修订，同 requestId 并发只保存一条', async () => {
     const req = await requirement();
@@ -80,11 +80,11 @@ describe('正式需求变更', () => {
   });
   it('跨需求来源与跨组织读取被隔离', async () => {
     const req = await requirement(); const other = await requirement();
-    const source = await prisma.workflowRun.create({ data: { requirementId: other.id } });
+    const source = await prisma.workflowRun.create({ data: { workItemId: other.id } });
     await expect(service.create(req.id, { content: '非法来源', mode: 'SUPPLEMENT', requestId: 'source', sourceWorkflowRunId: source.id }, author)).rejects.toMatchObject({ status: 404 });
     const scoped = prisma.$extends({ query: { $allModels: { async $allOperations({ model, operation, args, query }) { return query(applyOrganizationScope(model, operation, args, 'other-org')); } } } });
     await expect(new RequirementChangesService(scoped as never, workflow as never).list(req.id)).rejects.toMatchObject({ status: 404 });
-    expect(applyOrganizationScope('RequirementChange', 'findMany', {}, 'org')).toMatchObject({ where: { requirement: { project: { workspace: { organizationId: 'org' } } } } });
+    expect(applyOrganizationScope('RequirementChange', 'findMany', {}, 'org')).toMatchObject({ where: { workItem: { project: { workspace: { organizationId: 'org' } } } } });
   });
   it('重新走流程先持久化，冲突保留待启动且重试与并发只建一个流程', async () => {
     const req = await requirement();
@@ -92,7 +92,7 @@ describe('正式需求变更', () => {
     const record = await service.create(req.id, { content: '重新设计导出', mode: 'RESTART', requestId: 'restart' }, author);
     expect(record).toMatchObject({ restartStatus: 'PENDING', errorMessage: expect.stringContaining('活跃任务') });
     workflow.restartFromRequirementChange.mockImplementation(async (changeId: string) => {
-      const run = await prisma.workflowRun.create({ data: { requirementId: req.id, sourceChangeId: changeId } });
+      const run = await prisma.workflowRun.create({ data: { workItemId: req.id, sourceChangeId: changeId } });
       return run;
     });
     const results = await Promise.all([service.restart(req.id, record.id), service.restart(req.id, record.id)]);
@@ -107,7 +107,7 @@ describe('正式需求变更', () => {
   it('过期旧启动回调不能覆盖新租约已成功启动的结果', async () => {
     const req = await requirement();
     workflow.restartFromRequirementChange.mockImplementationOnce(async (changeId: string) => {
-      await prisma.workflowRun.create({ data: { requirementId: req.id, sourceChangeId: changeId } });
+      await prisma.workflowRun.create({ data: { workItemId: req.id, sourceChangeId: changeId } });
       await prisma.requirementChange.update({ where: { id: changeId }, data: { restartStatus: 'STARTED', errorMessage: null, updatedAt: new Date(Date.now() + 1000) } });
       throw new Error('旧租约的准备回调已过期');
     });
@@ -118,7 +118,7 @@ describe('正式需求变更', () => {
   it('grounding 在启动完成写回前快速失败，不会被 STARTED 完成回调覆盖', async () => {
     const req = await requirement();
     workflow.restartFromRequirementChange.mockImplementationOnce(async (changeId: string) => {
-      const run = await prisma.workflowRun.create({ data: { requirementId: req.id, sourceChangeId: changeId, status: 'FAILED', currentStage: 'REPOSITORY_GROUNDING' } });
+      const run = await prisma.workflowRun.create({ data: { workItemId: req.id, sourceChangeId: changeId, status: 'FAILED', currentStage: 'REPOSITORY_GROUNDING' } });
       await prisma.requirementChange.update({ where: { id: changeId }, data: { restartStatus: 'FAILED', errorMessage: '仓库上下文准备失败' } });
       return run;
     });
@@ -128,17 +128,17 @@ describe('正式需求变更', () => {
   });
   it('中断的 STARTING 租约到期后恢复可重试状态，待执行阶段不能冒充已读取', async () => {
     const req = await requirement();
-    const row = await prisma.requirementChange.create({ data: { requirementId: req.id, revision: 1, content: '恢复', mode: 'RESTART', requestId: 'lease', createdByUserId: 'author', createdByName: '提交人', restartStatus: 'STARTING', updatedAt: new Date(Date.now() - 11 * 60_000) } });
-    await prisma.requirement.update({ where: { id: req.id }, data: { revision: 1 } });
+    const row = await prisma.requirementChange.create({ data: { workItemId: req.id, revision: 1, content: '恢复', mode: 'RESTART', requestId: 'lease', createdByUserId: 'author', createdByName: '提交人', restartStatus: 'STARTING', updatedAt: new Date(Date.now() - 11 * 60_000) } });
+    await prisma.workItem.update({ where: { id: req.id }, data: { revision: 1 } });
     expect((await service.list(req.id)).changes[0]).toMatchObject({ id: row.id, restartStatus: 'FAILED', errorMessage: expect.stringContaining('继续启动流程') });
-    const run = await prisma.workflowRun.create({ data: { requirementId: req.id, currentStage: 'SPEC_PLAN', status: 'SPEC_PLAN_PENDING' } });
+    const run = await prisma.workflowRun.create({ data: { workItemId: req.id, currentStage: 'SPEC_PLAN', status: 'SPEC_PLAN_PENDING' } });
     await prisma.stageExecution.create({ data: { workflowRunId: run.id, stage: 'DESIGN', status: 'COMPLETED', input: { requirementRevision: 1 } } });
     await prisma.stageExecution.create({ data: { workflowRunId: run.id, stage: 'SPEC_PLAN', status: 'PENDING' } });
     expect(await service.list(req.id, run.id)).toMatchObject({ contextRevision: 0, hasPendingChanges: true });
   });
   it('列表两次读取之间并发新增变更时，响应修订不能落后于已返回记录', async () => {
     const req = await requirement();
-    const run = await prisma.workflowRun.create({ data: { requirementId: req.id, status: 'EXECUTION_RUNNING', currentStage: 'EXECUTION' } });
+    const run = await prisma.workflowRun.create({ data: { workItemId: req.id, status: 'EXECUTION_RUNNING', currentStage: 'EXECUTION' } });
     await prisma.stageExecution.create({ data: { workflowRunId: run.id, stage: 'EXECUTION', status: 'RUNNING', input: { requirementRevision: 0 } } });
     let readDone!: () => void; let resume!: () => void;
     const read = new Promise<void>((resolve) => { readDone = resolve; });
@@ -156,12 +156,12 @@ describe('正式需求变更', () => {
   });
   it('旧任务保留读取修订，后续上下文包含全部正式增量', async () => {
     const req = await requirement();
-    const run = await prisma.workflowRun.create({ data: { requirementId: req.id } });
+    const run = await prisma.workflowRun.create({ data: { workItemId: req.id } });
     await prisma.stageExecution.create({ data: { workflowRunId: run.id, stage: 'EXECUTION', status: 'RUNNING', input: { requirementRevision: 0 } } });
     await service.create(req.id, { content: '增加 Excel', mode: 'SUPPLEMENT', requestId: 'context' }, author);
     const result = await service.list(req.id, run.id);
     expect(result).toMatchObject({ contextRevision: 0, hasPendingChanges: true });
-    const latest = await prisma.requirement.findUniqueOrThrow({ where: { id: req.id }, include: { changes: true } });
+    const latest = await prisma.workItem.findUniqueOrThrow({ where: { id: req.id }, include: { changes: true } });
     expect(effectiveRequirementDescription(latest)).toContain('增加 Excel');
     expect(effectiveRequirementDescription(latest)).toContain('最新变更');
     expect(effectiveRequirementDescription(latest)).toContain('原始描述');
@@ -186,7 +186,7 @@ describe('正式变更上传原型', () => {
     await vi.waitFor(async () => expect((await instance.list(req.id)).changes[0].restartStatus).toBe('STARTED'));
     const row = await prisma.requirementChange.findUniqueOrThrow({ where: { id: first.id } });
     expect(row.prototype).toMatchObject({ snapshot });
-    expect((await prisma.requirement.findUniqueOrThrow({ where: { id: req.id } })).description).toBe('原始描述');
+    expect((await prisma.workItem.findUniqueOrThrow({ where: { id: req.id } })).description).toBe('原始描述');
     expect(effectiveRequirementDescription({ description: '原始描述', changes: [row] })).toContain(analysis.description);
     expect((await instance.createWithPrototype(req.id, dto, Buffer.from('zip'), 'new.zip', author)).id).toBe(first.id);
     expect(prototypes.store).toHaveBeenCalledTimes(1);
@@ -256,10 +256,10 @@ describe('原型变更 HTTP 与真实归档', () => {
   }
   it('multipart 省略说明可提交，真实保存原包、组织 AI 分析与下载，无需确认', async () => {
     const req = await requirement();
-    const source = await prisma.workflowRun.create({ data: { requirementId: req.id, status: 'DONE', aiProvider: 'cursor' } });
+    const source = await prisma.workflowRun.create({ data: { workItemId: req.id, status: 'DONE', aiProvider: 'cursor' } });
     workflow.restartFromRequirementChange.mockResolvedValue({});
     expect(await httpService.list(req.id, source.id)).toMatchObject({ aiProvider: 'cursor' });
-    const response = await fetch(`${baseUrl}/requirements/${req.id}/changes/prototype`, { method: 'POST', headers: { 'x-org': 'org' }, body: form() });
+    const response = await fetch(`${baseUrl}/work-items/${req.id}/changes/prototype`, { method: 'POST', headers: { 'x-org': 'org' }, body: form() });
     expect(response.status).toBe(201);
     const change = await response.json() as { id: string; content: string };
     expect(change.content).toBe('更新原型：原型.zip');
@@ -267,14 +267,14 @@ describe('原型变更 HTTP 与真实归档', () => {
     expect(resolveInvocationContext).toHaveBeenLastCalledWith('cursor', expect.objectContaining({ flowxOrganizationId: 'org', flowxUserId: 'author' }));
     expect(analyzePrototype).toHaveBeenLastCalledWith(expect.objectContaining({ material: expect.stringContaining('新版原型'), answers: {} }), {});
     expect(analyzePrototype.mock.calls.at(-1)?.[0]).not.toHaveProperty('previous');
-    const download = await fetch(`${baseUrl}/requirements/${req.id}/changes/${change.id}/source`, { headers: { 'x-org': 'org' } });
+    const download = await fetch(`${baseUrl}/work-items/${req.id}/changes/${change.id}/source`, { headers: { 'x-org': 'org' } });
     expect(download.status).toBe(200); expect(Buffer.from(await download.arrayBuffer())).toEqual(validZip);
-    expect((await fetch(`${baseUrl}/requirements/${req.id}/changes/${change.id}/source`, { headers: { 'x-org': 'other' } })).status).toBe(404);
-    expect((await fetch(`${baseUrl}/requirements/${req.id}/changes/${change.id}/source`)).status).toBe(403);
+    expect((await fetch(`${baseUrl}/work-items/${req.id}/changes/${change.id}/source`, { headers: { 'x-org': 'other' } })).status).toBe(404);
+    expect((await fetch(`${baseUrl}/work-items/${req.id}/changes/${change.id}/source`)).status).toBe(403);
   });
   it('非法 AI、补充模式、缺失幂等键与损坏 ZIP 均不产生变更或影响旧轮', async () => {
     const req = await requirement();
-    const endpoint = `${baseUrl}/requirements/${req.id}/changes/prototype`;
+    const endpoint = `${baseUrl}/work-items/${req.id}/changes/prototype`;
     for (const values of [{ aiProvider: 'unknown' }, { mode: 'SUPPLEMENT' }, { requestId: '' }]) {
       expect((await fetch(endpoint, { method: 'POST', headers: { 'x-org': 'org' }, body: form(values) })).status).toBe(400);
     }

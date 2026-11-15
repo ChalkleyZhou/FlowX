@@ -227,10 +227,10 @@ describe('完整本地测试真实 SQLite 链路', () => {
     const snapshotId = target.cases[0].snapshotId;
     await prisma.testRun.delete({ where: { id: placeholder.id } });
     await prisma.testPlan.update({ where: { id: placeholder.testPlanId }, data: { status: 'READY' } });
-    const requirement = await prisma.requirement.create({ data: { title: '登录', description: '登录需求', acceptanceCriteria: '成功进入首页', workspaceId, projectId, versionId: projectVersionId } });
+    const requirement = await prisma.workItem.create({ data: { title: '登录', description: '登录需求', acceptanceCriteria: '成功进入首页', workspaceId, projectId, versionId: projectVersionId } });
     const repository = await prisma.repository.create({ data: { workspaceId, name: '应用', url: 'https://example.invalid/app.git' } });
     async function delivery(branch: string, headSha: string) {
-      const workflow = await prisma.workflowRun.create({ data: { requirementId: requirement.id, status: 'DONE' } });
+      const workflow = await prisma.workflowRun.create({ data: { workItemId: requirement.id, status: 'DONE' } });
       const repo = await prisma.workflowRepository.create({ data: { workflowRunId: workflow.id, repositoryId: repository.id, name: '应用', url: repository.url, baseBranch: 'main', workingBranch: branch } });
       const revision = { workflowRepositoryId: repo.id, branch, headSha };
       await prisma.stageExecution.create({ data: { workflowRunId: workflow.id, stage: 'EXECUTION', status: 'COMPLETED', input: { executor: 'CODE_DELIVERY' }, output: { delivery: { submissions: [revision] } } } });
@@ -268,8 +268,8 @@ describe('完整本地测试真实 SQLite 链路', () => {
     const { run, request, targets: [target] } = await smokeRun(2);
     await prisma.testRunCase.delete({ where: { id: target.cases[1].id } });
     await prisma.testCaseSnapshot.update({ where: { id: target.cases[0].snapshotId }, data: { targetKeys: ['web', 'ios'] } });
-    const requirement = await prisma.requirement.create({ data: { title: '范围完整性', description: '测试', acceptanceCriteria: '完整覆盖', workspaceId, projectId, versionId: projectVersionId } });
-    const workflow = await prisma.workflowRun.create({ data: { requirementId: requirement.id, status: 'DONE' } });
+    const requirement = await prisma.workItem.create({ data: { title: '范围完整性', description: '测试', acceptanceCriteria: '完整覆盖', workspaceId, projectId, versionId: projectVersionId } });
+    const workflow = await prisma.workflowRun.create({ data: { workItemId: requirement.id, status: 'DONE' } });
     const repository = await prisma.workflowRepository.create({ data: { workflowRunId: workflow.id, name: '范围仓库', url: 'https://example.invalid/scope.git', baseBranch: 'main', workingBranch: 'main' } });
     const baseline = [{ workflowRepositoryId: repository.id, branch: 'main', headSha: 'scope-sha' }];
     await prisma.testRunTarget.update({ where: { id: target.id }, data: { expectedRevisions: baseline } });

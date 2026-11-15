@@ -158,7 +158,7 @@ function buildWaitingSpecPlanWorkflow(output: unknown = sampleSpecPlan) {
     id: 'run-sp',
     status: 'SPEC_PLAN_WAITING_CONFIRMATION',
     aiProvider: 'mock',
-    requirement: { id: 'req-1', title: 'Test requirement' },
+    workItem: { id: 'req-1', title: 'Test requirement' },
     stageExecutions: [
       {
         id: 'se-1',
@@ -179,7 +179,7 @@ describe('WorkflowService SpecPlan lifecycle', () => {
       updatedAt: new Date(),
       status: 'SPEC_PLAN_PENDING',
       aiProvider: 'mock',
-      requirement: {
+      workItem: {
         id: 'req-1',
         title: 'Test requirement',
         description: 'desc',
@@ -256,7 +256,7 @@ describe('WorkflowService SpecPlan lifecycle', () => {
       status: 'FAILED',
       currentStage: 'SPEC_PLAN',
       aiProvider: 'mock',
-      requirement: {
+      workItem: {
         id: 'req-1',
         title: 'Test requirement',
         description: 'desc',
@@ -430,7 +430,7 @@ describe('WorkflowService review-finding execution flow', () => {
       status: 'REVIEW_PENDING',
       aiProvider: 'cursor',
       codeExecution: { patchSummary: 'done', changedFiles: [], codeChanges: [], diffArtifacts: [] },
-      requirement: { id: 'req-1', title: 'Review', description: '', acceptanceCriteria: '', workspace: {} },
+      workItem: { id: 'req-1', title: 'Review', description: '', acceptanceCriteria: '', workspace: {} },
       workflowRepositories: [],
       stageExecutions: [],
     };
@@ -678,6 +678,49 @@ function makeServiceWithPrisma(prisma: unknown): WorkflowService {
   );
 }
 
+describe('WorkflowService execution item convergence', () => {
+  it('moves a running workflow to human review after all required items complete', async () => {
+    const tx = {
+      workflowRun: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'workflow-1', status: 'EXECUTION_RUNNING', supersededByChangeId: null }),
+        update: vi.fn().mockResolvedValue({}),
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ id: 'workflow-1', status: 'HUMAN_REVIEW_PENDING' }),
+      },
+      stageExecution: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: 'stage-1' }),
+      },
+    };
+    const prisma = {
+      executionPlan: {
+        findFirst: vi.fn().mockResolvedValue({ items: [
+          { id: 'item-1', required: true, status: 'COMPLETED' },
+          { id: 'item-2', required: false, status: 'READY' },
+        ] }),
+      },
+      $transaction: vi.fn(async (callback: (client: unknown) => Promise<unknown>) => callback(tx)),
+    };
+    const service = makeServiceWithPrisma(prisma);
+
+    await service.advanceExecutionPlanIfComplete('workflow-1');
+
+    expect(tx.workflowRun.update).toHaveBeenNthCalledWith(1, expect.objectContaining({ data: expect.objectContaining({ status: 'REVIEW_PENDING' }) }));
+    expect(tx.workflowRun.update).toHaveBeenNthCalledWith(2, expect.objectContaining({ data: expect.objectContaining({ status: 'HUMAN_REVIEW_PENDING' }) }));
+    expect(tx.stageExecution.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'COMPLETED' }) }));
+  });
+
+  it('does not converge while a required item is incomplete', async () => {
+    const prisma = {
+      executionPlan: { findFirst: vi.fn().mockResolvedValue({ items: [{ id: 'item-1', required: true, status: 'BLOCKED' }] }) },
+      $transaction: vi.fn(),
+    };
+    const service = makeServiceWithPrisma(prisma);
+
+    await expect(service.advanceExecutionPlanIfComplete('workflow-1')).resolves.toBeNull();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
 const validLocalDesign = {
   design: {
     overview: '高保真设计',
@@ -730,7 +773,7 @@ describe('WorkflowService submitLocalDesign', () => {
         findUniqueOrThrow: vi.fn().mockResolvedValue({
           id: 'run-ld',
           updatedAt: new Date('2026-10-22T00:00:00Z'),
-          requirement: { workspace: { organizationId: 'org' }, project: {} },
+          workItem: { workspace: { organizationId: 'org' }, project: {} },
           status: 'DESIGN_PENDING',
           stageExecutions: [{ id: 'se-1', stage: 'DESIGN', status: 'PENDING', attempt: 1 }],
         }),
@@ -778,7 +821,7 @@ describe('WorkflowService submitLocalDesign', () => {
         findUniqueOrThrow: vi.fn().mockResolvedValue({
           id: 'run-ld',
           updatedAt: new Date('2026-10-22T00:00:00Z'),
-          requirement: { workspace: { organizationId: 'org' }, project: {} },
+          workItem: { workspace: { organizationId: 'org' }, project: {} },
           status: 'DESIGN_PENDING',
           stageExecutions: [{ id: 'se-1', stage: 'DESIGN', status: 'PENDING', attempt: 1 }],
         }),
@@ -1032,7 +1075,7 @@ describe('WorkflowService publish retry after partial failure', () => {
     ({
       id: 'wf-1',
       status: 'DONE',
-      requirement: {
+      workItem: {
         title: 'Improve publish flow',
       },
       reviewFindings: [],

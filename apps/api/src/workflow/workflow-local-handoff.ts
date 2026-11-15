@@ -22,15 +22,21 @@ export interface LocalHandoffPayload {
   workflowRunId: string;
   status: string;
   executor: 'LOCAL';
-  executionSessionId?: string;
-  traceId?: string;
-  protocolVersion?: string;
-  requirement: {
+  executionSessionId: string;
+  traceId: string;
+  protocolVersion: string;
+  workItem: {
     id: string;
+    kind: string;
     title: string;
     description: string;
     acceptanceCriteria: string;
   } & RequirementProfileFields;
+  executionItem: {
+    id: string;
+    title: string;
+    description: string;
+  };
   specPlan: SpecPlanOutput;
   repositories: LocalHandoffRepository[];
   artifacts: {
@@ -42,7 +48,8 @@ export interface LocalHandoffPayload {
 export interface BuildLocalHandoffInput {
   workflowRunId: string;
   status: string;
-  requirement: LocalHandoffPayload['requirement'];
+  workItem: LocalHandoffPayload['workItem'];
+  executionItem: LocalHandoffPayload['executionItem'];
   specPlan: SpecPlanOutput;
   workflowRepositories: Array<{
     id: string;
@@ -54,11 +61,11 @@ export interface BuildLocalHandoffInput {
   }>;
   planMetaPath?: string | null;
   planHtmlPath?: string | null;
-  executionSession?: {
+  executionSession: {
     id: string;
     traceId: string;
     protocolVersion: string;
-  } | null;
+  };
 }
 
 export function buildSuggestedCommitMessage(workflowRunId: string, requirementTitle: string) {
@@ -82,20 +89,17 @@ export function buildRepositoryCheckoutHints(baseBranch: string, workingBranch: 
 }
 
 export function buildLocalHandoff(input: BuildLocalHandoffInput): LocalHandoffPayload {
-  const suggestedCommitMessage = buildSuggestedCommitMessage(input.workflowRunId, input.requirement.title);
+  const suggestedCommitMessage = buildSuggestedCommitMessage(input.workflowRunId, input.workItem.title);
 
   return {
     workflowRunId: input.workflowRunId,
     status: input.status,
     executor: 'LOCAL',
-    ...(input.executionSession
-      ? {
-          executionSessionId: input.executionSession.id,
-          traceId: input.executionSession.traceId,
-          protocolVersion: input.executionSession.protocolVersion,
-        }
-      : {}),
-    requirement: input.requirement,
+    executionSessionId: input.executionSession.id,
+    traceId: input.executionSession.traceId,
+    protocolVersion: input.executionSession.protocolVersion,
+    workItem: input.workItem,
+    executionItem: input.executionItem,
     specPlan: input.specPlan,
     repositories: input.workflowRepositories.map((repository) => ({
       workflowRepositoryId: repository.id,

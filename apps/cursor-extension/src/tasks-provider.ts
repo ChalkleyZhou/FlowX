@@ -47,7 +47,7 @@ export class FlowXTasksProvider implements vscode.TreeDataProvider<vscode.TreeIt
       if (tasks.length === 0) {
         return [
           this.createPlaceholder(
-            'No FlowX tasks. Create a requirement or bug in FlowX.',
+            'No FlowX execution items. Create a WorkItem and start its workflow in FlowX.',
             'flowx.openRequirements',
             'Open FlowX Requirements',
           ),

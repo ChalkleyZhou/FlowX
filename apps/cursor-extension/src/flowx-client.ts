@@ -2,8 +2,10 @@ import type { FlowXConfig } from './config-model';
 
 export interface FlowXTaskItem {
   id: string;
-  type: 'requirement' | 'bug';
+  workItemId: string;
+  kind: 'REQUIREMENT' | 'ISSUE';
   title: string;
+  workItemTitle: string;
   status: string;
   priority?: string | null;
   scheduleSignal?: string | null;
@@ -16,9 +18,8 @@ export interface FlowXTaskItem {
 }
 
 export interface StartLocalChatInput {
-  taskType: 'requirement' | 'bug';
-  taskId: string;
-  repositoryIds?: string[];
+  executionItemId: string;
+  claimKey: string;
 }
 
 export interface LocalChatHandoff {
@@ -36,8 +37,8 @@ export interface LocalChatHandoff {
     }>;
   };
   chatPrompt: string;
-  taskType: 'requirement' | 'bug';
-  taskId: string;
+  executionItemId: string;
+  workItemId: string;
 }
 
 export interface LocalHandoffPayload {
@@ -45,12 +46,14 @@ export interface LocalHandoffPayload {
   executionSessionId?: string | null;
   status?: string;
   executor?: 'LOCAL';
-  requirement: {
+  workItem: {
     id: string;
+    kind: 'REQUIREMENT' | 'ISSUE';
     title: string;
     description: string;
     acceptanceCriteria: string;
   };
+  executionItem: { id: string; title: string; description: string };
   specPlan: {
     spec: {
       goal: string;
@@ -140,13 +143,6 @@ export class FlowXClient {
     return this.request<LocalHandoffPayload>(
       `/workflow-runs/${encodeURIComponent(workflowRunId)}/execution/local-handoff`,
     );
-  }
-
-  async completeLocal(workflowRunId: string, input: CompleteLocalInput): Promise<unknown> {
-    return this.request(`/workflow-runs/${encodeURIComponent(workflowRunId)}/execution/complete-local`, {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
   }
 
   async completeExecutionSession(executionSessionId: string, input: CompleteLocalInput): Promise<unknown> {

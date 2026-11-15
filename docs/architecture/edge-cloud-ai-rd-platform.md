@@ -13,6 +13,8 @@ FlowX 的目标不是替代 Cursor、Codex、OpenDesign、IDE、CLI 或自动化
 - Git 继续作为源代码事实来源，FlowX 默认不复制完整本地工作区。
 - FlowX API 和数据库是组织级流程状态的事实来源，MCP、插件和 Local API 只承担接入与同步职责。
 
+版本下的需求和 Issue 统一为 `WorkItem`。WorkItem 表达业务意图，`ExecutionPlan` 和 `ExecutionItem` 表达 AI 建议后经人确认的执行拆解，端侧通过 `ExecutionSession` 领取和回传；即使一个人可以完成，也使用一个隐式执行项。工作流、状态聚合和提测门禁都以 WorkItem 为根，避免会议台账、需求流和本地任务各自维护一套状态。
+
 ## 2. 展示架构图
 
 ![FlowX 端云协同 AI 产研平台架构图](assets/flowx-edge-cloud-ai-rd-platform.png)
@@ -213,8 +215,8 @@ interface FlowXSyncEvent<TPayload = unknown> {
 
 | 中心 | 近期复用模块 | 目标能力 |
 | --- | --- | --- |
-| 项目管理中心 | `projects`、`requirements`、`schedule`、`briefings` | 项目组合、需求池、里程碑、资源、依赖、风险和简报 |
-| 研发流程中心 | `workflow`、`requirements` ideation | 流程模板、任务图、多 Agent、人工门禁、恢复和 SLA |
+| 项目管理中心 | `projects`、`work-items`、`schedule`、`briefings` | 项目组合、版本工作项、里程碑、资源、依赖、风险和简报 |
+| 研发流程中心 | `workflow`、`work-items` ideation | 流程模板、执行计划、执行项、多 Agent、人工门禁、恢复和 SLA |
 | AI 上下文中心 | `ai`、`prompts`、工作流 Artifact | 项目上下文、Prompt/Skill 版本、技术决策、模型和成本策略 |
 | 测试与质量中心 | `daily-code-review`、`review-artifacts` | Test Plan/Case/Run、Evidence、Code Review、缺陷和质量门禁 |
 | 发布与运维中心 | `dev-preview` | 本地预览、环境与运行反馈 |
@@ -249,8 +251,8 @@ interface FlowXSyncEvent<TPayload = unknown> {
 数字主线建议以显式关联对象表达，不依赖在 JSON 中拼装隐式关系：
 
 ```text
-Requirement
-  -> WorkItem / Task
+WorkItem (REQUIREMENT | ISSUE)
+  -> ExecutionPlan / ExecutionItem
   -> WorkflowRun / StageExecution
   -> ExecutionSession
   -> Artifact / Evidence
@@ -266,7 +268,7 @@ Requirement
 
 ```mermaid
 flowchart LR
-    R["Requirement"] --> TP["Test Plan"]
+    R["WorkItem"] --> TP["Test Plan"]
     TP --> TC["Test Case"]
     TP --> TS["Test Suite"]
     TS --> TR["Test Run"]
@@ -284,7 +286,7 @@ flowchart LR
 - Vitest、Jest、JUnit 测试结果导入。
 - Playwright 测试、截图、视频和 Trace 上传。
 - 本地、CI、云端 Runner 三种执行位置。
-- 测试结果与 Requirement、WorkflowRun、Commit 自动关联。
+- 测试结果与 WorkItem、WorkflowRun、Commit 自动关联。
 - 失败测试生成待确认 Finding，确认后转为 Bug。
 - 发布门禁校验必测用例、阻断缺陷、覆盖率和人工审批。
 
@@ -316,7 +318,7 @@ flowchart LR
 
 ## 9. 数据模型演进
 
-现有 `Workspace`、`Project`、`Requirement`、`WorkflowRun`、`StageExecution`、`WorkflowRepository`、`Issue`、`Bug`、`ReviewFinding` 保留并逐步演进。
+现有 `Workspace`、`Project`、`WorkItem`、`WorkflowRun`、`StageExecution`、`WorkflowRepository`、`Bug`、`ReviewFinding` 保留并逐步演进。需求与 Issue 使用 `WorkItem.kind` 区分，不再维护两套根模型。
 
 建议新增或抽象：
 
@@ -388,7 +390,7 @@ OpenDesign 黄金链路当前已落地为：FlowX 创建 `LOCAL_DESIGN` 工作�
 
 - 同一任务可以从 FlowX Web、Cursor 或 Codex 获取一致上下文。
 - 端侧断网或重复提交不会产生重复完成、重复 Artifact 或重复 Bug。
-- Requirement 可以追溯到设计、执行、Commit、测试和发布。
+- WorkItem 可以追溯到设计、执行、Commit、测试和发布。
 - 代码不需要上传到 FlowX 才能完成端云协同。
 - 本地执行和云端执行最终进入同一工作流审查与人工确认路径。
 

@@ -9,7 +9,6 @@ import { BriefingSourcesPage } from './pages/BriefingSourcesPage';
 import { BriefingsPage } from './pages/BriefingsPage';
 import { CodeReviewsPage } from './pages/CodeReviewsPage';
 import { DeliveryTargetsPage } from './pages/DeliveryTargetsPage';
-import { IssuesPage } from './pages/IssuesPage';
 import { QualityCasesPage } from './pages/quality/QualityCasesPage';
 import { QualityRequestsPage } from './pages/quality/QualityRequestsPage';
 import { QualityRunsPage } from './pages/quality/QualityRunsPage';
@@ -17,12 +16,10 @@ import { QualityPreparationPage } from './pages/quality/QualityPreparationPage';
 import { QualityRunDetailPage } from './pages/quality/QualityRunDetailPage';
 import { QualityTestDesignPage } from './pages/quality/QualityTestDesignPage';
 import { QualityRequestDetailPage } from './pages/quality/QualityRequestDetailPage';
-import { IssueDetailPage } from './pages/IssueDetailPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { ScheduleHubPage } from './pages/ScheduleHubPage';
 import { ProjectScheduleRedirect, ScheduleMembersRedirect } from './pages/ScheduleRedirectPage';
-import { RequirementDetailPage } from './pages/RequirementDetailPage';
 import { AiCredentialsPage } from './pages/AiCredentialsPage';
 import { GitCredentialsPage } from './pages/GitCredentialsPage';
 import { PersonalApiTokensPage } from './pages/PersonalApiTokensPage';
@@ -32,6 +29,8 @@ import { WorkflowRunDetailPage } from './pages/WorkflowRunDetailPage';
 import { ExecutionSessionDetailPage, ExecutionSessionsPage } from './pages/ExecutionSessionsPage';
 import { WorkflowRunsPage } from './pages/WorkflowRunsPage';
 import { WorkspacesPage } from './pages/WorkspacesPage';
+import { VersionWorkItemsPage } from './pages/VersionWorkItemsPage';
+import { WorkItemDetailPage } from './pages/WorkItemDetailPage';
 import { UserManualPage } from './pages/UserManualPage';
 import { LocalAgentGuidePage } from './pages/LocalAgentGuidePage';
 import { builtInPlugins } from './plugins/registry';
@@ -70,20 +69,19 @@ export default function App() {
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/projects/:projectId" element={<LegacyProjectEntryRedirect />} />
             <Route path="/projects/:projectId/schedule" element={<ProjectScheduleRedirect />} />
+            <Route path="/projects/:projectId/versions/:versionId/work-items" element={<VersionWorkItemsPage />} />
+            <Route path="/work-items" element={<RequirementsPage />} />
+            <Route path="/work-items/:id" element={<WorkItemDetailPage />} />
             <Route path="/project-settings" element={<ProjectDetailPage />} />
             <Route path="/briefings" element={<BriefingsPage />} />
             <Route path="/briefings/:briefingId" element={<BriefingDetailPage />} />
             <Route path="/code-reviews" element={<CodeReviewsPage />} />
             <Route path="/daily-code-reviews/:reviewId" element={<DailyCodeReviewDetailPage />} />
-            <Route path="/requirements" element={<RequirementsPage />} />
-            <Route path="/requirements/:id" element={<RequirementDetailPage />} />
             <Route path="/dashboard" element={<ExecutionSessionsPage />} />
             <Route path="/execution-sessions" element={<ExecutionSessionsRedirect />} />
             <Route path="/execution-sessions/:sessionId" element={<ExecutionSessionDetailPage />} />
             <Route path="/workflow-runs" element={<WorkflowRunsPage />} />
             <Route path="/workflow-runs/:workflowRunId" element={<WorkflowRunDetailPage />} />
-            <Route path="/issues" element={<IssuesPage />} />
-            <Route path="/issues/:issueId" element={<IssueDetailPage />} />
             <Route path="/quality" element={<QualityIndexRedirect />} />
             <Route path="/quality/test-requests" element={<QualityRequestsPage />} />
             <Route path="/quality/test-requests/:id" element={<QualityRequestDetailPage />} />

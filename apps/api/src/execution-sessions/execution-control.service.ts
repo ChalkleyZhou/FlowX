@@ -40,7 +40,7 @@ export class ExecutionControlService {
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.sourceTool ? { sourceTool: filters.sourceTool } : {}),
       ...(filters.claimedByUserId ? { claimedByUserId: filters.claimedByUserId } : {}),
-      ...(filters.search?.trim() ? { workflowRun: { requirement: { title: { contains: filters.search.trim() } } } } : {}),
+      ...(filters.search?.trim() ? { workflowRun: { workItem: { title: { contains: filters.search.trim() } } } } : {}),
       ...(filters.since || filters.until ? { createdAt: {
         ...(filters.since ? { gte: new Date(filters.since) } : {}),
         ...(filters.until ? { lte: new Date(filters.until) } : {}),
@@ -57,7 +57,7 @@ export class ExecutionControlService {
       where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: take + 1,
       ...(filters.cursor ? { cursor: { id: filters.cursor }, skip: 1 } : {}),
       include: { ...accessibleInclude, commands: { orderBy: { issuedAt: 'desc' }, take: 10 },
-        workflowRun: { select: { requirement: { select: { title: true } } } },
+        workflowRun: { select: { workItem: { select: { title: true } } } },
         claimedByUser: { select: { displayName: true } } },
     });
     return { items: rows.slice(0, take).map((row) => ({ ...row, ...this.describe(row, scope) })),
@@ -98,7 +98,7 @@ export class ExecutionControlService {
     const include = {
       ...accessibleInclude, stageExecution: { select: { stage: true, statusMessage: true } },
       project: { select: { name: true } },
-      workflowRun: { select: { requirement: { select: { title: true } } } },
+      workflowRun: { select: { workItem: { select: { title: true } } } },
       claimedByUser: { select: { displayName: true } },
       syncEvents: { where: { eventType: 'execution.progressed' }, orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }], take: 1 },
       evidence: { where: { evidenceType: { in: ['TEST_RESULT', 'BUILD_RESULT', 'AGENT_SUMMARY'] } },

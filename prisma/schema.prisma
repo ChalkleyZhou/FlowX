@@ -7,51 +7,123 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Requirement {
+/// 版本工作台和工作流的统一业务根。kind 区分 REQUIREMENT 与 ISSUE，
+/// 类型专属字段在同一根记录上按 kind 使用，所有工作流和执行计划均从此根出发。
+model WorkItem {
   id                      String                  @id @default(cuid())
+  kind                    String                  @default("REQUIREMENT")
   status                  String                  @default("ACTIVE")
   title                   String
-  description             String
-  acceptanceCriteria      String
-  functionalModule           String               @default("")
-  riskImpact                 String               @default("")
+  description             String                  @default("")
+  acceptanceCriteria      String                  @default("")
+  functionalModule        String                  @default("")
+  riskImpact              String                  @default("")
   productRequirementDocument String               @default("")
-  remark                     String               @default("")
+  remark                  String                  @default("")
   priority                String                  @default("MEDIUM")
   planningStatus          String                  @default("UNSCHEDULED")
+  ideationStatus          String                  @default("NONE")
+  revision                Int                     @default(0)
+  resolution              String?
+  severity                String?
+  expectedBehavior        String?
+  actualBehavior          String?
+  reproductionSteps      Json?
+  screenshots             Json?
+  branchName              String?
   projectId               String
-  project                 Project                 @relation(fields: [projectId], references: [id])
+  project                 Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
   versionId               String?
   version                 ProjectVersion?         @relation(fields: [versionId], references: [id], onDelete: Restrict)
-  workspaceId             String?
-  workspace               Workspace?              @relation(fields: [workspaceId], references: [id])
-  ideationStatus          String                  @default("NONE")
+  workspaceId             String
+  workspace               Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ownerUserId             String?
+  ownerUser               User?                   @relation("WorkItemOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  assigneeUserId          String?
+  assigneeUser            User?                   @relation("IssueAssignedTo", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  reportedByUserId        String?
+  reportedByUser          User?                   @relation("IssueReportedBy", fields: [reportedByUserId], references: [id], onDelete: SetNull)
+  createdByUserId         String?
+  createdByName           String?
+  repositoryId            String?
+  repository              Repository?             @relation("WorkItemIssueRepository", fields: [repositoryId], references: [id], onDelete: SetNull)
   prototypeImport         PrototypeImport?
   requirementRepositories RequirementRepository[]
   assignments             RequirementAssignment[]
   ideationSessions        IdeationSession[]
   ideationArtifacts       IdeationArtifact[]
-  workflowRuns            WorkflowRun[]
-  revision                Int                     @default(0)
-  createdByUserId         String?
-  createdByName           String?
+  workflowRuns            WorkflowRun[]            @relation("WorkItemRootWorkflow")
+  sourceWorkflowRunId     String?
+  sourceWorkflowRun       WorkflowRun?             @relation("WorkItemSourceWorkflow", fields: [sourceWorkflowRunId], references: [id], onDelete: SetNull)
+  executionPlans          ExecutionPlan[]
   changes                 RequirementChange[]
-  testRequestLinks        TestRequestRequirement[]
-  testDesignLinks         TestDesignRequirement[]
-  issues                  Issue[]
-  bugs                    Bug[]                   @relation("BugSourceRequirement")
-  fixingBugs              Bug[]                   @relation("BugFixRequirement")
-  createdAt               DateTime                @default(now())
-  updatedAt               DateTime                @updatedAt
+  testRequestLinks        TestRequestWorkItem[]
+  testDesignLinks        TestDesignWorkItem[]
+  reviewFinding           ReviewFinding?            @relation("FindingToWorkItem")
+  bugs                    Bug[]                     @relation("BugSourceWorkItem")
+  fixingBugs              Bug[]                     @relation("BugFixWorkItem")
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
 
   @@index([projectId, createdAt])
   @@index([projectId, versionId])
+  @@index([projectId, versionId, updatedAt, id])
+  @@index([workspaceId, kind, status, updatedAt])
+  @@index([ownerUserId, status, updatedAt])
+  @@index([sourceWorkflowRunId, createdAt])
+}
+
+model ExecutionPlan {
+  id              String          @id @default(cuid())
+  workItemId      String
+  workItem        WorkItem        @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  workflowRunId   String?
+  workflowRun     WorkflowRun?    @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
+  status          String          @default("DRAFT")
+  strategy        String          @default("SINGLE")
+  createdByUserId String?
+  createdByUser   User?           @relation("ExecutionPlanCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  items           ExecutionItem[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  @@index([workItemId, status, createdAt])
+  @@index([workflowRunId])
+}
+
+model ExecutionItem {
+  id                String          @id @default(cuid())
+  executionPlanId   String
+  executionPlan     ExecutionPlan   @relation(fields: [executionPlanId], references: [id], onDelete: Cascade)
+  title             String
+  description       String          @default("")
+  target            String          @default("LOCAL")
+  ownerHint         String?
+  ownerUserId       String?
+  ownerUser         User?           @relation("ExecutionItemOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  required          Boolean         @default(true)
+  status            String          @default("READY")
+  claimKey          String?         @unique
+  claimedAt         DateTime?
+  completedAt       DateTime?
+  completionSummary String?
+  completionEvidence Json?
+  blockedReason     String?
+  cancelledAt       DateTime?
+  cancelReason      String?
+  verification      String           @default("")
+  sortOrder         Int             @default(0)
+  dependsOnIds      Json?
+  sessions          ExecutionSession[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  @@index([executionPlanId, status, sortOrder])
+  @@index([ownerUserId, status, updatedAt])
 }
 
 model RequirementChange {
   id                    String       @id @default(cuid())
-  requirementId         String
-  requirement           Requirement  @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  workItemId         String
+  workItem           WorkItem  @relation(fields: [workItemId], references: [id], onDelete: Cascade)
   revision              Int
   content               String
   mode                  String
@@ -68,15 +140,15 @@ model RequirementChange {
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
 
-  @@unique([requirementId, requestId])
-  @@unique([requirementId, revision])
-  @@index([requirementId, createdAt])
+  @@unique([workItemId, requestId])
+  @@unique([workItemId, revision])
+  @@index([workItemId, createdAt])
 }
 
 model RequirementAssignment {
   id               String      @id @default(cuid())
-  requirementId    String
-  requirement      Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  workItemId    String
+  workItem      WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
   userId           String
   user             User        @relation(fields: [userId], references: [id])
   role             String
@@ -88,8 +160,8 @@ model RequirementAssignment {
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 
-  @@index([requirementId, plannedStartDate])
-  @@index([requirementId, userId])
+  @@index([workItemId, plannedStartDate])
+  @@index([workItemId, userId])
   @@index([userId, plannedStartDate])
 }
 
@@ -101,9 +173,8 @@ model Workspace {
   name           String
   description    String?
   projects     Project[]
+  workItems    WorkItem[]
   repositories Repository[]
-  requirements Requirement[]
-  issues       Issue[]
   bugs         Bug[]
   briefingSources BriefingSource[]
   briefingEvents BriefingEvent[]
@@ -131,7 +202,7 @@ model Project {
   currentVersionId String?
   currentVersion   ProjectVersion?  @relation("ProjectCurrentVersion", fields: [currentVersionId], references: [id], onDelete: Restrict)
   versions         ProjectVersion[] @relation("ProjectVersions")
-  requirements     Requirement[]
+  workItems        WorkItem[]
   bugs         Bug[]
   briefingFeeds BriefingFeed[]
   codeReviewFeeds CodeReviewFeed[]
@@ -155,7 +226,7 @@ model ProjectVersion {
   project            Project       @relation("ProjectVersions", fields: [projectId], references: [id], onDelete: Cascade)
   name               String
   currentForProjects Project[]     @relation("ProjectCurrentVersion")
-  requirements       Requirement[]
+  workItems          WorkItem[]
   testRequests       TestRequest[]
   testDesigns        TestDesign[]
   createdAt          DateTime      @default(now())
@@ -180,7 +251,7 @@ model Repository {
   lastSyncedAt            DateTime?
   requirementRepositories RequirementRepository[]
   workflowRepositories    WorkflowRepository[]
-  issues                  Issue[]
+  issues                  WorkItem[]             @relation("WorkItemIssueRepository")
   bugs                    Bug[]
   briefingSources         BriefingSource[]
   briefingEvents          BriefingEvent[]
@@ -448,8 +519,11 @@ model User {
   sessions        UserSession[]
   personalApiTokens PersonalApiToken[]
   memberships     UserOrganization[]
-  reportedIssues  Issue[]            @relation("IssueReportedBy")
-  assignedIssues  Issue[]            @relation("IssueAssignedTo")
+  reportedIssues  WorkItem[]            @relation("IssueReportedBy")
+  assignedIssues  WorkItem[]            @relation("IssueAssignedTo")
+  ownedWorkItems  WorkItem[]         @relation("WorkItemOwner")
+  createdExecutionPlans ExecutionPlan[] @relation("ExecutionPlanCreatedBy")
+  ownedExecutionItems ExecutionItem[] @relation("ExecutionItemOwner")
   reportedBugs    Bug[]              @relation("BugReportedBy")
   assignedBugs    Bug[]                    @relation("BugAssignedTo")
   assignments     RequirementAssignment[]
@@ -718,8 +792,8 @@ model WorkflowRun {
   currentStage         String?
   runType              String               @default("FULL")
   aiProvider           String               @default("codex")
-  requirementId        String
-  requirement          Requirement          @relation(fields: [requirementId], references: [id])
+  workItemId            String
+  workItem              WorkItem            @relation("WorkItemRootWorkflow", fields: [workItemId], references: [id], onDelete: Cascade)
   supersededByChangeId String?
   supersededByChange   RequirementChange?   @relation("ChangeSuperseded", fields: [supersededByChangeId], references: [id], onDelete: SetNull)
   sourceChangeId       String?              @unique
@@ -732,9 +806,10 @@ model WorkflowRun {
   reviewReport         ReviewReport?
   workflowRepositories WorkflowRepository[]
   reviewFindings       ReviewFinding[]
-  issues               Issue[]
+  sourceWorkItems      WorkItem[]             @relation("WorkItemSourceWorkflow")
   bugs                 Bug[]                @relation("BugSourceWorkflow")
   executionSessions    ExecutionSession[]
+  executionPlans       ExecutionPlan[]
   artifacts            Artifact[]
   testRequestLinks     TestRequestWorkflowRun[]
   testDesignLinks      TestDesignWorkflowRun[]
@@ -786,14 +861,14 @@ model WorkflowRepository {
 
 model RequirementRepository {
   id            String      @id @default(cuid())
-  requirementId String
-  requirement   Requirement @relation(fields: [requirementId], references: [id])
+  workItemId String
+  workItem   WorkItem @relation(fields: [workItemId], references: [id])
   repositoryId  String
   repository    Repository  @relation(fields: [repositoryId], references: [id])
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
-  @@unique([requirementId, repositoryId])
+  @@unique([workItemId, repositoryId])
   @@index([repositoryId, createdAt])
 }
 
@@ -827,6 +902,8 @@ model ExecutionSession {
   testRun          TestRun?        @relation(fields: [testRunId], references: [id], onDelete: Cascade)
   stageExecutionId String?
   stageExecution   StageExecution? @relation(fields: [stageExecutionId], references: [id], onDelete: SetNull)
+  executionItemId  String?
+  executionItem    ExecutionItem?  @relation(fields: [executionItemId], references: [id], onDelete: SetNull)
   organizationId   String?
   organization     Organization?   @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   workspaceId      String?
@@ -864,6 +941,7 @@ model ExecutionSession {
   @@index([workflowRunId, status, createdAt])
   @@index([testRunId, status, createdAt])
   @@index([stageExecutionId, status])
+  @@index([executionItemId, status, createdAt])
   @@index([organizationId, status, createdAt])
   @@index([workspaceId, status, createdAt])
   @@index([projectId, status, createdAt])
@@ -1015,8 +1093,8 @@ model ReviewFinding {
   workflowRun            WorkflowRun     @relation(fields: [workflowRunId], references: [id])
   sourceStageExecutionId String?
   sourceStageExecution   StageExecution? @relation(fields: [sourceStageExecutionId], references: [id])
-  convertedIssueId       String?         @unique
-  convertedIssue         Issue?          @relation("FindingToIssue", fields: [convertedIssueId], references: [id])
+  convertedWorkItemId       String?         @unique
+  convertedWorkItem         WorkItem?          @relation("FindingToWorkItem", fields: [convertedWorkItemId], references: [id])
   convertedBugId         String?         @unique
   convertedBug           Bug?            @relation("FindingToBug", fields: [convertedBugId], references: [id])
   createdAt              DateTime        @default(now())
@@ -1027,38 +1105,10 @@ model ReviewFinding {
   @@index([reviewReportId, createdAt])
 }
 
-model Issue {
-  id               String         @id @default(cuid())
-  status           String         @default("OPEN")
-  priority         String         @default("MEDIUM")
-  title            String
-  description      String
-  resolution       String?
-  workspaceId      String
-  workspace        Workspace      @relation(fields: [workspaceId], references: [id])
-  requirementId    String?
-  requirement      Requirement?   @relation(fields: [requirementId], references: [id])
-  workflowRunId    String?
-  workflowRun      WorkflowRun?   @relation(fields: [workflowRunId], references: [id])
-  reviewFinding    ReviewFinding? @relation("FindingToIssue")
-  repositoryId     String?
-  repository       Repository?    @relation(fields: [repositoryId], references: [id])
-  branchName       String?
-  assigneeUserId   String?
-  assigneeUser     User?          @relation("IssueAssignedTo", fields: [assigneeUserId], references: [id])
-  reportedByUserId String?
-  reportedByUser   User?          @relation("IssueReportedBy", fields: [reportedByUserId], references: [id])
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-
-  @@index([workspaceId, status, priority])
-  @@index([workflowRunId, createdAt])
-}
-
 model IdeationSession {
   id             String   @id @default(cuid())
-  requirementId  String
-  requirement    Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  workItemId  String
+  workItem    WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
   events         IdeationSessionEvent[]
   stage          String
   attempt        Int      @default(1)
@@ -1072,7 +1122,7 @@ model IdeationSession {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  @@index([requirementId])
+  @@index([workItemId])
 }
 
 model IdeationSessionEvent {
@@ -1090,15 +1140,15 @@ model IdeationSessionEvent {
 
 model IdeationArtifact {
   id             String   @id @default(cuid())
-  requirementId  String
-  requirement    Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  workItemId  String
+  workItem    WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
   type           String
   content        Json
   version        Int      @default(1)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  @@index([requirementId])
+  @@index([workItemId])
 }
 
 model Bug {
@@ -1117,16 +1167,16 @@ model Bug {
   workspace         Workspace      @relation(fields: [workspaceId], references: [id])
   projectId         String?
   project           Project?       @relation(fields: [projectId], references: [id])
-  requirementId     String?
-  requirement       Requirement?   @relation("BugSourceRequirement", fields: [requirementId], references: [id])
+  workItemId     String?
+  workItem       WorkItem?   @relation("BugSourceWorkItem", fields: [workItemId], references: [id])
   workflowRunId     String?
   workflowRun       WorkflowRun?   @relation("BugSourceWorkflow", fields: [workflowRunId], references: [id])
   reviewFinding     ReviewFinding? @relation("FindingToBug")
   repositoryId      String?
   repository        Repository?    @relation(fields: [repositoryId], references: [id])
   branchName        String?
-  fixRequirementId  String?
-  fixRequirement    Requirement?   @relation("BugFixRequirement", fields: [fixRequirementId], references: [id])
+  fixWorkItemId  String?
+  fixWorkItem    WorkItem?   @relation("BugFixWorkItem", fields: [fixWorkItemId], references: [id])
   fixWorkflowRunId  String?        @unique
   fixWorkflowRun    WorkflowRun?   @relation("BugFixWorkflow", fields: [fixWorkflowRunId], references: [id])
   assigneeUserId    String?
@@ -1255,7 +1305,7 @@ model TestDesign {
   confirmedByUserId String?
   confirmedByUser   User?        @relation("TestDesignConfirmedBy", fields: [confirmedByUserId], references: [id], onDelete: SetNull)
   confirmedAt       DateTime?
-  requirements      TestDesignRequirement[]
+  workItems      TestDesignWorkItem[]
   workflowRuns      TestDesignWorkflowRun[]
   candidates        TestDesignCandidate[]
   smokeCases        TestDesignSmokeCase[]
@@ -1269,15 +1319,15 @@ model TestDesign {
   @@unique([projectId, projectVersionId, revision])
 }
 
-model TestDesignRequirement {
+model TestDesignWorkItem {
   testDesignId String
   testDesign   TestDesign  @relation(fields: [testDesignId], references: [id], onDelete: Cascade)
-  requirementId String
-  requirement   Requirement @relation(fields: [requirementId], references: [id], onDelete: Restrict)
+  workItemId String
+  workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Restrict)
   createdAt DateTime @default(now())
 
-  @@id([testDesignId, requirementId])
-  @@index([requirementId, createdAt])
+  @@id([testDesignId, workItemId])
+  @@index([workItemId, createdAt])
 }
 
 model TestDesignWorkflowRun {
@@ -1354,7 +1404,7 @@ model TestRequest {
   reports               QualityTestReport[]
   createdByUserId       String?
   createdByUser         User?                    @relation("TestRequestCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  requirementLinks      TestRequestRequirement[]
+  workItemLinks      TestRequestWorkItem[]
   workflowLinks         TestRequestWorkflowRun[]
   artifactLinks         TestRequestArtifact[]
   scopeCases            TestRequestScopeCase[]
@@ -1400,15 +1450,15 @@ model TestRequestScopeCase {
   @@index([libraryId, moduleId])
 }
 
-model TestRequestRequirement {
+model TestRequestWorkItem {
   testRequestId String
   testRequest   TestRequest @relation(fields: [testRequestId], references: [id], onDelete: Cascade)
-  requirementId String
-  requirement   Requirement @relation(fields: [requirementId], references: [id], onDelete: Restrict)
+  workItemId String
+  workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Restrict)
   createdAt     DateTime    @default(now())
 
-  @@id([testRequestId, requirementId])
-  @@index([requirementId, createdAt])
+  @@id([testRequestId, workItemId])
+  @@index([workItemId, createdAt])
 }
 
 model TestRequestWorkflowRun {
@@ -1638,8 +1688,8 @@ model TestResult {
 // 原型材料与 AI 整理结果独立保存，确认后作为工作流上游事实来源。
 model PrototypeImport {
   id               String @id @default(cuid())
-  requirementId    String @unique
-  requirement      Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  workItemId    String @unique
+  workItem      WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
   status           String @default("ANALYZING")
   revision         Int @default(1)
   materialRevision Int @default(1)

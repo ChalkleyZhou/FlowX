@@ -36,7 +36,7 @@ export interface LocalSpecPlanContextPackage {
   executionSessionId: string;
   traceId: string;
   sourceFingerprint: string;
-  requirement: {
+  workItem: {
     id: string;
     title: string;
     description: string;

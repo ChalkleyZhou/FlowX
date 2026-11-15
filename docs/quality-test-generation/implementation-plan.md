@@ -17,7 +17,7 @@
 内容：
 
 - 增加 `TestDesign`、`TestDesignCandidate`、`TestDesignSmokeCase` 及关系。
-- 增加 `TestDesignRequirement`、`TestDesignWorkflowRun` 关联表，保留来源边界。
+- 增加 `TestDesignWorkItem`、`TestDesignWorkflowRun` 关联表，保留来源边界。
 - 给 `TestRequest`、`TestPlan`、`TestCaseSnapshot`、`TestRun` 增加扩展字段。
 - 增加测试设计状态、候选动作、候选处理结果、快照类型的常量和 TypeScript 类型。
 - 生成 Prisma migration；不修改或删除历史质量表。
@@ -35,7 +35,7 @@
 
 内容：
 
-- 创建测试设计草稿并校验项目、版本、需求、工作流和 Spec & Plan 来源。
+- 创建测试设计草稿并校验项目、版本、工作项、工作流和 Spec & Plan 来源。
 - 规范化来源输入并计算指纹。
 - 实现修订号、过期标记和刷新差异保留规则。
 - 实现所有候选处理状态的确定性校验。

@@ -47,6 +47,7 @@ export type CreateExecutionSessionInput = {
   workflowRunId?: string | null;
   testRunId?: string | null;
   stageExecutionId?: string | null;
+  executionItemId?: string | null;
   organizationId?: string | null;
   workspaceId?: string | null;
   projectId?: string | null;
@@ -116,6 +117,7 @@ export class ExecutionSessionsService {
         workflowRunId: input.workflowRunId ?? null,
         testRunId: input.testRunId ?? null,
         stageExecutionId: input.stageExecutionId ?? null,
+        executionItemId: input.executionItemId ?? null,
         organizationId: input.organizationId ?? null,
         workspaceId: input.workspaceId ?? null,
         projectId: input.projectId ?? null,
@@ -137,7 +139,7 @@ export class ExecutionSessionsService {
     const session = await this.prisma.executionSession.findUnique({ where: { id }, include: {
       stageExecution: { select: { stage: true, statusMessage: true } },
       project: { select: { name: true } },
-      workflowRun: { select: { requirement: { select: { title: true } } } },
+      workflowRun: { select: { workItem: { select: { title: true } } } },
       claimedByUser: { select: { displayName: true } },
       commands: { orderBy: { issuedAt: 'desc' }, take: 10 },
       _count: { select: { syncEvents: true, artifacts: true, evidence: true } },
@@ -154,7 +156,7 @@ export class ExecutionSessionsService {
       include: {
         stageExecution: { select: { stage: true, statusMessage: true } },
         project: { select: { name: true } },
-        workflowRun: { select: { requirement: { select: { title: true } } } },
+        workflowRun: { select: { workItem: { select: { title: true } } } },
         claimedByUser: { select: { displayName: true } },
         commands: { orderBy: { issuedAt: 'desc' }, take: 10 },
         syncEvents: {
@@ -230,7 +232,7 @@ export class ExecutionSessionsService {
    * reported, this is the canonical local completion path: it delegates to
    * `WorkflowService.completeLocalExecutionBySession`, which runs the single
    * `LocalCompletionCommand` implementation (verify → artifacts → session terminal → workflow
-   * advance) shared with the `complete-local` compatibility wrapper. Without `repositories`,
+   * advance) shared with the workflow-level completion route. Without `repositories`,
    * this keeps the original thin session status transition.
    */
   async complete(
@@ -334,6 +336,7 @@ export class ExecutionSessionsService {
       workflowRunId: string | null;
       testRunId?: string | null;
       stageExecutionId: string | null;
+      executionItemId?: string | null;
       executorType: string;
       sourceTool: string;
     },
@@ -343,6 +346,7 @@ export class ExecutionSessionsService {
       existing.workflowRunId !== (input.workflowRunId ?? null) ||
       (existing.testRunId ?? null) !== (input.testRunId ?? null) ||
       existing.stageExecutionId !== (input.stageExecutionId ?? null) ||
+      (existing.executionItemId ?? null) !== (input.executionItemId ?? null) ||
       existing.executorType !== input.executorType ||
       existing.sourceTool !== input.sourceTool
     ) {

@@ -3,128 +3,57 @@ import { EdgeTasksService } from './edge-tasks.service';
 
 function createService() {
   const prisma = {
-    requirement: { findMany: vi.fn() },
-    bug: { findMany: vi.fn() },
-    workflowRun: { findMany: vi.fn(), count: vi.fn() },
+    executionItem: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(0) },
+    workflowRun: { findMany: vi.fn(), count: vi.fn().mockResolvedValue(0) },
     $queryRaw: vi.fn(),
   };
-  prisma.workflowRun.count.mockImplementation(async () => (await prisma.workflowRun.findMany.getMockImplementation()?.() ?? []).length);
-  prisma.$queryRaw.mockImplementation(async (query: { sql: string }) => {
-    const requirements: Array<{ id: string }> = await prisma.requirement.findMany.getMockImplementation()?.() ?? [];
-    const bugs: Array<{ id: string }> = query.sql.includes('Bug') ? await prisma.bug.findMany.getMockImplementation()?.() ?? [] : [];
-    if (query.sql.includes('COUNT(*)')) return [{ total: BigInt(requirements.length + bugs.length) }];
-    return [...requirements.map(row => ({ id: row.id, taskType: 'requirement' })), ...bugs.map(row => ({ id: row.id, taskType: 'bug' }))];
-  });
   return { service: new EdgeTasksService(prisma as never), prisma };
 }
 
 describe('EdgeTasksService', () => {
-  it('applies the shared Requirement/Bug eligibility rules', async () => {
+  it('lists ready local execution items with unified work item context', async () => {
     const { service, prisma } = createService();
-    prisma.requirement.findMany.mockResolvedValue([
-      {
-        id: 'req-1',
-        title: 'Export CSV',
-        status: 'ACTIVE',
-        priority: 'HIGH',
-        planningStatus: 'SCHEDULED',
-        requirementRepositories: [
-          { repository: { id: 'repo-1', name: 'web', url: 'https://example.com/web.git' } },
-        ],
-        workflowRuns: [],
-      },
-    ]);
-    prisma.bug.findMany.mockResolvedValue([
-      {
-        id: 'bug-1',
-        title: 'Login fails',
-        status: 'OPEN',
-        priority: 'MEDIUM',
-        repository: { id: 'repo-2', name: 'api', url: null },
-        fixWorkflowRun: null,
-      },
-    ]);
-
-    const { items: tasks } = await service.listTasks({ workspaceId: 'workspace-1' });
-
-    expect(tasks).toEqual([
-      expect.objectContaining({ id: 'req-1', type: 'requirement', eligible: true }),
-      expect.objectContaining({ id: 'bug-1', type: 'bug', eligible: true }),
-    ]);
-    expect(prisma.requirement.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ status: 'ACTIVE', workspaceId: 'workspace-1' }) }),
-    );
+    prisma.executionItem.findMany.mockResolvedValue([{
+      id: 'exec-1', title: 'Export CSV implementation', description: 'Implement export', target: 'LOCAL', status: 'READY', ownerUserId: null,
+      executionPlan: {
+        workflowRun: { id: 'workflow-1', status: 'EXECUTION_PENDING' },
+        workItem: { id: 'work-1', kind: 'REQUIREMENT', title: 'Export CSV', description: 'Users need exports', priority: 'HIGH', planningStatus: 'SCHEDULED', repository: { id: 'repo-1', name: 'web', url: 'https://example.com/web.git' }, requirementRepositories: [] },
+      }, sessions: [],
+    }]);
+    prisma.executionItem.count.mockResolvedValue(1);
+    const { items } = await service.listTasks({ workspaceId: 'workspace-1' });
+    expect(items).toEqual([expect.objectContaining({ id: 'exec-1', workItemId: 'work-1', kind: 'REQUIREMENT', eligible: true, workflowRunId: 'workflow-1' })]);
   });
 
-  it('filters requirements and omits bugs when version or planning status is set', async () => {
+  it('filters execution items by work item scope and validates priority', async () => {
     const { service, prisma } = createService();
-    prisma.requirement.findMany.mockResolvedValue([]);
-    prisma.bug.findMany.mockResolvedValue([]);
-
-    await service.listTasks({
-      projectId: 'project-1',
-      versionId: 'version-1',
-      planningStatus: 'SCHEDULED',
-      priority: 'HIGH',
-    });
-
-    expect(prisma.requirement.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: {
-        status: 'ACTIVE',
-        projectId: 'project-1',
-        versionId: 'version-1',
-        planningStatus: 'SCHEDULED',
-        priority: 'HIGH',
-        id: { in: [] },
-      },
-    }));
-    expect(prisma.bug.findMany).not.toHaveBeenCalled();
+    await service.listTasks({ projectId: 'project-1', versionId: 'version-1', planningStatus: 'SCHEDULED', priority: 'HIGH' });
+    expect(prisma.executionItem.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ target: 'LOCAL' }) }));
     await expect(service.listTasks({ priority: 'P0' })).rejects.toThrow('优先级无效');
   });
 
-  it('exposes only running LOCAL_CHAT workflows as reportable', async () => {
+  it('marks occupied execution items as unavailable', async () => {
     const { service, prisma } = createService();
-    prisma.requirement.findMany.mockResolvedValue([
-      {
-        id: 'req-1',
-        title: 'Export CSV',
-        status: 'ACTIVE',
-        priority: 'HIGH',
-        planningStatus: 'SCHEDULED',
-        requirementRepositories: [
-          { repository: { id: 'repo-1', name: 'web', url: null } },
-        ],
-        workflowRuns: [
-          { id: 'workflow-1', runType: 'LOCAL_CHAT', status: 'EXECUTION_RUNNING' },
-        ],
-      },
-    ]);
-    prisma.bug.findMany.mockResolvedValue([]);
-
-    const { items: tasks } = await service.listTasks({});
-
-    expect(tasks[0]).toEqual(
-      expect.objectContaining({ eligible: false, workflowRunId: 'workflow-1' }),
-    );
+    prisma.executionItem.findMany.mockResolvedValue([{
+      id: 'exec-1', title: 'Export CSV', description: '', target: 'LOCAL', status: 'IN_PROGRESS', ownerUserId: 'user-1',
+      executionPlan: { workflowRun: { id: 'workflow-1', status: 'EXECUTION_RUNNING' }, workItem: { id: 'work-1', kind: 'REQUIREMENT', title: 'Export CSV', priority: 'HIGH', planningStatus: 'SCHEDULED', repository: { id: 'repo-1', name: 'web', url: null }, requirementRepositories: [] } },
+      sessions: [{ id: 'session-1' }],
+    }]);
+    prisma.executionItem.count.mockResolvedValue(1);
+    const { items: [item] } = await service.listTasks({});
+    expect(item).toEqual(expect.objectContaining({ eligible: false, executionSessionId: 'session-1' }));
   });
 
-  it('exposes a running local Spec & Plan session in Cursor tasks', async () => {
+  it('does not offer an execution item without a repository', async () => {
     const { service, prisma } = createService();
-    prisma.requirement.findMany.mockResolvedValue([{ id: 'req-1', title: 'Plan export', status: 'ACTIVE',
-      requirementRepositories: [{ repository: { id: 'repo-1', name: 'web', url: 'https://example.com/web.git' } }],
-      workflowRuns: [{ id: 'workflow-spec', runType: 'FULL', status: 'SPEC_PLAN_PENDING',
-        executionSessions: [{ id: 'session-spec', sourceTool: 'flowx-local', status: 'RUNNING',
-          metadata: { stage: 'SPEC_PLAN' } }],
-      }],
+    prisma.executionItem.findMany.mockResolvedValue([{
+      id: 'exec-1', title: 'Plan export', description: '', target: 'LOCAL', status: 'READY', ownerUserId: null,
+      executionPlan: { workflowRun: { id: 'workflow-1', status: 'EXECUTION_PENDING' }, workItem: { id: 'work-1', kind: 'ISSUE', title: 'Plan export', priority: 'HIGH', planningStatus: 'SCHEDULED', repository: null, requirementRepositories: [] } },
+      sessions: [],
     }]);
-    prisma.bug.findMany.mockResolvedValue([]);
-
-    const { items: [task] } = await service.listTasks({});
-
-    expect(task).toEqual(expect.objectContaining({
-      workflowRunId: 'workflow-spec', executionSessionId: 'session-spec',
-      workflowStage: 'SPEC_PLAN', eligible: false,
-    }));
+    prisma.executionItem.count.mockResolvedValue(1);
+    const { items: [item] } = await service.listTasks({});
+    expect(item).toEqual(expect.objectContaining({ eligible: false, ineligibleReason: '当前工作项未绑定代码仓库。' }));
   });
 
   it('lists OpenDesign candidates with suggestedAction from status', async () => {
@@ -133,16 +62,17 @@ describe('EdgeTasksService', () => {
       {
         id: 'wf-brain',
         status: 'BRAINSTORM_PENDING',
-        requirementId: 'req-brain',
-        requirement: { id: 'req-brain', title: 'Brainstorm idea' },
+        workItemId: 'req-brain',
+        workItem: { id: 'req-brain', title: 'Brainstorm idea' },
       },
       {
         id: 'wf-design',
         status: 'DESIGN_PENDING',
-        requirementId: 'req-design',
-        requirement: { id: 'req-design', title: 'Design ready' },
+        workItemId: 'req-design',
+        workItem: { id: 'req-design', title: 'Design ready' },
       },
     ]);
+    prisma.workflowRun.count.mockResolvedValue(1);
 
     const { items } = await service.listOpenDesignTasks({
       workspaceId: 'workspace-1',
@@ -156,7 +86,7 @@ describe('EdgeTasksService', () => {
       {
         kind: 'opendesign-workflow',
         workflowRunId: 'wf-brain',
-        requirementId: 'req-brain',
+        workItemId: 'req-brain',
         title: 'Brainstorm idea',
         status: 'BRAINSTORM_PENDING',
         suggestedAction: 'brainstorm',
@@ -164,7 +94,7 @@ describe('EdgeTasksService', () => {
       {
         kind: 'opendesign-workflow',
         workflowRunId: 'wf-design',
-        requirementId: 'req-design',
+        workItemId: 'req-design',
         title: 'Design ready',
         status: 'DESIGN_PENDING',
         suggestedAction: 'design',
@@ -175,7 +105,7 @@ describe('EdgeTasksService', () => {
         where: expect.objectContaining({
           runType: { in: ['LOCAL_DESIGN', 'FULL'] },
           status: { in: ['BRAINSTORM_PENDING', 'DESIGN_PENDING'] },
-          requirement: { workspaceId: 'workspace-1' },
+          workItem: { workspaceId: 'workspace-1' },
           OR: [
             { executionSessions: { none: {} } },
             { executionSessions: { some: { organizationId: 'org-1' } } },
@@ -205,11 +135,12 @@ describe('EdgeTasksService', () => {
 
   it('returns the live stage and prior outputs for a workflow handed to another person', async () => {
     const { service, prisma } = createService();
+    prisma.workflowRun.count.mockResolvedValue(1);
     prisma.workflowRun.findMany.mockResolvedValue([
       {
         id: 'workflow-spec',
         status: 'SPEC_PLAN_PENDING',
-        requirement: { id: 'req-1', title: 'Export CSV' },
+        workItem: { id: 'req-1', title: 'Export CSV' },
         stageExecutions: [
           {
             id: 'stage-prd',
@@ -265,7 +196,7 @@ describe('EdgeTasksService', () => {
       expect.objectContaining({
         where: {
           status: { notIn: ['DONE', 'FAILED'] },
-          requirement: { workspaceId: 'workspace-1' },
+          workItem: { workspaceId: 'workspace-1' },
         },
       }),
     );
@@ -293,7 +224,7 @@ describe('EdgeTasksService workflow position ownership', () => {
   };
   function workflow(overrides: Record<string, unknown> = {}) {
     return { id: 'wf-1', status: 'SPEC_PLAN_PENDING',
-      requirement: { id: 'req-1', title: '需求', project: { workspace: { organizationId: 'org-1' } } },
+      workItem: { id: 'req-1', title: '需求', project: { workspace: { organizationId: 'org-1' } } },
       stageExecutions: [stage], executionSessions: [currentSession], artifacts: [], ...overrides };
   }
 
@@ -373,7 +304,7 @@ describe('EdgeTasksService workflow position ownership', () => {
     await expect(service.listWorkflowPositions({ workflowRunId: 'foreign-wf', workspaceId: 'workspace-1', session: auth }))
       .rejects.toThrow(/not found/);
     expect(prisma.workflowRun.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'foreign-wf', requirement: {
+      where: { id: 'foreign-wf', workItem: {
         workspaceId: 'workspace-1', project: { workspace: { organizationId: 'org-1' } },
       } },
       include: expect.objectContaining({ executionSessions: expect.objectContaining({
@@ -554,7 +485,7 @@ describe('EdgeTasksService 分支交付位置', () => {
   it('CODE_DELIVERY进行中保持共享方案可读，不诱导旧客户端领取整个需求', async () => {
     const { service, prisma } = createService();
     prisma.workflowRun.findMany.mockResolvedValue([{
-      id: 'branch-delivery', status: 'EXECUTION_RUNNING', requirement: { id: 'req-1', title: '共同交付' },
+      id: 'branch-delivery', status: 'EXECUTION_RUNNING', workItem: { id: 'req-1', title: '共同交付' },
       executionSessions: [], artifacts: [], stageExecutions: [
         { id: 'execution', stage: 'EXECUTION', status: 'RUNNING', attempt: 1, input: { executor: 'CODE_DELIVERY' }, output: null },
         { id: 'spec', stage: 'SPEC_PLAN', status: 'COMPLETED', attempt: 1, output: { spec: { goal: '已确认共享方案' } } },

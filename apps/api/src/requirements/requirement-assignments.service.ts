@@ -15,47 +15,47 @@ import { toRequirementAssignmentResponse } from './requirement-assignment.mapper
 export class RequirementAssignmentsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listPage(requirementId: string, query: PaginationQuery = {}) {
+  async listPage(workItemId: string, query: PaginationQuery = {}) {
     const paging = parsePagination(query);
-    await this.ensureRequirement(requirementId);
+    await this.ensureRequirement(workItemId);
     const rows = await this.prisma.requirementAssignment.findMany({
       skip: paging.skip, take: paging.take,
-      where: { requirementId },
+      where: { workItemId },
       include: { user: true },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
     });
-    const total = await this.prisma.requirementAssignment.count({ where: { requirementId } });
+    const total = await this.prisma.requirementAssignment.count({ where: { workItemId } });
     // SQLite 中日期以毫秒存储；按服务端日历计算工作日，并在数据库汇总完整范围。
     const remainderTerms = Array.from({ length: 6 }, (_, offset) => Prisma.sql`CASE WHEN days % 7 > ${offset} AND (startDay + ${offset}) % 7 NOT IN (0, 6) THEN 1 ELSE 0 END`);
     const summary = await this.prisma.$queryRaw<Array<{ estimatedDays: bigint | number }>>(Prisma.sql`
       WITH ranges AS (
         SELECT CAST(julianday(date(plannedEndDate / 1000, 'unixepoch', 'localtime')) - julianday(date(plannedStartDate / 1000, 'unixepoch', 'localtime')) + 1 AS INTEGER) AS days,
           CAST(strftime('%w', plannedStartDate / 1000, 'unixepoch', 'localtime') AS INTEGER) AS startDay
-        FROM RequirementAssignment WHERE requirementId = ${requirementId}
+        FROM RequirementAssignment WHERE workItemId = ${workItemId}
       )
       SELECT COALESCE(SUM(CASE WHEN days <= 0 THEN 0 ELSE CAST(days / 7 AS INTEGER) * 5 + ${Prisma.join(remainderTerms, ' + ')} END), 0) AS estimatedDays FROM ranges
     `);
     return { ...pageResult(rows.map((row) => this.toResponse(row)), total, paging), summary: { estimatedDays: Number(summary[0]?.estimatedDays ?? 0) } };
   }
 
-  async list(requirementId: string) {
-    await this.ensureRequirement(requirementId);
+  async list(workItemId: string) {
+    await this.ensureRequirement(workItemId);
     const rows = await this.prisma.requirementAssignment.findMany({
-      where: { requirementId },
+      where: { workItemId },
       include: { user: true },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
     return rows.map((row) => this.toResponse(row));
   }
 
-  async create(requirementId: string, dto: UpsertRequirementAssignmentDto) {
-    await this.ensureRequirement(requirementId);
+  async create(workItemId: string, dto: UpsertRequirementAssignmentDto) {
+    await this.ensureRequirement(workItemId);
     this.assertValidDateRange(dto.plannedStartDate, dto.plannedEndDate);
     await this.assertUserAssignable(dto.userId);
 
     const created = await this.prisma.requirementAssignment.create({
       data: {
-        requirementId,
+        workItemId,
         userId: dto.userId,
         role: dto.role,
         plannedStartDate: parseAssignmentDate(dto.plannedStartDate),
@@ -66,16 +66,16 @@ export class RequirementAssignmentsService {
       },
       include: { user: true },
     });
-    await this.syncPlanningStatus(requirementId);
+    await this.syncPlanningStatus(workItemId);
     return this.toResponse(created);
   }
 
   async update(
-    requirementId: string,
+    workItemId: string,
     assignmentId: string,
     dto: UpsertRequirementAssignmentDto,
   ) {
-    await this.ensureAssignment(requirementId, assignmentId);
+    await this.ensureAssignment(workItemId, assignmentId);
     this.assertValidDateRange(dto.plannedStartDate, dto.plannedEndDate);
     await this.assertUserAssignable(dto.userId);
 
@@ -92,21 +92,21 @@ export class RequirementAssignmentsService {
       },
       include: { user: true },
     });
-    await this.syncPlanningStatus(requirementId);
+    await this.syncPlanningStatus(workItemId);
     return this.toResponse(updated);
   }
 
-  async remove(requirementId: string, assignmentId: string) {
-    await this.ensureAssignment(requirementId, assignmentId);
+  async remove(workItemId: string, assignmentId: string) {
+    await this.ensureAssignment(workItemId, assignmentId);
     await this.prisma.requirementAssignment.delete({ where: { id: assignmentId } });
-    await this.syncPlanningStatus(requirementId);
+    await this.syncPlanningStatus(workItemId);
     return { ok: true };
   }
 
-  async syncPlanningStatus(requirementId: string) {
-    const count = await this.prisma.requirementAssignment.count({ where: { requirementId } });
-    const requirement = await this.prisma.requirement.findUnique({
-      where: { id: requirementId },
+  async syncPlanningStatus(workItemId: string) {
+    const count = await this.prisma.requirementAssignment.count({ where: { workItemId } });
+    const requirement = await this.prisma.workItem.findUnique({
+      where: { id: workItemId },
       select: { planningStatus: true },
     });
     if (!requirement) {
@@ -119,16 +119,16 @@ export class RequirementAssignmentsService {
     ]);
     if (manualStatuses.has(requirement.planningStatus)) {
       if (count === 0) {
-        await this.prisma.requirement.update({
-          where: { id: requirementId },
+        await this.prisma.workItem.update({
+          where: { id: workItemId },
           data: { planningStatus: RequirementPlanningStatus.UNSCHEDULED },
         });
       }
       return;
     }
 
-    await this.prisma.requirement.update({
-      where: { id: requirementId },
+    await this.prisma.workItem.update({
+      where: { id: workItemId },
       data: {
         planningStatus:
           count > 0
@@ -150,16 +150,16 @@ export class RequirementAssignmentsService {
     }
   }
 
-  private async ensureRequirement(requirementId: string) {
-    const requirement = await this.prisma.requirement.findUnique({ where: { id: requirementId } });
+  private async ensureRequirement(workItemId: string) {
+    const requirement = await this.prisma.workItem.findUnique({ where: { id: workItemId } });
     if (!requirement) {
       throw new NotFoundException('Requirement not found.');
     }
   }
 
-  private async ensureAssignment(requirementId: string, assignmentId: string) {
+  private async ensureAssignment(workItemId: string, assignmentId: string) {
     const assignment = await this.prisma.requirementAssignment.findFirst({
-      where: { id: assignmentId, requirementId },
+      where: { id: assignmentId, workItemId },
     });
     if (!assignment) {
       throw new NotFoundException('Requirement assignment not found.');

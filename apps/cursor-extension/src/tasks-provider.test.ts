@@ -23,6 +23,9 @@ vi.mock('./repo-match', async (importOriginal) => {
 const baseTask: FlowXTaskItem = {
   eligible: true,
   id: 'req-1',
+  workItemId: 'work-1',
+  kind: 'REQUIREMENT',
+  workItemTitle: 'Add local handoff',
   priority: 'HIGH',
   repository: {
     id: 'repo-1',
@@ -32,7 +35,6 @@ const baseTask: FlowXTaskItem = {
   scheduleSignal: 'READY',
   status: 'ACTIVE',
   title: 'Add local handoff',
-  type: 'requirement',
   workflowRunId: null,
 };
 
@@ -41,7 +43,7 @@ describe('buildTaskViewModels', () => {
     expect(buildTaskViewModels([baseTask], 'git@github.com:flowx-ai/flowx.git')).toEqual([
       expect.objectContaining({
         contextValue: 'flowxTask.startable',
-        description: 'requirement / ACTIVE / FlowX',
+        description: 'REQUIREMENT / ACTIVE / FlowX',
         label: 'Add local handoff',
         startable: true,
       }),
@@ -128,7 +130,7 @@ describe('FlowXTasksProvider', () => {
 
     const [item] = await provider.getChildren();
 
-    expect(item.label).toBe('No FlowX tasks. Create a requirement or bug in FlowX.');
+    expect(item.label).toBe('No FlowX execution items. Create a WorkItem and start its workflow in FlowX.');
     expect(item.command).toEqual({
       command: 'flowx.openRequirements',
       title: 'Open FlowX Requirements',

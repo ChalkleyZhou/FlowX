@@ -12,7 +12,7 @@ function createService() {
   const prisma = {
     project: { findFirst: vi.fn() },
     projectVersion: { findFirst: vi.fn() },
-    requirement: { findMany: vi.fn() },
+    workItem: { findMany: vi.fn() },
     workflowRun: { findMany: vi.fn() },
     artifact: { findMany: vi.fn() },
     testRequest: { findUnique: transaction.testRequest.findUnique, update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }), create: vi.fn() },
@@ -30,7 +30,7 @@ const requestInput = {
   projectId: 'project-1',
   projectVersionId: 'version-1',
   title: '2.5.1 提测',
-  requirementIds: ['requirement-1'],
+  workItemIds: ['requirement-1'],
   workflowRunIds: ['workflow-1'],
   artifactIds: [],
 };
@@ -47,7 +47,7 @@ describe('TestRequestsService', () => {
 
     await expect(
       service.createRequest(
-        { ...requestInput, requirementIds: ['  '], workflowRunIds: ['  '] },
+        { ...requestInput, workItemIds: ['  '], workflowRunIds: ['  '] },
         'user-1',
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -57,9 +57,9 @@ describe('TestRequestsService', () => {
     const { service, prisma } = createService();
     prisma.project.findFirst.mockResolvedValue({ id: 'project-1' });
     prisma.projectVersion.findFirst.mockResolvedValue({ id: 'version-1' });
-    prisma.requirement.findMany.mockResolvedValue([{ id: 'requirement-1' }]);
+    prisma.workItem.findMany.mockResolvedValue([{ id: 'requirement-1' }]);
     prisma.workflowRun.findMany.mockResolvedValue([
-      { id: 'workflow-1', status: 'human_review_pending', requirementId: 'requirement-1' },
+      { id: 'workflow-1', status: 'human_review_pending', workItemId: 'requirement-1' },
     ]);
 
     await expect(service.createRequest(requestInput, 'user-1')).rejects.toBeInstanceOf(
@@ -71,8 +71,8 @@ describe('TestRequestsService', () => {
     const { service, prisma } = createService();
     prisma.project.findFirst.mockResolvedValue({ id: 'project-1' });
     prisma.projectVersion.findFirst.mockResolvedValue({ id: 'version-1' });
-    prisma.requirement.findMany.mockResolvedValue([{ id: 'requirement-1' }]);
-    prisma.workflowRun.findMany.mockResolvedValue([{ id: 'workflow-1', status: 'DONE', requirementId: 'requirement-1' }]);
+    prisma.workItem.findMany.mockResolvedValue([{ id: 'requirement-1' }]);
+    prisma.workflowRun.findMany.mockResolvedValue([{ id: 'workflow-1', status: 'DONE', workItemId: 'requirement-1' }]);
 
     await expect(service.createRequest(requestInput, 'user-1')).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -105,8 +105,8 @@ describe('TestRequestsService', () => {
     const { service, prisma, transaction, testDesigns } = createService();
     prisma.project.findFirst.mockResolvedValue({ id: 'project-1' });
     prisma.projectVersion.findFirst.mockResolvedValue({ id: 'version-1' });
-    prisma.requirement.findMany.mockResolvedValue([{ id: 'requirement-1' }]);
-    prisma.workflowRun.findMany.mockResolvedValue([{ id: 'workflow-1', status: 'DONE', requirementId: 'requirement-1' }]);
+    prisma.workItem.findMany.mockResolvedValue([{ id: 'requirement-1' }]);
+    prisma.workflowRun.findMany.mockResolvedValue([{ id: 'workflow-1', status: 'DONE', workItemId: 'requirement-1' }]);
     transaction.testRequest.create.mockResolvedValue({ id: 'request-1' });
     prisma.testRequest.findUnique.mockResolvedValue({ id: 'request-1', testPlan: { id: 'plan-1' } });
     testDesigns.assertReadyForRequest.mockResolvedValue({
@@ -114,7 +114,7 @@ describe('TestRequestsService', () => {
       workspaceId: 'workspace-1',
       projectId: 'project-1',
       projectVersionId: 'version-1',
-      requirements: [{ requirementId: 'requirement-1' }],
+      workItems: [{ workItemId: 'requirement-1' }],
       workflowRuns: [{ workflowRunId: 'workflow-1' }],
       candidates: [{
         action: 'REUSE',

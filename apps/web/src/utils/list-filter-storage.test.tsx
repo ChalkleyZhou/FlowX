@@ -40,14 +40,14 @@ describe('列表筛选本地缓存', () => {
   it('没有地址栏条件时恢复上次筛选，带条件的链接覆盖本机记录', async () => {
     writeStoredListFilters('requirements', { projectId: 'project-saved', priority: 'HIGH' });
     await act(async () => {
-      root.render(<MemoryRouter initialEntries={['/requirements']}><Routes><Route path="/requirements" element={<SearchProbe pageKey="requirements" keys={['projectId', 'priority']} />} /></Routes></MemoryRouter>);
+      root.render(<MemoryRouter initialEntries={['/work-items']}><Routes><Route path="/work-items" element={<SearchProbe pageKey="requirements" keys={['projectId', 'priority']} />} /></Routes></MemoryRouter>);
     });
     expect(container.querySelector('[data-search]')?.getAttribute('data-search')).toBe('?projectId=project-saved&priority=HIGH');
 
     await act(async () => { root.unmount(); });
     root = createRoot(container);
     await act(async () => {
-      root.render(<MemoryRouter initialEntries={['/requirements?projectId=project-link']}><Routes><Route path="/requirements" element={<SearchProbe pageKey="requirements" keys={['projectId', 'priority']} />} /></Routes></MemoryRouter>);
+      root.render(<MemoryRouter initialEntries={['/work-items?projectId=project-link']}><Routes><Route path="/work-items" element={<SearchProbe pageKey="requirements" keys={['projectId', 'priority']} />} /></Routes></MemoryRouter>);
     });
     expect(container.querySelector('[data-search]')?.getAttribute('data-search')).toBe('?projectId=project-link');
     expect(readStoredListFilters('requirements')).toEqual({ projectId: 'project-link' });
@@ -55,14 +55,14 @@ describe('列表筛选本地缓存', () => {
 
   it('清除筛选后刷新不再恢复旧条件', async () => {
     await act(async () => {
-      root.render(<MemoryRouter initialEntries={['/requirements?projectId=project-1&priority=HIGH']}><Routes><Route path="/requirements" element={<ClearProbe />} /></Routes></MemoryRouter>);
+      root.render(<MemoryRouter initialEntries={['/work-items?projectId=project-1&priority=HIGH']}><Routes><Route path="/work-items" element={<ClearProbe />} /></Routes></MemoryRouter>);
     });
     await act(async () => {
       container.querySelector('button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(readStoredListFilters('requirements')).toEqual({});
     await act(async () => {
-      root.render(<MemoryRouter initialEntries={['/requirements']}><Routes><Route path="/requirements" element={<SearchProbe pageKey="requirements" keys={['projectId', 'priority']} />} /></Routes></MemoryRouter>);
+      root.render(<MemoryRouter initialEntries={['/work-items']}><Routes><Route path="/work-items" element={<SearchProbe pageKey="requirements" keys={['projectId', 'priority']} />} /></Routes></MemoryRouter>);
     });
     expect(container.querySelector('[data-search]')?.getAttribute('data-search')).toBe('');
   });

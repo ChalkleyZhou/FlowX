@@ -3,9 +3,9 @@ import { RequirementPlanningStatus } from '../common/enums';
 import { RequirementAssignmentsService } from './requirement-assignments.service';
 
 describe('RequirementAssignmentsService', () => {
-  const requirementId = 'req-1';
+  const workItemId = 'req-1';
   let prisma: {
-    requirement: { findUnique: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+    workItem: { findUnique: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
     requirementAssignment: {
       findMany: ReturnType<typeof vi.fn>;
       findFirst: ReturnType<typeof vi.fn>;
@@ -20,8 +20,8 @@ describe('RequirementAssignmentsService', () => {
 
   beforeEach(() => {
     prisma = {
-      requirement: {
-        findUnique: vi.fn().mockResolvedValue({ id: requirementId, planningStatus: 'UNSCHEDULED' }),
+      workItem: {
+        findUnique: vi.fn().mockResolvedValue({ id: workItemId, planningStatus: 'UNSCHEDULED' }),
         update: vi.fn().mockResolvedValue({}),
       },
       requirementAssignment: {
@@ -41,7 +41,7 @@ describe('RequirementAssignmentsService', () => {
 
   it('rejects end date before start date', async () => {
     await expect(
-      service.create(requirementId, {
+      service.create(workItemId, {
         userId: 'user-1',
         role: 'FRONTEND',
         plannedStartDate: '2026-05-22',
@@ -53,7 +53,7 @@ describe('RequirementAssignmentsService', () => {
   it('marks requirement scheduled after create', async () => {
     prisma.requirementAssignment.create.mockResolvedValue({
       id: 'a1',
-      requirementId,
+      workItemId,
       userId: 'user-1',
       role: 'FRONTEND',
       plannedStartDate: new Date('2026-05-18T00:00:00.000Z'),
@@ -64,27 +64,27 @@ describe('RequirementAssignmentsService', () => {
       user: { id: 'user-1', displayName: 'Alice', avatarUrl: null },
     });
 
-    await service.create(requirementId, {
+    await service.create(workItemId, {
       userId: 'user-1',
       role: 'FRONTEND',
       plannedStartDate: '2026-05-18',
       plannedEndDate: '2026-05-22',
     });
 
-    expect(prisma.requirement.update).toHaveBeenCalledWith({
-      where: { id: requirementId },
+    expect(prisma.workItem.update).toHaveBeenCalledWith({
+      where: { id: workItemId },
       data: { planningStatus: RequirementPlanningStatus.SCHEDULED },
     });
   });
 
   it('marks requirement unscheduled after last assignment removed', async () => {
-    prisma.requirementAssignment.findFirst.mockResolvedValue({ id: 'a1', requirementId });
+    prisma.requirementAssignment.findFirst.mockResolvedValue({ id: 'a1', workItemId });
     prisma.requirementAssignment.count.mockResolvedValue(0);
 
-    await service.remove(requirementId, 'a1');
+    await service.remove(workItemId, 'a1');
 
-    expect(prisma.requirement.update).toHaveBeenCalledWith({
-      where: { id: requirementId },
+    expect(prisma.workItem.update).toHaveBeenCalledWith({
+      where: { id: workItemId },
       data: { planningStatus: RequirementPlanningStatus.UNSCHEDULED },
     });
   });
@@ -92,7 +92,7 @@ describe('RequirementAssignmentsService', () => {
   it('allows multiple assignments for the same user on one requirement', async () => {
     prisma.requirementAssignment.create.mockResolvedValue({
       id: 'a2',
-      requirementId,
+      workItemId,
       userId: 'user-1',
       role: 'QA',
       plannedStartDate: new Date('2026-06-01T00:00:00.000Z'),
@@ -103,7 +103,7 @@ describe('RequirementAssignmentsService', () => {
       user: { id: 'user-1', displayName: 'Alice', avatarUrl: null },
     });
 
-    const result = await service.create(requirementId, {
+    const result = await service.create(workItemId, {
       userId: 'user-1',
       role: 'QA',
       plannedStartDate: '2026-06-01',

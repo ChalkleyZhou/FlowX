@@ -313,7 +313,7 @@ DATABASE_URL="file:/data/dev-current.db"
 原因：
 
 - 这个仓库当前开发演进过程中已经从旧库迁到了 `dev-current.db`
-- 容器启动脚本会在 `prisma db push` 前自动执行必要的 SQLite 数据迁移（例如为历史 Workspace 补充组织归属、将投递目标从工作区迁到项目、安全添加云效组织绑定和多人投递索引、把已有简报和代码审查补成「默认」份，以及删除 Spec & Plan 重构后已废弃的非空 `Task`/`Plan` 表），再同步 schema。已有简报或代码审查时不要使用 `prisma db push --force-reset`，那会清空数据库。
+- 容器启动脚本会在 `prisma db push` 前自动执行必要的 SQLite 数据迁移（例如为历史 Workspace 补充组织归属、将投递目标从工作区迁到项目、安全添加云效组织绑定和多人投递索引、把已有简报和代码审查补成「默认」份、将旧 `Requirement`/`Issue` 数据合并到 `WorkItem`，以及删除 Spec & Plan 重构后已废弃的非空 `Task`/`Plan` 表），再以 `--accept-data-loss` 应用最终 schema。已有简报或代码审查时不要使用 `prisma db push --force-reset`，那会清空数据库。
 - 建议把 `/data` 挂成 volume，避免容器删除后数据库丢失
 - Nginx compose 部署还会默认持久化 `/app/.flowx-data`，用于保存工作区仓库和 workflow 副本
 
@@ -662,10 +662,14 @@ DINGTALK_APPID
 
 ## 多仓分支交付版本升级
 
-本次增加 `CodeBranchSubmission` 表与关联索引，对应 migration 为 `20261022070000_add_code_branch_submissions`。升级前备份 SQLite 与持久化目录；容器沿用现有启动脚本执行 schema 同步，无新增环境变量。非 Docker 环境先执行 `pnpm prisma:generate`，再按当前数据库管理方式应用 migration 或运行 `pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma`；不要对未纳入 migration 历史的旧库盲目执行全量 `migrate deploy`。
+本次增加 `CodeBranchSubmission` 表与关联索引，对应 migration 为 `20261022070000_add_code_branch_submissions`。升级前备份 SQLite 与持久化目录；容器沿用现有启动脚本执行 schema 同步，无新增环境变量。非 Docker 环境先执行 `pnpm prisma:generate`，再按当前数据库管理方式应用 migration 或运行 `pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma --accept-data-loss`；不要对未纳入 migration 历史的旧库盲目执行全量 `migrate deploy`。
 
 分支确认需要 API 宿主机可执行 Git 并读取所选仓库，沿用已有 Git 凭据配置。实际差异在系统临时目录的隔离 bare 仓库中读取，完成或失败后清理；不会在工作区仓库 checkout。读取过大差异或超时会提示失败并保留流程，不降级为没有真实 diff 的已确认交付。
 
 ## 需求变更版本升级
 
-本次增加 `RequirementChange` 表、需求 `revision` 和工作流的新旧轮次关联，对应 migration 为 `20261023160000_add_requirement_changes`。升级前备份 SQLite，容器继续使用现有启动脚本同步 schema，无新增环境变量。非 Docker 环境重新生成 Prisma client，再按当前数据库管理方式应用本次 migration 或运行上述 `prisma db push`，随后重启 API。既有需求的修订从 0 开始，原始描述、流程与产物保留；上线前已领取的本地任务仍按原修订读取上下文。
+本次增加 `RequirementChange` 表、需求 `revision` 和工作流的新旧轮次关联，对应 migration 为 `20261023160000_add_requirement_changes`。升级前备份 SQLite，容器继续使用现有启动脚本同步 schema，无新增环境变量。非 Docker 环境重新生成 Prisma client，再按当前数据库管理方式应用本次 migration 或运行上述 `prisma db push --accept-data-loss`，随后重启 API。既有需求的修订从 0 开始，原始描述、流程与产物保留；上线前已领取的本地任务仍按原修订读取上下文。
+
+## 工作项根模型切换
+
+版本工作台现在统一使用 `WorkItem`，`kind` 为 `REQUIREMENT` 或 `ISSUE`。升级旧库时，容器会先执行 `20261112090000_work_item_core`，把需求、问题及其工作流、变更、排期、原型、测试和审查关联映射到 `WorkItem`，再同步最终 schema；随后补齐 `20261113100000_execution_item_contract` 的执行项负责人建议和验证字段。该切换会移除旧 `Requirement`/`Issue` 表；升级前必须备份 SQLite。手动升级需先执行同一 migration SQL，再运行 `pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma --accept-data-loss`。

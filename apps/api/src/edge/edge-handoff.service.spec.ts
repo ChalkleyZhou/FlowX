@@ -4,12 +4,10 @@ import { EdgeHandoffService } from './edge-handoff.service';
 
 function createService() {
   const prisma = {
-    bug: { findUniqueOrThrow: vi.fn() },
-    workflowRun: { findMany: vi.fn().mockResolvedValue([]) },
+    executionItem: { findUnique: vi.fn() },
   };
   const workflow = {
-    createLocalChatWorkflowRun: vi.fn(),
-    createLocalChatBugWorkflowRun: vi.fn(),
+
     claimLocalExecution: vi.fn(),
     getLocalHandoff: vi.fn(),
     findOne: vi.fn(),
@@ -29,20 +27,14 @@ const handoff = {
   executionSessionId: 'session-1',
   traceId: 'trace-1',
   protocolVersion: '1.0',
-  requirement: {
-    id: 'req-1',
+  workItem: {
+    id: 'work-1',
+    kind: 'REQUIREMENT',
     title: 'Export CSV',
     description: 'Users need exports',
     acceptanceCriteria: 'CSV has headers',
   },
-  plan: {
-    summary: 'Plan',
-    implementationPlan: [],
-    filesToModify: [],
-    newFiles: [],
-    riskPoints: [],
-  },
-  tasks: [],
+  executionItem: { id: 'exec-1', title: 'Export CSV', description: 'Users need exports' },
   repositories: [
     {
       workflowRepositoryId: 'wr-1',
@@ -60,27 +52,23 @@ const handoff = {
 
 describe('EdgeHandoffService', () => {
   it('creates and claims a shared handoff for Codex', async () => {
-    const { service, workflow } = createService();
-    workflow.createLocalChatWorkflowRun.mockResolvedValue({
-      id: 'workflow-1',
-      status: 'EXECUTION_PENDING',
-    });
+    const { service, workflow, prisma } = createService();
+    prisma.executionItem.findUnique.mockResolvedValue({ executionPlan: { workflowRun: { id: 'workflow-1', status: 'EXECUTION_PENDING' } } });
     workflow.claimLocalExecution.mockResolvedValue({
       workflow: { id: 'workflow-1', status: 'EXECUTION_RUNNING' },
       handoff,
     });
 
     const result = await service.startHandoff({
-      taskType: 'requirement',
-      taskId: 'req-1',
-      repositoryIds: ['repo-1'],
-      sourceTool: 'codex',
+      executionItemId: 'exec-1', claimKey: 'claim-1', sourceTool: 'codex',
     });
 
     expect(workflow.claimLocalExecution).toHaveBeenCalledWith(
       'workflow-1',
       undefined,
       'codex',
+      'claim-1',
+      'exec-1',
     );
     expect(result.contextPackage.executionSessionId).toBe('session-1');
     expect(result.contextPackage.sourceTool).toBe('codex');
@@ -89,23 +77,13 @@ describe('EdgeHandoffService', () => {
 
   it('continues an existing running workflow without creating a duplicate', async () => {
     const { service, prisma, workflow } = createService();
-    prisma.workflowRun.findMany.mockResolvedValue([
-      {
-        id: 'workflow-1',
-        status: 'EXECUTION_RUNNING',
-        workflowRepositories: [{ repositoryId: 'repo-1' }],
-      },
-    ]);
+    prisma.executionItem.findUnique.mockResolvedValue({ executionPlan: { workflowRun: { id: 'workflow-1', status: 'EXECUTION_RUNNING' } } });
     workflow.getLocalHandoff.mockResolvedValue(handoff);
 
     const result = await service.startHandoff({
-      taskType: 'requirement',
-      taskId: 'req-1',
-      repositoryIds: ['repo-1'],
-      sourceTool: 'cursor',
+      executionItemId: 'exec-1', claimKey: 'claim-1', sourceTool: 'cursor',
     });
 
-    expect(workflow.createLocalChatWorkflowRun).not.toHaveBeenCalled();
     expect(workflow.getLocalHandoff).toHaveBeenCalledWith('workflow-1');
     expect(result.chatPrompt).toContain('Cursor Chat/Agent');
   });

@@ -5,7 +5,7 @@ import { summarizeQualityResults } from './test-report-summary';
 function snapshot(): QualityReportSnapshot {
   return {
     mode: 'PROGRESS', generatedAt: '2026-11-04T00:00:00.000Z',
-    request: { id: 'request', title: '功能验证', project: '项目', version: 'v1', requirements: [{ id: 'requirement', title: '用户需求' }] },
+    request: { id: 'request', title: '功能验证', project: '项目', version: 'v1', workItems: [{ id: 'requirement', title: '用户需求' }] },
     summary: summarizeQualityResults(['PASSED', 'FAILED', 'BLOCKED', 'SKIPPED', null]),
     baseline: [{ workflowRepositoryId: 'repository', branch: 'main', headSha: 'fixed-sha' }],
     supersessions: [{ previousRunId: 'old-run', regressionRunId: 'regression', testRunCaseIds: ['old-case'] }],
@@ -49,7 +49,7 @@ describe('质量测试报告 HTML', () => {
   it('所有动态文字和 JSON 均转义 HTML，证据入口安全编码轮次 ID', () => {
     const attack = '<script>alert("x" & \'y\')</script>';
     const report = snapshot();
-    report.request = { id: attack, title: attack, project: attack, version: attack, requirements: [{ id: attack, title: attack }] };
+    report.request = { id: attack, title: attack, project: attack, version: attack, workItems: [{ id: attack, title: attack }] };
     report.generatedAt = attack;
     report.baseline = [{ headSha: attack }];
     report.supersessions = [{ previousRunId: attack }];

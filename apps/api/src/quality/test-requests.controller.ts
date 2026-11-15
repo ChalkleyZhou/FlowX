@@ -21,8 +21,8 @@ export class TestRequestsController {
 
   @Get(':id/snapshots')
   snapshots(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery & { q?: string; kind?: string }) { return this.requests.listSnapshots(id, query); }
-  @Get(':id/requirements')
-  requirements(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery) { return this.requests.listLinks(id, 'requirements', query); }
+  @Get(':id/work-items')
+  workItems(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery) { return this.requests.listLinks(id, 'workItems', query); }
   @Get(':id/workflows')
   workflows(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery) { return this.requests.listLinks(id, 'workflows', query); }
   @Get(':id/artifacts')

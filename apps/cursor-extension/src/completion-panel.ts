@@ -19,11 +19,9 @@ export interface GitCompletionReport {
 export interface ReportCompletionDeps {
   getGitRoot(): Promise<string | null>;
   collectGitReport(gitRoot: string): Promise<GitCompletionReport>;
-  loadHandoffSnapshot(gitRoot: string, taskId: string): Promise<HandoffSnapshot | null>;
+  loadHandoffSnapshot(gitRoot: string, executionItemId: string): Promise<HandoffSnapshot | null>;
   restoreHandoffSnapshot?(gitRoot: string, task: FlowXTaskItem): Promise<HandoffSnapshot | null>;
   completeExecutionSession(executionSessionId: string, input: CompleteLocalInput): Promise<unknown>;
-  completeLocal(workflowRunId: string, input: CompleteLocalInput): Promise<unknown>;
-  saveCompletionDraft(gitRoot: string, workflowRunId: string, payload: CompleteLocalInput): Promise<unknown>;
   showInput(prompt: string): PromiseLike<string | undefined>;
   showQuickPick(items: string[], placeHolder: string): PromiseLike<string | undefined>;
   showWarning(message: string, ...items: string[]): PromiseLike<string | undefined>;
@@ -42,8 +40,8 @@ export async function reportCompletion(deps: ReportCompletionDeps, task: FlowXTa
   const workflowRunId = snapshot?.workflowRunId ?? task.workflowRunId;
   const executionSessionId = snapshot?.executionSessionId ?? task.executionSessionId;
   const workflowRepositoryId = snapshot?.workflowRepositoryId;
-  if (!workflowRunId || !workflowRepositoryId) {
-    deps.showError('FlowX handoff metadata is missing. Start this task in chat before reporting completion.');
+  if (!workflowRunId || !workflowRepositoryId || !executionSessionId) {
+    deps.showError('FlowX execution session is missing. Start this task through the latest handoff before reporting completion.');
     return;
   }
 
@@ -89,28 +87,17 @@ export async function reportCompletion(deps: ReportCompletionDeps, task: FlowXTa
   };
 
   try {
-    if (executionSessionId) {
-      await deps.completeExecutionSession(executionSessionId, payload);
-      deps.showInfo('FlowX completion reported.');
-      return;
-    }
-    await deps.completeLocal(workflowRunId, payload);
+    await deps.completeExecutionSession(executionSessionId, payload);
     deps.showInfo('FlowX completion reported.');
   } catch (error) {
-    if (executionSessionId) {
-      const message = error instanceof Error ? error.message : 'FlowX completion submission failed.';
-      deps.showError(
-        isProtocolUnsupported(message)
-          ? 'FlowX execution-session protocol unsupported. Update FlowX before reporting completion.'
-          : isApiUnavailable(message)
-            ? `API unavailable; retry when online. ${message}`
-            : `FlowX session completion submission failed. ${message}`,
-      );
-      return;
-    }
-    await deps.saveCompletionDraft(gitRoot, workflowRunId, payload);
     const message = error instanceof Error ? error.message : 'FlowX completion submission failed.';
-    deps.showError(`FlowX completion draft saved. ${message}`);
+    deps.showError(
+      isProtocolUnsupported(message)
+        ? 'FlowX execution-session protocol unsupported. Update FlowX before reporting completion.'
+        : isApiUnavailable(message)
+          ? `API unavailable; retry when online. ${message}`
+          : `FlowX session completion submission failed. ${message}`,
+    );
   }
 }
 

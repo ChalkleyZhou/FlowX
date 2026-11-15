@@ -185,7 +185,7 @@ describe('ExecutionSessionsService', () => {
   it('loads the task title and executor for the standalone detail page', async () => {
     const { service, prisma } = createService();
     prisma.executionSession.findUnique.mockResolvedValue(session({
-      workflowRun: { requirement: { title: '修复登录' } },
+      workflowRun: { workItem: { title: '修复登录' } },
       claimedByUser: { displayName: '张三' },
     }));
 
@@ -193,7 +193,7 @@ describe('ExecutionSessionsService', () => {
 
     expect(prisma.executionSession.findUnique).toHaveBeenCalledWith(expect.objectContaining({
       include: expect.objectContaining({
-        workflowRun: { select: { requirement: { select: { title: true } } } },
+        workflowRun: { select: { workItem: { select: { title: true } } } },
         claimedByUser: { select: { displayName: true } },
       }),
     }));

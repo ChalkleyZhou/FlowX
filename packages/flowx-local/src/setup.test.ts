@@ -155,7 +155,7 @@ describe('flowx-local setup', () => {
       cursorTest,
     ]);
     expect(readFileSync(cursorPrd, 'utf8')).toContain('flowx_submit_brainstorm');
-    expect(readFileSync(cursorIntake, 'utf8')).toContain('flowx_create_requirement');
+    expect(readFileSync(cursorIntake, 'utf8')).toContain('flowx_create_work_item');
     expect(readFileSync(cursorSpecPlan, 'utf8')).toContain('flowx_get_spec_plan_handoff');
     expect(readFileSync(cursorSmoke, 'utf8')).toContain('flowx_submit_smoke_report');
   });

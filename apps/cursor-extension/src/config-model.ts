@@ -27,7 +27,7 @@ export function normalizeApiBaseUrl(input: string): string {
 export function buildFlowXLoginUrl(input: { apiBaseUrl: string; callbackUrl: string }): string {
   const url = buildFlowXApiUrl(input.apiBaseUrl, '/auth/dingtalk/login');
   url.searchParams.set('callbackUrl', input.callbackUrl);
-  url.searchParams.set('next', '/requirements');
+  url.searchParams.set('next', '/work-items');
   return url.toString();
 }
 

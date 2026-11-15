@@ -25,7 +25,7 @@ const confirmedSpecPlan: SpecPlanOutput = {
 const baseWorkflow = {
   id: 'workflow-golden-001',
   status: 'EXECUTION_RUNNING',
-  requirement: {
+  workItem: {
     id: 'requirement-1',
     workspaceId: 'workspace-1',
     projectId: 'project-1',
@@ -69,6 +69,9 @@ function createService(session: Record<string, unknown> | null) {
     verifyBranchTip: vi.fn().mockResolvedValue(true),
   } as unknown as WorkflowGitRemoteService;
   const prisma = {
+    executionPlan: {
+      findFirst: vi.fn().mockResolvedValue({ items: [{ id: 'execution-item-golden-001', status: 'READY' }] }),
+    },
     executionSession: {
       findFirst: vi.fn().mockResolvedValue(session),
       findUnique: vi.fn().mockResolvedValue(session),
@@ -149,6 +152,9 @@ describe('Edge development golden path', () => {
             return data;
           }),
         },
+        executionItem: {
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
         workflowRun: {
           updateMany: vi.fn().mockResolvedValue({ count: 1 }),
           findUniqueOrThrow: vi.fn().mockResolvedValue(baseWorkflow),
@@ -162,7 +168,7 @@ describe('Edge development golden path', () => {
       executionSessionId: session.id,
       traceId: session.traceId,
       protocolVersion: '1.0',
-      requirement: workflow.requirement,
+      workItem: workflow.workItem,
       specPlan: confirmedSpecPlan,
       repositories: workflow.workflowRepositories.map((repository) => ({
         ...repository,
@@ -206,7 +212,7 @@ describe('Edge development golden path', () => {
       executionSessionId: session.id,
       traceId: session.traceId,
       protocolVersion: '1.0',
-      requirement: completedWorkflow.requirement,
+      workItem: completedWorkflow.workItem,
       specPlan: confirmedSpecPlan,
       repositories: [],
       artifacts: { planMetaPath: null, planHtmlPath: null },
@@ -230,7 +236,7 @@ describe('Edge development golden path', () => {
       executionSessionId: session.id,
       traceId: session.traceId,
       protocolVersion: '1.0',
-      requirement: baseWorkflow.requirement,
+      workItem: baseWorkflow.workItem,
       specPlan: confirmedSpecPlan,
       repositories: baseWorkflow.workflowRepositories.map((repository) => ({
         ...repository,
@@ -257,19 +263,9 @@ describe('Edge development golden path', () => {
     );
   });
 
-  it('keeps complete-local working as a compatibility wrapper without a session', async () => {
+  it('rejects complete-local when no execution session exists', async () => {
     const { service } = createService(null);
-    const handoff = { workflowRunId: baseWorkflow.id, executor: 'LOCAL' };
-    const completedWorkflow = { ...baseWorkflow, status: 'REVIEW_PENDING' };
     vi.spyOn(service as never, 'getWorkflowOrThrow' as never).mockResolvedValue(baseWorkflow);
-    vi.spyOn(service as never, 'buildLocalHandoffForWorkflow' as never).mockResolvedValue(handoff);
-    vi.spyOn((service as never).localCompletionCommand, 'run').mockResolvedValue({
-      workflow: completedWorkflow,
-      handoff,
-    });
-
-    const result = await service.completeLocalExecution(baseWorkflow.id, completionDto);
-
-    expect(result).toEqual({ workflow: completedWorkflow, handoff });
+    await expect(service.completeLocalExecution(baseWorkflow.id, completionDto)).rejects.toThrow(/执行会话/);
   });
 });

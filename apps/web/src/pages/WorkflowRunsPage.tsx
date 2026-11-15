@@ -32,7 +32,7 @@ import { formatWorkflowRunType, formatWorkflowStatus } from '../utils/workflow-u
 export function WorkflowRunsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  useRememberedSearchFilters('workflow-runs', ['workspaceId', 'requirementId', 'runType']);
+  useRememberedSearchFilters('workflow-runs', ['workspaceId', 'workItemId', 'runType']);
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
   const [selectedRequirement, setSelectedRequirement] = useState<Requirement | null>(null);
   const [deletingWorkflowId, setDeletingWorkflowId] = useState<string | null>(null);
@@ -40,10 +40,10 @@ export function WorkflowRunsPage() {
   const confirm = useConfirm();
   const workspaceId = searchParams.get('workspaceId') ?? '';
   const projectId = useScopedProjectId();
-  const requirementId = searchParams.get('requirementId') ?? '';
+  const workItemId = searchParams.get('workItemId') ?? '';
   const runType = searchParams.get('runType') ?? '';
 
-  const list = useListPage(api.getWorkflowRuns, { projectId: projectId || undefined, workspaceId: workspaceId || undefined, requirementId: requirementId || undefined, runType: runType || undefined }, {enabled:Boolean(projectId)});
+  const list = useListPage(api.getWorkflowRuns, { projectId: projectId || undefined, workspaceId: workspaceId || undefined, workItemId: workItemId || undefined, runType: runType || undefined }, {enabled:Boolean(projectId)});
   const {items: workflowRuns, loading, refresh} = list;
   const workflowSummary = {total:list.summary?.total ?? list.total,visible:list.summary?.visible ?? list.total,running:list.summary?.runningCount ?? 0,pending:list.summary?.pendingCount ?? 0};
 
@@ -54,13 +54,13 @@ export function WorkflowRunsPage() {
   }, [workspaceId]);
   useEffect(() => {
     let cancelled = false; setSelectedRequirement(null);
-    if (requirementId) void api.getRequirement(requirementId).then(item => { if (!cancelled) setSelectedRequirement(item); }).catch(() => {});
+    if (workItemId) void api.getRequirement(workItemId).then(item => { if (!cancelled) setSelectedRequirement(item); }).catch(() => {});
     return () => { cancelled = true; };
-  }, [requirementId]);
+  }, [workItemId]);
   function updateFilter(key: string, value: string) {
     const next = new URLSearchParams(searchParams);
     if (value) next.set(key,value); else next.delete(key);
-    next.delete('page'); if (key === 'workspaceId') next.delete('requirementId');
+    next.delete('page'); if (key === 'workspaceId') next.delete('workItemId');
     navigate(`/workflow-runs?${next.toString()}`);
   }
 
@@ -120,8 +120,8 @@ export function WorkflowRunsPage() {
             filters={(
               <>
                 <PagedSelect className="w-[220px]" value={workspaceId} selectedLabel={selectedWorkspace?.name} label="按工作区查看" placeholder="按工作区查看" allowClear emptyLabel="全部工作区" loadPage={query => api.getWorkspaces(query)} onValueChange={value => updateFilter('workspaceId',value)} />
-                <PagedSelect className="w-[220px]" value={requirementId} selectedLabel={selectedRequirement?.title} label="按需求查看" placeholder="按需求查看" allowClear emptyLabel="全部需求" disabled={!projectId} scopeKey={`${projectId}:${workspaceId}`}
-                  loadPage={async query => { const result = await api.getRequirements({...query,projectId:projectId!,workspaceId:workspaceId || undefined}); return {...result,items:result.items.map(item => ({id:item.id,name:item.title}))}; }} onValueChange={value => updateFilter('requirementId',value)} />
+                <PagedSelect className="w-[220px]" value={workItemId} selectedLabel={selectedRequirement?.title} label="按需求查看" placeholder="按需求查看" allowClear emptyLabel="全部需求" disabled={!projectId} scopeKey={`${projectId}:${workspaceId}`}
+                  loadPage={async query => { const result = await api.getRequirements({...query,projectId:projectId!,workspaceId:workspaceId || undefined}); return {...result,items:result.items.map(item => ({id:item.id,name:item.title}))}; }} onValueChange={value => updateFilter('workItemId',value)} />
                 <Select
                   value={runType || '__all__'}
                   onValueChange={(value) => {
@@ -159,7 +159,7 @@ export function WorkflowRunsPage() {
                 <RecordListItem
                   key={item.id}
                   interactive
-                  title={<div className="text-base font-semibold leading-6 text-foreground">{item.requirement.title}</div>}
+                  title={<div className="text-base font-semibold leading-6 text-foreground">{item.workItem.title}</div>}
                   badges={
                     <>
                       <Badge variant="default">{item.supersededByChangeId ? '已由需求变更替代' : formatWorkflowStatus(item.status)}</Badge>
@@ -167,14 +167,14 @@ export function WorkflowRunsPage() {
                         <Badge variant="secondary">{formatWorkflowRunType(item.runType)}</Badge>
                       ) : null}
                       <Badge variant="outline">{item.aiProvider === 'cursor' ? 'Cursor CLI' : 'Codex'}</Badge>
-                      <Badge variant="secondary">{item.requirement.project.name}</Badge>
-                      <Badge variant="outline">{item.requirement.project.workspace.name}</Badge>
+                      <Badge variant="secondary">{item.workItem.project.name}</Badge>
+                      <Badge variant="outline">{item.workItem.project.workspace.name}</Badge>
                       <Badge variant="outline">{item._count?.workflowRepositories ?? item.workflowRepositories.length} 个执行仓库</Badge>
                     </>
                   }
                   details={(
                     <>
-                      <p className="text-sm leading-6 text-muted-foreground">{item.requirement.description}</p>
+                      <p className="text-sm leading-6 text-muted-foreground">{item.workItem.description}</p>
                       <p className="text-sm leading-6 text-muted-foreground">
                         执行范围：{renderWorkflowRepositoryScope(item)}
                       </p>

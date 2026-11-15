@@ -31,9 +31,13 @@ describe('分页客户端升级边界', () => {
     expect((await fetch(`${base}${path}`)).status).toBe(200);
   });
   it.each([
-    '/projects', '/projects/p1/versions', '/workspaces/w1/repositories', '/requirements/r1/changes', '/requirements/r1/ideation/sessions/s1/events',
-    '/workflow-runs/w1/history', '/execution-sessions/s1/evidence', '/quality/test-requests/r1/report-supersessions', '/quality/test-runs/r1/cases',
+    '/projects', '/projects/p1/versions', '/workspaces/w1/repositories', '/work-items/r1/changes', '/work-items/r1/ideation/sessions/s1/events',
+    '/workflow-runs/w1/history', '/execution-sessions/s1/evidence', '/quality/test-requests/r1/report-supersessions', '/quality/test-requests/r1/work-items', '/quality/test-designs/d1/work-items', '/quality/test-runs/r1/cases',
     '/cursor-local/tasks', '/edge/opendesign-tasks', '/schedule/gantt', '/integrations/yunxiao/unmatched-recipients', '/auth/personal-api-tokens',
   ])('升级保护覆盖记录浏览 %s', path => { expect(isPaginatedBrowseRoute(path)).toBe(true); });
   it.each(['/auth/providers', '/workflow-runs/providers', '/quality/capabilities', '/quality/test-requests/id', '/artifacts/id/content', '/integrations/yunxiao', '/briefing-sources/repository-binding'])('不拦截固定能力与详情 %s', path => { expect(isPaginatedBrowseRoute(path)).toBe(false); });
+  it('质量关联统一使用 work-items 路径', () => {
+    expect(isPaginatedBrowseRoute('/quality/test-requests/r1/requirements')).toBe(false);
+    expect(isPaginatedBrowseRoute('/quality/test-designs/d1/requirements')).toBe(false);
+  });
 });

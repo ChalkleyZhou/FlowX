@@ -1,4 +1,4 @@
-export type LocalChatTaskType = 'requirement' | 'bug';
+export type LocalChatTaskKind = 'REQUIREMENT' | 'ISSUE';
 
 export interface LocalChatPromptRepository {
   name: string;
@@ -8,8 +8,9 @@ export interface LocalChatPromptRepository {
 
 export interface BuildLocalChatPromptInput {
   sourceTool?: 'cursor' | 'codex';
-  taskType: LocalChatTaskType;
-  taskId: string;
+  kind: LocalChatTaskKind;
+  workItemId: string;
+  executionItemId: string;
   workflowRunId: string;
   executionSessionId?: string | null;
   workflowRepositoryId?: string | null;
@@ -45,7 +46,7 @@ function formatReproduction(steps?: string[] | null) {
 }
 
 export function buildLocalChatPrompt(input: BuildLocalChatPromptInput) {
-  const taskLabel = input.taskType === 'bug' ? 'Bug' : 'Requirement';
+  const taskLabel = input.kind === 'ISSUE' ? 'Issue' : 'Requirement';
   const toolInstruction =
     input.sourceTool === 'codex'
       ? '- Work in Codex and keep the implementation, tests, and completion report in the same task.'
@@ -54,8 +55,9 @@ export function buildLocalChatPrompt(input: BuildLocalChatPromptInput) {
     `# FlowX ${taskLabel}: ${input.title.trim()}`,
     '',
     '## FlowX context',
-    `- Task type: ${input.taskType}`,
-    `- Task id: ${input.taskId}`,
+    `- Work item kind: ${input.kind}`,
+    `- Work item id: ${input.workItemId}`,
+    `- Execution item id: ${input.executionItemId}`,
     `- Workflow run id: ${input.workflowRunId}`,
     input.executionSessionId?.trim() ? `- Execution session id: ${input.executionSessionId.trim()}` : '',
     input.workflowRepositoryId?.trim()
@@ -73,7 +75,7 @@ export function buildLocalChatPrompt(input: BuildLocalChatPromptInput) {
     ...formatOptionalLine('Actual behavior', input.actualBehavior),
     ...formatOptionalLine('Expected behavior', input.expectedBehavior),
     ...formatReproduction(input.reproductionSteps),
-    ...(input.taskType === 'bug'
+    ...(input.kind === 'ISSUE'
       ? ['## Regression', 'Verify the fix against the reproduction path and nearby behavior.']
       : []),
     ...formatSuggestedChecks(input.suggestedChecks),

@@ -39,10 +39,10 @@ describe('WorkflowService local chat bootstrap', () => {
       .spyOn(service as never, 'createRequirementWorkflowRun' as never)
       .mockResolvedValue({ id: 'workflow-1' });
 
-    await service.createLocalChatWorkflowRun({ requirementId: 'req-1', repositoryIds: ['repo-1'] });
+    await service.createLocalChatWorkflowRun({ workItemId: 'req-1', repositoryIds: ['repo-1'] });
 
     expect(createRequirementWorkflowRun).toHaveBeenCalledWith(
-      { requirementId: 'req-1', repositoryIds: ['repo-1'] },
+      { workItemId: 'req-1', repositoryIds: ['repo-1'] },
       WorkflowRunType.LOCAL_CHAT,
     );
   });
@@ -62,7 +62,7 @@ describe('WorkflowService local chat bootstrap', () => {
           workflow: {
             id: string;
             runType: WorkflowRunType;
-            requirement: {
+            workItem: {
               id: string;
               title: string;
               description: string;
@@ -77,7 +77,7 @@ describe('WorkflowService local chat bootstrap', () => {
       {
         id: 'workflow-1',
         runType: WorkflowRunType.LOCAL_CHAT,
-        requirement: {
+        workItem: {
           id: 'req-1',
           title: 'Add export',
           description: 'Users need CSV export',

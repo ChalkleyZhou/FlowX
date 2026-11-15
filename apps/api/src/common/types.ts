@@ -62,12 +62,32 @@ export interface SpecPlanOutput {
 }
 
 export interface GenerateSpecPlanInput {
-  requirement: RequirementRecord;
+  workItem: RequirementRecord;
   workspace?: WorkspaceContext | null;
   humanFeedback?: string | null;
   previousOutput?: SpecPlanOutput | null;
   brainstormContext?: unknown | null;
   designContext?: unknown | null;
+}
+
+export interface ExecutionItemSuggestion {
+  title: string;
+  description: string;
+  target: string;
+  ownerHint?: string | null;
+  required: boolean;
+  dependsOnIndexes: number[];
+  verification: string[];
+}
+
+export interface ExecutionSplitOutput {
+  items: ExecutionItemSuggestion[];
+}
+
+export interface GenerateExecutionSplitInput {
+  workItem: RequirementRecord;
+  specPlan?: SpecPlanOutput | null;
+  workspace?: WorkspaceContext | null;
 }
 
 export type TestDesignCandidateAction = 'REUSE' | 'OPTIMIZE' | 'CREATE' | 'EXCLUDE';
@@ -107,7 +127,7 @@ export interface TestDesignGenerationOutput {
 }
 
 export interface GenerateTestDesignInput {
-  requirement: RequirementRecord;
+  workItem: RequirementRecord;
   brainstormContext?: unknown | null;
   designContext?: unknown | null;
   specPlan: SpecPlanOutput;
@@ -130,7 +150,7 @@ export interface GenerateTestDesignInput {
 }
 
 export interface ExecuteTaskInput {
-  requirement: RequirementRecord;
+  workItem: RequirementRecord;
   specPlan: SpecPlanOutput;
   workspace?: WorkspaceContext | null;
   humanFeedback?: string | null;
@@ -155,7 +175,7 @@ export interface ExecuteTaskOutput {
 }
 
 export interface ReviewCodeInput {
-  requirement: RequirementRecord;
+  workItem: RequirementRecord;
   specPlan: SpecPlanOutput;
   execution: ExecuteTaskOutput;
   workspace?: WorkspaceContext | null;

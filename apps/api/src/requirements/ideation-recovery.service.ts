@@ -46,7 +46,7 @@ export class IdeationRecoveryService implements OnModuleInit {
   private async recoverStaleRunningIdeationSessions() {
     const runningSessions = await this.prisma.ideationSession.findMany({
       where: { status: 'RUNNING' },
-      select: { id: true, requirementId: true, stage: true, startedAt: true, createdAt: true },
+      select: { id: true, workItemId: true, stage: true, startedAt: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -91,21 +91,21 @@ export class IdeationRecoveryService implements OnModuleInit {
       },
     });
 
-    const requirementIds = Array.from(
-      new Set(runningSessions.filter((session) => staleSessionIds.includes(session.id)).map((session) => session.requirementId)),
+    const workItemIds = Array.from(
+      new Set(runningSessions.filter((session) => staleSessionIds.includes(session.id)).map((session) => session.workItemId)),
     );
-    for (const requirementId of requirementIds) {
-      await this.reconcileRequirementIdeationStatus(requirementId);
+    for (const workItemId of workItemIds) {
+      await this.reconcileRequirementIdeationStatus(workItemId);
     }
 
     this.logger.warn(
-      `Recovered ${staleSessionIds.length} stale ideation RUNNING session(s) across ${requirementIds.length} requirement(s).`,
+      `Recovered ${staleSessionIds.length} stale ideation RUNNING session(s) across ${workItemIds.length} workItem(s).`,
     );
   }
 
-  private async reconcileRequirementIdeationStatus(requirementId: string) {
-    const requirement = await this.prisma.requirement.findUnique({
-      where: { id: requirementId },
+  private async reconcileRequirementIdeationStatus(workItemId: string) {
+    const workItem = await this.prisma.workItem.findUnique({
+      where: { id: workItemId },
       select: {
         id: true,
         ideationStatus: true,
@@ -121,50 +121,50 @@ export class IdeationRecoveryService implements OnModuleInit {
       },
     });
 
-    if (!requirement) {
+    if (!workItem) {
       return;
     }
 
-    const nextStatus = this.computeStableStatus(requirement);
-    if (requirement.ideationStatus === nextStatus) {
+    const nextStatus = this.computeStableStatus(workItem);
+    if (workItem.ideationStatus === nextStatus) {
       return;
     }
 
-    await this.prisma.requirement.update({
-      where: { id: requirement.id },
+    await this.prisma.workItem.update({
+      where: { id: workItem.id },
       data: { ideationStatus: nextStatus },
     });
   }
 
-  private computeStableStatus(requirement: {
+  private computeStableStatus(workItem: {
     ideationStatus: string;
     ideationSessions: Array<{ stage: string; status: string; createdAt: Date }>;
     ideationArtifacts: Array<{ type: string }>;
   }): StableIdeationStatus {
-    if (requirement.ideationStatus === 'FINALIZED') {
+    if (workItem.ideationStatus === 'FINALIZED') {
       return 'FINALIZED';
     }
 
-    const hasDesignWaiting = requirement.ideationSessions.some(
+    const hasDesignWaiting = workItem.ideationSessions.some(
       (session) => session.stage === 'DESIGN' && session.status === 'WAITING_CONFIRMATION',
     );
     if (hasDesignWaiting) {
       return 'DESIGN_WAITING_CONFIRMATION';
     }
 
-    const hasDesignArtifact = requirement.ideationArtifacts.some((artifact) => artifact.type === 'DESIGN_SPEC');
+    const hasDesignArtifact = workItem.ideationArtifacts.some((artifact) => artifact.type === 'DESIGN_SPEC');
     if (hasDesignArtifact) {
       return 'DESIGN_CONFIRMED';
     }
 
-    const hasBrainstormWaiting = requirement.ideationSessions.some(
+    const hasBrainstormWaiting = workItem.ideationSessions.some(
       (session) => session.stage === 'BRAINSTORM' && session.status === 'WAITING_CONFIRMATION',
     );
     if (hasBrainstormWaiting) {
       return 'BRAINSTORM_WAITING_CONFIRMATION';
     }
 
-    const hasBrainstormArtifact = requirement.ideationArtifacts.some(
+    const hasBrainstormArtifact = workItem.ideationArtifacts.some(
       (artifact) => artifact.type === 'BRAINSTORM_BRIEF',
     );
     if (hasBrainstormArtifact) {

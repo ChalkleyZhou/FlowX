@@ -4,7 +4,9 @@ import type { FlowXTaskItem, LocalHandoffPayload } from './flowx-client';
 
 const task: FlowXTaskItem = {
   id: 'req-1',
-  type: 'requirement',
+  workItemId: 'work-1',
+  kind: 'REQUIREMENT',
+  workItemTitle: '导出 CSV',
   title: '导出 CSV',
   status: 'in_progress',
   repository: { id: 'repo-1', name: 'flowx-web', url: 'git@x:flowx.git' },
@@ -14,7 +16,8 @@ const task: FlowXTaskItem = {
 
 const handoff: LocalHandoffPayload = {
   workflowRunId: 'run-1',
-  requirement: { id: 'req-1', title: '导出 CSV', description: 'desc', acceptanceCriteria: 'ac' },
+  workItem: { id: 'work-1', kind: 'REQUIREMENT', title: '导出 CSV', description: 'desc', acceptanceCriteria: 'ac' },
+  executionItem: { id: 'req-1', title: '导出 CSV', description: 'desc' },
   specPlan: {
     spec: {
       goal: 'Goal',

@@ -9,7 +9,7 @@ import { PrototypeImportPanel } from './PrototypeImportPanel';
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }));
 vi.mock('react-router-dom', async (original) => ({ ...await original<typeof import('react-router-dom')>(), useNavigate: () => navigate }));
 vi.mock('../api', () => ({ api: { getPrototypeImport: vi.fn(), previewPrototypeImport: vi.fn(), analyzePrototypeImport: vi.fn(), supplementPrototypeImport: vi.fn(), downloadPrototypeImport: vi.fn(), confirmPrototypeImport: vi.fn(), createWorkflowRun: vi.fn(), createPrototypeRequirementChange: vi.fn() } }));
-const record: PrototypeImport = { id: 'import-1', requirementId: 'req-1', status: 'ANALYZING', revision: 1, materialRevision: 1, aiProvider: 'codex', goal: '', manifest: { files: [], pages: [{ path: 'index.html', title: '看板' }], kinds: ['html'], sources: [{ name: '原型.zip', revision: 1 }], warnings: [] }, analysis: null, answers: {}, errorMessage: null };
+const record: PrototypeImport = { id: 'import-1', workItemId: 'req-1', status: 'ANALYZING', revision: 1, materialRevision: 1, aiProvider: 'codex', goal: '', manifest: { files: [], pages: [{ path: 'index.html', title: '看板' }], kinds: ['html'], sources: [{ name: '原型.zip', revision: 1 }], warnings: [] }, analysis: null, answers: {}, errorMessage: null };
 describe('原型快速导入', () => {
   let container: HTMLDivElement, root: Root;
   beforeEach(() => {

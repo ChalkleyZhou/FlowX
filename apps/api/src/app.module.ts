@@ -23,6 +23,7 @@ import { RequirementsModule } from './requirements/requirements.module';
 import { WorkflowModule } from './workflow/workflow.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 import { PluginsModule } from './plugins/plugins.module';
+import { WorkItemsModule } from './work-items/work-items.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { PluginsModule } from './plugins/plugins.module';
     PrototypeImportsModule,
     WorkflowModule,
     PluginsModule,
+    WorkItemsModule,
   ],
   providers: [
     {

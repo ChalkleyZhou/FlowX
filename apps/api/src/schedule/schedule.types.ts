@@ -20,7 +20,7 @@ export interface GanttBar {
   color?: string;
   meta: {
     projectId: string;
-    requirementId: string;
+    workItemId: string;
     userId: string;
     role: string;
   };
@@ -42,7 +42,7 @@ export interface GetScheduleGanttQuery {
   from: string;
   to: string;
   userId?: string;
-  requirementId?: string;
+  workItemId?: string;
   role?: string;
   q?: string;
   page?: string | number;

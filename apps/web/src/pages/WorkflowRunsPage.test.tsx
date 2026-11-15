@@ -10,7 +10,7 @@ import type { PageResult, WorkflowRun } from '../types';
 vi.mock('../api',()=>({api:{getWorkflowRuns:vi.fn(),getWorkspace:vi.fn(),getRequirement:vi.fn(),getWorkspaces:vi.fn(),getRequirements:vi.fn(),deleteWorkflowRun:vi.fn()}}));
 vi.mock('../components/ui/toast',()=>({useToast:()=>({success:vi.fn(),error:vi.fn()})}));
 vi.mock('../components/ConfirmDialog',()=>({useConfirm:()=>vi.fn(async()=>true)}));
-const run = (id:string):WorkflowRun => ({id,status:'EXECUTION_PENDING',runType:'FULL',requirement:{id:'r',title:`流程 ${id}`,description:'说明',project:{id:'p',name:'项目',workspace:{id:'w',name:'工作区'}}},workflowRepositories:[]} as unknown as WorkflowRun);
+const run = (id:string):WorkflowRun => ({id,status:'EXECUTION_PENDING',runType:'FULL',workItem:{id:'r',title:`流程 ${id}`,description:'说明',acceptanceCriteria:'',project:{id:'p',name:'项目',workspace:{id:'w',name:'工作区',repositories:[]}}},workflowRepositories:[]} as unknown as WorkflowRun);
 const page = (items:WorkflowRun[], current=1):PageResult<WorkflowRun> => ({items,total:21,page:current,pageSize:20,totalPages:2,summary:{total:60,visible:21,runningCount:15,pendingCount:30}});
 
 describe('工作流服务端分页',()=>{
@@ -21,8 +21,8 @@ describe('工作流服务端分页',()=>{
  });
  afterEach(()=>{act(()=>root.unmount());document.body.innerHTML='';vi.clearAllMocks();});
  it('按项目和筛选查询当前页，指标采用全范围汇总',async()=>{
-   await act(async()=>root.render(<MemoryRouter initialEntries={['/workflow-runs?projectId=p&requirementId=off-page&runType=FULL']}><WorkflowRunsPage/></MemoryRouter>));
-   expect(api.getWorkflowRuns).toHaveBeenLastCalledWith(expect.objectContaining({projectId:'p',requirementId:'off-page',runType:'FULL',page:1,pageSize:20}));
+   await act(async()=>root.render(<MemoryRouter initialEntries={['/workflow-runs?projectId=p&workItemId=off-page&runType=FULL']}><WorkflowRunsPage/></MemoryRouter>));
+   expect(api.getWorkflowRuns).toHaveBeenLastCalledWith(expect.objectContaining({projectId:'p',workItemId:'off-page',runType:'FULL',page:1,pageSize:20}));
    expect(container.textContent).toContain('跨页已选需求');
    expect(container.textContent).toContain('共 21 条');
    expect(container.textContent).toContain('15');

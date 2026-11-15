@@ -19,7 +19,7 @@ function stage(overrides: Record<string, unknown> = {}) {
 }
 function workflow(overrides: Record<string, unknown> = {}) {
   return { id: 'run', status: 'DESIGN_PENDING', currentStage: 'DESIGN', updatedAt: now,
-    requirement: { workspace: { id: 'space', organizationId: 'org' } }, stageExecutions: [stage()], ...overrides };
+    workItem: { workspace: { id: 'space', organizationId: 'org' } }, stageExecutions: [stage()], ...overrides };
 }
 function harness(run = workflow(), target = session()) {
   const prisma = {
@@ -67,18 +67,18 @@ describe('工作流协同状态与本地任务交接', () => {
   });
 
   it('跨组织查询按实际工作区组织拒绝，即使会话组织伪装为当前组织', async () => {
-    const { service } = harness(workflow({ requirement: { workspace: { id: 'space', organizationId: 'other' } } }));
+    const { service } = harness(workflow({ workItem: { workspace: { id: 'space', organizationId: 'other' } } }));
     await expect(service.getCollaboration('run', actor)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('旧需求缺少直接 workspace 时使用所属项目的工作区验证组织与会话', async () => {
-    const { service } = harness(workflow({ requirement: { workspace: null, project: { workspace: { id: 'space', organizationId: 'org' } } } }));
+    const { service } = harness(workflow({ workItem: { workspace: null, project: { workspace: { id: 'space', organizationId: 'org' } } } }));
     expect((await service.getCollaboration('run', actor)).sessions[0]).toMatchObject({ canRelease: true });
     await expect(service.releaseLocalTask('run', input, actor)).resolves.toMatchObject({ released: true });
   });
 
   it('项目回退工作区属于其他组织时拒绝读取', async () => {
-    const { service } = harness(workflow({ requirement: { workspace: null, project: { workspace: { id: 'space', organizationId: 'other' } } } }));
+    const { service } = harness(workflow({ workItem: { workspace: null, project: { workspace: { id: 'space', organizationId: 'other' } } } }));
     await expect(service.getCollaboration('run', actor)).rejects.toBeInstanceOf(ForbiddenException);
   });
 

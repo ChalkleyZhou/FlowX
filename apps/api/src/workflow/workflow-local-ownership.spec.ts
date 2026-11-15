@@ -3,7 +3,7 @@ import { WorkflowService } from './workflow.service';
 import { LocalSmokeService } from '../quality/local-smoke.service';
 
 const actor = { user: { id: 'user-b', displayName: '乙' }, organization: { id: 'org-1' } };
-const workflow = { requirement: { workspace: { organizationId: 'org-1' }, project: {} }, id: 'workflow-1', status: 'DESIGN_PENDING', currentStage: 'DESIGN' };
+const workflow = { workItem: { workspace: { organizationId: 'org-1' }, project: {} }, id: 'workflow-1', status: 'DESIGN_PENDING', currentStage: 'DESIGN' };
 
 describe('本地阶段执行归属', () => {
   it.each(['Design', 'Brainstorm', 'SpecPlan'] as const)('其他人不能复用 %s 已领取会话', async (kind) => {

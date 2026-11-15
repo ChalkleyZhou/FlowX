@@ -3,8 +3,8 @@ import path from 'node:path';
 import type { CompleteLocalInput, FlowXTaskItem, LocalChatHandoff, LocalHandoffPayload } from './flowx-client';
 
 export interface HandoffSnapshot {
-  taskId: string;
-  taskType: 'requirement' | 'bug';
+  executionItemId: string;
+  workItemId: string;
   workflowRunId: string;
   executionSessionId: string | null;
   workflowRepositoryId: string | null;
@@ -12,8 +12,8 @@ export interface HandoffSnapshot {
 
 export function buildHandoffSnapshot(handoff: LocalChatHandoff): HandoffSnapshot {
   return {
-    taskId: handoff.taskId,
-    taskType: handoff.taskType,
+    executionItemId: handoff.executionItemId,
+    workItemId: handoff.workItemId,
     workflowRunId: handoff.handoff.workflowRunId,
     executionSessionId: handoff.handoff.executionSessionId ?? null,
     workflowRepositoryId:
@@ -32,8 +32,8 @@ export async function saveRestoredHandoffSnapshot(
   handoff: LocalHandoffPayload,
 ): Promise<HandoffSnapshot> {
   const snapshot: HandoffSnapshot = {
-    taskId: task.id,
-    taskType: task.type,
+    executionItemId: task.id,
+    workItemId: task.workItemId,
     workflowRunId: handoff.workflowRunId,
     executionSessionId: handoff.executionSessionId ?? task.executionSessionId ?? null,
     workflowRepositoryId: handoff.repositories?.[0]?.workflowRepositoryId ?? null,
@@ -45,14 +45,14 @@ export async function saveRestoredHandoffSnapshot(
 async function writeHandoffSnapshot(gitRoot: string, snapshot: HandoffSnapshot): Promise<string> {
   const dir = path.join(gitRoot, '.flowx', 'tasks');
   await fs.mkdir(dir, { recursive: true });
-  const filePath = path.join(dir, `${sanitizeFileName(snapshot.taskId)}.json`);
+  const filePath = path.join(dir, `${sanitizeFileName(snapshot.executionItemId)}.json`);
   await fs.writeFile(filePath, JSON.stringify(snapshot, null, 2), 'utf8');
   return filePath;
 }
 
-export async function loadHandoffSnapshot(gitRoot: string, taskId: string): Promise<HandoffSnapshot | null> {
+export async function loadHandoffSnapshot(gitRoot: string, executionItemId: string): Promise<HandoffSnapshot | null> {
   try {
-    const filePath = path.join(gitRoot, '.flowx', 'tasks', `${sanitizeFileName(taskId)}.json`);
+    const filePath = path.join(gitRoot, '.flowx', 'tasks', `${sanitizeFileName(executionItemId)}.json`);
     return JSON.parse(await fs.readFile(filePath, 'utf8')) as HandoffSnapshot;
   } catch {
     return null;

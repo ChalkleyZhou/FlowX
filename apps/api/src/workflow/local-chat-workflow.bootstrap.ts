@@ -6,10 +6,10 @@ export interface LocalChatRequirementPayload {
   acceptanceCriteria: string;
 }
 
-export function buildLocalChatRequirementBootstrap(requirement: LocalChatRequirementPayload) {
-  const title = requirement.title.trim();
-  const description = requirement.description.trim();
-  const acceptanceCriteria = requirement.acceptanceCriteria.trim();
+export function buildLocalChatRequirementBootstrap(workItem: LocalChatRequirementPayload) {
+  const title = workItem.title.trim();
+  const description = workItem.description.trim();
+  const acceptanceCriteria = workItem.acceptanceCriteria.trim();
 
   const specPlan: SpecPlanOutput = {
     spec: {

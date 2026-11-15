@@ -75,6 +75,10 @@ import type {
   WorkflowRun,
   WorkflowCodeDelivery,
   Workspace,
+  WorkItem,
+  ExecutionPlan,
+  ExecutionItem,
+  WorkItemsPage,
   YunxiaoIntegrationStatus,
   YunxiaoProjectMembersResponse,
   YunxiaoUnmatchedRecipient,
@@ -261,7 +265,7 @@ export function getBugScreenshotUrl(bugId: string, screenshotId: string) {
 
 export type ListQuery = PageQuery & {
   workspaceId?: string; projectId?: string; versionId?: string; projectVersionId?: string;
-  requirementId?: string; workflowRunId?: string; status?: string; priority?: string;
+  requirementId?: string; workItemId?: string; workflowRunId?: string; status?: string; priority?: string;
   planningStatus?: string; severity?: string; runType?: string; role?: string;
   libraryId?: string; moduleId?: string; parentId?: string | null;
   libraryIds?: string[]; moduleIds?: string[]; priorities?: string[]; selectedRunIds?: string[]; ownership?: 'project' | 'shared';
@@ -353,6 +357,22 @@ export const api = {
   getProjects: (query?: ListQuery) => requestPage<Project>('/projects', query),
   getProject: (id: string) => request<Project>(`/projects/${id}`),
   listProjectVersions: (projectId: string, query?: ListQuery) => requestPage<ProjectVersionSummary>(`/projects/${projectId}/versions`, query),
+  listVersionWorkItems: (projectId: string, versionId: string, query?: { cursor?: string; pageSize?: number; kind?: WorkItem['kind']; status?: string; ownerId?: string; q?: string }) =>
+    request<WorkItemsPage>(`/projects/${projectId}/versions/${versionId}/work-items${queryString(query)}`),
+  createVersionWorkItem: (projectId: string, versionId: string, payload: { kind: WorkItem['kind']; title: string; description?: string; remark?: string; priority?: string; ownerUserId?: string; acceptanceCriteria?: string; splitMode?: 'AI' | 'SINGLE' | 'MANUAL' }) =>
+    request<WorkItem>(`/projects/${projectId}/versions/${versionId}/work-items`, { method: 'POST', body: JSON.stringify(payload) }),
+  getWorkItem: (id: string) => request<WorkItem>(`/work-items/${id}`),
+  updateWorkItem: (id: string, payload: { title?: string; description?: string; remark?: string; status?: string; priority?: string; ownerUserId?: string | null; versionId?: string | null; updatedAt?: string }) =>
+    request<WorkItem>(`/work-items/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteWorkItem: (id: string) => request<{ id: string }>(`/work-items/${id}`, { method: 'DELETE' }),
+  startWorkItemWorkflow: (id: string, payload?: { repositoryIds?: string[]; aiProvider?: 'codex' | 'cursor'; splitMode?: 'AI' | 'SINGLE' | 'MANUAL' }) =>
+    request<WorkflowRun>(`/work-items/${id}/workflow-runs`, { method: 'POST', body: JSON.stringify(payload ?? {}) }),
+  addExecutionItem: (workItemId: string, planId: string, payload: { title: string; description?: string; target?: string; ownerHint?: string | null; ownerUserId?: string | null; required?: boolean; dependsOnIds?: string[]; sortOrder?: number; verification?: string }) =>
+    request<ExecutionItem>(`/work-items/${workItemId}/execution-plans/${planId}/items`, { method: 'POST', body: JSON.stringify(payload) }),
+  generateExecutionPlan: (workItemId: string, planId: string, payload?: { aiProvider?: 'codex' | 'cursor' }) =>
+    request<ExecutionPlan>(`/work-items/${workItemId}/execution-plans/${planId}/generate`, { method: 'POST', body: JSON.stringify(payload ?? {}) }),
+  confirmExecutionPlan: (workItemId: string, planId: string) =>
+    request<ExecutionPlan>(`/work-items/${workItemId}/execution-plans/${planId}/confirm`, { method: 'POST' }),
   getProjectVersion: (projectId: string, versionId: string) => request<ProjectVersionSummary>(`/projects/${projectId}/versions/${versionId}`),
   createProjectVersion: (projectId: string, payload: { name: string }) =>
     request<ProjectVersionSummary>(`/projects/${projectId}/versions`, {
@@ -729,34 +749,34 @@ export const api = {
     request<GitCredentialStatus>('/auth/git-credentials/gitlab', {
       method: 'DELETE',
     }),
-  getRequirements: (query?: ListQuery) => requestPage<Requirement>('/requirements', query),
+  getRequirements: (query?: ListQuery) => requestPage<Requirement>('/work-items', { ...query, kind: 'REQUIREMENT' }),
   createRequirement: (payload: RequirementPayload) =>
-    request<Requirement>('/requirements', {
+    request<Requirement>('/work-items', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, kind: 'REQUIREMENT' }),
     }),
-  getRequirement: (id: string) => request<Requirement>(`/requirements/${id}`),
-  getRequirementRepositories: (id: string, query?: ListQuery) => requestPage<Repository>(`/requirements/${id}/repositories`, query),
+  getRequirement: (id: string) => request<Requirement>(`/work-items/${id}`),
+  getRequirementRepositories: (id: string, query?: ListQuery) => requestPage<Repository>(`/work-items/${id}/repositories`, query),
   getWorkflowHistory: (id: string, query?: ListQuery) => requestPage<WorkflowRun['stageExecutions'][number]>(`/workflow-runs/${id}/history`, query),
   getWorkflowRepositories: (id: string, query?: ListQuery) => requestPage<WorkflowRun['workflowRepositories'][number]>(`/workflow-runs/${id}/repositories`, query),
-  getRequirementIdeationSessions: (id: string, query?: ListQuery) => requestPage<NonNullable<Requirement['ideationSessions']>[number]>(`/requirements/${id}/ideation/sessions`, query),
-  getRequirementIdeationArtifacts: (id: string, query?: ListQuery) => requestPage<NonNullable<Requirement['ideationArtifacts']>[number]>(`/requirements/${id}/ideation/artifacts`, query),
-  getRequirementChanges: (id: string, workflowRunId?: string, query?: ListQuery) => request<PageResult<RequirementChange> & Omit<RequirementChanges, 'changes'>>(`/requirements/${id}/changes${queryString({ page: 1, pageSize: 20, ...query, workflowRunId })}`),
+  getRequirementIdeationSessions: (id: string, query?: ListQuery) => requestPage<NonNullable<Requirement['ideationSessions']>[number]>(`/work-items/${id}/ideation/sessions`, query),
+  getRequirementIdeationArtifacts: (id: string, query?: ListQuery) => requestPage<NonNullable<Requirement['ideationArtifacts']>[number]>(`/work-items/${id}/ideation/artifacts`, query),
+  getRequirementChanges: (id: string, workflowRunId?: string, query?: ListQuery) => request<PageResult<RequirementChange> & Omit<RequirementChanges, 'changes'>>(`/work-items/${id}/changes${queryString({ page: 1, pageSize: 20, ...query, workflowRunId })}`),
   createRequirementChange: (id: string, payload: RequirementChangePayload) =>
-    request<RequirementChange>(`/requirements/${id}/changes`, { method: 'POST', body: JSON.stringify(payload) }),
+    request<RequirementChange>(`/work-items/${id}/changes`, { method: 'POST', body: JSON.stringify(payload) }),
   createPrototypeRequirementChange: (id: string, payload: RequirementChangePayload & { aiProvider?: 'codex' | 'cursor' }, file: File) => {
     const body = new FormData(); body.append('file', file);
     body.append('content', payload.content); body.append('mode', payload.mode); body.append('requestId', payload.requestId);
     if (payload.sourceWorkflowRunId) body.append('sourceWorkflowRunId', payload.sourceWorkflowRunId);
     if (payload.aiProvider) body.append('aiProvider', payload.aiProvider);
-    return request<RequirementChange>(`/requirements/${id}/changes/prototype`, { method: 'POST', body });
+    return request<RequirementChange>(`/work-items/${id}/changes/prototype`, { method: 'POST', body });
   },
   downloadRequirementChangePrototype: (id: string, changeId: string) =>
-    request<Blob>(`/requirements/${id}/changes/${changeId}/source`, undefined, 'blob'),
+    request<Blob>(`/work-items/${id}/changes/${changeId}/source`, undefined, 'blob'),
   restartRequirementChange: (id: string, changeId: string) =>
-    request<RequirementChange>(`/requirements/${id}/changes/${changeId}/restart`, { method: 'POST' }),
+    request<RequirementChange>(`/work-items/${id}/changes/${changeId}/restart`, { method: 'POST' }),
   deleteRequirement: (id: string) =>
-    request<{ success: boolean }>(`/requirements/${id}`, { method: 'DELETE' }),
+    request<{ success: boolean }>(`/work-items/${id}`, { method: 'DELETE' }),
   updateRequirement: (
     id: string,
     payload: {
@@ -772,11 +792,11 @@ export const api = {
       versionId?: string | null;
     },
   ) =>
-    request<Requirement>(`/requirements/${id}`, {
+    request<Requirement>(`/work-items/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
-  getRequirementAssignments: (id: string, query?: ListQuery) => requestPage<RequirementAssignment>(`/requirements/${id}/assignments`, query),
+  getRequirementAssignments: (id: string, query?: ListQuery) => requestPage<RequirementAssignment>(`/work-items/${id}/assignments`, query),
   createRequirementAssignment: (
     id: string,
     payload: {
@@ -789,7 +809,7 @@ export const api = {
       colorToken?: string;
     },
   ) =>
-    request<RequirementAssignment>(`/requirements/${id}/assignments`, {
+    request<RequirementAssignment>(`/work-items/${id}/assignments`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
@@ -806,12 +826,12 @@ export const api = {
       colorToken?: string;
     },
   ) =>
-    request<RequirementAssignment>(`/requirements/${id}/assignments/${assignmentId}`, {
+    request<RequirementAssignment>(`/work-items/${id}/assignments/${assignmentId}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
   deleteRequirementAssignment: (id: string, assignmentId: string) =>
-    request<{ ok: boolean }>(`/requirements/${id}/assignments/${assignmentId}`, {
+    request<{ ok: boolean }>(`/work-items/${id}/assignments/${assignmentId}`, {
       method: 'DELETE',
     }),
   getScheduleGantt: (query: {
@@ -823,7 +843,7 @@ export const api = {
     to: string;
     userId?: string;
     onlyMe?: boolean;
-    requirementId?: string;
+    workItemId?: string;
     role?: string;
   }) => {
     const params = new URLSearchParams();
@@ -840,17 +860,17 @@ export const api = {
     return request<GanttPayload>(`/schedule/gantt?${params.toString()}`);
   },
   startBrainstorm: (requirementId: string, hint?: string) =>
-    request<Requirement>(`/requirements/${requirementId}/brainstorm/run`, {
+    request<Requirement>(`/work-items/${requirementId}/brainstorm/run`, {
       method: 'POST',
       body: JSON.stringify({ humanHint: hint }),
     }),
   reviseBrainstorm: (requirementId: string, feedback: string) =>
-    request<Requirement>(`/requirements/${requirementId}/brainstorm/revise`, {
+    request<Requirement>(`/work-items/${requirementId}/brainstorm/revise`, {
       method: 'POST',
       body: JSON.stringify({ feedback }),
     }),
   confirmBrainstorm: (requirementId: string) =>
-    request<Requirement>(`/requirements/${requirementId}/brainstorm/confirm`, {
+    request<Requirement>(`/work-items/${requirementId}/brainstorm/confirm`, {
       method: 'POST',
     }),
   runBrainstorm: (id: string) =>
@@ -882,35 +902,35 @@ export const api = {
   rejectWorkflowDesign: (workflowRunId: string) =>
     request<WorkflowRun>(`/workflow-runs/${workflowRunId}/design/reject`, { method: 'POST' }),
   startDesign: (requirementId: string, hint?: string) =>
-    request<Requirement>(`/requirements/${requirementId}/design/run`, {
+    request<Requirement>(`/work-items/${requirementId}/design/run`, {
       method: 'POST',
       body: JSON.stringify({ humanHint: hint }),
     }),
   reviseDesign: (requirementId: string, feedback: string) =>
-    request<Requirement>(`/requirements/${requirementId}/design/revise`, {
+    request<Requirement>(`/work-items/${requirementId}/design/revise`, {
       method: 'POST',
       body: JSON.stringify({ feedback }),
     }),
   confirmDesign: (requirementId: string) =>
-    request<Requirement>(`/requirements/${requirementId}/design/confirm`, {
+    request<Requirement>(`/work-items/${requirementId}/design/confirm`, {
       method: 'POST',
     }),
   startDemoGeneration: (requirementId: string, hint?: string) =>
-    request<Requirement>(`/requirements/${requirementId}/demo/run`, {
+    request<Requirement>(`/work-items/${requirementId}/demo/run`, {
       method: 'POST',
       body: JSON.stringify({ humanHint: hint }),
     }),
   reviseDemoGeneration: (requirementId: string, feedback: string) =>
-    request<Requirement>(`/requirements/${requirementId}/demo/revise`, {
+    request<Requirement>(`/work-items/${requirementId}/demo/revise`, {
       method: 'POST',
       body: JSON.stringify({ feedback }),
     }),
   confirmDemoGeneration: (requirementId: string) =>
-    request<Requirement>(`/requirements/${requirementId}/demo/confirm`, {
+    request<Requirement>(`/work-items/${requirementId}/demo/confirm`, {
       method: 'POST',
     }),
   getIdeationSessionEvents: (requirementId: string, sessionId: string, query?:ListQuery) =>
-    requestPage<IdeationSessionEvent>(`/requirements/${requirementId}/ideation/sessions/${sessionId}/events`,query),
+    requestPage<IdeationSessionEvent>(`/work-items/${requirementId}/ideation/sessions/${sessionId}/events`,query),
   detectLocalDev: (repositoryId: string, workflowRunId?: string) =>
     request<LocalDevDetectResponse>(
       `/repositories/${repositoryId}/local-dev${workflowRunId ? `?workflowRunId=${encodeURIComponent(workflowRunId)}` : ''}`,
@@ -930,7 +950,7 @@ export const api = {
       { method: 'POST' },
     ),
   finalizeIdeation: (requirementId: string) =>
-    request<Requirement>(`/requirements/${requirementId}/ideation/finalize`, {
+    request<Requirement>(`/work-items/${requirementId}/ideation/finalize`, {
       method: 'POST',
     }),
   getWorkflowRuns: (query?: ListQuery) => requestPage<WorkflowRun>('/workflow-runs', query),
@@ -973,10 +993,10 @@ export const api = {
     request<WorkflowDesignArtifactPage>(
       `/workflow-runs/${id}/design-artifacts/page${queryString({ surfaceId, pageId })}`,
     ),
-  startOpenDesignHandoff: (requirementId: string, repositoryIds?: string[]) =>
+  startOpenDesignHandoff: (workItemId: string, repositoryIds?: string[]) =>
     request<OpenDesignHandoffResponse>('/edge/design-handoffs', {
       method: 'POST',
-      body: JSON.stringify({ requirementId, repositoryIds }),
+      body: JSON.stringify({ workItemId, repositoryIds }),
     }),
   retryOpenDesignHandoff: (workflowRunId: string) =>
     request<OpenDesignHandoffResponse>(`/edge/design-handoffs/${workflowRunId}/retry`, {
@@ -1030,14 +1050,6 @@ export const api = {
     }),
   getLocalHandoff: (id: string) =>
     request<LocalHandoffPayload>(`/workflow-runs/${id}/execution/local-handoff`),
-  completeLocalExecution: (
-    id: string,
-    body: { pushed: boolean; repositories: CompleteLocalRepositoryReport[] },
-  ) =>
-    request<LocalExecutionClaimResponse>(`/workflow-runs/${id}/execution/complete-local`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
   completeExecutionSession: (id: string, body: { pushed: boolean; repositories: CompleteLocalRepositoryReport[] }) =>
     request<ExecutionSessionDetail>(`/execution-sessions/${encodeURIComponent(id)}/complete`, {
       method: 'POST', body: JSON.stringify(body),
@@ -1061,13 +1073,13 @@ export const api = {
       }>;
     }>(`/workflow-runs/${id}/git/publish`, { method: 'POST' }),
   createWorkflowRun: (
-    requirementId: string,
+    workItemId: string,
     repositoryIds?: string[],
     aiProvider?: 'codex' | 'cursor',
   ) =>
     request<WorkflowRun>('/workflow-runs', {
       method: 'POST',
-      body: JSON.stringify({ requirementId, repositoryIds, aiProvider }),
+      body: JSON.stringify({ workItemId, repositoryIds, aiProvider }),
     }),
   runSpecPlan: (id: string) =>
     request<WorkflowRun>(`/workflow-runs/${id}/spec-plan/run`, { method: 'POST' }),
@@ -1119,7 +1131,7 @@ export const api = {
   dismissReviewFinding: (id: string) =>
     request<ReviewFinding>(`/review-findings/${id}/dismiss`, { method: 'POST' }),
   convertReviewFindingToIssue: (id: string, payload?: { title?: string; description?: string; priority?: string }) =>
-    request<Issue>(`/review-findings/${id}/convert-to-issue`, {
+    request<Issue>(`/review-findings/${id}/convert-to-work-item`, {
       method: 'POST',
       body: JSON.stringify(payload ?? {}),
     }),
@@ -1131,8 +1143,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload ?? {}),
     }),
-  getIssues: (query?: ListQuery) => requestPage<Issue>('/issues', query),
-  getIssue: (id: string) => request<Issue>(`/issues/${id}`),
+  getIssues: (query?: ListQuery) => requestPage<Issue>('/work-items', { ...query, kind: 'ISSUE' }),
+  getIssue: (id: string) => request<Issue>(`/work-items/${id}`),
   updateIssue: (
     id: string,
     payload: {
@@ -1144,7 +1156,7 @@ export const api = {
       branchName?: string;
     },
   ) =>
-    request<Issue>(`/issues/${id}`, {
+    request<Issue>(`/work-items/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
@@ -1187,10 +1199,10 @@ export const api = {
   getTestRequestCases: (id: string, query?: ListQuery) => requestPage<NonNullable<TestRun['cases']>[number] & { testRun: { id: string; name: string; status: string; runType: string } }>(`/quality/test-requests/${id}/cases`, query),
   getQualityReportBaselines: (id: string, query?: ListQuery) => requestPage<TestedRepositoryRevision>(`/quality/test-requests/${id}/report-baselines`, query),
   getQualityReportSupersessions: (id: string, query?: ListQuery) => requestPage<QualitySupersession & { label: string }>(`/quality/test-requests/${id}/report-supersessions`, query),
-  getTestRequestRequirements: (id: string, query?: ListQuery) => requestPage<TestRequest['requirementLinks'][number]>(`/quality/test-requests/${id}/requirements`, query),
+  getTestRequestWorkItems: (id: string, query?: ListQuery) => requestPage<TestRequest['workItemLinks'][number]>(`/quality/test-requests/${id}/work-items`, query),
   getTestRequestWorkflows: (id: string, query?: ListQuery) => requestPage<TestRequest['workflowLinks'][number]>(`/quality/test-requests/${id}/workflows`, query),
   getTestRequestArtifacts: (id: string, query?: ListQuery) => requestPage<TestRequest['artifactLinks'][number]>(`/quality/test-requests/${id}/artifacts`, query),
-  getTestDesignRequirements: (id: string, query?: ListQuery) => requestPage<NonNullable<TestDesign['requirements']>[number]>(`/quality/test-designs/${id}/requirements`, query),
+  getTestDesignWorkItems: (id: string, query?: ListQuery) => requestPage<NonNullable<TestDesign['workItems']>[number]>(`/quality/test-designs/${id}/work-items`, query),
   getTestDesignWorkflows: (id: string, query?: ListQuery) => requestPage<NonNullable<TestDesign['workflowRuns']>[number]>(`/quality/test-designs/${id}/workflows`, query),
   createTestCase: (
     libraryId: string,
@@ -1245,7 +1257,7 @@ export const api = {
     projectVersionId: string;
     title: string;
     description?: string;
-    requirementIds: string[];
+    workItemIds: string[];
     workflowRunIds: string[];
     artifactIds?: string[];
     testDesignId?: string;
@@ -1270,7 +1282,7 @@ export const api = {
     workspaceId: string;
     projectId: string;
     projectVersionId: string;
-    requirementIds: string[];
+    workItemIds: string[];
     workflowRunIds: string[];
     changeSummary?: string;
   }) => request<TestDesign>('/quality/test-designs', { method: 'POST', body: JSON.stringify(payload) }),
@@ -1384,7 +1396,7 @@ export const api = {
       autoStart?: boolean;
     },
   ) =>
-    request<{ bug: Bug; requirement: { id: string; title: string }; workflowRun: WorkflowRun }>(
+    request<{ bug: Bug; workItem: { id: string; title: string }; workflowRun: WorkflowRun }>(
       `/bugs/${bugId}/fix-workflow`,
       {
         method: 'POST',

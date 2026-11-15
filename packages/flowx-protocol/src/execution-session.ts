@@ -28,6 +28,7 @@ export const SOURCE_TOOLS = [
   'shell',
   'test-runner',
   'flowx-worker',
+  'flowx-local',
 ] as const;
 
 export type SourceTool = (typeof SOURCE_TOOLS)[number];

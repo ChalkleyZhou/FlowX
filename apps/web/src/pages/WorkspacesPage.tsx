@@ -401,7 +401,7 @@ export function WorkspacesPage() {
                     <div className="mt-2 flex flex-wrap gap-3">
                       <Badge variant="warning">{workspace._count?.repositories ?? 0} 个代码库</Badge>
                       <Badge variant="secondary">{workspace._count?.projects ?? 0} 个项目</Badge>
-                      <Badge variant="default">{workspace._count?.requirements ?? 0} 条需求</Badge>
+                      <Badge variant="default">{workspace._count?.workItems ?? 0} 条需求</Badge>
                     </div>
                   </div>
                   <UiButton

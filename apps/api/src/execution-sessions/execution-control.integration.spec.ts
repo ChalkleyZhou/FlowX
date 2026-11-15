@@ -23,7 +23,7 @@ const control = new ExecutionControlService(prisma as never, workflow);
 let scope: { organizationId: string; userId: string; organizationRole: string };
 let workspaceId: string;
 let projectId: string;
-let requirementId: string;
+let workItemId: string;
 
 beforeAll(async () => {
   const schema = readFileSync(resolve('../../prisma/schema.prisma'), 'utf8')
@@ -41,13 +41,13 @@ beforeAll(async () => {
   scope = { organizationId: organization.id, userId: user.id, organizationRole: 'member' };
   workspaceId = (await prisma.workspace.create({ data: { name: '测试空间', organizationId: organization.id } })).id;
   projectId = (await prisma.project.create({ data: { name: '测试项目', workspaceId } })).id;
-  requirementId = (await prisma.requirement.create({ data: { title: '控制链路', description: '', acceptanceCriteria: '', projectId, workspaceId } })).id;
+  workItemId = (await prisma.workItem.create({ data: { title: '控制链路', description: '', acceptanceCriteria: '', projectId, workspaceId } })).id;
 }, 30_000);
 
 afterAll(async () => { await prisma.$disconnect(); rmSync(directory, { recursive: true, force: true }); });
 
 async function session() {
-  const run = await prisma.workflowRun.create({ data: { requirementId, status: 'EXECUTION_RUNNING', currentStage: 'EXECUTION' } });
+  const run = await prisma.workflowRun.create({ data: { workItemId, status: 'EXECUTION_RUNNING', currentStage: 'EXECUTION' } });
   const stage = await prisma.stageExecution.create({ data: { workflowRunId: run.id, stage: 'EXECUTION', status: 'RUNNING', input: { executor: 'LOCAL' } } });
   return prisma.executionSession.create({ data: {
     workflowRunId: run.id, stageExecutionId: stage.id, workspaceId, projectId,
@@ -79,13 +79,13 @@ describe('执行控制真实 SQLite 链路', () => {
 
   it('开发进展在全量筛选后分页，异常跨页置顶，返回真实进度和总数', async () => {
     const project = await prisma.project.create({ data: { name: '并行项目', workspaceId } });
-    const requirement = await prisma.requirement.create({ data: {
+    const requirement = await prisma.workItem.create({ data: {
       title: '并行登录改造', description: '', acceptanceCriteria: '', projectId: project.id, workspaceId,
     } });
     const rows = [];
     for (const [index, status] of ['RUNNING', 'BLOCKED', 'RUNNING', 'FAILED', 'COMPLETED', 'CANCELLED'].entries()) {
       const row = await session();
-      await prisma.workflowRun.update({ where: { id: row.workflowRunId! }, data: { requirementId: requirement.id } });
+      await prisma.workflowRun.update({ where: { id: row.workflowRunId! }, data: { workItemId: requirement.id } });
       rows.push(await prisma.executionSession.update({ where: { id: row.id }, data: {
         projectId: project.id, status, controlMode: 'COOPERATIVE',
         lastHeartbeatAt: new Date(Date.now() - (index === 2 ? 600_000 : 1000)),

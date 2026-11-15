@@ -7,7 +7,7 @@ import { WorkflowService } from '../workflow/workflow.service';
 import { ReviewArtifactsService } from '../review-artifacts/review-artifacts.service';
 
 function service<T extends object>(prototype: T, prisma: unknown): T {
-  return Object.assign(Object.create(prototype), { prisma: { workspace:{count:vi.fn().mockResolvedValue(1)},requirement:{count:vi.fn().mockResolvedValue(1)},repository:{count:vi.fn().mockResolvedValue(1)},project:{count:vi.fn().mockResolvedValue(1)}, ...(prisma as object) } });
+  return Object.assign(Object.create(prototype), { prisma: { workspace:{count:vi.fn().mockResolvedValue(1)},workItem:{count:vi.fn().mockResolvedValue(1)},repository:{count:vi.fn().mockResolvedValue(1)},project:{count:vi.fn().mockResolvedValue(1)}, ...(prisma as object) } });
 }
 
 describe('记录浏览使用数据库分页', () => {
@@ -43,7 +43,7 @@ describe('记录浏览使用数据库分页', () => {
 
   it.each(['getIssuesPage', 'getBugsPage'] as const)('%s 保持筛选、统计与页大小相互独立', async (method) => {
     const delegate = { findMany: vi.fn().mockResolvedValue([{id:'item'}]), count: vi.fn().mockResolvedValue(50) };
-    const instance = service(ReviewArtifactsService.prototype, {issue:delegate,bug:delegate});
+    const instance = service(ReviewArtifactsService.prototype, {workItem:delegate,bug:delegate});
     const result = await instance[method]({workspaceId:'w',status:'OPEN',priority:'HIGH',q:'needle',page:'2',pageSize:'5'});
     const query = delegate.findMany.mock.calls[0][0];
     expect(query).toMatchObject({skip:5,take:5,where:{workspaceId:'w',status:'OPEN',priority:'HIGH'}});
@@ -52,20 +52,20 @@ describe('记录浏览使用数据库分页', () => {
   });
 
   it('需求分页在数据库筛选，汇总不依赖当前页', async () => {
-    const requirement = {findMany:vi.fn().mockResolvedValue([]),count:vi.fn().mockResolvedValue(31)};
+    const workItem = {findMany:vi.fn().mockResolvedValue([]),count:vi.fn().mockResolvedValue(31)};
     const project = {count:vi.fn().mockResolvedValue(1)};
     const workspace = {count:vi.fn().mockResolvedValue(1)};
-    const instance = service(RequirementsService.prototype,{requirement,project,workspace});
+    const instance = service(RequirementsService.prototype,{workItem,project,workspace});
     const result = await instance.findPage({projectId:'p',versionId:'v',planningStatus:'DONE',priority:'LOW',page:'2'});
-    expect(requirement.findMany.mock.calls[0][0]).toMatchObject({skip:20,take:20,where:{projectId:'p',versionId:'v',planningStatus:'DONE',priority:'LOW'}});
+    expect(workItem.findMany.mock.calls[0][0]).toMatchObject({skip:20,take:20,where:{kind:'REQUIREMENT',projectId:'p',versionId:'v',planningStatus:'DONE',priority:'LOW'}});
     expect(result.summary).toMatchObject({requirementCount:31,visibleCount:31});
   });
 
   it('工作流在数据库按需求和项目筛选，并有稳定排序', async () => {
     const workflowRun = {findMany:vi.fn().mockResolvedValue([]),count:vi.fn().mockResolvedValue(30)};
     const instance = service(WorkflowService.prototype,{workflowRun});
-    const result = await instance.findPage({projectId:'p',requirementId:'r',runType:'FULL',page:'2'});
-    expect(workflowRun.findMany.mock.calls[0][0]).toMatchObject({skip:20,take:20,where:{runType:'FULL',requirementId:'r',requirement:{projectId:'p'}},orderBy:[{createdAt:'desc'},{id:'desc'}]});
+    const result = await instance.findPage({projectId:'p',workItemId:'r',runType:'FULL',page:'2'});
+    expect(workflowRun.findMany.mock.calls[0][0]).toMatchObject({skip:20,take:20,where:{runType:'FULL',workItemId:'r',workItem:{projectId:'p'}},orderBy:[{createdAt:'desc'},{id:'desc'}]});
     expect(result.summary).toMatchObject({total:30,visible:30});
   });
 });
@@ -79,7 +79,6 @@ import { DeliveryTargetsService } from '../briefings/delivery-targets.service';
 import { AuthService } from '../auth/auth.service';
 import { PersonalApiTokenService } from '../auth/personal-api-token.service';
 import { RequirementChangesService } from '../requirements/requirement-changes.service';
-import { RequirementsController } from '../requirements/requirements.controller';
 import { WorkflowController } from '../workflow/workflow.controller';
 import { ReviewArtifactsController } from '../review-artifacts/review-artifacts.controller';
 
@@ -123,15 +122,15 @@ describe('详情子列表与管理列表分页契约', () => {
 
   it('需求仓库搜索在数据库过滤全部范围并保持分页count一致', async () => {
     const rows = { findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(25) };
-    await service(RequirementsService.prototype, { requirement: { findUniqueOrThrow: vi.fn() }, requirementRepository: rows }).listRepositoriesPage('r', { q: '后页仓库', page: 2 });
-    expect(rows.findMany.mock.calls[0][0]).toMatchObject({ where: { requirementId: 'r', repository: { name: { contains: '后页仓库' } } }, skip: 20, take: 20 });
+    await service(RequirementsService.prototype, { workItem: { findUniqueOrThrow: vi.fn() }, requirementRepository: rows }).listRepositoriesPage('r', { q: '后页仓库', page: 2 });
+    expect(rows.findMany.mock.calls[0][0]).toMatchObject({ where: { workItemId: 'r', repository: { name: { contains: '后页仓库' } } }, skip: 20, take: 20 });
     expect(rows.count).toHaveBeenCalledWith({ where: rows.findMany.mock.calls[0][0].where });
   });
 
   it('需求变更从聚合获取全局revision而非当前页最大值，且保留当前流程状态', async () => {
     const changes = {findMany:vi.fn().mockResolvedValue([]),count:vi.fn().mockResolvedValue(60),aggregate:vi.fn().mockResolvedValue({_max:{revision:60}})};
     const instance = service(RequirementChangesService.prototype,{
-      requirement:{findUnique:vi.fn().mockResolvedValue({id:'r',revision:1})},
+      workItem:{findUnique:vi.fn().mockResolvedValue({id:'r',revision:1})},
       requirementChange:changes,
       workflowRun:{findFirst:vi.fn().mockResolvedValue({aiProvider:'codex',currentStage:'EXECUTION'})},
       stageExecution:{findFirst:vi.fn().mockResolvedValue({status:'RUNNING',input:{requirementRevision:12}})},
@@ -139,25 +138,24 @@ describe('详情子列表与管理列表分页契约', () => {
     Object.assign(instance,{recoverExpiredStarts:vi.fn()});
     const result = await instance.listPage('r','run',undefined,{page:'3'});
     expect(result).toMatchObject({total:60,page:3,revision:60,contextRevision:12,hasPendingChanges:true});
-    expect(changes.findMany.mock.calls[0][0]).toMatchObject({where:{requirementId:'r'},skip:40,take:20});
+    expect(changes.findMany.mock.calls[0][0]).toMatchObject({where:{workItemId:'r'},skip:40,take:20});
   });
 
   it('列表控制器省略查询时仍传入分页默认值', async () => {
     const findPage = vi.fn();
-    await new RequirementsController({findPage} as never,{} as never,{} as never).findAll();
     await new WorkflowController({findPage} as never,{} as never).findAll();
-    expect(findPage.mock.calls).toEqual([[{}],[{}]]);
-    const getIssuesPage=vi.fn(); const getBugsPage=vi.fn();
-    const controller = new ReviewArtifactsController({getIssuesPage,getBugsPage} as never);
-    await controller.getIssues(); await controller.getBugs();
-    expect(getIssuesPage).toHaveBeenCalledWith({}); expect(getBugsPage).toHaveBeenCalledWith({});
+    expect(findPage.mock.calls).toEqual([[{}]]);
+    const getBugsPage=vi.fn();
+    const controller = new ReviewArtifactsController({getBugsPage} as never);
+    await controller.getBugs();
+    expect(getBugsPage).toHaveBeenCalledWith({});
   });
 
   it('活跃流分页在数据库排除终态并拒绝无效布尔筛选', async () => {
     const workflowRun = {findMany:vi.fn().mockResolvedValue([]),count:vi.fn().mockResolvedValue(25)};
     const instance = service(WorkflowService.prototype,{workflowRun});
-    await instance.findPage({requirementId:'r',activeOnly:'true',page:'2'});
-    expect(workflowRun.findMany.mock.calls[0][0]).toMatchObject({where:{requirementId:'r',status:{notIn:['DONE','FAILED']}},skip:20,take:20});
+    await instance.findPage({workItemId:'r',activeOnly:'true',page:'2'});
+    expect(workflowRun.findMany.mock.calls[0][0]).toMatchObject({where:{workItemId:'r',status:{notIn:['DONE','FAILED']}},skip:20,take:20});
     await expect(instance.findPage({activeOnly:'invalid'})).rejects.toThrow('activeOnly');
   });
 
@@ -170,17 +168,17 @@ describe('详情子列表与管理列表分页契约', () => {
 
   it('历史分页包含终态与被变更替代的旧轮，搜索条件不覆盖历史条件', async () => {
     const workflowRun = { findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(25) };
-    await service(WorkflowService.prototype, { workflowRun }).findPage({ requirementId: 'r', terminalOnly: true, q: '旧轮' });
+    await service(WorkflowService.prototype, { workflowRun }).findPage({ workItemId: 'r', terminalOnly: true, q: '旧轮' });
     expect(workflowRun.findMany.mock.calls[0][0].where.AND).toEqual([
       { OR: [{ status: { in: ['DONE', 'FAILED'] } }, { supersededByChangeId: { not: null } }] },
-      { OR: [{ id: { contains: '旧轮' } }, { requirement: { title: { contains: '旧轮' } } }] },
+      { OR: [{ id: { contains: '旧轮' } }, { workItem: { title: { contains: '旧轮' } } }] },
     ]);
   });
 
   it('质量入口可按版本筛选并在数据库排除已被变更取代的工作流', async () => {
     const workflowRun = {findMany:vi.fn().mockResolvedValue([]),count:vi.fn().mockResolvedValue(5)};
     await service(WorkflowService.prototype,{workflowRun}).findPage({projectId:'p',versionId:'v',excludeSuperseded:'true',status:'DONE'});
-    expect(workflowRun.findMany.mock.calls[0][0]).toMatchObject({where:{requirement:{projectId:'p',versionId:'v'},supersededByChangeId:null,status:'DONE'},skip:0,take:20});
+    expect(workflowRun.findMany.mock.calls[0][0]).toMatchObject({where:{workItem:{projectId:'p',versionId:'v'},supersededByChangeId:null,status:'DONE'},skip:0,take:20});
     expect(workflowRun.count).toHaveBeenCalledWith({where:workflowRun.findMany.mock.calls[0][0].where});
   });
 

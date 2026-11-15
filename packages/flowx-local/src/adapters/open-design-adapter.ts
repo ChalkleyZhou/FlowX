@@ -107,8 +107,8 @@ export class OpenDesignAdapter
         workflowRunId,
         stage,
         executionSessionId: sessionId,
-        ...(input.handoff.contextPackage.requirement?.title
-          ? { requirementTitle: input.handoff.contextPackage.requirement.title }
+        ...(input.handoff.contextPackage.workItem?.title
+          ? { requirementTitle: input.handoff.contextPackage.workItem.title }
           : {}),
       },
       this.homeDir,

@@ -21,7 +21,7 @@ describe('ProjectVersionsService', () => {
       update: ReturnType<typeof vi.fn>;
       delete: ReturnType<typeof vi.fn>;
     };
-    requirement: { count: ReturnType<typeof vi.fn> };
+    workItem: { count: ReturnType<typeof vi.fn> };
   };
   let service: ProjectVersionsService;
 
@@ -38,7 +38,7 @@ describe('ProjectVersionsService', () => {
         update: vi.fn(),
         delete: vi.fn(),
       },
-      requirement: { count: vi.fn() },
+      workItem: { count: vi.fn() },
     };
     service = new ProjectVersionsService(prisma as never);
   });
@@ -56,14 +56,14 @@ describe('ProjectVersionsService', () => {
 
   it('refuses delete when requirements still reference the version', async () => {
     prisma.projectVersion.findFirst.mockResolvedValue(version);
-    prisma.requirement.count.mockResolvedValue(1);
+    prisma.workItem.count.mockResolvedValue(1);
     await expect(service.remove(projectId, version.id)).rejects.toThrow(/still assigned to requirements/);
   });
 
   it('refuses delete when the version is current', async () => {
     prisma.project.findUnique.mockResolvedValue({ id: projectId, currentVersionId: version.id });
     prisma.projectVersion.findFirst.mockResolvedValue(version);
-    prisma.requirement.count.mockResolvedValue(0);
+    prisma.workItem.count.mockResolvedValue(0);
     await expect(service.remove(projectId, version.id)).rejects.toThrow(/current version/);
   });
 

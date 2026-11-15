@@ -1,13 +1,11 @@
 import type { PaginationQuery } from '../common/pagination';
 import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
-import { CreateRequirementDto } from './dto/create-requirement.dto';
 import {
   ReviseBrainstormDto,
   ReviseDesignDto,
   StartBrainstormDto,
   StartDesignDto,
 } from './dto/ideation.dto';
-import { UpdateRequirementDto } from './dto/update-requirement.dto';
 import { UpsertRequirementAssignmentDto } from './dto/upsert-requirement-assignment.dto';
 import { RequirementAssignmentsService } from './requirement-assignments.service';
 import { RequirementChangesService } from './requirement-changes.service';
@@ -15,23 +13,14 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { CreatePrototypeRequirementChangeDto, CreateRequirementChangeDto } from './dto/create-requirement-change.dto';
 import { RequirementsService } from './requirements.service';
 
-@Controller('requirements')
+// 工作项是唯一业务根。这里仅承载需求类型的专属能力，基础 CRUD 统一由 WorkItemsController 提供。
+@Controller('work-items')
 export class RequirementsController {
   constructor(
     private readonly requirementsService: RequirementsService,
     private readonly requirementAssignmentsService: RequirementAssignmentsService,
     private readonly requirementChangesService: RequirementChangesService,
   ) {}
-
-  @Post()
-  create(@Body() dto: CreateRequirementDto, @Req() req: RequirementsRequest) {
-    return this.requirementsService.create(dto, req.authSession);
-  }
-
-  @Get()
-  findAll(@Query() query: PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; planningStatus?: string; priority?: string; status?: string; q?: string } = {}) {
-    return this.requirementsService.findPage(query);
-  }
 
   @Get(':id/repositories')
   listRepositoriesPage(@Param('id') id: string, @Query() query: PaginationQuery & { q?: string } = {}) { return this.requirementsService.listRepositoriesPage(id, query); }
@@ -41,21 +30,6 @@ export class RequirementsController {
 
   @Get(':id/ideation/artifacts')
   listIdeationArtifactsPage(@Param('id') id: string, @Query() query: PaginationQuery = {}) { return this.requirementsService.listIdeationArtifactsPage(id, query); }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.requirementsService.findDetail(id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateRequirementDto) {
-    return this.requirementsService.update(id, dto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.requirementsService.remove(id);
-  }
 
   @Get(':id/changes')
   listChanges(@Param('id') id: string, @Query() query: PaginationQuery & { workflowRunId?: string }, @Req() req: RequirementsRequest) {

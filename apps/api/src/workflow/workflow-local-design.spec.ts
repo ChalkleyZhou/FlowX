@@ -8,8 +8,8 @@ const workflow = {
   status: 'DESIGN_PENDING',
   runType: 'LOCAL_DESIGN',
   aiProvider: 'codex',
-  requirementId: 'req-1',
-  requirement: {
+  workItemId: 'req-1',
+  workItem: {
     id: 'req-1',
     title: 'Export page',
     description: 'Design an export experience',
@@ -97,8 +97,8 @@ describe('WorkflowService local OpenDesign', () => {
         }),
       }),
     );
-    expect(result.handoff.contextPackage.requirement.id).toBe('req-1');
-    expect(result.handoff.contextPackage.requirement).toMatchObject({
+    expect(result.handoff.contextPackage.workItem.id).toBe('req-1');
+    expect(result.handoff.contextPackage.workItem).toMatchObject({
       priority: 'HIGH',
       functionalModule: '导出',
       riskImpact: '影响下载',
@@ -356,7 +356,7 @@ describe('WorkflowService local OpenDesign', () => {
         workflowRunId: 'workflow-design-1',
         executionSessionId: 'session-lazy-design',
         traceId: 'trace-lazy',
-        requirement: {
+        workItem: {
           id: 'req-1',
           title: 'Export page',
           description: 'Design an export experience',
@@ -453,7 +453,7 @@ describe('WorkflowService local OpenDesign', () => {
         workflowRunId: 'workflow-design-1',
         executionSessionId: 'session-lazy-brainstorm',
         traceId: 'trace-brainstorm',
-        requirement: {
+        workItem: {
           id: 'req-1',
           title: 'Export page',
           description: 'Design an export experience',

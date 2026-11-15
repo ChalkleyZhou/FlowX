@@ -6,14 +6,14 @@ import { EmptyState } from '../../components/EmptyState';
 import { PageHeader } from '../../components/PageHeader';
 import { Button } from '../../components/ui/button';
 import { useToast } from '../../components/ui/toast';
-import type { QualityCaseSelection, Requirement, TestDesign, WorkflowRun } from '../../types';
+import type { QualityCaseSelection, WorkItem, TestDesign, WorkflowRun } from '../../types';
 import { QualityScopePanel } from './QualityScopePanel';
 import { LoadingState } from './quality-ui';
 
 export function QualityPreparationPage() {
   const [params] = useSearchParams();
-  const requirementId = params.get('requirementId') ?? '';
-  return <QualityPreparationContent key={requirementId} requirementId={requirementId} />;
+  const workItemId = params.get('workItemId') ?? '';
+  return <QualityPreparationContent key={workItemId} workItemId={workItemId} />;
 }
 function sourceReady(run: WorkflowRun) {
   return (
@@ -21,10 +21,10 @@ function sourceReady(run: WorkflowRun) {
     run.stageExecutions?.some((stage) => stage.stage === 'SPEC_PLAN' && stage.status === 'COMPLETED')
   );
 }
-function QualityPreparationContent({ requirementId }: { requirementId: string }) {
+function QualityPreparationContent({ workItemId }: { workItemId: string }) {
   const navigate = useNavigate();
   const toast = useToast();
-  const [requirement, setRequirement] = useState<Requirement>();
+  const [workItem, setWorkItem] = useState<WorkItem>();
   const [runPage, setRunPage] = useState(1);
   const [runTotal, setRunTotal] = useState(0);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
@@ -37,18 +37,18 @@ function QualityPreparationContent({ requirementId }: { requirementId: string })
   useEffect(() => {
     let active = true;
     async function load() {
-      if (!requirementId) {
+      if (!workItemId) {
         setLoading(false);
         return;
       }
       try {
-        const requirement = await api.getRequirement(requirementId);
+        const item = await api.getWorkItem(workItemId);
         const [allRuns, designs] = await Promise.all([
-          api.getWorkflowRuns({ requirementId, page: runPage, pageSize: 10, excludeSuperseded: true }),
+          api.getWorkflowRuns({ workItemId, page: runPage, pageSize: 10, excludeSuperseded: true }),
           api.getTestDesigns({
-            requirementId, page: 1, pageSize: 1,
-            projectId: requirement.project.id,
-            projectVersionId: requirement.versionId ?? undefined,
+            workItemId, page: 1, pageSize: 1,
+            projectId: item.projectId,
+            projectVersionId: item.versionId ?? undefined,
           }),
         ]);
         if (!active) return;
@@ -56,7 +56,7 @@ function QualityPreparationContent({ requirementId }: { requirementId: string })
         if (runPage > lastPage) { setRunPage(lastPage); return; }
         const linked = allRuns.items;
         setRunTotal(allRuns.total);
-        setRequirement(requirement);
+        setWorkItem(item);
         setRuns(linked);
         setSelected(current => current.length ? current : linked.filter(sourceReady).map(run => run.id));
         setExisting(designs.items[0]);
@@ -70,11 +70,11 @@ function QualityPreparationContent({ requirementId }: { requirementId: string })
     return () => {
       active = false;
     };
-  }, [requirementId, runPage]);
+  }, [workItemId, runPage]);
   async function create() {
     if (
-      !requirement?.project.workspace ||
-      !requirement.versionId ||
+      !workItem?.project?.workspace ||
+      !workItem.versionId ||
       !selected.length ||
       !selection.libraryIds.length
     )
@@ -82,10 +82,10 @@ function QualityPreparationContent({ requirementId }: { requirementId: string })
     setBusy(true);
     try {
       const design = await api.createTestDesign({
-        workspaceId: requirement.project.workspace.id,
-        projectId: requirement.project.id,
-        projectVersionId: requirement.versionId,
-        requirementIds: [requirement.id],
+        workspaceId: workItem.project.workspace.id,
+        projectId: workItem.project.id,
+        projectVersionId: workItem.versionId,
+        workItemIds: [workItem.id],
         workflowRunIds: selected,
         caseSelection: selection,
       });
@@ -97,23 +97,23 @@ function QualityPreparationContent({ requirementId }: { requirementId: string })
     }
   }
   if (loading) return <LoadingState />;
-  if (!requirement)
+  if (!workItem)
     return (
       <EmptyState
-        title="请从需求开始准备测试"
-        description={error || '从需求详情点击“准备测试”，项目、版本和需求会自动带入。'}
+        title="请从工作项开始准备测试"
+        description={error || '从工作项详情点击“准备测试”，项目、版本和工作项会自动带入。'}
         action={
           <Button asChild>
-            <Link to="/requirements">选择需求</Link>
+            <Link to="/work-items">选择需求</Link>
           </Button>
         }
       />
     );
   const submitParams = new URLSearchParams({
     create: '1',
-    projectId: requirement.project.id,
-    projectVersionId: requirement.versionId ?? '',
-    requirementId: requirement.id,
+    projectId: workItem.projectId,
+    projectVersionId: workItem.versionId ?? '',
+    workItemId: workItem.id,
     ...(selected[0] ? { workflowRunId: selected[0] } : {}),
   });
   return (
@@ -121,24 +121,24 @@ function QualityPreparationContent({ requirementId }: { requirementId: string })
       <PageHeader
         eyebrow="测试与质量"
         title="准备测试"
-        description={`${requirement.project.name} · ${requirement.version?.name ?? '当前需求版本'} · ${requirement.title}`}
+        description={`${workItem.project?.name ?? '当前项目'} · ${workItem.version?.name ?? '当前工作项版本'} · ${workItem.title}`}
         actions={
           <Button variant="outline" asChild>
-            <Link to={`/requirements/${requirement.id}`}>返回需求</Link>
+            <Link to={`/work-items/${workItem.id}`}>返回工作项</Link>
           </Button>
         }
       />
       <ol className="grid gap-3 rounded-md border p-4 text-sm sm:grid-cols-4">
-        <li className="font-medium text-primary">1 确认需求与用例库</li>
+        <li className="font-medium text-primary">1 确认工作项与用例库</li>
         <li>2 生成建议与人工补选</li>
         <li>3 确认设计并提测</li>
         <li>4 本地执行与报告</li>
       </ol>
-      {!requirement.versionId ? (
+      {!workItem.versionId ? (
         <p role="alert" className="text-sm">
-          当前需求尚未指定版本，请先
-          <Link to={`/requirements/${requirement.id}`} className="text-primary underline">
-            编辑需求并选择版本
+          当前工作项尚未指定版本，请先
+          <Link to={`/work-items/${workItem.id}`} className="text-primary underline">
+            编辑工作项并选择版本
           </Link>
           。
         </p>
@@ -146,7 +146,7 @@ function QualityPreparationContent({ requirementId }: { requirementId: string })
       {existing ? (
         <section className="rounded-md border p-5 space-y-3">
           <h2 className="font-semibold">已有测试设计 · 第 {existing.revision} 版</h2>
-          <p className="text-sm text-muted-foreground">继续当前需求的测试设计，保留已有选例与处理结果。</p>
+          <p className="text-sm text-muted-foreground">继续当前工作项的测试设计，保留已有选例与处理结果。</p>
           <div className="flex flex-wrap gap-2">
             <Button asChild>
               <Link to={`/quality/test-designs/${existing.id}`}>继续已有测试设计</Link>
@@ -167,7 +167,7 @@ function QualityPreparationContent({ requirementId }: { requirementId: string })
           <section className="rounded-md border p-4 space-y-3">
             <h2 className="font-semibold">关联研发工作流</h2>
             <p className="text-sm text-muted-foreground">
-              测试设计需要已确认的需求、设计与 Spec & Plan；实际提测还需研发完成。
+              测试设计需要已确认的工作项、设计与 Spec & Plan；实际提测还需研发完成。
             </p>
             {runs.map((run) => (
               <label key={run.id} className="flex gap-2 text-sm">
@@ -191,22 +191,22 @@ function QualityPreparationContent({ requirementId }: { requirementId: string })
             {!runs.length ? (
               <p className="text-sm">
                 暂无研发流程，请先
-                <Link className="text-primary underline" to={`/requirements/${requirement.id}`}>
+                <Link className="text-primary underline" to={`/work-items/${workItem.id}`}>
                   启动研发工作流
                 </Link>
                 。
               </p>
             ) : null}
           </section>
-          {requirement.project.workspace ? (
+          {workItem.project?.workspace ? (
             <QualityScopePanel
-              workspaceId={requirement.project.workspace.id}
-              projectId={requirement.project.id}
+              workspaceId={workItem.project!.workspace!.id}
+              projectId={workItem.projectId}
               onSelectionChange={setSelection}
             />
           ) : null}
           <Button
-            disabled={busy || !requirement.versionId || !selected.length || !selection.libraryIds.length}
+            disabled={busy || !workItem.versionId || !selected.length || !selection.libraryIds.length}
             onClick={() => void create()}
           >
             创建测试设计并选例

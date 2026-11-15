@@ -18,6 +18,7 @@ YUNXIAO_ORGANIZATION_BINDING_MIGRATION_SQL="${MIGRATIONS_DIR}/20260831130000_add
 YUNXIAO_MULTI_RECIPIENT_MIGRATION_SQL="${MIGRATIONS_DIR}/20260831183000_expand_yunxiao_delivery_recipients/migration.sql"
 YUNXIAO_RECIPIENT_AUDIT_MIGRATION_SQL="${MIGRATIONS_DIR}/20260902090000_add_yunxiao_recipient_audit/migration.sql"
 FEED_MIGRATION_SQL="${MIGRATIONS_DIR}/20261105120000_briefing_code_review_feeds/migration.sql"
+WORK_ITEM_MIGRATION_SQL="${MIGRATIONS_DIR}/20261112090000_work_item_core/migration.sql"
 
 resolve_db_path() {
   db_url="${DATABASE_URL:-file:/data/dev.db}"
@@ -67,6 +68,19 @@ fi
 if ! command -v sqlite3 >/dev/null 2>&1; then
   echo "sqlite3 is required for pre-db-push migrations." >&2
   exit 1
+fi
+
+# --- ExecutionItem: persist the final AI split contract fields ---
+if [ "$(table_exists ExecutionItem)" = "1" ] \
+  && { [ "$(column_exists ExecutionItem ownerHint)" = "0" ] \
+    || [ "$(column_exists ExecutionItem verification)" = "0" ]; }; then
+  echo "Adding final execution-item contract fields in ${DB_PATH}..."
+  if [ "$(column_exists ExecutionItem ownerHint)" = "0" ]; then
+    sqlite3 "$DB_PATH" 'ALTER TABLE "ExecutionItem" ADD COLUMN "ownerHint" TEXT;'
+  fi
+  if [ "$(column_exists ExecutionItem verification)" = "0" ]; then
+    sqlite3 "$DB_PATH" 'ALTER TABLE "ExecutionItem" ADD COLUMN "verification" TEXT NOT NULL DEFAULT '\''\'';'
+  fi
 fi
 
 # --- DeliveryTarget: workspaceId → projectId (legacy) ---
@@ -175,6 +189,15 @@ fi
 if [ "$(table_exists YunxiaoWebhookRecipient)" = "0" ]; then
   echo "Creating YunxiaoWebhookRecipient audit table in ${DB_PATH}..."
   sqlite3 "$DB_PATH" < "$YUNXIAO_RECIPIENT_AUDIT_MIGRATION_SQL"
+fi
+
+# --- WorkItem cutover: merge Requirement and Issue into one business root ---
+# This must run before db push sees the removed legacy tables. The SQL copies
+# data and adds the new workItemId columns so Prisma can rebuild dependent
+# tables without dropping workflow, quality, review, or ideation history.
+if [ "$(table_exists Requirement)" = "1" ] && [ "$(table_exists WorkItem)" = "0" ]; then
+  echo "Migrating Requirement/Issue roots to WorkItem in ${DB_PATH}..."
+  sqlite3 "$DB_PATH" < "$WORK_ITEM_MIGRATION_SQL"
 fi
 
 # --- Spec & Plan redesign: drop obsolete Task/Plan tables before db push ---

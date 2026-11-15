@@ -4,7 +4,6 @@ import { CreateBugDto } from './dto/create-bug.dto';
 import { StartBugFixWorkflowDto } from './dto/start-bug-fix-workflow.dto';
 import { ConvertToIssueDto } from './dto/convert-to-issue.dto';
 import { UpdateBugDto } from './dto/update-bug.dto';
-import { UpdateIssueDto } from './dto/update-issue.dto';
 import { UpdateReviewFindingDto } from './dto/update-review-finding.dto';
 import { ReviewArtifactsService } from './review-artifacts.service';
 
@@ -37,7 +36,7 @@ export class ReviewArtifactsController {
     return this.reviewArtifactsService.dismissReviewFinding(id);
   }
 
-  @Post('review-findings/:id/convert-to-issue')
+  @Post('review-findings/:id/convert-to-work-item')
   convertToIssue(
     @Param('id') id: string,
     @Body() dto: ConvertToIssueDto,
@@ -53,21 +52,6 @@ export class ReviewArtifactsController {
     @Req() request: { user?: { id?: string } },
   ) {
     return this.reviewArtifactsService.convertReviewFindingToBug(id, dto, request.user?.id ?? null);
-  }
-
-  @Get('issues')
-  getIssues(@Query() query: import('../common/pagination').PaginationQuery & { workspaceId?: string; projectId?: string; workflowRunId?: string; status?: string; priority?: string; severity?: string; q?: string } = {}) {
-    return this.reviewArtifactsService.getIssuesPage(query);
-  }
-
-  @Get('issues/:id')
-  getIssue(@Param('id') id: string) {
-    return this.reviewArtifactsService.getIssue(id);
-  }
-
-  @Patch('issues/:id')
-  updateIssue(@Param('id') id: string, @Body() dto: UpdateIssueDto) {
-    return this.reviewArtifactsService.updateIssue(id, dto);
   }
 
   @Post('bugs')

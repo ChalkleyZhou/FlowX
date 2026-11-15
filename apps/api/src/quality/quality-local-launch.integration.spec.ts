@@ -26,8 +26,8 @@ it('真实 SQLite 票据兑换绑定原用户组织和设备，交接失败释�
   const workspace = await prisma.workspace.create({ data: { name: '工作区', organizationId: organization.id } });
   const project = await prisma.project.create({ data: { name: '项目', workspaceId: workspace.id } });
   const version = await prisma.projectVersion.create({ data: { name: 'v1', projectId: project.id } });
-  const requirement = await prisma.requirement.create({ data: { title: '需求', description: '测试', acceptanceCriteria: '完成', projectId: project.id } });
-  const workflow = await prisma.workflowRun.create({ data: { requirementId: requirement.id, status: 'DONE' } });
+  const requirement = await prisma.workItem.create({ data: { title: '需求', description: '测试', acceptanceCriteria: '完成', projectId: project.id, workspaceId: workspace.id, versionId: version.id } });
+  const workflow = await prisma.workflowRun.create({ data: { workItemId: requirement.id, status: 'DONE' } });
   const repository = await prisma.workflowRepository.create({ data: { workflowRunId: workflow.id, name: '仓库', url: 'https://github.com/org/repo.git', baseBranch: 'main', workingBranch: 'feature' } });
   const request = await prisma.testRequest.create({ data: { title: '提测', workspaceId: workspace.id, projectId: project.id, projectVersionId: version.id, traceId: randomUUID(), status: 'IN_TEST', scopeGenerationStatus: 'COMPLETED', workflowLinks: { create: { workflowRunId: workflow.id } } } });
   const plan = await prisma.testPlan.create({ data: { testRequestId: request.id } });

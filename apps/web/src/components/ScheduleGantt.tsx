@@ -23,7 +23,7 @@ const ROW_HEIGHT = 44;
 export interface ScheduleGanttQuery {
   scope?: 'project' | 'organization';
   projectId?: string;
-  requirementId?: string;
+  workItemId?: string;
   role?: string;
   userId?: string;
   onlyMe?: boolean;
@@ -85,7 +85,7 @@ export function ScheduleGantt({ query, refreshToken = 0 }: ScheduleGanttProps) {
             from: query.from,
             to: query.to,
             ...(query.projectId ? { projectId: query.projectId } : {}),
-            ...(query.requirementId ? { requirementId: query.requirementId } : {}),
+            ...(query.workItemId ? { workItemId: query.workItemId } : {}),
             ...(query.role ? { role: query.role } : {}),
             ...(query.onlyMe ? { onlyMe: true } : query.userId ? { userId: query.userId } : {}),
           });
@@ -106,7 +106,7 @@ export function ScheduleGantt({ query, refreshToken = 0 }: ScheduleGanttProps) {
     effectivePage,
     scope,
     query.projectId,
-    query.requirementId,
+    query.workItemId,
     query.role,
     query.userId,
     query.onlyMe,
@@ -150,8 +150,8 @@ export function ScheduleGantt({ query, refreshToken = 0 }: ScheduleGanttProps) {
     if (query.projectId) {
       filterHints.push('已筛选项目');
     }
-    if (query.requirementId) {
-      filterHints.push('已筛选需求');
+    if (query.workItemId) {
+      filterHints.push('已筛选工作项');
     }
     if (query.role) {
       filterHints.push('已筛选角色');
@@ -241,8 +241,8 @@ export function ScheduleGantt({ query, refreshToken = 0 }: ScheduleGanttProps) {
                   {bars.map((bar, index) => {
                     const clipped = clipRangeToWindow(bar.start, bar.end, range);
                     const { startCol, endCol } = barGridSpan(clipped.start, clipped.end, range);
-                    const reqLink = bar.meta.requirementId
-                      ? `/requirements/${bar.meta.requirementId}#scheduling`
+                    const reqLink = bar.meta.workItemId
+                      ? `/work-items/${bar.meta.workItemId}#scheduling`
                       : null;
                     return (
                       <div

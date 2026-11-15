@@ -15,6 +15,8 @@ import {
   GenerateDesignOptions,
   GenerateDesignOutput,
   GenerateSpecPlanInput,
+  GenerateExecutionSplitInput,
+  ExecutionSplitOutput,
   GenerateTestDesignInput,
   RepositoryComponentContext,
   RepositoryContext,
@@ -44,6 +46,7 @@ import { executionPrompt } from '../prompts/execution.prompt';
 import { reviewPrompt } from '../prompts/review.prompt';
 import { dailyCodeReviewPrompt } from '../prompts/daily-code-review.prompt';
 import { specPlanPrompt } from '../prompts/spec-plan.prompt';
+import { executionSplitPrompt } from '../prompts/execution-split.prompt';
 import { testDesignPrompt } from '../prompts/test-design.prompt';
 import { BRAINSTORM_MIN_EDGE_CASES, BRAINSTORM_MIN_USER_STORIES } from './brainstorm-schema-limits';
 import { AIExecutor, type AIInvocationContext } from './ai-executor';
@@ -253,11 +256,42 @@ ${body}
     return parsed;
   }
 
+  async splitExecutionPlan(
+    input: GenerateExecutionSplitInput,
+    context?: AIInvocationContext,
+  ): Promise<ExecutionSplitOutput> {
+    const workspaceSection = await this.buildWorkspaceSection(input.workspace, 'snapshot');
+    const prompt = `${executionSplitPrompt.system}
+
+你必须只返回符合 JSON Schema 的 JSON，不要输出解释文字或 Markdown。
+
+${executionSplitPrompt.user}
+
+工作项:
+${JSON.stringify(input.workItem, null, 2)}
+
+已确认 Spec & Plan:
+${JSON.stringify(input.specPlan ?? null, null, 2)}
+
+仓库与端侧上下文:
+${workspaceSection}
+`;
+    const parsed = await this.runJsonStage<ExecutionSplitOutput>(
+      'execution-split.output.schema.json',
+      prompt,
+      'execution split',
+      this.getReadableRepositoryDirs(input.workspace?.repositories),
+      context,
+    );
+    this.assertExecutionSplitOutput(parsed);
+    return parsed;
+  }
+
   async generateTestDesign(
     input: GenerateTestDesignInput,
     context?: AIInvocationContext,
   ): Promise<TestDesignGenerationOutput> {
-    const prompt = `${testDesignPrompt.system}\n${testDesignPrompt.user}\n\n需求:\n${JSON.stringify(input.requirement, null, 2)}\n\nPRD / 产品构思:\n${JSON.stringify(input.brainstormContext ?? null, null, 2)}\n\n设计方案:\n${JSON.stringify(input.designContext ?? null, null, 2)}\n\nSpec & Plan:\n${JSON.stringify(input.specPlan, null, 2)}\n\n已有用例:\n${JSON.stringify(input.existingCases, null, 2)}\n\n变更摘要:\n${input.changeSummary ?? '暂无'}`;
+    const prompt = `${testDesignPrompt.system}\n${testDesignPrompt.user}\n\n需求:\n${JSON.stringify(input.workItem, null, 2)}\n\nPRD / 产品构思:\n${JSON.stringify(input.brainstormContext ?? null, null, 2)}\n\n设计方案:\n${JSON.stringify(input.designContext ?? null, null, 2)}\n\nSpec & Plan:\n${JSON.stringify(input.specPlan, null, 2)}\n\n已有用例:\n${JSON.stringify(input.existingCases, null, 2)}\n\n变更摘要:\n${input.changeSummary ?? '暂无'}`;
     const parsed = await this.runJsonStage<TestDesignGenerationOutput>(
       'test-design.output.schema.json',
       prompt,
@@ -373,9 +407,9 @@ touchpoints 可用模块/服务/页面级描述，不必强制完整文件路径
 ${specPlanPrompt.user}
 
 需求信息:
-- 标题: ${input.requirement.title}
-- 描述: ${input.requirement.description}
-- 验收标准: ${input.requirement.acceptanceCriteria}
+- 标题: ${input.workItem.title}
+- 描述: ${input.workItem.description}
+- 验收标准: ${input.workItem.acceptanceCriteria}
 repository grounding:
 ${workspaceSection}
 
@@ -424,9 +458,9 @@ ${executionPrompt.user}
 - 完成后不要输出 Markdown，只需结束任务
 
 需求信息:
-- 标题: ${input.requirement.title}
-- 描述: ${input.requirement.description}
-- 验收标准: ${input.requirement.acceptanceCriteria}
+- 标题: ${input.workItem.title}
+- 描述: ${input.workItem.description}
+- 验收标准: ${input.workItem.acceptanceCriteria}
 
 工作区仓库上下文:
 ${workspaceSection}
@@ -481,9 +515,9 @@ ${JSON.stringify(input.previousOutput ?? {}, null, 2)}
 ${reviewPrompt.user}
 
 需求信息:
-- 标题: ${input.requirement.title}
-- 描述: ${input.requirement.description}
-- 验收标准: ${input.requirement.acceptanceCriteria}
+- 标题: ${input.workItem.title}
+- 描述: ${input.workItem.description}
+- 验收标准: ${input.workItem.acceptanceCriteria}
 ${workspaceSection}
 ${revisionSection}
 
@@ -1225,6 +1259,20 @@ ${Array.isArray(repositorySections) ? repositorySections.join('\n') : repository
     if (!output?.spec?.goal || !output?.plan?.approach) {
       throw new Error(`${this.providerLabel} output shape is invalid.`);
     }
+  }
+
+  protected assertExecutionSplitOutput(output: ExecutionSplitOutput) {
+    if (!output || !Array.isArray(output.items) || output.items.length === 0) {
+      throw new Error(`${this.providerLabel} execution split output is invalid.`);
+    }
+    output.items.forEach((item, index) => {
+      if (!item.title?.trim() || !item.description?.trim() || !item.target?.trim() || !item.verification?.length) {
+        throw new Error(`${this.providerLabel} execution split output item ${index} is incomplete.`);
+      }
+      if (!Array.isArray(item.dependsOnIndexes) || item.dependsOnIndexes.some((dependency) => !Number.isInteger(dependency) || dependency < 0 || dependency >= index)) {
+        throw new Error(`${this.providerLabel} execution split output item ${index} has invalid dependencies.`);
+      }
+    });
   }
 
   protected assertTestDesignOutput(output: TestDesignGenerationOutput) {

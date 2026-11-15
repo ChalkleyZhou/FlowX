@@ -16,7 +16,7 @@
 
 ### 2.1 TestDesign
 
-测试设计是一次需求版本的候选生成和人工确认记录。
+测试设计是一次工作项版本的候选生成和人工确认记录。
 
 建议字段：
 
@@ -37,7 +37,7 @@
 | `staleReason` | String? | 过期原因 |
 | `generationError` | String? | 后台生成失败时可向用户展示的诊断；重试和成功时清空 |
 
-`TestDesign` 通过 `TestDesignRequirement` 和 `TestDesignWorkflowRun` 关联一个或多个 `Requirement` 和 `WorkflowRun`，并保留生成输入摘要，避免后续原文变化导致历史内容无法解释。
+`TestDesign` 通过 `TestDesignWorkItem` 和 `TestDesignWorkflowRun` 关联一个或多个 `WorkItem` 和 `WorkflowRun`，并保留生成输入摘要，避免后续原文变化导致历史内容无法解释。
 
 ### 2.2 TestDesignCandidate
 
@@ -61,7 +61,7 @@
 
 ### 2.2.1 关联表
 
-新增 `TestDesignRequirement` 和 `TestDesignWorkflowRun` 两张关联表，主键分别为 `(testDesignId, requirementId)` 和 `(testDesignId, workflowRunId)`，外键删除策略沿用现有质量域的限制策略，防止删除需求或工作流时静默改写测试设计来源。
+新增 `TestDesignWorkItem` 和 `TestDesignWorkflowRun` 两张关联表，主键分别为 `(testDesignId, workItemId)` 和 `(testDesignId, workflowRunId)`，外键删除策略沿用现有质量域的限制策略，防止删除需求或工作流时静默改写测试设计来源。
 
 ### 2.3 TestDesignSmokeCase
 
@@ -85,10 +85,10 @@
 
 对以下内容做规范化后计算指纹：
 
-1. 需求正文、验收标准和需求版本。
+1. 需求正文、验收标准和工作项版本。
 2. 设计文档和设计 Artifact 的稳定标识及版本。
 3. `SPEC_PLAN` 阶段的完整 `output` 和确认版本。
-4. 关联项目版本、需求、工作流和仓库范围。
+4. 关联项目版本、工作项、工作流和仓库范围。
 5. 可用的开发变更摘要；开发尚未完成时使用已确认 Spec & Plan 的变更范围。
 
 规范化规则：对象键排序、数组保持业务顺序、空值统一、字符串去除首尾空白。指纹只用于一致性判断，不向用户展示内部哈希细节。
@@ -96,7 +96,7 @@
 ### 3.2 过期规则
 
 - 上游文档确认版本变化，测试设计变为 `STALE`。
-- 项目版本、需求关联或 Spec & Plan 关联变化，测试设计变为 `STALE`。
+- 项目版本、工作项关联或 Spec & Plan 关联变化，测试设计变为 `STALE`。
 - 开发完成后的实际变更摘要与生成时使用的范围不一致时，标记“待刷新影响分析”；刷新前不能提测。
 - 用例库中被复用或优化的源用例版本变化时，对应候选标记冲突；不能直接确认。
 - 旧修订只读保留，新修订从旧修订复制未受影响的人工决策。
@@ -107,7 +107,7 @@
 
 | 方法 | 路径 | 行为 |
 | --- | --- | --- |
-| `POST` | `/quality/test-designs` | 基于项目版本、需求和 Spec & Plan 创建草稿 |
+| `POST` | `/quality/test-designs` | 基于项目版本、工作项和 Spec & Plan 创建草稿 |
 | `GET` | `/quality/test-designs/:id` | 返回来源、候选、冒烟项、覆盖检查和审计信息 |
 | `POST` | `/quality/test-designs/:id/generate` | 生成或重新生成候选；支持幂等键 |
 | `POST` | `/quality/test-designs/:id/refresh` | 只分析来源/实际改动变化，保留未受影响决策 |
@@ -124,7 +124,7 @@
   "workspaceId": "ws_1",
   "projectId": "project_1",
   "projectVersionId": "version_1",
-  "requirementIds": ["req_1"],
+  "workItemIds": ["req_1"],
   "workflowRunIds": ["run_1"],
   "sourceStage": "SPEC_PLAN"
 }

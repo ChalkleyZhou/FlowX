@@ -41,7 +41,7 @@ describe('MockAiExecutor.generateSpecPlan', () => {
   it('returns Spec&Plan shaped output from the requirement title', async () => {
     const executor = new MockAiExecutor();
     const specInput: GenerateSpecPlanInput = {
-      requirement: {
+      workItem: {
         id: 'req-1',
         title: '通知中心',
         description: '集中查看与管理站内通知',
@@ -56,5 +56,18 @@ describe('MockAiExecutor.generateSpecPlan', () => {
     expect(out.plan.approach).toBeTruthy();
     expect(out.plan.sequence).toEqual(['阅读 Spec', '实现', '本地验证']);
     expect(out.notes).toEqual({ checklist: [], openQuestions: [] });
+  });
+});
+
+describe('MockAiExecutor.splitExecutionPlan', () => {
+  it('returns one executable item with verification for a single-owner work item', async () => {
+    const executor = new MockAiExecutor();
+    const out = await executor.splitExecutionPlan({
+      workItem: { id: 'work-item-1', title: '通知中心', description: '集中查看通知', acceptanceCriteria: '未读数正确' },
+    });
+
+    expect(out.items).toHaveLength(1);
+    expect(out.items[0]).toMatchObject({ target: 'LOCAL', required: true, dependsOnIndexes: [] });
+    expect(out.items[0]?.verification).toContain('未读数正确');
   });
 });

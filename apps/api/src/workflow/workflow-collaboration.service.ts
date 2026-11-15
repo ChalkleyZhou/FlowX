@@ -14,7 +14,7 @@ export type WorkflowCollaborationActor = {
   organization?: { id?: string | null } | null;
 };
 const collaborationInclude = {
-  requirement: { select: {
+  workItem: { select: {
     workspace: { select: { id: true, organizationId: true } },
     project: { select: { workspace: { select: { id: true, organizationId: true } } } },
   } },
@@ -105,6 +105,12 @@ export class WorkflowCollaborationService {
           data: { status: 'CANCELLED', activeControlDeviceKey: null, completedAt, summary },
         });
         if (cancelled.count !== 1) this.releaseConflict();
+        if (currentSession.executionItemId) {
+          await tx.executionItem.updateMany({
+            where: { id: currentSession.executionItemId, status: 'IN_PROGRESS' },
+            data: { status: 'READY', claimKey: null, claimedAt: null },
+          });
+        }
         const failed = await tx.stageExecution.updateMany({
           where: { id: currentStage.id, workflowRunId: id, status: currentStage.status },
           data: { status: 'FAILED', finishedAt: completedAt, errorMessage: summary, statusMessage: '本地任务已结束，可以重新领取。' },
@@ -186,7 +192,7 @@ export class WorkflowCollaborationService {
   }
 
   private workspace(workflow: Workflow) {
-    return workflow.requirement.workspace ?? workflow.requirement.project?.workspace;
+    return workflow.workItem.workspace ?? workflow.workItem.project?.workspace;
   }
 
   private async releaseSession(db: Database, id: string, workflow: Workflow, scope: Scope) {

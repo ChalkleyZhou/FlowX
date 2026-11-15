@@ -56,7 +56,7 @@ export interface GanttBar {
   color?: string;
   meta: {
     projectId: string;
-    requirementId: string;
+    workItemId: string;
     userId: string;
     role: string;
   };
@@ -84,14 +84,14 @@ export interface Project {
   currentVersion?: ProjectVersionSummary | null;
   versions?: ProjectVersionSummary[];
   workspace: Workspace;
-  requirements?: Array<
+  workItems?: Array<
     Requirement & {
       scheduleSummary?: RequirementScheduleSummary;
     }
   >;
   _count?: {
     versions?: number;
-    requirements: number;
+    workItems: number;
   };
 }
 
@@ -258,7 +258,7 @@ export interface LocalDevPreviewStatus {
 
 export interface RequirementChange {
   id: string;
-  requirementId: string;
+  workItemId: string;
   revision: number;
   content: string;
   mode: 'SUPPLEMENT' | 'RESTART';
@@ -326,6 +326,89 @@ export interface Requirement {
   createdAt?: string | null;
   latestChangeAt?: string | null;
   latestChangeContent?: string | null;
+  executionPlans?: ExecutionPlan[];
+}
+
+export interface WorkItem {
+  id: string;
+  projectId: string;
+  versionId?: string | null;
+  workspaceId: string;
+  kind: 'REQUIREMENT' | 'ISSUE';
+  title: string;
+  description: string;
+  remark: string;
+  status: string;
+  priority: string;
+  ownerUserId?: string | null;
+  ownerUser?: { id: string; displayName: string; avatarUrl?: string | null } | null;
+  acceptanceCriteria: string;
+  functionalModule: string;
+  riskImpact: string;
+  productRequirementDocument: string;
+  planningStatus: string;
+  ideationStatus: string;
+  revision: number;
+  resolution?: string | null;
+  severity?: string | null;
+  expectedBehavior?: string | null;
+  actualBehavior?: string | null;
+  branchName?: string | null;
+  version?: ProjectVersionSummary | null;
+  project?: Project | null;
+  workspace?: { id: string; name: string } | null;
+  sourceWorkflowRun?: { id: string; status: string } | null;
+  reviewFinding?: { id: string; type: string; severity: string; title: string; description: string } | null;
+  executionPlans?: ExecutionPlan[];
+  updatedAt: string;
+  createdAt: string;
+}
+
+export type WorkItemReference = Pick<WorkItem, 'id' | 'title' | 'kind'>;
+
+export interface WorkflowRunWorkItem {
+  id: string;
+  title: string;
+  description: string;
+  acceptanceCriteria: string;
+  ideationStatus?: string;
+  versionId?: string | null;
+  project: Project;
+  workspace?: Workspace | null;
+}
+
+export interface ExecutionPlan {
+  id: string;
+  workItemId: string;
+  workflowRunId?: string | null;
+  status: string;
+  strategy: string;
+  items: ExecutionItem[];
+}
+
+export interface ExecutionItem {
+  id: string;
+  executionPlanId: string;
+  title: string;
+  description: string;
+  target: string;
+  ownerHint?: string | null;
+  ownerUserId?: string | null;
+  required?: boolean;
+  status: string;
+  sortOrder: number;
+  dependsOnIds?: string[];
+  blockedReason?: string | null;
+  cancelReason?: string | null;
+  completionSummary?: string | null;
+  completionEvidence?: Record<string, unknown> | null;
+  verification?: string;
+  executionSessionId?: string | null;
+}
+
+export interface WorkItemsPage {
+  items: WorkItem[];
+  nextCursor: string | null;
 }
 
 export interface Repository {
@@ -347,7 +430,7 @@ export interface Workspace {
   repositories: Repository[];
   _count?: {
     projects: number;
-    requirements: number;
+    workItems: number;
     repositories?: number;
   };
 }
@@ -397,7 +480,7 @@ export interface WorkflowRun {
   runType?: string;
   aiProvider: 'codex' | 'cursor';
   fixForBug?: { id: string; title: string; status: string } | null;
-  requirement: Requirement;
+  workItem: WorkflowRunWorkItem;
   workflowRepositories: Array<{
     id: string;
     repositoryId?: string | null;
@@ -459,26 +542,13 @@ export interface LocalHandoffPayload {
   executionSessionId?: string | null;
   status: string;
   executor: 'LOCAL';
-  requirement: {
+  workItem: {
     id: string;
     title: string;
     description: string;
     acceptanceCriteria: string;
   };
-  plan: {
-    summary: string;
-    implementationPlan: string[];
-    filesToModify: string[];
-    newFiles: string[];
-    riskPoints: string[];
-  };
-  tasks: Array<{
-    id: string;
-    title: string;
-    description: string;
-    surface: string | null;
-    repositoryNames: string[];
-  }>;
+  specPlan: SpecPlanOutput;
   repositories: LocalHandoffRepository[];
   artifacts: {
     planMetaPath: string | null;
@@ -505,7 +575,7 @@ export interface LocalSpecPlanHandoff {
     executionSessionId: string;
     traceId: string;
     sourceFingerprint: string;
-    requirement: {
+    workItem: {
       id: string;
       title: string;
       description: string;
@@ -547,7 +617,7 @@ export interface OpenDesignHandoff {
     workflowRunId: string;
     executionSessionId: string;
     traceId: string;
-    requirement: {
+    workItem: {
       id: string;
       title: string;
       description: string;
@@ -594,32 +664,11 @@ export interface ReviewFinding {
   description: string;
   recommendation?: string | null;
   impactScope?: string[] | null;
-  convertedIssueId?: string | null;
+  convertedWorkItemId?: string | null;
   convertedBugId?: string | null;
 }
 
-export interface Issue {
-  id: string;
-  status: string;
-  priority: string;
-  title: string;
-  description: string;
-  workspace?: { id: string; name: string } | null;
-  requirement?: { id: string; title: string } | null;
-  workflowRun?: { id: string; status: string } | null;
-  workflowRunId?: string | null;
-  requirementId?: string | null;
-  branchName?: string | null;
-  createdAt?: string;
-  resolution?: string | null;
-  reviewFinding?: {
-    id: string;
-    type: string;
-    severity: string;
-    title: string;
-    description: string;
-  } | null;
-}
+export type Issue = WorkItem;
 
 export interface BugScreenshot {
   id: string;
@@ -640,13 +689,13 @@ export interface Bug {
   workspace?: { id: string; name: string } | null;
   project?: { id: string; name: string } | null;
   projectId?: string | null;
-  requirement?: { id: string; title: string } | null;
+  workItem?: WorkItemReference | null;
   workflowRun?: { id: string; status: string } | null;
   fixWorkflowRun?: { id: string; status: string } | null;
-  fixRequirement?: { id: string; title: string } | null;
+  fixWorkItem?: WorkItemReference | null;
   workflowRunId?: string | null;
   fixWorkflowRunId?: string | null;
-  requirementId?: string | null;
+  workItemId?: string | null;
   branchName?: string | null;
   createdAt?: string;
   expectedBehavior?: string | null;
@@ -939,10 +988,10 @@ export interface TestRequest {
   createdAt: string;
   project: { id: string; name: string };
   projectVersion: { id: string; name: string };
-  requirementLinks: Array<{ requirement: { id: string; title: string } }>;
+  workItemLinks: Array<{ workItem: WorkItemReference }>;
   workflowLinks: Array<{ workflowRun: { id: string; status: string } }>;
   artifactLinks: Array<{ artifact: { id: string; name?: string; artifactType?: string } }>;
-  _count?: { requirementLinks?: number; workflowLinks?: number; artifactLinks?: number };
+  _count?: { workItemLinks?: number; workflowLinks?: number; artifactLinks?: number };
   testPlan?: {
     id: string;
     status: string;
@@ -1060,7 +1109,7 @@ export interface TestDesign {
   candidates: TestDesignCandidate[];
   smokeCases: TestDesignSmokeCase[];
   testRequest?: { id: string; title: string } | null;
-  requirements?: Array<{ requirement: { id: string; title: string } }>;
+  workItems?: Array<{ workItem: WorkItemReference }>;
   workflowRuns?: Array<{ workflowRun: { id: string; status: string } }>;
 }
 
@@ -1224,7 +1273,7 @@ export interface ExecutionSessionDetail {
   blockedReason?: string | null;
   cancelRequestedAt?: string | null;
   commands?: ExecutionCommand[];
-  workflowRun?: { requirement: { title: string } } | null;
+  workflowRun?: { workItem: { title: string } } | null;
   claimedByUser?: { displayName: string } | null;
   id: string;
   workflowRunId: string;
@@ -1448,7 +1497,7 @@ export interface PrototypeAnalysis {
 export interface PrototypeImport {
   workflowRunId?: string | null;
   id: string;
-  requirementId: string;
+  workItemId: string;
   status: 'ANALYZING' | 'WAITING_CONFIRMATION' | 'FAILED' | 'CONFIRMED';
   revision: number;
   materialRevision: number;

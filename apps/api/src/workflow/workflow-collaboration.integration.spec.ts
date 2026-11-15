@@ -37,10 +37,10 @@ beforeAll(async () => {
 afterAll(async () => { await prisma.$disconnect(); rmSync(directory, { recursive: true, force: true }); });
 
 async function pending(stage = 'DESIGN') {
-  const requirement = await prisma.requirement.create({ data: {
+  const requirement = await prisma.workItem.create({ data: {
     title: '多角色接续', description: '', acceptanceCriteria: '', workspaceId, projectId,
   } });
-  const run = await prisma.workflowRun.create({ data: { requirementId: requirement.id, status: `${stage}_PENDING`, currentStage: stage } });
+  const run = await prisma.workflowRun.create({ data: { workItemId: requirement.id, status: `${stage}_PENDING`, currentStage: stage } });
   await prisma.stageExecution.create({ data: { workflowRunId: run.id, stage, status: 'PENDING' } });
   return run;
 }

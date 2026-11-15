@@ -10,6 +10,7 @@ import { PrototypeImportPanel } from '../components/PrototypeImportPanel';
 import { RequirementEditDialog } from '../components/RequirementEditDialog';
 import { RequirementSchedulingPanel } from '../components/RequirementSchedulingPanel';
 import { RequirementChangesPanel } from '../components/RequirementChangesPanel';
+import { ExecutionPlanPanel } from '../components/ExecutionPlanPanel';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Spinner } from '../components/ui/spinner';
@@ -46,13 +47,13 @@ export function RequirementDetailPage() {
   const [requirement, setRequirement] = useState<Requirement | null>(null);
   const scope = useProjectScopeOptional();
   useAdoptProject(requirement?.project.id);
-  const requirementListHref = withCurrentProject('/requirements', requirement?.project.id ?? scope?.projectId ?? null);
+  const requirementListHref = withCurrentProject('/work-items', requirement?.project.id ?? scope?.projectId ?? null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
-  const activeList = useListPage(query => api.getWorkflowRuns(query), { requirementId: id, activeOnly: true, excludeSuperseded: true }, { enabled: !!id && requirement?.id === id, pageKey: 'activeWorkflowsPage' });
-  const historyList = useListPage(query => api.getWorkflowRuns(query), { requirementId: id, terminalOnly: true }, { enabled: !!id && requirement?.id === id, pageKey: 'historyWorkflowsPage' });
+  const activeList = useListPage(query => api.getWorkflowRuns(query), { workItemId: id, activeOnly: true, excludeSuperseded: true }, { enabled: !!id && requirement?.id === id, pageKey: 'activeWorkflowsPage' });
+  const historyList = useListPage(query => api.getWorkflowRuns(query), { workItemId: id, terminalOnly: true }, { enabled: !!id && requirement?.id === id, pageKey: 'historyWorkflowsPage' });
   const [changesRefresh, setChangesRefresh] = useState<string | undefined>();
   const requestVersion = useRef(0);
 
@@ -105,7 +106,7 @@ export function RequirementDetailPage() {
     try {
       await api.deleteRequirement(requirement.id);
       toast.success('需求已删除');
-      navigate('/requirements');
+      navigate('/work-items');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '删除需求失败');
       setDeleting(false);
@@ -166,14 +167,14 @@ export function RequirementDetailPage() {
               <Link to={requirementListHref}>返回列表</Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link to={`/quality/test-designs/new?${new URLSearchParams({ projectId: requirement.project.id, projectVersionId: requirement.versionId ?? '', requirementId: requirement.id })}`}>准备测试</Link>
+              <Link to={`/quality/test-designs/new?${new URLSearchParams({ projectId: requirement.project.id, projectVersionId: requirement.versionId ?? '', workItemId: requirement.id })}`}>准备测试</Link>
             </Button>
             <Button variant="outline" type="button" onClick={() => void openEdit()}>编辑</Button>
             <Button variant="outline" type="button" disabled={deleting} onClick={() => void handleDelete()}>
               {deleting ? '删除中...' : '删除需求'}
             </Button>
             <Button variant="outline" asChild>
-              <Link to={`/requirements/${requirement.id}#scheduling`}>排期</Link>
+              <Link to={`/work-items/${requirement.id}#scheduling`}>排期</Link>
             </Button>
             {activeList.total === 1 && activeWorkflows[0] ? (
               <Button asChild><Link to={`/workflow-runs/${activeWorkflows[0].id}`}>继续当前工作流</Link></Button>
@@ -181,7 +182,7 @@ export function RequirementDetailPage() {
               <Button asChild><a href="#active-workflows">选择要继续的工作流</a></Button>
             ) : null}
             {(!requirement.prototypeImport || requirement.prototypeImport.status === 'CONFIRMED') && <Button variant={activeList.total > 0 ? 'outline' : 'default'} asChild>
-              <Link to={`/requirements?${launchParams.toString()}`}>
+              <Link to={`/work-items?${launchParams.toString()}`}>
                 {activeList.total > 0 ? '启动其他仓库工作流' : '启动研发工作流'}
               </Link>
             </Button>}
@@ -253,6 +254,8 @@ export function RequirementDetailPage() {
           <RequirementDetailField label="备注" value={requirement.remark} />
         </div>
       </ContextPanel>
+
+      <ExecutionPlanPanel workItem={requirement} onChanged={() => fetchRequirement({ silent: true })} />
 
       <RequirementSchedulingPanel requirement={requirement} onChanged={() => fetchRequirement({ silent: true })} />
       <RequirementEditDialog

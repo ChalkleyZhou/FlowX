@@ -13,7 +13,7 @@ import { CaseLibrariesService } from './case-libraries.service';
 const requestInclude = {
   project: true,
   projectVersion: true,
-  requirementLinks: { include: { requirement: true } },
+  workItemLinks: { include: { workItem: true } },
   workflowLinks: { include: { workflowRun: true } },
   artifactLinks: { include: { artifact: true } },
   testDesign: {
@@ -32,7 +32,7 @@ const requestInclude = {
 
 const requestBrowseInclude = {
   project: true, projectVersion: true,
-  _count: { select: { requirementLinks: true, workflowLinks: true, artifactLinks: true } },
+  _count: { select: { workItemLinks: true, workflowLinks: true, artifactLinks: true } },
   testPlan: { include: { _count: { select: { snapshots: true, runs: true } } } },
   testDesign: { include: { _count: { select: { candidates: true } } } },
 } as const;
@@ -46,12 +46,12 @@ export class TestRequestsService {
   ) {}
 
   async createRequest(dto: CreateTestRequestDto, userId?: string) {
-    const requirementIds = unique(dto.requirementIds);
+    const workItemIds = unique(dto.workItemIds);
     const workflowRunIds = unique(dto.workflowRunIds);
     const artifactIds = unique(dto.artifactIds ?? []);
 
-    if (!requirementIds.length) {
-      throw new BadRequestException('At least one requirement is required.');
+    if (!workItemIds.length) {
+      throw new BadRequestException('At least one work item is required.');
     }
     if (!workflowRunIds.length) {
       throw new BadRequestException('At least one completed workflow run is required.');
@@ -70,27 +70,27 @@ export class TestRequestsService {
       throw new BadRequestException('Project version does not belong to the selected project.');
     }
 
-    const requirements = await this.prisma.requirement.findMany({
+    const workItems = await this.prisma.workItem.findMany({
       where: {
-        id: { in: requirementIds },
+        id: { in: workItemIds },
         projectId: dto.projectId,
         versionId: dto.projectVersionId,
         status: 'ACTIVE',
       },
       select: { id: true },
     });
-    if (requirements.length !== requirementIds.length) {
+    if (workItems.length !== workItemIds.length) {
       throw new BadRequestException(
-        'Some requirements do not belong to the selected project version.',
+        'Some workItems do not belong to the selected project version.',
       );
     }
 
     const workflows = await this.prisma.workflowRun.findMany({
-      where: { id: { in: workflowRunIds }, requirementId: { in: requirementIds } },
-      select: { id: true, status: true, requirementId: true },
+      where: { id: { in: workflowRunIds }, workItemId: { in: workItemIds } },
+      select: { id: true, status: true, workItemId: true },
     });
     if (workflows.length !== workflowRunIds.length) {
-      throw new BadRequestException('Some workflow runs are not linked to the selected requirements.');
+      throw new BadRequestException('Some workflow runs are not linked to the selected workItems.');
     }
     if (workflows.some((workflow) => workflow.status.toLowerCase() !== 'done')) {
       throw new BadRequestException('All linked development workflows must be completed before testing.');
@@ -105,14 +105,14 @@ export class TestRequestsService {
         workspaceId: dto.workspaceId,
         projectId: dto.projectId,
         projectVersionId: dto.projectVersionId,
-        requirementIds,
+        workItemIds,
         workflowRunIds,
       });
     if (testDesign.workspaceId !== dto.workspaceId || testDesign.projectId !== dto.projectId || testDesign.projectVersionId !== dto.projectVersionId) {
       throw new BadRequestException({ code: 'TEST_REQUEST_DESIGN_REQUIRED', message: 'Test design does not belong to the selected project scope.' });
     }
-    if (requirementIds.some((id) => !testDesign.requirements.some((link) => link.requirementId === id)) || workflowRunIds.some((id) => !testDesign.workflowRuns.some((link) => link.workflowRunId === id))) {
-      throw new BadRequestException({ code: 'TEST_REQUEST_DESIGN_REQUIRED', message: 'Test design does not cover all selected requirements and workflows.' });
+    if (workItemIds.some((id) => !testDesign.workItems.some((link) => link.workItemId === id)) || workflowRunIds.some((id) => !testDesign.workflowRuns.some((link) => link.workflowRunId === id))) {
+      throw new BadRequestException({ code: 'TEST_REQUEST_DESIGN_REQUIRED', message: 'Test design does not cover all selected workItems and workflows.' });
     }
     const shouldGenerate = !dto.testDesignId;
     if (shouldGenerate) {
@@ -145,7 +145,7 @@ export class TestRequestsService {
           description: dto.description?.trim() || null,
           traceId: randomUUID(),
           createdByUserId: userId ?? null,
-          requirementLinks: { create: requirementIds.map((requirementId) => ({ requirementId })) },
+          workItemLinks: { create: workItemIds.map((workItemId) => ({ workItemId })) },
           workflowLinks: { create: workflowRunIds.map((workflowRunId) => ({ workflowRunId })) },
           artifactLinks: artifactIds.length
             ? { create: artifactIds.map((artifactId) => ({ artifactId })) }
@@ -289,12 +289,12 @@ export class TestRequestsService {
     return { ...pageResult(items, total, paging), summary: { functionalCount, smokeCount } };
   }
 
-  async listLinks(id: string, kind: 'requirements' | 'workflows' | 'artifacts', query: PaginationQuery) {
+  async listLinks(id: string, kind: 'workItems' | 'workflows' | 'artifacts', query: PaginationQuery) {
     await this.getRequestBrowse(id);
     const paging = parsePagination(query);
     const where = { testRequestId: id };
-    if (kind === 'requirements') {
-      const [items, total] = await Promise.all([this.prisma.testRequestRequirement.findMany({ where, include: { requirement: true }, orderBy: [{ createdAt: 'asc' }, { requirementId: 'asc' }], skip: paging.skip, take: paging.take }), this.prisma.testRequestRequirement.count({ where })]);
+    if (kind === 'workItems') {
+      const [items, total] = await Promise.all([this.prisma.testRequestWorkItem.findMany({ where, include: { workItem: true }, orderBy: [{ createdAt: 'asc' }, { workItemId: 'asc' }], skip: paging.skip, take: paging.take }), this.prisma.testRequestWorkItem.count({ where })]);
       return pageResult(items, total, paging);
     }
     if (kind === 'workflows') {

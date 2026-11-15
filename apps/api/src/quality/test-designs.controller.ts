@@ -19,7 +19,7 @@ export class TestDesignsController {
   }
 
   @Get()
-  list(@Query() query: import('../common/pagination').PaginationQuery & { requirementId?: string; projectId?: string; projectVersionId?: string; status?: string; q?: string; availableForRequest?: string | boolean; workflowRunIds?: string | string[] }) { return this.designs.listDesigns(query); }
+  list(@Query() query: import('../common/pagination').PaginationQuery & { workItemId?: string; projectId?: string; projectVersionId?: string; status?: string; q?: string; availableForRequest?: string | boolean; workflowRunIds?: string | string[] }) { return this.designs.listDesigns(query); }
 
   @Get(':id')
   get(@Param('id') id: string) { return this.designs.getDesignBrowse(id); }
@@ -27,8 +27,8 @@ export class TestDesignsController {
   candidates(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery & { q?: string; resolution?: string }) { return this.designs.listCandidates(id, query); }
   @Get(':id/smoke-cases')
   smokeCases(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery & { q?: string }) { return this.designs.listSmokeCases(id, query); }
-  @Get(':id/requirements')
-  requirements(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery) { return this.designs.listLinks(id, 'requirements', query); }
+  @Get(':id/work-items')
+  workItems(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery) { return this.designs.listLinks(id, 'workItems', query); }
   @Get(':id/workflows')
   workflows(@Param('id') id: string, @Query() query: import('../common/pagination').PaginationQuery) { return this.designs.listLinks(id, 'workflows', query); }
 

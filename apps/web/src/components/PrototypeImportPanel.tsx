@@ -174,7 +174,7 @@ export function PrototypeImportPanel({ importId, onConfirmed, existingWorkflowId
     const sourceWorkflowRunId = existingWorkflowId ?? record!.workflowRunId ?? undefined;
     const requestId = reanalyzeRequest.current.id;
     await run(async () => {
-      await api.createPrototypeRequirementChange(record!.requirementId, {
+      await api.createPrototypeRequirementChange(record!.workItemId, {
         content: `更新原型：${file.name}`,
         mode: 'RESTART',
         requestId,

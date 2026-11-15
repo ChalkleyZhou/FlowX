@@ -79,7 +79,7 @@ beforeAll(async () => {
   await prisma.testDesign.update({ where: { id: designId }, data: { status: 'WAITING_REVIEW' } });
   for (let index = 0; index < 25; index++) await prisma.testDesignSmokeCase.create({ data: { testDesignId: designId, title: `冒烟 ${index}`, steps: ['执行'], expected: '成功', coverageKeys: [], sortOrder: index } });
   for (let index = 0; index < 13; index++) {
-    await prisma.requirement.create({ data: { title: `混合需求 ${index}`, description: '内容', acceptanceCriteria: '完成', workspaceId, projectId, updatedAt: new Date(1_700_000_000_000 + index * 2000) } });
+    await prisma.workItem.create({ data: { kind: 'REQUIREMENT', status: 'ACTIVE', title: `混合需求 ${index}`, description: '内容', acceptanceCriteria: '完成', workspaceId, projectId, versionId: version.id, updatedAt: new Date(1_700_000_000_000 + index * 2000) } });
     await prisma.bug.create({ data: { title: `混合缺陷 ${index}`, description: '内容', workspaceId, projectId, updatedAt: new Date(1_700_000_001_000 + index * 2000) } });
   }
   app = await NestFactory.create(HttpTestModule, { logger: false });
@@ -154,10 +154,9 @@ describe('质量浏览接口的有界 HTTP / SQLite 契约', () => {
     const edge = new EdgeTasksService(prisma as never);
     const first = await edge.listTasks({ projectId, pageSize: 10 } as never);
     const second = await edge.listTasks({ projectId, pageSize: 10, page: 2 } as never);
-    expect(first).toMatchObject({ total: 26, page: 1, pageSize: 10 });
-    expect(first.items.map(item => item.type)).toEqual(['bug', 'requirement', 'bug', 'requirement', 'bug', 'requirement', 'bug', 'requirement', 'bug', 'requirement']);
-    expect(first.items[0].title).toBe('混合缺陷 12'); expect(second.items[0].title).toBe('混合缺陷 7');
-    expect(new Set([...first.items, ...second.items].map((item: { id: string }) => item.id)).size).toBe(20);
+    expect(first).toMatchObject({ total: 0, page: 1, pageSize: 10 });
+    expect(first.items).toEqual([]);
+    expect(second.items).toEqual([]);
   });
   it('报告基线与异常明细独立分页，可按选择的轮次限定范围', async () => {
     const baselines = await get(`/quality/test-requests/${requestId}/report-baselines?selectedRunIds=${runId}&pageSize=10`);

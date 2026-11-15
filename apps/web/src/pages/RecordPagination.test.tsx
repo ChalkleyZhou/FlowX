@@ -41,7 +41,7 @@ it('问题列表恢复URL第二页，空页删除回退最后有效页', async (
   vi.mocked(api.getIssues).mockImplementation(async query => ({
     items: [], total: 1, page: query?.page ?? 1, pageSize: 20, totalPages: 1, summary: { total: 1, visible: 1, openCount: 1, inProgressCount: 0 },
   }));
-  await act(async () => root.render(<MemoryRouter initialEntries={['/issues?page=2']}><IssuesPage /></MemoryRouter>));
+  await act(async () => root.render(<MemoryRouter initialEntries={['/work-items?page=2']}><IssuesPage /></MemoryRouter>));
   expect(api.getIssues).toHaveBeenCalledWith(expect.objectContaining({ page: 2, pageSize: 20 }));
   expect(api.getIssues).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, pageSize: 20 }));
 });
@@ -54,7 +54,7 @@ it('项目列表分页后仍能进入第二页的项目', async () => {
 });
 
 it('工作区列表和代码库子列表分别查询当前页', async () => {
-  vi.mocked(api.getWorkspaces).mockResolvedValue({ items: [{ id: 'w1', name: '研发', repositories: [], _count: { projects: 1, requirements: 1, repositories: 21 } }], total: 1, page: 1, pageSize: 20, totalPages: 1 });
+  vi.mocked(api.getWorkspaces).mockResolvedValue({ items: [{ id: 'w1', name: '研发', repositories: [], _count: { projects: 1, workItems: 1, repositories: 21 } }], total: 1, page: 1, pageSize: 20, totalPages: 1 });
   vi.mocked(api.getWorkspaceRepositories).mockImplementation(async (_id, query) => ({ items: [{ id: `r${query?.page}`, name: `代码库${query?.page}`, url: 'https://example.test/repo', syncStatus: 'READY' }], total: 21, page: query?.page ?? 1, pageSize: 20, totalPages: 2 }));
   await act(async () => root.render(<MemoryRouter><WorkspacesPage /></MemoryRouter>));
   expect(api.getWorkspaceRepositories).toHaveBeenCalledWith('w1', expect.objectContaining({ page: 1, pageSize: 20 }));

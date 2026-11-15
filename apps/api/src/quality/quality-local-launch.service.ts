@@ -43,7 +43,7 @@ export class QualityLocalLaunchService {
     if (run.runType === 'REGRESSION') {
       const bug = run.sourceBug;
       const fix = bug?.fixWorkflowRun;
-      if (!bug || bug.projectId !== context.projectId || !fix || fix.requirement.projectId !== context.projectId || fix.status.toLowerCase() !== 'done') throw new BadRequestException('回归修复工作流不属于当前项目或尚未完成。');
+      if (!bug || bug.projectId !== context.projectId || !fix || fix.workItem.projectId !== context.projectId || fix.status.toLowerCase() !== 'done') throw new BadRequestException('回归修复工作流不属于当前项目或尚未完成。');
       workflowIds.push(fix.id);
     }
     const repositories = await this.prisma.workflowRepository.findMany({ where: { id: { in: revisions.map(item => item.workflowRepositoryId) }, workflowRunId: { in: workflowIds } }, select: { id: true, name: true, url: true, workflowRunId: true } });
@@ -67,7 +67,7 @@ export class QualityLocalLaunchService {
     if (!organizationId) throw new ForbiddenException('请先选择组织。');
     const membership = await this.prisma.userOrganization.findUnique({ where: { userId_organizationId: { userId, organizationId } } });
     if (!membership) throw new ForbiddenException('当前用户不属于此组织。');
-    const run = await this.prisma.testRun.findUnique({ where: { id }, include: { testPlan: { include: { testRequest: { include: { workspace: true, workflowLinks: true } } } }, targets: true, cases: true, sourceBug: { include: { fixWorkflowRun: { select: { id: true, status: true, requirement: { select: { projectId: true } } } } } } } });
+    const run = await this.prisma.testRun.findUnique({ where: { id }, include: { testPlan: { include: { testRequest: { include: { workspace: true, workflowLinks: true } } } }, targets: true, cases: true, sourceBug: { include: { fixWorkflowRun: { select: { id: true, status: true, workItem: { select: { projectId: true } } } } } } } });
     if (!run || run.executionMode !== 'LOCAL') throw new NotFoundException('本地测试轮次不存在。');
     if (run.testPlan.testRequest.workspace.organizationId !== organizationId) throw new ForbiddenException('测试任务不属于当前组织。');
     if (run.status !== 'ACTIVE') throw new BadRequestException('测试轮次已结束。');

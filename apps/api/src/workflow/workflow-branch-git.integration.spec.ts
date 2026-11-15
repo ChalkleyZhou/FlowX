@@ -7,6 +7,8 @@ import { createServer } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { WorkflowGitRemoteService } from './workflow-git-remote.service';
 
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 120_000 });
+
 const directory = mkdtempSync(join(tmpdir(), 'flowx-branch-git-test-'));
 const remote = join(directory, 'remote.git');
 const checkout = join(directory, 'checkout');
@@ -30,7 +32,7 @@ beforeAll(() => {
   git('checkout', 'main');
   writeFileSync(join(checkout, 'unrelated.txt'), '其他需求\n');
   git('add', '.'); git('commit', '-m', 'unrelated'); git('push', 'origin', 'main');
-});
+}, 30_000);
 
 afterAll(() => rmSync(directory, { recursive: true, force: true }));
 

@@ -29,7 +29,7 @@ const baseHandoff: LocalHandoffPayload = {
   workflowRunId: 'workflow-run-1',
   status: 'EXECUTION_RUNNING',
   executor: 'LOCAL',
-  requirement: {
+  workItem: {
     id: 'req-1',
     title: 'Local handoff feature',
     description: 'desc',
@@ -54,7 +54,7 @@ const baseHandoff: LocalHandoffPayload = {
 const baseWorkflow = {
   id: 'workflow-run-1',
   status: 'EXECUTION_RUNNING',
-  requirement: { id: 'req-1', title: 'Local handoff feature' },
+  workItem: { id: 'req-1', title: 'Local handoff feature' },
   workflowRepositories: [
     {
       id: 'wr-1',

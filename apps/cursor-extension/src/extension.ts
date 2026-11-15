@@ -1,10 +1,5 @@
 import * as vscode from 'vscode';
-import {
-  loadHandoffSnapshot,
-  saveCompletionDraft,
-  saveHandoffSnapshot,
-  saveRestoredHandoffSnapshot,
-} from './completion-draft';
+import { loadHandoffSnapshot, saveHandoffSnapshot, saveRestoredHandoffSnapshot } from './completion-draft';
 import { collectGitCompletionReport, getCurrentGitRoot, reportCompletion } from './completion-panel';
 import { completeFlowXSignIn, configureFlowX, getFlowXConfig, signOutFromFlowX } from './config';
 import { buildFlowXWebUrl } from './config-model';
@@ -139,7 +134,6 @@ export function activate(context: vscode.ExtensionContext) {
       {
         collectGitReport: collectGitCompletionReport,
         completeExecutionSession: (executionSessionId, input) => client.completeExecutionSession(executionSessionId, input),
-        completeLocal: (workflowRunId, input) => client.completeLocal(workflowRunId, input),
         getGitRoot: () => getCurrentGitRoot(vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath)),
         loadHandoffSnapshot,
         restoreHandoffSnapshot: async (gitRoot, currentTask) => {
@@ -149,7 +143,6 @@ export function activate(context: vscode.ExtensionContext) {
           const handoff = await client.getLocalHandoff(currentTask.workflowRunId);
           return saveRestoredHandoffSnapshot(gitRoot, currentTask, handoff);
         },
-        saveCompletionDraft,
         showError: (message) => vscode.window.showErrorMessage(message),
         showInfo: (message) => vscode.window.showInformationMessage(message),
         showInput: (prompt) => vscode.window.showInputBox({ ignoreFocusOut: true, prompt }),
@@ -176,7 +169,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('flowx.openRequirements', async () => {
       const config = await getFlowXConfig(context);
       const apiBaseUrl = config?.apiBaseUrl ?? 'http://127.0.0.1:3000';
-      await vscode.env.openExternal(vscode.Uri.parse(buildFlowXWebUrl(apiBaseUrl, '/requirements', process.env)));
+      await vscode.env.openExternal(vscode.Uri.parse(buildFlowXWebUrl(apiBaseUrl, '/work-items', process.env)));
     }),
     vscode.commands.registerCommand('flowx.showTaskActions', (task: FlowXTaskItem) =>
       showTaskActions(
@@ -220,7 +213,7 @@ export function activate(context: vscode.ExtensionContext) {
           openFlowX: async () => {
             const config = await getFlowXConfig(context);
             const apiBaseUrl = config?.apiBaseUrl ?? 'http://127.0.0.1:3000';
-            await vscode.env.openExternal(vscode.Uri.parse(buildFlowXWebUrl(apiBaseUrl, '/requirements', process.env)));
+            await vscode.env.openExternal(vscode.Uri.parse(buildFlowXWebUrl(apiBaseUrl, '/work-items', process.env)));
           },
           openRunDetail: openRunDetailForTask,
           refreshTasks: () => provider.refresh(),

@@ -3,7 +3,7 @@ import type { SourceTool } from '@flowx-ai/protocol';
 import { ContextPackageService } from './context-package.service';
 import { StartEdgeHandoffDto } from './dto/start-edge-handoff.dto';
 import { EdgeHandoffService } from './edge-handoff.service';
-import { EdgeTasksService, type EdgeTaskType, type EdgeWorkflowSession } from './edge-tasks.service';
+import { EdgeTasksService, type EdgeWorkflowSession } from './edge-tasks.service';
 
 @Controller('edge')
 export class EdgeController {
@@ -18,13 +18,12 @@ export class EdgeController {
   @Get('opendesign-tasks')
   listOpenDesignTasks(@Query() query: import('../common/pagination').PaginationQuery & { workspaceId?: string; q?: string }, @Req() req: EdgeRequest) { return this.edgeTasksService.listOpenDesignTasks({ ...query, session: req.authSession }); }
 
-  @Get('tasks/:type/:id/context')
+  @Get('execution-items/:executionItemId/context')
   getContext(
-    @Param('type') type: EdgeTaskType,
-    @Param('id') id: string,
+    @Param('executionItemId') executionItemId: string,
     @Query('sourceTool') sourceTool: SourceTool | undefined,
   ) {
-    return this.contextPackageService.getContextPackage(type, id, sourceTool ?? 'cursor');
+    return this.contextPackageService.getContextPackage(executionItemId, sourceTool ?? 'cursor');
   }
 
   @Post('handoffs')

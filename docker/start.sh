@@ -52,7 +52,9 @@ if [ -n "${GIT_COMMITTER_EMAIL:-}" ]; then
 fi
 
 /docker/prisma-pre-db-push.sh ../../prisma/schema.prisma
-pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma
+# The WorkItem cutover copies legacy data before removing Requirement/Issue;
+# accept Prisma's intentional drop warnings after that mapping is complete.
+pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma --accept-data-loss
 
 node apps/api/dist/main.js &
 API_PID=$!

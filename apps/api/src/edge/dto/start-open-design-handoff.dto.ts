@@ -2,7 +2,7 @@ import { IsArray, IsOptional, IsString } from 'class-validator';
 
 export class StartOpenDesignHandoffDto {
   @IsString()
-  requirementId!: string;
+  workItemId!: string;
 
   @IsOptional()
   @IsArray()

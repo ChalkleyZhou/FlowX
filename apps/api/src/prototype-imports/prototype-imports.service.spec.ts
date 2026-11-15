@@ -41,7 +41,7 @@ beforeAll(async () => {
   org = (await prisma.organization.create({ data: { provider: 'test', providerOrganizationId: 'prototype-test', name: '测试' } })).id;
   workspace = (await prisma.workspace.create({ data: { name: '工作区', organizationId: org } })).id;
   project = (await prisma.project.create({ data: { name: '项目', workspaceId: workspace } })).id;
-  const requirements = { create: async (dto: { title: string; description: string; acceptanceCriteria: string; projectId: string }) => prisma.requirement.create({ data: { ...dto, workspaceId: workspace } }) };
+  const requirements = { create: async (dto: { title: string; description: string; acceptanceCriteria: string; projectId: string }) => prisma.workItem.create({ data: { ...dto, workspaceId: workspace } }) };
   service = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveOnlineProvider: async () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: async () => { throw new Error('仓库未配置'); } } as never);
   Object.assign(service, { archive });
   app = await NestFactory.create(TestModule, { logger: false });
@@ -53,7 +53,7 @@ afterAll(async () => { await app?.close(); await prisma.$disconnect(); rmSync(di
 async function create() {
   const result = await service.create({ projectId: project, goal: '管理事项' }, Buffer.from('zip'), 'prototype.zip', actor());
   await vi.waitFor(async () => expect((await service.get(result.id, actor())).status).not.toBe('ANALYZING'));
-  await prisma.ideationArtifact.deleteMany({ where: { requirementId: result.requirementId } });
+  await prisma.ideationArtifact.deleteMany({ where: { workItemId: result.workItemId } });
   // 旧确认接口的兼容性测试使用显式旧记录。
   await prisma.prototypeImport.update({ where: { id: result.id }, data: { status: 'WAITING_CONFIRMATION', analysis: JSON.parse(JSON.stringify(analysis)), errorMessage: null, confirmedAt: null, confirmedBy: null } });
   return service.get(result.id, actor());
@@ -72,8 +72,8 @@ describe('原型导入到确认', () => {
     const result = await create();
     expect(result.analysis).toEqual(analysis);
     expect(result.manifest).toEqual(manifest);
-    expect(result.requirementId).toBeTruthy();
-    expect(await prisma.requirement.findUnique({ where: { id: result.requirementId } })).toMatchObject({ createdByUserId: 'user-a', createdByName: '用户' });
+    expect(result.workItemId).toBeTruthy();
+    expect(await prisma.workItem.findUnique({ where: { id: result.workItemId } })).toMatchObject({ createdByUserId: 'user-a', createdByName: '用户' });
     expect(executor.analyzePrototype).toHaveBeenCalled();
   });
 
@@ -84,8 +84,8 @@ describe('原型导入到确认', () => {
     const body = new FormData(); body.append('projectId', project); body.append('title', '  原型快捷标题  '); body.append('versionId', selected.id); body.append('file', new Blob(['zip']), '原型.zip');
     const response = await fetch(`${baseUrl}/prototype-imports`, { method: 'POST', headers: { 'x-org-id': org }, body });
     expect(response.status).toBe(201);
-    const result = await response.json() as { id: string; requirementId: string };
-    expect(await prisma.requirement.findUniqueOrThrow({ where: { id: result.requirementId } })).toMatchObject({ title: '原型快捷标题', versionId: selected.id });
+    const result = await response.json() as { id: string; workItemId: string };
+    expect(await prisma.workItem.findUniqueOrThrow({ where: { id: result.workItemId } })).toMatchObject({ title: '原型快捷标题', versionId: selected.id });
     expect((await service.get(result.id, actor())).goal).toBe('原型快捷标题');
     await vi.waitFor(async () => expect((await service.get(result.id, actor())).status).not.toBe('ANALYZING'));
     await prisma.project.update({ where: { id: project }, data: { currentVersionId: null } });
@@ -95,14 +95,14 @@ describe('原型导入到确认', () => {
     const other = await prisma.project.create({ data: { name: '其他项目', workspaceId: workspace } });
     const foreign = await prisma.projectVersion.create({ data: { name: '其他项目版本', projectId: other.id } });
     for (const versionId of ['missing', foreign.id]) {
-      const count = await prisma.requirement.count(); const saves = archive.save.mock.calls.length;
+      const count = await prisma.workItem.count(); const saves = archive.save.mock.calls.length;
       await expect(service.create({ projectId: project, title: '无效版本', versionId } as CreatePrototypeImportDto, Buffer.from('zip'), 'test.zip', actor())).rejects.toMatchObject({ status: 400 });
-      expect(await prisma.requirement.count()).toBe(count); expect(archive.save).toHaveBeenCalledTimes(saves);
+      expect(await prisma.workItem.count()).toBe(count); expect(archive.save).toHaveBeenCalledTimes(saves);
     }
     const current = await prisma.projectVersion.create({ data: { name: '默认版本', projectId: project } });
     await prisma.project.update({ where: { id: project }, data: { currentVersionId: current.id } });
     const result = await create();
-    expect(await prisma.requirement.findUniqueOrThrow({ where: { id: result.requirementId } })).toMatchObject({ versionId: current.id });
+    expect(await prisma.workItem.findUniqueOrThrow({ where: { id: result.workItemId } })).toMatchObject({ versionId: current.id });
     await prisma.project.update({ where: { id: project }, data: { currentVersionId: null } });
   });
   it('校验组织，匿名和其他组织无法读取或补传', async () => {
@@ -116,7 +116,7 @@ describe('原型导入到确认', () => {
     await expect(service.confirm(result.id, { revision: result.revision, analysis, answers: {} }, actor())).rejects.toMatchObject({ status: 400 });
     const confirmed = await service.confirm(result.id, { revision: result.revision, analysis: { ...analysis, title: '我的事项' }, answers: { permission: '仅创建人可删除' } }, actor());
     expect(confirmed.status).toBe('CONFIRMED');
-    const requirement = await prisma.requirement.findUniqueOrThrow({ where: { id: result.requirementId }, include: { ideationArtifacts: true } });
+    const requirement = await prisma.workItem.findUniqueOrThrow({ where: { id: result.workItemId }, include: { ideationArtifacts: true } });
     expect(requirement.title).toBe('我的事项');
     expect(requirement.description).toContain('仅创建人可删除');
     expect(requirement.ideationArtifacts.map((a) => a.type).sort()).toEqual(['BRAINSTORM_BRIEF', 'DESIGN_SPEC']);
@@ -133,7 +133,7 @@ describe('原型导入到确认', () => {
     const input = { revision: result.revision, analysis, answers: { permission: '创建人' } };
     const results = await Promise.allSettled([service.confirm(result.id, input, actor()), service.confirm(result.id, input, actor())]);
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
-    expect(await prisma.ideationArtifact.count({ where: { requirementId: result.requirementId } })).toBe(2);
+    expect(await prisma.ideationArtifact.count({ where: { workItemId: result.workItemId } })).toBe(2);
   });
   it('整包替换清除旧分析和答案，读取失败不丢失原材料且可用最新修订再试', async () => {
     const imported = await create();
@@ -183,9 +183,9 @@ describe('原型确认后的真实工作流接续', () => {
   it('未确认时API也不可启动；确认后无仓库不重复确认', async () => {
     const result = await create();
     const workflow = workflowService();
-    await expect(workflow.createWorkflowRun({ requirementId: result.requirementId })).rejects.toThrow(/导入/);
+    await expect(workflow.createWorkflowRun({ workItemId: result.workItemId })).rejects.toThrow(/导入/);
     await service.confirm(result.id, { revision: result.revision, answers: { permission: '创建人' } }, actor());
-    await expect(workflow.createWorkflowRun({ requirementId: result.requirementId })).rejects.toThrow(/仓库/);
+    await expect(workflow.createWorkflowRun({ workItemId: result.workItemId })).rejects.toThrow(/仓库/);
     expect((await service.get(result.id, actor())).status).toBe('CONFIRMED');
   });
   it('仓库grounding后直接到Spec&Plan，构思跳过、设计复用且来源可追溯', async () => {
@@ -193,7 +193,7 @@ describe('原型确认后的真实工作流接续', () => {
     await service.confirm(result.id, { revision: result.revision, answers: { permission: '创建人' } }, actor());
     await prisma.repository.create({ data: { workspaceId: workspace, name: 'web', url: 'https://example.com/web.git', defaultBranch: 'main' } });
     const surfaces = vi.spyOn(PrototypeArchive.prototype, 'surfaces').mockResolvedValue([]);
-    const workflow = await workflowService().createWorkflowRun({ requirementId: result.requirementId });
+    const workflow = await workflowService().createWorkflowRun({ workItemId: result.workItemId });
     await vi.waitFor(async () => expect((await prisma.workflowRun.findUniqueOrThrow({ where: { id: workflow.id } })).status).toBe('SPEC_PLAN_PENDING'));
     const stages = await prisma.stageExecution.findMany({ where: { workflowRunId: workflow.id } });
     expect(stages.find((stage) => stage.stage === 'REQUIREMENT_INTAKE')?.output).toMatchObject({ source: 'prototype-import', importId: result.id, revision: result.revision + 1 });
@@ -212,7 +212,7 @@ describe('原型确认后的真实工作流接续', () => {
     const surfaces = vi.spyOn(PrototypeArchive.prototype, 'surfaces').mockResolvedValue([{ id: '平台端', pages: [{ id: 'index.html', title: '看板', html: '<p>看板</p>' }, { id: 'prd.md', title: 'prd.md', html: '<pre># 需求</pre>' }] }]);
     const readText = vi.spyOn(PrototypeArchive.prototype, 'readText').mockResolvedValue('# 巡逻需求\n\n用户可以创建事项');
     try {
-      const workflow = await workflowService().createWorkflowRun({ requirementId: result.requirementId });
+      const workflow = await workflowService().createWorkflowRun({ workItemId: result.workItemId });
       await vi.waitFor(async () => expect((await prisma.workflowRun.findUniqueOrThrow({ where: { id: workflow.id } })).status).toBe('SPEC_PLAN_PENDING'));
       const stages = await prisma.stageExecution.findMany({ where: { workflowRunId: workflow.id } });
       const brainstorm = stages.find((stage) => stage.stage === 'BRAINSTORM');
@@ -304,7 +304,7 @@ describe('快速导入自动接续', () => {
     const cursor = { analyzePrototype: vi.fn().mockResolvedValue(structuredClone(analysis)) };
     const registry = { get: vi.fn((provider: string) => provider === 'cursor' ? cursor : codex) };
     const invocation = { normalizeAiProvider: (provider?: string) => provider ?? 'codex', resolveOnlineProvider: async (_organizationId?: string, provider?: string) => provider ?? 'codex', resolveInvocationContext: vi.fn(async (provider: string) => ({ requestUserId: 'user-a', source: provider })) };
-    const start = vi.fn(async (dto: { requirementId: string }) => prisma.workflowRun.create({ data: { requirementId: dto.requirementId, status: 'REPOSITORY_GROUNDING_PENDING', stageExecutions: { create: { stage: 'REPOSITORY_GROUNDING', status: 'RUNNING', attempt: 1 } } } }));
+    const start = vi.fn(async (dto: { workItemId: string }) => prisma.workflowRun.create({ data: { workItemId: dto.workItemId, status: 'REPOSITORY_GROUNDING_PENDING', stageExecutions: { create: { stage: 'REPOSITORY_GROUNDING', status: 'RUNNING', attempt: 1 } } } }));
     const automatic = new PrototypeImportsService(prisma as never, registry as never, invocation as never, { createWorkflowRun: start } as never);
     Object.assign(automatic, { archive });
     const imported = await automatic.create({ projectId: project, aiProvider: 'codex' }, Buffer.from('zip'), 'retry.zip', actor());
@@ -315,13 +315,13 @@ describe('快速导入自动接续', () => {
     const running = method === 'analyze'
       ? await automatic.analyze(imported.id, retry, actor())
       : await automatic.supplement(imported.id, retry, Buffer.from('newzip'), 'more.zip', actor());
-    expect(running).toMatchObject({ aiProvider: 'cursor', status: 'ANALYZING', requirementId: imported.requirementId, materialRevision: method === 'analyze' ? imported.materialRevision : imported.materialRevision + 1 });
+    expect(running).toMatchObject({ aiProvider: 'cursor', status: 'ANALYZING', workItemId: imported.workItemId, materialRevision: method === 'analyze' ? imported.materialRevision : imported.materialRevision + 1 });
     await expect(automatic.analyze(imported.id, retry, actor())).rejects.toMatchObject({ status: 409 });
     await vi.waitFor(async () => expect(await automatic.get(imported.id, actor())).toMatchObject({ status: 'CONFIRMED', workflowRunId: expect.any(String) }));
     expect(cursor.analyzePrototype).toHaveBeenCalledTimes(1);
     expect(codex.analyzePrototype).toHaveBeenCalledTimes(1);
     expect(invocation.resolveInvocationContext).toHaveBeenLastCalledWith('cursor', expect.objectContaining({ flowxOrganizationId: org, flowxUserId: 'user-a' }));
-    expect(start).toHaveBeenCalledWith(expect.objectContaining({ requirementId: imported.requirementId, aiProvider: 'cursor' }));
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ workItemId: imported.workItemId, aiProvider: 'cursor' }));
     expect(archive.save).toHaveBeenCalledTimes(saves + (method === 'analyze' ? 0 : 1));
   });
 
@@ -347,8 +347,8 @@ describe('快速导入自动接续', () => {
   it('仓库准备时重启，清理未完成的 CREATED 后可重新接入，不永久等待', async () => {
     const imported = await create();
     await prisma.prototypeImport.update({ where: { id: imported.id }, data: { status: 'CONFIRMED', confirmedAt: new Date() } });
-    const incomplete = await prisma.workflowRun.create({ data: { requirementId: imported.requirementId, status: 'CREATED' } });
-    const start = vi.fn(async (dto: { requirementId: string }) => prisma.workflowRun.create({ data: { requirementId: dto.requirementId, status: 'REPOSITORY_GROUNDING_PENDING', stageExecutions: { create: { stage: 'REPOSITORY_GROUNDING', status: 'RUNNING', attempt: 1 } } } }));
+    const incomplete = await prisma.workflowRun.create({ data: { workItemId: imported.workItemId, status: 'CREATED' } });
+    const start = vi.fn(async (dto: { workItemId: string }) => prisma.workflowRun.create({ data: { workItemId: dto.workItemId, status: 'REPOSITORY_GROUNDING_PENDING', stageExecutions: { create: { stage: 'REPOSITORY_GROUNDING', status: 'RUNNING', attempt: 1 } } } }));
     const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveOnlineProvider: async () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: start } as never);
     Object.assign(automatic, { archive });
     await automatic.onModuleInit();
@@ -362,7 +362,7 @@ describe('快速导入自动接续', () => {
 
   it('接续失败明确报错，重试复用整理结果且只保留一份产物', async () => {
     const start = vi.fn();
-    start.mockRejectedValueOnce(new Error('secret repository credential')).mockImplementationOnce(async (dto: { requirementId: string }) => prisma.workflowRun.create({ data: { requirementId: dto.requirementId, status: 'REPOSITORY_GROUNDING_PENDING', stageExecutions: { create: { stage: 'REPOSITORY_GROUNDING', status: 'RUNNING', attempt: 1 } } } }));
+    start.mockRejectedValueOnce(new Error('secret repository credential')).mockImplementationOnce(async (dto: { workItemId: string }) => prisma.workflowRun.create({ data: { workItemId: dto.workItemId, status: 'REPOSITORY_GROUNDING_PENDING', stageExecutions: { create: { stage: 'REPOSITORY_GROUNDING', status: 'RUNNING', attempt: 1 } } } }));
     const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveOnlineProvider: async () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: start } as never);
     Object.assign(automatic, { archive });
     const imported = await automatic.create({ projectId: project }, Buffer.from('zip'), 'retry.zip', actor());
@@ -375,13 +375,13 @@ describe('快速导入自动接续', () => {
     await automatic.analyze(imported.id, { revision: failed.revision }, actor());
     await vi.waitFor(async () => expect(await automatic.get(imported.id, actor())).toMatchObject({ status: 'CONFIRMED', workflowRunId: expect.any(String) }));
     expect(executor.analyzePrototype).toHaveBeenCalledTimes(calls);
-    expect(await prisma.ideationArtifact.count({ where: { requirementId: imported.requirementId } })).toBe(2);
-    expect(await prisma.workflowRun.count({ where: { requirementId: imported.requirementId } })).toBe(1);
+    expect(await prisma.ideationArtifact.count({ where: { workItemId: imported.workItemId } })).toBe(2);
+    expect(await prisma.workflowRun.count({ where: { workItemId: imported.workItemId } })).toBe(1);
   });
 
   it('旧等待确认记录接续复用已保存的整理，不再请求用户或重跑 AI', async () => {
     const imported = await create();
-    const start = vi.fn(async (dto: { requirementId: string }) => prisma.workflowRun.create({ data: { requirementId: dto.requirementId, status: 'REPOSITORY_GROUNDING_PENDING', stageExecutions: { create: { stage: 'REPOSITORY_GROUNDING', status: 'RUNNING', attempt: 1 } } } }));
+    const start = vi.fn(async (dto: { workItemId: string }) => prisma.workflowRun.create({ data: { workItemId: dto.workItemId, status: 'REPOSITORY_GROUNDING_PENDING', stageExecutions: { create: { stage: 'REPOSITORY_GROUNDING', status: 'RUNNING', attempt: 1 } } } }));
     const automatic = new PrototypeImportsService(prisma as never, { get: () => executor } as never, { normalizeAiProvider: () => 'codex', resolveOnlineProvider: async () => 'codex', resolveInvocationContext: async () => ({}) } as never, { createWorkflowRun: start } as never);
     Object.assign(automatic, { archive });
     const calls = executor.analyzePrototype.mock.calls.length;
@@ -408,7 +408,7 @@ describe('快速导入自动接续', () => {
       expect(completed.confirmedBy).toBeNull();
       expect(completed.answers).toEqual({});
       expect(completed.analysis?.brief.openQuestions).toContain('谁可以删除事项？');
-      const req = await prisma.requirement.findUniqueOrThrow({ where: { id: imported.requirementId }, include: { ideationArtifacts: true, workflowRuns: true } });
+      const req = await prisma.workItem.findUniqueOrThrow({ where: { id: imported.workItemId }, include: { ideationArtifacts: true, workflowRuns: true } });
       expect(req.ideationStatus).toBe('FINALIZED');
       expect(req.ideationArtifacts).toHaveLength(2);
       expect(req.workflowRuns).toHaveLength(1);

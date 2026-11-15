@@ -40,7 +40,7 @@ describe('OpenDesignAdapter', () => {
           workflowRunId: 'workflow-1',
           executionSessionId: 'session-1',
           traceId: 'trace-1',
-          requirement: {
+          workItem: {
             id: 'req-1',
             title: 'Export',
             description: 'Design export',
@@ -128,7 +128,7 @@ describe('OpenDesignAdapter', () => {
           workflowRunId: 'workflow-1',
           executionSessionId: 'session-b1',
           traceId: 'trace-1',
-          requirement: {
+          workItem: {
             id: 'req-1',
             title: 'Export',
             description: 'Design export',

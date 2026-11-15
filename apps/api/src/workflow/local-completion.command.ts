@@ -90,9 +90,9 @@ export interface LocalCompletionCommandResult {
  * validate the agent-reported repositories against the workflow handoff, verify pushed
  * remotes, attach the execution artifact, then hand off to the workflow gateway to advance
  * state and complete the execution session. Both `POST /execution-sessions/:id/complete`
- * (via `WorkflowService.completeLocalExecutionBySession`) and the compatibility
- * `POST /workflow-runs/:id/execution/complete-local` (via `WorkflowService.completeLocalExecution`)
- * route through this command so there is exactly one implementation.
+ * (via `WorkflowService.completeLocalExecutionBySession`) and the workflow-level
+ * completion route (via `WorkflowService.completeLocalExecution`) route through this
+ * command so there is exactly one implementation.
  */
 export class LocalCompletionCommand {
   private readonly logger = new Logger(LocalCompletionCommand.name);
@@ -182,7 +182,7 @@ export class LocalCompletionCommand {
       triggerType,
       notifyRecipient,
       executor: 'LOCAL',
-      requirementTitle: workflow.requirement.title,
+      requirementTitle: workflow.workItem.title,
       localCompletion:
         executionSession && completionReport
           ? {

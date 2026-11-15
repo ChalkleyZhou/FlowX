@@ -5,6 +5,9 @@ import type { FlowXTaskItem } from './flowx-client';
 const task: FlowXTaskItem = {
   eligible: false,
   id: 'req-1',
+  workItemId: 'work-1',
+  kind: 'REQUIREMENT',
+  workItemTitle: '导出 CSV',
   repository: {
     id: 'repo-1',
     name: 'FlowX',
@@ -12,7 +15,6 @@ const task: FlowXTaskItem = {
   },
   status: 'IN_PROGRESS',
   title: 'Add local handoff',
-  type: 'requirement',
   workflowRunId: 'workflow-1',
 };
 
@@ -26,18 +28,16 @@ function createDeps(overrides: Partial<Parameters<typeof reportCompletion>[0]> =
       headSha: 'abc123',
       untrackedFiles: ['notes.txt'],
     }),
-    completeLocal: vi.fn().mockResolvedValue({ workflow: { id: 'workflow-1' } }),
     completeExecutionSession: vi.fn().mockResolvedValue({ workflow: { id: 'workflow-1' } }),
     getGitRoot: vi.fn().mockResolvedValue('/repo/flowx'),
     loadHandoffSnapshot: vi.fn().mockResolvedValue({
-      executionSessionId: null,
-      taskId: 'req-1',
-      taskType: 'requirement',
+      executionSessionId: 'session-1',
+      executionItemId: 'req-1',
+      workItemId: 'work-1',
       workflowRepositoryId: 'workflow-repo-1',
       workflowRunId: 'workflow-1',
     }),
     restoreHandoffSnapshot: vi.fn(),
-    saveCompletionDraft: vi.fn(),
     showError: vi.fn(),
     showInfo: vi.fn(),
     showInput: vi.fn().mockResolvedValueOnce('Implemented local handoff').mockResolvedValueOnce('pnpm test passed'),
@@ -53,7 +53,7 @@ describe('reportCompletion', () => {
 
     await reportCompletion(deps, task);
 
-    expect(deps.completeLocal).toHaveBeenCalledWith('workflow-1', {
+    expect(deps.completeExecutionSession).toHaveBeenCalledWith('session-1', {
       diffSummary: '1 file changed',
       implementationSummary: 'Implemented local handoff',
       pushed: false,
@@ -70,9 +70,18 @@ describe('reportCompletion', () => {
     });
   });
 
-  it('prefers session complete when the task has an execution session id', async () => {
+  it('uses the execution session from the task when the snapshot has none', async () => {
     const completeExecutionSession = vi.fn().mockResolvedValue({ workflow: { id: 'workflow-1' } });
-    const deps = createDeps({ completeExecutionSession });
+    const deps = createDeps({
+      completeExecutionSession,
+      loadHandoffSnapshot: vi.fn().mockResolvedValue({
+        executionSessionId: null,
+        executionItemId: 'req-1',
+        workItemId: 'work-1',
+        workflowRepositoryId: 'workflow-repo-1',
+        workflowRunId: 'workflow-1',
+      }),
+    });
     const sessionTask = { ...task, executionSessionId: 'session-1' };
 
     await reportCompletion(deps, sessionTask);
@@ -92,17 +101,23 @@ describe('reportCompletion', () => {
       testResult: 'pnpm test passed',
       untrackedFiles: ['notes.txt'],
     });
-    expect(deps.completeLocal).not.toHaveBeenCalled();
   });
 
-  it('uses completeLocal legacy route when no execution session id exists', async () => {
-    const completeExecutionSession = vi.fn();
-    const deps = createDeps({ completeExecutionSession });
+  it('rejects completion when no execution session id exists', async () => {
+    const deps = createDeps({
+      loadHandoffSnapshot: vi.fn().mockResolvedValue({
+        executionSessionId: null,
+        executionItemId: 'req-1',
+        workItemId: 'work-1',
+        workflowRepositoryId: 'workflow-repo-1',
+        workflowRunId: 'workflow-1',
+      }),
+    });
 
     await reportCompletion(deps, task);
 
-    expect(deps.completeLocal).toHaveBeenCalled();
-    expect(completeExecutionSession).not.toHaveBeenCalled();
+    expect(deps.completeExecutionSession).not.toHaveBeenCalled();
+    expect(deps.showError).toHaveBeenCalledWith(expect.stringMatching(/execution session is missing/i));
   });
 
   it.each([404, 405])('shows a protocol unsupported error for session complete HTTP %i', async (status) => {
@@ -111,8 +126,6 @@ describe('reportCompletion', () => {
 
     await reportCompletion(deps, { ...task, executionSessionId: 'session-1' });
 
-    expect(deps.completeLocal).not.toHaveBeenCalled();
-    expect(deps.saveCompletionDraft).not.toHaveBeenCalled();
     expect(deps.showError).toHaveBeenCalledWith(expect.stringMatching(/protocol unsupported/i));
   });
 
@@ -122,7 +135,6 @@ describe('reportCompletion', () => {
 
     await reportCompletion(deps, { ...task, executionSessionId: 'session-1' });
 
-    expect(deps.saveCompletionDraft).not.toHaveBeenCalled();
     expect(deps.showError).toHaveBeenCalledWith(expect.stringMatching(/API unavailable; retry when online/i));
   });
 
@@ -141,17 +153,16 @@ describe('reportCompletion', () => {
 
     await reportCompletion(deps, task);
 
-    expect(deps.completeLocal).not.toHaveBeenCalled();
+    expect(deps.completeExecutionSession).not.toHaveBeenCalled();
   });
 
-  it('saves a completion draft when FlowX submission fails', async () => {
+  it('reports the session submission failure', async () => {
     const deps = createDeps({
-      completeLocal: vi.fn().mockRejectedValue(new Error('API unavailable')),
+      completeExecutionSession: vi.fn().mockRejectedValue(new Error('API unavailable')),
     });
 
     await reportCompletion(deps, task);
 
-    expect(deps.saveCompletionDraft).toHaveBeenCalledWith('/repo/flowx', 'workflow-1', expect.any(Object));
     expect(deps.showError).toHaveBeenCalledWith(expect.stringContaining('API unavailable'));
   });
 
@@ -159,9 +170,9 @@ describe('reportCompletion', () => {
     const deps = createDeps({
       loadHandoffSnapshot: vi.fn().mockResolvedValue(null),
       restoreHandoffSnapshot: vi.fn().mockResolvedValue({
-        executionSessionId: null,
-        taskId: 'req-1',
-        taskType: 'requirement',
+        executionSessionId: 'session-restored',
+        executionItemId: 'req-1',
+        workItemId: 'work-1',
         workflowRepositoryId: 'workflow-repo-1',
         workflowRunId: 'workflow-1',
       }),
@@ -170,7 +181,7 @@ describe('reportCompletion', () => {
     await reportCompletion(deps, task);
 
     expect(deps.restoreHandoffSnapshot).toHaveBeenCalledWith('/repo/flowx', task);
-    expect(deps.completeLocal).toHaveBeenCalledWith('workflow-1', expect.objectContaining({
+    expect(deps.completeExecutionSession).toHaveBeenCalledWith('session-restored', expect.objectContaining({
       repositories: [
         expect.objectContaining({
           workflowRepositoryId: 'workflow-repo-1',

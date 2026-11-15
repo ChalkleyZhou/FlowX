@@ -40,12 +40,12 @@ export class OpenDesignEdgeService {
   ) {}
 
   async startHandoff(
-    input: { requirementId: string; repositoryIds?: string[] },
+    input: { workItemId: string; repositoryIds?: string[] },
     session: EdgeWorkflowSession,
   ) {
     let workflow = await this.prisma.workflowRun.findFirst({
       where: {
-        requirementId: input.requirementId,
+        workItemId: input.workItemId,
         runType: WorkflowRunType.LOCAL_DESIGN,
         status: { notIn: ['DONE', 'FAILED'] },
       },
@@ -53,7 +53,7 @@ export class OpenDesignEdgeService {
     });
     if (!workflow) {
       workflow = await this.workflowService.createLocalDesignWorkflowRun({
-        requirementId: input.requirementId,
+        workItemId: input.workItemId,
         repositoryIds: input.repositoryIds,
       });
     }

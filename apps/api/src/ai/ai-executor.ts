@@ -8,6 +8,8 @@ import {
   GenerateDesignOptions,
   GenerateDesignOutput,
   GenerateSpecPlanInput,
+  GenerateExecutionSplitInput,
+  ExecutionSplitOutput,
   GenerateTestDesignInput,
   ReviewCodeInput,
   ReviewCodeOutput,
@@ -45,6 +47,10 @@ export interface AIExecutor {
     input: GenerateSpecPlanInput,
     context?: AIInvocationContext,
   ): Promise<SpecPlanOutput>;
+  splitExecutionPlan(
+    input: GenerateExecutionSplitInput,
+    context?: AIInvocationContext,
+  ): Promise<ExecutionSplitOutput>;
   generateTestDesign(
     input: GenerateTestDesignInput,
     context?: AIInvocationContext,

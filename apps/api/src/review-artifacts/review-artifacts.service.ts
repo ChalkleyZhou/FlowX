@@ -29,7 +29,7 @@ export class ReviewArtifactsService {
     const paging = parsePagination(query);
     await this.prisma.workflowRun.findUniqueOrThrow({ where: { id: workflowRunId }, select: { id: true } });
     const where = { workflowRunId };
-    const [items, total, pendingCount] = await Promise.all([this.prisma.reviewFinding.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'asc' }, { sourceIndex: 'asc' }, { id: 'asc' }] }), this.prisma.reviewFinding.count({ where }), this.prisma.reviewFinding.count({ where: { ...where, convertedIssueId: null, convertedBugId: null } })]);
+    const [items, total, pendingCount] = await Promise.all([this.prisma.reviewFinding.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'asc' }, { sourceIndex: 'asc' }, { id: 'asc' }] }), this.prisma.reviewFinding.count({ where }), this.prisma.reviewFinding.count({ where: { ...where, convertedWorkItemId: null, convertedBugId: null } })]);
     return { ...pageResult(items, total, paging), summary: { pendingCount } };
   }
 
@@ -51,7 +51,7 @@ export class ReviewArtifactsService {
               where: { stage: 'AI_REVIEW' },
               orderBy: { attempt: 'desc' },
             },
-            requirement: true,
+            workItem: true,
           },
         },
         reviewFindings: true,
@@ -83,7 +83,7 @@ export class ReviewArtifactsService {
           },
         });
 
-        if (existing && (existing.convertedBugId || existing.convertedIssueId)) {
+        if (existing && (existing.convertedBugId || existing.convertedWorkItemId)) {
           await tx.reviewFinding.update({
             where: { id: existing.id },
             data: {
@@ -155,7 +155,7 @@ export class ReviewArtifactsService {
 
   async dismissReviewFinding(id: string) {
     const finding = await this.getFindingOrThrow(id);
-    if (finding.convertedIssueId || finding.convertedBugId) {
+    if (finding.convertedWorkItemId || finding.convertedBugId) {
       throw new BadRequestException('已转化的条目不能忽略。');
     }
     return this.prisma.reviewFinding.update({
@@ -166,7 +166,7 @@ export class ReviewArtifactsService {
 
   async convertReviewFindingToIssue(id: string, dto: ConvertToIssueDto, userId: string | null) {
     const finding = await this.getFindingOrThrow(id);
-    if (finding.convertedIssueId) {
+    if (finding.convertedWorkItemId) {
       throw new BadRequestException('该条目已经转成 Issue。');
     }
     if (finding.convertedBugId) {
@@ -175,24 +175,41 @@ export class ReviewArtifactsService {
 
     const workflowRun = await this.prisma.workflowRun.findUnique({
       where: { id: finding.workflowRunId },
-      include: { requirement: true },
+      include: { workItem: true },
     });
-    if (!workflowRun?.requirement.workspaceId) {
+    if (!workflowRun?.workItem.workspaceId) {
       throw new BadRequestException('当前工作流未绑定工作区，无法创建 Issue。');
     }
 
-    const issue = await this.prisma.issue.create({
+    const issue = await this.prisma.workItem.create({
       data: {
         status: 'OPEN',
         priority: dto.priority ?? this.mapSeverityToPriority(finding.severity),
         title: dto.title ?? this.getFindingDefaultTitle(finding),
         description: dto.description ?? this.getFindingDefaultDescription(finding),
-        workspaceId: workflowRun.requirement.workspaceId,
-        requirementId: workflowRun.requirementId,
-        workflowRunId: workflowRun.id,
+        kind: 'ISSUE',
+        workspaceId: workflowRun.workItem.workspaceId,
+        projectId: workflowRun.workItem.projectId,
+        versionId: workflowRun.workItem.versionId,
+        sourceWorkflowRunId: workflowRun.id,
         repositoryId: dto.repositoryId ?? null,
         branchName: dto.branchName ?? this.inferBranchName(workflowRun.id),
         reportedByUserId: userId,
+        executionPlans: {
+          create: {
+            status: 'CONFIRMED',
+            strategy: 'SINGLE',
+            ...(userId ? { createdByUserId: userId } : {}),
+            items: {
+              create: {
+                title: dto.title ?? this.getFindingDefaultTitle(finding),
+                description: dto.description ?? this.getFindingDefaultDescription(finding),
+                target: 'LOCAL',
+                status: 'READY',
+              },
+            },
+          },
+        },
       },
     });
 
@@ -200,7 +217,7 @@ export class ReviewArtifactsService {
       where: { id },
       data: {
         status: 'CONVERTED_TO_ISSUE',
-        convertedIssueId: issue.id,
+        convertedWorkItemId: issue.id,
       },
     });
 
@@ -212,15 +229,15 @@ export class ReviewArtifactsService {
     if (finding.convertedBugId) {
       throw new BadRequestException('该条目已经转成 Bug。');
     }
-    if (finding.convertedIssueId) {
+    if (finding.convertedWorkItemId) {
       throw new BadRequestException('该条目已经转成 Issue。');
     }
 
     const workflowRun = await this.prisma.workflowRun.findUnique({
       where: { id: finding.workflowRunId },
-      include: { requirement: true },
+      include: { workItem: true },
     });
-    if (!workflowRun?.requirement.workspaceId) {
+    if (!workflowRun?.workItem.workspaceId) {
       throw new BadRequestException('当前工作流未绑定工作区，无法创建 Bug。');
     }
 
@@ -234,9 +251,9 @@ export class ReviewArtifactsService {
         expectedBehavior: dto.expectedBehavior,
         actualBehavior: dto.actualBehavior,
         reproductionSteps: dto.reproductionSteps ?? [],
-        workspaceId: workflowRun.requirement.workspaceId,
-        projectId: workflowRun.requirement.projectId,
-        requirementId: workflowRun.requirementId,
+        workspaceId: workflowRun.workItem.workspaceId,
+        projectId: workflowRun.workItem.projectId,
+        workItemId: workflowRun.workItemId,
         workflowRunId: workflowRun.id,
         repositoryId: dto.repositoryId ?? null,
         branchName: dto.branchName ?? this.inferBranchName(workflowRun.id),
@@ -258,38 +275,38 @@ export class ReviewArtifactsService {
   async getIssuesPage(query: PaginationQuery & { workspaceId?: string; projectId?: string; workflowRunId?: string; status?: string; priority?: string; severity?: string; q?: string } = {}) {
     const paging = parsePagination(query);
     const scope = {};
-    const where = { ...scope, ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}), ...(query.workflowRunId ? { workflowRunId: query.workflowRunId } : {}), ...(query.status ? { status: query.status } : {}), ...(query.priority ? { priority: query.priority } : {}), ...(query.projectId ? { requirement: { projectId: query.projectId } } : {}), ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }, { requirement: { title: { contains: query.q.trim() } } }, { workspace: { name: { contains: query.q.trim() } } }] } : {}) };
+    const where = { kind: 'ISSUE', ...scope, ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}), ...(query.workflowRunId ? { sourceWorkflowRunId: query.workflowRunId } : {}), ...(query.status ? { status: query.status } : {}), ...(query.priority ? { priority: query.priority } : {}), ...(query.projectId ? { projectId: query.projectId } : {}), ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }, { workspace: { name: { contains: query.q.trim() } } }] } : {}) };
     const [items, total, scopeTotal, openCount] = await Promise.all([
-      this.prisma.issue.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { workspace: true, requirement: true, workflowRun: true } }),
-      this.prisma.issue.count({ where }), this.prisma.issue.count({ where: scope }), this.prisma.issue.count({ where: { ...scope, status: 'OPEN' } }),
+      this.prisma.workItem.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { workspace: true, sourceWorkflowRun: true } }),
+      this.prisma.workItem.count({ where }), this.prisma.workItem.count({ where: scope }), this.prisma.workItem.count({ where: { ...scope, status: 'OPEN' } }),
     ]);
-    return { ...pageResult(items, total, paging), summary: { total: scopeTotal, visible: total, openCount, inProgressCount: await this.prisma.issue.count({ where: { ...scope, status: 'IN_PROGRESS' } }) } };
+    return { ...pageResult(items, total, paging), summary: { total: scopeTotal, visible: total, openCount, inProgressCount: await this.prisma.workItem.count({ where: { ...scope, status: 'IN_PROGRESS' } }) } };
   }
 
   async getIssues(filters: { workspaceId?: string; workflowRunId?: string; status?: string }) {
-    return this.prisma.issue.findMany({
+    return this.prisma.workItem.findMany({
       where: {
         ...(filters.workspaceId ? { workspaceId: filters.workspaceId } : {}),
-        ...(filters.workflowRunId ? { workflowRunId: filters.workflowRunId } : {}),
+        ...(filters.workflowRunId ? { sourceWorkflowRunId: filters.workflowRunId } : {}),
+        kind: 'ISSUE',
         ...(filters.status ? { status: filters.status } : {}),
       },
       include: {
         workspace: true,
-        requirement: true,
-        workflowRun: true,
+        sourceWorkflowRun: true,
       },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   async getIssue(id: string) {
-    const issue = await this.prisma.issue.findUnique({
+    const issue = await this.prisma.workItem.findUnique({
       where: { id },
       include: {
         workspace: true,
-        requirement: true,
-        workflowRun: true,
+        sourceWorkflowRun: true,
         reviewFinding: true,
+        executionPlans: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { items: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } } },
       },
     });
     if (!issue) {
@@ -300,7 +317,7 @@ export class ReviewArtifactsService {
 
   async updateIssue(id: string, dto: UpdateIssueDto) {
     await this.getIssue(id);
-    return this.prisma.issue.update({
+    return this.prisma.workItem.update({
       where: { id },
       data: {
         ...(dto.title !== undefined ? { title: dto.title } : {}),
@@ -312,8 +329,7 @@ export class ReviewArtifactsService {
       },
       include: {
         workspace: true,
-        requirement: true,
-        workflowRun: true,
+        sourceWorkflowRun: true,
         reviewFinding: true,
       },
     });
@@ -348,7 +364,7 @@ export class ReviewArtifactsService {
     const bugInclude = {
       workspace: true,
       project: true,
-      requirement: true,
+      workItem: true,
       workflowRun: true,
       fixWorkflowRun: true,
     } as const;
@@ -407,9 +423,9 @@ export class ReviewArtifactsService {
   async getBugsPage(query: PaginationQuery & { workspaceId?: string; projectId?: string; workflowRunId?: string; status?: string; priority?: string; severity?: string; q?: string } = {}) {
     const paging = parsePagination(query);
     const scope = { ...(query.projectId ? { projectId: query.projectId } : {}) };
-    const where = { ...scope, ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}), ...(query.workflowRunId ? { workflowRunId: query.workflowRunId } : {}), ...(query.status ? { status: query.status } : {}), ...(query.priority ? { priority: query.priority } : {}), ...(query.severity ? { severity: query.severity } : {}), ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }, { requirement: { title: { contains: query.q.trim() } } }, { workspace: { name: { contains: query.q.trim() } } }] } : {}) };
+    const where = { ...scope, ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}), ...(query.workflowRunId ? { workflowRunId: query.workflowRunId } : {}), ...(query.status ? { status: query.status } : {}), ...(query.priority ? { priority: query.priority } : {}), ...(query.severity ? { severity: query.severity } : {}), ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }, { workItem: { title: { contains: query.q.trim() } } }, { workspace: { name: { contains: query.q.trim() } } }] } : {}) };
     const [items, total, scopeTotal, openCount] = await Promise.all([
-      this.prisma.bug.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { workspace: true, requirement: true, workflowRun: true, project: true, fixWorkflowRun: true } }),
+      this.prisma.bug.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { workspace: true, workItem: true, workflowRun: true, project: true, fixWorkflowRun: true } }),
       this.prisma.bug.count({ where }), this.prisma.bug.count({ where: scope }), this.prisma.bug.count({ where: { ...scope, status: 'OPEN' } }),
     ]);
     return { ...pageResult(items, total, paging), summary: { total: scopeTotal, visible: total, openCount, criticalCount: await this.prisma.bug.count({ where: { ...scope, severity: 'CRITICAL' } }) } };
@@ -425,7 +441,7 @@ export class ReviewArtifactsService {
       include: {
         workspace: true,
         project: true,
-        requirement: true,
+        workItem: true,
         workflowRun: true,
         fixWorkflowRun: true,
       },
@@ -439,10 +455,10 @@ export class ReviewArtifactsService {
       include: {
         workspace: true,
         project: true,
-        requirement: true,
+        workItem: true,
         workflowRun: true,
         fixWorkflowRun: true,
-        fixRequirement: true,
+        fixWorkItem: true,
         reviewFinding: true,
       },
     });
@@ -484,7 +500,7 @@ export class ReviewArtifactsService {
       include: {
         workspace: true,
         project: true,
-        requirement: true,
+        workItem: true,
         workflowRun: true,
         fixWorkflowRun: true,
         reviewFinding: true,

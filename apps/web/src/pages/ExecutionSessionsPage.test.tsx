@@ -21,7 +21,7 @@ const row: ExecutionSessionDetail = {
   id: 's1', workflowRunId: 'w1', status: 'RUNNING', executorType: 'LOCAL', sourceTool: 'codex',
   protocolVersion: '1.2', traceId: 't1', createdAt: '2026-09-30T08:00:00Z', updatedAt: '2026-09-30T08:00:00Z',
   health: 'STALE', canControl: true, controlMode: 'COOPERATIVE',
-  workflowRun: { requirement: { title: '修复登录' } },
+  workflowRun: { workItem: { title: '修复登录' } },
 };
 let root: Root;
 let container: HTMLDivElement;

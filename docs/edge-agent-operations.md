@@ -55,8 +55,7 @@ Edge Handoff 都会在可用时返回 `executionSessionId`；开发 Agent 必须
 
 完成的首选入口是 `POST /execution-sessions/:id/complete`，其请求体为包含仓库、提交、测试结果和
 `idempotencyKey` 的本地完成报告。服务端会执行远程分支校验、登记 Artifact/Evidence，并将工作流推进到
-Review。`POST /workflow-runs/:id/execution/complete-local` 仍保留给旧 Web、MCP 或 Extension 使用；
-受控会话或重新交接会话必须使用显式 session endpoint，旧入口不能接受旧 Agent 的结果；它只适用于没有运行控制的兼容会话。
+Review。所有本地执行都必须通过 `POST /execution-sessions/:id/complete` 回传；工作流级领取、Web、MCP 和 Extension 统一使用 handoff 返回的 `executionSessionId`。
 
 开发 Agent 通过 MCP 使用以下工具：
 
@@ -64,8 +63,7 @@ Review。`POST /workflow-runs/:id/execution/complete-local` 仍保留给旧 Web�
 2. `flowx_report_evidence` 登记 Git、测试或其他执行证据；
 3. `flowx_report_completion` 携带 `executionSessionId` 完成本地执行。
 
-`flowx_report_completion` 缺少 `executionSessionId` 时会明确提示并走兼容 `complete-local` 路径；应从任务
-提示、handoff 或本地启动返回值补齐该 ID，而不是依赖本地活跃执行文件。
+`flowx_report_completion` 要求 `executionSessionId`；应从任务提示、handoff 或本地启动返回值读取该 ID，而不是依赖本地活跃执行文件。
 
 ### 运行控制与失联
 

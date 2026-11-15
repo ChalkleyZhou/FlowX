@@ -25,8 +25,8 @@ const workflow = {
   status: 'SPEC_PLAN_PENDING',
   runType: 'FULL',
   aiProvider: 'codex',
-  requirementId: 'req-1',
-  requirement: {
+  workItemId: 'req-1',
+  workItem: {
     id: 'req-1',
     title: '本地 Spec & Plan',
     description: '允许本地 Agent 生成方案',

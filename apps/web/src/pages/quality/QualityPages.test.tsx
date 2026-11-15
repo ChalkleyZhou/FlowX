@@ -40,7 +40,7 @@ vi.mock('../../api', async (importOriginal) => ({
     listProjectVersions: vi.fn(),
     getTestRunsPage: vi.fn(),
     getTestRequestSnapshots: vi.fn(),
-    getTestRequestRequirements: vi.fn(),
+    getTestRequestWorkItems: vi.fn(),
     getTestRequestCases: vi.fn(),
     getQualityReportBaselines: vi.fn(),
     getQualityReportSupersessions: vi.fn(),
@@ -125,7 +125,7 @@ const testCase: TestCaseDefinition = {
   module: { id: 'module-1', name: '认证' },
   coverageLinks: [{
     id: 'coverage-1',
-    targetType: 'REQUIREMENT',
+    targetType: 'WORK_ITEM',
     targetKey: 'requirement-1',
     source: 'MANUAL',
   }],
@@ -146,7 +146,7 @@ const testRequest: TestRequest = {
   createdAt: '2026-09-07T08:00:00.000Z',
   project: { id: project.id, name: project.name },
   projectVersion: { id: 'version-1', name: '2.6.0' },
-  requirementLinks: [{ requirement: { id: 'requirement-1', title: '登录体验优化' } }],
+  workItemLinks: [{ workItem: { id: 'requirement-1', title: '登录体验优化', kind: 'REQUIREMENT' } }],
   workflowLinks: [],
   artifactLinks: [],
   testPlan: {
@@ -172,7 +172,7 @@ describe('Quality pages', () => {
   beforeEach(() => {
     vi.mocked(api.getProject).mockResolvedValue(project);
     vi.mocked(api.getTestRequestSnapshots).mockResolvedValue(pageResult(testRequest.testPlan?.snapshots ?? [], { summary: { functionalCount: testRequest.testPlan?.snapshots.filter(s => s.kind !== 'SMOKE').length ?? 0, smokeCount: testRequest.testPlan?.snapshots.filter(s => s.kind === 'SMOKE').length ?? 0 } }));
-    vi.mocked(api.getTestRequestRequirements).mockResolvedValue(pageResult(testRequest.requirementLinks));
+    vi.mocked(api.getTestRequestWorkItems).mockResolvedValue(pageResult(testRequest.workItemLinks));
     vi.mocked(api.getTestRequestCases).mockResolvedValue(pageResult([]));
     vi.mocked(api.getQualityReportBaselines).mockResolvedValue(pageResult([]));
     vi.mocked(api.getQualityReportSupersessions).mockResolvedValue(pageResult([]));
@@ -349,10 +349,10 @@ describe('Quality pages', () => {
   it('renders the paged test-request browse shape with server-side counts', async () => {
     const browseRequest = {
       ...testRequest,
-      requirementLinks: undefined,
+      workItemLinks: undefined,
       workflowLinks: undefined,
       artifactLinks: undefined,
-      _count: { requirementLinks: 3, workflowLinks: 2, artifactLinks: 1 },
+      _count: { workItemLinks: 3, workflowLinks: 2, artifactLinks: 1 },
       testPlan: {
         id: 'plan-1',
         status: 'ACTIVE',
@@ -363,7 +363,7 @@ describe('Quality pages', () => {
 
     await renderPage('/quality/test-requests?projectId=project-1', <QualityRequestsPage />);
 
-    expect(container.textContent).toContain('3 个需求');
+    expect(container.textContent).toContain('3 个工作项');
     expect(container.textContent).toContain('7 个范围用例');
     expect(container.textContent).toContain('4 个执行轮次');
   });
@@ -373,7 +373,7 @@ describe('Quality pages', () => {
       id: 'workflow-1',
       status: 'DONE',
       aiProvider: 'codex',
-      requirement: {
+      workItem: {
         id: 'requirement-1',
         title: '登录体验优化',
         description: '',
@@ -465,7 +465,7 @@ describe('Quality pages', () => {
       id: 'workflow-1',
       status: 'DONE',
       aiProvider: 'codex',
-      requirement: {
+      workItem: {
         id: 'requirement-1',
         title: '登录体验优化',
         description: '',

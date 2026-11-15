@@ -5,7 +5,6 @@ import { EdgeHandoffService } from '../edge/edge-handoff.service';
 import {
   EdgeTasksService,
   type EdgeTaskItem,
-  type EdgeTaskType,
   type EdgeWorkflowSession,
 } from '../edge/edge-tasks.service';
 import { StartLocalChatDto } from './dto/start-local-chat.dto';
@@ -47,7 +46,7 @@ export class CursorLocalService {
     );
   }
 
-  getTaskContext(type: EdgeTaskType, id: string) {
-    return this.contextPackageService.getLegacyTaskContext(type, id);
+  getTaskContext(executionItemId: string) {
+    return this.contextPackageService.getTaskContext(executionItemId);
   }
 }

@@ -127,9 +127,9 @@ export function IssuesPage() {
                 }
                 description={
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-                    <span>来源需求：{item.requirement?.title ?? '未关联需求'}</span>
-                    {item.workflowRun?.id ? (
-                      <Link className="text-primary hover:underline" to={`/workflow-runs/${item.workflowRun.id}`}>
+                    <span>来源工作流：{item.sourceWorkflowRun?.id ?? '未关联'}</span>
+                    {item.sourceWorkflowRun?.id ? (
+                      <Link className="text-primary hover:underline" to={`/workflow-runs/${item.sourceWorkflowRun.id}`}>
                         查看来源流程
                       </Link>
                     ) : null}
@@ -140,7 +140,7 @@ export function IssuesPage() {
                 }
                 actions={
                   <UiButton variant="outline" asChild>
-                    <Link to={`/issues/${item.id}`}>查看详情</Link>
+                    <Link to={`/work-items/${item.id}`}>查看详情</Link>
                   </UiButton>
                 }
               />

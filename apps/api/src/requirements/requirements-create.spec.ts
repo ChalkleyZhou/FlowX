@@ -87,7 +87,7 @@ describe('需求最小创建契约', () => {
   });
 
   it('拒绝空白标题、明确不挂版本及无当前版本的请求，不产生数据', async () => {
-    const count = await prisma.requirement.count();
+    const count = await prisma.workItem.count();
     for (const input of [
       { projectId, title: '  ', versionId },
       { projectId, title: '不可无版本', versionId: null },
@@ -95,12 +95,12 @@ describe('需求最小创建契约', () => {
     ]) {
       await expect(service.create(input as CreateRequirementDto)).rejects.toMatchObject({ status: 400 });
     }
-    expect(await prisma.requirement.count()).toBe(count);
+    expect(await prisma.workItem.count()).toBe(count);
   });
 
   it('拒绝跨项目版本，不产生需求', async () => {
     await expect(service.create({ projectId, title: '跨项目', versionId: otherVersionId } as CreateRequirementDto)).rejects.toThrow();
-    expect(await prisma.requirement.count({ where: { title: '跨项目' } })).toBe(0);
+    expect(await prisma.workItem.count({ where: { title: '跨项目' } })).toBe(0);
   });
 
   it('可以修改需求名称、描述、优先级、版本和补充档案', async () => {

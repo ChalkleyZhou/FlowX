@@ -44,7 +44,7 @@ export class WorkflowController {
   }
 
   @Get()
-  findAll(@Query() query: import('../common/pagination').PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; excludeSuperseded?: string | boolean; activeOnly?: string | boolean; terminalOnly?: string | boolean; requirementId?: string; status?: string; runType?: string; q?: string } = {}) {
+  findAll(@Query() query: import('../common/pagination').PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; excludeSuperseded?: string | boolean; activeOnly?: string | boolean; terminalOnly?: string | boolean; workItemId?: string; status?: string; runType?: string; q?: string } = {}) {
     return this.workflowService.findPage(query);
   }
 

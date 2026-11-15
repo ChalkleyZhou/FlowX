@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { WorkflowModule } from '../workflow/workflow.module';
+import { WorkItemsModule } from '../work-items/work-items.module';
 import { ContextPackageService } from './context-package.service';
 import { EdgeController } from './edge.controller';
 import { EdgeHandoffService } from './edge-handoff.service';
@@ -9,7 +10,7 @@ import { OpenDesignEdgeController } from './open-design-edge.controller';
 import { OpenDesignEdgeService } from './open-design-edge.service';
 
 @Module({
-  imports: [AuthModule, WorkflowModule],
+  imports: [AuthModule, WorkflowModule, WorkItemsModule],
   controllers: [EdgeController, OpenDesignEdgeController],
   providers: [EdgeTasksService, ContextPackageService, EdgeHandoffService, OpenDesignEdgeService],
   exports: [EdgeTasksService, ContextPackageService, EdgeHandoffService, OpenDesignEdgeService],

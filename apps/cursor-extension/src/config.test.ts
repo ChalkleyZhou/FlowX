@@ -47,7 +47,7 @@ describe('buildFlowXLoginUrl', () => {
         callbackUrl: 'cursor://flowx.flowx-cursor-extension/callback',
       }),
     ).toBe(
-      'http://127.0.0.1:3000/auth/dingtalk/login?callbackUrl=cursor%3A%2F%2Fflowx.flowx-cursor-extension%2Fcallback&next=%2Frequirements',
+      'http://127.0.0.1:3000/auth/dingtalk/login?callbackUrl=cursor%3A%2F%2Fflowx.flowx-cursor-extension%2Fcallback&next=%2Fwork-items',
     );
   });
 
@@ -58,23 +58,23 @@ describe('buildFlowXLoginUrl', () => {
         callbackUrl: 'cursor://flowx.flowx-cursor-extension/callback',
       }),
     ).toBe(
-      'https://flowx.example.com/api/auth/dingtalk/login?callbackUrl=cursor%3A%2F%2Fflowx.flowx-cursor-extension%2Fcallback&next=%2Frequirements',
+      'https://flowx.example.com/api/auth/dingtalk/login?callbackUrl=cursor%3A%2F%2Fflowx.flowx-cursor-extension%2Fcallback&next=%2Fwork-items',
     );
   });
 });
 
 describe('buildFlowXWebUrl', () => {
   it('opens local FlowX web pages through the Vite dev server', () => {
-    expect(buildFlowXWebUrl('http://127.0.0.1:3000', '/requirements')).toBe(
-      'http://127.0.0.1:5173/requirements',
+    expect(buildFlowXWebUrl('http://127.0.0.1:3000', '/work-items')).toBe(
+      'http://127.0.0.1:5173/work-items',
     );
   });
 
   it('uses FLOWX_WEB_BASE_URL when provided', () => {
     expect(
-      buildFlowXWebUrl('http://127.0.0.1:3000', '/requirements', {
+      buildFlowXWebUrl('http://127.0.0.1:3000', '/work-items', {
         FLOWX_WEB_BASE_URL: 'http://flowx.local:8080/app',
       }),
-    ).toBe('http://flowx.local:8080/requirements');
+    ).toBe('http://flowx.local:8080/work-items');
   });
 });

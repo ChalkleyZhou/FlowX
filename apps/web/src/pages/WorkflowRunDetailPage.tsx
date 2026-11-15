@@ -412,8 +412,8 @@ function WorkflowRunDetailContent() {
   const navigate = useNavigate();
   const [workflowRun, setWorkflowRun] = useState<WorkflowRun | null>(null);
   const scope = useProjectScopeOptional();
-  useAdoptProject(workflowRun?.requirement.project.id);
-  const workflowListHref = withCurrentProject('/workflow-runs', workflowRun?.requirement.project.id ?? scope?.projectId ?? null);
+  useAdoptProject(workflowRun?.workItem.project.id);
+  const workflowListHref = withCurrentProject('/workflow-runs', workflowRun?.workItem.project.id ?? scope?.projectId ?? null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedStage, setSelectedStage] = useState<WorkflowStageKey>('SPEC_PLAN');
@@ -942,11 +942,10 @@ function WorkflowRunDetailContent() {
       });
 
       const report = { pushed: completeLocalPushed, repositories };
-      if (localHandoff.executionSessionId) {
-        await api.completeExecutionSession(localHandoff.executionSessionId, report);
-      } else {
-        await api.completeLocalExecution(workflowRun.id, report);
+      if (!localHandoff.executionSessionId) {
+        throw new Error('当前本地执行缺少 executionSessionId，请重新领取执行项。');
       }
+      await api.completeExecutionSession(localHandoff.executionSessionId, report);
       setCompleteLocalOpen(false);
       setLocalHandoff(null);
       await refresh();
@@ -1370,8 +1369,8 @@ function WorkflowRunDetailContent() {
 
   async function openTestDesign() {
     if (!workflowRun) return;
-    const versionId = workflowRun.requirement.versionId;
-    const project = workflowRun.requirement.project;
+    const versionId = workflowRun.workItem.versionId;
+    const project = workflowRun.workItem.project;
     if (!versionId || !project.workspace?.id) {
       toast.error('当前需求缺少项目版本或 Workspace，无法创建测试设计');
       return;
@@ -1382,7 +1381,7 @@ function WorkflowRunDetailContent() {
         workspaceId: project.workspace.id,
         projectId: project.id,
         projectVersionId: versionId,
-        requirementIds: [workflowRun.requirement.id],
+        workItemIds: [workflowRun.workItem.id],
         workflowRunIds: [workflowRun.id],
       });
       navigate(`/quality/test-designs/${testDesign.id}`);
@@ -1395,8 +1394,8 @@ function WorkflowRunDetailContent() {
 
   function openTestRequest() {
     if (!workflowRun) return;
-    const versionId = workflowRun.requirement.versionId;
-    const project = workflowRun.requirement.project;
+    const versionId = workflowRun.workItem.versionId;
+    const project = workflowRun.workItem.project;
     if (!versionId || !project.workspace?.id) {
       toast.error('当前需求缺少项目版本或 Workspace，无法发起提测');
       return;
@@ -2234,13 +2233,13 @@ function WorkflowRunDetailContent() {
         <div className="flex flex-col gap-5">
           <DetailHeader
             eyebrow="Workflow Detail"
-            title={workflowRun.requirement.title}
+            title={workflowRun.workItem.title}
             badges={[
               ...(workflowRun.runType === 'BUG_FIX'
                 ? [{ key: 'run-type', label: formatWorkflowRunType(workflowRun.runType), variant: 'default' as const }]
                 : []),
-              { key: 'workspace', label: workflowRun.requirement.project.workspace.name, variant: 'default' },
-              { key: 'project', label: workflowRun.requirement.project.name, variant: 'outline' },
+              { key: 'workspace', label: workflowRun.workItem.project.workspace.name, variant: 'default' },
+              { key: 'project', label: workflowRun.workItem.project.name, variant: 'outline' },
               {
                 key: 'provider',
                 label: `默认 AI：${workflowRun.aiProvider === 'cursor' ? 'Cursor CLI' : 'Codex'}`,
@@ -2274,7 +2273,7 @@ function WorkflowRunDetailContent() {
           />
 
           <RequirementChangesPanel
-            requirementId={workflowRun.requirement.id}
+            requirementId={workflowRun.workItem.id}
             workflowRunId={workflowRun.id}
             refreshKey={`${workflowRun.status}:${getStage(workflowRun, inferFocusedStage(workflowRun))?.id ?? ''}:${getStage(workflowRun, inferFocusedStage(workflowRun))?.status ?? ''}`}
             onChanged={async () => { await refresh({ silent: true }); }}
@@ -2738,7 +2737,7 @@ function WorkflowRunDetailContent() {
                                 busyFindingId !== null ||
                                 (workflowRun.status !== 'HUMAN_REVIEW_PENDING' &&
                                   workflowRun.status !== 'DONE') ||
-                                !!finding.convertedIssueId ||
+                                !!finding.convertedWorkItemId ||
                                 !!finding.convertedBugId,
                             },
                             {
@@ -2750,7 +2749,7 @@ function WorkflowRunDetailContent() {
                                 busyFindingId !== null ||
                                 (workflowRun.status !== 'HUMAN_REVIEW_PENDING' &&
                                   workflowRun.status !== 'DONE') ||
-                                !!finding.convertedIssueId ||
+                                !!finding.convertedWorkItemId ||
                                 !!finding.convertedBugId,
                             },
                           ]}
@@ -2942,13 +2941,13 @@ function WorkflowRunDetailContent() {
               <div>
                 <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">需求描述</div>
                 <p className="whitespace-pre-line text-sm leading-6 text-foreground">
-                  {workflowRun.requirement.description?.trim() || '当前需求尚未填写描述。'}
+                  {workflowRun.workItem.description?.trim() || '当前需求尚未填写描述。'}
                 </p>
               </div>
               <div>
                 <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">验收标准</div>
                 <p className="whitespace-pre-line text-sm leading-6 text-foreground">
-                  {workflowRun.requirement.acceptanceCriteria?.trim() || '当前需求尚未填写验收标准。'}
+                  {workflowRun.workItem.acceptanceCriteria?.trim() || '当前需求尚未填写验收标准。'}
                 </p>
               </div>
             </div>

@@ -30,7 +30,7 @@ export class ScheduleController {
       from: query.from,
       to: query.to,
       userId,
-      requirementId: query.requirementId,
+      workItemId: query.workItemId,
       role: query.role,
       q: query.q,
       page: query.page,

@@ -8,7 +8,7 @@ export interface OpenDesignBrainstormContextPackage {
   workflowRunId: string;
   executionSessionId: string;
   traceId: string;
-  requirement: {
+  workItem: {
     id: string;
     title: string;
     description: string;

@@ -21,7 +21,7 @@
 
 - [ ] **Step 2: 保留设计状态与来源数据的加载**
 
-继续调用 `api.getTestDesign`、`api.getTestDesignWorkflows`，使用 `resource.data` 作为唯一页面数据源。页面需要读取：`status`、`revision`、`summary`、`sourceSummary`、`retrievalSummary`、`uncoveredItems`、`generationError`、`testRequest`、`project`、`projectVersion` 和 `requirements`（若类型中已有）。
+继续调用 `api.getTestDesign`、`api.getTestDesignWorkflows`，使用 `resource.data` 作为唯一页面数据源。页面需要读取：`status`、`revision`、`summary`、`sourceSummary`、`retrievalSummary`、`uncoveredItems`、`generationError`、`testRequest`、`project`、`projectVersion` 和 `workItems`（若类型中已有）。
 
 - [ ] **Step 3: 实现新的页面结构**
 

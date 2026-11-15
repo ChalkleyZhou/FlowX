@@ -1,5 +1,3 @@
-import { effectiveRequirementDescription } from '../requirements/requirement-change-context';
-import { requirementProfileFields } from '../requirements/requirement-profile';
 import { Injectable } from '@nestjs/common';
 import {
   FLOWX_PROTOCOL_VERSION,
@@ -8,136 +6,84 @@ import {
 } from '@flowx-ai/protocol';
 import { PrismaService } from '../prisma/prisma.service';
 import type { LocalHandoffPayload } from '../workflow/workflow-local-handoff';
-import type { EdgeTaskType } from './edge-tasks.service';
-
-type BugContext = {
-  title?: string | null;
-  description?: string | null;
-  expectedBehavior?: string | null;
-  actualBehavior?: string | null;
-  reproductionSteps?: unknown;
-};
+import type { EdgeTaskKind } from './edge-tasks.service';
 
 @Injectable()
 export class ContextPackageService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getLegacyTaskContext(type: EdgeTaskType, id: string) {
-    if (type === 'requirement') {
-      return this.prisma.requirement.findUniqueOrThrow({
-        where: { id },
-        include: {
-          changes: { orderBy: { revision: 'asc' } },
-          requirementRepositories: { include: { repository: true } },
+  async getTaskContext(executionItemId: string) {
+    return this.prisma.executionItem.findUniqueOrThrow({
+      where: { id: executionItemId },
+      include: {
+        executionPlan: {
+          include: {
+            workItem: {
+              include: {
+                changes: { orderBy: { revision: 'asc' } },
+                repository: true,
+                requirementRepositories: { include: { repository: true } },
+              },
+            },
+          },
         },
-      });
-    }
-    return this.prisma.bug.findUniqueOrThrow({
-      where: { id },
-      include: { repository: true, fixWorkflowRun: true },
+      },
     });
   }
 
-  async getContextPackage(type: EdgeTaskType, id: string, sourceTool: SourceTool) {
-    const task = await this.getLegacyTaskContext(type, id);
-    if (type === 'requirement') {
-      const requirement = task as {
-        id: string;
-        title: string;
-        description: string;
-        acceptanceCriteria: string;
-        priority?: string | null;
-        functionalModule?: string | null;
-        riskImpact?: string | null;
-        productRequirementDocument?: string | null;
-        remark?: string | null;
-        createdByName?: string | null;
-        changes?: Array<{ revision: number; content: string }>;
-        revision?: number;
-        requirementRepositories: Array<{
-          repository: { id: string; name: string; url: string | null; defaultBranch?: string | null };
-        }>;
-      };
-      return this.createPackage({
-        sourceTool,
-        task: {
-          type,
-          id: requirement.id,
-          title: requirement.title,
-          description: effectiveRequirementDescription(requirement),
-          acceptanceCriteria: requirement.acceptanceCriteria,
-          ...requirementProfileFields(requirement),
-        },
-        metadata: { requirementRevision: requirement.revision ?? 0 },
-        repositories: requirement.requirementRepositories.map(({ repository }) => ({
-          repositoryId: repository.id,
-          name: repository.name,
-          url: repository.url,
-          baseBranch: repository.defaultBranch ?? undefined,
-        })),
-      });
-    }
-
-    const bug = task as {
-      id: string;
-      title: string;
-      description?: string | null;
-      expectedBehavior?: string | null;
-      actualBehavior?: string | null;
-      reproductionSteps?: unknown;
-      repository?: { id: string; name: string; url: string | null; defaultBranch?: string | null } | null;
-    };
+  async getContextPackage(executionItemId: string, sourceTool: SourceTool) {
+    const executionItem = await this.getTaskContext(executionItemId);
+    const workItem = executionItem.executionPlan.workItem;
+    const repositories = workItem.repository
+      ? [workItem.repository]
+      : workItem.requirementRepositories.map(({ repository }) => repository);
     return this.createPackage({
       sourceTool,
       task: {
-        type,
-        id: bug.id,
-        title: bug.title,
-        description: bug.description,
-        expectedBehavior: bug.expectedBehavior,
-        actualBehavior: bug.actualBehavior,
-        reproductionSteps: Array.isArray(bug.reproductionSteps)
-          ? bug.reproductionSteps.map(String)
-          : [],
+        kind: workItem.kind as EdgeTaskKind,
+        id: executionItem.id,
+        workItemId: workItem.id,
+        executionItemId: executionItem.id,
+        title: executionItem.title,
+        description: executionItem.description || workItem.description,
+        acceptanceCriteria: workItem.acceptanceCriteria,
+        expectedBehavior: workItem.expectedBehavior,
+        actualBehavior: workItem.actualBehavior,
+        reproductionSteps: Array.isArray(workItem.reproductionSteps)
+          ? workItem.reproductionSteps.map(String) : [],
+        priority: workItem.priority,
+        functionalModule: workItem.functionalModule,
+        ...(workItem.riskImpact?.trim() ? { riskImpact: workItem.riskImpact.trim() } : {}),
+        ...(workItem.productRequirementDocument?.trim() ? { productRequirementDocument: workItem.productRequirementDocument.trim() } : {}),
+        ...(workItem.remark?.trim() ? { remark: workItem.remark.trim() } : {}),
+        ...(workItem.createdByName?.trim() ? { createdByName: workItem.createdByName.trim() } : {}),
       },
-      repositories: bug.repository
-        ? [
-            {
-              repositoryId: bug.repository.id,
-              name: bug.repository.name,
-              url: bug.repository.url,
-              baseBranch: bug.repository.defaultBranch ?? undefined,
-            },
-          ]
-        : [],
+      repositories: repositories.map((repository) => ({
+        repositoryId: repository.id,
+        name: repository.name,
+        url: repository.url,
+        baseBranch: repository.defaultBranch ?? undefined,
+      })),
+      metadata: { executionItemId, workItemId: workItem.id, workItemRevision: workItem.revision },
     });
   }
 
   fromHandoff(input: {
-    taskType: EdgeTaskType;
-    taskId: string;
+    executionItemId: string;
     sourceTool: SourceTool;
     handoff: LocalHandoffPayload;
-    bugContext?: BugContext | null;
   }): ContextPackage {
-    const { handoff, bugContext } = input;
+    const { handoff } = input;
     return this.createPackage({
       sourceTool: input.sourceTool,
       task: {
-        type: input.taskType,
-        id: input.taskId,
-        title: bugContext?.title ?? handoff.requirement.title,
-        description: bugContext?.description ?? handoff.requirement.description,
-        acceptanceCriteria:
-          input.taskType === 'requirement'
-            ? handoff.requirement.acceptanceCriteria
-            : undefined,
-        ...(input.taskType === 'requirement' ? requirementProfileFields(handoff.requirement) : {}),
-        expectedBehavior: bugContext?.expectedBehavior,
-        actualBehavior: bugContext?.actualBehavior,
-        reproductionSteps: Array.isArray(bugContext?.reproductionSteps)
-          ? bugContext.reproductionSteps.map(String)
-          : [],
+        kind: handoff.workItem.kind as EdgeTaskKind,
+        id: input.executionItemId,
+        workItemId: handoff.workItem.id,
+        executionItemId: input.executionItemId,
+        title: handoff.executionItem.title,
+        description: handoff.executionItem.description || handoff.workItem.description,
+        acceptanceCriteria: handoff.workItem.acceptanceCriteria,
       },
       workflowRunId: handoff.workflowRunId,
       executionSessionId: handoff.executionSessionId ?? null,
@@ -149,7 +95,7 @@ export class ContextPackageService {
         baseBranch: repository.baseBranch,
         workingBranch: repository.workingBranch,
       })),
-      metadata: { status: handoff.status, executor: handoff.executor },
+      metadata: { status: handoff.status, executor: handoff.executor, executionItemId: input.executionItemId },
     });
   }
 

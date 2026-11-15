@@ -11,7 +11,7 @@ import { WorkflowCollaborationActor } from './workflow-collaboration.service';
 import { WorkflowGitRemoteService } from './workflow-git-remote.service';
 
 const deliveryInclude = {
-  requirement: { include: { workspace: true, project: { include: { workspace: true } } } },
+  workItem: { include: { workspace: true, project: { include: { workspace: true } } } },
   workflowRepositories: { orderBy: { createdAt: 'asc' } },
   stageExecutions: { orderBy: [{ attempt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }] },
   executionSessions: { where: { status: { in: [...ACTIVE_EXECUTION_SESSION_STATUSES] } }, select: { id: true } },
@@ -46,7 +46,7 @@ export class WorkflowCodeDeliveryService {
       executionSessions: { ...deliveryInclude.executionSessions, take: 1 },
     } });
     if (!workflow) throw new NotFoundException('工作流不存在。');
-    if ((workflow.requirement.workspace ?? workflow.requirement.project?.workspace)?.organizationId !== scope.organizationId) throw new ForbiddenException('该工作流属于其他组织。');
+    if ((workflow.workItem.workspace ?? workflow.workItem.project?.workspace)?.organizationId !== scope.organizationId) throw new ForbiddenException('该工作流属于其他组织。');
     const stages = await Promise.all(['EXECUTION', 'SPEC_PLAN'].map(stage => this.prisma.stageExecution.findFirst({ where: { workflowRunId: id, stage }, orderBy: deliveryInclude.stageExecutions.orderBy })));
     workflow.stageExecutions = stages.filter((stage): stage is NonNullable<typeof stage> => stage !== null);
     const currentStage = this.visibleExecution(workflow);
@@ -63,11 +63,11 @@ export class WorkflowCodeDeliveryService {
   async listHistory(id: string, query: PaginationQuery = {}, actor?: WorkflowCollaborationActor) {
     const scope = this.scope(actor);
     const workflow = await this.prisma.workflowRun.findUnique({ where: { id }, select: {
-      status: true, requirement: { select: { workspace: { select: { organizationId: true } }, project: { select: { workspace: { select: { organizationId: true } } } } } },
+      status: true, workItem: { select: { workspace: { select: { organizationId: true } }, project: { select: { workspace: { select: { organizationId: true } } } } } },
       stageExecutions: { where: { stage: 'EXECUTION' }, orderBy: deliveryInclude.stageExecutions.orderBy, take: 1, select: { id: true } },
     } });
     if (!workflow) throw new NotFoundException('工作流不存在。');
-    if ((workflow.requirement.workspace ?? workflow.requirement.project?.workspace)?.organizationId !== scope.organizationId) throw new ForbiddenException('该工作流属于其他组织。');
+    if ((workflow.workItem.workspace ?? workflow.workItem.project?.workspace)?.organizationId !== scope.organizationId) throw new ForbiddenException('该工作流属于其他组织。');
     const currentStageId = ['EXECUTION_RUNNING', 'REVIEW_PENDING', 'HUMAN_REVIEW_PENDING', 'DONE'].includes(workflow.status) ? workflow.stageExecutions[0]?.id : undefined;
     const paging = parsePagination(query);
     const where = this.historyWhere(id, currentStageId);
@@ -167,10 +167,10 @@ export class WorkflowCodeDeliveryService {
       this.stateMachine.assertStageTransition(StageExecutionStatus.RUNNING, StageExecutionStatus.COMPLETED);
       this.stateMachine.assertWorkflowTransition(WorkflowRunStatus.EXECUTION_RUNNING, WorkflowRunStatus.REVIEW_PENDING);
       await tx.codeExecution.upsert({ where: { workflowRunId: id }, create: { workflowRunId: id, status: 'WAITING_HUMAN_REVIEW', ...output }, update: { status: 'WAITING_HUMAN_REVIEW', ...output } });
-      const workspace = current.requirement.workspace ?? current.requirement.project?.workspace;
+      const workspace = current.workItem.workspace ?? current.workItem.project?.workspace;
       for (const submission of delivery.submissions) {
         await tx.workflowRepository.update({ where: { id: submission.workflowRepositoryId }, data: { workingBranch: submission.branch, localPath: null } });
-        if (workspace) await tx.artifact.create({ data: { workspaceId: workspace.id, projectId: current.requirement.projectId,
+        if (workspace) await tx.artifact.create({ data: { workspaceId: workspace.id, projectId: current.workItem.projectId,
           workflowRunId: id, artifactType: 'GIT_COMMIT', name: `${submission.repository}@${submission.headSha}`, status: 'AVAILABLE', createdByUserId: scope.userId,
           metadata: { ...submission, workingBranch: submission.branch, stageExecutionId: stage.id, source: 'CODE_DELIVERY' } } });
       }
@@ -231,7 +231,7 @@ export class WorkflowCodeDeliveryService {
   private async accessible(db: Database, id: string, scope: Scope) {
     const workflow = await db.workflowRun.findUnique({ where: { id }, include: deliveryInclude });
     if (!workflow) throw new NotFoundException('工作流不存在。');
-    if ((workflow.requirement.workspace ?? workflow.requirement.project?.workspace)?.organizationId !== scope.organizationId) throw new ForbiddenException('该工作流属于其他组织。');
+    if ((workflow.workItem.workspace ?? workflow.workItem.project?.workspace)?.organizationId !== scope.organizationId) throw new ForbiddenException('该工作流属于其他组织。');
     return workflow;
   }
   private async lock(tx: Database, before: Workflow, scope: Scope) {

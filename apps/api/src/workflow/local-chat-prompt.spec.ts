@@ -5,8 +5,9 @@ import { buildLocalChatRequirementBootstrap } from './local-chat-workflow.bootst
 describe('local chat workflow helpers', () => {
   it('builds a requirement prompt with acceptance criteria and completion instructions', () => {
     const prompt = buildLocalChatPrompt({
-      taskType: 'requirement',
-      taskId: 'req-1',
+      kind: 'REQUIREMENT',
+      workItemId: 'req-1',
+      executionItemId: 'exec-1',
       workflowRunId: 'wr-1',
       executionSessionId: 'session-1',
       workflowRepositoryId: 'workflow-repository-1',
@@ -32,8 +33,9 @@ describe('local chat workflow helpers', () => {
 
   it('builds a bug prompt with reproduction, expected behavior, and regression guidance', () => {
     const prompt = buildLocalChatPrompt({
-      taskType: 'bug',
-      taskId: 'bug-1',
+      kind: 'ISSUE',
+      workItemId: 'work-1',
+      executionItemId: 'exec-2',
       workflowRunId: 'wr-2',
       title: 'Login fails',
       description: 'Login button returns 500',
@@ -57,8 +59,9 @@ describe('local chat workflow helpers', () => {
   it('builds a Codex-specific launch instruction from the shared context', () => {
     const prompt = buildLocalChatPrompt({
       sourceTool: 'codex',
-      taskType: 'requirement',
-      taskId: 'req-codex',
+      kind: 'REQUIREMENT',
+      workItemId: 'req-codex',
+      executionItemId: 'exec-codex',
       workflowRunId: 'wr-codex',
       title: 'Add edge handoff',
       description: 'Use the shared context package',

@@ -37,7 +37,7 @@ export class LocalTestRunsService extends LocalSmokeService {
 
   async getRun(id: string) {
     const run = await this.prisma.testRun.findUnique({ where: { id }, include: {
-      testPlan: { include: { testRequest: { include: { project: true, projectVersion: true, requirementLinks: { include: { requirement: { select: { id: true, title: true } } } } } } } },
+      testPlan: { include: { testRequest: { include: { project: true, projectVersion: true, workItemLinks: { include: { workItem: { select: { id: true, title: true } } } } } } } },
       sourceBug: { include: { fixWorkflowRun: { select: { id: true, status: true } } } },
       targets: true, cases: { include: { snapshot: true, target: true, result: { include: { bug: { include: { fixWorkflowRun: { select: { id: true, status: true } } } } } }, activeLease: true }, orderBy: { sortOrder: 'asc' } },
       executions: { include: { results: true, claimedByUser: { select: { id: true, displayName: true } } } },
@@ -53,8 +53,8 @@ export class LocalTestRunsService extends LocalSmokeService {
     if (!request.workflowLinks.length || request.workflowLinks.some(link => link.workflowRun.status.toLowerCase() !== 'done')) throw new BadRequestException('关联研发工作流尚未完成。');
     let fixWorkflowRunId: string | undefined;
     if (dto.runType === 'REGRESSION') {
-      const bug = dto.sourceBugId ? await this.prisma.bug.findFirst({ where: { id: dto.sourceBugId, projectId: request.projectId }, include: { fixWorkflowRun: { include: { requirement: { select: { projectId: true } } } } } }) : null;
-      if (!bug?.fixWorkflowRun || bug.fixWorkflowRun.requirement.projectId !== request.projectId || bug.fixWorkflowRun.status.toLowerCase() !== 'done') throw new BadRequestException('回归必须关联当前项目且修复已完成的缺陷。');
+      const bug = dto.sourceBugId ? await this.prisma.bug.findFirst({ where: { id: dto.sourceBugId, projectId: request.projectId }, include: { fixWorkflowRun: { include: { workItem: { select: { projectId: true } } } } } }) : null;
+      if (!bug?.fixWorkflowRun || bug.fixWorkflowRun.workItem.projectId !== request.projectId || bug.fixWorkflowRun.status.toLowerCase() !== 'done') throw new BadRequestException('回归必须关联当前项目且修复已完成的缺陷。');
       fixWorkflowRunId = bug.fixWorkflowRun.id;
     } else if (dto.sourceBugId) throw new BadRequestException('初测不能关联来源缺陷。');
     const targets = dto.targets.map(item => ({ ...item, key: item.key.trim().toLowerCase() }));

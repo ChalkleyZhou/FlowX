@@ -18,7 +18,7 @@ const handoff = {
     workflowRunId: 'workflow-1',
     executionSessionId: 'session-1',
     traceId: 'trace-1',
-    requirement: {
+    workItem: {
       id: 'req-1',
       title: 'Export design',
       description: 'Design export flow',
@@ -76,12 +76,12 @@ describe('OpenDesignEdgeService', () => {
       handoff,
     });
 
-    const result = await service.startHandoff({ requirementId: 'req-1' }, session);
+    const result = await service.startHandoff({ workItemId: 'req-1' }, session);
 
     expect(result.ticket).toMatch(/^[a-f0-9]{64}$/);
     expect(result.loopbackPort).toBe(3920);
     expect(workflow.createLocalDesignWorkflowRun).toHaveBeenCalledWith({
-      requirementId: 'req-1',
+      workItemId: 'req-1',
       repositoryIds: undefined,
     });
 

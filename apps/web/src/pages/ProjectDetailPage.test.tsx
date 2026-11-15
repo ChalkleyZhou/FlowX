@@ -15,7 +15,7 @@ vi.mock('../components/ProjectVersionsPanel', () => ({ ProjectVersionsPanel: () 
 const project: Project = {
   id: 'project-1', name: 'FlowX', workspace: { id: 'ws-1', name: '研发平台', repositories: [] },
   currentVersionId: 'ver-current', currentVersion: { id: 'ver-current', name: '2.6.0' },
-  versions: [{ id: 'ver-current', name: '2.6.0' }], requirements: [],
+  versions: [{ id: 'ver-current', name: '2.6.0' }], workItems: [],
 };
 
 describe('项目设置', () => {

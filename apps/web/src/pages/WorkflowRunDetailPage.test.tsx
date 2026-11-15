@@ -120,7 +120,7 @@ describe('WorkflowRunDetailPage', () => {
       id: 'workflow-1',
       status: 'SPEC_PLAN_PENDING',
       aiProvider: 'codex',
-      requirement: {
+      workItem: {
         id: 'req-1',
         versionId: 'version-1',
         title: '修复登录流程',
@@ -136,7 +136,6 @@ describe('WorkflowRunDetailPage', () => {
             repositories: [],
           },
         },
-        requirementRepositories: [],
       },
       workflowRepositories: [],
       codeExecution: {
@@ -196,7 +195,7 @@ describe('WorkflowRunDetailPage', () => {
     root = createRoot(container);
     const pageOf = <T,>(items: T[], query?: { page?: number; pageSize?: number }) => ({ items, total: items.length, page: query?.page ?? 1, pageSize: 20, totalPages: 1 });
     const current = async () => await vi.mocked(api.getWorkflowRun).mock.results.at(-1)?.value as WorkflowRun | undefined;
-    vi.mocked(api.getReviewFindings).mockImplementation(async (_id, query) => { const rows = (await current())?.reviewFindings ?? []; return { ...pageOf(rows, query), summary: { pendingCount: rows.filter(row => !row.convertedIssueId && !row.convertedBugId).length } }; });
+    vi.mocked(api.getReviewFindings).mockImplementation(async (_id, query) => { const rows = (await current())?.reviewFindings ?? []; return { ...pageOf(rows, query), summary: { pendingCount: rows.filter(row => !row.convertedWorkItemId && !row.convertedBugId).length } }; });
     vi.mocked(api.getWorkflowRepositories).mockImplementation(async (_id, query) => pageOf((await current())?.workflowRepositories ?? [], query));
     vi.mocked(api.getWorkflowHistory).mockImplementation(async (_id, query) => pageOf((await current())?.stageExecutions ?? [], query));
     vi.mocked(api.getWorkflowCollaboration).mockResolvedValue({ workflowRunId: 'workflow-1', currentStage: 'SPEC_PLAN', sessions: [] });
@@ -429,7 +428,7 @@ describe('WorkflowRunDetailPage', () => {
     let finishOld!: (value: WorkflowRun) => void;
     vi.mocked(api.getWorkflowRun).mockImplementation(id => id === 'workflow-1'
       ? new Promise(resolve => { finishOld = resolve; })
-      : Promise.resolve(createWorkflowRun({ id: 'workflow-2', requirement: { ...createWorkflowRun().requirement, title: '新的需求' } })));
+      : Promise.resolve(createWorkflowRun({ id: 'workflow-2', workItem: { ...createWorkflowRun().workItem, title: '新的需求' } })));
     function SwitchWorkflow() {
       const navigate = useNavigate();
       return <button onClick={() => navigate('/workflow-runs/workflow-2')}>切换工作流</button>;
@@ -451,7 +450,7 @@ describe('WorkflowRunDetailPage', () => {
       { id: 'spec', stage: 'SPEC_PLAN', status: 'PENDING', attempt: 1, output: null },
     ] });
     vi.mocked(api.getWorkflowRun).mockImplementation(id => Promise.resolve(id === 'workflow-1' ? first
-      : createWorkflowRun({ id: 'workflow-2', requirement: { ...first.requirement, title: '新页面需求' } })));
+      : createWorkflowRun({ id: 'workflow-2', workItem: { ...first.workItem, title: '新页面需求' } })));
     vi.mocked(api.rollbackWorkflowToPreviousStage).mockImplementation(() => new Promise(resolve => { finishRollback = resolve; }));
     function SwitchWorkflow() {
       const navigate = useNavigate();
@@ -1431,7 +1430,7 @@ describe('WorkflowRunDetailPage', () => {
       workspaceId: 'workspace-1',
       projectId: 'project-1',
       projectVersionId: 'version-1',
-      requirementIds: ['req-1'],
+      workItemIds: ['req-1'],
       workflowRunIds: ['workflow-1'],
     });
   });
@@ -1804,7 +1803,7 @@ describe('WorkflowRunDetailPage', () => {
             severity: 'MEDIUM',
             status: 'OPEN',
             impactScope: [],
-            convertedIssueId: null,
+            convertedWorkItemId: null,
             convertedBugId: null,
           },
         ],
@@ -1861,7 +1860,7 @@ describe('WorkflowRunDetailPage', () => {
             severity: 'MEDIUM',
             status: 'FIXED_PENDING_REVIEW',
             impactScope: [],
-            convertedIssueId: null,
+            convertedWorkItemId: null,
             convertedBugId: null,
           },
         ],
@@ -1969,7 +1968,7 @@ describe('WorkflowRunDetailPage', () => {
             severity: 'MEDIUM',
             status: 'OPEN',
             impactScope: [],
-            convertedIssueId: null,
+            convertedWorkItemId: null,
             convertedBugId: null,
           },
         ],

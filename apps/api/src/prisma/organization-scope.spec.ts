@@ -7,19 +7,18 @@ describe('applyOrganizationScope', () => {
   it.each([
     ['Workspace', { organizationId }],
     ['Project', { workspace: { organizationId } }],
-    ['Requirement', { project: { workspace: { organizationId } } }],
-    ['CodeBranchSubmission', { workflowRun: { requirement: { project: { workspace: { organizationId } } } } }],
-    ['WorkflowRun', { requirement: { project: { workspace: { organizationId } } } }],
+    ['WorkItem', { project: { workspace: { organizationId } } }],
+    ['CodeBranchSubmission', { workflowRun: { workItem: { project: { workspace: { organizationId } } } } }],
+    ['WorkflowRun', { workItem: { project: { workspace: { organizationId } } } }],
     [
       'ExecutionSession',
       {
         OR: [
           { workspace: { organizationId } },
-          { workflowRun: { requirement: { project: { workspace: { organizationId } } } } },
+          { workflowRun: { workItem: { project: { workspace: { organizationId } } } } },
         ],
       },
     ],
-    ['Issue', { workspace: { organizationId } }],
     ['Bug', { workspace: { organizationId } }],
     ['TestCaseLibrary', { workspace: { organizationId } }],
     ['TestRequest', { workspace: { organizationId } }],
@@ -49,7 +48,7 @@ describe('applyOrganizationScope', () => {
   });
 
   it('keeps the unique id at the top level for scoped direct reads', () => {
-    const args = applyOrganizationScope('Requirement', 'findUniqueOrThrow', {
+    const args = applyOrganizationScope('WorkItem', 'findUniqueOrThrow', {
       where: { id: 'requirement-other-org' },
     }, organizationId);
 

@@ -8,7 +8,7 @@ function createSkipReviewService(stageStatus = 'FAILED') {
     id: 'workflow-1',
     status: 'REVIEW_PENDING',
     runType: 'FULL',
-    requirement: { title: '需求' },
+    workItem: { title: '需求' },
     stageExecutions: [{ id: 'stage-1', stage: 'AI_REVIEW', attempt: 1, status: stageStatus }],
   };
   const tx = {

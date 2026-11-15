@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { ContextPanel } from '../components/ContextPanel';
+import { ExecutionPlanPanel } from '../components/ExecutionPlanPanel';
 import { DetailHeader } from '../components/DetailHeader';
 import { MetricCard } from '../components/MetricCard';
 import { SectionHeader } from '../components/SectionHeader';
@@ -141,7 +142,7 @@ export function IssueDetailPage() {
   }
 
   if (!issueId) {
-    return <Navigate to="/issues" replace />;
+    return <Navigate to="/work-items" replace />;
   }
 
   return (
@@ -159,11 +160,11 @@ export function IssueDetailPage() {
           actions={
             <>
               <UiButton variant="outline" asChild>
-                <Link to="/issues">返回问题项列表</Link>
+                <Link to="/work-items">返回问题项列表</Link>
               </UiButton>
-              {issue?.workflowRun?.id ? (
+              {issue?.sourceWorkflowRun?.id ? (
                 <UiButton variant="outline" asChild>
-                  <Link to={`/workflow-runs/${issue.workflowRun.id}`}>查看来源流程</Link>
+                  <Link to={`/workflow-runs/${issue.sourceWorkflowRun.id}`}>查看来源流程</Link>
                 </UiButton>
               ) : null}
             </>
@@ -176,8 +177,8 @@ export function IssueDetailPage() {
           <MetricCard label="所属工作区" value={issue?.workspace?.name ?? '未绑定'} helpText="当前问题项所属的项目空间。" />
           <MetricCard
             label="来源流程"
-            value={issue?.workflowRun ? '已关联' : '未关联'}
-            helpText={issue?.workflowRun ? '可追溯到原始工作流与审查上下文。' : '当前未记录来源工作流。'}
+            value={issue?.sourceWorkflowRun ? '已关联' : '未关联'}
+            helpText={issue?.sourceWorkflowRun ? '可追溯到原始工作流与审查上下文。' : '当前未记录来源工作流。'}
           />
         </div>
 
@@ -283,7 +284,7 @@ export function IssueDetailPage() {
               <div className="space-y-4">
                 <div className="rounded-lg border border-border bg-muted p-4">
                   <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">来源需求</div>
-                  <div className="break-words text-sm font-medium text-foreground">{issue?.requirement?.title ?? '未关联需求'}</div>
+                  <div className="break-words text-sm font-medium text-foreground">{issue?.sourceWorkflowRun?.id ?? '未关联工作流'}</div>
                 </div>
                 <div className="rounded-lg border border-border bg-muted p-4">
                   <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">来源分支</div>
@@ -302,6 +303,8 @@ export function IssueDetailPage() {
             </ContextPanel>
           </div>
         </div>
+
+        {issue ? <ExecutionPlanPanel workItem={issue} onChanged={refresh} /> : null}
       </div>
     </>
   );

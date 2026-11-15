@@ -1,22 +1,12 @@
-import { ConflictException, Injectable } from '@nestjs/common';
-import { WorkflowRunStatus, WorkflowRunType } from '../common/enums';
+import { ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { WorkflowRunStatus } from '../common/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildLocalChatPrompt } from '../workflow/local-chat-prompt';
 import { WorkflowService } from '../workflow/workflow.service';
 import { ContextPackageService } from './context-package.service';
+import { WorkItemsService } from '../work-items/work-items.service';
 import type { StartEdgeHandoffDto } from './dto/start-edge-handoff.dto';
 import type { EdgeWorkflowSession } from './edge-tasks.service';
-
-const EDGE_READY_POLL_INTERVAL_MS = 250;
-const EDGE_READY_TIMEOUT_MS = 15_000;
-
-type BugContext = {
-  title?: string | null;
-  description?: string | null;
-  expectedBehavior?: string | null;
-  actualBehavior?: string | null;
-  reproductionSteps?: unknown;
-};
 
 @Injectable()
 export class EdgeHandoffService {
@@ -24,121 +14,50 @@ export class EdgeHandoffService {
     private readonly prisma: PrismaService,
     private readonly workflowService: WorkflowService,
     private readonly contextPackageService: ContextPackageService,
+    @Optional() private readonly workItemsService?: WorkItemsService,
   ) {}
 
   async startHandoff(dto: StartEdgeHandoffDto, session?: EdgeWorkflowSession) {
-    const bugContext =
-      dto.taskType === 'bug'
-        ? await this.prisma.bug.findUniqueOrThrow({ where: { id: dto.taskId } })
-        : null;
-    const existingWorkflow = await this.findExistingLocalChatWorkflow(dto);
-    if (existingWorkflow) {
-      return this.continueWorkflow(existingWorkflow, dto, bugContext, session);
-    }
-
-    const workflow =
-      dto.taskType === 'bug'
-        ? await this.workflowService.createLocalChatBugWorkflowRun(dto.taskId, {
-            repositoryIds: dto.repositoryIds,
-            aiProvider: dto.aiProvider,
-          })
-        : await this.workflowService.createLocalChatWorkflowRun({
-            requirementId: dto.taskId,
-            repositoryIds: dto.repositoryIds,
-            aiProvider: dto.aiProvider,
-          });
-    const readyWorkflow = await this.waitForExecutionPending(workflow);
-    if (!readyWorkflow) {
-      throw new ConflictException('Local chat workflow repositories are still preparing. Please retry shortly.');
-    }
-    const claimed = await this.workflowService.claimLocalExecution(
-      readyWorkflow.id,
-      session,
-      dto.sourceTool,
-    );
-    return this.buildResult(dto, bugContext, claimed.workflow, claimed.handoff);
-  }
-
-  private async findExistingLocalChatWorkflow(dto: StartEdgeHandoffDto) {
-    if (dto.taskType !== 'requirement') return null;
-    const workflows = await this.prisma.workflowRun.findMany({
-      where: {
-        requirementId: dto.taskId,
-        runType: WorkflowRunType.LOCAL_CHAT,
-        status: { notIn: ['DONE', 'FAILED'] },
-      },
-      include: { workflowRepositories: true },
-      orderBy: { createdAt: 'desc' },
+    const executionItem = await this.prisma.executionItem.findUnique({
+      where: { id: dto.executionItemId },
+      include: { executionPlan: { include: { workItem: true, workflowRun: true } } },
     });
-    const repositoryIds = new Set((dto.repositoryIds ?? []).map((id) => id.trim()).filter(Boolean));
-    if (!repositoryIds.size) return workflows[0] ?? null;
-    return (
-      workflows.find((workflow) =>
-        workflow.workflowRepositories.some((repository) =>
-          repository.repositoryId ? repositoryIds.has(repository.repositoryId) : false,
-        ),
-      ) ?? null
-    );
-  }
-
-  private async continueWorkflow(
-    workflow: { id: string; status: string },
-    dto: StartEdgeHandoffDto,
-    bugContext: BugContext | null,
-    session?: EdgeWorkflowSession,
-  ) {
+    if (!executionItem) throw new NotFoundException('执行项不存在。');
+    const workflow = executionItem.executionPlan.workflowRun;
+    if (!workflow) throw new ConflictException('执行项尚未绑定工作流。');
     const status = workflow.status.toLowerCase();
-    if (status === WorkflowRunStatus.EXECUTION_PENDING) {
-      const claimed = await this.workflowService.claimLocalExecution(
-        workflow.id,
-        session,
-        dto.sourceTool,
-      );
-      return this.buildResult(dto, bugContext, claimed.workflow, claimed.handoff);
+    if (status !== WorkflowRunStatus.EXECUTION_PENDING && status !== WorkflowRunStatus.EXECUTION_RUNNING) {
+      throw new ConflictException('当前工作流尚未进入本地执行阶段。');
     }
-    if (status === WorkflowRunStatus.EXECUTION_RUNNING) {
-      const handoff = await this.workflowService.getLocalHandoff(workflow.id);
-      return this.buildResult(dto, bugContext, workflow, handoff);
-    }
-    throw new ConflictException('Local chat workflow repositories are still preparing. Please retry shortly.');
-  }
-
-  private async waitForExecutionPending(workflow: { id: string; status: string }) {
-    if (workflow.status.toLowerCase() === WorkflowRunStatus.EXECUTION_PENDING) return workflow;
-    const deadline = Date.now() + EDGE_READY_TIMEOUT_MS;
-    while (Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, EDGE_READY_POLL_INTERVAL_MS));
-      const latest = await this.workflowService.findOne(workflow.id);
-      const status = latest.status.toLowerCase();
-      if (status === WorkflowRunStatus.EXECUTION_PENDING) return latest;
-      if ([WorkflowRunStatus.FAILED, WorkflowRunStatus.DONE].includes(status as WorkflowRunStatus)) {
-        return null;
-      }
-    }
-    return null;
+    const claimed = status === WorkflowRunStatus.EXECUTION_PENDING
+      ? await this.workflowService.claimLocalExecution(workflow.id, session, dto.sourceTool, dto.claimKey, dto.executionItemId)
+      : {
+          workflow,
+          handoff: await (async () => {
+            if (!this.workItemsService) return this.workflowService.getLocalHandoff(workflow.id);
+            if (!session?.user.id) throw new ConflictException('领取执行项需要登录用户。');
+            await this.workItemsService.claimExecutionItem(dto.executionItemId, { userId: session.user.id, claimKey: dto.claimKey }, session);
+            return this.workflowService.getLocalHandoff(workflow.id);
+          })(),
+        };
+    return this.buildResult(dto, claimed.workflow, claimed.handoff);
   }
 
   private buildResult(
     dto: StartEdgeHandoffDto,
-    bugContext: BugContext | null,
     workflow: { id: string; status: string },
     handoff: Awaited<ReturnType<WorkflowService['getLocalHandoff']>>,
   ) {
     const repository = handoff.repositories[0];
     const chatPrompt = buildLocalChatPrompt({
       sourceTool: dto.sourceTool,
-      taskType: dto.taskType,
-      taskId: dto.taskId,
+      kind: handoff.workItem.kind as 'REQUIREMENT' | 'ISSUE',
+      workItemId: handoff.workItem.id,
+      executionItemId: dto.executionItemId,
       workflowRunId: handoff.workflowRunId,
-      title: bugContext?.title ?? handoff.requirement.title,
-      description: bugContext?.description ?? handoff.requirement.description,
-      acceptanceCriteria:
-        dto.taskType === 'requirement' ? handoff.requirement.acceptanceCriteria : undefined,
-      expectedBehavior: bugContext?.expectedBehavior,
-      actualBehavior: bugContext?.actualBehavior,
-      reproductionSteps: Array.isArray(bugContext?.reproductionSteps)
-        ? bugContext.reproductionSteps.map(String)
-        : [],
+      title: handoff.executionItem.title,
+      description: handoff.executionItem.description || handoff.workItem.description,
+      acceptanceCriteria: handoff.workItem.acceptanceCriteria,
       repository: {
         name: repository?.name ?? 'unknown',
         url: repository?.url ?? null,
@@ -149,16 +68,14 @@ export class EdgeHandoffService {
       workflow,
       handoff,
       contextPackage: this.contextPackageService.fromHandoff({
-        taskType: dto.taskType,
-        taskId: dto.taskId,
+        executionItemId: dto.executionItemId,
         sourceTool: dto.sourceTool,
         handoff,
-        bugContext,
       }),
       chatPrompt,
       sourceTool: dto.sourceTool,
-      taskType: dto.taskType,
-      taskId: dto.taskId,
+      executionItemId: dto.executionItemId,
+      workItemId: handoff.workItem.id,
     };
   }
 }

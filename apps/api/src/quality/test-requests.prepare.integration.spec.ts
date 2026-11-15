@@ -17,7 +17,7 @@ const directory = mkdtempSync(join(tmpdir(), 'flowx-quality-prepare-'));
 const url = `file:${join(directory, 'test.db')}`;
 const prisma = new PrismaClient({ datasources: { db: { url } } });
 const service = new TestRequestsService(prisma as never, {} as never);
-let workspaceId: string; let projectId: string; let projectVersionId: string; let requirementId: string; let workflowId: string;
+let workspaceId: string; let projectId: string; let projectVersionId: string; let workItemId: string; let workflowId: string;
 let revision = 0;
 beforeAll(async () => {
   const cli = createRequire(resolve('package.json')).resolve('prisma/build/index.js');
@@ -28,8 +28,8 @@ beforeAll(async () => {
   workspaceId = (await prisma.workspace.create({ data: { organizationId: org.id, name: '工作区' } })).id;
   projectId = (await prisma.project.create({ data: { workspaceId, name: '项目' } })).id;
   projectVersionId = (await prisma.projectVersion.create({ data: { projectId, name: 'v1' } })).id;
-  requirementId = (await prisma.requirement.create({ data: { projectId, title: '需求', description: '准备提测', acceptanceCriteria: '通过' } })).id;
-  workflowId = (await prisma.workflowRun.create({ data: { requirementId, status: 'DONE' } })).id;
+  workItemId = (await prisma.workItem.create({ data: { projectId, workspaceId, title: '需求', description: '准备提测', acceptanceCriteria: '通过' } })).id;
+  workflowId = (await prisma.workflowRun.create({ data: { workItemId, status: 'DONE' } })).id;
 }, 30_000);
 afterAll(async () => { await prisma.$disconnect(); rmSync(directory, { recursive: true, force: true }); });
 async function requestWithSnapshot(smoke: boolean) {

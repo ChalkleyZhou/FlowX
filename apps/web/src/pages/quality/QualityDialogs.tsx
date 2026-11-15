@@ -79,7 +79,7 @@ export function CreateRequestDialog({
       toast.error('请选择项目版本、提测工作流并填写标题');
       return;
     }
-    const requirementIds = [...new Set(selectedRunIds.map(id => selectedRuns[id]?.requirement.id).filter((id): id is string => Boolean(id)))];
+    const workItemIds = [...new Set(selectedRunIds.map(id => selectedRuns[id]?.workItem.id).filter((id): id is string => Boolean(id)))];
     setSaving(true);
     try {
       await api.createTestRequest({
@@ -88,7 +88,7 @@ export function CreateRequestDialog({
         projectVersionId: versionId,
         title: title.trim(),
         description: description.trim() || undefined,
-        requirementIds,
+        workItemIds,
         workflowRunIds: selectedRunIds,
       });
       setTitle('');
@@ -138,7 +138,7 @@ export function CreateRequestDialog({
                     onChange={(event) => { setSelectedRuns(current => ({ ...current, [run.id]: run })); setSelectedRunIds(current => event.target.checked ? [...current, run.id] : current.filter(id => id !== run.id)); }}
                   />
                   <span className="min-w-0 text-sm">
-                    <span className="block font-medium text-foreground">{run.requirement.title}</span>
+                    <span className="block font-medium text-foreground">{run.workItem.title}</span>
                     <span className="block truncate text-xs text-muted-foreground">{run.id}</span>
                   </span>
                 </label>

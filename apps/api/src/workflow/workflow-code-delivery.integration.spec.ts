@@ -47,8 +47,8 @@ function actor(id = userA) { return { user: { id, displayName: '成员' }, organ
 async function pending() {
   git.resolveBranchHead.mockReset().mockResolvedValue(head);
   git.inspectBranch.mockReset().mockResolvedValue({ headSha: head, baseSha: base, changedFiles: ['src/index.ts'], diffStat: '1 file changed', diffText: 'diff --git a/src/index.ts b/src/index.ts\n+export const value = 1;' });
-  const requirement = await prisma.requirement.create({ data: { title: '分支交付', description: '', acceptanceCriteria: '', workspaceId: workspace, projectId: project } });
-  const run = await prisma.workflowRun.create({ data: { requirementId: requirement.id, status: 'EXECUTION_PENDING', currentStage: 'EXECUTION' } });
+  const requirement = await prisma.workItem.create({ data: { title: '分支交付', description: '', acceptanceCriteria: '', workspaceId: workspace, projectId: project } });
+  const run = await prisma.workflowRun.create({ data: { workItemId: requirement.id, status: 'EXECUTION_PENDING', currentStage: 'EXECUTION' } });
   await prisma.stageExecution.create({ data: { workflowRunId: run.id, stage: 'SPEC_PLAN', status: 'COMPLETED', output: { spec: { goal: '交付功能' }, plan: { approach: '实现' } } } });
   const repo = await prisma.workflowRepository.create({ data: { workflowRunId: run.id, name: 'web', url: 'https://example.com/web.git', baseBranch: 'main', workingBranch: 'old', localPath: '/old/checkout' } });
   return { run, repo };

@@ -23,7 +23,8 @@ describe('buildLocalHandoff', () => {
     const handoff = buildLocalHandoff({
       workflowRunId: 'cmworkflow12345678',
       status: 'EXECUTION_RUNNING',
-      requirement: {
+      executionSession: { id: 'session-1', traceId: 'trace-1', protocolVersion: '1.0' },
+      workItem: {
         id: 'req_1',
         title: 'Login welcome modal',
         description: 'desc',
@@ -53,7 +54,8 @@ describe('buildLocalHandoff', () => {
     const handoff = buildLocalHandoff({
       workflowRunId: 'cmworkflow12345678',
       status: 'EXECUTION_RUNNING',
-      requirement: {
+      executionSession: { id: 'session-2', traceId: 'trace-2', protocolVersion: '1.0' },
+      workItem: {
         id: 'req_1',
         title: 'Login welcome modal',
         description: 'desc',
@@ -76,7 +78,7 @@ describe('buildLocalHandoff', () => {
     expect(handoff.repositories[0].suggestedCommitMessage).toContain('Login welcome modal');
   });
 
-  it('adds protocol session fields without changing the legacy handoff shape', () => {
+  it('includes the required protocol session fields', () => {
     const handoff = buildLocalHandoff({
       workflowRunId: 'workflow-1',
       status: 'EXECUTION_RUNNING',
@@ -85,7 +87,7 @@ describe('buildLocalHandoff', () => {
         traceId: 'trace-1',
         protocolVersion: '1.0',
       },
-      requirement: {
+      workItem: {
         id: 'req-1',
         title: 'Protocol handoff',
         description: 'desc',

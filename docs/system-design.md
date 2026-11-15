@@ -4,6 +4,12 @@
 
 ## 业务记录分页契约
 
+## WorkItem 与执行项核心模型
+
+版本工作台直接读取统一的 `WorkItem`，用 `kind` 区分 `REQUIREMENT` 和 `ISSUE`；需求和 Issue 字段位于同一业务根。`WorkflowRun` 以 `workItemId` 作为最终业务根，执行拆解使用 `ExecutionPlan -> ExecutionItem -> ExecutionSession`，简单项也生成一个隐式执行项。`SINGLE` 创建后立即得到可执行的隐式执行项，`AI`/`MANUAL` 创建先落为待确认草案，只有计划确认并绑定工作流后才允许端侧领取。版本列表使用 `(projectId, versionId, updatedAt, id)` 稳定游标分页，会议页只提供状态、负责人和备注等高频编辑，改版本、启动流程和拆解确认收在详情操作中。
+
+本模型不通过客户端拼接两组列表，也不引入 `VersionWorkItem` 投影或公共字段双写；迁移脚本在同一事务内回填现有数据，并由后续切换删除旧根模型。端侧领取和完成统一针对 `executionItemId`，服务端事务条件更新保证单领取者和幂等回传。
+
 `@flowx-ai/protocol` 定义 `PageQuery` 和 `PageResult<T>`。普通记录浏览接口使用 `page/pageSize/q`，默认 1/20、上限 100，响应含 `items/total/page/pageSize/totalPages`；空结果总页数为 1。API 统一校验正整数与数据库偏移范围，使用与权限、搜索、状态筛选相同的 `where` 进行有界 `skip/take` 和计数，排序追加唯一 ID。混合需求/缺陷任务通过数据库统一排序后分页，不能拼接两组局部页。
 
 Web 通过 `api.ts` 发送 `X-FlowX-List-Contract: pagination-v1` 并验证响应元数据；服务端对已迁移记录路由拒绝缺失契约标记的请求，返回 `426 / PAGINATION_UPGRADE_REQUIRED`。固定能力枚举、详情、下载及业务执行上下文不受此标记限制。`flowx-local` 同步工具 schema、参数映射和返回元数据；服务端与本地包分别升级时以明确错误要求更新，禁止静默截断。
@@ -35,9 +41,9 @@ flowchart LR
 
     subgraph Domains["当前业务模块"]
         Workspace["Workspace / Repository"]
-        Project["Project / ProjectVersion / Requirement / Schedule"]
+        Project["Project / ProjectVersion / WorkItem / Schedule"]
         Workflow["Ideation / Workflow / StageExecution"]
-        Review["ReviewFinding / Issue / Bug"]
+        Review["ReviewFinding / WorkItem / Bug"]
         Briefing["Briefing / Daily Code Review"]
         DevPreview["Dev Preview"]
         Auth["Auth / AI & Git Credentials"]
@@ -70,14 +76,14 @@ flowchart LR
 | --- | --- | --- |
 | `workspaces` | 工作区、Repository 登记、同步和本地副本 | 项目管理中心 / AI 上下文中心 |
 | `projects` | 项目基础信息、发布版本清单与当前版本 | 项目管理中心 |
-| `requirements` | 需求、ideation 与设计编排 | 项目管理中心 / 研发流程中心 |
+| `work-items` | 统一 WorkItem、需求 ideation 与设计编排 | 项目管理中心 / 研发流程中心 |
 | `prototype-imports` | 原型 ZIP 私有存储、AI 整理、自动落库与流程接续 | 项目管理中心 / 研发流程中心 |
 | `workflow` | 工作流状态机、阶段执行、本地/云端执行和审查 | 研发流程中心 |
 | `ai`、`prompts` | Executor、Prompt 和输出 schema | AI 上下文中心 |
 | `schedule` | 需求排期与成员分配 | 项目管理中心 |
 | `briefings` | 项目事件、简报、投递目标 | 项目管理中心 / 治理与度量中心 |
 | `daily-code-review` | 独立 Code Review 调度和报告 | 测试与质量中心 |
-| `review-artifacts` | Finding、Issue、Bug 转换和维护 | 测试与质量中心 |
+| `review-artifacts` | Finding、WorkItem、Bug 转换和维护 | 测试与质量中心 |
 | `quality` | 需求驱动测试设计、Workspace/项目用例比对与优化、动态冒烟、提测门禁、用例快照、Test Run 与 Bug 回归闭环 | 测试与质量中心 |
 | `dev-preview` | 本地预览命令和生命周期 | 发布与运维中心 |
 | `auth` | 用户、组织、会话、凭据，以及钉钉通讯录用户增量同步（不持久化部门结构） | 治理与度量中心 |
@@ -85,11 +91,15 @@ flowchart LR
 | `yunxiao-webhooks` | 云效自动化事件接收、组织成员匹配、幂等记录和钉钉个人通知 | 治理与度量中心 |
 | `cursor-local` | Cursor 本地任务和 Chat 交接 | 迁移到通用 Edge/Sync 边界 |
 
-### 需求最小创建契约（2026-10-23）
+### WorkItem 创建与执行契约（2026-11-13）
 
-`POST /requirements` 由 `projectId` 指定归属，业务必填为非空白 `title` 和有效发布版本。`priority` 取 `URGENT`、`HIGH`、`MEDIUM`、`LOW`，省略时保存为 `MEDIUM`。`description`、`acceptanceCriteria`、`functionalModule`、`riskImpact`、`productRequirementDocument`、`remark` 选填，省略或为空时保存为空字符串；字符串统一去除首尾空白。`remark` 出现在需求列表；`functionalModule`、`riskImpact` 与 `productRequirementDocument` 只在需求详情展示。列表额外返回 `latestChangeAt` 和 `latestChangeContent`，取最近一条正式需求变更的创建时间与正文，没有变更时均为 `null`，不返回更早变更或变更集合。已登录创建时写入 `createdByUserId` 与 `createdByName`；历史记录和无法识别用户的系统创建保持为空。显式 `versionId` 必须属于该项目；省略时兼容使用项目当前版本，显式 `null` 或没有当前版本返回 400，不创建无版本普通需求。历史记录和原型导入草稿契约保持兼容。`PATCH /requirements/:id` 可更新 `title`、`description`、`acceptanceCriteria`、`functionalModule`、`riskImpact`、`productRequirementDocument`、`remark`、`priority`、`planningStatus` 和 `versionId`。字符串去除首尾空白，空白 `title` 返回 400；未出现的字段保持原值。`priority` 取 `URGENT`、`HIGH`、`MEDIUM`、`LOW`。`versionId` 为 `null` 时清空版本，非空时必须属于该需求所在项目。创建人与创建时间不随编辑改变。`DELETE /requirements/:id` 删除需求。不存在时返回 404。仍有阶段状态为 `RUNNING` 的工作流时返回 400，不删除任何数据。需求或所属工作流已关联测试设计、提测时返回 409，不删除任何数据。成功时删除该需求及其工作流、构思会话、正式变更、排期、仓库范围和原型材料；问题与缺陷记录保留，并清空指向该需求或所属工作流的关联。
+`POST /projects/:projectId/versions/:versionId/work-items` 是版本工作台和端侧 Agent 的统一创建入口，必须同时提供 `kind`（`REQUIREMENT` 或 `ISSUE`）和有效版本。需求、Issue 的公共字段和类型专属字段均直接写入 `WorkItem`；创建时同步建立 `ExecutionPlan`。会议快速新建默认建立待确认的 AI 计划，由 AI 判断生成一个还是多个执行项；明确选择 `SINGLE` 的入口会直接创建一个可领取的默认 `ExecutionItem`。`PATCH /work-items/:id` 负责会议页和详情页的统一编辑，`DELETE /work-items/:id` 负责统一删除保护。工作流只能从 `WorkItem` 启动，端侧只能领取 `ExecutionItem`。
 
-Web 普通表单默认当前版本、折叠选填字段；项目详情快捷弹窗只输入标题，并显式提交弹窗显示的当前版本 ID，成功刷新并筛选到该版本。快捷弹窗另支持选传原型 ZIP，复用 `POST /prototype-imports` 与自动导入状态页，显式提交标题和显示版本；不先创建普通需求。导入接口可选 `title`、`versionId`，校验版本归属后再保存材料，省略版本保持原导入行为。没有当前版本时引导版本管理。两入口均防重复提交，失败保留输入。本地 MCP 同步允许省略描述和验收标准，拒绝显式空版本；Skill 不再生成占位验收内容。
+执行计划策略由 `splitMode=AI|SINGLE|MANUAL` 明确表达。`SINGLE` 只允许一个执行项并可直接启动；`AI` 和 `MANUAL` 必须先生成或补齐执行项、人工确认计划，再启动工作流。版本会议页默认使用 `AI`，会议参与者不需要先判断是否拆分，只需审核 AI 结果；需要时可在详情中手动补成单执行项。AI 拆解使用独立的 `execution-split.output.schema.json`，每项输出目标端、边界描述、负责人建议、是否必需、依赖索引和验证方式；服务端把依赖索引解析为真实 `ExecutionItem` ID 后保存，不能把自然语言标题当作依赖。
+
+需求变更、构思、原型和排期仍属于需求类型 WorkItem 的专属能力，数据关联使用 `workItemId`；它们不是另一种根对象。版本工作台和端侧 Agent 统一使用 WorkItem API，直接查询 `WorkItem`，不在接口层合并两套列表。
+
+Web 普通表单默认当前版本、折叠选填字段；项目详情快捷弹窗只输入标题，并显式提交弹窗显示的当前版本 ID，成功刷新并筛选到该版本。快捷弹窗另支持选传原型 ZIP，复用 `POST /prototype-imports` 与自动导入状态页，显式提交标题和显示版本；不先创建普通需求。导入接口可选 `title`、`versionId`，校验版本归属后再保存材料，省略版本保持原导入行为。没有当前版本时引导版本管理。两入口均防重复提交，失败保留输入。本地 MCP 创建 WorkItem 必须传 `kind` 和 `versionId`，描述和验收标准可以省略；Skill 不生成占位验收内容。
 
 ### 3.2 前端
 
@@ -98,9 +108,9 @@ FlowX Web 当前提供：
 - 工作区和 Repository 管理。
 - 项目、发布版本、需求、工作流和排期。
 - Ideation、设计 Artifact、执行、Review 和人工确认。
-- Issue、Bug、项目简报和每日 Code Review。
+- WorkItem（`kind=REQUIREMENT|ISSUE`）、Bug、项目简报和每日 Code Review。
 - AI/Git 凭据、组织用户、数据源和投递目标设置。
-- Workspace 是业务数据的组织隔离根；Project、Requirement、WorkflowRun、Issue、Bug、简报、Code Review 与产物均沿 Workspace 继承组织边界，跨组织按 ID 访问也必须返回不可见。
+- Workspace 是业务数据的组织隔离根；Project、WorkItem、WorkflowRun、Bug、简报、Code Review 与产物均沿 Workspace 继承组织边界，跨组织按 ID 访问也必须返回不可见。
 
 后续页面应围绕六个中心组织，但在功能具备前不进行只改导航名称的空壳重构。
 
@@ -111,7 +121,7 @@ FlowX Web 当前提供：
 - `apps/cursor-extension`：任务列表、仓库匹配、Chat 交接和完成报告。
 - `packages/flowx-local`：本地启动、Repository 映射、IDE 打开和 Skill 安装。
 
-演进方向是保留现有兼容接口，将 `flowx-local` 扩展为 FlowX Edge Agent，并把 Cursor 专用逻辑下沉为 `CursorAdapter`。
+演进方向是让 `flowx-local` 作为 FlowX Edge Agent，并把 Cursor 专用逻辑下沉为 `CursorAdapter`；端侧入口统一使用 WorkItem/ExecutionItem 契约。
 
 ## 4. 当前核心数据链路
 
@@ -119,14 +129,14 @@ FlowX Web 当前提供：
 Workspace
   -> Project
      -> ProjectVersion (currentVersionId)
-     -> Requirement (versionId?)
-  -> RequirementRepository
+     -> WorkItem (kind / versionId)
+  -> RequirementRepository（需求类 WorkItem 的仓库范围）
   -> WorkflowRun
   -> WorkflowRepository
   -> StageExecution
   -> CodeExecution / ReviewReport
   -> ReviewFinding
-  -> Issue / Bug
+  -> WorkItem(kind=ISSUE) / Bug
 ```
 
 该链路已经具备研发流程基础；Artifact、Evidence、ExecutionSession 以及 TestDesign/TestRequest/TestPlan/TestRun 的独立模型已经落地。开发执行的受控会话由 `ExecutionCommand`、检查点和回执构成协作式运行控制：云端保存状态和命令，本地 Agent 在检查点领取并确认。失联是基于服务端最后检查点的健康计算，不代表可以远程终止 IDE。完成报告必须绑定原会话和原执行人，按工作流基线核对 Git 提交后才推进 Review。Spec & Plan 可由本地 `ExecutionSession` 领取，结构化输出继续写入 `StageExecution`，`spec.md` 和 `plan.md` 作为 Artifact 上传。TestDesign 在 Spec & Plan 确认后与开发执行并行，提测前汇合并冻结功能与动态冒烟快照。`LOCAL_SMOKE` 通过 `TestRunTarget`、`TestExecution` 和 append-only `TestExecutionCaseResult` 支持多人多端执行，服务端聚合 `TestResult` 并生成版本化 `TEST_REPORT`。Release、RuntimeFeedback 和自动化测试结果导入仍需继续建设。
@@ -141,7 +151,7 @@ Workspace
 
 `POST /workflow-runs/:id/local-task/release` 接收 `{ executionSessionId, confirmedStopped: true, reason }`，`reason` 去空白后必填且不超过 2000 字。该恢复入口仅允许当前 `BRAINSTORM`、`DESIGN`、`SPEC_PLAN` 待执行阶段最新 attempt 中仍活动的、`controlMode != COOPERATIVE` 的本地任务。原执行人或同组织管理员可操作，无 owner 的历史会话仅同组织管理员可操作；必须确认已在原设备停止。事务将旧会话置为 `CANCELLED`、当前 `StageExecution` 置为 `FAILED`，并以 `execution.local_task_released` 记录操作人、原因和停止确认。后续领取创建新 attempt，旧会话的晚到回传被拒绝。此接口不能远程关闭 IDE，开发阶段的协作式停止请求与本地回执保持原有机制。
 
-所有 `LOCAL` 会话的公共写入口统一使用领取人校验，包括通用心跳/状态、SyncEvent、Artifact 上传/内容/删除与 Evidence；读取仍按组织可见。构思、设计、方案与冒烟的终态只能通过专用编排回传或明确交接，不能用通用 `complete/fail/cancel` 单独改变会话。`CANCELLED` 会话拒绝后续写入。专用设计回传产生的 HTML 绑定 `executionSessionId`；无会话的旧兼容稿按 `createdByUserId` 校验，未记录执行人的历史稿只读。
+所有 `LOCAL` 会话的公共写入口统一使用领取人校验，包括通用心跳/状态、SyncEvent、Artifact 上传/内容/删除与 Evidence；读取仍按组织可见。构思、设计、方案与冒烟的终态只能通过专用编排回传或明确交接，不能用通用 `complete/fail/cancel` 单独改变会话。`CANCELLED` 会话拒绝后续写入。专用回传产生的 Artifact 必须绑定 `executionSessionId`；历史上没有会话绑定的记录只读，不再进入新的执行链路。
 
 `POST /workflow-runs/:id/design/submit-local` 仅供尚未使用本地设计会话的旧集成使用，必须提供登录身份并记录产物和阶段执行人、锁定工作流版本。流程一旦存在本地设计会话，该兼容入口返回 `409` 并引导当前会话的专用回传，避免已取消任务绕过晚到结果校验。
 
@@ -149,9 +159,9 @@ Workspace
 
 失败导入统一通过重新导入入口处理：不选新包时调用 `POST /prototype-imports/:id/analyze`，选择新包时调用 `POST /prototype-imports/:id/files` 并传 `replace=true`；两者都可传 `aiProvider`（`codex` / `cursor`）。执行器与重试状态、修订通过同一次 CAS 更新；换包使用完整材料替换但保留历史 ZIP。后台读取新记录解析对应组织凭证，并传递给后续工作流。认证错误返回固定提示，日志仅记录导入 ID、执行器、修订与错误分类，不直接输出上游异常。
 
-`PrototypeImport` 与 Requirement 一对一关联，保留 `ANALYZING / WAITING_CONFIRMATION / FAILED / CONFIRMED` 状态、CAS `revision`、独立材料版本、文件清单、分析及历史答案。所有访问经需求项目的 Workspace 校验组织。上传私有保存原包，事务创建需求，后台通过现有 AI invocation 组织凭据整理。新导入不经过人工确认；历史等待确认记录打开后自动接续。
+`PrototypeImport` 与需求类 WorkItem 一对一关联，保留 `ANALYZING / WAITING_CONFIRMATION / FAILED / CONFIRMED` 状态、CAS `revision`、独立材料版本、文件清单、分析及历史答案。所有访问经项目 Workspace 校验组织。上传私有保存原包，事务创建 WorkItem，后台通过现有 AI invocation 组织凭据整理。新导入不经过人工确认；历史等待确认记录打开后自动接续。
 
-Codex / Cursor 的 `analyzePrototype` 共用 `prototype-analysis.output.schema.json`。分析上下文有界，材料为非指令，来源路径必须属于材料清单；不支持的 executor 明确失败。AI 输出校验后事务保存 Requirement、简报和设计产物，`CONFIRMED` 表示资料落库完成，自动导入 `confirmedBy=null`，不伪造人工确认；未答问题仍作为 `brief.openQuestions`，建议不会擅自生效。失败重试按 revision 比较，过期任务不能覆盖新结果；流程接续失败复用整理结果并替换同类导入产物。
+Codex / Cursor 的 `analyzePrototype` 共用 `prototype-analysis.output.schema.json`。分析上下文有界，材料为非指令，来源路径必须属于材料清单；不支持的 executor 明确失败。AI 输出校验后事务保存需求类 WorkItem、简报和设计产物，`CONFIRMED` 表示资料落库完成，自动导入 `confirmedBy=null`，不伪造人工确认；未答问题仍作为 `brief.openQuestions`，建议不会擅自生效。失败重试按 revision 比较，过期任务不能覆盖新结果；流程接续失败复用整理结果并替换同类导入产物。
 
 资料落库后由服务端 WorkflowService 自动创建工作流。`REQUIREMENT_INTAKE` 保存不可变导入快照，grounding 后复用简报与原型页面，记录 BRAINSTORM 为跳过、DESIGN 为完成，再经现有状态机到 `SPEC_PLAN_PENDING`。查询导入返回 `workflowRunId`；浏览器轮询仅更新状态，成功自动跳转。回到需求详情后不再常驻导入模块，只保留重新分析与下载当前包；重新分析上传新 ZIP，并走需求变更的重新走流程。处理中或失败时仍可按需展开材料。接续失败变为 `FAILED`，保留材料；重启中断记录可重试。无需用户打开页面才能执行后台接续。后续技术方案、开发与验收保留现有流程。
 
@@ -165,7 +175,7 @@ Codex / Cursor 的 `analyzePrototype` 共用 `prototype-analysis.output.schema.j
 
 需求详情与工作流详情复用变更入口。变更以独立 `RequirementChange` 保存，需求修订递增，记录提交者、原文、来源流程和重启结果；原始需求描述及历史产物不被增量直接覆盖。提交请求使用 `requestId` 幂等，所有查询和写入遵循组织归属校验。
 
-`GET /requirements/:id/changes` 返回修订与正式变更记录，可带 `workflowRunId` 查询当前研发上下文读取修订及待同步状态；`POST /requirements/:id/changes` 接受一句话 `content`、`SUPPLEMENT | RESTART` 模式、`requestId` 和可选来源流程。`POST /requirements/:id/changes/:changeId/restart` 接续保存过的重启请求，重试不重复建立流程。
+`GET /work-items/:id/changes` 返回修订与正式变更记录，可带 `workflowRunId` 查询当前研发上下文读取修订及待同步状态；`POST /work-items/:id/changes` 接受一句话 `content`、`SUPPLEMENT | RESTART` 模式、`requestId` 和可选来源流程。`POST /work-items/:id/changes/:changeId/restart` 接续保存过的重启请求，重试不重复建立流程。
 
 统一上下文渲染将正式变更按修订顺序附在原始需求之后，供后续云端生成和本地领取使用；阶段输入记录读取修订，查询不把旧任务改写成已同步。变更不新增审批门禁，也不声称运行中的 IDE 已实时收到新要求。
 

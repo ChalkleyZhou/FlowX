@@ -12,7 +12,9 @@ import type { FlowXTaskItem } from './flowx-client';
 
 const task: FlowXTaskItem = {
   id: 'req-1',
-  type: 'requirement',
+  workItemId: 'work-1',
+  kind: 'REQUIREMENT',
+  workItemTitle: '导出 CSV',
   title: '导出 CSV',
   status: 'active',
   repository: { id: 'repo-1', name: 'flowx-web', url: 'git@x:flowx.git' },

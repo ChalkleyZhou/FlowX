@@ -45,7 +45,7 @@ describe('RequirementsService confirmBrainstorm session selection', () => {
     const prisma = {
       ideationArtifact: { create: vi.fn().mockResolvedValue({}) },
       ideationSession: { update: vi.fn().mockResolvedValue({}) },
-      requirement: { update: vi.fn().mockResolvedValue({}) },
+      workItem: { update: vi.fn().mockResolvedValue({}) },
     } as any;
     const service = new RequirementsService(prisma, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
 

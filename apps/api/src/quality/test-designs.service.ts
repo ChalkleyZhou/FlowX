@@ -24,7 +24,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { assignTestCaseNumbers } from './test-case-number';
 
 const designInclude = {
-  requirements: { include: { requirement: true } },
+  workItems: { include: { workItem: true } },
   workflowRuns: { include: { workflowRun: true } },
   candidates: {
     orderBy: { sortOrder: 'asc' as const },
@@ -37,7 +37,7 @@ const designInclude = {
 
 const designBrowseInclude = {
   testRequest: true, testPlan: true,
-  _count: { select: { candidates: true, smokeCases: true, requirements: true, workflowRuns: true } },
+  _count: { select: { candidates: true, smokeCases: true, workItems: true, workflowRuns: true } },
 } as const;
 
 const comparisonCaseSelect = {
@@ -68,10 +68,10 @@ export class TestDesignsService {
 
   async createDesign(dto: CreateTestDesignDto) {
     if (dto.caseSelection) await this.validateSelection(dto.workspaceId, dto.projectId, dto.caseSelection);
-    const requirementIds = unique(dto.requirementIds);
+    const workItemIds = unique(dto.workItemIds);
     const workflowRunIds = unique(dto.workflowRunIds);
-    if (!requirementIds.length || !workflowRunIds.length) {
-      throw new BadRequestException('At least one requirement and workflow run are required.');
+    if (!workItemIds.length || !workflowRunIds.length) {
+      throw new BadRequestException('At least one work item and workflow run are required.');
     }
     const project = await this.prisma.project.findFirst({
       where: { id: dto.projectId, workspaceId: dto.workspaceId, status: 'ACTIVE' },
@@ -82,19 +82,19 @@ export class TestDesignsService {
     });
     if (!projectVersion) throw new BadRequestException('Project version does not belong to the selected project.');
 
-    const requirements = await this.prisma.requirement.findMany({
-      where: { id: { in: requirementIds }, projectId: dto.projectId, versionId: dto.projectVersionId, status: 'ACTIVE' },
+    const workItems = await this.prisma.workItem.findMany({
+      where: { id: { in: workItemIds }, projectId: dto.projectId, versionId: dto.projectVersionId, status: 'ACTIVE' },
       select: { id: true, title: true, description: true, acceptanceCriteria: true },
     });
-    if (requirements.length !== requirementIds.length) {
-      throw new BadRequestException('Some requirements do not belong to the selected project version.');
+    if (workItems.length !== workItemIds.length) {
+      throw new BadRequestException('Some workItems do not belong to the selected project version.');
     }
     const workflows = await this.prisma.workflowRun.findMany({
-      where: { id: { in: workflowRunIds }, requirementId: { in: requirementIds } },
+      where: { id: { in: workflowRunIds }, workItemId: { in: workItemIds } },
       select: {
         id: true,
         status: true,
-        requirementId: true,
+        workItemId: true,
         codeExecution: { select: { patchSummary: true } },
         stageExecutions: {
           where: { stage: { in: ['BRAINSTORM', 'DESIGN', 'SPEC_PLAN'] }, status: 'COMPLETED' },
@@ -125,13 +125,13 @@ export class TestDesignsService {
       orderBy: { revision: 'desc' },
     });
     const existing = existingDesigns.find((item) => (
-      sameIds(item.requirements.map((link) => link.requirementId), requirementIds)
+      sameIds(item.workItems.map((link) => link.workItemId), workItemIds)
       && sameIds(item.workflowRuns.map((link) => link.workflowRunId), workflowRunIds)
       && stableStringify(item.caseSelection ?? null) === stableStringify(dto.caseSelection ?? null)
     ));
     if (existing) return existing;
 
-    const orderedRequirements = requirementIds.map((id) => requirements.find((item) => item.id === id)!);
+    const orderedWorkItems = workItemIds.map((id) => workItems.find((item) => item.id === id)!);
     const orderedWorkflows = workflowRunIds.map((id) => workflows.find((item) => item.id === id)!);
     const actualChangeSummary = orderedWorkflows
       .map((item) => item.codeExecution?.patchSummary)
@@ -139,14 +139,14 @@ export class TestDesignsService {
       .join('\n');
     const sourceSummary = {
       projectVersionId: dto.projectVersionId,
-      requirementIds,
+      workItemIds,
       workflowRunIds,
       changeSummary: actualChangeSummary || dto.changeSummary?.trim() || null,
       brainstorms: orderedWorkflows.map((item) => latestStageOutput(item.stageExecutions, 'BRAINSTORM')).filter(Boolean),
       designs: orderedWorkflows.map((item) => latestStageOutput(item.stageExecutions, 'DESIGN')).filter(Boolean),
       specPlans: orderedWorkflows.map((item) => latestStageOutput(item.stageExecutions, 'SPEC_PLAN')),
     };
-    const sourceFingerprint = fingerprint({ requirements: orderedRequirements, sourceSummary });
+    const sourceFingerprint = fingerprint({ workItems: orderedWorkItems, sourceSummary });
     const latest = await this.prisma.testDesign.findFirst({
       where: { projectId: dto.projectId, projectVersionId: dto.projectVersionId },
       orderBy: { revision: 'desc' },
@@ -161,7 +161,7 @@ export class TestDesignsService {
         sourceFingerprint,
         ...(dto.caseSelection ? { caseSelection: dto.caseSelection as unknown as Prisma.InputJsonValue } : {}),
         sourceSummary: sourceSummary as Prisma.InputJsonValue,
-        requirements: { create: requirementIds.map((requirementId) => ({ requirementId })) },
+        workItems: { create: workItemIds.map((workItemId) => ({ workItemId })) },
         workflowRuns: { create: workflowRunIds.map((workflowRunId) => ({ workflowRunId })) },
       },
       include: designInclude,
@@ -221,7 +221,7 @@ export class TestDesignsService {
       ...(modules.length ? { moduleId: { in: modules } } : {}),
       library: { workspaceId: design.workspaceId, OR: [{ projectId: design.projectId }, { projectId: null }] },
     } });
-    const eligible = selectQualityCases(definitions, { requirementIds: [], text: '', selection, limit: definitions.length });
+    const eligible = selectQualityCases(definitions, { workItemIds: [], text: '', selection, limit: definitions.length });
     if (!ids.length || definitions.length !== ids.length || eligible.cases.length !== ids.length) throw new BadRequestException('补选用例不属于当前选例范围。');
     await this.prisma.$transaction(async tx => {
       const changed = await tx.testDesign.updateMany({ where: { id, revision: dto.revision, status: { in: ['NOT_STARTED', 'WAITING_REVIEW'] }, testRequest: { is: null } }, data: { revision: { increment: 1 }, status: 'WAITING_REVIEW' } });
@@ -245,16 +245,16 @@ export class TestDesignsService {
     });
   }
 
-  async listDesigns(filters: PaginationQuery & { requirementId?: string; projectId?: string; projectVersionId?: string; status?: string; q?: string; availableForRequest?: string | boolean; workflowRunIds?: string | string[] }) {
+  async listDesigns(filters: PaginationQuery & { workItemId?: string; projectId?: string; projectVersionId?: string; status?: string; q?: string; availableForRequest?: string | boolean; workflowRunIds?: string | string[] }) {
     const paging = parsePagination(filters);
     const workflowRunIds = queryValues(filters.workflowRunIds);
     const scope: Prisma.TestDesignWhereInput = {
       ...(filters.availableForRequest === true || filters.availableForRequest === 'true' ? { testRequest: null } : {}),
       ...(workflowRunIds?.length ? { AND: workflowRunIds.map(workflowRunId => ({ workflowRuns: { some: { workflowRunId } } })) } : {}),
       projectId: filters.projectId, projectVersionId: filters.projectVersionId,
-      ...((filters.requirementId || filters.q?.trim()) ? { requirements: { some: {
-        ...(filters.requirementId ? { requirementId: filters.requirementId } : {}),
-        ...(filters.q?.trim() ? { requirement: { title: { contains: filters.q.trim() } } } : {}),
+      ...((filters.workItemId || filters.q?.trim()) ? { workItems: { some: {
+        ...(filters.workItemId ? { workItemId: filters.workItemId } : {}),
+        ...(filters.q?.trim() ? { workItem: { title: { contains: filters.q.trim() } } } : {}),
       } } } : {}),
     };
     const where = { ...scope, status: filters.status };
@@ -303,12 +303,12 @@ export class TestDesignsService {
     return pageResult(items, total, paging);
   }
 
-  async listLinks(id: string, kind: 'requirements' | 'workflows', query: PaginationQuery) {
+  async listLinks(id: string, kind: 'workItems' | 'workflows', query: PaginationQuery) {
     await this.getDesignBrowse(id);
     const paging = parsePagination(query);
     const where = { testDesignId: id };
-    if (kind === 'requirements') {
-      const [items, total] = await Promise.all([this.prisma.testDesignRequirement.findMany({ where, include: { requirement: true }, orderBy: [{ createdAt: 'asc' }, { requirementId: 'asc' }], skip: paging.skip, take: paging.take }), this.prisma.testDesignRequirement.count({ where })]);
+    if (kind === 'workItems') {
+      const [items, total] = await Promise.all([this.prisma.testDesignWorkItem.findMany({ where, include: { workItem: true }, orderBy: [{ createdAt: 'asc' }, { workItemId: 'asc' }], skip: paging.skip, take: paging.take }), this.prisma.testDesignWorkItem.count({ where })]);
       return pageResult(items, total, paging);
     }
     const [items, total] = await Promise.all([this.prisma.testDesignWorkflowRun.findMany({ where, include: { workflowRun: true }, orderBy: [{ createdAt: 'asc' }, { workflowRunId: 'asc' }], skip: paging.skip, take: paging.take }), this.prisma.testDesignWorkflowRun.count({ where })]);
@@ -338,12 +338,12 @@ export class TestDesignsService {
         message: 'Test design is already linked to a test request. Create a new revision instead.',
       });
     }
-    const requirements = design.requirements.map((item) => item.requirement);
-    const requirement = requirements[0];
+    const workItems = design.workItems.map((item) => item.workItem);
+    const workItem = workItems[0];
     const refreshed = await this.loadCurrentSource(design);
     const sourceSummary = refreshed.sourceSummary;
     const stageOutput = Array.isArray(sourceSummary.specPlans) ? sourceSummary.specPlans[0] : null;
-    if (!requirement || !stageOutput) throw new BadRequestException('Test design source is incomplete.');
+    if (!workItem || !stageOutput) throw new BadRequestException('Test design source is incomplete.');
     const selection = design.caseSelection as unknown as QualityCaseSelection | null;
     const selectedModules = selection ? await this.validateSelection(design.workspaceId, design.projectId, selection) : undefined;
     const selectionWhere = selection ? {
@@ -365,16 +365,16 @@ export class TestDesignsService {
       }),
     ]);
     const retrieved = selectQualityCases([...projectCases, ...workspaceCases], {
-      requirementIds: requirements.map(item => item.id),
-      text: requirements.map(item => `${item.title} ${item.acceptanceCriteria}`).join(' '), selection,
+      workItemIds: workItems.map(item => item.id),
+      text: workItems.map(item => `${item.title} ${item.acceptanceCriteria}`).join(' '), selection,
     });
     const existingCases = retrieved.cases;
     const input: GenerateTestDesignInput = {
-      requirement: {
-        id: requirements.map((item) => item.id).join(','),
-        title: requirements.map((item) => item.title).join(' / '),
-        description: requirements.map((item) => item.description).join('\n\n'),
-        acceptanceCriteria: requirements.map((item) => item.acceptanceCriteria).join('\n'),
+      workItem: {
+        id: workItems.map((item) => item.id).join(','),
+        title: workItems.map((item) => item.title).join(' / '),
+        description: workItems.map((item) => item.description).join('\n\n'),
+        acceptanceCriteria: workItems.map((item) => item.acceptanceCriteria).join('\n'),
       },
       brainstormContext: sourceSummary.brainstorms ?? null,
       designContext: sourceSummary.designs ?? null,
@@ -630,10 +630,10 @@ export class TestDesignsService {
 
   private async loadCurrentSource(design: Awaited<ReturnType<TestDesignsService['getDesign']>>) {
     const source = asRecord(design.sourceSummary);
-    const requirementIds = readStringArray(source.requirementIds);
+    const workItemIds = readStringArray(source.workItemIds);
     const workflowRunIds = readStringArray(source.workflowRunIds);
-    const requirements = await this.prisma.requirement.findMany({
-      where: { id: { in: requirementIds } },
+    const workItems = await this.prisma.workItem.findMany({
+      where: { id: { in: workItemIds } },
       select: { id: true, title: true, description: true, acceptanceCriteria: true },
     });
     const workflows = await this.prisma.workflowRun.findMany({
@@ -651,17 +651,17 @@ export class TestDesignsService {
     const orderedWorkflows = workflowRunIds.map((id) => workflows.find((item) => item.id === id)).filter(Boolean);
     const currentSummary = {
       projectVersionId: design.projectVersionId,
-      requirementIds,
+      workItemIds,
       workflowRunIds,
       changeSummary: orderedWorkflows.map((item) => item!.codeExecution?.patchSummary).filter(Boolean).join('\n') || source.changeSummary || null,
       brainstorms: orderedWorkflows.map((item) => latestStageOutput(item!.stageExecutions, 'BRAINSTORM')).filter(Boolean),
       designs: orderedWorkflows.map((item) => latestStageOutput(item!.stageExecutions, 'DESIGN')).filter(Boolean),
       specPlans: orderedWorkflows.map((item) => latestStageOutput(item!.stageExecutions, 'SPEC_PLAN')),
     };
-    const orderedRequirements = requirementIds.map((id) => requirements.find((item) => item.id === id)).filter(Boolean);
+    const orderedWorkItems = workItemIds.map((id) => workItems.find((item) => item.id === id)).filter(Boolean);
     return {
       sourceSummary: currentSummary,
-      sourceFingerprint: fingerprint({ requirements: orderedRequirements, sourceSummary: currentSummary }),
+      sourceFingerprint: fingerprint({ workItems: orderedWorkItems, sourceSummary: currentSummary }),
     };
   }
 }

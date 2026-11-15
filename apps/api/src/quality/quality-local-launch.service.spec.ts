@@ -49,7 +49,7 @@ describe('质量测试本地启动', () => {
 });
 it('回归允许当前项目已完成修复的代码基线，不把修复仓库误判为原提测之外', async () => {
   const f = fixture();
-  Object.assign(f.run, { runType: 'REGRESSION', sourceBug: { projectId: 'project-1', fixWorkflowRunId: 'fix-workflow', fixWorkflowRun: { id: 'fix-workflow', status: 'DONE', requirement: { projectId: 'project-1' } } } });
+  Object.assign(f.run, { runType: 'REGRESSION', sourceBug: { projectId: 'project-1', fixWorkflowRunId: 'fix-workflow', fixWorkflowRun: { id: 'fix-workflow', status: 'DONE', workItem: { projectId: 'project-1' } } } });
   f.prisma.workflowRepository.findMany.mockResolvedValue([{ id: 'wr-1', url: 'https://github.com/org/repo.git', name: 'repo', workflowRunId: 'fix-workflow' }]);
   const ticket = await f.service.issueTicket('run-1', { targetId: 'target-1' }, session);
   await f.service.redeemTicket(ticket.ticket, 'device-1');
@@ -57,7 +57,7 @@ it('回归允许当前项目已完成修复的代码基线，不把修复仓库�
 });
 it('回归不能从其他项目的修复工作流启动', async () => {
   const f = fixture();
-  Object.assign(f.run, { runType: 'REGRESSION', sourceBug: { projectId: 'other', fixWorkflowRunId: 'fix-workflow', fixWorkflowRun: { id: 'fix-workflow', status: 'DONE', requirement: { projectId: 'other' } } } });
+  Object.assign(f.run, { runType: 'REGRESSION', sourceBug: { projectId: 'other', fixWorkflowRunId: 'fix-workflow', fixWorkflowRun: { id: 'fix-workflow', status: 'DONE', workItem: { projectId: 'other' } } } });
   const ticket = await f.service.issueTicket('run-1', { targetId: 'target-1' }, session);
   await expect(f.service.redeemTicket(ticket.ticket, 'device-1')).rejects.toThrow();
   expect(f.runs.claim).not.toHaveBeenCalled();

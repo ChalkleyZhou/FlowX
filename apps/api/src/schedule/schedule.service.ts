@@ -24,14 +24,14 @@ const ROLE_COLORS: Record<string, string> = {
 
 type AssignmentRow = {
   id: string;
-  requirementId: string;
+  workItemId: string;
   userId: string;
   role: string;
   plannedStartDate: Date;
   plannedEndDate: Date;
   colorToken: string | null;
   user: { displayName: string };
-  requirement: { title: string; projectId: string; project: { id: string; name: string } };
+  workItem: { title: string; projectId: string; project: { id: string; name: string } };
 };
 
 @Injectable()
@@ -69,19 +69,19 @@ export class ScheduleService {
         { title: string; projectName: string; projectId: string; assignments: AssignmentRow[] }
       >();
       for (const assignment of assignments) {
-        const bucket = requirementMap.get(assignment.requirementId) ?? {
-          title: assignment.requirement.title,
-          projectName: assignment.requirement.project.name,
-          projectId: assignment.requirement.projectId,
+        const bucket = requirementMap.get(assignment.workItemId) ?? {
+          title: assignment.workItem.title,
+          projectName: assignment.workItem.project.name,
+          projectId: assignment.workItem.projectId,
           assignments: [],
         };
         bucket.assignments.push(assignment);
-        requirementMap.set(assignment.requirementId, bucket);
+        requirementMap.set(assignment.workItemId, bucket);
       }
 
-      for (const [requirementId, bucket] of requirementMap) {
+      for (const [workItemId, bucket] of requirementMap) {
         const projectId = bucket.projectId;
-        const laneId = `req:${requirementId}`;
+        const laneId = `req:${workItemId}`;
         const laneLabel =
           scope === 'organization' && !query.projectId
             ? `${bucket.projectName} · ${bucket.title}`
@@ -90,7 +90,7 @@ export class ScheduleService {
           id: laneId,
           kind: 'requirement',
           label: laneLabel,
-          meta: { projectId, requirementId },
+          meta: { projectId, workItemId },
         });
 
         const starts = bucket.assignments.map((a) => this.formatGanttDate(a.plannedStartDate));
@@ -113,7 +113,7 @@ export class ScheduleService {
             color: 'aggregate',
             meta: {
               projectId,
-              requirementId,
+              workItemId,
               userId: '',
               role: 'AGGREGATE',
             },
@@ -153,8 +153,8 @@ export class ScheduleService {
         for (const assignment of bucket.assignments) {
           const barLabel =
             scope === 'organization'
-              ? `${assignment.requirement.project.name} · ${assignment.requirement.title} · ${assignment.role}`
-              : `${assignment.requirement.title} · ${assignment.role}`;
+              ? `${assignment.workItem.project.name} · ${assignment.workItem.title} · ${assignment.role}`
+              : `${assignment.workItem.title} · ${assignment.role}`;
           const bar = this.toBar(assignment, laneId, barLabel);
           if (this.intersectsRange(bar.start, bar.end, range.from, range.to)) {
             bars.push(bar);
@@ -178,25 +178,25 @@ export class ScheduleService {
       ...(query.userId ? { userId: query.userId } : {}),
       ...(query.role ? { role: query.role } : {}),
     };
-    const requirementScope: Prisma.RequirementWhereInput = {
+    const requirementScope: Prisma.WorkItemWhereInput = {
       ...(query.projectId ? { projectId: query.projectId } : {}),
-      ...(query.requirementId ? { id: query.requirementId } : {}),
+      ...(query.workItemId ? { id: query.workItemId } : {}),
       ...(query.q?.trim() ? { title: { contains: query.q.trim() } } : {}),
     };
-    const where: Prisma.RequirementWhereInput = { ...requirementScope, assignments: { some: {
+    const where: Prisma.WorkItemWhereInput = { ...requirementScope, assignments: { some: {
       ...assignmentScope,
       plannedStartDate: { lte: new Date(`${query.to}T00:00:00.000Z`) },
       plannedEndDate: { gte: new Date(`${query.from}T00:00:00.000Z`) },
     } } };
     const [requirements, total] = await Promise.all([
-      this.prisma.requirement.findMany({ where, select: { id: true }, orderBy: [{ project: { name: 'asc' } }, { createdAt: 'desc' }, { id: 'desc' }], skip: paging.skip, take: paging.take }),
-      this.prisma.requirement.count({ where }),
+      this.prisma.workItem.findMany({ where, select: { id: true }, orderBy: [{ project: { name: 'asc' } }, { createdAt: 'desc' }, { id: 'desc' }], skip: paging.skip, take: paging.take }),
+      this.prisma.workItem.count({ where }),
     ]);
     // 页边界落在需求上；本页需求的分配完整加载，整体周期不会被assignment分页截断。
     const assignments = await this.prisma.requirementAssignment.findMany({
-      where: { ...assignmentScope, requirement: requirementScope, requirementId: { in: requirements.map(item => item.id) } },
-      include: { requirement: { include: { project: true } }, user: true },
-      orderBy: scope === 'organization' ? [{ requirement: { project: { name: 'asc' } } }, { sortOrder: 'asc' }, { id: 'asc' }] : [{ requirement: { createdAt: 'desc' } }, { sortOrder: 'asc' }, { id: 'asc' }],
+      where: { ...assignmentScope, workItem: requirementScope, workItemId: { in: requirements.map(item => item.id) } },
+      include: { workItem: { include: { project: true } }, user: true },
+      orderBy: scope === 'organization' ? [{ workItem: { project: { name: 'asc' } } }, { sortOrder: 'asc' }, { id: 'asc' }] : [{ workItem: { createdAt: 'desc' } }, { sortOrder: 'asc' }, { id: 'asc' }],
     });
     const { items: _, ...pagination } = pageResult([], total, paging);
     return { assignments, pagination };
@@ -210,7 +210,7 @@ export class ScheduleService {
   private toBar(assignment: AssignmentRow, laneId: string, label?: string): GanttBar {
     const start = this.formatGanttDate(assignment.plannedStartDate);
     const end = this.formatGanttDate(assignment.plannedEndDate);
-    const projectId = assignment.requirement.projectId;
+    const projectId = assignment.workItem.projectId;
     return {
       id: assignment.id,
       laneId,
@@ -222,7 +222,7 @@ export class ScheduleService {
       color: assignment.colorToken ?? ROLE_COLORS[assignment.role] ?? 'role-other',
       meta: {
         projectId,
-        requirementId: assignment.requirementId,
+        workItemId: assignment.workItemId,
         userId: assignment.userId,
         role: assignment.role,
       },

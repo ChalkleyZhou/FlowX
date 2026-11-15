@@ -8,6 +8,9 @@ import type { FlowXTaskItem } from './flowx-client';
 const task: FlowXTaskItem = {
   eligible: true,
   id: 'req-1',
+  workItemId: 'work-1',
+  kind: 'REQUIREMENT',
+  workItemTitle: 'Add local handoff',
   repository: {
     id: 'repo-1',
     name: 'FlowX',
@@ -15,7 +18,6 @@ const task: FlowXTaskItem = {
   },
   status: 'ACTIVE',
   title: 'Add local handoff',
-  type: 'requirement',
   workflowRunId: null,
 };
 
@@ -34,8 +36,8 @@ function createDeps(overrides: Partial<Parameters<typeof startInChat>[0]> = {}) 
     startHandoff: vi.fn().mockResolvedValue({
       chatPrompt: '# FlowX handoff',
       handoff: { workflowRunId: 'workflow-1' },
-      taskId: 'req-1',
-      taskType: 'requirement',
+      executionItemId: 'req-1',
+      workItemId: 'work-1',
       workflow: { id: 'workflow-1' },
     }),
     writeTaskFile: vi.fn().mockResolvedValue('/repo/flowx/.flowx/tasks/req-1.md'),
@@ -50,9 +52,8 @@ describe('startInChat', () => {
     await startInChat(deps, task);
 
     expect(deps.startHandoff).toHaveBeenCalledWith({
-      repositoryIds: ['repo-1'],
-      taskId: 'req-1',
-      taskType: 'requirement',
+      executionItemId: 'req-1',
+      claimKey: expect.any(String),
     });
     expect(deps.writeTaskFile).toHaveBeenCalledWith('/repo/flowx', 'req-1', '# FlowX handoff');
     expect(deps.copyToClipboard).toHaveBeenCalledWith('# FlowX handoff');
@@ -97,9 +98,8 @@ describe('startInChat', () => {
 
     expect(deps.showError).not.toHaveBeenCalled();
     expect(deps.startHandoff).toHaveBeenCalledWith({
-      repositoryIds: ['repo-1'],
-      taskId: 'req-1',
-      taskType: 'requirement',
+      executionItemId: 'req-1',
+      claimKey: expect.any(String),
     });
   });
 
@@ -135,12 +135,14 @@ describe('task prompt files', () => {
   it('rebuilds a FlowX prompt from active local handoff metadata', () => {
     const prompt = buildPromptFromLocalHandoff(task, {
       workflowRunId: 'workflow-1',
-      requirement: {
-        id: 'req-1',
+      workItem: {
+        id: 'work-1',
+        kind: 'REQUIREMENT',
         title: 'Add local handoff',
         description: 'Implement local chat handoff',
         acceptanceCriteria: 'Prompt can be copied again',
       },
+      executionItem: { id: 'req-1', title: 'Add local handoff', description: 'Implement local chat handoff' },
       specPlan: {
         spec: {
           goal: 'Goal',

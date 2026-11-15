@@ -37,16 +37,6 @@ describe('FlowXClient', () => {
     return new FlowXClient({ apiBaseUrl: 'http://127.0.0.1:3000', apiToken: 'token-1' });
   }
 
-  it('posts completion to the /execution/complete-local route (regression)', async () => {
-    const fetchMock = stubOkFetch();
-    await makeClient().completeLocal('run-1', { pushed: true, repositories: [] });
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      'http://127.0.0.1:3000/workflow-runs/run-1/execution/complete-local',
-      expect.objectContaining({ method: 'POST' }),
-    );
-  });
-
   it('posts session completion to the ExecutionSession API', async () => {
     const fetchMock = stubOkFetch();
     const client = makeClient() as FlowXClient & {

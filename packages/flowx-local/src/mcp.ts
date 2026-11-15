@@ -209,6 +209,15 @@ function textResult(value: unknown, isError = false): ToolResult {
   };
 }
 
+function queryString(params: Record<string, unknown>) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
+  }
+  const encoded = search.toString();
+  return encoded ? `?${encoded}` : '';
+}
+
 export type LocalMcpOptions = {
   homeDir?: string;
 };
@@ -278,7 +287,7 @@ function isPaginatedListPath(path: string) {
     /^\/workspaces\/[^/]+\/repositories$/.test(pathname) ||
     /^\/cursor-local\/(tasks|opendesign-tasks|workflow-position)$/.test(pathname) ||
     /^\/quality\/(case-libraries|test-cases|local-test-tasks|test-requests|test-designs|test-runs)$/.test(pathname) ||
-    /^\/quality\/(case-libraries\/[^/]+\/modules|(?:test-requests|test-designs|test-runs|local-smoke-runs)\/[^/]+\/(?:tasks|cases|targets|executions|runs|reports|snapshots|candidates|smoke-cases|requirements|workflows|artifacts|report-baselines|report-supersessions))$/.test(pathname);
+    /^\/quality\/(case-libraries\/[^/]+\/modules|(?:test-requests|test-designs|test-runs|local-smoke-runs)\/[^/]+\/(?:tasks|cases|targets|executions|runs|reports|snapshots|candidates|smoke-cases|work-items|workflows|artifacts|report-baselines|report-supersessions))$/.test(pathname);
 }
 
 function requirePage(value: unknown) {
@@ -403,6 +412,65 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
   const server = new McpServer({ name: 'flowx-local', version: PACKAGE_VERSION });
 
   server.registerTool(
+    'flowx_list_version_work_items',
+    {
+      title: 'List Version Work Items',
+      description: '查询版本下统一的需求和 Issue 工作项，服务端负责筛选和游标分页。',
+      inputSchema: z.object({
+        projectId: z.string().min(1),
+        versionId: z.string().min(1),
+        cursor: z.string().optional(),
+        pageSize: z.number().int().min(1).max(100).optional(),
+        kind: z.enum(['REQUIREMENT', 'ISSUE']).optional(),
+        status: z.string().optional(),
+        ownerId: z.string().optional(),
+        q: z.string().optional(),
+      }),
+    },
+    async (input) => runRequest(async () => { const { client } = await resolveSession(options.homeDir); return client.request(`/projects/${encodeURIComponent(input.projectId)}/versions/${encodeURIComponent(input.versionId)}/work-items${queryString({ cursor: input.cursor, pageSize: input.pageSize, kind: input.kind, status: input.status, ownerId: input.ownerId, q: input.q })}`); }),
+  );
+
+  server.registerTool(
+    'flowx_claim_execution_item',
+    {
+      title: 'Claim Execution Item',
+      description: '领取一个执行项；服务端保证并发下只有一个领取者。',
+      inputSchema: z.object({ executionItemId: z.string().min(1), claimKey: z.string().min(1) }),
+    },
+    async (input) => runRequest(async () => { const { client } = await resolveSession(options.homeDir); return client.request(`/execution-items/${encodeURIComponent(input.executionItemId)}/claim`, { method: 'POST', body: JSON.stringify({ claimKey: input.claimKey }) }); }),
+  );
+
+  server.registerTool(
+    'flowx_complete_execution_item',
+    {
+      title: 'Complete Execution Item',
+      description: '回传执行项完成结果；使用相同 claimKey 重试时返回同一完成结果。',
+      inputSchema: z.object({ executionItemId: z.string().min(1), claimKey: z.string().min(1), summary: z.string().optional(), evidence: z.record(z.string(), z.unknown()).optional() }),
+    },
+    async (input) => runRequest(async () => { const { client } = await resolveSession(options.homeDir); return client.request(`/execution-items/${encodeURIComponent(input.executionItemId)}/complete`, { method: 'POST', body: JSON.stringify({ claimKey: input.claimKey, summary: input.summary, evidence: input.evidence }) }); }),
+  );
+
+  server.registerTool(
+    'flowx_block_execution_item',
+    {
+      title: '报告执行项阻塞',
+      description: '回传执行项阻塞原因，只有当前领取者可以操作。',
+      inputSchema: z.object({ executionItemId: z.string().min(1), claimKey: z.string().min(1), reason: z.string().min(1) }),
+    },
+    async (input) => runRequest(async () => { const { client } = await resolveSession(options.homeDir); return client.request(`/execution-items/${encodeURIComponent(input.executionItemId)}/block`, { method: 'POST', body: JSON.stringify(input) }); }),
+  );
+
+  server.registerTool(
+    'flowx_cancel_execution_item',
+    {
+      title: '取消执行项',
+      description: '取消尚未完成的执行项并回传原因。',
+      inputSchema: z.object({ executionItemId: z.string().min(1), claimKey: z.string().optional(), reason: z.string().min(1) }),
+    },
+    async (input) => runRequest(async () => { const { client } = await resolveSession(options.homeDir); return client.request(`/execution-items/${encodeURIComponent(input.executionItemId)}/cancel`, { method: 'POST', body: JSON.stringify(input) }); }),
+  );
+
+  server.registerTool(
     'flowx_get_active_design_session',
     {
       title: 'Get Active OpenDesign Session',
@@ -520,7 +588,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     {
       title: 'Get OpenDesign Brainstorm Handoff',
       description:
-        'Fetch brainstorm context for the active FlowX session. Brainstorm first with the user to clarify product requirements, write a confirmed prd.md for PM/designer review, then submit.',
+        'Fetch brainstorm context for the active FlowX session. Brainstorm first with the user to clarify product workItems, write a confirmed prd.md for PM/designer review, then submit.',
       inputSchema: z.object({ workflowRunId: z.string().optional() }),
     },
     async ({ workflowRunId }) => {
@@ -788,7 +856,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     inputSchema: { workspaceId: z.string().min(1), projectId: z.string().min(1).optional(), libraryId: z.string().min(1).optional(), libraryIds: z.array(z.string().min(1)).optional(), moduleId: z.string().min(1).optional(), moduleIds: z.array(z.string().min(1)).optional(), priority: z.enum(['P0', 'P1', 'P2', 'P3']).optional(), priorities: z.array(z.enum(['P0', 'P1', 'P2', 'P3'])).optional(), q: z.string().optional(), page: z.number().int().min(1).optional(), pageSize: z.number().int().min(1).max(100).optional() },
   }, async input => runRequest(() => qualityRequest(`/quality/test-cases?${qualityQuery(input)}`)));
   server.registerTool('flowx_generate_test_design', {
-    title: '生成需求测试设计', description: '在已明确用例库与范围后请求服务端生成候选设计。异步生成后读取最新设计；不会自动确认或开始测试。',
+    title: '生成工作项测试设计', description: '在已明确用例库与范围后请求服务端生成候选设计。异步生成后读取最新设计；不会自动确认或开始测试。',
     inputSchema: { testDesignId: z.string().min(1) },
   }, async ({ testDesignId }) => runRequest(() => qualityRequest(`/quality/test-designs/${encodeURIComponent(testDesignId)}/generate`, { method: 'POST', body: '{}' })));
   server.registerTool('flowx_update_test_candidate', {
@@ -810,7 +878,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     },
   }, async ({ testDesignId, ...body }) => runRequest(() => qualityRequest(`/quality/test-designs/${encodeURIComponent(testDesignId)}/smoke`, { method: 'PATCH', body: JSON.stringify(body) })));
   server.registerTool('flowx_confirm_test_design', {
-    title: '确认需求测试设计', description: '仅在用户明确确认最终设计后调用。提交最新 revision、逐项覆盖检查及未覆盖项，冻结设计并复用服务端人工确认门禁；不会执行测试。',
+    title: '确认工作项测试设计', description: '仅在用户明确确认最终设计后调用。提交最新 revision、逐项覆盖检查及未覆盖项，冻结设计并复用服务端人工确认门禁；不会执行测试。',
     inputSchema: { testDesignId: z.string().min(1), revision: z.number().int().min(1), coverageChecks: z.array(z.object({ key: z.string().min(1), passed: z.boolean(), detail: z.string().optional() }).strict()), uncoveredItems: z.array(z.string()), noCaseReason: z.string().optional(), noSmokeReason: z.string().optional() },
   }, async ({ testDesignId, ...body }) => runRequest(() => qualityRequest(`/quality/test-designs/${encodeURIComponent(testDesignId)}/confirm`, { method: 'POST', body: JSON.stringify(body) })));
   server.registerTool('flowx_finish_test_run', {
@@ -823,18 +891,18 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
   }, async ({ testRunId, testRunCaseId, bugId }) => runRequest(() => qualityRequest(`/quality/test-runs/${encodeURIComponent(testRunId)}/cases/${encodeURIComponent(testRunCaseId)}/bug`, { method: 'POST', body: JSON.stringify({ bugId }) })));
   const createTestRequestSchema = z.object({
     workspaceId: z.string().min(1), projectId: z.string().min(1), projectVersionId: z.string().min(1), title: z.string().min(1), description: z.string().optional(),
-    requirementIds: z.array(z.string()).min(1), workflowRunIds: z.array(z.string()).min(1), artifactIds: z.array(z.string()).optional(), testDesignId: z.string().optional(),
+    workItemIds: z.array(z.string()).min(1), workflowRunIds: z.array(z.string()).min(1), artifactIds: z.array(z.string()).optional(), testDesignId: z.string().optional(),
   }).strict();
   const testRequestActionSchema = z.discriminatedUnion('action', [
     z.object({ action: z.literal('list'), ...paginationFields, projectId: z.string().min(1).optional(), projectVersionId: z.string().min(1).optional(), status: z.string().optional() }).strict(),
-    z.object({ action: z.literal('get'), testRequestId: z.string().min(1), collection: z.enum(['overview', 'snapshots', 'requirements', 'workflows', 'artifacts']).optional(), ...paginationFields }).strict(),
+    z.object({ action: z.literal('get'), testRequestId: z.string().min(1), collection: z.enum(['overview', 'snapshots', 'work-items', 'workflows', 'artifacts']).optional(), ...paginationFields }).strict(),
     z.object({ action: z.literal('create'), request: createTestRequestSchema }).strict(),
     z.object({ action: z.literal('prepare'), testRequestId: z.string().min(1), scopeRevision: z.number().int().min(0) }).strict(),
   ]);
   server.registerTool('flowx_test_requests', {
     title: '查询、创建或准备提测单', description: 'list 按项目、版本和状态发现提测单；get 读取计划、快照和 scopeRevision；create 只按 request 创建，不自动准备；prepare 必须用户明确要求且传入最新 scopeRevision，由服务端检查设计、工作流和范围门禁。创建或准备不代表执行测试或测试通过。每个 action 只接受对应字段。',
     inputSchema: z.object({
-      ...paginationFields, collection: z.enum(['overview', 'snapshots', 'requirements', 'workflows', 'artifacts']).optional(), action: z.enum(['list', 'get', 'create', 'prepare']), testRequestId: z.string().min(1).optional(),
+      ...paginationFields, collection: z.enum(['overview', 'snapshots', 'work-items', 'workflows', 'artifacts']).optional(), action: z.enum(['list', 'get', 'create', 'prepare']), testRequestId: z.string().min(1).optional(),
       projectId: z.string().min(1).optional(), projectVersionId: z.string().min(1).optional(), status: z.string().optional(),
       request: createTestRequestSchema.optional(), scopeRevision: z.number().int().min(0).optional(),
     }).strict(),
@@ -875,11 +943,11 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     inputSchema: { executionSessionId: z.string().min(1), action: z.enum(['heartbeat', 'release', 'cancel']), leaseSeconds: z.number().int().min(60).max(86400).optional(), reason: z.string().optional() },
   }, async ({ executionSessionId, action, ...body }) => runRequest(() => qualityRequest(`/execution-sessions/${encodeURIComponent(executionSessionId)}/quality/${action}`, { method: 'POST', body: JSON.stringify(body) })));
   server.registerTool('flowx_create_test_design', {
-    title: '准备需求测试设计', description: '从已确认 Spec & Plan 的需求准备测试设计，明确指定用例库；不会自动确认设计或开始测试。',
-    inputSchema: { workspaceId: z.string().min(1), projectId: z.string().min(1), projectVersionId: z.string().min(1), requirementIds: z.array(z.string()).min(1), workflowRunIds: z.array(z.string()).min(1), caseSelection: qualitySelectionSchema.optional(), changeSummary: z.string().optional() },
+    title: '准备工作项测试设计', description: '从已确认 Spec & Plan 的需求准备测试设计，明确指定用例库；不会自动确认设计或开始测试。',
+    inputSchema: { workspaceId: z.string().min(1), projectId: z.string().min(1), projectVersionId: z.string().min(1), workItemIds: z.array(z.string()).min(1), workflowRunIds: z.array(z.string()).min(1), caseSelection: qualitySelectionSchema.optional(), changeSummary: z.string().optional() },
   }, async body => runRequest(() => qualityRequest('/quality/test-designs', { method: 'POST', body: JSON.stringify(body) })));
   server.registerTool('flowx_get_test_design', {
-    title: '读取测试设计与范围', description: '查询用例候选、选例范围、未覆盖项和最新 revision，不自动生成或确认。', inputSchema: { testDesignId: z.string().min(1), collection: z.enum(['overview', 'candidates', 'smoke-cases', 'requirements', 'workflows']).optional(), resolution: z.string().optional(), ...paginationFields },
+    title: '读取测试设计与范围', description: '查询用例候选、选例范围、未覆盖项和最新 revision，不自动生成或确认。', inputSchema: { testDesignId: z.string().min(1), collection: z.enum(['overview', 'candidates', 'smoke-cases', 'work-items', 'workflows']).optional(), resolution: z.string().optional(), ...paginationFields },
   }, async ({ testDesignId, collection, ...query }) => runRequest(() => qualityRequest(`/quality/test-designs/${encodeURIComponent(testDesignId)}${collection && collection !== 'overview' ? `/${collection}?${qualityQuery(query)}` : ''}`)));
   server.registerTool('flowx_update_test_selection', {
     title: '选择需求用例库与模块', description: '修改未冻结设计的选例范围，清除旧候选并等待重新生成。使用当前 revision。', inputSchema: { testDesignId: z.string().min(1), revision: z.number().int().min(1), caseSelection: qualitySelectionSchema },
@@ -1010,13 +1078,14 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
   );
 
   server.registerTool(
-    'flowx_create_requirement',
+    'flowx_create_work_item',
     {
-      title: 'Create FlowX Requirement',
+      title: 'Create FlowX Work Item',
       description:
-        'Create a requirement on FlowX only after the user explicitly asked to create/register the item in FlowX or confirmed that choice. Never interpret ordinary code changes, current-project feature work, or requirement discussion as authorization to create FlowX data. Requires projectId and title; description, acceptanceCriteria, priority, functionalModule, riskImpact, productRequirementDocument and remark are optional. Omit priority to keep the server default MEDIUM. Confirm the release version with the user first and pass a valid versionId; if omitted the server uses the project current version. A version is required and null is rejected.',
+        'Create a FlowX WorkItem only after the user explicitly asked to register it or confirmed that choice. The kind selects REQUIREMENT or ISSUE; both use the same WorkItem root and execution plan. Never interpret ordinary code changes, current-project feature work, or requirement discussion as authorization to create FlowX data. Requires projectId, versionId, kind and title. Description, acceptance criteria, type-specific fields and repository scope are optional.',
       inputSchema: z.object({
         projectId: z.string().min(1),
+        kind: z.enum(['REQUIREMENT', 'ISSUE']),
         title: z.string().trim().min(1),
         description: z.string().optional(),
         acceptanceCriteria: z.string().optional(),
@@ -1026,22 +1095,21 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
         productRequirementDocument: z.string().optional(),
         remark: z.string().optional(),
         repositoryIds: z.array(z.string()).optional(),
-        versionId: z.string().min(1).optional(),
+        versionId: z.string().trim().min(1),
       }),
     },
     async (input) => {
       const { client } = await resolveSession(options.homeDir);
       return runRequest(() =>
-        client.request('/requirements', {
+        client.request(`/projects/${encodeURIComponent(input.projectId)}/versions/${encodeURIComponent(input.versionId)}/work-items`, {
           method: 'POST',
           body: JSON.stringify({
-            projectId: input.projectId,
+            kind: input.kind,
             title: input.title,
             description: input.description,
             acceptanceCriteria: input.acceptanceCriteria,
             ...requirementProfileBody(input),
             ...(input.repositoryIds?.length ? { repositoryIds: input.repositoryIds } : {}),
-            ...(input.versionId !== undefined ? { versionId: input.versionId } : {}),
           }),
         }),
       );
@@ -1049,13 +1117,13 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
   );
 
   server.registerTool(
-    'flowx_update_requirement',
+    'flowx_update_work_item',
     {
-      title: 'Update FlowX Requirement',
+      title: 'Update FlowX Work Item',
       description:
-        'Update an existing FlowX requirement only after the user explicitly asked to edit it. Send only the fields the user wants to change. Creator and created time stay unchanged. Does not start or restart a workflow.',
+        'Update an existing FlowX WorkItem only after the user explicitly asked to edit it. Send only the fields the user wants to change. Creator and created time stay unchanged. Does not start or restart a workflow.',
       inputSchema: z.object({
-        requirementId: z.string().min(1),
+        workItemId: z.string().min(1),
         title: z.string().trim().min(1).optional(),
         description: z.string().optional(),
         acceptanceCriteria: z.string().optional(),
@@ -1068,10 +1136,10 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       }),
     },
     async (input) => {
-      const { requirementId, versionId, ...profile } = input;
+      const { workItemId, versionId, ...profile } = input;
       const { client } = await resolveSession(options.homeDir);
       return runRequest(() =>
-        client.request(`/requirements/${encodeURIComponent(requirementId)}`, {
+        client.request(`/work-items/${encodeURIComponent(workItemId)}`, {
           method: 'PATCH',
           body: JSON.stringify({
             ...(profile.title !== undefined ? { title: profile.title } : {}),
@@ -1086,38 +1154,38 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
   );
 
   server.registerTool(
-    'flowx_delete_requirement',
+    'flowx_delete_work_item',
     {
-      title: 'Delete FlowX Requirement',
+      title: 'Delete FlowX Work Item',
       description:
-        'Delete a FlowX requirement only after showing the user that workflows, ideation, schedule and prototype materials will be removed, while linked bugs and issues stay unlinked. Pass userConfirmedDelete=true only after explicit confirmation. The server rejects deletion while a stage is still running or the requirement is already in test design or a test request.',
+        'Delete a FlowX WorkItem only after showing the user that its workflows, ideation, schedule and prototype materials will be removed. Pass userConfirmedDelete=true only after explicit confirmation. The server rejects deletion while a stage is still running or the item is already in test design or a test request.',
       inputSchema: z.object({
-        requirementId: z.string().min(1),
+        workItemId: z.string().min(1),
         userConfirmedDelete: z.boolean(),
       }),
     },
     async (input) => {
       if (input.userConfirmedDelete !== true) {
         return textResult(
-          'Refusing to delete requirement: userConfirmedDelete must be true after the user explicitly confirmed deletion.',
+          'Refusing to delete workItem: userConfirmedDelete must be true after the user explicitly confirmed deletion.',
           true,
         );
       }
       const { client } = await resolveSession(options.homeDir);
       return runRequest(() =>
-        client.request(`/requirements/${encodeURIComponent(input.requirementId)}`, { method: 'DELETE' }),
+        client.request(`/work-items/${encodeURIComponent(input.workItemId)}`, { method: 'DELETE' }),
       );
     },
   );
 
   server.registerTool(
-    'flowx_submit_requirement_change',
+    'flowx_submit_work_item_change',
     {
       title: 'Submit FlowX Requirement Change',
       description:
         'Record a formal requirement change only after the user confirmed the exact text and mode. SUPPLEMENT keeps the current workflow and is included in later handoffs. RESTART starts a new round and keeps old outputs. Pass userConfirmedChange=true only after that confirmation. Reuse the same requestId when retrying the identical submission.',
       inputSchema: z.object({
-        requirementId: z.string().min(1),
+        workItemId: z.string().min(1),
         content: z.string().trim().min(1).max(20000),
         mode: z.enum(['SUPPLEMENT', 'RESTART']),
         requestId: z.string().trim().min(1).max(128),
@@ -1134,7 +1202,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       }
       const { client } = await resolveSession(options.homeDir);
       return runRequest(() =>
-        client.request(`/requirements/${encodeURIComponent(input.requirementId)}/changes`, {
+        client.request(`/work-items/${encodeURIComponent(input.workItemId)}/changes`, {
           method: 'POST',
           body: JSON.stringify({
             content: input.content,
@@ -1148,13 +1216,13 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
   );
 
   server.registerTool(
-    'flowx_retry_requirement_change',
+    'flowx_retry_work_item_change',
     {
       title: 'Retry FlowX Requirement Change',
       description:
         'Continue a requirement change whose new workflow is still pending or failed. Use this after the user ended the blocking task or asked to retry. Pass userConfirmedRetry=true only after explicit confirmation. Does not create another change.',
       inputSchema: z.object({
-        requirementId: z.string().min(1),
+        workItemId: z.string().min(1),
         changeId: z.string().min(1),
         userConfirmedRetry: z.boolean(),
       }),
@@ -1169,7 +1237,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       const { client } = await resolveSession(options.homeDir);
       return runRequest(() =>
         client.request(
-          `/requirements/${encodeURIComponent(input.requirementId)}/changes/${encodeURIComponent(input.changeId)}/restart`,
+          `/work-items/${encodeURIComponent(input.workItemId)}/changes/${encodeURIComponent(input.changeId)}/restart`,
           { method: 'POST' },
         ),
       );
@@ -1177,13 +1245,13 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
   );
 
   server.registerTool(
-    'flowx_submit_requirement_prototype_change',
+    'flowx_submit_work_item_prototype_change',
     {
       title: 'Submit FlowX Prototype Change',
       description:
         'Replace the prototype for a requirement change and restart the workflow. Only after the user confirmed a local .zip path of at most 20 MiB. Content may be omitted. Pass userConfirmedChange=true only after that confirmation. Reuse the same requestId when retrying the identical package.',
       inputSchema: z.object({
-        requirementId: z.string().min(1),
+        workItemId: z.string().min(1),
         zipPath: z.string().min(1),
         requestId: z.string().trim().min(1).max(128),
         content: z.string().max(20000).optional(),
@@ -1216,7 +1284,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       if (input.sourceWorkflowRunId) form.append('sourceWorkflowRunId', input.sourceWorkflowRunId);
       const { client } = await resolveSession(options.homeDir);
       return runRequest(() =>
-        client.requestForm(`/requirements/${encodeURIComponent(input.requirementId)}/changes/prototype`, form),
+        client.requestForm(`/work-items/${encodeURIComponent(input.workItemId)}/changes/prototype`, form),
       );
     },
   );
@@ -1228,7 +1296,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       description:
         'Start a workflow for an existing requirement after showing the user a start summary and receiving explicit confirmation. Always pass userConfirmedStart=true only after that confirmation. Then follow flowx-continue: call flowx_get_workflow_position and let the user choose their own skill or a FlowX skill for the current stage.',
       inputSchema: z.object({
-        requirementId: z.string().min(1),
+        workItemId: z.string().min(1),
         userConfirmedStart: z.boolean(),
         repositoryIds: z.array(z.string()).optional(),
         aiProvider: z.enum(['codex', 'cursor']).optional(),
@@ -1246,7 +1314,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
         client.request('/workflow-runs', {
           method: 'POST',
           body: JSON.stringify({
-            requirementId: input.requirementId,
+            workItemId: input.workItemId,
             ...(input.repositoryIds?.length ? { repositoryIds: input.repositoryIds } : {}),
             ...(input.aiProvider ? { aiProvider: input.aiProvider } : {}),
           }),
@@ -1284,7 +1352,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     {
       title: 'List FlowX Tasks',
       description:
-        'List FlowX requirements/bugs and OpenDesign brainstorm/design candidate workflows. Optional projectId, versionId, planningStatus and priority filter the task list. versionId and planningStatus apply to requirements only and omit bugs. OpenDesign candidates are not filtered. Confirm a workflow with the user, then call flowx_bind_workflow.',
+        'List FlowX work items/bugs and OpenDesign brainstorm/design candidate workflows. Optional projectId, versionId, planningStatus and priority filter the task list. versionId and planningStatus apply to workItems only and omit bugs. OpenDesign candidates are not filtered. Confirm a workflow with the user, then call flowx_bind_workflow.',
       inputSchema: z.object({
         ...paginationFields,
         openDesignPage: z.number().int().min(1).optional(),
@@ -1323,12 +1391,12 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     'flowx_get_task_context',
     {
       title: 'Get FlowX Task Context',
-      description: 'Read the context for a FlowX requirement or bug.',
-      inputSchema: z.object({ type: z.enum(['requirement', 'bug']), id: z.string() }),
+      description: 'Read the context for a FlowX execution item.',
+      inputSchema: z.object({ executionItemId: z.string().min(1) }),
     },
-    async ({ type, id }) => {
+    async ({ executionItemId }) => {
       const { client } = await resolveSession(options.homeDir);
-      return runRequest(() => client.request(`/cursor-local/tasks/${encodeURIComponent(type)}/${encodeURIComponent(id)}/context`));
+      return runRequest(() => client.request(`/cursor-local/execution-items/${encodeURIComponent(executionItemId)}/context`));
     },
   );
 
@@ -1388,7 +1456,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       inputSchema: z.object({
         workflowRunId: z.string(),
         workflowRepositoryId: z.string(),
-        executionSessionId: z.string().min(1).optional(),
+        executionSessionId: z.string().min(1),
         implementationSummary: z.string(),
         testResult: z.string(),
         pushed: z.boolean(),
@@ -1397,16 +1465,14 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     },
     async (input) => runRequest(async () => {
       const { client } = await resolveSession(options.homeDir);
-      if (input.executionSessionId) {
-        const { deviceId } = ensureDeviceIdentity({ homeDir: options.homeDir });
-        const checkpoint = await client.request(`/execution-sessions/${encodeURIComponent(input.executionSessionId)}/checkpoint`, {
-          method: 'POST', body: JSON.stringify({ deviceId }),
-        }) as ExecutionCheckpointResult;
-        if (checkpoint.session.workflowRunId !== input.workflowRunId) throw new Error('会话不属于当前工作流。');
-        if (checkpoint.session.cancelRequestedAt || checkpoint.commands.length ||
-          !['RUNNING', 'COMPLETED'].includes(checkpoint.session.status)) {
-          throw new Error('请先处理检查点中的控制命令或阻塞状态，再提交完成。');
-        }
+      const { deviceId } = ensureDeviceIdentity({ homeDir: options.homeDir });
+      const checkpoint = await client.request(`/execution-sessions/${encodeURIComponent(input.executionSessionId)}/checkpoint`, {
+        method: 'POST', body: JSON.stringify({ deviceId }),
+      }) as ExecutionCheckpointResult;
+      if (checkpoint.session.workflowRunId !== input.workflowRunId) throw new Error('会话不属于当前工作流。');
+      if (checkpoint.session.cancelRequestedAt || checkpoint.commands.length ||
+        !['RUNNING', 'COMPLETED'].includes(checkpoint.session.status)) {
+        throw new Error('请先处理检查点中的控制命令或阻塞状态，再提交完成。');
       }
       const workflow = await client.request(`/workflow-runs/${encodeURIComponent(input.workflowRunId)}`) as {
         workflowRepositories: Array<{ id: string; baseBranch: string; workingBranch: string }>;
@@ -1416,9 +1482,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       const report = await collectGitReport(input.cwd?.trim() || process.cwd(), repository.baseBranch);
       if (report.branch !== repository.workingBranch) throw new Error('当前分支与交接工作分支不一致，请核对后提交。');
       if (report.changedFiles.length === 0) throw new Error('相对任务基线没有已提交变更，请先核对提交和基线。');
-      return client.request(input.executionSessionId
-        ? `/execution-sessions/${encodeURIComponent(input.executionSessionId)}/complete`
-        : `/workflow-runs/${encodeURIComponent(input.workflowRunId)}/execution/complete-local`, {
+      return client.request(`/execution-sessions/${encodeURIComponent(input.executionSessionId)}/complete`, {
         method: 'POST',
         body: JSON.stringify({
           pushed: input.pushed,

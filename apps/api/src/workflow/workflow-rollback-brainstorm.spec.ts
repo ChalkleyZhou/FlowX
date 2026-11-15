@@ -5,7 +5,7 @@ import { WorkflowService } from './workflow.service';
 const designWorkflow = {
   id: 'workflow-rb-1',
   status: 'DESIGN_PENDING',
-  requirementId: 'req-1',
+  workItemId: 'req-1',
   stageExecutions: [
     {
       id: 'stage-brainstorm-1',
@@ -42,7 +42,7 @@ const rolledBackWorkflow = {
       attempt: 2,
       statusMessage: '已回退到此阶段，请重新执行',
       input: {
-        requirementId: 'req-1',
+        workItemId: 'req-1',
         workflowRunId: 'workflow-rb-1',
         source: 'rollback',
       },
@@ -118,7 +118,7 @@ describe('WorkflowService rollback DESIGN to BRAINSTORM', () => {
         status: 'PENDING',
         statusMessage: '已回退到此阶段，请重新执行',
         input: {
-          requirementId: 'req-1',
+          workItemId: 'req-1',
           workflowRunId: 'workflow-rb-1',
           source: 'rollback',
         },

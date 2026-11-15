@@ -78,7 +78,7 @@ function createLocalExecutionService(prisma: Record<string, unknown> = {}) {
 const baseWorkflow = {
   id: 'workflow-run-local-001',
   status: 'EXECUTION_PENDING',
-  requirement: {
+  workItem: {
     id: 'req-1',
     workspaceId: 'workspace-1',
     projectId: 'project-1',
@@ -142,25 +142,12 @@ describe('WorkflowService local execution', () => {
     await expect(service.cancelLocalExecution(baseWorkflow.id, { expectedSessionId: 'old-session' })).rejects.toThrow(/会话已变化/);
   });
 
-  it('keeps the legacy path when the execution-session feature flag is disabled', () => {
-    const original = process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED;
-    process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED = 'false';
-    try {
-      const { service } = createLocalExecutionService();
-      expect(
-        (
-          service as unknown as {
-            isExecutionSessionProjectionEnabled: () => boolean;
-          }
-        ).isExecutionSessionProjectionEnabled(),
-      ).toBe(false);
-    } finally {
-      if (original === undefined) {
-        delete process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED;
-      } else {
-        process.env.FLOWX_EXECUTION_SESSION_WRITE_ENABLED = original;
-      }
-    }
+  it('requires an execution session for workflow-level completion', async () => {
+    const { service } = createLocalExecutionService({
+      executionSession: { findFirst: vi.fn().mockResolvedValue(null) },
+    });
+    await expect(service.completeLocalExecution('workflow-1', { pushed: true, repositories: [] }))
+      .rejects.toThrow(/执行会话/);
   });
 
   it('claimLocalExecution returns handoff with working branch', async () => {
@@ -177,17 +164,25 @@ describe('WorkflowService local execution', () => {
       ],
     };
     const prisma = {
-      $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
-        callback({
+      executionPlan: {
+        findFirst: vi.fn().mockResolvedValue({ items: [{ id: 'execution-item-1', status: 'READY' }] }),
+      },
+      $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) => {
+        const createSession = vi.fn().mockImplementation(({ data }: { data: unknown }) => data);
+        (prisma as { createdSession?: ReturnType<typeof vi.fn> }).createdSession = createSession;
+        return callback({
+          executionItem: {
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          },
           executionSession: {
-            create: vi.fn().mockImplementation(({ data }: { data: unknown }) => data),
+            create: createSession,
           },
           workflowRun: {
             updateMany: vi.fn().mockResolvedValue({ count: 1 }),
             findUniqueOrThrow: vi.fn().mockResolvedValue(updatedWorkflow),
           },
-        }),
-      ),
+        });
+      }),
     };
     const { service } = createLocalExecutionService(prisma);
 
@@ -208,10 +203,27 @@ describe('WorkflowService local execution', () => {
     expect(result.handoff.executor).toBe('LOCAL');
     expect(result.handoff.executionSessionId).toEqual(expect.any(String));
     expect(result.handoff.protocolVersion).toBe(FLOWX_PROTOCOL_VERSION);
+    expect(prisma.executionPlan.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { workflowRunId: 'workflow-run-local-001' } }));
+    expect((prisma as unknown as { createdSession?: ReturnType<typeof vi.fn> }).createdSession?.mock.calls[0]?.[0]?.data.executionItemId).toBe('execution-item-1');
   });
 
   it('completeLocalExecution rejects when remote verify fails', async () => {
-    const { service, workflowGitRemoteService } = createLocalExecutionService();
+    const { service, workflowGitRemoteService } = createLocalExecutionService({
+      executionSession: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'session-1',
+          workflowRunId: 'workflow-run-local-001',
+          status: 'RUNNING',
+          executorType: 'LOCAL',
+        }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'session-1',
+          workflowRunId: 'workflow-run-local-001',
+          status: 'RUNNING',
+          executorType: 'LOCAL',
+        }),
+      },
+    });
     const runningWorkflow = {
       ...baseWorkflow,
       status: 'EXECUTION_RUNNING',
@@ -452,7 +464,7 @@ describe('buildExecutionOutputFromLocalReport', () => {
         workflowRunId: 'workflow-run-local-001',
         status: 'EXECUTION_RUNNING',
         executor: 'LOCAL',
-        requirement: {
+        workItem: {
           id: 'req-1',
           title: 'Local handoff feature',
           description: 'desc',

@@ -12,7 +12,7 @@ describe('IdeationRecoveryService stale heartbeat recovery', () => {
         findMany: vi.fn().mockResolvedValue([
           {
             id: 'session-1',
-            requirementId: 'req-1',
+            workItemId: 'req-1',
             stage: 'DESIGN',
             startedAt: new Date('2026-04-23T10:00:00.000Z'),
             createdAt: new Date('2026-04-23T10:00:00.000Z'),
@@ -23,7 +23,7 @@ describe('IdeationRecoveryService stale heartbeat recovery', () => {
       ideationSessionEvent: {
         findMany: vi.fn().mockResolvedValue([]),
       },
-      requirement: {
+      workItem: {
         findUnique: vi.fn().mockResolvedValue(null),
         update: vi.fn(),
       },
@@ -50,7 +50,7 @@ describe('IdeationRecoveryService stale heartbeat recovery', () => {
         findMany: vi.fn().mockResolvedValue([
           {
             id: 'session-2',
-            requirementId: 'req-2',
+            workItemId: 'req-2',
             stage: 'DESIGN',
             startedAt: new Date('2026-04-23T10:00:00.000Z'),
             createdAt: new Date('2026-04-23T10:00:00.000Z'),
@@ -66,7 +66,7 @@ describe('IdeationRecoveryService stale heartbeat recovery', () => {
           },
         ]),
       },
-      requirement: {
+      workItem: {
         findUnique: vi.fn(),
         update: vi.fn(),
       },

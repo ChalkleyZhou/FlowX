@@ -2,7 +2,7 @@ export const CURRENT_PROJECT_STORAGE_KEY = 'flowx-current-project';
 
 export const PROJECT_LIST_PATHS = [
   '/dashboard',
-  '/requirements',
+  '/work-items',
   '/workflow-runs',
   '/briefings',
   '/code-reviews',
@@ -15,7 +15,7 @@ export const PROJECT_LIST_PATHS = [
 ] as const;
 
 const DETAIL_TO_LIST: Array<[RegExp, string]> = [
-  [/^\/requirements\/[^/]+$/, '/requirements'],
+  [/^\/work-items\/[^/]+$/, '/work-items'],
   [/^\/workflow-runs\/[^/]+$/, '/workflow-runs'],
   [/^\/briefings\/[^/]+$/, '/briefings'],
   [/^\/daily-code-reviews\/[^/]+$/, '/code-reviews'],
@@ -28,7 +28,7 @@ const DETAIL_TO_LIST: Array<[RegExp, string]> = [
 
 export const PROJECT_DEPENDENT_QUERY_KEYS = [
   'versionId',
-  'requirementId',
+  'workItemId',
   'libraryId',
   'projectVersionId',
   'workflowRunId',

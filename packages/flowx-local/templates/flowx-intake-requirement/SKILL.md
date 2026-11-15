@@ -44,7 +44,7 @@ description: 仅在用户明确要求把事项新建、登记或发起到 FlowX 
    - `repositoryIds`：可选；不选则继承平台默认
 
 4. **创建**
-   调用 `flowx_create_requirement`，**必须传入**用户确认的 `versionId`（具体 id，不能为 `null`）。
+   调用 `flowx_create_work_item`，`kind` 传 `REQUIREMENT`，并且**必须传入**用户确认的 `versionId`（具体 id，不能为 `null`）。需求和 Issue 共用 WorkItem 根；Issue 直接把 `kind` 改为 `ISSUE`，不再走另一套创建入口。
    成功后回显 `requirementId`、标题、项目、版本名。
    标题含糊时先问清再调用；选填描述缺省不阻塞创建。未通过“意图边界”不得调用。
 
@@ -68,24 +68,24 @@ description: 仅在用户明确要求把事项新建、登记或发起到 FlowX 
 
 - 把普通的当前项目开发请求解释为 FlowX 需求创建请求
 - 意图不明确且未经询问就调用任何 `flowx_*` 工具
-- 未展示并确认发布版本即 `flowx_create_requirement`
+- 未展示并确认发布版本即 `flowx_create_work_item`
 - 省略 `versionId` 靠服务端默认当前版本
 - 未确认即 `flowx_start_workflow`
 - 把聊天记录原样当需求正文
 - 在本 Skill 内提交 `prd.md` / `design.md`
 - 启动失败时宣称已启动
 - 自动删除已创建但未启动的需求
-- 用户没有明确要求时调用 `flowx_update_requirement`、`flowx_delete_requirement` 或需求变更工具
+- 用户没有明确要求时调用 `flowx_update_work_item`、`flowx_delete_work_item` 或需求变更工具
 
 ## 修改、删除与正式变更
 
 这些操作不属于创建流程。只有用户明确要求时才调用，并先说明将要写入的内容。
 
-- 编辑：`flowx_update_requirement`，只传用户要改的字段。创建人和创建时间不能改。
+- 编辑：`flowx_update_work_item`，只传用户要改的字段。创建人和创建时间不能改。
 - 删除：先说明会移除工作流、构思、排期和原型材料，关联缺陷与问题会保留但解除关联。用户确认后才传 `userConfirmedDelete: true`。执行中，或已纳入测试设计、提测时，服务端会拒绝。
-- 文字变更：`flowx_submit_requirement_change`。`SUPPLEMENT` 继续当前流程，`RESTART` 重新走一轮。确认原文和方式后才传 `userConfirmedChange: true`。同一次提交重试时复用同一个 `requestId`。
-- 换包重走：`flowx_submit_requirement_prototype_change`，传入用户确认的本地 `.zip` 路径，不超过 20 MiB。说明可留空。
-- 变更已保存但新流程还没启动：用户确认后调用 `flowx_retry_requirement_change`，不要再创建一条变更。
+- 文字变更：`flowx_submit_work_item_change`。`SUPPLEMENT` 继续当前流程，`RESTART` 重新走一轮。确认原文和方式后才传 `userConfirmedChange: true`。同一次提交重试时复用同一个 `requestId`。
+- 换包重走：`flowx_submit_work_item_prototype_change`，传入用户确认的本地 `.zip` 路径，不超过 20 MiB。说明可留空。
+- 变更已保存但新流程还没启动：用户确认后调用 `flowx_retry_work_item_change`，不要再创建一条变更。
 
 ## 失败处理
 

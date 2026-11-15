@@ -12,7 +12,6 @@ import {
   Boxes,
   Bug,
   CalendarRange,
-  CircleAlert,
   ClipboardList,
   FolderKanban,
   GitBranch,
@@ -46,7 +45,7 @@ import { withCurrentProject } from '../project-scope';
 
 const projectItems = [
   { key: '/dashboard', label: '看板', icon: LayoutDashboard },
-  { key: '/requirements', label: '需求', icon: ClipboardList },
+  { key: '/work-items', label: '工作项', icon: ClipboardList },
   { key: '/workflow-runs', label: '工作流', icon: Workflow },
   { key: '/briefings', label: '简报', icon: Newspaper },
   { key: '/code-reviews', label: '代码审查', icon: GitPullRequest },
@@ -72,7 +71,6 @@ const projectItems = [
 
 const organizationItems = [
   { key: '/projects', label: '项目', icon: FolderKanban },
-  { key: '/issues', label: '问题项', icon: CircleAlert },
   { key: '/workspaces', label: '工作区', icon: Boxes },
 ] satisfies Array<{
   key: string;

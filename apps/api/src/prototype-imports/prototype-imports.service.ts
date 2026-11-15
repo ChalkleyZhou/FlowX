@@ -43,8 +43,8 @@ export class PrototypeImportsService implements OnModuleInit {
 
   async onModuleInit() {
     // 当前单进程模型中，CREATED 表示仓库准备尚未结束；重启后先释放未完成流程，允许重试。
-    await this.prisma.workflowRun.updateMany({ where: { status: 'CREATED', requirement: { prototypeImport: { isNot: null } }, stageExecutions: { none: { stage: 'REPOSITORY_GROUNDING' } } }, data: { status: 'FAILED' } });
-    await this.prisma.prototypeImport.updateMany({ where: { OR: [{ status: 'ANALYZING' }, { status: 'CONFIRMED', requirement: { workflowRuns: { none: { stageExecutions: { some: { stage: 'REPOSITORY_GROUNDING' } } } } } }] }, data: { status: 'FAILED', errorMessage: '导入未完成流程接续，原材料已保留，请重试。' } });
+    await this.prisma.workflowRun.updateMany({ where: { status: 'CREATED', workItem: { prototypeImport: { isNot: null } }, stageExecutions: { none: { stage: 'REPOSITORY_GROUNDING' } } }, data: { status: 'FAILED' } });
+    await this.prisma.prototypeImport.updateMany({ where: { OR: [{ status: 'ANALYZING' }, { status: 'CONFIRMED', workItem: { workflowRuns: { none: { stageExecutions: { some: { stage: 'REPOSITORY_GROUNDING' } } } } } }] }, data: { status: 'FAILED', errorMessage: '导入未完成流程接续，原材料已保留，请重试。' } });
   }
   private organization(actor?: PrototypeActor) {
     if (!actor?.user.id || !actor.organization?.id) throw new ForbiddenException('请登录并选择组织。');
@@ -65,8 +65,8 @@ export class PrototypeImportsService implements OnModuleInit {
     catch { throw new BadRequestException('无法读取原型包，请检查 ZIP 格式、文件路径与大小限制。'); }
     try {
       const record = await this.prisma.$transaction(async (tx) => {
-        const requirement = await tx.requirement.create({ data: { projectId: project.id, workspaceId: project.workspaceId, versionId, title: dto.title?.trim() || name.replace(/\.zip$/i, '') || '导入原型', description: dto.goal?.trim() || '正在根据原型整理需求', acceptanceCriteria: '正在根据原型整理验收标准', createdByUserId: actor?.user.id, createdByName: actor?.user.displayName } });
-        return tx.prototypeImport.create({ data: { id, requirementId: requirement.id, aiProvider, goal: dto.goal?.trim() || dto.title?.trim() || '', manifest: json(manifest), answers: {} } });
+        const requirement = await tx.workItem.create({ data: { kind: 'REQUIREMENT', status: 'ACTIVE', projectId: project.id, workspaceId: project.workspaceId, versionId, title: dto.title?.trim() || name.replace(/\.zip$/i, '') || '导入原型', description: dto.goal?.trim() || '正在根据原型整理需求', acceptanceCriteria: '正在根据原型整理验收标准', createdByUserId: actor?.user.id, createdByName: actor?.user.displayName, executionPlans: { create: { status: 'CONFIRMED', strategy: 'SINGLE', items: { create: { title: dto.title?.trim() || name.replace(/\.zip$/i, '') || '导入原型', description: dto.goal?.trim() || '正在根据原型整理需求', target: 'LOCAL', status: 'READY' } } } } } });
+        return tx.prototypeImport.create({ data: { id, workItemId: requirement.id, aiProvider, goal: dto.goal?.trim() || dto.title?.trim() || '', manifest: json(manifest), answers: {} } });
       });
       this.schedule(record, actor!);
       return this.view(record);
@@ -77,12 +77,12 @@ export class PrototypeImportsService implements OnModuleInit {
   }
   async get(id: string, actor?: PrototypeActor) {
     const record = await this.owned(id, actor);
-    const workflow = record.status === 'CONFIRMED' ? await this.prisma.workflowRun.findFirst({ where: { requirementId: record.requirementId, stageExecutions: { some: { stage: 'REPOSITORY_GROUNDING' } } }, orderBy: { createdAt: 'desc' }, select: { id: true } }) : null;
+    const workflow = record.status === 'CONFIRMED' ? await this.prisma.workflowRun.findFirst({ where: { workItemId: record.workItemId, stageExecutions: { some: { stage: 'REPOSITORY_GROUNDING' } } }, orderBy: { createdAt: 'desc' }, select: { id: true } }) : null;
     return { ...this.view(record), workflowRunId: workflow?.id ?? null };
   }
   private async owned(id: string, actor?: PrototypeActor) {
     const organizationId = this.organization(actor);
-    const record = await this.prisma.prototypeImport.findFirst({ where: { id, requirement: { project: { workspace: { organizationId } } } } });
+    const record = await this.prisma.prototypeImport.findFirst({ where: { id, workItem: { project: { workspace: { organizationId } } } } });
     if (!record) throw new NotFoundException('原型导入不存在或无权访问。');
     return record;
   }
@@ -158,8 +158,8 @@ export class PrototypeImportsService implements OnModuleInit {
     await this.prisma.$transaction(async (tx) => {
       const changed = await tx.prototypeImport.updateMany({ where: { id, status: 'WAITING_CONFIRMATION', revision: dto.revision }, data: { status: 'CONFIRMED', revision: { increment: 1 }, analysis: json(confirmed), answers, confirmedBy: actor!.user.id, confirmedAt: new Date() } });
       if (changed.count !== 1) throw new ConflictException('版本已变化或已确认，请刷新。');
-      await tx.requirement.update({ where: { id: record.requirementId }, data: { title: confirmed.title, description: confirmed.description, acceptanceCriteria: confirmed.acceptanceCriteria.map((text) => `- ${text}`).join('\n'), ideationStatus: 'FINALIZED' } });
-      await tx.ideationArtifact.createMany({ data: [{ requirementId: record.requirementId, type: 'BRAINSTORM_BRIEF', content: json(confirmed.brief) }, { requirementId: record.requirementId, type: 'DESIGN_SPEC', content: json(confirmed.design) }] });
+      await tx.workItem.update({ where: { id: record.workItemId }, data: { title: confirmed.title, description: confirmed.description, acceptanceCriteria: confirmed.acceptanceCriteria.map((text) => `- ${text}`).join('\n'), ideationStatus: 'FINALIZED' } });
+      await tx.ideationArtifact.createMany({ data: [{ workItemId: record.workItemId, type: 'BRAINSTORM_BRIEF', content: json(confirmed.brief) }, { workItemId: record.workItemId, type: 'DESIGN_SPEC', content: json(confirmed.design) }] });
     });
     return this.get(id, actor);
   }
@@ -200,17 +200,17 @@ export class PrototypeImportsService implements OnModuleInit {
       const applied = await this.prisma.$transaction(async (tx) => {
         const changed = await tx.prototypeImport.updateMany({ where: { id: record.id, revision: record.revision, status: 'ANALYZING' }, data: { status: 'CONFIRMED', revision: { increment: 1 }, analysis: json(imported), answers, errorMessage: null, confirmedBy: null, confirmedAt: new Date() } });
         if (changed.count !== 1) return false;
-        await tx.requirement.update({ where: { id: record.requirementId }, data: { title: imported.title, description: imported.description, acceptanceCriteria: imported.acceptanceCriteria.map((text) => `- ${text}`).join('\n'), ideationStatus: 'FINALIZED' } });
+        await tx.workItem.update({ where: { id: record.workItemId }, data: { title: imported.title, description: imported.description, acceptanceCriteria: imported.acceptanceCriteria.map((text) => `- ${text}`).join('\n'), ideationStatus: 'FINALIZED' } });
         // 失败重试复用同一需求，替换导入产物而不是不断追加副本。
-        await tx.ideationArtifact.deleteMany({ where: { requirementId: record.requirementId, type: { in: ['BRAINSTORM_BRIEF', 'DESIGN_SPEC'] } } });
-        await tx.ideationArtifact.createMany({ data: [{ requirementId: record.requirementId, type: 'BRAINSTORM_BRIEF', content: json(imported.brief) }, { requirementId: record.requirementId, type: 'DESIGN_SPEC', content: json(imported.design) }] });
+        await tx.ideationArtifact.deleteMany({ where: { workItemId: record.workItemId, type: { in: ['BRAINSTORM_BRIEF', 'DESIGN_SPEC'] } } });
+        await tx.ideationArtifact.createMany({ data: [{ workItemId: record.workItemId, type: 'BRAINSTORM_BRIEF', content: json(imported.brief) }, { workItemId: record.workItemId, type: 'DESIGN_SPEC', content: json(imported.design) }] });
         return true;
       });
       if (!applied) return;
       failureRevision += 1;
       failureStatus = 'CONFIRMED';
-      const existing = await this.prisma.workflowRun.findFirst({ where: { requirementId: record.requirementId, status: { notIn: ['DONE', 'FAILED'] } } });
-      if (!existing) await this.workflows.createWorkflowRun({ requirementId: record.requirementId, aiProvider: this.invocation.normalizeAiProvider(record.aiProvider) });
+      const existing = await this.prisma.workflowRun.findFirst({ where: { workItemId: record.workItemId, status: { notIn: ['DONE', 'FAILED'] } } });
+      if (!existing) await this.workflows.createWorkflowRun({ workItemId: record.workItemId, aiProvider: this.invocation.normalizeAiProvider(record.aiProvider) });
     } catch (error) {
       const credentialFailure = error instanceof Error && /\b(?:CODEX|CURSOR)_(?:AUTH_[A-Z_]+|CREDENTIAL_DECRYPT_FAILED|ORGANIZATION_CREDENTIAL_REQUIRED)\b/.test(error.message);
       const reason = failureStatus === 'CONFIRMED' ? 'WORKFLOW_HANDOFF_FAILED' : credentialFailure ? 'AI_CREDENTIAL_FAILED' : 'AI_ANALYSIS_FAILED';

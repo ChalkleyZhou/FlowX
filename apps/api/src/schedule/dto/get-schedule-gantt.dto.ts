@@ -41,7 +41,7 @@ export class GetScheduleGanttDto {
 
   @IsOptional()
   @IsString()
-  requirementId?: string;
+  workItemId?: string;
 
   @IsOptional()
   @IsIn(ASSIGNMENT_ROLES)

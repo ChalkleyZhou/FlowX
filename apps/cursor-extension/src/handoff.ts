@@ -58,9 +58,8 @@ export async function startInChat(deps: StartInChatDeps, task: FlowXTaskItem): P
   }
 
   const handoff = await deps.startHandoff({
-    taskType: task.type,
-    taskId: task.id,
-    repositoryIds: task.repository?.id ? [task.repository.id] : undefined,
+    executionItemId: task.id,
+    claimKey: `${task.id}:${Date.now()}`,
   });
   const filePath = await deps.writeTaskFile(gitReport.gitRoot, task.id, handoff.chatPrompt);
   await deps.saveHandoffSnapshot?.(gitReport.gitRoot, handoff);
@@ -125,13 +124,14 @@ export async function readTaskPromptFile(gitRoot: string, taskId: string): Promi
 
 export function buildPromptFromLocalHandoff(task: FlowXTaskItem, handoff: LocalHandoffPayload): string {
   const repository = handoff.repositories[0];
-  const taskLabel = task.type === 'bug' ? 'Bug' : 'Requirement';
+  const taskLabel = task.kind === 'ISSUE' ? 'Issue' : 'Requirement';
   return [
-    `# FlowX ${taskLabel}: ${handoff.requirement.title.trim()}`,
+    `# FlowX ${taskLabel}: ${handoff.workItem.title.trim()}`,
     '',
     '## FlowX context',
-    `- Task type: ${task.type}`,
-    `- Task id: ${task.id}`,
+    `- Work item kind: ${task.kind}`,
+    `- Work item id: ${task.workItemId}`,
+    `- Execution item id: ${task.id}`,
     `- Workflow run id: ${handoff.workflowRunId}`,
     `- Repository: ${repository?.name ?? task.repository?.name ?? 'unknown'}`,
     repository?.url?.trim() ? `- Remote: ${repository.url.trim()}` : '',
@@ -139,10 +139,10 @@ export function buildPromptFromLocalHandoff(task: FlowXTaskItem, handoff: LocalH
     '- Work in Cursor Chat/Agent and iterate there until the change is ready.',
     '',
     '## Description',
-    handoff.requirement.description.trim(),
+    (handoff.executionItem.description || handoff.workItem.description).trim(),
     '',
     '## Acceptance criteria',
-    handoff.requirement.acceptanceCriteria.trim(),
+    handoff.workItem.acceptanceCriteria.trim(),
     '',
     '## Spec & Plan',
     `- Spec goal: ${handoff.specPlan.spec.goal.trim()}`,

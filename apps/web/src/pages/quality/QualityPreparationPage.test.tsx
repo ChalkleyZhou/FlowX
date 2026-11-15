@@ -6,11 +6,11 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../../api';
 import { QualityPreparationPage } from './QualityPreparationPage';
-import type { Requirement, TestDesign, WorkflowRun } from '../../types';
+import type { WorkItem, TestDesign, WorkflowRun } from '../../types';
 vi.mock('../../api', () => ({
   api: {
     getTestCasesPage: vi.fn(),
-    getRequirement: vi.fn(),
+    getWorkItem: vi.fn(),
     getTestDesigns: vi.fn(),
     getWorkflowRuns: vi.fn(),
     getTestCaseLibraries: vi.fn(),
@@ -23,18 +23,32 @@ let root: Root;
 let container: HTMLDivElement;
 const requirement = {
   id: 'req-1',
+  projectId: 'p1',
+  workspaceId: 'ws1',
+  description: '',
+  remark: '',
+  status: 'ACTIVE',
+  priority: 'P1',
+  acceptanceCriteria: '',
+  functionalModule: '',
+  riskImpact: '',
+  productRequirementDocument: '',
+  planningStatus: 'UNSCHEDULED',
+  ideationStatus: 'NONE',
+  revision: 0,
   title: '认证改进',
   versionId: 'v1',
   project: { id: 'p1', name: '项目', workspace: { id: 'ws1' } },
-} as Requirement;
-const run = { id: 'flow-1', status: 'DONE', requirement } as WorkflowRun;
+  kind: 'REQUIREMENT',
+} as WorkItem;
+const run = { id: 'flow-1', status: 'DONE', workItem: requirement } as unknown as WorkflowRun;
 beforeEach(() => {
   vi.mocked(api.getTestCasesPage).mockResolvedValue(pageResult([]));
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
-  vi.mocked(api.getRequirement).mockResolvedValue(requirement);
+  vi.mocked(api.getWorkItem).mockResolvedValue(requirement);
   vi.mocked(api.getWorkflowRuns).mockResolvedValue(pageResult([run]));
   vi.mocked(api.getTestDesigns).mockResolvedValue(pageResult([]));
   vi.mocked(api.getTestCaseLibraries).mockResolvedValue(pageResult([
@@ -52,7 +66,7 @@ async function render() {
   await act(async () =>
     root.render(
       <MemoryRouter
-        initialEntries={['/quality/test-designs/new?requirementId=req-1&projectId=p1&projectVersionId=v1']}
+        initialEntries={['/quality/test-designs/new?workItemId=req-1&projectId=p1&projectVersionId=v1']}
       >
         <Routes>
           <Route path="/quality/test-designs/new" element={<QualityPreparationPage />} />
@@ -62,7 +76,7 @@ async function render() {
     ),
   );
 }
-it('从需求预填上下文，显式提交所选库和工作流', async () => {
+it('从工作项预填上下文，显式提交所选库和工作流', async () => {
   vi.mocked(api.createTestDesign).mockResolvedValue({ id: 'design-1' } as TestDesign);
   await render();
   expect(container.textContent).toContain('认证改进');
@@ -76,19 +90,19 @@ it('从需求预填上下文，显式提交所选库和工作流', async () => {
     workspaceId: 'ws1',
     projectId: 'p1',
     projectVersionId: 'v1',
-    requirementIds: ['req-1'],
+    workItemIds: ['req-1'],
     workflowRunIds: ['flow-1'],
     caseSelection: { libraryIds: ['lib-1'] },
   });
   expect(container.textContent).toContain('设计详情');
 });
-it('已有当前需求设计时优先继续，不重复创建', async () => {
+it('已有当前工作项设计时优先继续，不重复创建', async () => {
   vi.mocked(api.getTestDesigns).mockResolvedValue(pageResult([
     {
       id: 'existing',
       status: 'WAITING_REVIEW',
       revision: 3,
-      requirements: [{ requirement: { id: 'req-1', title: '认证改进' } }],
+      workItems: [{ workItem: { id: 'req-1', title: '认证改进' } }],
       workflowRuns: [{ workflowRun: { id: 'flow-1', status: 'DONE' } }],
     },
   ] as TestDesign[]));
@@ -110,5 +124,5 @@ it('未完成研发但最新Spec & Plan已完成时可准备设计，进行中�
   const retry = container.querySelector<HTMLAnchorElement>('a[href="/workflow-runs/retry-flow"]')!.closest('label')!.querySelector('input')!;
   expect(ready.disabled).toBe(false); expect(ready.checked).toBe(true);
   expect(retry.disabled).toBe(true); expect(retry.checked).toBe(false);
-  expect(api.getTestDesigns).toHaveBeenCalledWith(expect.objectContaining({ requirementId: 'req-1', page: 1, pageSize: 1, projectId: 'p1', projectVersionId: 'v1' }));
+  expect(api.getTestDesigns).toHaveBeenCalledWith(expect.objectContaining({ workItemId: 'req-1', page: 1, pageSize: 1, projectId: 'p1', projectVersionId: 'v1' }));
 });

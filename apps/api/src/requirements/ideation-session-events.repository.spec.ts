@@ -20,7 +20,7 @@ describe('IdeationSessionEventsRepository', () => {
       eventType: 'STARTED',
       stage: 'QUEUE',
       message: 'Demo generation started.',
-      details: { requirementId: 'req-1' },
+      details: { workItemId: 'req-1' },
     });
 
     expect(create).toHaveBeenCalledWith({
@@ -29,7 +29,7 @@ describe('IdeationSessionEventsRepository', () => {
         eventType: 'STARTED',
         stage: 'QUEUE',
         message: 'Demo generation started.',
-        details: { requirementId: 'req-1' },
+        details: { workItemId: 'req-1' },
       },
     });
   });

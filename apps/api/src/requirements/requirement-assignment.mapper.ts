@@ -14,7 +14,7 @@ export function toRequirementAssignmentResponse(row: RequirementAssignmentRow) {
   const end = formatCalendarDate(row.plannedEndDate);
   return {
     id: row.id,
-    requirementId: row.requirementId,
+    workItemId: row.workItemId,
     userId: row.userId,
     role: row.role,
     plannedStartDate: start,

@@ -130,3 +130,7 @@ pnpm check
 ## 原型导入边界
 
 原型 ZIP 读取、受限预览和导入状态位于独立 `prototype-imports` 模块；AI 分析以 `prototype-analysis.output.schema.json` 为契约源，消费者共用运行时校验。确认后以工作流 intake 快照作为后续事实来源，避免多个入口重复推导需求与设计。安全外壳、CAS 基线与状态接续的回归属于该模块必需验证，详见 [原型导入](../prototype-import.md)。
+
+## WorkItem 变更适配结论
+
+WorkItem、ExecutionPlan、ExecutionItem 和端侧领取/完成属于端云共享契约，结论为“需要适配”。API 是权限和状态机唯一实现，`@flowx-ai/protocol` 只定义引用与事件结构，`flowx-local` 通过 MCP 薄桥接版本工作项查询、执行项领取和完成回传；不得在本地 Agent 复制拆解规则、组织校验或提测门禁。

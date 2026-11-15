@@ -166,7 +166,7 @@ export class ArtifactsService {
     const workflow = await this.prisma.workflowRun.findUnique({
       where: { id: input.workflowRunId },
       select: {
-        requirement: {
+        workItem: {
           select: {
             workspaceId: true,
             projectId: true,
@@ -180,8 +180,8 @@ export class ArtifactsService {
     }
     return this.register({
       ...input,
-      workspaceId: workflow.requirement.workspaceId ?? workflow.requirement.project.workspaceId,
-      projectId: workflow.requirement.projectId,
+      workspaceId: workflow.workItem.workspaceId ?? workflow.workItem.project.workspaceId,
+      projectId: workflow.workItem.projectId,
     });
   }
 
