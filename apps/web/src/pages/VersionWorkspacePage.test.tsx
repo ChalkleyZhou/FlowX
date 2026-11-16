@@ -67,7 +67,7 @@ describe('VersionWorkspacePage', () => {
     expect(container.textContent).toContain('版本工作台');
     expect(container.textContent).toContain('2.6.0');
     expect(container.textContent).toContain('统一查看需求、问题和缺陷');
-    expect(container.textContent).toContain('全部');
+    expect(container.textContent).not.toContain('全部');
     expect(container.textContent).toContain('需求');
     expect(container.textContent).toContain('问题');
     expect(container.textContent).toContain('缺陷');
@@ -75,7 +75,7 @@ describe('VersionWorkspacePage', () => {
     const versionTrigger = container.querySelector('button[aria-label="切换版本"]');
     expect(versionTrigger).not.toBeNull();
     expect(versionTrigger?.textContent).toContain('2.6.0');
-    expect(api.listVersionWorkItems).toHaveBeenCalledWith('project-1', 'version-1', expect.anything());
+    expect(api.getRequirements).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', versionId: 'version-1', page: 1, pageSize: 20 }));
   });
 
   it('切换需求 Tab 后按当前项目和版本读取需求分页列表', async () => {

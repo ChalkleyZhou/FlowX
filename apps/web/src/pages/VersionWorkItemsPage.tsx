@@ -19,17 +19,16 @@ import type { Bug, Issue, ProjectVersionSummary, Requirement, WorkItem } from '.
 import { formatBugStatus, formatIssueStatus, formatPriority, formatSeverity } from '../utils/label-utils';
 
 const PAGE_SIZE = 20;
-type WorkItemKind = 'ALL' | WorkItem['kind'];
+type WorkItemKind = WorkItem['kind'];
 
 const kindTabs: Array<{ value: WorkItemKind; label: string }> = [
-  { value: 'ALL', label: '全部' },
   { value: 'REQUIREMENT', label: '需求' },
   { value: 'ISSUE', label: '问题' },
   { value: 'BUG', label: '缺陷' },
 ];
 
 function parseKind(value: string | null): WorkItemKind {
-  return kindTabs.some(tab => tab.value === value) ? value as WorkItemKind : 'ALL';
+  return kindTabs.some(tab => tab.value === value) ? value as WorkItemKind : 'REQUIREMENT';
 }
 
 function formatDate(value?: string | null) {
@@ -37,13 +36,6 @@ function formatDate(value?: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '未记录';
   return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
-}
-
-function formatWorkItemStatus(item: WorkItem) {
-  if (item.kind === 'BUG') return formatBugStatus(item.status);
-  if (item.kind === 'ISSUE') return formatIssueStatus(item.status);
-  const map: Record<string, string> = { ACTIVE: '进行中', OPEN: '待处理', IN_PROGRESS: '处理中', RESOLVED: '已解决', CLOSED: '已关闭' };
-  return (map[item.status] ?? item.status) || '未设置';
 }
 
 function TableHeader({ labels }: { labels: string[] }) {
@@ -93,19 +85,6 @@ function BugTable({ items }: { items: Bug[] }) {
   </tr>)}</tbody></table>;
 }
 
-function AllWorkItemsTable({ items }: { items: WorkItem[] }) {
-  return <table className="w-max min-w-full text-sm"><TableHeader labels={['类型', '标题', '描述', '状态', '优先级', '负责人', '更新时间', '操作']} /><tbody>{items.map(item => <tr key={item.id} className="border-t border-border">
-    <td className="whitespace-nowrap px-4 py-3"><Badge variant="outline">{item.kind === 'REQUIREMENT' ? '需求' : item.kind === 'BUG' ? '缺陷' : '问题'}</Badge></td>
-    <td className="whitespace-nowrap px-4 py-3 font-medium"><Link to={`/work-items/${item.id}`} className="text-foreground no-underline hover:text-primary">{item.title}</Link></td>
-    <td className="max-w-md whitespace-normal break-words px-4 py-3 text-muted-foreground">{item.description?.trim() || '未填写'}</td>
-    <td className="whitespace-nowrap px-4 py-3"><Badge variant="secondary">{formatWorkItemStatus(item)}</Badge></td>
-    <td className="whitespace-nowrap px-4 py-3">{formatPriority(item.priority)}</td>
-    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{item.ownerUser?.displayName || '未指定'}</td>
-    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{formatDate(item.updatedAt)}</td>
-    <td className="sticky right-0 z-10 whitespace-nowrap border-l border-t border-border bg-card px-4 py-3"><DetailButton id={item.id} /></td>
-  </tr>)}</tbody></table>;
-}
-
 export function VersionWorkItemsPage({
   projectId: projectIdProp,
   versionId: versionIdProp,
@@ -126,12 +105,9 @@ export function VersionWorkItemsPage({
   const toast = useToast();
   const requestEpoch = useRef(0);
   const [version, setVersion] = useState<ProjectVersionSummary | null>(null);
-  const [items, setItems] = useState<WorkItem[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [bugs, setBugs] = useState<Bug[]>([]);
-  const [cursor, setCursor] = useState<string | undefined>();
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [typedPage, setTypedPage] = useState(1);
   const [typedTotal, setTypedTotal] = useState(0);
   const [q, setQ] = useState('');
@@ -141,8 +117,7 @@ export function VersionWorkItemsPage({
   const [draft, setDraft] = useState({ kind: 'REQUIREMENT' as WorkItem['kind'], title: '', description: '', remark: '', splitMode: 'AI' as 'AI' | 'SINGLE' | 'MANUAL' });
 
   function clearLists() {
-    setItems([]); setRequirements([]); setIssues([]); setBugs([]);
-    setCursor(undefined); setNextCursor(null); setTypedPage(1); setTypedTotal(0);
+    setRequirements([]); setIssues([]); setBugs([]); setTypedPage(1); setTypedTotal(0);
   }
 
   async function load(next?: string | number) {
@@ -151,25 +126,19 @@ export function VersionWorkItemsPage({
     setLoading(true);
     setError('');
     try {
-      if (kind === 'ALL') {
-        const result = await api.listVersionWorkItems(projectId, versionId, { cursor: typeof next === 'string' ? next : undefined, q: q.trim() || undefined, pageSize: PAGE_SIZE });
+      const query = { projectId, versionId, q: q.trim() || undefined, page: typeof next === 'number' ? next : 1, pageSize: PAGE_SIZE };
+      if (kind === 'REQUIREMENT') {
+        const result = await api.getRequirements(query);
         if (epoch !== requestEpoch.current) return;
-        setItems(result.items); setNextCursor(result.nextCursor); setCursor(typeof next === 'string' ? next : undefined);
+        setRequirements(result.items); setTypedPage(result.page); setTypedTotal(result.total);
+      } else if (kind === 'ISSUE') {
+        const result = await api.getIssues(query);
+        if (epoch !== requestEpoch.current) return;
+        setIssues(result.items); setTypedPage(result.page); setTypedTotal(result.total);
       } else {
-        const query = { projectId, versionId, q: q.trim() || undefined, page: typeof next === 'number' ? next : 1, pageSize: PAGE_SIZE };
-        if (kind === 'REQUIREMENT') {
-          const result = await api.getRequirements(query);
-          if (epoch !== requestEpoch.current) return;
-          setRequirements(result.items); setTypedPage(result.page); setTypedTotal(result.total);
-        } else if (kind === 'ISSUE') {
-          const result = await api.getIssues(query);
-          if (epoch !== requestEpoch.current) return;
-          setIssues(result.items); setTypedPage(result.page); setTypedTotal(result.total);
-        } else {
-          const result = await api.getBugs(query);
-          if (epoch !== requestEpoch.current) return;
-          setBugs(result.items); setTypedPage(result.page); setTypedTotal(result.total);
-        }
+        const result = await api.getBugs(query);
+        if (epoch !== requestEpoch.current) return;
+        setBugs(result.items); setTypedPage(result.page); setTypedTotal(result.total);
       }
     } catch (reason) {
       if (epoch !== requestEpoch.current) return;
@@ -195,7 +164,7 @@ export function VersionWorkItemsPage({
       await api.createVersionWorkItem(projectId, versionId, draft);
       setDraft({ kind: 'REQUIREMENT', title: '', description: '', remark: '', splitMode: 'AI' });
       setCreateOpen(false);
-      await load(kind === 'ALL' ? undefined : typedPage);
+      await load(typedPage);
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : '创建工作项失败');
     }
@@ -211,17 +180,17 @@ export function VersionWorkItemsPage({
 
   function changeKind(nextKind: WorkItemKind) {
     const next = new URLSearchParams(searchParams);
-    if (nextKind === 'ALL') next.delete('kind'); else next.set('kind', nextKind);
+    next.set('kind', nextKind);
     setSearchParams(next);
   }
 
   function openCreate() {
-    setDraft(current => ({ ...current, kind: kind === 'ALL' ? current.kind : kind }));
+    setDraft(current => ({ ...current, kind }));
     setCreateOpen(true);
   }
 
-  const visibleItems = kind === 'ALL' ? items : kind === 'REQUIREMENT' ? requirements : kind === 'ISSUE' ? issues : bugs;
-  const emptyDescription = kind === 'ALL' ? '当前版本还没有需求、问题或缺陷。' : kind === 'REQUIREMENT' ? '当前版本还没有需求。' : kind === 'ISSUE' ? '当前版本还没有问题。' : '当前版本还没有缺陷。';
+  const visibleItems = kind === 'REQUIREMENT' ? requirements : kind === 'ISSUE' ? issues : bugs;
+  const emptyDescription = kind === 'REQUIREMENT' ? '当前版本还没有需求。' : kind === 'ISSUE' ? '当前版本还没有问题。' : '当前版本还没有缺陷。';
 
   return (
     <div className="space-y-5">
@@ -246,12 +215,12 @@ export function VersionWorkItemsPage({
           </Tabs>
           <ListToolbar
             className="mb-0"
-            search={<Input className="max-w-xs" placeholder="搜索标题或描述" value={q} onChange={event => setQ(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void load(kind === 'ALL' ? undefined : 1); }} />}
-            filters={<Button variant="outline" onClick={() => void load(kind === 'ALL' ? undefined : 1)}>查询</Button>}
+            search={<Input className="max-w-xs" placeholder="搜索标题或描述" value={q} onChange={event => setQ(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void load(1); }} />}
+            filters={<Button variant="outline" onClick={() => void load(1)}>查询</Button>}
           />
-          {error ? <p role="alert" className="text-sm text-destructive">{error}<Button variant="outline" size="sm" onClick={() => void load(kind === 'ALL' ? undefined : typedPage)}>重试</Button></p> : null}
-          {loading && visibleItems.length === 0 ? <div className="flex min-h-40 items-center justify-center"><Spinner className="h-7 w-7" /></div> : visibleItems.length > 0 ? <div className="overflow-x-auto rounded-md border border-border">{kind === 'ALL' ? <AllWorkItemsTable items={items} /> : kind === 'REQUIREMENT' ? <RequirementTable items={requirements} /> : kind === 'ISSUE' ? <IssueTable items={issues} /> : <BugTable items={bugs} />}</div> : <EmptyState description={emptyDescription} />}
-          {kind === 'ALL' ? <div className="flex justify-end gap-2 border-t border-border pt-4"><Button variant="outline" disabled={!cursor || loading} onClick={() => void load()}>回到第一页</Button><Button variant="outline" disabled={!nextCursor || loading} onClick={() => void load(nextCursor ?? undefined)}>下一页</Button></div> : <ListPagination page={typedPage} total={typedTotal} pageSize={PAGE_SIZE} loading={loading} onPageChange={page => void load(page)} label={`${kind === 'REQUIREMENT' ? '需求' : kind === 'ISSUE' ? '问题' : '缺陷'}列表分页`} />}
+          {error ? <p role="alert" className="text-sm text-destructive">{error}<Button variant="outline" size="sm" onClick={() => void load(typedPage)}>重试</Button></p> : null}
+          {loading && visibleItems.length === 0 ? <div className="flex min-h-40 items-center justify-center"><Spinner className="h-7 w-7" /></div> : visibleItems.length > 0 ? <div className="overflow-x-auto rounded-md border border-border">{kind === 'REQUIREMENT' ? <RequirementTable items={requirements} /> : kind === 'ISSUE' ? <IssueTable items={issues} /> : <BugTable items={bugs} />}</div> : <EmptyState description={emptyDescription} />}
+          <ListPagination page={typedPage} total={typedTotal} pageSize={PAGE_SIZE} loading={loading} onPageChange={page => void load(page)} label={`${kind === 'REQUIREMENT' ? '需求' : kind === 'ISSUE' ? '问题' : '缺陷'}列表分页`} />
         </CardContent>
       </Card>
       {createOpen ? <Card><CardContent className="grid gap-3 p-4 md:grid-cols-2"><Select value={draft.kind} onValueChange={value => setDraft(current => ({ ...current, kind: value as WorkItem['kind'] }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="REQUIREMENT">需求</SelectItem><SelectItem value="ISSUE">问题</SelectItem><SelectItem value="BUG">缺陷</SelectItem></SelectContent></Select><p className="flex items-center text-sm text-muted-foreground">创建后由 AI 判断是否需要拆分，确认前不会派发执行项。</p><Input className="md:col-span-2" placeholder="标题" value={draft.title} onChange={event => setDraft(current => ({ ...current, title: event.target.value }))} /><Textarea className="md:col-span-2" placeholder="会议记录或描述" value={draft.description} onChange={event => setDraft(current => ({ ...current, description: event.target.value }))} /><Input className="md:col-span-2" placeholder="备注" value={draft.remark} onChange={event => setDraft(current => ({ ...current, remark: event.target.value }))} /><div className="flex gap-2 md:col-span-2"><Button onClick={() => void create()}>创建</Button><Button variant="ghost" onClick={() => setCreateOpen(false)}>取消</Button></div></CardContent></Card> : null}
