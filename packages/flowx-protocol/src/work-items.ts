@@ -1,4 +1,4 @@
-export const WORK_ITEM_KINDS = ['REQUIREMENT', 'ISSUE'] as const;
+export const WORK_ITEM_KINDS = ['REQUIREMENT', 'ISSUE', 'BUG'] as const;
 export type WorkItemKind = (typeof WORK_ITEM_KINDS)[number];
 
 export interface WorkItemRef {

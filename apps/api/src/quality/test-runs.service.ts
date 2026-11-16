@@ -59,12 +59,18 @@ export class TestRunsService {
     if (runType === 'INITIAL' && dto.sourceBugId) {
       throw new BadRequestException('Initial runs cannot reference a source bug.');
     }
+    let sourceWorkItemId: string | null = null;
+    let sourceBugId: string | null = null;
     if (dto.sourceBugId) {
-      const bug = await this.prisma.bug.findFirst({
-        where: { id: dto.sourceBugId, projectId: request.projectId },
-        include: { fixWorkflowRun: { select: { status: true } } },
-      });
-      if (!bug?.fixWorkflowRun || bug.fixWorkflowRun.status.toLowerCase() !== 'done') {
+      const bug = typeof this.prisma.workItem?.findFirst === 'function' ? await this.prisma.workItem.findFirst({ where: { id: dto.sourceBugId, kind: 'BUG', projectId: request.projectId }, include: { fixWorkflowRun: { select: { status: true } } } }) : null;
+      if (bug) sourceWorkItemId = bug.id;
+      else {
+        const legacyBug = await this.prisma.bug.findFirst({ where: { id: dto.sourceBugId, projectId: request.projectId }, include: { fixWorkflowRun: { select: { status: true } } } });
+        if (legacyBug) sourceBugId = legacyBug.id;
+        if (!legacyBug?.fixWorkflowRun || legacyBug.fixWorkflowRun.status.toLowerCase() !== 'done') throw new BadRequestException('Bug fix workflow must be completed before regression testing.');
+      }
+      const workflow = bug?.fixWorkflowRun;
+      if (bug && (!workflow || workflow.status.toLowerCase() !== 'done')) {
         throw new BadRequestException('Bug fix workflow must be completed before regression testing.');
       }
     }
@@ -75,7 +81,8 @@ export class TestRunsService {
           testPlanId: request.testPlan!.id,
           name: dto.name.trim(),
           runType,
-          sourceBugId: dto.sourceBugId ?? null,
+          sourceBugId,
+          sourceWorkItemId,
           createdByUserId: userId ?? null,
           startedAt: new Date(),
           cases: {
@@ -143,11 +150,16 @@ export class TestRunsService {
     if (runCase.assignedToUserId && runCase.assignedToUserId !== userId) {
       throw new ForbiddenException('This test case is assigned to another user.');
     }
+    let resultWorkItemId: string | null = null;
+    let resultBugId: string | null = null;
     if (dto.bugId) {
-      const bug = await tx.bug.findFirst({
-        where: { id: dto.bugId, projectId: runCase.testRun.testPlan.testRequest.projectId },
-      });
-      if (!bug) {
+      const bug = await tx.workItem.findFirst({ where: { id: dto.bugId, kind: 'BUG', projectId: runCase.testRun.testPlan.testRequest.projectId }, select: { id: true } });
+      if (bug) resultWorkItemId = bug.id;
+      else {
+        const legacyBug = await tx.bug.findFirst({ where: { id: dto.bugId, projectId: runCase.testRun.testPlan.testRequest.projectId }, select: { id: true } });
+        if (legacyBug) resultBugId = legacyBug.id;
+      }
+      if (!bug && !resultBugId) {
         throw new BadRequestException('Bug does not belong to the test request project.');
       }
     }
@@ -162,7 +174,8 @@ export class TestRunsService {
         actualResult: dto.actualResult?.trim() || null,
         remark: dto.remark?.trim() || null,
         evidence: dto.evidence as Prisma.InputJsonValue | undefined,
-        bugId: dto.bugId ?? null,
+        bugId: resultBugId,
+        workItemId: resultWorkItemId,
         executedByUserId: userId ?? null,
         executedAt: new Date(),
       },
@@ -172,7 +185,8 @@ export class TestRunsService {
         actualResult: dto.actualResult?.trim() || null,
         remark: dto.remark?.trim() || null,
         evidence: dto.evidence as Prisma.InputJsonValue | undefined,
-        bugId: dto.bugId ?? null,
+        bugId: resultBugId,
+        workItemId: resultWorkItemId,
         executedByUserId: userId ?? null,
       },
     });

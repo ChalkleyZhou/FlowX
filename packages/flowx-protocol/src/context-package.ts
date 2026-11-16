@@ -1,6 +1,6 @@
 import type { SourceTool } from './execution-session.js';
 
-export const EDGE_TASK_TYPES = ['REQUIREMENT', 'ISSUE'] as const;
+export const EDGE_TASK_TYPES = ['REQUIREMENT', 'ISSUE', 'BUG'] as const;
 
 export type EdgeTaskType = (typeof EDGE_TASK_TYPES)[number];
 

@@ -415,13 +415,13 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     'flowx_list_version_work_items',
     {
       title: 'List Version Work Items',
-      description: '查询版本下统一的需求和 Issue 工作项，服务端负责筛选和游标分页。',
+      description: '查询版本下统一的需求、问题和缺陷工作项，服务端负责筛选和游标分页。',
       inputSchema: z.object({
         projectId: z.string().min(1),
         versionId: z.string().min(1),
         cursor: z.string().optional(),
         pageSize: z.number().int().min(1).max(100).optional(),
-        kind: z.enum(['REQUIREMENT', 'ISSUE']).optional(),
+        kind: z.enum(['REQUIREMENT', 'ISSUE', 'BUG']).optional(),
         status: z.string().optional(),
         ownerId: z.string().optional(),
         q: z.string().optional(),
@@ -1082,10 +1082,10 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     {
       title: 'Create FlowX Work Item',
       description:
-        'Create a FlowX WorkItem only after the user explicitly asked to register it or confirmed that choice. The kind selects REQUIREMENT or ISSUE; both use the same WorkItem root and execution plan. Never interpret ordinary code changes, current-project feature work, or requirement discussion as authorization to create FlowX data. Requires projectId, versionId, kind and title. Description, acceptance criteria, type-specific fields and repository scope are optional.',
+        'Create a FlowX WorkItem only after the user explicitly asked to register it or confirmed that choice. The kind selects REQUIREMENT, ISSUE or BUG; all use the same WorkItem root and execution plan. Never interpret ordinary code changes, current-project feature work, or requirement discussion as authorization to create FlowX data. Requires projectId, versionId, kind and title. Description, acceptance criteria, type-specific fields and repository scope are optional.',
       inputSchema: z.object({
         projectId: z.string().min(1),
-        kind: z.enum(['REQUIREMENT', 'ISSUE']),
+        kind: z.enum(['REQUIREMENT', 'ISSUE', 'BUG']),
         title: z.string().trim().min(1),
         description: z.string().optional(),
         acceptanceCriteria: z.string().optional(),

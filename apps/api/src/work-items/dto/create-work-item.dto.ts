@@ -1,6 +1,6 @@
 import { IsArray, IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
-export const WORK_ITEM_KINDS = ['REQUIREMENT', 'ISSUE'] as const;
+export const WORK_ITEM_KINDS = ['REQUIREMENT', 'ISSUE', 'BUG'] as const;
 export const WORK_ITEM_SPLIT_MODES = ['AI', 'SINGLE', 'MANUAL'] as const;
 
 export class CreateWorkItemDto {

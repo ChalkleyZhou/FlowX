@@ -27,11 +27,11 @@ export async function listReportSupersessions(prisma: PrismaService, id: string,
     FROM TestRun regression JOIN TestPlan p ON p.id = regression.testPlanId
     JOIN TestRun previous ON previous.testPlanId = regression.testPlanId AND previous.id != regression.id
     JOIN TestRunCase priorCase ON priorCase.testRunId = previous.id
-    JOIN TestResult priorResult ON priorResult.testRunCaseId = priorCase.id AND priorResult.bugId = regression.sourceBugId
+    JOIN TestResult priorResult ON priorResult.testRunCaseId = priorCase.id AND (priorResult.workItemId = regression.sourceWorkItemId OR priorResult.bugId = regression.sourceBugId)
     JOIN TestRunCase regressionCase ON regressionCase.testRunId = regression.id AND regressionCase.snapshotId = priorCase.snapshotId
     JOIN TestResult regressionResult ON regressionResult.testRunCaseId = regressionCase.id
     JOIN TestCaseSnapshot snapshot ON snapshot.id = priorCase.snapshotId
-    JOIN Bug bug ON bug.id = regression.sourceBugId JOIN WorkflowRun fix ON fix.id = bug.fixWorkflowRunId
+    JOIN WorkItem bug ON bug.id = COALESCE(regression.sourceWorkItemId, regression.sourceBugId) JOIN WorkflowRun fix ON fix.id = bug.fixWorkflowRunId
     LEFT JOIN TestRunTarget oldTarget ON oldTarget.id = priorCase.targetId LEFT JOIN TestRunTarget newTarget ON newTarget.id = regressionCase.targetId
     WHERE p.testRequestId = ${id} AND regression.runType = 'REGRESSION' AND priorResult.result IN ('FAILED', 'BLOCKED')
     AND previous.status IN ('PASSED', 'FAILED', 'BLOCKED') AND regression.status IN ('PASSED', 'FAILED', 'BLOCKED') AND lower(fix.status) = 'done'

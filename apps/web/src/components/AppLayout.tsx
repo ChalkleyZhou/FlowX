@@ -45,7 +45,9 @@ import { withCurrentProject } from '../project-scope';
 
 const projectItems = [
   { key: '/dashboard', label: '看板', icon: LayoutDashboard },
-  { key: '/work-items', label: '工作项', icon: ClipboardList },
+  { key: '/requirements', label: '需求', icon: ClipboardList },
+  { key: '/issues', label: '问题', icon: ClipboardList },
+  { key: '/bugs', label: '缺陷', icon: Bug },
   { key: '/workflow-runs', label: '工作流', icon: Workflow },
   { key: '/briefings', label: '简报', icon: Newspaper },
   { key: '/code-reviews', label: '代码审查', icon: GitPullRequest },
@@ -60,7 +62,6 @@ const projectItems = [
     ],
   },
   { key: '/schedule', label: '排期', icon: CalendarRange },
-  { key: '/bugs', label: '缺陷', icon: Bug },
   { key: '/project-settings', label: '项目设置', icon: Settings2 },
 ] satisfies Array<{
   key: string;

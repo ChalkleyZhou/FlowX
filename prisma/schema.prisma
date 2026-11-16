@@ -7,7 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// 版本工作台和工作流的统一业务根。kind 区分 REQUIREMENT 与 ISSUE，
+/// 版本工作台和工作流的统一业务根。kind 区分 REQUIREMENT、ISSUE 与 BUG，
 /// 类型专属字段在同一根记录上按 kind 使用，所有工作流和执行计划均从此根出发。
 model WorkItem {
   id                      String                  @id @default(cuid())
@@ -55,10 +55,17 @@ model WorkItem {
   workflowRuns            WorkflowRun[]            @relation("WorkItemRootWorkflow")
   sourceWorkflowRunId     String?
   sourceWorkflowRun       WorkflowRun?             @relation("WorkItemSourceWorkflow", fields: [sourceWorkflowRunId], references: [id], onDelete: SetNull)
+  fixWorkItemId           String?
+  fixWorkItem             WorkItem?                @relation("WorkItemBugFixTarget", fields: [fixWorkItemId], references: [id], onDelete: SetNull)
+  fixingWorkItems         WorkItem[]               @relation("WorkItemBugFixTarget")
+  fixWorkflowRunId        String?                  @unique
+  fixWorkflowRun          WorkflowRun?             @relation("WorkItemBugFixWorkflow", fields: [fixWorkflowRunId], references: [id], onDelete: SetNull)
   executionPlans          ExecutionPlan[]
   changes                 RequirementChange[]
   testRequestLinks        TestRequestWorkItem[]
   testDesignLinks        TestDesignWorkItem[]
+  verificationTestRuns    TestRun[]                @relation("WorkItemVerificationRuns")
+  testResults             TestResult[]             @relation("TestResultWorkItem")
   reviewFinding           ReviewFinding?            @relation("FindingToWorkItem")
   bugs                    Bug[]                     @relation("BugSourceWorkItem")
   fixingBugs              Bug[]                     @relation("BugFixWorkItem")
@@ -800,6 +807,7 @@ model WorkflowRun {
   sourceChange         RequirementChange?   @relation("ChangeRestart", fields: [sourceChangeId], references: [id], onDelete: SetNull)
   sourcedChanges       RequirementChange[]  @relation("ChangeSource")
   fixForBug            Bug?                 @relation("BugFixWorkflow")
+  fixForWorkItem       WorkItem?            @relation("WorkItemBugFixWorkflow")
   codeBranchSubmissions CodeBranchSubmission[]
   stageExecutions      StageExecution[]
   codeExecution        CodeExecution?
@@ -1548,6 +1556,8 @@ model TestRun {
   reports         QualityTestReport[]
   sourceBugId     String?
   sourceBug       Bug?          @relation("BugVerificationRuns", fields: [sourceBugId], references: [id], onDelete: SetNull)
+  sourceWorkItemId String?
+  sourceWorkItem   WorkItem?    @relation("WorkItemVerificationRuns", fields: [sourceWorkItemId], references: [id], onDelete: SetNull)
   createdByUserId String?
   createdByUser   User?         @relation("TestRunCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   cases           TestRunCase[]
@@ -1561,6 +1571,7 @@ model TestRun {
 
   @@index([testPlanId, createdAt])
   @@index([sourceBugId, createdAt])
+  @@index([sourceWorkItemId, createdAt])
 }
 
 model TestRunTarget {
@@ -1675,6 +1686,8 @@ model TestResult {
   evidence         Json?
   bugId            String?
   bug              Bug?        @relation("TestResultBug", fields: [bugId], references: [id], onDelete: SetNull)
+  workItemId       String?
+  workItem          WorkItem?   @relation("TestResultWorkItem", fields: [workItemId], references: [id], onDelete: SetNull)
   executedByUserId String?
   executedByUser   User?       @relation("TestResultExecutedBy", fields: [executedByUserId], references: [id], onDelete: SetNull)
   executedAt       DateTime    @default(now())
@@ -1683,6 +1696,7 @@ model TestResult {
 
   @@index([result, executedAt])
   @@index([bugId, createdAt])
+  @@index([workItemId, createdAt])
 }
 
 // 原型材料与 AI 整理结果独立保存，确认后作为工作流上游事实来源。

@@ -8,8 +8,10 @@ export interface RequestSummaryRun {
   status: string;
   sourceBugId?: string | null;
   sourceBug?: { fixWorkflowRun?: { status: string } | null } | null;
+  sourceWorkItemId?: string | null;
+  sourceWorkItem?: { fixWorkflowRun?: { status: string } | null } | null;
   targets: readonly { key: string; expectedRevisions: unknown }[];
-  cases: readonly { id: string; snapshotId: string; target?: { key: string } | null; result?: { result: string; bugId?: string | null } | null }[];
+  cases: readonly { id: string; snapshotId: string; target?: { key: string } | null; result?: { result: string; bugId?: string | null; workItemId?: string | null } | null }[];
 }
 export interface RequestSummarySupersession {
   previousRunId: string;
@@ -70,14 +72,17 @@ export function summarizeTestRequestScope(input: TestRequestSummaryInput): { res
   for (const relation of relations) {
     const previous = runsById.get(relation.previousRunId);
     const regression = runsById.get(relation.regressionRunId);
-    if (!previous || !regression || previous.id === regression.id || !ended(previous) || !ended(regression) || regression.runType !== 'REGRESSION' || !regression.sourceBugId || regression.sourceBug?.fixWorkflowRun?.status.toLowerCase() !== 'done' || !relation.testRunCaseIds.length) {
+    const regressionSourceId = regression?.sourceWorkItemId ?? regression?.sourceBugId;
+    const regressionSource = regression?.sourceWorkItem ?? regression?.sourceBug;
+    if (!previous || !regression || previous.id === regression.id || !ended(previous) || !ended(regression) || regression.runType !== 'REGRESSION' || !regressionSourceId || regressionSource?.fixWorkflowRun?.status.toLowerCase() !== 'done' || !relation.testRunCaseIds.length) {
       throw new BadRequestException('回归替代要求已完成修复及独立、已结束的原轮次与回归轮次。');
     }
     for (const id of relation.testRunCaseIds) {
       const source = previous.cases.find(item => item.id === id);
       const candidates = source ? regression.cases.filter(item => scopeKey(item) === scopeKey(source)) : [];
       const verified = candidates.length === 1 ? candidates[0] : null;
-      if (!source || !['FAILED', 'BLOCKED'].includes(source.result?.result ?? '') || source.result?.bugId !== regression.sourceBugId || !verified?.result || replaced.has(id)) {
+      const sourceBugId = source?.result?.workItemId ?? source?.result?.bugId;
+      if (!source || !['FAILED', 'BLOCKED'].includes(source.result?.result ?? '') || sourceBugId !== regressionSourceId || !verified?.result || replaced.has(id)) {
         throw new BadRequestException('回归只能一次替代该缺陷关联的失败或阻塞用例，且必须匹配快照、目标端并具有结果。');
       }
       replaced.add(id);

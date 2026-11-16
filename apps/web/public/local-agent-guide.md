@@ -107,4 +107,4 @@ HTTP 记录列表默认 `page=1&pageSize=20`，`pageSize` 最大 100，并要求
 
 ## 版本工作项与端侧执行项
 
-本地 Agent 可以通过 FlowX MCP 查询版本工作项并领取执行项。领取、完成、阻塞和取消都使用 `executionItemId`；领取和完成使用 `claimKey`，完成时可附带 `evidence`。领取成功后服务端会创建并返回绑定该执行项的 `executionSessionId`，用于端云执行追踪。多执行项计划不能通过工作流级入口整包领取，必须逐项领取；只有单执行项计划才允许工作流级本地启动。服务端负责依赖检查、并发保护、权限校验和幂等重试；Agent 不直接操作数据库，也不自行判断是否可以合并提测。常用工具为 `flowx_list_version_work_items`、`flowx_claim_execution_item`、`flowx_complete_execution_item`、`flowx_block_execution_item` 和 `flowx_cancel_execution_item`。
+本地 Agent 可以通过 FlowX MCP 查询版本工作项并领取执行项。版本工作项的 `kind` 可以是 `REQUIREMENT`（需求）、`ISSUE`（问题）或 `BUG`（缺陷）；三类记录共用执行计划和端侧领取协议。领取、完成、阻塞和取消都使用 `executionItemId`；领取和完成使用 `claimKey`，完成时可附带 `evidence`。领取成功后服务端会创建并返回绑定该执行项的 `executionSessionId`，用于端云执行追踪。多执行项计划不能通过工作流级入口整包领取，必须逐项领取；只有单执行项计划才允许工作流级本地启动。服务端负责依赖检查、并发保护、权限校验和幂等重试；Agent 不直接操作数据库，也不自行判断是否可以合并提测。常用工具为 `flowx_list_version_work_items`、`flowx_claim_execution_item`、`flowx_complete_execution_item`、`flowx_block_execution_item` 和 `flowx_cancel_execution_item`。

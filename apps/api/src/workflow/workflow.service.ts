@@ -226,7 +226,7 @@ export class WorkflowService {
   }
 
   async createLocalChatBugWorkflowRun(bugId: string, dto: StartBugFixWorkflowDto) {
-    const bug = await this.prisma.bug.findUnique({
+    const bug = await this.prisma.workItem.findUnique({
       where: { id: bugId },
       include: {
         fixWorkflowRun: true,
@@ -261,7 +261,7 @@ export class WorkflowService {
       WorkflowRunType.LOCAL_CHAT,
     );
 
-    await this.prisma.bug.update({
+    await this.prisma.workItem.update({
       where: { id: bug.id },
       data: {
         status: 'FIXING',
@@ -277,7 +277,7 @@ export class WorkflowService {
     const requirement = await this.prisma.workItem.findFirstOrThrow({
       where: {
         id: dto.workItemId,
-        kind: { in: ['REQUIREMENT', 'ISSUE'] },
+        kind: { in: ['REQUIREMENT', 'ISSUE', 'BUG'] },
         status: { notIn: ['CLOSED', 'RESOLVED'] },
       },
       include: {
@@ -563,7 +563,7 @@ export class WorkflowService {
   }
 
   async createBugFixWorkflowRun(bugId: string, dto: StartBugFixWorkflowDto) {
-    const bug = await this.prisma.bug.findUnique({
+    const bug = await this.prisma.workItem.findUnique({
       where: { id: bugId },
       include: {
         fixWorkflowRun: true,
@@ -701,7 +701,7 @@ export class WorkflowService {
         }
       }
 
-      await tx.bug.update({
+      await tx.workItem.update({
         where: { id: bug.id },
         data: {
           status: 'FIXING',
@@ -720,7 +720,7 @@ export class WorkflowService {
         where: { id: workflow.id },
         data: { status: 'FAILED' },
       });
-      await this.prisma.bug.update({
+      await this.prisma.workItem.update({
         where: { id: bug.id },
         data: { status: 'CONFIRMED' },
       });
@@ -755,7 +755,7 @@ export class WorkflowService {
 
     this.startRepositoryGroundingJob(workflow.id);
 
-    const refreshedBug = await this.prisma.bug.findUniqueOrThrow({
+    const refreshedBug = await this.prisma.workItem.findUniqueOrThrow({
       where: { id: bug.id },
       include: {
         workspace: true,
@@ -1257,11 +1257,6 @@ export class WorkflowService {
       await tx.workItem.updateMany({
         where: { sourceWorkflowRunId: id },
         data: { sourceWorkflowRunId: null },
-      });
-
-      await tx.bug.updateMany({
-        where: { workflowRunId: id },
-        data: { workflowRunId: null },
       });
 
       await tx.reviewFinding.deleteMany({
@@ -5156,7 +5151,7 @@ export class WorkflowService {
               statusMessage: '等待本地 OpenDesign 领取设计任务',
             });
           } else if (groundedWorkflow.runType === WorkflowRunType.BUG_FIX) {
-            const bug = await tx.bug.findFirst({
+            const bug = await tx.workItem.findFirst({
               where: { fixWorkflowRunId: workflowId },
             });
             if (!bug) {
@@ -5187,7 +5182,7 @@ export class WorkflowService {
         });
 
         if (groundedWorkflow.runType === WorkflowRunType.BUG_FIX) {
-          const bug = await this.prisma.bug.findFirst({
+          const bug = await this.prisma.workItem.findFirst({
             where: { fixWorkflowRunId: workflowId },
           });
           if (bug) {
@@ -5248,7 +5243,7 @@ export class WorkflowService {
           }
 
           if (failedWorkflow?.runType === WorkflowRunType.BUG_FIX) {
-            await tx.bug.updateMany({
+            await tx.workItem.updateMany({
               where: { fixWorkflowRunId: workflowId, status: 'FIXING' },
               data: { status: 'CONFIRMED' },
             });
@@ -5505,7 +5500,7 @@ export class WorkflowService {
       rework: 'FIXING',
     };
 
-    await tx.bug.updateMany({
+    await tx.workItem.updateMany({
       where: { fixWorkflowRunId: workflowRunId },
       data: { status: statusByOutcome[outcome] },
     });
@@ -5564,7 +5559,7 @@ export class WorkflowService {
       },
     });
 
-    await this.prisma.bug.update({
+    await this.prisma.workItem.update({
       where: { id: bug.id },
       data: { fixWorkItemId: requirement.id, projectId },
     });

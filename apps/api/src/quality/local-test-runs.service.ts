@@ -39,7 +39,22 @@ export class LocalTestRunsService extends LocalSmokeService {
     const run = await this.prisma.testRun.findUnique({ where: { id }, include: {
       testPlan: { include: { testRequest: { include: { project: true, projectVersion: true, workItemLinks: { include: { workItem: { select: { id: true, title: true } } } } } } } },
       sourceBug: { include: { fixWorkflowRun: { select: { id: true, status: true } } } },
-      targets: true, cases: { include: { snapshot: true, target: true, result: { include: { bug: { include: { fixWorkflowRun: { select: { id: true, status: true } } } } } }, activeLease: true }, orderBy: { sortOrder: 'asc' } },
+      sourceWorkItem: { include: { fixWorkflowRun: { select: { id: true, status: true } } } },
+      targets: true,
+      cases: {
+        include: {
+          snapshot: true,
+          target: true,
+          result: {
+            include: {
+              bug: { include: { fixWorkflowRun: { select: { id: true, status: true } } } },
+              workItem: { include: { fixWorkflowRun: { select: { id: true, status: true } } } },
+            },
+          },
+          activeLease: true,
+        },
+        orderBy: { sortOrder: 'asc' },
+      },
       executions: { include: { results: true, claimedByUser: { select: { id: true, displayName: true } } } },
     } });
     if (!run) throw new NotFoundException('测试轮次不存在。');
@@ -52,10 +67,20 @@ export class LocalTestRunsService extends LocalSmokeService {
     if (request.testPlan.status !== 'READY' || request.scopeGenerationStatus !== 'COMPLETED' || !['READY', 'IN_TEST', 'PASSED', 'FAILED', 'BLOCKED'].includes(request.status)) throw new BadRequestException('请先完成测试范围和提测准备。');
     if (!request.workflowLinks.length || request.workflowLinks.some(link => link.workflowRun.status.toLowerCase() !== 'done')) throw new BadRequestException('关联研发工作流尚未完成。');
     let fixWorkflowRunId: string | undefined;
+    let sourceWorkItemId: string | null = null;
+    let sourceBugId: string | null = null;
     if (dto.runType === 'REGRESSION') {
-      const bug = dto.sourceBugId ? await this.prisma.bug.findFirst({ where: { id: dto.sourceBugId, projectId: request.projectId }, include: { fixWorkflowRun: { include: { workItem: { select: { projectId: true } } } } } }) : null;
-      if (!bug?.fixWorkflowRun || bug.fixWorkflowRun.workItem.projectId !== request.projectId || bug.fixWorkflowRun.status.toLowerCase() !== 'done') throw new BadRequestException('回归必须关联当前项目且修复已完成的缺陷。');
-      fixWorkflowRunId = bug.fixWorkflowRun.id;
+      const bug = dto.sourceBugId ? await this.prisma.workItem.findFirst({ where: { id: dto.sourceBugId, kind: 'BUG', projectId: request.projectId }, include: { fixWorkflowRun: { select: { id: true, status: true } } } }) : null;
+      if (bug) {
+        sourceWorkItemId = bug.id;
+        if (!bug.fixWorkflowRun || bug.fixWorkflowRun.status.toLowerCase() !== 'done') throw new BadRequestException('回归必须关联当前项目且修复已完成的缺陷。');
+        fixWorkflowRunId = bug.fixWorkflowRun.id;
+      } else {
+        const legacyBug = dto.sourceBugId ? await this.prisma.bug.findFirst({ where: { id: dto.sourceBugId, projectId: request.projectId }, include: { fixWorkflowRun: { include: { workItem: { select: { projectId: true } } } } } }) : null;
+        if (!legacyBug?.fixWorkflowRun || legacyBug.fixWorkflowRun.workItem.projectId !== request.projectId || legacyBug.fixWorkflowRun.status.toLowerCase() !== 'done') throw new BadRequestException('回归必须关联当前项目且修复已完成的缺陷。');
+        sourceBugId = legacyBug.id;
+        fixWorkflowRunId = legacyBug.fixWorkflowRun.id;
+      }
     } else if (dto.sourceBugId) throw new BadRequestException('初测不能关联来源缺陷。');
     const targets = dto.targets.map(item => ({ ...item, key: item.key.trim().toLowerCase() }));
     if (!targets.length || new Set(targets.map(item => item.key)).size !== targets.length) throw new BadRequestException('目标端不能为空或重复。');
@@ -72,7 +97,7 @@ export class LocalTestRunsService extends LocalSmokeService {
       const current = await tx.testRequest.findUniqueOrThrow({ where: { id } });
       if (current.scopeRevision !== request.scopeRevision || !['READY', 'IN_TEST', 'PASSED', 'FAILED', 'BLOCKED'].includes(current.status)) throw new ConflictException('测试范围或状态已变化。');
       if (current.status !== 'IN_TEST') assertTestRequestTransition(current.status as TestRequestStatus, TestRequestStatus.IN_TEST);
-      const created = await tx.testRun.create({ data: { testPlanId: request.testPlan!.id, name: dto.name.trim(), runType: dto.runType, sourceBugId: dto.sourceBugId, executionMode: 'LOCAL', sourceFingerprint, createdByUserId: userId, startedAt: new Date() } });
+      const created = await tx.testRun.create({ data: { testPlanId: request.testPlan!.id, name: dto.name.trim(), runType: dto.runType, sourceBugId, sourceWorkItemId, executionMode: 'LOCAL', sourceFingerprint, createdByUserId: userId, startedAt: new Date() } });
       for (const target of resolved) {
         const saved = await tx.testRunTarget.create({ data: { testRunId: created.id, key: target.key, name: target.name, required: target.required !== false, expectedRevisions: target.expectedRevisions as unknown as Prisma.InputJsonValue } });
         for (const [sortOrder, item] of dto.cases.filter(item => item.targetKeys.includes(target.key)).entries()) await tx.testRunCase.create({ data: { testRunId: created.id, targetId: saved.id, snapshotId: item.snapshotId, sortOrder } });
@@ -189,11 +214,13 @@ export class LocalTestRunsService extends LocalSmokeService {
       const item = await tx.testRunCase.findFirst({ where: { id: caseId, testRunId: runId }, include: { result: true, testRun: { include: { testPlan: { include: { testRequest: true } } } } } });
       if (!item?.result) throw new NotFoundException('已执行测试项不存在。');
       if (!['FAILED', 'BLOCKED'].includes(item.result.result)) throw new BadRequestException('只有失败或阻塞结果可以关联缺陷。');
-      const bug = await tx.bug.findFirst({ where: { id: bugId, projectId: item.testRun.testPlan.testRequest.projectId } });
-      if (!bug) throw new BadRequestException('缺陷不属于当前提测项目。');
-      if (item.result.bugId && item.result.bugId !== bugId) throw new ConflictException('该结果已关联其他缺陷，请保留原关联。');
+      const bug = await tx.workItem.findFirst({ where: { id: bugId, kind: 'BUG', projectId: item.testRun.testPlan.testRequest.projectId } });
+      const legacyBug = bug ? null : await tx.bug.findUnique({ where: { id: bugId } });
+      if (legacyBug && legacyBug.projectId !== item.testRun.testPlan.testRequest.projectId) throw new BadRequestException('缺陷不属于当前提测项目。');
+      if (!bug && !legacyBug) throw new BadRequestException('缺陷不属于当前提测项目。');
+      if ((item.result.workItemId ?? item.result.bugId) && (item.result.workItemId ?? item.result.bugId) !== bugId) throw new ConflictException('该结果已关联其他缺陷，请保留原关联。');
       await tx.testRun.update({ where: { id: runId }, data: { revision: { increment: 1 } } });
-      return tx.testResult.update({ where: { id: item.result.id }, data: { bugId } });
+      return tx.testResult.update({ where: { id: item.result.id }, data: bug ? { workItemId: bugId, bugId: null } : { bugId, workItemId: null } });
     });
   }
 

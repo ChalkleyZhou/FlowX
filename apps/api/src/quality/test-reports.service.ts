@@ -13,7 +13,7 @@ import { renderQualityTestReport, type QualityReportSnapshot } from './test-repo
 
 const reportRunInclude = {
   testPlan: { include: { snapshots: true, testRequest: { include: { project: true, projectVersion: true, testDesign: { select: { coverageChecks: true, uncoveredItems: true } }, workItemLinks: { include: { workItem: { select: { id: true, title: true } } } } } } } },
-  targets: true, sourceBug: { include: { fixWorkflowRun: { select: { status: true } } } },
+  targets: true, sourceBug: { include: { fixWorkflowRun: { select: { status: true } } } }, sourceWorkItem: { include: { fixWorkflowRun: { select: { status: true } } } },
   cases: { include: { snapshot: true, result: true, target: true } },
   executions: { include: { results: true, claimedByUser: { select: { displayName: true } } } },
 } as const;
@@ -90,7 +90,7 @@ export class TestReportsService {
       runs: runs.map(run => ({ id: run.id, name: run.name, runType: run.runType, status: run.status,
         targets: run.targets.map(target => ({ key: target.key, name: target.name, expectedRevisions: target.expectedRevisions })),
         executions: run.executions.map(item => ({ id: item.id, user: item.claimedByUser?.displayName, deviceId: item.deviceId, status: item.status, environment: safeEnvironment(item.environment), testedRevisions: item.testedRevisions, startedAt: item.startedAt, completedAt: item.completedAt, caseResults: item.results })),
-        cases: run.cases.map(item => ({ id: item.id, title: item.snapshot.title, selectionReason: item.snapshot.selectionReason, coverageKeys: qualityRecord(item.snapshot.metadata).coverageKeys, target: item.target?.name ?? '-', priority: item.snapshot.priority, expected: item.snapshot.expected, result: item.result?.result ?? null, actualResult: item.result?.actualResult ?? null, remark: item.result?.remark ?? null, artifactIds: stringArray(qualityRecord(item.result?.evidence).artifactIds), bugId: item.result?.bugId ?? null })),
+        cases: run.cases.map(item => ({ id: item.id, title: item.snapshot.title, selectionReason: item.snapshot.selectionReason, coverageKeys: qualityRecord(item.snapshot.metadata).coverageKeys, target: item.target?.name ?? '-', priority: item.snapshot.priority, expected: item.snapshot.expected, result: item.result?.result ?? null, actualResult: item.result?.actualResult ?? null, remark: item.result?.remark ?? null, artifactIds: stringArray(qualityRecord(item.result?.evidence).artifactIds), bugId: item.result?.workItemId ?? item.result?.bugId ?? null })),
       })),
     };
     const last = await this.prisma.qualityTestReport.findFirst({ where: { requestId: request.id, kind }, orderBy: { revision: 'desc' } });

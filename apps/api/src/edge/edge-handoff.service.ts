@@ -51,7 +51,7 @@ export class EdgeHandoffService {
     const repository = handoff.repositories[0];
     const chatPrompt = buildLocalChatPrompt({
       sourceTool: dto.sourceTool,
-      kind: handoff.workItem.kind as 'REQUIREMENT' | 'ISSUE',
+      kind: handoff.workItem.kind as 'REQUIREMENT' | 'ISSUE' | 'BUG',
       workItemId: handoff.workItem.id,
       executionItemId: dto.executionItemId,
       workflowRunId: handoff.workflowRunId,

@@ -6,6 +6,7 @@ import type { PrismaService } from '../prisma/prisma.service';
 export const runBrowseInclude = {
   testPlan: { include: { testRequest: { include: { project: true, projectVersion: true } } } },
   sourceBug: { include: { fixWorkflowRun: { select: { id: true, status: true } } } },
+  sourceWorkItem: { include: { fixWorkflowRun: { select: { id: true, status: true } } } },
   _count: { select: { cases: true, targets: true, executions: true } },
 } as const;
 
@@ -20,11 +21,11 @@ export async function getRunBrowse(prisma: PrismaService, id: string) {
 export async function listRunCases(prisma: PrismaService, id: string, query: PaginationQuery & { q?: string; result?: string; targetId?: string; bugId?: string }) {
   const run = await getRunBrowse(prisma, id);
   const paging = parsePagination(query);
-  const scope: Prisma.TestRunCaseWhereInput = { testRunId: id, targetId: query.targetId, ...(query.bugId ? { AND: [{ result: { bugId: query.bugId } }] } : {}), ...(query.q?.trim() ? { snapshot: { title: { contains: query.q.trim() } } } : {}) };
+  const scope: Prisma.TestRunCaseWhereInput = { testRunId: id, targetId: query.targetId, ...(query.bugId ? { AND: [{ OR: [{ result: { bugId: query.bugId } }, { result: { workItemId: query.bugId } }] }] } : {}), ...(query.q?.trim() ? { snapshot: { title: { contains: query.q.trim() } } } : {}) };
   const result = query.result?.toUpperCase();
   const where: Prisma.TestRunCaseWhereInput = { ...scope, ...(result ? result === 'NOT_RUN' || result === 'PENDING' ? { result: null } : { result: { result } } : {}) };
   const [items, total, resultGroups, pending] = await Promise.all([
-    prisma.testRunCase.findMany({ where, include: { snapshot: true, target: { select: { id: true, key: true, name: true } }, assignedToUser: true, activeLease: true, result: { include: { bug: { include: { fixWorkflowRun: { select: { id: true, status: true } } } } } } }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }], skip: paging.skip, take: paging.take }),
+    prisma.testRunCase.findMany({ where, include: { snapshot: true, target: { select: { id: true, key: true, name: true } }, assignedToUser: true, activeLease: true, result: { include: { bug: { include: { fixWorkflowRun: { select: { id: true, status: true } } } }, workItem: { include: { fixWorkflowRun: { select: { id: true, status: true } } } } } } }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }], skip: paging.skip, take: paging.take }),
     prisma.testRunCase.count({ where }),
     prisma.testResult.groupBy({ by: ['result'], where: { testRunCase: scope }, _count: true }),
     prisma.testRunCase.count({ where: { ...scope, result: null } }),

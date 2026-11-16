@@ -44,7 +44,7 @@ description: 仅在用户明确要求把事项新建、登记或发起到 FlowX 
    - `repositoryIds`：可选；不选则继承平台默认
 
 4. **创建**
-   调用 `flowx_create_work_item`，`kind` 传 `REQUIREMENT`，并且**必须传入**用户确认的 `versionId`（具体 id，不能为 `null`）。需求和 Issue 共用 WorkItem 根；Issue 直接把 `kind` 改为 `ISSUE`，不再走另一套创建入口。
+   调用 `flowx_create_work_item`，`kind` 传 `REQUIREMENT`，并且**必须传入**用户确认的 `versionId`（具体 id，不能为 `null`）。需求、问题和缺陷共用 WorkItem 根；问题或缺陷直接把 `kind` 改为 `ISSUE` 或 `BUG`，不再走另一套创建入口。
    成功后回显 `requirementId`、标题、项目、版本名。
    标题含糊时先问清再调用；选填描述缺省不阻塞创建。未通过“意图边界”不得调用。
 

@@ -334,7 +334,7 @@ export interface WorkItem {
   projectId: string;
   versionId?: string | null;
   workspaceId: string;
-  kind: 'REQUIREMENT' | 'ISSUE';
+  kind: 'REQUIREMENT' | 'ISSUE' | 'BUG';
   title: string;
   description: string;
   remark: string;
@@ -679,6 +679,42 @@ export interface BugScreenshot {
 }
 
 export interface Bug {
+  id: string;
+  kind?: 'BUG';
+  status: string;
+  severity: string;
+  priority: string;
+  title: string;
+  description: string;
+  screenshots?: BugScreenshot[] | null;
+  workspace?: { id: string; name: string } | null;
+  project?: { id: string; name: string } | null;
+  projectId?: string | null;
+  workspaceId?: string;
+  workItem?: WorkItemReference | null;
+  workflowRun?: { id: string; status: string } | null;
+  fixWorkflowRun?: { id: string; status: string } | null;
+  fixWorkItem?: WorkItemReference | null;
+  workflowRunId?: string | null;
+  fixWorkflowRunId?: string | null;
+  workItemId?: string | null;
+  branchName?: string | null;
+  createdAt?: string;
+  expectedBehavior?: string | null;
+  actualBehavior?: string | null;
+  reproductionSteps?: string[] | null;
+  resolution?: string | null;
+  reviewFinding?: {
+    id: string;
+    type: string;
+    severity: string;
+    title: string;
+    description: string;
+  } | null;
+}
+
+/* @deprecated 缺陷已统一由 WorkItem(kind=BUG) 承载，保留字段形状供旧质量页面消费。 */
+export interface LegacyBug {
   id: string;
   status: string;
   severity: string;

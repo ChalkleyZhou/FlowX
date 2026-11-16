@@ -6,11 +6,11 @@
 
 ## WorkItem 与执行项核心模型
 
-版本工作台直接读取统一的 `WorkItem`，用 `kind` 区分 `REQUIREMENT` 和 `ISSUE`；需求和 Issue 字段位于同一业务根。`WorkflowRun` 以 `workItemId` 作为最终业务根，执行拆解使用 `ExecutionPlan -> ExecutionItem -> ExecutionSession`，简单项也生成一个隐式执行项。`SINGLE` 创建后立即得到可执行的隐式执行项，`AI`/`MANUAL` 创建先落为待确认草案，只有计划确认并绑定工作流后才允许端侧领取。版本列表使用 `(projectId, versionId, updatedAt, id)` 稳定游标分页，会议页只提供状态、负责人和备注等高频编辑，改版本、启动流程和拆解确认收在详情操作中。
+版本工作台直接读取统一的 `WorkItem`，用 `kind` 区分 `REQUIREMENT`、`ISSUE` 和 `BUG`；需求、问题和缺陷字段位于同一业务根。`WorkflowRun` 以 `workItemId` 作为最终业务根，执行拆解使用 `ExecutionPlan -> ExecutionItem -> ExecutionSession`，简单项也生成一个隐式执行项。`SINGLE` 创建后立即得到可执行的隐式执行项，`AI`/`MANUAL` 创建先落为待确认草案，只有计划确认并绑定工作流后才允许端侧领取。版本列表使用 `(projectId, versionId, updatedAt, id)` 稳定游标分页，会议页只提供状态、负责人和备注等高频编辑，改版本、启动流程和拆解确认收在详情操作中。
 
 本模型不通过客户端拼接两组列表，也不引入 `VersionWorkItem` 投影或公共字段双写；迁移脚本在同一事务内回填现有数据，并由后续切换删除旧根模型。端侧领取和完成统一针对 `executionItemId`，服务端事务条件更新保证单领取者和幂等回传。
 
-`@flowx-ai/protocol` 定义 `PageQuery` 和 `PageResult<T>`。普通记录浏览接口使用 `page/pageSize/q`，默认 1/20、上限 100，响应含 `items/total/page/pageSize/totalPages`；空结果总页数为 1。API 统一校验正整数与数据库偏移范围，使用与权限、搜索、状态筛选相同的 `where` 进行有界 `skip/take` 和计数，排序追加唯一 ID。混合需求/缺陷任务通过数据库统一排序后分页，不能拼接两组局部页。
+`@flowx-ai/protocol` 定义 `PageQuery` 和 `PageResult<T>`。普通记录浏览接口使用 `page/pageSize/q`，默认 1/20、上限 100，响应含 `items/total/page/pageSize/totalPages`；空结果总页数为 1。API 统一校验正整数与数据库偏移范围，使用与权限、搜索、状态筛选相同的 `where` 进行有界 `skip/take` 和计数，排序追加唯一 ID。版本工作台的需求/问题/缺陷聚合列表通过数据库统一排序后分页，不能拼接两组局部页。
 
 Web 通过 `api.ts` 发送 `X-FlowX-List-Contract: pagination-v1` 并验证响应元数据；服务端对已迁移记录路由拒绝缺失契约标记的请求，返回 `426 / PAGINATION_UPGRADE_REQUIRED`。固定能力枚举、详情、下载及业务执行上下文不受此标记限制。`flowx-local` 同步工具 schema、参数映射和返回元数据；服务端与本地包分别升级时以明确错误要求更新，禁止静默截断。
 
@@ -93,7 +93,7 @@ flowchart LR
 
 ### WorkItem 创建与执行契约（2026-11-13）
 
-`POST /projects/:projectId/versions/:versionId/work-items` 是版本工作台和端侧 Agent 的统一创建入口，必须同时提供 `kind`（`REQUIREMENT` 或 `ISSUE`）和有效版本。需求、Issue 的公共字段和类型专属字段均直接写入 `WorkItem`；创建时同步建立 `ExecutionPlan`。会议快速新建默认建立待确认的 AI 计划，由 AI 判断生成一个还是多个执行项；明确选择 `SINGLE` 的入口会直接创建一个可领取的默认 `ExecutionItem`。`PATCH /work-items/:id` 负责会议页和详情页的统一编辑，`DELETE /work-items/:id` 负责统一删除保护。工作流只能从 `WorkItem` 启动，端侧只能领取 `ExecutionItem`。
+`POST /projects/:projectId/versions/:versionId/work-items` 是版本工作台和端侧 Agent 的统一创建入口，必须同时提供 `kind`（`REQUIREMENT`、`ISSUE` 或 `BUG`）和有效版本。需求、问题、缺陷的公共字段和类型专属字段均直接写入 `WorkItem`；创建时同步建立 `ExecutionPlan`。会议快速新建默认建立待确认的 AI 计划，由 AI 判断生成一个还是多个执行项；明确选择 `SINGLE` 的入口会直接创建一个可领取的默认 `ExecutionItem`。`PATCH /work-items/:id` 负责会议页和详情页的统一编辑，`DELETE /work-items/:id` 负责统一删除保护。工作流只能从 `WorkItem` 启动，端侧只能领取 `ExecutionItem`。
 
 执行计划策略由 `splitMode=AI|SINGLE|MANUAL` 明确表达。`SINGLE` 只允许一个执行项并可直接启动；`AI` 和 `MANUAL` 必须先生成或补齐执行项、人工确认计划，再启动工作流。版本会议页默认使用 `AI`，会议参与者不需要先判断是否拆分，只需审核 AI 结果；需要时可在详情中手动补成单执行项。AI 拆解使用独立的 `execution-split.output.schema.json`，每项输出目标端、边界描述、负责人建议、是否必需、依赖索引和验证方式；服务端把依赖索引解析为真实 `ExecutionItem` ID 后保存，不能把自然语言标题当作依赖。
 
@@ -108,9 +108,9 @@ FlowX Web 当前提供：
 - 工作区和 Repository 管理。
 - 项目、发布版本、需求、工作流和排期。
 - Ideation、设计 Artifact、执行、Review 和人工确认。
-- WorkItem（`kind=REQUIREMENT|ISSUE`）、Bug、项目简报和每日 Code Review。
+- WorkItem（`kind=REQUIREMENT|ISSUE|BUG`）、项目简报和每日 Code Review。
 - AI/Git 凭据、组织用户、数据源和投递目标设置。
-- Workspace 是业务数据的组织隔离根；Project、WorkItem、WorkflowRun、Bug、简报、Code Review 与产物均沿 Workspace 继承组织边界，跨组织按 ID 访问也必须返回不可见。
+- Workspace 是业务数据的组织隔离根；Project、WorkItem、WorkflowRun、简报、Code Review 与产物均沿 Workspace 继承组织边界，跨组织按 ID 访问也必须返回不可见。
 
 后续页面应围绕六个中心组织，但在功能具备前不进行只改导航名称的空壳重构。
 
@@ -136,7 +136,7 @@ Workspace
   -> StageExecution
   -> CodeExecution / ReviewReport
   -> ReviewFinding
-  -> WorkItem(kind=ISSUE) / Bug
+  -> WorkItem(kind=ISSUE|BUG)
 ```
 
 该链路已经具备研发流程基础；Artifact、Evidence、ExecutionSession 以及 TestDesign/TestRequest/TestPlan/TestRun 的独立模型已经落地。开发执行的受控会话由 `ExecutionCommand`、检查点和回执构成协作式运行控制：云端保存状态和命令，本地 Agent 在检查点领取并确认。失联是基于服务端最后检查点的健康计算，不代表可以远程终止 IDE。完成报告必须绑定原会话和原执行人，按工作流基线核对 Git 提交后才推进 Review。Spec & Plan 可由本地 `ExecutionSession` 领取，结构化输出继续写入 `StageExecution`，`spec.md` 和 `plan.md` 作为 Artifact 上传。TestDesign 在 Spec & Plan 确认后与开发执行并行，提测前汇合并冻结功能与动态冒烟快照。`LOCAL_SMOKE` 通过 `TestRunTarget`、`TestExecution` 和 append-only `TestExecutionCaseResult` 支持多人多端执行，服务端聚合 `TestResult` 并生成版本化 `TEST_REPORT`。Release、RuntimeFeedback 和自动化测试结果导入仍需继续建设。

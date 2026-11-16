@@ -1,4 +1,4 @@
-export type LocalChatTaskKind = 'REQUIREMENT' | 'ISSUE';
+export type LocalChatTaskKind = 'REQUIREMENT' | 'ISSUE' | 'BUG';
 
 export interface LocalChatPromptRepository {
   name: string;

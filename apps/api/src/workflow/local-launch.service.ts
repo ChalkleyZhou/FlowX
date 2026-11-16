@@ -82,7 +82,7 @@ export class LocalLaunchService {
       const repository = executionHandoff.repositories[0];
       handoff = executionHandoff;
       chatPrompt = buildLocalChatPrompt({
-        kind: (executionHandoff.workItem.kind as 'REQUIREMENT' | 'ISSUE' | undefined) ?? 'REQUIREMENT',
+        kind: (executionHandoff.workItem.kind as 'REQUIREMENT' | 'ISSUE' | 'BUG' | undefined) ?? 'REQUIREMENT',
         workItemId: executionHandoff.workItem.id,
         executionItemId: executionHandoff.executionItem?.id ?? executionHandoff.workItem.id,
         workflowRunId: executionHandoff.workflowRunId,

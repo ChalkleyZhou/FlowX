@@ -11,7 +11,7 @@ import {
   type WorkflowPositionPriorOutput,
 } from './workflow-position';
 
-export type EdgeTaskKind = 'REQUIREMENT' | 'ISSUE';
+export type EdgeTaskKind = 'REQUIREMENT' | 'ISSUE' | 'BUG';
 
 export type EdgeWorkflowSession = {
   user: { id: string; displayName: string };

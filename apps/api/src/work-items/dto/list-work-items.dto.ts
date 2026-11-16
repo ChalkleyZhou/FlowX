@@ -15,7 +15,7 @@ export class ListWorkItemsDto {
   pageSize?: number;
 
   @IsOptional()
-  @IsIn(['REQUIREMENT', 'ISSUE'])
+  @IsIn(['REQUIREMENT', 'ISSUE', 'BUG'])
   kind?: string;
 
   @IsOptional()

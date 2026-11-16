@@ -16,7 +16,7 @@ export function runScopeFingerprint(run: StateRun) {
   return qualityHash({ id: run.id, status: run.status, runType: run.runType,
     targets: run.targets.map(item => ({ key: item.key, expectedRevisions: item.expectedRevisions })).sort((a, b) => a.key.localeCompare(b.key)),
     cases: run.cases.map(item => ({ id: item.id, snapshotId: item.snapshotId, targetId: item.targetId,
-      result: item.result ? { result: item.result.result, bugId: item.result.bugId, actualResult: item.result.actualResult, evidence: item.result.evidence } : null,
+      result: item.result ? { result: item.result.result, bugId: item.result.workItemId ?? item.result.bugId, actualResult: item.result.actualResult, evidence: item.result.evidence } : null,
     })).sort((a, b) => a.id.localeCompare(b.id)),
   });
 }

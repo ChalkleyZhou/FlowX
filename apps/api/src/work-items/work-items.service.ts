@@ -128,7 +128,7 @@ export class WorkItemsService {
           versionId,
           workspaceId: project.workspaceId,
           kind: dto.kind,
-          status: dto.kind === 'ISSUE' ? 'OPEN' : 'ACTIVE',
+          status: dto.kind === 'ISSUE' || dto.kind === 'BUG' ? 'OPEN' : 'ACTIVE',
           title,
           description: dto.description?.trim() ?? '',
           remark: dto.remark?.trim() ?? '',

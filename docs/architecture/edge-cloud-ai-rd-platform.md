@@ -13,7 +13,7 @@ FlowX 的目标不是替代 Cursor、Codex、OpenDesign、IDE、CLI 或自动化
 - Git 继续作为源代码事实来源，FlowX 默认不复制完整本地工作区。
 - FlowX API 和数据库是组织级流程状态的事实来源，MCP、插件和 Local API 只承担接入与同步职责。
 
-版本下的需求和 Issue 统一为 `WorkItem`。WorkItem 表达业务意图，`ExecutionPlan` 和 `ExecutionItem` 表达 AI 建议后经人确认的执行拆解，端侧通过 `ExecutionSession` 领取和回传；即使一个人可以完成，也使用一个隐式执行项。工作流、状态聚合和提测门禁都以 WorkItem 为根，避免会议台账、需求流和本地任务各自维护一套状态。
+版本下的需求、问题和缺陷统一为 `WorkItem`，通过 `kind` 区分。WorkItem 表达业务意图，`ExecutionPlan` 和 `ExecutionItem` 表达 AI 建议后经人确认的执行拆解，端侧通过 `ExecutionSession` 领取和回传；即使一个人可以完成，也使用一个隐式执行项。工作流、状态聚合和提测门禁都以 WorkItem 为根，避免会议台账、需求流和本地任务各自维护一套状态。
 
 ## 2. 展示架构图
 
@@ -251,7 +251,7 @@ interface FlowXSyncEvent<TPayload = unknown> {
 数字主线建议以显式关联对象表达，不依赖在 JSON 中拼装隐式关系：
 
 ```text
-WorkItem (REQUIREMENT | ISSUE)
+WorkItem (REQUIREMENT | ISSUE | BUG)
   -> ExecutionPlan / ExecutionItem
   -> WorkflowRun / StageExecution
   -> ExecutionSession
@@ -318,7 +318,7 @@ flowchart LR
 
 ## 9. 数据模型演进
 
-现有 `Workspace`、`Project`、`WorkItem`、`WorkflowRun`、`StageExecution`、`WorkflowRepository`、`Bug`、`ReviewFinding` 保留并逐步演进。需求与 Issue 使用 `WorkItem.kind` 区分，不再维护两套根模型。
+现有 `Workspace`、`Project`、`WorkItem`、`WorkflowRun`、`StageExecution`、`WorkflowRepository`、`ReviewFinding` 保留并逐步演进。需求、问题和缺陷使用 `WorkItem.kind` 区分，不再维护多套业务根模型。
 
 建议新增或抽象：
 

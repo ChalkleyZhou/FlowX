@@ -12,8 +12,10 @@ it('质量执行迁移保留旧人工和冒烟轮次、快照、结果与租约�
   const schema = readFileSync(resolve('../../prisma/schema.prisma'), 'utf8');
   // 从当前 schema 只移除本次新增项，避免测试在未来提交后依赖变化的 HEAD。
   const removedFields: Record<string, string[]> = {
+    WorkItem: ['verificationTestRuns', 'testResults'],
     TestCaseDefinition: ['targetKeys'], TestCaseSnapshot: ['targetKeys'],
-    TestDesign: ['caseSelection', 'retrievalSummary'], TestRun: ['executionMode', 'revision'],
+    TestDesign: ['caseSelection', 'retrievalSummary'], TestRun: ['executionMode', 'revision', 'sourceWorkItemId', 'sourceWorkItem'],
+    TestResult: ['workItemId', 'workItem'],
   };
   const baseline = schema
     .replace(/^model (?:QualityProgressEvent|QualityTestReport) \{[\s\S]*?^\}\n/gm, '')
@@ -21,7 +23,8 @@ it('质量执行迁移保留旧人工和冒烟轮次、快照、结果与租约�
     .replace(/^model (\w+) \{[\s\S]*?^\}/gm, (block: string, model: string) => {
       const fields = removedFields[model];
       return fields ? block.replace(new RegExp(`^  (?:${fields.join('|')})\\s+.*\\n`, 'gm'), '') : block;
-    });
+    })
+    .replace(/^  @@index\(\[(?:sourceWorkItemId|workItemId), createdAt\]\)\n/gm, '');
   const schemaPath = join(directory, 'baseline.prisma');
   const sqlPath = join(directory, 'baseline.sql');
   writeFileSync(schemaPath, baseline);

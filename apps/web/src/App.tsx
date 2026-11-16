@@ -25,6 +25,7 @@ import { GitCredentialsPage } from './pages/GitCredentialsPage';
 import { PersonalApiTokensPage } from './pages/PersonalApiTokensPage';
 import { OrganizationUsersPage } from './pages/OrganizationUsersPage';
 import { RequirementsPage } from './pages/RequirementsPage';
+import { IssuesPage } from './pages/IssuesPage';
 import { WorkflowRunDetailPage } from './pages/WorkflowRunDetailPage';
 import { ExecutionSessionDetailPage, ExecutionSessionsPage } from './pages/ExecutionSessionsPage';
 import { WorkflowRunsPage } from './pages/WorkflowRunsPage';
@@ -70,7 +71,9 @@ export default function App() {
             <Route path="/projects/:projectId" element={<LegacyProjectEntryRedirect />} />
             <Route path="/projects/:projectId/schedule" element={<ProjectScheduleRedirect />} />
             <Route path="/projects/:projectId/versions/:versionId/work-items" element={<VersionWorkItemsPage />} />
-            <Route path="/work-items" element={<RequirementsPage />} />
+            <Route path="/requirements" element={<RequirementsPage />} />
+            <Route path="/work-items" element={<Navigate to="/requirements" replace />} />
+            <Route path="/issues" element={<IssuesPage />} />
             <Route path="/work-items/:id" element={<WorkItemDetailPage />} />
             <Route path="/project-settings" element={<ProjectDetailPage />} />
             <Route path="/briefings" element={<BriefingsPage />} />
