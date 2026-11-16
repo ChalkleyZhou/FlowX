@@ -58,9 +58,12 @@ describe('VersionWorkspacePage', () => {
       await Promise.resolve();
     });
 
+    expect(container.textContent).toContain('版本工作台');
     expect(container.textContent).toContain('2.6.0');
     expect(container.textContent).toContain('统一查看需求、问题和缺陷');
-    expect(container.querySelector('button[aria-label="切换版本"]')).not.toBeNull();
+    const versionTrigger = container.querySelector('button[aria-label="切换版本"]');
+    expect(versionTrigger).not.toBeNull();
+    expect(versionTrigger?.textContent).toContain('2.6.0');
     expect(api.listVersionWorkItems).toHaveBeenCalledWith('project-1', 'version-1', expect.anything());
   });
 });

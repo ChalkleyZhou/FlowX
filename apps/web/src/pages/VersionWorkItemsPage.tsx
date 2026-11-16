@@ -96,11 +96,12 @@ export function VersionWorkItemsPage({
     <div className="space-y-5">
       <PageHeader
         eyebrow="Version work items"
-        title={version?.name ?? '版本工作项'}
+        title="版本工作台"
         description="统一查看需求、问题和缺陷，直接更新状态、负责人和备注。"
         actions={(
           <div className="flex flex-wrap items-center gap-2">
             <PagedSelect
+              className="w-36"
               value={versionId}
               selectedLabel={version?.name}
               label="切换版本"
