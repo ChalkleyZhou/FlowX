@@ -120,8 +120,8 @@ export function WorkflowRunsPage() {
             filters={(
               <>
                 <PagedSelect className="w-[220px]" value={workspaceId} selectedLabel={selectedWorkspace?.name} label="按工作区查看" placeholder="按工作区查看" allowClear emptyLabel="全部工作区" loadPage={query => api.getWorkspaces(query)} onValueChange={value => updateFilter('workspaceId',value)} />
-                <PagedSelect className="w-[220px]" value={workItemId} selectedLabel={selectedRequirement?.title} label="按需求查看" placeholder="按需求查看" allowClear emptyLabel="全部需求" disabled={!projectId} scopeKey={`${projectId}:${workspaceId}`}
-                  loadPage={async query => { const result = await api.getRequirements({...query,projectId:projectId!,workspaceId:workspaceId || undefined}); return {...result,items:result.items.map(item => ({id:item.id,name:item.title}))}; }} onValueChange={value => updateFilter('workItemId',value)} />
+                <PagedSelect className="w-[220px]" value={workItemId} selectedLabel={selectedRequirement ? `${selectedRequirement.displayCode ?? selectedRequirement.id} · ${selectedRequirement.title}` : undefined} label="按需求查看" placeholder="按需求查看" allowClear emptyLabel="全部需求" disabled={!projectId} scopeKey={`${projectId}:${workspaceId}`}
+                  loadPage={async query => { const result = await api.getRequirements({...query,projectId:projectId!,workspaceId:workspaceId || undefined}); return {...result,items:result.items.map(item => ({id:item.id,name:`${item.displayCode ?? item.id} · ${item.title}`}))}; }} onValueChange={value => updateFilter('workItemId',value)} />
                 <Select
                   value={runType || '__all__'}
                   onValueChange={(value) => {

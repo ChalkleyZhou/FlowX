@@ -521,7 +521,7 @@ function QualityRunDetailContent({ id }: { id: string }) {
             <DialogTitle>关联缺陷</DialogTitle>
             <DialogDescription>关联缺陷不会修改执行结果，修复完成后使用独立回归轮次验证。</DialogDescription>
           </DialogHeader>
-          <PagedSelect label="选择已有缺陷" value={bugId} onValueChange={setBugId} loadPage={async query => { const result = await api.getBugs({ ...query, projectId: request?.projectId }); return { ...result, items: result.items.map(bug => ({ id: bug.id, name: bug.title })) }; }} placeholder="选择已有缺陷" />
+          <PagedSelect label="选择已有缺陷" value={bugId} onValueChange={setBugId} loadPage={async query => { const result = await api.getBugs({ ...query, projectId: request?.projectId }); return { ...result, items: result.items.map(bug => ({ id: bug.id, name: `${bug.displayCode ?? bug.id} · ${bug.title}` })) }; }} placeholder="选择已有缺陷" />
           <Button
             disabled={busy || !bugId}
             onClick={() =>

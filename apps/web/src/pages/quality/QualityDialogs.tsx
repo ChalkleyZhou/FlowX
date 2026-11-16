@@ -138,8 +138,8 @@ export function CreateRequestDialog({
                     onChange={(event) => { setSelectedRuns(current => ({ ...current, [run.id]: run })); setSelectedRunIds(current => event.target.checked ? [...current, run.id] : current.filter(id => id !== run.id)); }}
                   />
                   <span className="min-w-0 text-sm">
-                    <span className="block font-medium text-foreground">{run.workItem.title}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{run.id}</span>
+                    <span className="block font-medium text-foreground">{run.workItem.displayCode ?? run.workItem.id} · {run.workItem.title}</span>
+                    <span className="block truncate text-xs text-muted-foreground">研发工作流 · {run.status}</span>
                   </span>
                 </label>
               )) : (

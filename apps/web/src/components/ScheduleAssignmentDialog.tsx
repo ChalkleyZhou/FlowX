@@ -222,7 +222,7 @@ export function ScheduleAssignmentDialog({
                 </label>
                 <PagedSelect value={requirementId} onValueChange={value => {setRequirementLabel('');setRequirementId(value);}}
                   label="选择需求" placeholder={projectId ? '请选择需求' : '请先选择项目'} selectedLabel={requirementLabel} disabled={!projectId} scopeKey={projectId}
-                  loadPage={async query => {const result = await api.getRequirements({...query,projectId});return {...result,items:result.items.map(item => ({id:item.id,name:item.title}))};}} />
+                  loadPage={async query => {const result = await api.getRequirements({...query,projectId});return {...result,items:result.items.map(item => ({id:item.id,name:`${item.displayCode ?? item.id} · ${item.title}`}))};}} />
               </div>
             </>
           ) : null}

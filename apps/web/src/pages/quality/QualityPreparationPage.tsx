@@ -121,7 +121,7 @@ function QualityPreparationContent({ workItemId }: { workItemId: string }) {
       <PageHeader
         eyebrow="测试与质量"
         title="准备测试"
-        description={`${workItem.project?.name ?? '当前项目'} · ${workItem.version?.name ?? '当前工作项版本'} · ${workItem.title}`}
+        description={`${workItem.project?.name ?? '当前项目'} · ${workItem.version?.name ?? '当前工作项版本'} · ${workItem.displayCode ?? workItem.id} · ${workItem.title}`}
         actions={
           <Button variant="outline" asChild>
             <Link to={`/work-items/${workItem.id}`}>返回工作项</Link>
@@ -182,9 +182,9 @@ function QualityPreparationContent({ workItemId }: { workItemId: string }) {
                   }
                 />
                 <Link to={`/workflow-runs/${run.id}`} className="text-primary underline">
-                  {run.id}
+                  {workItem.displayCode ?? workItem.id}
                 </Link>{' '}
-                · {run.status}
+                · 研发工作流 · {run.status}
               </label>
             ))}
             <ListPagination page={runPage} total={runTotal} pageSize={10} onPageChange={setRunPage} />
