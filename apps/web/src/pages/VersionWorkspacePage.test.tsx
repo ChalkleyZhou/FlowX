@@ -93,6 +93,22 @@ describe('VersionWorkspacePage', () => {
     expect(api.getRequirements).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', versionId: 'version-1', page: 1, pageSize: 20 }));
   });
 
+  it('快速新建使用弹框并默认当前工作项类型', async () => {
+    await act(async () => {
+      root?.render(<MemoryRouter initialEntries={['/versions?projectId=project-1&versionId=version-1']}><VersionWorkspacePage /></MemoryRouter>);
+      await Promise.resolve();
+    });
+
+    const quickCreate = Array.from(container.querySelectorAll('button')).find(button => button.textContent === '快速新建');
+    await act(async () => { quickCreate?.click(); });
+
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog?.textContent).toContain('快速新建需求');
+    expect(dialog?.querySelector('#version-work-item-title')).not.toBeNull();
+    expect(container.querySelector('#version-work-item-title')).toBeNull();
+  });
+
   it('需求 Tab 展示需求专属字段并保持只读', async () => {
     vi.mocked(api.getRequirements).mockResolvedValue(pageResult([{
       id: 'requirement-1', title: '需求一', description: '需求描述', priority: 'HIGH',

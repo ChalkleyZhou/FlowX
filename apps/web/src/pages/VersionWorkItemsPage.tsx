@@ -9,6 +9,7 @@ import { PagedSelect } from '../components/PagedSelect';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Spinner } from '../components/ui/spinner';
@@ -29,6 +30,10 @@ const kindTabs: Array<{ value: WorkItemKind; label: string }> = [
 
 function parseKind(value: string | null): WorkItemKind {
   return kindTabs.some(tab => tab.value === value) ? value as WorkItemKind : 'REQUIREMENT';
+}
+
+function formatKindLabel(kind: WorkItemKind) {
+  return kindTabs.find(tab => tab.value === kind)?.label ?? '工作项';
 }
 
 function formatDate(value?: string | null) {
@@ -191,9 +196,53 @@ export function VersionWorkItemsPage({
 
   const visibleItems = kind === 'REQUIREMENT' ? requirements : kind === 'ISSUE' ? issues : bugs;
   const emptyDescription = kind === 'REQUIREMENT' ? '当前版本还没有需求。' : kind === 'ISSUE' ? '当前版本还没有问题。' : '当前版本还没有缺陷。';
+  const createKindLabel = formatKindLabel(draft.kind);
 
   return (
     <div className="space-y-5">
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) setDraft({ kind, title: '', description: '', remark: '', splitMode: 'AI' });
+        }}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>快速新建{createKindLabel}</DialogTitle>
+            <DialogDescription>填写标题即可创建当前版本的工作项，确认前不会派发执行项。</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <label className="text-sm font-medium" htmlFor="version-work-item-kind">类型</label>
+              <Select value={draft.kind} onValueChange={value => setDraft(current => ({ ...current, kind: value as WorkItem['kind'] }))}>
+                <SelectTrigger id="version-work-item-kind"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="REQUIREMENT">需求</SelectItem>
+                  <SelectItem value="ISSUE">问题</SelectItem>
+                  <SelectItem value="BUG">缺陷</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <label className="text-sm font-medium" htmlFor="version-work-item-title">标题</label>
+              <Input id="version-work-item-title" autoFocus placeholder="例如：支持按组织维度导出报表" value={draft.title} onChange={event => setDraft(current => ({ ...current, title: event.target.value }))} />
+            </div>
+            <div className="grid gap-2">
+              <label className="text-sm font-medium" htmlFor="version-work-item-description">描述</label>
+              <Textarea id="version-work-item-description" rows={4} placeholder="补充会议记录或工作项背景（可选）" value={draft.description} onChange={event => setDraft(current => ({ ...current, description: event.target.value }))} />
+            </div>
+            <div className="grid gap-2">
+              <label className="text-sm font-medium" htmlFor="version-work-item-remark">备注</label>
+              <Input id="version-work-item-remark" placeholder="备注（可选）" value={draft.remark} onChange={event => setDraft(current => ({ ...current, remark: event.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
+            <Button onClick={() => void create()} disabled={!draft.title.trim()}>创建</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <PageHeader
         eyebrow="Version work items"
         title="版本工作台"
@@ -223,7 +272,6 @@ export function VersionWorkItemsPage({
           <ListPagination page={typedPage} total={typedTotal} pageSize={PAGE_SIZE} loading={loading} onPageChange={page => void load(page)} label={`${kind === 'REQUIREMENT' ? '需求' : kind === 'ISSUE' ? '问题' : '缺陷'}列表分页`} />
         </CardContent>
       </Card>
-      {createOpen ? <Card><CardContent className="grid gap-3 p-4 md:grid-cols-2"><Select value={draft.kind} onValueChange={value => setDraft(current => ({ ...current, kind: value as WorkItem['kind'] }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="REQUIREMENT">需求</SelectItem><SelectItem value="ISSUE">问题</SelectItem><SelectItem value="BUG">缺陷</SelectItem></SelectContent></Select><p className="flex items-center text-sm text-muted-foreground">创建后由 AI 判断是否需要拆分，确认前不会派发执行项。</p><Input className="md:col-span-2" placeholder="标题" value={draft.title} onChange={event => setDraft(current => ({ ...current, title: event.target.value }))} /><Textarea className="md:col-span-2" placeholder="会议记录或描述" value={draft.description} onChange={event => setDraft(current => ({ ...current, description: event.target.value }))} /><Input className="md:col-span-2" placeholder="备注" value={draft.remark} onChange={event => setDraft(current => ({ ...current, remark: event.target.value }))} /><div className="flex gap-2 md:col-span-2"><Button onClick={() => void create()}>创建</Button><Button variant="ghost" onClick={() => setCreateOpen(false)}>取消</Button></div></CardContent></Card> : null}
     </div>
   );
 }
