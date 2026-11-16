@@ -128,7 +128,7 @@ function ActiveWorkflows({requirementId}:{requirementId:string}) {
 export function RequirementsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  useRememberedSearchFilters('requirements', ['versionId', 'planningStatus', 'priority']);
+  useRememberedSearchFilters('requirements', ['q', 'versionId', 'planningStatus', 'priority']);
   const [scopedProject, setScopedProject] = useState<Project | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [filterVersion, setFilterVersion] = useState<ProjectVersionSummary | null>(null);
@@ -159,10 +159,11 @@ export function RequirementsPage() {
   const selectedVersionId = searchParams.get('versionId') ?? undefined;
   const selectedPlanningStatus = searchParams.get('planningStatus') ?? undefined;
   const selectedPriority = searchParams.get('priority') ?? undefined;
+  const selectedQuery = searchParams.get('q') ?? undefined;
   const hasActiveFilters = Boolean(
-    selectedVersionId || selectedPlanningStatus || selectedPriority,
+    selectedQuery || selectedVersionId || selectedPlanningStatus || selectedPriority,
   );
-  const list = useListPage(api.getRequirements, { projectId: selectedProjectId, versionId: selectedVersionId, planningStatus: selectedPlanningStatus, priority: selectedPriority }, {enabled: Boolean(selectedProjectId)});
+  const list = useListPage(api.getRequirements, { projectId: selectedProjectId, q: selectedQuery, versionId: selectedVersionId, planningStatus: selectedPlanningStatus, priority: selectedPriority }, {enabled: Boolean(selectedProjectId)});
   const {items: requirements, total, page, loading, refresh, onPageChange: setPage} = list;
   const hasLoaded = !loading;
   const requirementSummary = {requirementCount:list.summary?.requirementCount ?? total,visibleCount:list.summary?.visibleCount ?? total,workspaceCount:list.summary?.workspaceCount ?? 0,projectCount:list.summary?.projectCount ?? 0};
@@ -216,7 +217,7 @@ export function RequirementsPage() {
 
   function clearFilters() {
     const nextParams = new URLSearchParams(searchParams);
-    ['workspaceId', 'versionId', 'planningStatus', 'priority'].forEach((key) => nextParams.delete(key));
+    ['workspaceId', 'q', 'versionId', 'planningStatus', 'priority'].forEach((key) => nextParams.delete(key));
     setSearchParams(nextParams, { replace: true });
   }
 
@@ -687,6 +688,14 @@ export function RequirementsPage() {
         </CardHeader>
         <CardContent className="p-5 pt-0">
           <ListToolbar
+            search={(
+              <UiInput
+                aria-label="搜索需求"
+                placeholder="搜索需求名称、编号或描述"
+                value={selectedQuery ?? ''}
+                onChange={(event) => updateFilterQuery({ q: event.target.value || undefined })}
+              />
+            )}
             filters={(
               <>
                 <PagedSelect className="w-[220px]" value={selectedVersionId ?? ''} selectedLabel={filterVersion && filterVersion.id === selectedVersionId ? filterVersion.name : undefined} label="按发布版本" placeholder="按发布版本" allowClear emptyLabel="全部版本" disabled={!selectedProjectId} scopeKey={selectedProjectId ?? ''}
@@ -740,7 +749,7 @@ export function RequirementsPage() {
               <table className="w-max min-w-full text-sm">
                 <thead className="bg-muted/40 text-left text-muted-foreground">
                   <tr>
-                    {['需求标题', '需求描述', '优先级', '创建人', '创建时间', '需求变更时间', '最新变更内容', '备注', '操作'].map((label) => (
+                    {['需求', '需求描述', '优先级', '状态', '规划版本', '创建人', '创建时间', '操作'].map((label) => (
                       <th
                         key={label}
                         className={label === '操作'
@@ -756,8 +765,9 @@ export function RequirementsPage() {
                   {requirements.map((item) => (
                     <tr key={item.id} className="border-t border-border">
                       <td className="whitespace-nowrap px-4 py-3 font-medium">
-                        <div className="flex items-center gap-2">
+                        <div className="flex min-w-[220px] flex-col gap-1">
                           <Link to={`/work-items/${item.id}`} className="text-foreground no-underline hover:text-primary">{item.title}</Link>
+                          <span className="text-xs font-normal text-muted-foreground">{item.id}</span>
                           {item.prototypeImport && item.prototypeImport.status !== 'CONFIRMED' ? (
                             <Badge variant="warning">{item.prototypeImport.status === 'FAILED' ? '导入失败' : '原型导入中'}</Badge>
                           ) : null}
@@ -765,11 +775,14 @@ export function RequirementsPage() {
                       </td>
                       <td className="max-w-md whitespace-normal break-words px-4 py-3 text-muted-foreground">{item.description.trim() || '未填写'}</td>
                       <td className="whitespace-nowrap px-4 py-3">{formatPriority(item.priority)}</td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <Badge variant={item.planningStatus === 'DONE' ? 'success' : item.planningStatus === 'IN_PROGRESS' ? 'warning' : item.planningStatus === 'SCHEDULED' ? 'default' : 'secondary'}>
+                          {formatPlanningStatus(item.planningStatus)}
+                        </Badge>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">{item.version?.name ?? '未分配'}</td>
                       <td className="whitespace-nowrap px-4 py-3">{item.createdByName?.trim() || '未记录'}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-muted-foreground"><time dateTime={item.createdAt ?? undefined}>{formatRequirementCreatedAt(item.createdAt)}</time></td>
-                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{item.latestChangeAt ? <time dateTime={item.latestChangeAt}>{formatRequirementCreatedAt(item.latestChangeAt)}</time> : '—'}</td>
-                      <td className="max-w-md whitespace-normal break-words px-4 py-3 text-muted-foreground">{item.latestChangeContent?.trim() || '—'}</td>
-                      <td className="max-w-xs whitespace-normal break-words px-4 py-3 text-muted-foreground">{item.remark?.trim() || '未填写'}</td>
                       <td className="sticky right-0 z-10 whitespace-nowrap border-l border-t border-border bg-card px-4 py-3">
                         <div className="flex flex-nowrap gap-2">
                           <UiButton variant="default" size="sm" asChild>

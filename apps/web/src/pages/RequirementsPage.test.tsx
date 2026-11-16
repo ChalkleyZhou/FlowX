@@ -240,7 +240,7 @@ describe('RequirementsPage', () => {
     ).toBe(false);
   });
 
-  it('需求列表展示标题、描述、优先级、创建人、时间和变更，不展示项目、版本和排期', async () => {
+  it('需求列表展示紧凑的核心字段，并将低频信息留在详情', async () => {
     await act(async () => {
       root?.render(
         <MemoryRouter initialEntries={['/work-items?projectId=project-1']}>
@@ -254,25 +254,26 @@ describe('RequirementsPage', () => {
     });
 
     const headers = Array.from(container.querySelectorAll('th')).map((cell) => cell.textContent);
-    expect(headers).toEqual(['需求标题', '需求描述', '优先级', '创建人', '创建时间', '需求变更时间', '最新变更内容', '备注', '操作']);
+    expect(headers).toEqual(['需求', '需求描述', '优先级', '状态', '规划版本', '创建人', '创建时间', '操作']);
     expect(container.querySelector('th:last-child')?.className).toContain('sticky');
     expect(container.querySelector('th:last-child')?.className).toContain('right-0');
     expect(container.querySelector('tbody td:last-child')?.className).toContain('sticky');
     const cells = Array.from(container.querySelectorAll('tbody td')).map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim());
-    expect(cells.slice(0, 8)).toEqual([
-      '端云设计闭环',
+    expect(cells[0]).toContain('端云设计闭环');
+    expect(cells[0]).toContain('requirement-1');
+    expect(cells.slice(1, 7)).toEqual([
       requirement.description,
       '高',
+      '未排期',
+      '2.6.0',
       '产品甲',
       new Date(requirement.createdAt!).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }),
-      '—',
-      '—',
-      requirement.remark,
     ]);
     const body = container.querySelector('tbody')?.textContent ?? '';
-    expect(body).not.toContain('2.6.0');
-    expect(body).not.toContain('未排期');
+    expect(body).toContain('2.6.0');
+    expect(body).toContain('未排期');
     expect(body).not.toContain(requirement.functionalModule ?? '');
+    expect(body).not.toContain(requirement.remark ?? '');
     expect(container.querySelector('table')?.className).toContain('w-max');
     expect(container.textContent).not.toContain(requirement.acceptanceCriteria);
     expect(container.textContent).not.toContain(requirement.riskImpact);
@@ -311,15 +312,22 @@ describe('RequirementsPage', () => {
     expect(container.textContent).not.toContain('需求 21');
   });
 
-  it('有需求变更时列表展示最近变更时间和正文', async () => {
+  it('需求列表支持按名称、编号或描述搜索', async () => {
+    await act(async () => {
+      root?.render(<MemoryRouter initialEntries={['/work-items?projectId=project-1&q=设计闭环']}><RequirementsPage /></MemoryRouter>);
+    });
+    expect((container.querySelector('input[aria-label="搜索需求"]') as HTMLInputElement).value).toBe('设计闭环');
+    expect(api.getRequirements).toHaveBeenLastCalledWith(expect.objectContaining({ q: '设计闭环', page: 1, pageSize: 20 }));
+  });
+
+  it('有需求变更时列表仍保持简洁，变更信息不占用主表格', async () => {
     const latestChangeAt = '2026-10-26T09:30:00.000Z';
     vi.mocked(api.getRequirements).mockResolvedValue(paged([{ ...requirement, latestChangeAt, latestChangeContent: '最新变更正文' }]));
     await act(async () => {
       root?.render(<MemoryRouter initialEntries={['/work-items?projectId=project-1']}><RequirementsPage /></MemoryRouter>);
     });
-    const cells = container.querySelectorAll('tbody td');
-    expect(cells[5]?.textContent).toBe(new Date(latestChangeAt).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }));
-    expect(cells[6]?.textContent).toBe('最新变更正文');
+    const table = container.querySelector('tbody')?.textContent ?? '';
+    expect(table).not.toContain('最新变更正文');
   });
 
   it('按版本、规划状态和优先级从 URL 恢复组合筛选', async () => {
@@ -684,7 +692,7 @@ describe('RequirementsPage', () => {
     expect(container.textContent).toContain('改后的名称');
     expect(container.textContent).toContain('新的描述');
     expect(container.querySelector('tbody')?.textContent).not.toContain('订单');
-    expect(container.textContent).toContain('新备注');
+    expect(container.querySelector('tbody')?.textContent).not.toContain('新备注');
     expect(container.textContent).toContain('产品甲');
     expect(successToast).toHaveBeenCalledWith('需求已更新');
   });
