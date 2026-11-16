@@ -8,6 +8,7 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { EmptyState } from '../components/EmptyState';
 import { ProjectRequiredState } from '../components/ProjectRequiredState';
 import { RequirementEditDialog } from '../components/RequirementEditDialog';
+import { RequirementListTable } from '../components/RequirementListTable';
 import { ListToolbar } from '../components/ListToolbar';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
@@ -19,7 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog';
-import { Badge } from '../components/ui/badge';
 import { Button as UiButton } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Input as UiInput } from '../components/ui/input';
@@ -34,7 +34,6 @@ import { Spinner } from '../components/ui/spinner';
 import { Textarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
 import type { PageQuery, PageResult, Project, ProjectVersionSummary, Repository, Requirement } from '../types';
-import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
 import { useScopedProjectId } from '../project-scope-context';
 import { useRememberedSearchFilters } from '../utils/list-filter-storage';
 import { formatRequirementWorkflowScope } from '../utils/requirement-workflows';
@@ -64,17 +63,6 @@ const planningStatusOptions = [
   { id: 'IN_PROGRESS', label: '进行中' },
   { id: 'DONE', label: '已完成' },
 ] as const;
-
-function formatRequirementCreatedAt(value?: string | null) {
-  if (!value) return '未记录';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '未记录';
-  return date.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-}
 
 const priorityOptions = [
   { id: 'URGENT', label: '紧急' },
@@ -746,69 +734,29 @@ export function RequirementsPage() {
           ) : requirements.length > 0 ? (
             <>
             <div className="overflow-x-auto rounded-md border border-border">
-              <table className="w-max min-w-full text-sm">
-                <thead className="bg-muted/40 text-left text-muted-foreground">
-                  <tr>
-                    {['需求', '需求描述', '优先级', '状态', '规划版本', '创建人', '创建时间', '操作'].map((label) => (
-                      <th
-                        key={label}
-                        className={label === '操作'
-                          ? 'sticky right-0 z-20 whitespace-nowrap border-l border-border bg-muted px-4 py-3 font-medium'
-                          : 'whitespace-nowrap px-4 py-3 font-medium'}
-                      >
-                        {label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {requirements.map((item) => (
-                    <tr key={item.id} className="border-t border-border">
-                      <td className="whitespace-nowrap px-4 py-3 font-medium">
-                        <div className="flex min-w-[220px] flex-col gap-1">
-                          <Link to={`/work-items/${item.id}`} title={item.title} className="block w-[240px] truncate text-foreground no-underline hover:text-primary">{item.title}</Link>
-                          <span title={item.id} className="block w-[240px] truncate text-xs font-normal text-muted-foreground">{item.id}</span>
-                          {item.prototypeImport && item.prototypeImport.status !== 'CONFIRMED' ? (
-                            <Badge variant="warning">{item.prototypeImport.status === 'FAILED' ? '导入失败' : '原型导入中'}</Badge>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        <span className="block w-[320px] truncate" title={item.description.trim() || '未填写'}>{item.description.trim() || '未填写'}</span>
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">{formatPriority(item.priority)}</td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <Badge variant={item.planningStatus === 'DONE' ? 'success' : item.planningStatus === 'IN_PROGRESS' ? 'warning' : item.planningStatus === 'SCHEDULED' ? 'default' : 'secondary'}>
-                          {formatPlanningStatus(item.planningStatus)}
-                        </Badge>
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3"><span className="block max-w-[180px] truncate" title={item.version?.name ?? '未分配'}>{item.version?.name ?? '未分配'}</span></td>
-                      <td className="whitespace-nowrap px-4 py-3"><span className="block max-w-[120px] truncate" title={item.createdByName?.trim() || '未记录'}>{item.createdByName?.trim() || '未记录'}</span></td>
-                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground"><time dateTime={item.createdAt ?? undefined}>{formatRequirementCreatedAt(item.createdAt)}</time></td>
-                      <td className="sticky right-0 z-10 whitespace-nowrap border-l border-t border-border bg-card px-4 py-3">
-                        <div className="flex flex-nowrap gap-2">
-                          <UiButton variant="default" size="sm" asChild>
-                            <Link to={`/work-items/${item.id}`}>详情</Link>
-                          </UiButton>
-                          <UiButton variant="outline" size="sm" type="button" onClick={() => setEditingRequirement(item)}>
-                            编辑
-                          </UiButton>
-                          <UiButton
-                            variant="outline"
-                            size="sm"
-                            type="button"
-                            aria-label={`删除需求：${item.title}`}
-                            disabled={deletingRequirementId === item.id}
-                            onClick={() => void handleDeleteRequirement(item)}
-                          >
-                            {deletingRequirementId === item.id ? '删除中...' : '删除'}
-                          </UiButton>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <RequirementListTable
+                items={requirements}
+                renderActions={(item) => (
+                  <>
+                    <UiButton variant="default" size="sm" asChild>
+                      <Link to={`/work-items/${item.id}`}>详情</Link>
+                    </UiButton>
+                    <UiButton variant="outline" size="sm" type="button" onClick={() => setEditingRequirement(item)}>
+                      编辑
+                    </UiButton>
+                    <UiButton
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      aria-label={`删除需求：${item.title}`}
+                      disabled={deletingRequirementId === item.id}
+                      onClick={() => void handleDeleteRequirement(item)}
+                    >
+                      {deletingRequirementId === item.id ? '删除中...' : '删除'}
+                    </UiButton>
+                  </>
+                )}
+              />
             </div>
             <ListPagination page={page} total={total} pageSize={REQUIREMENT_PAGE_SIZE} loading={loading} onPageChange={setPage} label="需求列表分页" />
             </>

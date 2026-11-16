@@ -120,9 +120,12 @@ describe('VersionWorkspacePage', () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain('需求变更时间');
-    expect(container.textContent).toContain('最新变更内容');
-    expect(container.textContent).toContain('需求备注');
+    expect(container.textContent).toContain('需求描述');
+    expect(container.textContent).toContain('规划版本');
+    expect(container.textContent).toContain('未分配');
+    expect(container.textContent).not.toContain('需求变更时间');
+    expect(container.textContent).not.toContain('最新变更内容');
+    expect(container.textContent).not.toContain('需求备注');
     expect(container.querySelectorAll('tbody select')).toHaveLength(0);
     expect(container.querySelector('a[href="/work-items/requirement-1"]')).not.toBeNull();
   });
