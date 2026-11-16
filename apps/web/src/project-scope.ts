@@ -11,6 +11,7 @@ export const PROJECT_LIST_PATHS = [
   '/quality/test-runs',
   '/schedule',
   '/bugs',
+  '/versions',
   '/project-settings',
 ] as const;
 

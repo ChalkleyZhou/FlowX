@@ -31,6 +31,7 @@ import { ExecutionSessionDetailPage, ExecutionSessionsPage } from './pages/Execu
 import { WorkflowRunsPage } from './pages/WorkflowRunsPage';
 import { WorkspacesPage } from './pages/WorkspacesPage';
 import { VersionWorkItemsPage } from './pages/VersionWorkItemsPage';
+import { VersionManagementPage } from './pages/VersionManagementPage';
 import { WorkItemDetailPage } from './pages/WorkItemDetailPage';
 import { UserManualPage } from './pages/UserManualPage';
 import { LocalAgentGuidePage } from './pages/LocalAgentGuidePage';
@@ -71,6 +72,7 @@ export default function App() {
             <Route path="/projects/:projectId" element={<LegacyProjectEntryRedirect />} />
             <Route path="/projects/:projectId/schedule" element={<ProjectScheduleRedirect />} />
             <Route path="/projects/:projectId/versions/:versionId/work-items" element={<VersionWorkItemsPage />} />
+            <Route path="/versions" element={<VersionManagementPage />} />
             <Route path="/requirements" element={<RequirementsPage />} />
             <Route path="/work-items" element={<Navigate to="/requirements" replace />} />
             <Route path="/issues" element={<IssuesPage />} />
