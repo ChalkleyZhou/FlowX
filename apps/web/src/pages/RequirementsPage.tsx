@@ -766,22 +766,24 @@ export function RequirementsPage() {
                     <tr key={item.id} className="border-t border-border">
                       <td className="whitespace-nowrap px-4 py-3 font-medium">
                         <div className="flex min-w-[220px] flex-col gap-1">
-                          <Link to={`/work-items/${item.id}`} className="text-foreground no-underline hover:text-primary">{item.title}</Link>
-                          <span className="text-xs font-normal text-muted-foreground">{item.id}</span>
+                          <Link to={`/work-items/${item.id}`} title={item.title} className="block w-[240px] truncate text-foreground no-underline hover:text-primary">{item.title}</Link>
+                          <span title={item.id} className="block w-[240px] truncate text-xs font-normal text-muted-foreground">{item.id}</span>
                           {item.prototypeImport && item.prototypeImport.status !== 'CONFIRMED' ? (
                             <Badge variant="warning">{item.prototypeImport.status === 'FAILED' ? '导入失败' : '原型导入中'}</Badge>
                           ) : null}
                         </div>
                       </td>
-                      <td className="max-w-md whitespace-normal break-words px-4 py-3 text-muted-foreground">{item.description.trim() || '未填写'}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        <span className="block w-[320px] truncate" title={item.description.trim() || '未填写'}>{item.description.trim() || '未填写'}</span>
+                      </td>
                       <td className="whitespace-nowrap px-4 py-3">{formatPriority(item.priority)}</td>
                       <td className="whitespace-nowrap px-4 py-3">
                         <Badge variant={item.planningStatus === 'DONE' ? 'success' : item.planningStatus === 'IN_PROGRESS' ? 'warning' : item.planningStatus === 'SCHEDULED' ? 'default' : 'secondary'}>
                           {formatPlanningStatus(item.planningStatus)}
                         </Badge>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3">{item.version?.name ?? '未分配'}</td>
-                      <td className="whitespace-nowrap px-4 py-3">{item.createdByName?.trim() || '未记录'}</td>
+                      <td className="whitespace-nowrap px-4 py-3"><span className="block max-w-[180px] truncate" title={item.version?.name ?? '未分配'}>{item.version?.name ?? '未分配'}</span></td>
+                      <td className="whitespace-nowrap px-4 py-3"><span className="block max-w-[120px] truncate" title={item.createdByName?.trim() || '未记录'}>{item.createdByName?.trim() || '未记录'}</span></td>
                       <td className="whitespace-nowrap px-4 py-3 text-muted-foreground"><time dateTime={item.createdAt ?? undefined}>{formatRequirementCreatedAt(item.createdAt)}</time></td>
                       <td className="sticky right-0 z-10 whitespace-nowrap border-l border-t border-border bg-card px-4 py-3">
                         <div className="flex flex-nowrap gap-2">

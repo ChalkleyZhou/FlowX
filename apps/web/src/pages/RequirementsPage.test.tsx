@@ -320,6 +320,23 @@ describe('RequirementsPage', () => {
     expect(api.getRequirements).toHaveBeenLastCalledWith(expect.objectContaining({ q: '设计闭环', page: 1, pageSize: 20 }));
   });
 
+  it('需求列表长文本单行省略并可悬停查看完整内容', async () => {
+    const longTitle = '这是一个非常长的需求标题用于验证列表不会换行展示';
+    const longDescription = '这是一个非常长的需求描述用于验证列表会在超出列宽后显示省略号而不是撑开表格';
+    vi.mocked(api.getRequirements).mockResolvedValue(paged([{ ...requirement, title: longTitle, description: longDescription }]));
+    await act(async () => {
+      root?.render(<MemoryRouter initialEntries={['/work-items?projectId=project-1']}><RequirementsPage /></MemoryRouter>);
+    });
+
+    const row = container.querySelector('tbody tr')!;
+    const title = row.querySelector('td:first-child a')!;
+    const description = row.querySelector('td:nth-child(2) span')!;
+    expect(title.className).toContain('truncate');
+    expect(title.getAttribute('title')).toBe(longTitle);
+    expect(description.className).toContain('truncate');
+    expect(description.getAttribute('title')).toBe(longDescription);
+  });
+
   it('有需求变更时列表仍保持简洁，变更信息不占用主表格', async () => {
     const latestChangeAt = '2026-10-26T09:30:00.000Z';
     vi.mocked(api.getRequirements).mockResolvedValue(paged([{ ...requirement, latestChangeAt, latestChangeContent: '最新变更正文' }]));
