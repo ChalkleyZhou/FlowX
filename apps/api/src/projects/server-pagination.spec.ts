@@ -51,6 +51,16 @@ describe('记录浏览使用数据库分页', () => {
     expect(result).toMatchObject({total:50,page:2,pageSize:5,summary:{visible:50}});
   });
 
+  it('缺陷列表可以按版本筛选，并让统计复用同一条件', async () => {
+    const delegate = { findMany: vi.fn().mockResolvedValue([{ id: 'bug-1' }]), count: vi.fn().mockResolvedValue(1) };
+    const instance = service(ReviewArtifactsService.prototype, { workItem: delegate, bug: delegate });
+    const result = await instance.getBugsPage({ projectId: 'p', versionId: 'v', page: '1', pageSize: '20' });
+    const query = delegate.findMany.mock.calls[0][0];
+    expect(query.where).toMatchObject({ kind: 'BUG', projectId: 'p', versionId: 'v' });
+    expect(delegate.count).toHaveBeenCalledWith({ where: query.where });
+    expect(result).toMatchObject({ total: 1, page: 1, pageSize: 20 });
+  });
+
   it('需求分页在数据库筛选，汇总不依赖当前页', async () => {
     const workItem = {findMany:vi.fn().mockResolvedValue([]),count:vi.fn().mockResolvedValue(31)};
     const project = {count:vi.fn().mockResolvedValue(1)};

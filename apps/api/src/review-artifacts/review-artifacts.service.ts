@@ -398,10 +398,10 @@ export class ReviewArtifactsService {
     return this.workflowService.createBugFixWorkflowRun(bugId, dto);
   }
 
-  async getBugsPage(query: PaginationQuery & { workspaceId?: string; projectId?: string; workflowRunId?: string; status?: string; priority?: string; severity?: string; q?: string } = {}) {
+  async getBugsPage(query: PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; workflowRunId?: string; status?: string; priority?: string; severity?: string; q?: string } = {}) {
     const paging = parsePagination(query);
     const where: Prisma.WorkItemWhereInput = {
-      kind: 'BUG', ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}), ...(query.projectId ? { projectId: query.projectId } : {}),
+      kind: 'BUG', ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}), ...(query.projectId ? { projectId: query.projectId } : {}), ...(query.versionId ? { versionId: query.versionId } : {}),
       ...(query.workflowRunId ? { sourceWorkflowRunId: query.workflowRunId } : {}), ...(query.status ? { status: query.status } : {}),
       ...(query.priority ? { priority: query.priority } : {}), ...(query.severity ? { severity: query.severity } : {}),
       ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }, { workspace: { name: { contains: query.q.trim() } } }] } : {}),
