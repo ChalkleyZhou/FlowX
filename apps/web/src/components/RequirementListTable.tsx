@@ -55,7 +55,7 @@ export function RequirementListTable({
               <td className="whitespace-nowrap px-4 py-3 font-medium">
                 <div className="flex min-w-[220px] flex-col gap-1">
                   <Link to={`/work-items/${item.id}`} title={item.title} className="block w-[240px] truncate text-foreground no-underline hover:text-primary">{item.title}</Link>
-                  <span title={item.id} className="block w-[240px] truncate text-xs font-normal text-muted-foreground">{item.id}</span>
+                  <span title={item.displayCode ?? item.id} className="block w-[240px] truncate text-xs font-normal text-muted-foreground">{item.displayCode ?? item.id}</span>
                   {item.prototypeImport && item.prototypeImport.status !== 'CONFIRMED' ? (
                     <Badge variant="warning">{item.prototypeImport.status === 'FAILED' ? '导入失败' : '原型导入中'}</Badge>
                   ) : null}

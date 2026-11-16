@@ -47,7 +47,7 @@ function DetailButton({ id }: { id: string }) {
 
 function IssueTable({ items }: { items: Issue[] }) {
   return <table className="w-max min-w-full text-sm"><TableHeader labels={['问题标题', '问题描述', '状态', '优先级', '来源工作流', '分支', '操作']} /><tbody>{items.map(item => <tr key={item.id} className="border-t border-border">
-    <td className="whitespace-nowrap px-4 py-3 font-medium"><Link to={`/work-items/${item.id}`} className="text-foreground no-underline hover:text-primary">{item.title}</Link></td>
+    <td className="whitespace-nowrap px-4 py-3 font-medium"><div className="flex min-w-[220px] flex-col gap-1"><Link to={`/work-items/${item.id}`} title={item.title} className="block max-w-[260px] truncate text-foreground no-underline hover:text-primary">{item.title}</Link><span className="text-xs font-normal text-muted-foreground">{item.displayCode ?? item.id}</span></div></td>
     <td className="max-w-md whitespace-normal break-words px-4 py-3 text-muted-foreground">{item.description?.trim() || '未填写'}</td>
     <td className="whitespace-nowrap px-4 py-3"><Badge variant="secondary">{formatIssueStatus(item.status)}</Badge></td>
     <td className="whitespace-nowrap px-4 py-3">{formatPriority(item.priority)}</td>
@@ -59,7 +59,7 @@ function IssueTable({ items }: { items: Issue[] }) {
 
 function BugTable({ items }: { items: Bug[] }) {
   return <table className="w-max min-w-full text-sm"><TableHeader labels={['缺陷标题', '缺陷描述', '严重级别', '优先级', '状态', '来源工作流', '分支', '操作']} /><tbody>{items.map(item => <tr key={item.id} className="border-t border-border">
-    <td className="whitespace-nowrap px-4 py-3 font-medium"><Link to={`/work-items/${item.id}`} className="text-foreground no-underline hover:text-primary">{item.title}</Link></td>
+    <td className="whitespace-nowrap px-4 py-3 font-medium"><div className="flex min-w-[220px] flex-col gap-1"><Link to={`/work-items/${item.id}`} title={item.title} className="block max-w-[260px] truncate text-foreground no-underline hover:text-primary">{item.title}</Link><span className="text-xs font-normal text-muted-foreground">{item.displayCode ?? item.id}</span></div></td>
     <td className="max-w-md whitespace-normal break-words px-4 py-3 text-muted-foreground">{item.description?.trim() || '未填写'}</td>
     <td className="whitespace-nowrap px-4 py-3"><Badge variant="destructive">{formatSeverity(item.severity)}</Badge></td>
     <td className="whitespace-nowrap px-4 py-3">{formatPriority(item.priority)}</td>

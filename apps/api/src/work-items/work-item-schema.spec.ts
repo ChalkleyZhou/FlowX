@@ -12,6 +12,8 @@ describe('WorkItem core schema', () => {
     expect(schema).not.toContain('model Issue {');
     expect(schema).not.toContain('requirementId         String');
     expect(schema).toContain('kind                    String');
+    expect(schema).toContain('displayCode             String?');
+    expect(schema).toContain('model WorkItemSequence {');
     expect(schema).toContain('acceptanceCriteria      String');
     expect(schema).toContain('resolution              String?');
     expect(schema).toContain('model ExecutionPlan {');
@@ -31,6 +33,10 @@ describe('WorkItem core schema', () => {
     expect(migration).toContain('CREATE INDEX IF NOT EXISTS "WorkItem_projectId_versionId_updatedAt_id_idx"');
     expect(migration).toContain('CREATE UNIQUE INDEX IF NOT EXISTS "ExecutionItem_claimKey_key"');
     expect(migration).toContain('work-item-migration-plan-');
+    const displayCodeMigration = readFileSync(resolve(process.cwd(), '../../prisma/migrations/20261116150000_add_work_item_display_code/migration.sql'), 'utf8');
+    expect(displayCodeMigration).toContain('CREATE TABLE IF NOT EXISTS "WorkItemSequence"');
+    expect(displayCodeMigration).toContain('ROW_NUMBER() OVER');
+    expect(displayCodeMigration).toContain('REQ');
     expect(migration).toContain('work-item-migration-execution-');
     expect(migration).toContain('UPDATE "WorkflowRun" SET "workItemId" = "requirementId"');
     expect(migration).toContain('RENAME TO "TestDesignWorkItem"');

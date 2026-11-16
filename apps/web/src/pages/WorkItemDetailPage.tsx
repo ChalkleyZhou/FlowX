@@ -83,6 +83,7 @@ export function WorkItemDetailPage() {
         description={workItem.description}
         badges={[
           { key: 'kind', label, variant: 'default' },
+          { key: 'displayCode', label: workItem.displayCode ?? workItem.id, variant: 'outline' },
           { key: 'status', label: workItem.status, variant: 'outline' },
           { key: 'priority', label: workItem.priority, variant: 'secondary' },
           ...(workItem.version ? [{ key: 'version', label: workItem.version.name, variant: 'outline' as const }] : []),

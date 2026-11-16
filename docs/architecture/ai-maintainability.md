@@ -134,3 +134,5 @@ pnpm check
 ## WorkItem 变更适配结论
 
 WorkItem、ExecutionPlan、ExecutionItem 和端侧领取/完成属于端云共享契约，结论为“需要适配”。API 是权限和状态机唯一实现，`@flowx-ai/protocol` 只定义引用与事件结构，`flowx-local` 通过 MCP 薄桥接版本工作项查询、执行项领取和完成回传；不得在本地 Agent 复制拆解规则、组织校验或提测门禁。
+
+工作项 `displayCode` 只是 API 已返回的用户展示字段，真实 `id` 仍是端云请求和路由主键。此次无需新增 MCP/CLI/Skill 能力；本地 Agent 继续使用现有 `id`，Web 在列表和详情中展示 `displayCode`，缺失时回退旧 `id` 以兼容历史客户端响应。

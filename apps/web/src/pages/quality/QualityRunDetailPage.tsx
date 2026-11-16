@@ -325,7 +325,7 @@ function QualityRunDetailContent({ id }: { id: string }) {
             {row.result?.bug ? (
               <div className="flex flex-wrap items-center gap-3 text-sm">
                 <Link to={`/bugs/${row.result.bug.id}`} className="text-primary underline">
-                  缺陷：{row.result.bug.title}
+                  缺陷：{row.result.bug.displayCode ?? row.result.bug.id} · {row.result.bug.title}
                 </Link>
                 {row.result.bug.fixWorkflowRun?.status.toLowerCase() === 'done' ? (
                   <Button

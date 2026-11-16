@@ -15,6 +15,7 @@ import { StartBugFixWorkflowDto } from './dto/start-bug-fix-workflow.dto';
 import { UpdateBugDto } from './dto/update-bug.dto';
 import { UpdateIssueDto } from './dto/update-issue.dto';
 import { UpdateReviewFindingDto } from './dto/update-review-finding.dto';
+import { reserveWorkItemDisplayCode } from '../work-items/work-item-identifier.service';
 
 type FindingType = 'ISSUE' | 'BUG' | 'MISSING_TEST' | 'SUGGESTION';
 
@@ -181,8 +182,10 @@ export class ReviewArtifactsService {
       throw new BadRequestException('当前工作流未绑定工作区，无法创建 Issue。');
     }
 
+    const displayCode = await reserveWorkItemDisplayCode(this.prisma, workflowRun.workItem.projectId, 'ISSUE');
     const issue = await this.prisma.workItem.create({
       data: {
+        displayCode,
         status: 'OPEN',
         priority: dto.priority ?? this.mapSeverityToPriority(finding.severity),
         title: dto.title ?? this.getFindingDefaultTitle(finding),
@@ -245,6 +248,7 @@ export class ReviewArtifactsService {
     const bug = useWorkItem
       ? await this.prisma.workItem.create({
           data: {
+            displayCode: await reserveWorkItemDisplayCode(this.prisma, workflowRun.workItem.projectId, 'BUG'),
             status: 'OPEN', kind: 'BUG', severity: dto.severity ?? finding.severity,
             priority: dto.priority ?? this.mapSeverityToPriority(dto.severity ?? finding.severity),
             title: dto.title ?? this.getFindingDefaultTitle(finding), description: dto.description ?? this.getFindingDefaultDescription(finding),
@@ -279,7 +283,7 @@ export class ReviewArtifactsService {
   async getIssuesPage(query: PaginationQuery & { workspaceId?: string; projectId?: string; workflowRunId?: string; status?: string; priority?: string; severity?: string; q?: string } = {}) {
     const paging = parsePagination(query);
     const scope = {};
-    const where = { kind: 'ISSUE', ...scope, ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}), ...(query.workflowRunId ? { sourceWorkflowRunId: query.workflowRunId } : {}), ...(query.status ? { status: query.status } : {}), ...(query.priority ? { priority: query.priority } : {}), ...(query.projectId ? { projectId: query.projectId } : {}), ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }, { workspace: { name: { contains: query.q.trim() } } }] } : {}) };
+    const where = { kind: 'ISSUE', ...scope, ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}), ...(query.workflowRunId ? { sourceWorkflowRunId: query.workflowRunId } : {}), ...(query.status ? { status: query.status } : {}), ...(query.priority ? { priority: query.priority } : {}), ...(query.projectId ? { projectId: query.projectId } : {}), ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }, { displayCode: { contains: query.q.trim() } }, { workspace: { name: { contains: query.q.trim() } } }] } : {}) };
     const [items, total, scopeTotal, openCount] = await Promise.all([
       this.prisma.workItem.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { workspace: true, sourceWorkflowRun: true } }),
       this.prisma.workItem.count({ where }), this.prisma.workItem.count({ where: scope }), this.prisma.workItem.count({ where: { ...scope, status: 'OPEN' } }),
@@ -361,8 +365,10 @@ export class ReviewArtifactsService {
       if (!repository) throw new BadRequestException('Repository does not belong to the selected workspace.');
     }
 
+    const displayCode = await reserveWorkItemDisplayCode(this.prisma, projectId, 'BUG');
     const bug = await this.prisma.workItem.create({
       data: {
+        displayCode,
         kind: 'BUG', status: 'OPEN', severity: dto.severity ?? 'MEDIUM', priority: dto.priority ?? 'MEDIUM',
         title: dto.title.trim(), description: dto.description.trim(), expectedBehavior: dto.expectedBehavior?.trim() || null,
         actualBehavior: dto.actualBehavior?.trim() || null, reproductionSteps: dto.reproductionSteps ?? [], screenshots: [],
@@ -404,7 +410,7 @@ export class ReviewArtifactsService {
       kind: 'BUG', ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}), ...(query.projectId ? { projectId: query.projectId } : {}), ...(query.versionId ? { versionId: query.versionId } : {}),
       ...(query.workflowRunId ? { sourceWorkflowRunId: query.workflowRunId } : {}), ...(query.status ? { status: query.status } : {}),
       ...(query.priority ? { priority: query.priority } : {}), ...(query.severity ? { severity: query.severity } : {}),
-      ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }, { workspace: { name: { contains: query.q.trim() } } }] } : {}),
+      ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }, { displayCode: { contains: query.q.trim() } }, { workspace: { name: { contains: query.q.trim() } } }] } : {}),
     };
     const [items, total, openCount, criticalCount] = await Promise.all([
       this.prisma.workItem.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { workspace: true, project: true, sourceWorkflowRun: true, fixWorkflowRun: true, fixWorkItem: true, reviewFinding: true } }),

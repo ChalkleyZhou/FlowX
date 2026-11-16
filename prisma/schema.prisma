@@ -11,6 +11,8 @@ datasource db {
 /// 类型专属字段在同一根记录上按 kind 使用，所有工作流和执行计划均从此根出发。
 model WorkItem {
   id                      String                  @id @default(cuid())
+  /// 面向用户展示的项目内类型编号，例如 REQ-001、ISSUE-001、BUG-001。
+  displayCode             String?
   kind                    String                  @default("REQUIREMENT")
   status                  String                  @default("ACTIVE")
   title                   String
@@ -72,6 +74,7 @@ model WorkItem {
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
 
+  @@unique([projectId, displayCode])
   @@index([projectId, createdAt])
   @@index([projectId, versionId])
   @@index([projectId, versionId, updatedAt, id])
@@ -210,6 +213,7 @@ model Project {
   currentVersion   ProjectVersion?  @relation("ProjectCurrentVersion", fields: [currentVersionId], references: [id], onDelete: Restrict)
   versions         ProjectVersion[] @relation("ProjectVersions")
   workItems        WorkItem[]
+  workItemSequences WorkItemSequence[]
   bugs         Bug[]
   briefingFeeds BriefingFeed[]
   codeReviewFeeds CodeReviewFeed[]
@@ -225,6 +229,19 @@ model Project {
   updatedAt    DateTime      @updatedAt
 
   @@index([workspaceId, createdAt])
+}
+
+/// 为每个项目、工作项类型维护独立的可读编号序列。
+model WorkItemSequence {
+  id         String   @id @default(cuid())
+  projectId  String
+  kind       String
+  nextValue  Int      @default(1)
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([projectId, kind])
 }
 
 model ProjectVersion {

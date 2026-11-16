@@ -32,6 +32,7 @@ import { resolveRequirementVersionId } from './resolve-requirement-version';
 import {
   IdeationSessionEventsRepository,
 } from './ideation-session-events.repository';
+import { reserveWorkItemDisplayCode } from '../work-items/work-item-identifier.service';
 
 const ideationStatusMap: Record<IdeationStatus, string> = {
   [IdeationStatus.NONE]: 'NONE',
@@ -127,8 +128,11 @@ export class RequirementsService {
       throw new BadRequestException('请选择发布版本；项目没有当前版本时，请先在项目中设置');
     }
 
-    return this.prisma.workItem.create({
+    return this.prisma.$transaction(async (tx) => {
+      const displayCode = await reserveWorkItemDisplayCode(tx, dto.projectId, 'REQUIREMENT');
+      return tx.workItem.create({
       data: {
+        displayCode,
         kind: 'REQUIREMENT',
         status: 'ACTIVE',
         projectId: dto.projectId,
@@ -193,6 +197,7 @@ export class RequirementsService {
         },
         version: { select: { id: true, name: true } },
       },
+      });
     });
   }
 
@@ -363,7 +368,7 @@ export class RequirementsService {
   async findPage(query: PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; planningStatus?: string; priority?: string; status?: string; q?: string } = {}) {
     const paging = parsePagination(query);
     const scope = { ...(query.workspaceId ? { project: { workspaceId: query.workspaceId } } : {}), ...(query.projectId ? { projectId: query.projectId } : {}) };
-    const where = { kind: 'REQUIREMENT', ...scope, ...(query.versionId ? { versionId: query.versionId === '__unassigned__' ? null : query.versionId } : {}), ...(query.planningStatus ? { planningStatus: query.planningStatus } : {}), ...(query.priority ? { priority: query.priority } : {}), ...(query.status ? { status: query.status } : {}), ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }] } : {}) };
+    const where = { kind: 'REQUIREMENT', ...scope, ...(query.versionId ? { versionId: query.versionId === '__unassigned__' ? null : query.versionId } : {}), ...(query.planningStatus ? { planningStatus: query.planningStatus } : {}), ...(query.priority ? { priority: query.priority } : {}), ...(query.status ? { status: query.status } : {}), ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }, { displayCode: { contains: query.q.trim() } }] } : {}) };
     const [rows, total, requirementCount, workspaceCount, projectCount] = await Promise.all([
       this.prisma.workItem.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { version: { select: { id: true, name: true } }, project: { include: { workspace: true } }, workspace: true, prototypeImport: { select: { id: true, status: true } }, workflowRuns: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1 }, changes: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1, select: { createdAt: true, content: true } }, _count: { select: { workflowRuns: true, assignments: true, requirementRepositories: true } } } }),
       this.prisma.workItem.count({ where }), this.prisma.workItem.count({ where: scope }),

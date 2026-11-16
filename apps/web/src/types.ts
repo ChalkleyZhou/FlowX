@@ -289,6 +289,7 @@ export interface RequirementChangePayload {
 export interface Requirement {
   _count?: { workflowRuns?: number; assignments?: number; requirementRepositories?: number; ideationSessions?: number; ideationArtifacts?: number };
   id: string;
+  displayCode?: string | null;
   title: string;
   description: string;
   acceptanceCriteria: string;
@@ -331,6 +332,7 @@ export interface Requirement {
 
 export interface WorkItem {
   id: string;
+  displayCode?: string | null;
   projectId: string;
   versionId?: string | null;
   workspaceId: string;
@@ -364,10 +366,11 @@ export interface WorkItem {
   createdAt: string;
 }
 
-export type WorkItemReference = Pick<WorkItem, 'id' | 'title' | 'kind'>;
+export type WorkItemReference = Pick<WorkItem, 'id' | 'displayCode' | 'title' | 'kind'>;
 
 export interface WorkflowRunWorkItem {
   id: string;
+  displayCode?: string | null;
   title: string;
   description: string;
   acceptanceCriteria: string;
@@ -680,6 +683,7 @@ export interface BugScreenshot {
 
 export interface Bug {
   id: string;
+  displayCode?: string | null;
   kind?: 'BUG';
   status: string;
   severity: string;
@@ -906,6 +910,7 @@ export interface TestRun {
 
 export interface QualityBugReference {
   id: string;
+  displayCode?: string | null;
   title: string;
   fixWorkflowRun?: { id?: string; status: string } | null;
 }

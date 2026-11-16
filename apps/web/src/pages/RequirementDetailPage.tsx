@@ -146,6 +146,7 @@ export function RequirementDetailPage() {
         title={requirement.title}
         description={requirement.description}
         badges={[
+          { key: 'displayCode', label: requirement.displayCode ?? requirement.id, variant: 'outline' },
           { key: 'project', label: requirement.project?.name ?? '', variant: 'default' },
           {
             key: 'planning',

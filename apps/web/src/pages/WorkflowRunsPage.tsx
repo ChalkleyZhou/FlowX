@@ -159,7 +159,7 @@ export function WorkflowRunsPage() {
                 <RecordListItem
                   key={item.id}
                   interactive
-                  title={<div className="text-base font-semibold leading-6 text-foreground">{item.workItem.title}</div>}
+                  title={<div className="space-y-1"><div className="text-base font-semibold leading-6 text-foreground">{item.workItem.title}</div><div className="text-xs font-normal text-muted-foreground">{item.workItem.displayCode ?? item.workItem.id}</div></div>}
                   badges={
                     <>
                       <Badge variant="default">{item.supersededByChangeId ? '已由需求变更替代' : formatWorkflowStatus(item.status)}</Badge>

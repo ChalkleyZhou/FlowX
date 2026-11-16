@@ -117,7 +117,7 @@ export function IssuesPage() {
               <RecordListItem
                 key={item.id}
                 className="shadow-none"
-                title={<div className="text-base font-semibold leading-6 text-foreground">{item.title}</div>}
+                title={<div className="space-y-1"><div className="text-base font-semibold leading-6 text-foreground">{item.title}</div><div className="text-xs font-normal text-muted-foreground">{item.displayCode ?? item.id}</div></div>}
                 badges={
                   <>
                     <Badge variant="secondary">{formatIssueStatus(item.status)}</Badge>

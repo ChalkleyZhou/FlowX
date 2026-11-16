@@ -13,6 +13,7 @@ import { ListWorkItemsDto } from './dto/list-work-items.dto';
 import { UpdateWorkItemDto } from './dto/update-work-item.dto';
 import { WorkflowService } from '../workflow/workflow.service';
 import { assertExecutionSessionTransition } from '../execution-sessions/execution-session-state';
+import { reserveWorkItemDisplayCode } from './work-item-identifier.service';
 
 type AuthSession = { user?: { id?: string; displayName?: string }; organization?: { id?: string | null } | null };
 
@@ -36,7 +37,7 @@ export class WorkItemsService {
     const filters: Prisma.WorkItemWhereInput[] = [];
     if (query.q?.trim()) {
       const keyword = query.q.trim();
-      filters.push({ OR: [{ title: { contains: keyword } }, { description: { contains: keyword } }] });
+      filters.push({ OR: [{ title: { contains: keyword } }, { description: { contains: keyword } }, { displayCode: { contains: keyword } }] });
     }
     if (cursor) {
       filters.push({ OR: [
@@ -86,7 +87,7 @@ export class WorkItemsService {
       ...(query.projectId ? { projectId: query.projectId } : {}),
       ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}),
       ...(query.versionId ? { versionId: query.versionId } : {}),
-      ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }] } : {}),
+      ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }, { displayCode: { contains: query.q.trim() } }] } : {}),
     };
     if (auth?.organization?.id) {
       where.workspace = { organizationId: auth.organization.id };
@@ -122,8 +123,10 @@ export class WorkItemsService {
     if (invalidRepositoryIds.length) throw new NotFoundException('仓库不属于当前项目工作区。');
     const splitMode = dto.splitMode ?? 'SINGLE';
     const created = await this.prisma.$transaction(async (tx) => {
+      const displayCode = await reserveWorkItemDisplayCode(tx, projectId, dto.kind);
       const item = await tx.workItem.create({
         data: {
+          displayCode,
           projectId,
           versionId,
           workspaceId: project.workspaceId,

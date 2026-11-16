@@ -83,6 +83,7 @@ import { CompleteLocalExecutionDto } from './dto/complete-local-execution.dto';
 import { ACTIVE_EXECUTION_SESSION_STATUSES } from '../execution-sessions/execution-session-state';
 import { CreateWorkflowRunDto } from './dto/create-workflow-run.dto';
 import { LocalCompletionCommand, type LocalCompletionWorkflowGateway } from './local-completion.command';
+import { reserveWorkItemDisplayCode } from '../work-items/work-item-identifier.service';
 import { buildExecutionOutputFromLocalReport } from './workflow-local-execution-output';
 import { buildLocalHandoff, type LocalHandoffPayload } from './workflow-local-handoff';
 import { WorkflowArtifactService } from './workflow-artifact.service';
@@ -5535,8 +5536,10 @@ export class WorkflowService {
       reproductionSteps,
     });
 
+    const displayCode = await reserveWorkItemDisplayCode(this.prisma, projectId, 'REQUIREMENT');
     const requirement = await this.prisma.workItem.create({
       data: {
+        displayCode,
         projectId,
         workspaceId: bug.workspaceId,
         title: payload.title,

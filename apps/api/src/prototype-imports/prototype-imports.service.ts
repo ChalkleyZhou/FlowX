@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PrototypeArchive, type PrototypeManifest } from './prototype-archive';
 import { assertPrototypeAnalysis, type PrototypeAnalysis } from './prototype-analysis';
 import { AnalyzePrototypeImportDto, CreatePrototypeImportDto, SupplementPrototypeImportDto, UpdatePrototypeImportDto } from './dto/prototype-import.dto';
+import { reserveWorkItemDisplayCode } from '../work-items/work-item-identifier.service';
 
 export type PrototypeActor = { user: { id: string; displayName: string }; organization?: { id?: string | null } | null };
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -65,7 +66,8 @@ export class PrototypeImportsService implements OnModuleInit {
     catch { throw new BadRequestException('无法读取原型包，请检查 ZIP 格式、文件路径与大小限制。'); }
     try {
       const record = await this.prisma.$transaction(async (tx) => {
-        const requirement = await tx.workItem.create({ data: { kind: 'REQUIREMENT', status: 'ACTIVE', projectId: project.id, workspaceId: project.workspaceId, versionId, title: dto.title?.trim() || name.replace(/\.zip$/i, '') || '导入原型', description: dto.goal?.trim() || '正在根据原型整理需求', acceptanceCriteria: '正在根据原型整理验收标准', createdByUserId: actor?.user.id, createdByName: actor?.user.displayName, executionPlans: { create: { status: 'CONFIRMED', strategy: 'SINGLE', items: { create: { title: dto.title?.trim() || name.replace(/\.zip$/i, '') || '导入原型', description: dto.goal?.trim() || '正在根据原型整理需求', target: 'LOCAL', status: 'READY' } } } } } });
+        const displayCode = await reserveWorkItemDisplayCode(tx, project.id, 'REQUIREMENT');
+        const requirement = await tx.workItem.create({ data: { displayCode, kind: 'REQUIREMENT', status: 'ACTIVE', projectId: project.id, workspaceId: project.workspaceId, versionId, title: dto.title?.trim() || name.replace(/\.zip$/i, '') || '导入原型', description: dto.goal?.trim() || '正在根据原型整理需求', acceptanceCriteria: '正在根据原型整理验收标准', createdByUserId: actor?.user.id, createdByName: actor?.user.displayName, executionPlans: { create: { status: 'CONFIRMED', strategy: 'SINGLE', items: { create: { title: dto.title?.trim() || name.replace(/\.zip$/i, '') || '导入原型', description: dto.goal?.trim() || '正在根据原型整理需求', target: 'LOCAL', status: 'READY' } } } } } });
         return tx.prototypeImport.create({ data: { id, workItemId: requirement.id, aiProvider, goal: dto.goal?.trim() || dto.title?.trim() || '', manifest: json(manifest), answers: {} } });
       });
       this.schedule(record, actor!);

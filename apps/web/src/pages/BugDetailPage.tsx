@@ -253,6 +253,7 @@ export function BugDetailPage() {
           title={bug?.title ?? '缺陷详情'}
           description="查看并维护缺陷的当前状态、严重级别和来源信息。"
           badges={[
+            { key: 'displayCode', label: bug?.displayCode ?? bug?.id ?? 'BUG', variant: 'outline' },
             { key: 'severity', label: formatSeverityLabel(bug?.severity ?? 'MEDIUM'), variant: 'destructive' },
             { key: 'priority', label: formatPriorityLabel(bug?.priority ?? 'MEDIUM'), variant: 'outline' },
             { key: 'status', label: formatBugStatus(bug?.status ?? 'OPEN'), variant: 'secondary' },

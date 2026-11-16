@@ -262,7 +262,7 @@ describe('WorkItemsService work item paging and plan validation', () => {
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         AND: [
-          { OR: [{ title: { contains: '登录' } }, { description: { contains: '登录' } }] },
+          { OR: [{ title: { contains: '登录' } }, { description: { contains: '登录' } }, { displayCode: { contains: '登录' } }] },
           { OR: [{ updatedAt: { lt: updatedAt } }, { updatedAt, id: { lt: 'item-9' } }] },
         ],
       }),
