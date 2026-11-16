@@ -63,6 +63,6 @@ describe('VersionManagementPage', () => {
     expect(container.textContent).toContain('2.6.0');
     expect(container.textContent).toContain('2.7.0');
     expect(container.textContent).toContain('当前');
-    expect(container.querySelector('a[href="/projects/project-1/versions/version-1/work-items"]')).not.toBeNull();
+    expect(Array.from(container.querySelectorAll('a')).some(link => link.getAttribute('href')?.includes('versionId=version-1'))).toBe(true);
   });
 });

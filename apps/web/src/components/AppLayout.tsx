@@ -48,7 +48,12 @@ const projectItems = [
   { key: '/requirements', label: '需求', icon: ClipboardList },
   { key: '/issues', label: '问题', icon: ClipboardList },
   { key: '/bugs', label: '缺陷', icon: Bug },
-  { key: '/versions', label: '版本管理', icon: GitBranch },
+  {
+    key: '/versions',
+    label: '版本管理',
+    icon: GitBranch,
+    children: [{ key: '/versions/manage', label: '版本配置' }],
+  },
   { key: '/workflow-runs', label: '工作流', icon: Workflow },
   { key: '/briefings', label: '简报', icon: Newspaper },
   { key: '/code-reviews', label: '代码审查', icon: GitPullRequest },

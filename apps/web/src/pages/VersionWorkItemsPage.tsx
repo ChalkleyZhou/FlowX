@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { PageHeader } from '../components/PageHeader';
 import { Badge } from '../components/ui/badge';
@@ -15,8 +15,21 @@ import type { ProjectVersionSummary, WorkItem } from '../types';
 
 const statuses = ['ACTIVE', 'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
 
-export function VersionWorkItemsPage() {
-  const { projectId = '', versionId = '' } = useParams();
+export function VersionWorkItemsPage({
+  projectId: projectIdProp,
+  versionId: versionIdProp,
+  onVersionChange,
+  showManagementLink = false,
+}: {
+  projectId?: string;
+  versionId?: string;
+  onVersionChange?: (versionId: string) => void;
+  showManagementLink?: boolean;
+}) {
+  const params = useParams();
+  const navigate = useNavigate();
+  const projectId = projectIdProp ?? params.projectId ?? '';
+  const versionId = versionIdProp ?? params.versionId ?? '';
   const toast = useToast();
   const [version, setVersion] = useState<ProjectVersionSummary | null>(null);
   const [items, setItems] = useState<WorkItem[]>([]);
@@ -69,9 +82,38 @@ export function VersionWorkItemsPage() {
     }
   }
 
+  function changeVersion(nextVersionId: string) {
+    if (onVersionChange) {
+      onVersionChange(nextVersionId);
+      return;
+    }
+    if (projectId) {
+      navigate(`/projects/${projectId}/versions/${nextVersionId}/work-items`);
+    }
+  }
+
   return (
     <div className="space-y-5">
-      <PageHeader eyebrow="Version work items" title={version?.name ?? '版本工作项'} description="会议中统一查看需求、问题和缺陷，直接更新状态、负责人和备注。" actions={<Button onClick={() => setCreateOpen(true)}>快速新建</Button>} />
+      <PageHeader
+        eyebrow="Version work items"
+        title={version?.name ?? '版本工作项'}
+        description="统一查看需求、问题和缺陷，直接更新状态、负责人和备注。"
+        actions={(
+          <div className="flex flex-wrap items-center gap-2">
+            <PagedSelect
+              value={versionId}
+              selectedLabel={version?.name}
+              label="切换版本"
+              placeholder="选择版本"
+              scopeKey={projectId}
+              loadPage={query => api.listProjectVersions(projectId, query)}
+              onValueChange={changeVersion}
+            />
+            {showManagementLink ? <Button variant="outline" asChild><Link to={`/versions/manage?projectId=${encodeURIComponent(projectId)}`}>版本配置</Link></Button> : null}
+            <Button onClick={() => setCreateOpen(true)}>快速新建</Button>
+          </div>
+        )}
+      />
       <Card>
         <CardContent className="flex flex-wrap items-center gap-3 p-4">
           <Input className="max-w-xs" placeholder="搜索标题或描述" value={q} onChange={event => setQ(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void load(); }} />

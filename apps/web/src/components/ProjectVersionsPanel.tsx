@@ -127,7 +127,7 @@ export function ProjectVersionsPanel({
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button variant="outline" size="sm" asChild>
-                      <Link to={`/projects/${projectId}/versions/${version.id}/work-items`}>工作项看板</Link>
+                      <Link to={`/versions?projectId=${encodeURIComponent(projectId)}&versionId=${encodeURIComponent(version.id)}`}>工作项看板</Link>
                     </Button>
                     <Button variant="outline" size="sm" disabled={saving || isCurrent} onClick={() => void setCurrent(version.id)}>
                       设为当前
