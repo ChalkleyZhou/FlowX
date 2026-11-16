@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { ExecutionPlanPanel } from '../components/ExecutionPlanPanel';
 import { DetailHeader } from '../components/DetailHeader';
@@ -19,6 +19,7 @@ const statusOptions = ['ACTIVE', 'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
 /** 统一工作项详情；需求与 Issue 的执行计划、状态和交付链路从同一入口维护。 */
 export function WorkItemDetailPage() {
   const { id = '' } = useParams();
+  const location = useLocation();
   const toast = useToast();
   const [workItem, setWorkItem] = useState<WorkItem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,6 +42,11 @@ export function WorkItemDetailPage() {
   }
 
   useEffect(() => { void load(); }, [id]);
+
+  const state = location.state as { returnTo?: unknown } | null;
+  const returnTo = typeof state?.returnTo === 'string' && state.returnTo.startsWith('/') && !state.returnTo.startsWith('//')
+    ? state.returnTo
+    : '/work-items';
 
   async function save() {
     if (!workItem || !draft.title.trim()) return;
@@ -88,7 +94,7 @@ export function WorkItemDetailPage() {
           { key: 'priority', label: workItem.priority, variant: 'secondary' },
           ...(workItem.version ? [{ key: 'version', label: workItem.version.name, variant: 'outline' as const }] : []),
         ]}
-        actions={<div className="flex flex-wrap gap-2"><Button variant="outline" asChild><Link to={workItem.project?.id && workItem.versionId ? `/projects/${workItem.project.id}/versions/${workItem.versionId}/work-items` : '/dashboard'}>返回版本工作项</Link></Button>{workItem.executionPlans?.[0]?.status === 'CONFIRMED' && !workItem.executionPlans[0].workflowRunId ? <Button disabled={starting} onClick={() => void startWorkflow()}>{starting ? '启动中...' : '启动工作流'}</Button> : null}</div>}
+        actions={<div className="flex flex-wrap gap-2"><Button variant="outline" asChild><Link to={returnTo}>返回列表</Link></Button>{workItem.executionPlans?.[0]?.status === 'CONFIRMED' && !workItem.executionPlans[0].workflowRunId ? <Button disabled={starting} onClick={() => void startWorkflow()}>{starting ? '启动中...' : '启动工作流'}</Button> : null}</div>}
       />
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">

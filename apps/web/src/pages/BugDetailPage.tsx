@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useListPage } from '../hooks/use-list-page';
 import { ListPagination } from '../components/ListPagination';
 import { api, getBugScreenshotUrl } from '../api';
@@ -51,6 +51,7 @@ import {
 
 export function BugDetailPage() {
   const { bugId = '' } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const scope = useProjectScopeOptional();
   const [bug, setBug] = useState<Bug | null>(null);
@@ -240,6 +241,10 @@ export function BugDetailPage() {
 
   useAdoptProject(bug?.project?.id ?? bug?.projectId);
   const bugListHref = withCurrentProject('/bugs', bug?.project?.id ?? bug?.projectId ?? scope?.projectId ?? null);
+  const state = location.state as { returnTo?: unknown } | null;
+  const returnTo = typeof state?.returnTo === 'string' && state.returnTo.startsWith('/') && !state.returnTo.startsWith('//')
+    ? state.returnTo
+    : bugListHref;
 
   if (!bugId) {
     return <Navigate to={bugListHref} replace />;
@@ -265,7 +270,7 @@ export function BugDetailPage() {
                 <UiButton onClick={() => setFixModalOpen(true)}>发起修复工作流</UiButton>
               ) : null}
               <UiButton variant="outline" asChild>
-                <Link to={bugListHref}>返回缺陷列表</Link>
+                <Link to={returnTo}>返回缺陷列表</Link>
               </UiButton>
               {bug?.fixWorkflowRun?.id ? (
                 <UiButton variant="outline" asChild>

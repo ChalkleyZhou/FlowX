@@ -7,6 +7,7 @@ import { ListToolbar } from '../components/ListToolbar';
 import { PageHeader } from '../components/PageHeader';
 import { PagedSelect } from '../components/PagedSelect';
 import { RequirementListTable } from '../components/RequirementListTable';
+import { WorkItemEditDialog } from '../components/WorkItemEditDialog';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -41,32 +42,32 @@ function TableHeader({ labels }: { labels: string[] }) {
   return <thead className="bg-muted/40 text-left text-muted-foreground"><tr>{labels.map(label => <th key={label} className={label === '操作' ? 'sticky right-0 z-20 whitespace-nowrap border-l border-border bg-muted px-4 py-3 font-medium' : 'whitespace-nowrap px-4 py-3 font-medium'}>{label}</th>)}</tr></thead>;
 }
 
-function DetailButton({ id }: { id: string }) {
-  return <Button variant="default" size="sm" asChild><Link to={`/work-items/${id}`}>详情</Link></Button>;
+function EditButton({ onClick }: { onClick: () => void }) {
+  return <Button variant="default" size="sm" onClick={onClick}>编辑</Button>;
 }
 
-function IssueTable({ items }: { items: Issue[] }) {
+function IssueTable({ items, onEdit }: { items: Issue[]; onEdit: (item: Issue) => void }) {
   return <table className="w-max min-w-full text-sm"><TableHeader labels={['问题标题', '问题描述', '状态', '优先级', '来源工作流', '分支', '操作']} /><tbody>{items.map(item => <tr key={item.id} className="border-t border-border">
-    <td className="whitespace-nowrap px-4 py-3 font-medium"><div className="flex min-w-[220px] flex-col gap-1"><Link to={`/work-items/${item.id}`} title={item.title} className="block max-w-[260px] truncate text-foreground no-underline hover:text-primary">{item.title}</Link><span className="text-xs font-normal text-muted-foreground">{item.displayCode ?? item.id}</span></div></td>
+    <td className="whitespace-nowrap px-4 py-3 font-medium"><div className="flex min-w-[220px] flex-col gap-1"><button type="button" onClick={() => onEdit(item)} title={item.title} className="block max-w-[260px] truncate text-left text-foreground hover:text-primary">{item.title}</button><span className="text-xs font-normal text-muted-foreground">{item.displayCode ?? item.id}</span></div></td>
     <td className="max-w-md whitespace-normal break-words px-4 py-3 text-muted-foreground">{item.description?.trim() || '未填写'}</td>
     <td className="whitespace-nowrap px-4 py-3"><Badge variant="secondary">{formatIssueStatus(item.status)}</Badge></td>
     <td className="whitespace-nowrap px-4 py-3">{formatPriority(item.priority)}</td>
     <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{item.sourceWorkflowRun?.id ? <Link className="text-primary hover:underline" to={`/workflow-runs/${item.sourceWorkflowRun.id}`}>查看来源流程</Link> : '未关联'}</td>
     <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{item.branchName || '未记录'}</td>
-    <td className="sticky right-0 z-10 whitespace-nowrap border-l border-t border-border bg-card px-4 py-3"><DetailButton id={item.id} /></td>
+    <td className="sticky right-0 z-10 whitespace-nowrap border-l border-t border-border bg-card px-4 py-3"><EditButton onClick={() => onEdit(item)} /></td>
   </tr>)}</tbody></table>;
 }
 
-function BugTable({ items }: { items: Bug[] }) {
+function BugTable({ items, onEdit }: { items: Bug[]; onEdit: (item: Bug) => void }) {
   return <table className="w-max min-w-full text-sm"><TableHeader labels={['缺陷标题', '缺陷描述', '严重级别', '优先级', '状态', '来源工作流', '分支', '操作']} /><tbody>{items.map(item => <tr key={item.id} className="border-t border-border">
-    <td className="whitespace-nowrap px-4 py-3 font-medium"><div className="flex min-w-[220px] flex-col gap-1"><Link to={`/work-items/${item.id}`} title={item.title} className="block max-w-[260px] truncate text-foreground no-underline hover:text-primary">{item.title}</Link><span className="text-xs font-normal text-muted-foreground">{item.displayCode ?? item.id}</span></div></td>
+    <td className="whitespace-nowrap px-4 py-3 font-medium"><div className="flex min-w-[220px] flex-col gap-1"><button type="button" onClick={() => onEdit(item)} title={item.title} className="block max-w-[260px] truncate text-left text-foreground hover:text-primary">{item.title}</button><span className="text-xs font-normal text-muted-foreground">{item.displayCode ?? item.id}</span></div></td>
     <td className="max-w-md whitespace-normal break-words px-4 py-3 text-muted-foreground">{item.description?.trim() || '未填写'}</td>
     <td className="whitespace-nowrap px-4 py-3"><Badge variant="destructive">{formatSeverity(item.severity)}</Badge></td>
     <td className="whitespace-nowrap px-4 py-3">{formatPriority(item.priority)}</td>
     <td className="whitespace-nowrap px-4 py-3"><Badge variant="secondary">{formatBugStatus(item.status)}</Badge></td>
     <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{item.workflowRun?.id ? <Link className="text-primary hover:underline" to={`/workflow-runs/${item.workflowRun.id}`}>查看来源流程</Link> : '未关联'}</td>
     <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{item.branchName || '未记录'}</td>
-    <td className="sticky right-0 z-10 whitespace-nowrap border-l border-t border-border bg-card px-4 py-3"><DetailButton id={item.id} /></td>
+    <td className="sticky right-0 z-10 whitespace-nowrap border-l border-t border-border bg-card px-4 py-3"><EditButton onClick={() => onEdit(item)} /></td>
   </tr>)}</tbody></table>;
 }
 
@@ -99,6 +100,7 @@ export function VersionWorkItemsPage({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<WorkItem | null>(null);
   const [draft, setDraft] = useState({ kind: 'REQUIREMENT' as WorkItem['kind'], title: '', description: '', remark: '', splitMode: 'AI' as 'AI' | 'SINGLE' | 'MANUAL' });
 
   function clearLists() {
@@ -155,6 +157,19 @@ export function VersionWorkItemsPage({
     }
   }
 
+  async function openEditor(id: string) {
+    try {
+      setEditingItem(await api.getWorkItem(id));
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : '加载工作项失败');
+    }
+  }
+
+  async function handleSaved() {
+    setEditingItem(null);
+    await load(typedPage);
+  }
+
   function changeVersion(nextVersionId: string) {
     if (onVersionChange) {
       onVersionChange(nextVersionId);
@@ -180,6 +195,7 @@ export function VersionWorkItemsPage({
 
   return (
     <div className="space-y-5">
+      {editingItem ? <WorkItemEditDialog workItem={editingItem} open onOpenChange={open => { if (!open) setEditingItem(null); }} onSaved={() => void handleSaved()} /> : null}
       <Dialog
         open={createOpen}
         onOpenChange={(open) => {
@@ -226,7 +242,7 @@ export function VersionWorkItemsPage({
       <PageHeader
         eyebrow="Version work items"
         title="版本工作台"
-        description="统一查看需求、问题和缺陷，编辑请进入工作项详情。"
+        description="统一查看需求、问题和缺陷，直接编辑常用信息。"
         actions={(
           <div className="flex flex-wrap items-center gap-2">
             <PagedSelect className="w-36" value={versionId} selectedLabel={version?.name} label="切换版本" placeholder="选择版本" scopeKey={projectId} loadPage={query => api.listProjectVersions(projectId, query)} onValueChange={changeVersion} />
@@ -248,7 +264,7 @@ export function VersionWorkItemsPage({
             filters={<Button variant="outline" onClick={() => void load(1)}>查询</Button>}
           />
           {error ? <p role="alert" className="text-sm text-destructive">{error}<Button variant="outline" size="sm" onClick={() => void load(typedPage)}>重试</Button></p> : null}
-          {loading && visibleItems.length === 0 ? <div className="flex min-h-40 items-center justify-center"><Spinner className="h-7 w-7" /></div> : visibleItems.length > 0 ? <div className="overflow-x-auto rounded-md border border-border">{kind === 'REQUIREMENT' ? <RequirementListTable items={requirements} renderActions={item => <DetailButton id={item.id} />} /> : kind === 'ISSUE' ? <IssueTable items={issues} /> : <BugTable items={bugs} />}</div> : <EmptyState description={emptyDescription} />}
+          {loading && visibleItems.length === 0 ? <div className="flex min-h-40 items-center justify-center"><Spinner className="h-7 w-7" /></div> : visibleItems.length > 0 ? <div className="overflow-x-auto rounded-md border border-border">{kind === 'REQUIREMENT' ? <RequirementListTable items={requirements} onOpen={item => void openEditor(item.id)} renderActions={item => <EditButton onClick={() => void openEditor(item.id)} />} /> : kind === 'ISSUE' ? <IssueTable items={issues} onEdit={item => void openEditor(item.id)} /> : <BugTable items={bugs} onEdit={item => void openEditor(item.id)} />}</div> : <EmptyState description={emptyDescription} />}
           <ListPagination page={typedPage} total={typedTotal} pageSize={PAGE_SIZE} loading={loading} onPageChange={page => void load(page)} label={`${kind === 'REQUIREMENT' ? '需求' : kind === 'ISSUE' ? '问题' : '缺陷'}列表分页`} />
         </CardContent>
       </Card>

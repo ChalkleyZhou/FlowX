@@ -25,9 +25,13 @@ function statusVariant(status?: string | null) {
 export function RequirementListTable({
   items,
   renderActions,
+  onOpen,
+  returnTo,
 }: {
   items: Requirement[];
   renderActions: (item: Requirement) => ReactNode;
+  onOpen?: (item: Requirement) => void;
+  returnTo?: string;
 }) {
   return (
     <table className="w-max min-w-full text-sm">
@@ -54,7 +58,11 @@ export function RequirementListTable({
             <tr key={item.id} className="border-t border-border">
               <td className="whitespace-nowrap px-4 py-3 font-medium">
                 <div className="flex min-w-[220px] flex-col gap-1">
-                  <Link to={`/work-items/${item.id}`} title={item.title} className="block w-[240px] truncate text-foreground no-underline hover:text-primary">{item.title}</Link>
+                  {onOpen ? (
+                    <button type="button" title={item.title} className="block w-[240px] truncate text-left text-foreground hover:text-primary" onClick={() => onOpen(item)}>{item.title}</button>
+                  ) : (
+                    <Link to={`/work-items/${item.id}`} state={returnTo ? { returnTo } : undefined} title={item.title} className="block w-[240px] truncate text-foreground no-underline hover:text-primary">{item.title}</Link>
+                  )}
                   <span title={item.displayCode ?? item.id} className="block w-[240px] truncate text-xs font-normal text-muted-foreground">{item.displayCode ?? item.id}</span>
                   {item.prototypeImport && item.prototypeImport.status !== 'CONFIRMED' ? (
                     <Badge variant="warning">{item.prototypeImport.status === 'FAILED' ? '导入失败' : '原型导入中'}</Badge>

@@ -16,6 +16,7 @@ vi.mock('../api', () => ({
     getRequirements: vi.fn(),
     getIssues: vi.fn(),
     getBugs: vi.fn(),
+    getWorkItem: vi.fn(),
   },
 }));
 
@@ -48,6 +49,13 @@ describe('VersionWorkspacePage', () => {
     vi.mocked(api.getRequirements).mockResolvedValue(pageResult([]));
     vi.mocked(api.getIssues).mockResolvedValue(pageResult([]));
     vi.mocked(api.getBugs).mockResolvedValue(pageResult([]));
+    vi.mocked(api.getWorkItem).mockResolvedValue({
+      id: 'work-item-1', displayCode: 'REQ-001', projectId: 'project-1', versionId: 'version-1', workspaceId: 'workspace-1',
+      kind: 'REQUIREMENT', title: '需求一', description: '需求描述', remark: '', status: 'ACTIVE', priority: 'HIGH',
+      acceptanceCriteria: '', functionalModule: '', riskImpact: '', productRequirementDocument: '', planningStatus: 'UNSCHEDULED',
+      ideationStatus: 'NOT_STARTED', revision: 1, updatedAt: '2026-11-01T00:00:00.000Z', createdAt: '2026-11-01T00:00:00.000Z',
+      version: { id: 'version-1', name: '2.6.0' },
+    });
   });
 
   afterEach(() => {
@@ -109,7 +117,7 @@ describe('VersionWorkspacePage', () => {
     expect(container.querySelector('#version-work-item-title')).toBeNull();
   });
 
-  it('需求 Tab 展示需求专属字段并保持只读', async () => {
+  it('需求 Tab 展示需求专属字段并通过弹框编辑', async () => {
     vi.mocked(api.getRequirements).mockResolvedValue(pageResult([{
       id: 'requirement-1', title: '需求一', description: '需求描述', priority: 'HIGH',
       createdByName: '产品', createdAt: '2026-11-01T00:00:00.000Z', latestChangeAt: '2026-11-02T00:00:00.000Z',
@@ -127,10 +135,14 @@ describe('VersionWorkspacePage', () => {
     expect(container.textContent).not.toContain('最新变更内容');
     expect(container.textContent).not.toContain('需求备注');
     expect(container.querySelectorAll('tbody select')).toHaveLength(0);
-    expect(container.querySelector('a[href="/work-items/requirement-1"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/work-items/requirement-1"]')).toBeNull();
+    expect(Array.from(container.querySelectorAll('button')).some(button => button.textContent === '编辑')).toBe(true);
+    const title = container.querySelector('tbody button[title="需求一"]') as HTMLButtonElement;
+    await act(async () => { title.click(); await Promise.resolve(); });
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('编辑需求');
   });
 
-  it('问题 Tab 展示来源工作流和分支字段并保持只读', async () => {
+  it('问题 Tab 展示来源工作流和分支字段并通过弹框编辑', async () => {
     vi.mocked(api.getIssues).mockResolvedValue(pageResult([{
       id: 'issue-1', title: '问题一', description: '问题描述', status: 'OPEN', priority: 'MEDIUM',
       sourceWorkflowRun: { id: 'run-1', status: 'DONE' }, branchName: 'feature/problem',
@@ -144,10 +156,11 @@ describe('VersionWorkspacePage', () => {
     expect(container.textContent).toContain('feature/problem');
     expect(container.textContent).toContain('待处理');
     expect(container.querySelectorAll('tbody select')).toHaveLength(0);
-    expect(container.querySelector('a[href="/work-items/issue-1"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/work-items/issue-1"]')).toBeNull();
+    expect(Array.from(container.querySelectorAll('button')).some(button => button.textContent === '编辑')).toBe(true);
   });
 
-  it('缺陷 Tab 展示严重级别和来源工作流字段并保持只读', async () => {
+  it('缺陷 Tab 展示严重级别和来源工作流字段并通过弹框编辑', async () => {
     vi.mocked(api.getBugs).mockResolvedValue(pageResult([{
       id: 'bug-1', title: '缺陷一', description: '缺陷描述', status: 'FIXING', priority: 'URGENT', severity: 'CRITICAL',
       workflowRun: { id: 'run-2', status: 'DONE' }, branchName: 'fix/bug',
@@ -162,6 +175,7 @@ describe('VersionWorkspacePage', () => {
     expect(container.textContent).toContain('修复中');
     expect(container.textContent).toContain('fix/bug');
     expect(container.querySelectorAll('tbody select')).toHaveLength(0);
-    expect(container.querySelector('a[href="/work-items/bug-1"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/work-items/bug-1"]')).toBeNull();
+    expect(Array.from(container.querySelectorAll('button')).some(button => button.textContent === '编辑')).toBe(true);
   });
 });

@@ -2,7 +2,7 @@ import { useListPage } from '../hooks/use-list-page';
 import { ListPagination } from '../components/ListPagination';
 import { PagedSelect } from '../components/PagedSelect';
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { api } from '../api';
 import { EmptyState } from '../components/EmptyState';
 import { ListToolbar } from '../components/ListToolbar';
@@ -28,6 +28,7 @@ import { formatIssueStatus, formatPriority, formatPriorityLabel } from '../utils
 import { useStoredListFilters } from '../utils/list-filter-storage';
 
 export function IssuesPage() {
+  const location = useLocation();
   const [filters, setFilter] = useStoredListFilters('issues');
   const selectedWorkspaceId = filters.workspaceId;
   const selectedStatus = filters.status;
@@ -140,7 +141,7 @@ export function IssuesPage() {
                 }
                 actions={
                   <UiButton variant="outline" asChild>
-                    <Link to={`/work-items/${item.id}`}>查看详情</Link>
+                    <Link to={`/work-items/${item.id}`} state={{ returnTo: `${location.pathname}${location.search}` }}>查看详情</Link>
                   </UiButton>
                 }
               />

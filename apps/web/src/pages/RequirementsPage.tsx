@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useListPage } from '../hooks/use-list-page';
 import { ListPagination } from '../components/ListPagination';
@@ -114,6 +114,7 @@ function ActiveWorkflows({requirementId}:{requirementId:string}) {
 }
 
 export function RequirementsPage() {
+  const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   useRememberedSearchFilters('requirements', ['q', 'versionId', 'planningStatus', 'priority']);
@@ -736,10 +737,11 @@ export function RequirementsPage() {
             <div className="overflow-x-auto rounded-md border border-border">
               <RequirementListTable
                 items={requirements}
+                returnTo={`${location.pathname}${location.search}`}
                 renderActions={(item) => (
                   <>
                     <UiButton variant="default" size="sm" asChild>
-                      <Link to={`/work-items/${item.id}`}>详情</Link>
+                      <Link to={`/work-items/${item.id}`} state={{ returnTo: `${location.pathname}${location.search}` }}>详情</Link>
                     </UiButton>
                     <UiButton variant="outline" size="sm" type="button" onClick={() => setEditingRequirement(item)}>
                       编辑

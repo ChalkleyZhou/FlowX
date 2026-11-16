@@ -2,7 +2,7 @@ import { useListPage } from '../hooks/use-list-page';
 import { ListPagination } from '../components/ListPagination';
 import { PagedSelect } from '../components/PagedSelect';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useScopedProjectId } from '../project-scope-context';
 import { EmptyState } from '../components/EmptyState';
@@ -50,6 +50,7 @@ import {
 import { useStoredListFilters } from '../utils/list-filter-storage';
 
 export function BugsPage() {
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const scopedProjectId = useScopedProjectId();
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -376,7 +377,7 @@ export function BugsPage() {
                 actions={
                   <>
                     <UiButton variant="outline" asChild>
-                      <Link to={`/bugs/${item.id}`}>查看详情</Link>
+                      <Link to={`/bugs/${item.id}`} state={{ returnTo: `${location.pathname}${location.search}` }}>查看详情</Link>
                     </UiButton>
                     {item.workflowRun?.id ? (
                       <UiButton variant="outline" asChild>
