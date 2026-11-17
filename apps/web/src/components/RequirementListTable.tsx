@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge } from './ui/badge';
 import type { Requirement } from '../types';
-import { formatPlanningStatus, formatPriority } from '../utils/label-utils';
+import { formatPriority, formatWorkItemStatus } from '../utils/label-utils';
 
 function formatCreatedAt(value?: string | null) {
   if (!value) return '未记录';
@@ -16,9 +16,9 @@ function formatCreatedAt(value?: string | null) {
 }
 
 function statusVariant(status?: string | null) {
-  if (status === 'DONE') return 'success' as const;
-  if (status === 'IN_PROGRESS') return 'warning' as const;
-  if (status === 'SCHEDULED') return 'default' as const;
+  if (['DONE', 'FIXED', 'RESOLVED', 'VERIFIED'].includes(status ?? '')) return 'success' as const;
+  if (['IN_PROGRESS', 'FIXING'].includes(status ?? '')) return 'warning' as const;
+  if (['OPEN', 'CONFIRMED'].includes(status ?? '')) return 'default' as const;
   return 'secondary' as const;
 }
 
@@ -73,7 +73,7 @@ export function RequirementListTable({
                 <span className="block w-[320px] truncate" title={description}>{description}</span>
               </td>
               <td className="whitespace-nowrap px-4 py-3">{formatPriority(item.priority)}</td>
-              <td className="whitespace-nowrap px-4 py-3"><Badge variant={statusVariant(item.planningStatus)}>{formatPlanningStatus(item.planningStatus)}</Badge></td>
+              <td className="whitespace-nowrap px-4 py-3"><Badge variant={statusVariant(item.status)}>{formatWorkItemStatus(item.status)}</Badge></td>
               <td className="whitespace-nowrap px-4 py-3"><span className="block max-w-[180px] truncate" title={version}>{version}</span></td>
               <td className="whitespace-nowrap px-4 py-3"><span className="block max-w-[120px] truncate" title={creator}>{creator}</span></td>
               <td className="whitespace-nowrap px-4 py-3 text-muted-foreground"><time dateTime={item.createdAt ?? undefined}>{formatCreatedAt(item.createdAt)}</time></td>

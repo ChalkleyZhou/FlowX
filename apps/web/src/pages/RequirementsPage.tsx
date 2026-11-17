@@ -57,13 +57,6 @@ const emptyCreateDraft = {
 const ALL_FILTER_VALUE = '__all__';
 const REQUIREMENT_PAGE_SIZE = 20;
 
-const planningStatusOptions = [
-  { id: 'UNSCHEDULED', label: '未排期' },
-  { id: 'SCHEDULED', label: '已排期' },
-  { id: 'IN_PROGRESS', label: '进行中' },
-  { id: 'DONE', label: '已完成' },
-] as const;
-
 const priorityOptions = [
   { id: 'URGENT', label: '紧急' },
   { id: 'HIGH', label: '高' },
@@ -117,7 +110,7 @@ export function RequirementsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  useRememberedSearchFilters('requirements', ['q', 'versionId', 'planningStatus', 'priority']);
+  useRememberedSearchFilters('requirements', ['q', 'versionId', 'priority']);
   const [scopedProject, setScopedProject] = useState<Project | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [filterVersion, setFilterVersion] = useState<ProjectVersionSummary | null>(null);
@@ -146,13 +139,12 @@ export function RequirementsPage() {
   const confirm = useConfirm();
   const selectedProjectId = useScopedProjectId() || undefined;
   const selectedVersionId = searchParams.get('versionId') ?? undefined;
-  const selectedPlanningStatus = searchParams.get('planningStatus') ?? undefined;
   const selectedPriority = searchParams.get('priority') ?? undefined;
   const selectedQuery = searchParams.get('q') ?? undefined;
   const hasActiveFilters = Boolean(
-    selectedQuery || selectedVersionId || selectedPlanningStatus || selectedPriority,
+    selectedQuery || selectedVersionId || selectedPriority,
   );
-  const list = useListPage(api.getRequirements, { projectId: selectedProjectId, q: selectedQuery, versionId: selectedVersionId, planningStatus: selectedPlanningStatus, priority: selectedPriority }, {enabled: Boolean(selectedProjectId)});
+  const list = useListPage(api.getRequirements, { projectId: selectedProjectId, q: selectedQuery, versionId: selectedVersionId, priority: selectedPriority }, {enabled: Boolean(selectedProjectId)});
   const {items: requirements, total, page, loading, refresh, onPageChange: setPage} = list;
   const hasLoaded = !loading;
   const requirementSummary = {requirementCount:list.summary?.requirementCount ?? total,visibleCount:list.summary?.visibleCount ?? total,workspaceCount:list.summary?.workspaceCount ?? 0,projectCount:list.summary?.projectCount ?? 0};
@@ -231,11 +223,10 @@ export function RequirementsPage() {
   useEffect(() => {
     if (!hasLoaded) return;
     const invalidKeys = [searchParams.has('workspaceId') ? 'workspaceId' : null,
-      selectedPlanningStatus && !planningStatusOptions.some(option => option.id === selectedPlanningStatus) ? 'planningStatus' : null,
       selectedPriority && !priorityOptions.some(option => option.id === selectedPriority) ? 'priority' : null,
     ].filter((key): key is string => Boolean(key));
     if (invalidKeys.length) { const next = new URLSearchParams(searchParams); invalidKeys.forEach(key => next.delete(key)); setSearchParams(next, {replace:true}); }
-  }, [hasLoaded, searchParams, selectedPlanningStatus, selectedPriority]);
+  }, [hasLoaded, searchParams, selectedPriority]);
   const launchRequestId = searchParams.get('launchRequirementId');
   useEffect(() => {
     if (!hasLoaded || !launchRequestId) return;
@@ -689,20 +680,6 @@ export function RequirementsPage() {
               <>
                 <PagedSelect className="w-[220px]" value={selectedVersionId ?? ''} selectedLabel={filterVersion && filterVersion.id === selectedVersionId ? filterVersion.name : undefined} label="按发布版本" placeholder="按发布版本" allowClear emptyLabel="全部版本" disabled={!selectedProjectId} scopeKey={selectedProjectId ?? ''}
                   loadPage={query => api.listProjectVersions(selectedProjectId!, query)} onValueChange={value => updateFilterQuery({versionId: value || undefined})} />
-                <Select
-                  value={selectedPlanningStatus ?? ALL_FILTER_VALUE}
-                  onValueChange={(value) => updateFilterQuery({ planningStatus: value === ALL_FILTER_VALUE ? undefined : value })}
-                >
-                  <SelectTrigger className="w-[180px]" aria-label="按规划状态">
-                    <SelectValue placeholder="按规划状态" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ALL_FILTER_VALUE}>全部规划状态</SelectItem>
-                    {planningStatusOptions.map((option) => (
-                      <SelectItem key={option.id} value={option.id}>{option.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
                 <Select
                   value={selectedPriority ?? ALL_FILTER_VALUE}
                   onValueChange={(value) => updateFilterQuery({ priority: value === ALL_FILTER_VALUE ? undefined : value })}

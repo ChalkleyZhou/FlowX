@@ -75,6 +75,7 @@ describe('RequirementsPage', () => {
       },
     },
     priority: 'HIGH',
+    status: 'ACTIVE',
     versionId: 'ver-1',
     version: { id: 'ver-1', name: '2.6.0' },
     createdByName: '产品甲',
@@ -264,14 +265,15 @@ describe('RequirementsPage', () => {
     expect(cells.slice(1, 7)).toEqual([
       requirement.description,
       '高',
-      '未排期',
+      '进行中',
       '2.6.0',
       '产品甲',
       new Date(requirement.createdAt!).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }),
     ]);
     const body = container.querySelector('tbody')?.textContent ?? '';
     expect(body).toContain('2.6.0');
-    expect(body).toContain('未排期');
+    expect(body).toContain('进行中');
+    expect(body).not.toContain('未排期');
     expect(body).not.toContain(requirement.functionalModule ?? '');
     expect(body).not.toContain(requirement.remark ?? '');
     expect(container.querySelector('table')?.className).toContain('w-max');
@@ -347,7 +349,7 @@ describe('RequirementsPage', () => {
     expect(table).not.toContain('最新变更正文');
   });
 
-  it('按版本、规划状态和优先级从 URL 恢复组合筛选', async () => {
+  it('按版本和优先级从 URL 恢复组合筛选，列表不展示排期状态', async () => {
     const project = {
       ...requirement.project,
       versions: [{ id: 'ver-1', name: '2.6.0' }, { id: 'ver-2', name: '2.7.0' }],
@@ -359,7 +361,7 @@ describe('RequirementsPage', () => {
       project,
       versionId: 'ver-2',
       version: { id: 'ver-2', name: '2.7.0' },
-      planningStatus: 'IN_PROGRESS',
+      status: 'ACTIVE',
       priority: 'HIGH',
     };
     const otherRequirement: Requirement = {
@@ -367,24 +369,25 @@ describe('RequirementsPage', () => {
       id: 'requirement-other',
       title: '不匹配的需求',
       project,
-      planningStatus: 'DONE',
+      status: 'CLOSED',
       priority: 'LOW',
     };
     vi.mocked(api.getProjects).mockResolvedValue(paged([project]));
     vi.mocked(api.getRequirements).mockResolvedValue(paged([matchingRequirement]));
 
     await act(async () => {
-      root?.render(<MemoryRouter initialEntries={['/work-items?workspaceId=workspace-1&projectId=project-1&versionId=ver-2&planningStatus=IN_PROGRESS&priority=HIGH']}>
+      root?.render(<MemoryRouter initialEntries={['/work-items?workspaceId=workspace-1&projectId=project-1&versionId=ver-2&priority=HIGH']}>
         <RequirementsPage />
       </MemoryRouter>);
     });
 
-    expect(api.getRequirements).toHaveBeenLastCalledWith(expect.objectContaining({projectId:'project-1',versionId:'ver-2',planningStatus:'IN_PROGRESS',priority:'HIGH',page:1,pageSize:20}));
+    expect(api.getRequirements).toHaveBeenLastCalledWith(expect.objectContaining({projectId:'project-1',versionId:'ver-2',priority:'HIGH',page:1,pageSize:20}));
     expect(container.textContent).toContain('匹配的 2.7.0 需求');
     expect(container.textContent).not.toContain('不匹配的需求');
     expect(container.querySelector('[aria-label="按工作区筛选"]')).toBeNull();
     expect(container.querySelector('[aria-label="按发布版本"]')?.textContent).toContain('2.7.0');
-    expect(container.querySelector('[aria-label="按规划状态"]')?.textContent).toContain('进行中');
+    expect(container.querySelector('[aria-label="按规划状态"]')).toBeNull();
+    expect(container.textContent).toContain('进行中');
     expect(container.querySelector('[aria-label="按优先级"]')?.textContent).toContain('高');
     expect(container.textContent).not.toContain('默认执行器：Codex');
   });
@@ -400,9 +403,9 @@ describe('RequirementsPage', () => {
   });
 
   it('清除筛选后恢复全量需求并在空结果时给出调整提示', async () => {
-    vi.mocked(api.getRequirements).mockImplementation(async query => paged(query?.planningStatus ? [] : [{...requirement,planningStatus:'DONE',priority:'LOW'}]));
+    vi.mocked(api.getRequirements).mockImplementation(async query => paged(query?.priority ? [] : [{...requirement,status:'ACTIVE',priority:'LOW'}]));
     await act(async () => {
-      root?.render(<MemoryRouter initialEntries={['/work-items?projectId=project-1&planningStatus=IN_PROGRESS']}>
+      root?.render(<MemoryRouter initialEntries={['/work-items?projectId=project-1&priority=HIGH']}>
         <RequirementsPage /><LocationProbe />
       </MemoryRouter>);
     });

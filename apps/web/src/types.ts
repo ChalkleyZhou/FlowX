@@ -298,6 +298,7 @@ export interface Requirement {
   productRequirementDocument?: string | null;
   remark?: string | null;
   priority?: string;
+  status?: string;
   planningStatus?: string;
   ideationStatus: string;
   prototypeImport?: { id: string; status: string } | null;
