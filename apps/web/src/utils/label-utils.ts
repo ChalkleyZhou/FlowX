@@ -10,6 +10,29 @@ export function formatIssueStatus(status?: string | null) {
   return status ? map[status] ?? status : '未设置';
 }
 
+/** 将统一工作项的内部状态转换为面向用户的中文标签。 */
+export function formatWorkItemStatus(status?: string | null) {
+  const map: Record<string, string> = {
+    ACTIVE: '进行中',
+    OPEN: '待处理',
+    IN_PROGRESS: '处理中',
+    RESOLVED: '已解决',
+    CLOSED: '已关闭',
+    WONT_FIX: '不修复',
+    CONFIRMED: '已确认',
+    FIXING: '修复中',
+    FIXED: '已修复',
+    VERIFIED: '已验证',
+    DRAFT: '草稿',
+    DONE: '已完成',
+    FAILED: '失败',
+    CANCELLED: '已取消',
+    ARCHIVED: '已归档',
+  };
+
+  return status ? map[status] ?? status : '未设置';
+}
+
 export function formatBugStatus(status?: string | null) {
   const map: Record<string, string> = {
     OPEN: '待处理',

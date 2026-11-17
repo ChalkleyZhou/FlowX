@@ -15,6 +15,7 @@ import {
 import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
+import { formatWorkItemStatus } from '../utils/label-utils';
 
 interface EditDraft {
   title: string;
@@ -114,7 +115,7 @@ export function WorkItemEditDialog({
         </DialogHeader>
         <div className="flex flex-wrap items-center gap-2 rounded-md bg-muted/40 px-3 py-2 text-sm">
           <Badge variant="outline">{workItem.displayCode ?? workItem.id}</Badge>
-          <Badge variant="secondary" data-work-item-status>{workItem.status}</Badge>
+          <Badge variant="secondary" data-work-item-status>{formatWorkItemStatus(workItem.status)}</Badge>
           <span className="text-muted-foreground">类型：{kindLabel(workItem.kind)}</span>
         </div>
         <form className="flex flex-col gap-4" onSubmit={event => void save(event)}>

@@ -89,7 +89,8 @@ describe('WorkItemEditDialog', () => {
 
     expect(document.body.textContent).toContain('编辑需求');
     expect(document.body.textContent).toContain('REQ-001');
-    expect(document.body.textContent).toContain('ACTIVE');
+    expect(document.body.textContent).toContain('进行中');
+    expect(document.body.textContent).not.toContain('ACTIVE');
     expect((document.querySelector('#work-item-edit-title') as HTMLInputElement).value).toBe('原始标题');
     expect((document.querySelector('#work-item-edit-description') as HTMLTextAreaElement).value).toBe('原始描述');
     expect((document.querySelector('#work-item-edit-remark') as HTMLTextAreaElement).value).toBe('原始备注');

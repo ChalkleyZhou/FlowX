@@ -13,6 +13,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
 import type { WorkItem } from '../types';
+import { formatWorkItemStatus } from '../utils/label-utils';
 
 const statusOptions = ['ACTIVE', 'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
 
@@ -90,7 +91,7 @@ export function WorkItemDetailPage() {
         badges={[
           { key: 'kind', label, variant: 'default' },
           { key: 'displayCode', label: workItem.displayCode ?? workItem.id, variant: 'outline' },
-          { key: 'status', label: workItem.status, variant: 'outline' },
+          { key: 'status', label: formatWorkItemStatus(workItem.status), variant: 'outline' },
           { key: 'priority', label: workItem.priority, variant: 'secondary' },
           ...(workItem.version ? [{ key: 'version', label: workItem.version.name, variant: 'outline' as const }] : []),
         ]}
@@ -103,7 +104,7 @@ export function WorkItemDetailPage() {
             <Input value={draft.title} onChange={event => setDraft(current => ({ ...current, title: event.target.value }))} placeholder="标题" />
             <Textarea rows={6} value={draft.description} onChange={event => setDraft(current => ({ ...current, description: event.target.value }))} placeholder="描述" />
             <div className="grid gap-3 sm:grid-cols-2">
-              <Select value={draft.status} onValueChange={value => setDraft(current => ({ ...current, status: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{statusOptions.map(status => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent></Select>
+              <Select value={draft.status} onValueChange={value => setDraft(current => ({ ...current, status: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{statusOptions.map(status => <SelectItem key={status} value={status}>{formatWorkItemStatus(status)}</SelectItem>)}</SelectContent></Select>
               <Input value={draft.priority} onChange={event => setDraft(current => ({ ...current, priority: event.target.value }))} placeholder="优先级" />
             </div>
             <Textarea rows={3} value={draft.remark} onChange={event => setDraft(current => ({ ...current, remark: event.target.value }))} placeholder="备注" />
