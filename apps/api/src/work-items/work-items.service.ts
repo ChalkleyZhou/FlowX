@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { FLOWX_PROTOCOL_VERSION, type ExecutionSessionStatus } from '@flowx-ai/protocol';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -14,6 +14,7 @@ import { UpdateWorkItemDto } from './dto/update-work-item.dto';
 import { WorkflowService } from '../workflow/workflow.service';
 import { assertExecutionSessionTransition } from '../execution-sessions/execution-session-state';
 import { reserveWorkItemDisplayCode } from './work-item-identifier.service';
+import { DingTalkNotificationService, type WorkItemChangeNotificationInput } from '../notifications/dingtalk-notification.service';
 
 type AuthSession = { user?: { id?: string; displayName?: string }; organization?: { id?: string | null } | null };
 
@@ -22,11 +23,14 @@ const MAX_PAGE_SIZE = 100;
 
 @Injectable()
 export class WorkItemsService {
+  private readonly logger = new Logger(WorkItemsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(WorkflowService) private readonly workflowService: WorkflowService,
     @Optional() @Inject(AI_EXECUTOR_REGISTRY) private readonly aiExecutorRegistry?: AIExecutorRegistry,
     @Optional() private readonly aiInvocationContextService?: AiInvocationContextService,
+    @Optional() private readonly dingTalkNotificationService?: DingTalkNotificationService,
   ) {}
 
   async listByVersion(projectId: string, versionId: string, query: ListWorkItemsDto, auth?: AuthSession) {
@@ -170,7 +174,7 @@ export class WorkItemsService {
     const item = await this.prisma.workItem.findUnique({
       where: { id },
       include: {
-        project: { include: { workspace: true } },
+        project: { include: { workspace: { include: { organization: true } } } },
         version: { select: { id: true, name: true } },
         ownerUser: { select: { id: true, displayName: true, avatarUrl: true } },
         workflowRuns: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] },
@@ -221,10 +225,86 @@ export class WorkItemsService {
       },
     });
     if (updated.count !== 1) throw new ConflictException('工作项已被其他人更新，请刷新后重试。');
-    return this.prisma.workItem.findUniqueOrThrow({
+    const updatedItem = await this.prisma.workItem.findUniqueOrThrow({
       where: { id },
-      include: { ownerUser: { select: { id: true, displayName: true, avatarUrl: true } }, version: { select: { id: true, name: true } } },
+      include: {
+        ownerUser: { select: { id: true, displayName: true, avatarUrl: true } },
+        version: { select: { id: true, name: true } },
+      },
     });
+    this.scheduleWorkItemChangeNotifications(existing, updatedItem, dto, auth);
+    return updatedItem;
+  }
+
+  private scheduleWorkItemChangeNotifications(
+    existing: {
+      id: string;
+      displayCode?: string | null;
+      title: string;
+      status: string;
+      ownerUserId: string | null;
+      ownerUser?: { displayName: string | null } | null;
+      project: {
+        name: string;
+        workspace: {
+          organization?: { providerOrganizationId: string | null } | null;
+        };
+      };
+    },
+    updated: {
+      title?: string;
+      ownerUserId: string | null;
+      ownerUser?: { id: string; displayName: string | null } | null;
+      status: string;
+    },
+    dto: UpdateWorkItemDto,
+    auth?: AuthSession,
+  ) {
+    if (!this.dingTalkNotificationService) return;
+    const ownerChanged = dto.ownerUserId !== undefined && existing.ownerUserId !== updated.ownerUserId;
+    const statusChanged = dto.status !== undefined && existing.status !== updated.status;
+    if (!ownerChanged && !statusChanged) return;
+
+    const providerOrganizationId = existing.project.workspace.organization?.providerOrganizationId?.trim();
+    const owner = updated.ownerUser;
+    if (!providerOrganizationId || !owner?.id || !owner.displayName) return;
+
+    const notification: WorkItemChangeNotificationInput = {
+      recipient: {
+        flowxUserId: owner.id,
+        displayName: owner.displayName,
+        providerOrganizationId,
+      },
+      item: {
+        id: existing.id,
+        displayCode: existing.displayCode?.trim() || existing.id,
+        title: updated.title ?? existing.title,
+        projectName: existing.project.name,
+      },
+      actorName: auth?.user?.displayName?.trim() || '未记录',
+    };
+
+    if (ownerChanged && updated.ownerUserId) {
+      notification.ownerChange = {
+        from: existing.ownerUser?.displayName ?? null,
+        to: owner.displayName,
+      };
+    }
+    if (statusChanged) {
+      notification.statusChange = {
+        from: existing.status,
+        to: updated.status,
+      };
+    }
+    if (!notification.ownerChange && !notification.statusChange) return;
+
+    void Promise.resolve()
+      .then(() => this.dingTalkNotificationService?.sendWorkItemChangeMarkdown(notification))
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        // 通知失败不能影响已经成功的工作项保存。
+        this.logger.warn(`工作项变更钉钉通知后台发送失败：${message}`);
+      });
   }
 
   async confirmPlan(id: string, planId: string, auth?: AuthSession) {
