@@ -76,6 +76,7 @@ describe('RequirementsPage', () => {
     },
     priority: 'HIGH',
     status: 'ACTIVE',
+    planningStatus: 'IN_PROGRESS',
     versionId: 'ver-1',
     version: { id: 'ver-1', name: '2.6.0' },
     createdByName: '产品甲',
@@ -282,6 +283,30 @@ describe('RequirementsPage', () => {
     expect(container.textContent).not.toContain(requirement.productRequirementDocument);
     expect(container.textContent).not.toContain('人员排期：');
     expect(container.textContent).not.toContain('并行占用：');
+  });
+
+  it('统计当前筛选结果中的进行中和已完成需求', async () => {
+    const completed = { ...requirement, id: 'requirement-done', title: '已完成需求', planningStatus: 'DONE' };
+    const result = paged([requirement, completed], 2);
+    result.summary = { ...result.summary, inProgressCount: 1, completedCount: 1 };
+    vi.mocked(api.getRequirements).mockResolvedValue(result);
+
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/work-items?projectId=project-1']}>
+          <Routes>
+            <Route path="/work-items" element={<RequirementsPage />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(Array.from(container.querySelectorAll('h3')).map((element) => element.textContent)).toEqual(['2', '1', '1']);
+    expect(container.textContent).toContain('当前需求');
+    expect(container.textContent).toContain('进行中');
+    expect(container.textContent).toContain('已完成');
   });
 
   it('需求列表在表格下方分页，筛选变化后回到第一页', async () => {

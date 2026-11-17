@@ -369,14 +369,16 @@ export class RequirementsService {
     const paging = parsePagination(query);
     const scope = { ...(query.workspaceId ? { project: { workspaceId: query.workspaceId } } : {}), ...(query.projectId ? { projectId: query.projectId } : {}) };
     const where = { kind: 'REQUIREMENT', ...scope, ...(query.versionId ? { versionId: query.versionId === '__unassigned__' ? null : query.versionId } : {}), ...(query.planningStatus ? { planningStatus: query.planningStatus } : {}), ...(query.priority ? { priority: query.priority } : {}), ...(query.status ? { status: query.status } : {}), ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }, { displayCode: { contains: query.q.trim() } }] } : {}) };
-    const [rows, total, requirementCount, workspaceCount, projectCount] = await Promise.all([
+    const [rows, total, requirementCount, workspaceCount, projectCount, inProgressCount, completedCount] = await Promise.all([
       this.prisma.workItem.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { version: { select: { id: true, name: true } }, project: { include: { workspace: true } }, workspace: true, prototypeImport: { select: { id: true, status: true } }, workflowRuns: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1 }, changes: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1, select: { createdAt: true, content: true } }, _count: { select: { workflowRuns: true, assignments: true, requirementRepositories: true } } } }),
       this.prisma.workItem.count({ where }), this.prisma.workItem.count({ where: scope }),
       this.prisma.workspace.count({ where: { projects: { some: { workItems: { some: { ...scope, kind: 'REQUIREMENT' } } } } } }),
       this.prisma.project.count({ where: { workItems: { some: { ...scope, kind: 'REQUIREMENT' } } } }),
+      this.prisma.workItem.count({ where: { ...where, planningStatus: 'IN_PROGRESS' } }),
+      this.prisma.workItem.count({ where: { ...where, planningStatus: 'DONE' } }),
     ]);
     const items = rows.map(({ changes, ...row }) => ({ ...row, latestChangeAt: changes[0]?.createdAt ?? null, latestChangeContent: changes[0]?.content ?? null }));
-    return { ...pageResult(items, total, paging), summary: { requirementCount, visibleCount: total, workspaceCount, projectCount } };
+    return { ...pageResult(items, total, paging), summary: { requirementCount, visibleCount: total, workspaceCount, projectCount, inProgressCount, completedCount } };
   }
 
   async findAll() {

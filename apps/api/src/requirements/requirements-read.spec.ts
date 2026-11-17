@@ -83,7 +83,7 @@ describe('RequirementsService 原型导入读取契约', () => {
     const first = await service.findPage({...filters,page:'1'});
     const second = await service.findPage({...filters,page:'2'});
     expect(first.items).toHaveLength(20);expect(second.items).toHaveLength(5);
-    expect(first).toMatchObject({total:25,page:1,pageSize:20,totalPages:2,summary:{requirementCount:30,visibleCount:25,workspaceCount:1,projectCount:1}});
+    expect(first).toMatchObject({total:25,page:1,pageSize:20,totalPages:2,summary:{requirementCount:30,visibleCount:25,workspaceCount:1,projectCount:1,inProgressCount:0,completedCount:25}});
     expect(new Set([...first.items,...second.items].map(item=>item.id)).size).toBe(25);
     expect(first.items[0].id).toBe('paged-requirement-24');
     expect(first.items[0].project.workspace).not.toHaveProperty('repositories');

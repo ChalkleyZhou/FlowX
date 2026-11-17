@@ -154,7 +154,11 @@ export function RequirementsPage() {
   const list = useListPage(api.getRequirements, { projectId: selectedProjectId, q: selectedQuery, versionId: selectedVersionId, priority: selectedPriority }, {enabled: Boolean(selectedProjectId)});
   const {items: requirements, total, page, loading, refresh, onPageChange: setPage} = list;
   const hasLoaded = !loading;
-  const requirementSummary = {requirementCount:list.summary?.requirementCount ?? total,visibleCount:list.summary?.visibleCount ?? total,workspaceCount:list.summary?.workspaceCount ?? 0,projectCount:list.summary?.projectCount ?? 0};
+  const requirementSummary = {
+    visibleCount: list.summary?.visibleCount ?? total,
+    inProgressCount: list.summary?.inProgressCount ?? requirements.filter((item) => item.planningStatus === 'IN_PROGRESS').length,
+    completedCount: list.summary?.completedCount ?? requirements.filter((item) => item.planningStatus === 'DONE').length,
+  };
 
   async function chooseCreateProject(id: string) {
     const epoch = ++createProjectEpoch.current;
@@ -657,11 +661,10 @@ export function RequirementsPage() {
         title="需求"
         description="查看需求、确认门禁并启动工作流。本页可直接创建需求。"
       />
-      <div className="grid gap-5 md:grid-cols-4">
-        <MetricCard label="需求总数" value={requirementSummary.requirementCount} />
-        <MetricCard label="当前筛选结果" value={requirementSummary.visibleCount} />
-        <MetricCard label="涉及工作区" value={requirementSummary.workspaceCount} />
-        <MetricCard label="涉及项目" value={requirementSummary.projectCount} />
+      <div className="grid gap-5 md:grid-cols-3">
+        <MetricCard label="当前需求" value={requirementSummary.visibleCount} helpText="按当前筛选条件统计" />
+        <MetricCard label="进行中" value={requirementSummary.inProgressCount} />
+        <MetricCard label="已完成" value={requirementSummary.completedCount} />
       </div>
       <Card className="rounded-md border border-border bg-card">
         <CardHeader className="pb-4">
