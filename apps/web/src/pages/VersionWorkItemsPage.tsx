@@ -260,7 +260,7 @@ export function VersionWorkItemsPage({
           </Tabs>
           <ListToolbar
             className="mb-0"
-            search={<Input className="max-w-xs" placeholder="搜索标题或描述" value={q} onChange={event => setQ(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void load(1); }} />}
+            search={<Input placeholder="搜索标题或描述" value={q} onChange={event => setQ(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void load(1); }} />}
             filters={<Button variant="outline" onClick={() => void load(1)}>查询</Button>}
           />
           {error ? <p role="alert" className="text-sm text-destructive">{error}<Button variant="outline" size="sm" onClick={() => void load(typedPage)}>重试</Button></p> : null}
