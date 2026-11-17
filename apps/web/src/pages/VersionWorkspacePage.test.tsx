@@ -157,7 +157,7 @@ describe('VersionWorkspacePage', () => {
   it('需求 Tab 展示需求专属字段并通过弹框编辑', async () => {
     vi.mocked(api.getRequirements).mockResolvedValue(pageResult([{
       id: 'requirement-1', title: '需求一', description: '需求描述', priority: 'HIGH',
-      createdByName: '产品', createdAt: '2026-11-01T00:00:00.000Z', latestChangeAt: '2026-11-02T00:00:00.000Z',
+      createdByName: '产品', ownerUserId: 'user-1', ownerUser: { id: 'user-1', displayName: '负责人甲' }, createdAt: '2026-11-01T00:00:00.000Z', latestChangeAt: '2026-11-02T00:00:00.000Z',
       latestChangeContent: '最新变更', remark: '需求备注', prototypeImport: null,
     } as never]));
     await act(async () => {
@@ -166,6 +166,8 @@ describe('VersionWorkspacePage', () => {
     });
 
     expect(container.textContent).toContain('需求描述');
+    expect(container.textContent).toContain('负责人');
+    expect(container.textContent).toContain('负责人甲');
     expect(container.textContent).toContain('规划版本');
     expect(container.textContent).toContain('未分配');
     expect(container.textContent).not.toContain('需求变更时间');

@@ -22,6 +22,7 @@ interface EditDraft {
   description: string;
   priority: string;
   versionId: string;
+  ownerUserId: string;
   remark: string;
 }
 
@@ -42,6 +43,7 @@ function draftFrom(workItem: WorkItem): EditDraft {
     description: workItem.description ?? '',
     priority: workItem.priority || 'MEDIUM',
     versionId: workItem.versionId ?? '',
+    ownerUserId: workItem.ownerUserId ?? '',
     remark: workItem.remark ?? '',
   };
 }
@@ -95,6 +97,7 @@ export function WorkItemEditDialog({
         title,
         description: draft.description.trim(),
         priority: draft.priority,
+        ownerUserId: draft.ownerUserId || null,
         versionId: draft.versionId || null,
         remark: draft.remark.trim(),
         updatedAt: workItem.updatedAt,
@@ -143,6 +146,22 @@ export function WorkItemEditDialog({
                 scopeKey={workItem.projectId}
                 loadPage={query => api.listProjectVersions(workItem.projectId, query)}
                 onValueChange={value => setDraft(current => ({ ...current, versionId: value }))}
+              />
+            </Field>
+            <Field label="负责人">
+              <PagedSelect
+                value={draft.ownerUserId}
+                selectedLabel={workItem.ownerUser?.id === draft.ownerUserId ? workItem.ownerUser.displayName : undefined}
+                label="负责人"
+                placeholder="未指定负责人"
+                allowClear
+                emptyLabel="未指定负责人"
+                scopeKey={workItem.workspaceId}
+                loadPage={async query => {
+                  const result = await api.getOrganizationMembers({ ...query, status: 'ACTIVE' });
+                  return { ...result, items: result.items.map(member => ({ id: member.id, name: member.displayName ?? member.account ?? member.id })) };
+                }}
+                onValueChange={value => setDraft(current => ({ ...current, ownerUserId: value }))}
               />
             </Field>
             <Field label="备注" htmlFor="work-item-edit-remark">

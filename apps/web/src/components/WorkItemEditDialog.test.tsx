@@ -13,6 +13,7 @@ vi.mock('../api', () => ({
   api: {
     updateWorkItem: vi.fn(),
     listProjectVersions: vi.fn(),
+    getOrganizationMembers: vi.fn(),
   },
 }));
 
@@ -28,6 +29,8 @@ const workItem: WorkItem = {
   remark: '原始备注',
   status: 'ACTIVE',
   priority: 'HIGH',
+  ownerUserId: 'user-1',
+  ownerUser: { id: 'user-1', displayName: '负责人甲' },
   acceptanceCriteria: '',
   functionalModule: '',
   riskImpact: '',
@@ -56,6 +59,7 @@ describe('WorkItemEditDialog', () => {
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     vi.mocked(api.listProjectVersions).mockResolvedValue({ items: [{ id: 'version-1', name: '2.6.7' }], page: 1, pageSize: 20, total: 1, totalPages: 1 });
+    vi.mocked(api.getOrganizationMembers).mockResolvedValue({ items: [{ id: 'user-1', displayName: '负责人甲' }, { id: 'user-2', displayName: '负责人乙' }], page: 1, pageSize: 20, total: 2, totalPages: 1 });
     vi.mocked(api.updateWorkItem).mockResolvedValue({ ...workItem, title: '更新后的标题' });
     onOpenChange.mockReset();
     onSaved.mockReset();
@@ -94,6 +98,8 @@ describe('WorkItemEditDialog', () => {
     expect((document.querySelector('#work-item-edit-title') as HTMLInputElement).value).toBe('原始标题');
     expect((document.querySelector('#work-item-edit-description') as HTMLTextAreaElement).value).toBe('原始描述');
     expect((document.querySelector('#work-item-edit-remark') as HTMLTextAreaElement).value).toBe('原始备注');
+    expect(document.body.textContent).toContain('负责人');
+    expect(document.body.textContent).toContain('负责人甲');
     expect(document.querySelector('[data-work-item-status]')).not.toBeNull();
   });
 
@@ -106,6 +112,8 @@ describe('WorkItemEditDialog', () => {
     setValue(title, '  新标题  ');
     setValue(description, ' 新描述 ');
     setValue(remark, ' 新备注 ');
+    await act(async () => { document.querySelector<HTMLButtonElement>('button[aria-label="负责人"]')?.click(); await Promise.resolve(); });
+    await act(async () => { Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(option => option.textContent?.trim() === '负责人乙')?.click(); await Promise.resolve(); });
     setValue(title, '   ');
     await act(async () => { (document.querySelector('form') as HTMLFormElement).requestSubmit(); });
     expect(api.updateWorkItem).not.toHaveBeenCalled();
@@ -113,7 +121,7 @@ describe('WorkItemEditDialog', () => {
 
     setValue(title, ' 新标题 ');
     await act(async () => { (document.querySelector('form') as HTMLFormElement).requestSubmit(); });
-    expect(api.updateWorkItem).toHaveBeenCalledWith('work-item-1', expect.objectContaining({ title: '新标题', description: '新描述', remark: '新备注', versionId: 'version-1', updatedAt: workItem.updatedAt }));
+    expect(api.updateWorkItem).toHaveBeenCalledWith('work-item-1', expect.objectContaining({ title: '新标题', description: '新描述', remark: '新备注', ownerUserId: 'user-2', versionId: 'version-1', updatedAt: workItem.updatedAt }));
     expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ title: '更新后的标题' }));
   });
 

@@ -327,6 +327,8 @@ export interface Requirement {
   }>;
   versionId?: string | null;
   version?: ProjectVersionSummary | null;
+  ownerUserId?: string | null;
+  ownerUser?: { id: string; displayName: string; avatarUrl?: string | null } | null;
   createdByName?: string | null;
   createdAt?: string | null;
   latestChangeAt?: string | null;

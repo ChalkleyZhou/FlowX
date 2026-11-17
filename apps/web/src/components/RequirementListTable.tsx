@@ -27,17 +27,20 @@ export function RequirementListTable({
   renderActions,
   onOpen,
   returnTo,
+  personColumn = 'creator',
 }: {
   items: Requirement[];
   renderActions: (item: Requirement) => ReactNode;
   onOpen?: (item: Requirement) => void;
   returnTo?: string;
+  personColumn?: 'creator' | 'owner';
 }) {
+  const personLabel = personColumn === 'owner' ? '负责人' : '创建人';
   return (
     <table className="w-max min-w-full text-sm">
       <thead className="bg-muted/40 text-left text-muted-foreground">
         <tr>
-          {['需求', '需求描述', '优先级', '状态', '规划版本', '创建人', '创建时间', '操作'].map((label) => (
+          {['需求', '需求描述', '优先级', '状态', '规划版本', personLabel, '创建时间', '操作'].map((label) => (
             <th
               key={label}
               className={label === '操作'
@@ -53,7 +56,9 @@ export function RequirementListTable({
         {items.map((item) => {
           const description = item.description.trim() || '未填写';
           const version = item.version?.name ?? '未分配';
-          const creator = item.createdByName?.trim() || '未记录';
+          const person = personColumn === 'owner'
+            ? item.ownerUser?.displayName?.trim() || '未指定'
+            : item.createdByName?.trim() || '未记录';
           return (
             <tr key={item.id} className="border-t border-border">
               <td className="whitespace-nowrap px-4 py-3 font-medium">
@@ -75,7 +80,7 @@ export function RequirementListTable({
               <td className="whitespace-nowrap px-4 py-3">{formatPriority(item.priority)}</td>
               <td className="whitespace-nowrap px-4 py-3"><Badge variant={statusVariant(item.status)}>{formatWorkItemStatus(item.status)}</Badge></td>
               <td className="whitespace-nowrap px-4 py-3"><span className="block max-w-[180px] truncate" title={version}>{version}</span></td>
-              <td className="whitespace-nowrap px-4 py-3"><span className="block max-w-[120px] truncate" title={creator}>{creator}</span></td>
+              <td className="whitespace-nowrap px-4 py-3"><span className="block max-w-[120px] truncate" title={person}>{person}</span></td>
               <td className="whitespace-nowrap px-4 py-3 text-muted-foreground"><time dateTime={item.createdAt ?? undefined}>{formatCreatedAt(item.createdAt)}</time></td>
               <td className="sticky right-0 z-10 whitespace-nowrap border-l border-t border-border bg-card px-4 py-3">
                 <div className="flex flex-nowrap gap-2">{renderActions(item)}</div>
