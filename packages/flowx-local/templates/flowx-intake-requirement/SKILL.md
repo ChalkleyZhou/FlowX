@@ -82,6 +82,7 @@ description: 仅在用户明确要求把事项新建、登记或发起到 FlowX 
 这些操作不属于创建流程。只有用户明确要求时才调用，并先说明将要写入的内容。
 
 - 编辑：`flowx_update_work_item`，只传用户要改的字段。创建人和创建时间不能改。
+- 移出版本：`flowx_update_work_item` 传 `versionId: null`。工作项保留，只解除版本归属。不要用 `flowx_delete_work_item` 代替。
 - 删除：先说明会移除工作流、构思、排期和原型材料，关联缺陷与问题会保留但解除关联。用户确认后才传 `userConfirmedDelete: true`。执行中，或已纳入测试设计、提测时，服务端会拒绝。
 - 文字变更：`flowx_submit_work_item_change`。`SUPPLEMENT` 继续当前流程，`RESTART` 重新走一轮。确认原文和方式后才传 `userConfirmedChange: true`。同一次提交重试时复用同一个 `requestId`。
 - 换包重走：`flowx_submit_work_item_prototype_change`，传入用户确认的本地 `.zip` 路径，不超过 20 MiB。说明可留空。

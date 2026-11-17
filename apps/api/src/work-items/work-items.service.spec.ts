@@ -238,6 +238,35 @@ describe('WorkItemsService execution item lifecycle', () => {
   });
 });
 
+describe('WorkItemsService version removal', () => {
+  it('clears versionId without deleting the work item', async () => {
+    const existing = {
+      id: 'item-1',
+      projectId: 'project-1',
+      versionId: 'version-1',
+      project: { workspace: { organizationId: 'org-1' } },
+    };
+    const prisma = {
+      workItem: {
+        findUnique: vi.fn().mockResolvedValue(existing),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ ...existing, versionId: null }),
+        delete: vi.fn(),
+      },
+    };
+    const service = new WorkItemsService(prisma as never, {} as never);
+
+    const updated = await service.update('item-1', { versionId: null });
+
+    expect(prisma.workItem.updateMany).toHaveBeenCalledWith({
+      where: { id: 'item-1' },
+      data: { versionId: null },
+    });
+    expect(prisma.workItem.delete).not.toHaveBeenCalled();
+    expect(updated.versionId).toBeNull();
+  });
+});
+
 describe('WorkItemsService work item paging and plan validation', () => {
   it('combines keyword filtering with a stable cursor instead of replacing one filter with the other', async () => {
     const updatedAt = new Date('2026-11-13T00:00:00.000Z');

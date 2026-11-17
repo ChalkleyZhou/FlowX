@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../api';
+import { ConfirmProvider } from '../components/ConfirmDialog';
 import { pageResult } from '../test-utils/page-result';
 import { VersionWorkspacePage } from './VersionWorkspacePage';
 
@@ -17,6 +18,9 @@ vi.mock('../api', () => ({
     getIssues: vi.fn(),
     getBugs: vi.fn(),
     getWorkItem: vi.fn(),
+    updateWorkItem: vi.fn(),
+    deleteWorkItem: vi.fn(),
+    deleteRequirement: vi.fn(),
   },
 }));
 
@@ -30,6 +34,16 @@ vi.mock('../project-scope-context', () => ({
 vi.mock('../components/ui/toast', () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn() }),
 }));
+
+function renderWorkspace(entry: string) {
+  return (
+    <ConfirmProvider>
+      <MemoryRouter initialEntries={[entry]}>
+        <VersionWorkspacePage />
+      </MemoryRouter>
+    </ConfirmProvider>
+  );
+}
 
 describe('VersionWorkspacePage', () => {
   let container: HTMLDivElement;
@@ -66,7 +80,7 @@ describe('VersionWorkspacePage', () => {
 
   it('opens the current version work-item board and exposes a version switcher', async () => {
     await act(async () => {
-      root?.render(<MemoryRouter initialEntries={['/versions?projectId=project-1']}><VersionWorkspacePage /></MemoryRouter>);
+      root?.render(renderWorkspace('/versions?projectId=project-1'));
     });
     await act(async () => {
       await Promise.resolve();
@@ -88,7 +102,7 @@ describe('VersionWorkspacePage', () => {
 
   it('切换需求 Tab 后按当前项目和版本读取需求分页列表', async () => {
     await act(async () => {
-      root?.render(<MemoryRouter initialEntries={['/versions?projectId=project-1&versionId=version-1']}><VersionWorkspacePage /></MemoryRouter>);
+      root?.render(renderWorkspace('/versions?projectId=project-1&versionId=version-1'));
     });
     await act(async () => { await Promise.resolve(); });
 
@@ -103,7 +117,7 @@ describe('VersionWorkspacePage', () => {
 
   it('快速新建使用弹框并默认当前工作项类型', async () => {
     await act(async () => {
-      root?.render(<MemoryRouter initialEntries={['/versions?projectId=project-1&versionId=version-1']}><VersionWorkspacePage /></MemoryRouter>);
+      root?.render(renderWorkspace('/versions?projectId=project-1&versionId=version-1'));
       await Promise.resolve();
     });
 
@@ -124,7 +138,7 @@ describe('VersionWorkspacePage', () => {
       latestChangeContent: '最新变更', remark: '需求备注', prototypeImport: null,
     } as never]));
     await act(async () => {
-      root?.render(<MemoryRouter initialEntries={['/versions?projectId=project-1&versionId=version-1&kind=REQUIREMENT']}><VersionWorkspacePage /></MemoryRouter>);
+      root?.render(renderWorkspace('/versions?projectId=project-1&versionId=version-1&kind=REQUIREMENT'));
       await Promise.resolve();
     });
 
@@ -148,7 +162,7 @@ describe('VersionWorkspacePage', () => {
       sourceWorkflowRun: { id: 'run-1', status: 'DONE' }, branchName: 'feature/problem',
     } as never]));
     await act(async () => {
-      root?.render(<MemoryRouter initialEntries={['/versions?projectId=project-1&versionId=version-1&kind=ISSUE']}><VersionWorkspacePage /></MemoryRouter>);
+      root?.render(renderWorkspace('/versions?projectId=project-1&versionId=version-1&kind=ISSUE'));
       await Promise.resolve();
     });
 
@@ -158,6 +172,7 @@ describe('VersionWorkspacePage', () => {
     expect(container.querySelectorAll('tbody select')).toHaveLength(0);
     expect(container.querySelector('a[href="/work-items/issue-1"]')).toBeNull();
     expect(Array.from(container.querySelectorAll('button')).some(button => button.textContent === '编辑')).toBe(true);
+    expect(Array.from(container.querySelectorAll('button')).some(button => button.textContent === '移除')).toBe(true);
   });
 
   it('缺陷 Tab 展示严重级别和来源工作流字段并通过弹框编辑', async () => {
@@ -166,7 +181,7 @@ describe('VersionWorkspacePage', () => {
       workflowRun: { id: 'run-2', status: 'DONE' }, branchName: 'fix/bug',
     } as never]));
     await act(async () => {
-      root?.render(<MemoryRouter initialEntries={['/versions?projectId=project-1&versionId=version-1&kind=BUG']}><VersionWorkspacePage /></MemoryRouter>);
+      root?.render(renderWorkspace('/versions?projectId=project-1&versionId=version-1&kind=BUG'));
       await Promise.resolve();
     });
 
@@ -177,5 +192,43 @@ describe('VersionWorkspacePage', () => {
     expect(container.querySelectorAll('tbody select')).toHaveLength(0);
     expect(container.querySelector('a[href="/work-items/bug-1"]')).toBeNull();
     expect(Array.from(container.querySelectorAll('button')).some(button => button.textContent === '编辑')).toBe(true);
+    expect(Array.from(container.querySelectorAll('button')).some(button => button.textContent === '移除')).toBe(true);
+  });
+
+  it('确认后只解除当前版本，取消或未确认时不改数据', async () => {
+    const requirement = {
+      id: 'requirement-1', title: '需求一', description: '需求描述', priority: 'HIGH',
+    };
+    let removed = false;
+    vi.mocked(api.getRequirements).mockImplementation(async () => pageResult(removed ? [] : [requirement as never]));
+    vi.mocked(api.updateWorkItem).mockImplementation(async () => {
+      removed = true;
+      return { id: 'requirement-1' } as never;
+    });
+    await act(async () => {
+      root?.render(renderWorkspace('/versions?projectId=project-1&versionId=version-1&kind=REQUIREMENT'));
+      await Promise.resolve();
+    });
+
+    const remove = Array.from(container.querySelectorAll('button')).find(button => button.textContent === '移除');
+    expect(remove).toBeTruthy();
+    await act(async () => { remove?.click(); });
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain('移出版本');
+    expect(dialog?.textContent).toContain('需求一');
+    expect(dialog?.textContent).toContain('不会删除');
+    const cancel = Array.from(dialog?.querySelectorAll('button') ?? []).find(button => button.textContent === '取消');
+    await act(async () => { cancel?.click(); });
+    expect(api.updateWorkItem).not.toHaveBeenCalled();
+    expect(api.deleteWorkItem).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('需求一');
+
+    await act(async () => { remove?.click(); });
+    const confirm = Array.from(document.querySelectorAll('[role="dialog"] button')).find(button => button.textContent === '移除');
+    await act(async () => { confirm?.click(); await Promise.resolve(); });
+    expect(api.updateWorkItem).toHaveBeenCalledWith('requirement-1', { versionId: null });
+    expect(api.deleteWorkItem).not.toHaveBeenCalled();
+    expect(api.deleteRequirement).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain('需求一');
   });
 });

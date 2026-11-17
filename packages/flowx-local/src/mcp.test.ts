@@ -621,6 +621,35 @@ describe('flowx-local MCP server', () => {
     await server.close();
   });
 
+  it('clears a work item version without deleting it', async () => {
+    const homeDir = makeHome();
+    delete process.env.FLOWX_API_TOKEN;
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/work-items/req_1') && init?.method === 'DELETE') {
+        throw new Error('deleted work item');
+      }
+      if (url.endsWith('/work-items/req_1') && init?.method === 'PATCH') {
+        expect(JSON.parse(String(init.body))).toEqual({ versionId: null });
+        return new Response(JSON.stringify({ id: 'req_1', versionId: null }), { status: 200 });
+      }
+      throw new Error(`unexpected url: ${url} ${init?.method}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { client, server } = await connectClient(homeDir);
+
+    const updated = await client.callTool({
+      name: 'flowx_update_work_item',
+      arguments: { workItemId: 'req_1', versionId: null },
+    });
+
+    expect(updated.isError).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await client.close();
+    await server.close();
+  });
+
   it('forwards requirement profile fields, edits, deletion and formal changes', async () => {
     const homeDir = makeHome();
     delete process.env.FLOWX_API_TOKEN;

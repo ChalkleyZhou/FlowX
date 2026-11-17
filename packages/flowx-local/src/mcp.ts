@@ -1121,7 +1121,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     {
       title: 'Update FlowX Work Item',
       description:
-        'Update an existing FlowX WorkItem only after the user explicitly asked to edit it. Send only the fields the user wants to change. Creator and created time stay unchanged. Does not start or restart a workflow.',
+        'Update an existing FlowX WorkItem only after the user explicitly asked to edit it. Send only the fields the user wants to change. Pass versionId null to remove the item from its current version without deleting the work item. Creator and created time stay unchanged. Does not start or restart a workflow.',
       inputSchema: z.object({
         workItemId: z.string().min(1),
         title: z.string().trim().min(1).optional(),
@@ -1132,7 +1132,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
         riskImpact: z.string().optional(),
         productRequirementDocument: z.string().optional(),
         remark: z.string().optional(),
-        versionId: z.string().min(1).optional(),
+        versionId: z.string().trim().min(1).nullable().optional(),
       }),
     },
     async (input) => {
