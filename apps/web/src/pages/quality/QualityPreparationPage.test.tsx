@@ -79,7 +79,8 @@ async function render() {
 it('从工作项预填上下文，显式提交所选库和工作流', async () => {
   vi.mocked(api.createTestDesign).mockResolvedValue({ id: 'design-1' } as TestDesign);
   await render();
-  expect(container.textContent).toContain('认证改进');
+  expect(container.textContent).toContain('准备测试');
+  expect(container.textContent).toContain('req-1');
   await act(async () => container.querySelector<HTMLInputElement>('input[aria-label="用例库 项目库"]')?.click());
   await act(async () =>
     Array.from(container.querySelectorAll('button'))

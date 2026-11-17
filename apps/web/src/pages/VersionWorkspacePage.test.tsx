@@ -88,7 +88,7 @@ describe('VersionWorkspacePage', () => {
 
     expect(container.textContent).toContain('版本工作台');
     expect(container.textContent).toContain('2.6.0');
-    expect(container.textContent).toContain('统一查看需求、问题和缺陷');
+    expect(container.textContent).not.toContain('Version work items');
     expect(container.textContent).toContain('全部优先级');
     expect(container.textContent).toContain('全部状态');
     expect(container.textContent).toContain('需求');

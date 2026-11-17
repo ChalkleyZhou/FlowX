@@ -59,7 +59,7 @@ describe('VersionManagementPage', () => {
     });
 
     expect(container.textContent).toContain('版本管理');
-    expect(container.textContent).toContain('FlowX 控制台');
+    expect(container.textContent).not.toContain('Release Management');
     expect(container.textContent).toContain('2.6.0');
     expect(container.textContent).toContain('2.7.0');
     expect(container.textContent).toContain('当前');

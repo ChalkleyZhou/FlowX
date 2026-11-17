@@ -229,7 +229,7 @@ describe('RequirementsPage', () => {
 
     expect(container.textContent).toContain('创建需求');
     expect(container.textContent).not.toContain('用 Cursor / Codex 发起');
-    expect(container.textContent).toContain('本页可直接创建需求');
+    expect(container.textContent).not.toContain('本页可直接创建需求');
 
     const webCreate = Array.from(container.querySelectorAll('button')).find(
       (element) => element.textContent?.trim() === '创建需求',

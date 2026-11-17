@@ -12,15 +12,12 @@ interface DetailHeaderProps {
   className?: string;
 }
 
-export function DetailHeader({ eyebrow, title, description, badges, actions, className }: DetailHeaderProps) {
+export function DetailHeader({ title, description, badges, actions, className }: DetailHeaderProps) {
   return (
     <Card className={cn('border-border bg-card', className)}>
       <CardContent className="flex flex-col gap-5 p-6 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0 space-y-3">
           <CardHeader className="space-y-3 p-0">
-            {eyebrow ? (
-              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">{eyebrow}</div>
-            ) : null}
             <div className="space-y-2">
               <CardTitle className="text-xl font-semibold tracking-tight md:text-2xl">{title}</CardTitle>
               {description ? (
