@@ -91,6 +91,8 @@ it('切换快捷视图和执行人后回到第一页', async () => {
   const option = Array.from(document.querySelectorAll('[role="option"]')).find((item) => item.textContent === '张三') as HTMLElement;
   expect(option).toBeDefined();
   await act(async () => option.click());
+  expect(api.listExecutionSessions).not.toHaveBeenLastCalledWith(expect.objectContaining({ claimedByUserId: 'u1' }));
+  await click('查询');
   expect(api.listExecutionSessions).toHaveBeenLastCalledWith(expect.objectContaining({ claimedByUserId: 'u1', page: 1 }));
 });
 
@@ -102,7 +104,7 @@ it('按需求名称搜索会重置页码并保留其他筛选', async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, ' 登录 ');
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
-  await click('搜索');
+  await click('查询');
   expect(api.listExecutionSessions).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, search: '登录', sourceTool: 'codex' }));
 });
 

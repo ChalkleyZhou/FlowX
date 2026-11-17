@@ -1,3 +1,5 @@
+import { ListQueryActions } from '../components/ListQueryActions';
+import { submitQueryOnEnter, useDraftQuery } from '../hooks/use-draft-query';
 import { useListPage } from '../hooks/use-list-page';
 import { ListPagination } from '../components/ListPagination';
 import { PagedSelect } from '../components/PagedSelect';
@@ -29,14 +31,34 @@ import { useStoredListFilters } from '../utils/list-filter-storage';
 
 export function IssuesPage() {
   const location = useLocation();
-  const [filters, setFilter] = useStoredListFilters('issues');
+  const [filters, , replaceFilters] = useStoredListFilters('issues');
   const selectedWorkspaceId = filters.workspaceId;
   const selectedStatus = filters.status;
   const selectedPriority = filters.priority;
   const keyword = filters.keyword ?? '';
+  const queryDraft = useDraftQuery({
+    keyword,
+    workspaceId: selectedWorkspaceId ?? '',
+    status: selectedStatus ?? '',
+    priority: selectedPriority ?? '',
+  });
   const toast = useToast();
 
   const list = useListPage(api.getIssues, { workspaceId: selectedWorkspaceId, status: selectedStatus, priority: selectedPriority, q: keyword || undefined });
+  function applyFilters() {
+    replaceFilters({
+      keyword: queryDraft.draft.keyword.trim() || undefined,
+      workspaceId: queryDraft.draft.workspaceId || undefined,
+      status: queryDraft.draft.status || undefined,
+      priority: queryDraft.draft.priority || undefined,
+    });
+    list.onPageChange(1);
+  }
+  function clearFilters() {
+    queryDraft.replace({ keyword: '', workspaceId: '', status: '', priority: '' });
+    replaceFilters({ keyword: undefined, workspaceId: undefined, status: undefined, priority: undefined });
+    list.onPageChange(1);
+  }
   const { items: pagedIssues, loading, refresh } = list;
   const issueSummary = { ...{total: 0, visible: 0, openCount: 0, inProgressCount: 0}, ...list.summary };
 
@@ -68,18 +90,20 @@ export function IssuesPage() {
               <ListToolbar
                 search={(
                   <UiInput
+                    aria-label="搜索问题"
                     placeholder="搜索标题、描述、需求、工作区"
-                    value={keyword}
-                    onChange={(event) => setFilter('keyword', event.target.value || undefined)}
+                    value={queryDraft.draft.keyword}
+                    onChange={(event) => queryDraft.patch({ keyword: event.target.value })}
+                    onKeyDown={(event) => submitQueryOnEnter(event, applyFilters)}
                   />
                 )}
                 filters={(
                   <>
-                    <PagedSelect value={selectedWorkspaceId ?? ''} label="按工作区筛选" placeholder="全部工作区" allowClear emptyLabel="全部工作区" className="w-[180px]" loadPage={api.getWorkspaces}
-                      onValueChange={value => setFilter('workspaceId', value || undefined)} />
+                    <PagedSelect value={queryDraft.draft.workspaceId} label="按工作区筛选" placeholder="全部工作区" allowClear emptyLabel="全部工作区" className="w-[180px]" loadPage={api.getWorkspaces}
+                      onValueChange={value => queryDraft.patch({ workspaceId: value })} />
                     <Select
-                      value={selectedStatus ?? '__all__'}
-                      onValueChange={(value) => setFilter('status', value === '__all__' ? undefined : value)}
+                      value={queryDraft.draft.status || '__all__'}
+                      onValueChange={(value) => queryDraft.patch({ status: value === '__all__' ? '' : value })}
                     >
                       <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="按状态筛选" />
@@ -94,8 +118,8 @@ export function IssuesPage() {
                       </SelectContent>
                     </Select>
                     <Select
-                      value={selectedPriority ?? '__all__'}
-                      onValueChange={(value) => setFilter('priority', value === '__all__' ? undefined : value)}
+                      value={queryDraft.draft.priority || '__all__'}
+                      onValueChange={(value) => queryDraft.patch({ priority: value === '__all__' ? '' : value })}
                     >
                       <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="按优先级筛选" />
@@ -108,6 +132,7 @@ export function IssuesPage() {
                         <SelectItem value="URGENT">{formatPriority('URGENT')}</SelectItem>
                       </SelectContent>
                     </Select>
+                    <ListQueryActions onQuery={applyFilters} onClear={clearFilters} showClear={Boolean(keyword || selectedWorkspaceId || selectedStatus || selectedPriority || queryDraft.draft.keyword || queryDraft.draft.workspaceId || queryDraft.draft.status || queryDraft.draft.priority)} />
                   </>
                 )}
               />

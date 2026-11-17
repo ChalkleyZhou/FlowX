@@ -1,3 +1,5 @@
+import { ListQueryActions } from '../components/ListQueryActions';
+import { submitQueryOnEnter, useDraftQuery } from '../hooks/use-draft-query';
 import { useListPage } from '../hooks/use-list-page';
 import { ListPagination } from '../components/ListPagination';
 import { PagedSelect } from '../components/PagedSelect';
@@ -67,15 +69,38 @@ export function BugsPage() {
     actualBehavior: '',
     reproductionSteps: '',
   });
-  const [filters, setFilter] = useStoredListFilters('bugs');
+  const [filters, , replaceFilters] = useStoredListFilters('bugs');
   const selectedWorkspaceId = filters.workspaceId;
   const selectedStatus = filters.status;
   const selectedSeverity = filters.severity;
   const selectedPriority = filters.priority;
   const keyword = filters.keyword ?? '';
+  const queryDraft = useDraftQuery({
+    keyword,
+    workspaceId: selectedWorkspaceId ?? '',
+    status: selectedStatus ?? '',
+    severity: selectedSeverity ?? '',
+    priority: selectedPriority ?? '',
+  });
   const toast = useToast();
 
   const list = useListPage(api.getBugs, { projectId: scopedProjectId || undefined, workspaceId: selectedWorkspaceId, status: selectedStatus, priority: selectedPriority, q: keyword || undefined, severity: selectedSeverity }, { enabled: Boolean(scopedProjectId) });
+  function applyFilters() {
+    replaceFilters({
+      keyword: queryDraft.draft.keyword.trim() || undefined,
+      workspaceId: queryDraft.draft.workspaceId || undefined,
+      status: queryDraft.draft.status || undefined,
+      severity: queryDraft.draft.severity || undefined,
+      priority: queryDraft.draft.priority || undefined,
+    });
+    list.onPageChange(1);
+  }
+  function clearFilters() {
+    queryDraft.replace({ keyword: '', workspaceId: '', status: '', severity: '', priority: '' });
+    replaceFilters({ keyword: undefined, workspaceId: undefined, status: undefined, severity: undefined, priority: undefined });
+    list.onPageChange(1);
+  }
+  const showClear = Boolean(keyword || selectedWorkspaceId || selectedStatus || selectedSeverity || selectedPriority || Object.values(queryDraft.draft).some(Boolean));
   const { items: pagedBugs, loading, refresh } = list;
   const bugSummary = { ...{total: 0, visible: 0, openCount: 0, criticalCount: 0}, ...list.summary };
 
@@ -290,18 +315,20 @@ export function BugsPage() {
               <ListToolbar
                 search={(
                   <UiInput
+                    aria-label="搜索缺陷"
                     placeholder="搜索标题、描述、需求、工作区"
-                    value={keyword}
-                    onChange={(event) => setFilter('keyword', event.target.value || undefined)}
+                    value={queryDraft.draft.keyword}
+                    onChange={(event) => queryDraft.patch({ keyword: event.target.value })}
+                    onKeyDown={(event) => submitQueryOnEnter(event, applyFilters)}
                   />
                 )}
                 filters={(
                   <>
-                    <PagedSelect value={selectedWorkspaceId ?? ''} label="按工作区筛选" placeholder="全部工作区" allowClear emptyLabel="全部工作区" className="w-[180px]" loadPage={api.getWorkspaces}
-                      onValueChange={value => setFilter('workspaceId', value || undefined)} />
+                    <PagedSelect value={queryDraft.draft.workspaceId} label="按工作区筛选" placeholder="全部工作区" allowClear emptyLabel="全部工作区" className="w-[180px]" loadPage={api.getWorkspaces}
+                      onValueChange={value => queryDraft.patch({ workspaceId: value })} />
                     <Select
-                      value={selectedStatus ?? '__all__'}
-                      onValueChange={(value) => setFilter('status', value === '__all__' ? undefined : value)}
+                      value={queryDraft.draft.status || '__all__'}
+                      onValueChange={(value) => queryDraft.patch({ status: value === '__all__' ? '' : value })}
                     >
                       <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="按状态筛选" />
@@ -318,8 +345,8 @@ export function BugsPage() {
                       </SelectContent>
                     </Select>
                     <Select
-                      value={selectedSeverity ?? '__all__'}
-                      onValueChange={(value) => setFilter('severity', value === '__all__' ? undefined : value)}
+                      value={queryDraft.draft.severity || '__all__'}
+                      onValueChange={(value) => queryDraft.patch({ severity: value === '__all__' ? '' : value })}
                     >
                       <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="按严重级别筛选" />
@@ -333,8 +360,8 @@ export function BugsPage() {
                       </SelectContent>
                     </Select>
                     <Select
-                      value={selectedPriority ?? '__all__'}
-                      onValueChange={(value) => setFilter('priority', value === '__all__' ? undefined : value)}
+                      value={queryDraft.draft.priority || '__all__'}
+                      onValueChange={(value) => queryDraft.patch({ priority: value === '__all__' ? '' : value })}
                     >
                       <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="按优先级筛选" />
@@ -347,6 +374,7 @@ export function BugsPage() {
                         <SelectItem value="URGENT">{formatPriority('URGENT')}</SelectItem>
                       </SelectContent>
                     </Select>
+                    <ListQueryActions onQuery={applyFilters} onClear={clearFilters} showClear={showClear} />
                   </>
                 )}
               />

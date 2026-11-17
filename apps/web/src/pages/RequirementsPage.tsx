@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
+import { submitQueryOnEnter, useDraftQuery } from '../hooks/use-draft-query';
 import { useListPage } from '../hooks/use-list-page';
 import { ListPagination } from '../components/ListPagination';
 import { PagedSelect } from '../components/PagedSelect';
@@ -9,6 +10,7 @@ import { EmptyState } from '../components/EmptyState';
 import { ProjectRequiredState } from '../components/ProjectRequiredState';
 import { RequirementEditDialog } from '../components/RequirementEditDialog';
 import { RequirementListTable } from '../components/RequirementListTable';
+import { ListQueryActions } from '../components/ListQueryActions';
 import { ListToolbar } from '../components/ListToolbar';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
@@ -141,8 +143,13 @@ export function RequirementsPage() {
   const selectedVersionId = searchParams.get('versionId') ?? undefined;
   const selectedPriority = searchParams.get('priority') ?? undefined;
   const selectedQuery = searchParams.get('q') ?? undefined;
+  const queryDraft = useDraftQuery({
+    q: selectedQuery ?? '',
+    versionId: selectedVersionId ?? '',
+    priority: selectedPriority ?? '',
+  });
   const hasActiveFilters = Boolean(
-    selectedQuery || selectedVersionId || selectedPriority,
+    selectedQuery || selectedVersionId || selectedPriority || queryDraft.draft.q || queryDraft.draft.versionId || queryDraft.draft.priority,
   );
   const list = useListPage(api.getRequirements, { projectId: selectedProjectId, q: selectedQuery, versionId: selectedVersionId, priority: selectedPriority }, {enabled: Boolean(selectedProjectId)});
   const {items: requirements, total, page, loading, refresh, onPageChange: setPage} = list;
@@ -183,7 +190,7 @@ export function RequirementsPage() {
     }
   }
 
-  function updateFilterQuery(updates: Record<string, string | undefined>, clearKeys: string[] = []) {
+  function updateFilterQuery(updates: Record<string, string | undefined>, clearKeys: string[] = [], resetPage = false) {
     const nextParams = new URLSearchParams(searchParams);
     clearKeys.forEach((key) => nextParams.delete(key));
     Object.entries(updates).forEach(([key, value]) => {
@@ -193,12 +200,22 @@ export function RequirementsPage() {
         nextParams.delete(key);
       }
     });
+    if (resetPage) nextParams.delete('page');
     setSearchParams(nextParams, { replace: true });
+  }
+
+  function applyFilters() {
+    updateFilterQuery({
+      q: queryDraft.draft.q.trim() || undefined,
+      versionId: queryDraft.draft.versionId || undefined,
+      priority: queryDraft.draft.priority || undefined,
+    }, [], true);
   }
 
   function clearFilters() {
     const nextParams = new URLSearchParams(searchParams);
-    ['workspaceId', 'q', 'versionId', 'planningStatus', 'priority'].forEach((key) => nextParams.delete(key));
+    ['workspaceId', 'q', 'versionId', 'planningStatus', 'priority', 'page'].forEach((key) => nextParams.delete(key));
+    queryDraft.replace({ q: '', versionId: '', priority: '' });
     setSearchParams(nextParams, { replace: true });
   }
 
@@ -672,17 +689,18 @@ export function RequirementsPage() {
               <UiInput
                 aria-label="搜索需求"
                 placeholder="搜索需求名称、编号或描述"
-                value={selectedQuery ?? ''}
-                onChange={(event) => updateFilterQuery({ q: event.target.value || undefined })}
+                value={queryDraft.draft.q}
+                onChange={(event) => queryDraft.patch({ q: event.target.value })}
+                onKeyDown={(event) => submitQueryOnEnter(event, applyFilters)}
               />
             )}
             filters={(
               <>
-                <PagedSelect className="w-[220px]" value={selectedVersionId ?? ''} selectedLabel={filterVersion && filterVersion.id === selectedVersionId ? filterVersion.name : undefined} label="按发布版本" placeholder="按发布版本" allowClear emptyLabel="全部版本" disabled={!selectedProjectId} scopeKey={selectedProjectId ?? ''}
-                  loadPage={query => api.listProjectVersions(selectedProjectId!, query)} onValueChange={value => updateFilterQuery({versionId: value || undefined})} />
+                <PagedSelect className="w-[220px]" value={queryDraft.draft.versionId} selectedLabel={filterVersion && filterVersion.id === queryDraft.draft.versionId ? filterVersion.name : undefined} label="按发布版本" placeholder="按发布版本" allowClear emptyLabel="全部版本" disabled={!selectedProjectId} scopeKey={selectedProjectId ?? ''}
+                  loadPage={query => api.listProjectVersions(selectedProjectId!, query)} onValueChange={value => queryDraft.patch({ versionId: value })} />
                 <Select
-                  value={selectedPriority ?? ALL_FILTER_VALUE}
-                  onValueChange={(value) => updateFilterQuery({ priority: value === ALL_FILTER_VALUE ? undefined : value })}
+                  value={queryDraft.draft.priority || ALL_FILTER_VALUE}
+                  onValueChange={(value) => queryDraft.patch({ priority: value === ALL_FILTER_VALUE ? '' : value })}
                 >
                   <SelectTrigger className="w-[160px]" aria-label="按优先级">
                     <SelectValue placeholder="按优先级" />
@@ -694,11 +712,7 @@ export function RequirementsPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                {hasActiveFilters ? (
-                  <UiButton type="button" variant="outline" size="sm" onClick={clearFilters}>
-                    清除筛选
-                  </UiButton>
-                ) : null}
+                <ListQueryActions onQuery={applyFilters} onClear={clearFilters} showClear={hasActiveFilters} />
               </>
             )}
           />

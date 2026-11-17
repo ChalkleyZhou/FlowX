@@ -10,9 +10,7 @@ export function useListPage<T>(loadPage: (query: ListQuery) => Promise<PageResul
   const [params, setParams] = useSearchParams();
   const key = options.pageKey ?? 'page';
   const enabled = options.enabled ?? true;
-  const [search,setSearch] = useState(filters.q);
-  useEffect(() => {const timer = window.setTimeout(() => setSearch(filters.q),250);return () => window.clearTimeout(timer);},[filters.q]);
-  const filterKey = JSON.stringify({...filters,q:search});
+  const filterKey = JSON.stringify(filters);
   const previousFilters = useRef(filterKey);
   const filterChanged = previousFilters.current !== filterKey;
   const rawPage = Number(params.get(key) ?? 1);

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useConfirm } from '../components/ConfirmDialog';
+import { ListQueryActions } from '../components/ListQueryActions';
+import { submitQueryOnEnter, useDraftQuery } from '../hooks/use-draft-query';
 import { EmptyState } from '../components/EmptyState';
 import { ListPagination } from '../components/ListPagination';
 import { ListToolbar } from '../components/ListToolbar';
@@ -20,7 +22,7 @@ import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Textarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
 import type { Bug, Issue, ProjectVersionSummary, Requirement, WorkItem } from '../types';
-import { formatBugStatus, formatIssueStatus, formatPriority, formatSeverity } from '../utils/label-utils';
+import { formatBugStatus, formatIssueStatus, formatPriority, formatSeverity, formatWorkItemStatus } from '../utils/label-utils';
 
 const PAGE_SIZE = 20;
 type WorkItemKind = WorkItem['kind'];
@@ -30,6 +32,14 @@ const kindTabs: Array<{ value: WorkItemKind; label: string }> = [
   { value: 'ISSUE', label: '问题' },
   { value: 'BUG', label: '缺陷' },
 ];
+
+const priorityOptions = ['URGENT', 'HIGH', 'MEDIUM', 'LOW'] as const;
+
+const statusOptions: Record<WorkItemKind, string[]> = {
+  REQUIREMENT: ['ACTIVE', 'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'],
+  ISSUE: ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'WONT_FIX'],
+  BUG: ['OPEN', 'CONFIRMED', 'FIXING', 'FIXED', 'VERIFIED', 'CLOSED', 'WONT_FIX'],
+};
 
 function parseKind(value: string | null): WorkItemKind {
   return kindTabs.some(tab => tab.value === value) ? value as WorkItemKind : 'REQUIREMENT';
@@ -97,6 +107,10 @@ export function VersionWorkItemsPage({
   const projectId = projectIdProp ?? params.projectId ?? '';
   const versionId = versionIdProp ?? params.versionId ?? '';
   const kind = parseKind(searchParams.get('kind'));
+  const selectedPriority = searchParams.get('priority') ?? '';
+  const selectedStatus = searchParams.get('status') ?? '';
+  const selectedQuery = searchParams.get('q') ?? '';
+  const queryDraft = useDraftQuery({ q: selectedQuery, priority: selectedPriority, status: selectedStatus });
   const toast = useToast();
   const confirm = useConfirm();
   const requestEpoch = useRef(0);
@@ -106,7 +120,6 @@ export function VersionWorkItemsPage({
   const [bugs, setBugs] = useState<Bug[]>([]);
   const [typedPage, setTypedPage] = useState(1);
   const [typedTotal, setTypedTotal] = useState(0);
-  const [q, setQ] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
@@ -123,7 +136,15 @@ export function VersionWorkItemsPage({
     setLoading(true);
     setError('');
     try {
-      const query = { projectId, versionId, q: q.trim() || undefined, page: typeof next === 'number' ? next : 1, pageSize: PAGE_SIZE };
+      const query = {
+        projectId,
+        versionId,
+        q: selectedQuery.trim() || undefined,
+        priority: selectedPriority || undefined,
+        status: selectedStatus || undefined,
+        page: typeof next === 'number' ? next : 1,
+        pageSize: PAGE_SIZE,
+      };
       if (kind === 'REQUIREMENT') {
         const result = await api.getRequirements(query);
         if (epoch !== requestEpoch.current) return;
@@ -153,7 +174,7 @@ export function VersionWorkItemsPage({
   useEffect(() => {
     clearLists();
     void load();
-  }, [projectId, versionId, kind]);
+  }, [projectId, versionId, kind, selectedPriority, selectedStatus, selectedQuery]);
 
   async function create() {
     if (!draft.title.trim()) return;
@@ -208,6 +229,30 @@ export function VersionWorkItemsPage({
   function changeKind(nextKind: WorkItemKind) {
     const next = new URLSearchParams(searchParams);
     next.set('kind', nextKind);
+    next.delete('status');
+    setSearchParams(next);
+  }
+
+  function applyFilters() {
+    const next = new URLSearchParams(searchParams);
+    const write = (name: string, value: string) => {
+      if (!value || value === '__all__') next.delete(name);
+      else next.set(name, value.trim());
+    };
+    write('q', queryDraft.draft.q);
+    write('priority', queryDraft.draft.priority);
+    write('status', queryDraft.draft.status);
+    if (next.toString() === searchParams.toString()) {
+      void load(1);
+      return;
+    }
+    setSearchParams(next);
+  }
+
+  function clearFilters() {
+    queryDraft.replace({ q: '', priority: '', status: '' });
+    const next = new URLSearchParams(searchParams);
+    ['q', 'priority', 'status'].forEach(key => next.delete(key));
     setSearchParams(next);
   }
 
@@ -287,8 +332,26 @@ export function VersionWorkItemsPage({
           </Tabs>
           <ListToolbar
             className="mb-0"
-            search={<Input placeholder="搜索标题或描述" value={q} onChange={event => setQ(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void load(1); }} />}
-            filters={<Button variant="outline" onClick={() => void load(1)}>查询</Button>}
+            search={<Input aria-label="搜索标题或描述" placeholder="搜索标题或描述" value={queryDraft.draft.q} onChange={event => queryDraft.patch({ q: event.target.value })} onKeyDown={event => submitQueryOnEnter(event, applyFilters)} />}
+            filters={(
+              <>
+                <Select value={queryDraft.draft.priority || '__all__'} onValueChange={value => queryDraft.patch({ priority: value === '__all__' ? '' : value })}>
+                  <SelectTrigger className="w-[140px]" aria-label="按优先级"><SelectValue placeholder="优先级" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">全部优先级</SelectItem>
+                    {priorityOptions.map(value => <SelectItem key={value} value={value}>{formatPriority(value)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={queryDraft.draft.status || '__all__'} onValueChange={value => queryDraft.patch({ status: value === '__all__' ? '' : value })}>
+                  <SelectTrigger className="w-[140px]" aria-label="按状态"><SelectValue placeholder="状态" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">全部状态</SelectItem>
+                    {statusOptions[kind].map(value => <SelectItem key={value} value={value}>{formatWorkItemStatus(value)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <ListQueryActions onQuery={applyFilters} onClear={clearFilters} showClear={Boolean(selectedQuery || selectedPriority || selectedStatus || queryDraft.draft.q || queryDraft.draft.priority || queryDraft.draft.status)} />
+              </>
+            )}
           />
           {error ? <p role="alert" className="text-sm text-destructive">{error}<Button variant="outline" size="sm" onClick={() => void load(typedPage)}>重试</Button></p> : null}
           {loading && visibleItems.length === 0 ? <div className="flex min-h-40 items-center justify-center"><Spinner className="h-7 w-7" /></div> : visibleItems.length > 0 ? <div className="overflow-x-auto rounded-md border border-border">{kind === 'REQUIREMENT' ? <RequirementListTable items={requirements} onOpen={item => void openEditor(item.id)} renderActions={item => <RowActions onEdit={() => void openEditor(item.id)} onRemove={() => void removeFromVersion(item)} />} /> : kind === 'ISSUE' ? <IssueTable items={issues} onEdit={item => void openEditor(item.id)} onRemove={item => void removeFromVersion(item)} /> : <BugTable items={bugs} onEdit={item => void openEditor(item.id)} onRemove={item => void removeFromVersion(item)} />}</div> : <EmptyState description={emptyDescription} />}

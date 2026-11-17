@@ -116,8 +116,20 @@ export function useStoredListFilters(pageKey: string) {
     });
   }, [pageKey]);
 
+  const replaceFilters = useCallback((updates: Record<string, string | undefined>) => {
+    setSnapshot((current) => {
+      const filters = { ...(current.pageKey === pageKey ? current.filters : readStoredListFilters(pageKey)) };
+      for (const [key, value] of Object.entries(updates)) {
+        if (value) filters[key] = value;
+        else delete filters[key];
+      }
+      writeStoredListFilters(pageKey, filters);
+      return { pageKey, filters };
+    });
+  }, [pageKey]);
+
   const filters = snapshot.pageKey === pageKey ? snapshot.filters : readStoredListFilters(pageKey);
-  return [filters, setFilter] as const;
+  return [filters, setFilter, replaceFilters] as const;
 }
 
 function pickFilters(params: URLSearchParams, keys: readonly string[]) {

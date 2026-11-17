@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { submitQueryOnEnter, useDraftQuery } from '../../hooks/use-draft-query';
 import { ChevronDown, ChevronRight, Eye, Folder, FolderOpen, FolderTree, Loader2, Pencil, Plus, RotateCw, Trash2, Upload } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useRememberedSearchFilters } from '../../utils/list-filter-storage';
@@ -8,6 +9,7 @@ import { QualityModuleTree } from './QualityModuleTree';
 import { useProjectScopeOptional, useScopedProjectId } from '../../project-scope-context';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { EmptyState } from '../../components/EmptyState';
+import { ListQueryActions } from '../../components/ListQueryActions';
 import { ListToolbar } from '../../components/ListToolbar';
 import { MetricCard } from '../../components/MetricCard';
 import { PageHeader } from '../../components/PageHeader';
@@ -80,7 +82,7 @@ export function QualityCasesPage() {
   const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
   const selectedProjectId = caseScope === 'shared' ? undefined : currentProjectId;
   const libraryOwnership = caseScope === 'project' ? 'project' as const : undefined;
-  const [searchValue, setSearchValue] = useState(keyword);
+  const queryDraft = useDraftQuery({ q: keyword, workspaceId, caseScope, priority });
 
   function updateQuery(patch: Record<string, string | null>) {
     const next = new URLSearchParams(searchParams);
@@ -89,6 +91,28 @@ export function QualityCasesPage() {
       else next.set(key, value);
     }
     setSearchParams(next, { replace: true });
+  }
+
+  function applyFilters() {
+    const scopeChanged = queryDraft.draft.caseScope !== caseScope;
+    const workspaceChanged = queryDraft.draft.workspaceId !== workspaceId;
+    const patch: Record<string, string | null> = {
+      q: queryDraft.draft.q.trim() || null,
+      caseScope: queryDraft.draft.caseScope === 'shared' ? 'shared' : null,
+      priority: queryDraft.draft.priority === ALL ? null : queryDraft.draft.priority,
+      page: null,
+    };
+    if (queryDraft.draft.caseScope !== 'project') patch.workspaceId = queryDraft.draft.workspaceId || null;
+    if (scopeChanged || workspaceChanged) {
+      patch.libraryId = null;
+      patch.moduleId = null;
+    }
+    updateQuery(patch);
+  }
+
+  function clearFilters() {
+    queryDraft.replace({ q: '', workspaceId: caseScope === 'project' ? workspaceId : '', caseScope, priority: ALL });
+    updateQuery({ q: null, priority: null, page: null });
   }
 
   function selectTreeNode(nextLibraryId?: string, nextModuleId?: string) {
@@ -129,18 +153,6 @@ export function QualityCasesPage() {
     next.set('workspaceId', fallback);
     setSearchParams(next, { replace: true });
   }, [caseScope, projectWorkspaceId, searchParams, setSearchParams, workspaces]);
-
-  useEffect(() => {
-    setSearchValue(keyword);
-  }, [keyword]);
-
-  useEffect(() => {
-    if (searchValue === keyword) return;
-    const timeout = window.setTimeout(() => {
-      updateQuery({ q: searchValue.trim() || null, page: null });
-    }, 300);
-    return () => window.clearTimeout(timeout);
-  }, [keyword, searchValue]);
 
   async function refreshList(silent = false) {
     if (!workspaceId) return;
@@ -403,17 +415,18 @@ export function QualityCasesPage() {
                 <Input
                   aria-label="搜索测试用例"
                   placeholder="搜索标题、编号、预期、用例库或模块"
-                  value={searchValue}
-                  onChange={(event) => setSearchValue(event.target.value)}
+                  value={queryDraft.draft.q}
+                  onChange={(event) => queryDraft.patch({ q: event.target.value })}
+                  onKeyDown={(event) => submitQueryOnEnter(event, applyFilters)}
                 />
               )}
               filters={(
                 <>
-                  <PagedSelect label="按工作区筛选" value={workspaceId} selectedLabel={workspaces.find(item => item.id === workspaceId)?.name} disabled={caseScope === 'project'} onValueChange={value => { updateQuery({ workspaceId: value, libraryId: null, moduleId: null, page: null }); }} loadPage={query => api.getWorkspaces(query)} />
+                  <PagedSelect label="按工作区筛选" value={queryDraft.draft.workspaceId} selectedLabel={workspaces.find(item => item.id === queryDraft.draft.workspaceId)?.name} disabled={queryDraft.draft.caseScope === 'project'} onValueChange={value => queryDraft.patch({ workspaceId: value })} loadPage={query => api.getWorkspaces(query)} />
                   <Select
-                    value={caseScope}
-                    onValueChange={(value) => updateQuery({ caseScope: value === 'shared' ? 'shared' : null, libraryId: null, page: null })}
-                    disabled={!currentProjectId && caseScope === 'shared'}
+                    value={queryDraft.draft.caseScope}
+                    onValueChange={(value) => queryDraft.patch({ caseScope: value })}
+                    disabled={!currentProjectId && queryDraft.draft.caseScope === 'shared'}
                   >
                     <SelectTrigger className="w-full sm:w-[190px]" aria-label="按项目范围筛选">
                       <SelectValue />
@@ -423,7 +436,7 @@ export function QualityCasesPage() {
                       <SelectItem value="shared">Workspace 共享库</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Select value={priority} onValueChange={(value) => updateQuery({ priority: value, page: null })}>
+                  <Select value={queryDraft.draft.priority} onValueChange={(value) => queryDraft.patch({ priority: value })}>
                     <SelectTrigger className="w-full sm:w-[130px]" aria-label="按优先级筛选">
                       <SelectValue />
                     </SelectTrigger>
@@ -432,6 +445,7 @@ export function QualityCasesPage() {
                       {['P0', 'P1', 'P2', 'P3'].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                  <ListQueryActions onQuery={applyFilters} onClear={clearFilters} showClear={Boolean(keyword.trim()) || priority !== ALL || queryDraft.draft.q.trim() !== '' || queryDraft.draft.priority !== ALL || queryDraft.draft.caseScope !== caseScope || queryDraft.draft.workspaceId !== workspaceId} />
                 </>
               )}
             />

@@ -89,7 +89,8 @@ describe('VersionWorkspacePage', () => {
     expect(container.textContent).toContain('版本工作台');
     expect(container.textContent).toContain('2.6.0');
     expect(container.textContent).toContain('统一查看需求、问题和缺陷');
-    expect(container.textContent).not.toContain('全部');
+    expect(container.textContent).toContain('全部优先级');
+    expect(container.textContent).toContain('全部状态');
     expect(container.textContent).toContain('需求');
     expect(container.textContent).toContain('问题');
     expect(container.textContent).toContain('缺陷');
@@ -113,6 +114,24 @@ describe('VersionWorkspacePage', () => {
     });
 
     expect(api.getRequirements).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', versionId: 'version-1', page: 1, pageSize: 20 }));
+  });
+
+  it('按当前 Tab 的优先级和状态筛选版本工作项', async () => {
+    await act(async () => {
+      root?.render(renderWorkspace('/versions?projectId=project-1&versionId=version-1&priority=HIGH&status=ACTIVE'));
+      await Promise.resolve();
+    });
+
+    expect(api.getRequirements).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 'project-1',
+      versionId: 'version-1',
+      priority: 'HIGH',
+      status: 'ACTIVE',
+      page: 1,
+      pageSize: 20,
+    }));
+    const filterTriggers = Array.from(container.querySelectorAll('[role="combobox"]'));
+    expect(filterTriggers.map(trigger => trigger.textContent)).toEqual(expect.arrayContaining(['高', '进行中']));
   });
 
   it('快速新建使用弹框并默认当前工作项类型', async () => {
@@ -224,7 +243,7 @@ describe('VersionWorkspacePage', () => {
     expect(container.textContent).toContain('需求一');
 
     await act(async () => { remove?.click(); });
-    const confirm = Array.from(document.querySelectorAll('[role="dialog"] button')).find(button => button.textContent === '移除');
+    const confirm = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')).find(button => button.textContent === '移除');
     await act(async () => { confirm?.click(); await Promise.resolve(); });
     expect(api.updateWorkItem).toHaveBeenCalledWith('requirement-1', { versionId: null });
     expect(api.deleteWorkItem).not.toHaveBeenCalled();

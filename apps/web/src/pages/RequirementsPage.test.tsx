@@ -322,6 +322,28 @@ describe('RequirementsPage', () => {
     expect(api.getRequirements).toHaveBeenLastCalledWith(expect.objectContaining({ q: '设计闭环', page: 1, pageSize: 20 }));
   });
 
+  it('搜索词和筛选在点击查询后才生效，清除筛选立刻恢复', async () => {
+    await act(async () => {
+      root?.render(<MemoryRouter initialEntries={['/work-items?projectId=project-1&priority=HIGH']}><RequirementsPage /><LocationProbe /></MemoryRouter>);
+    });
+    const input = container.querySelector('input[aria-label="搜索需求"]') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, '导出');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(api.getRequirements).not.toHaveBeenCalledWith(expect.objectContaining({ q: '导出' }));
+    await act(async () => {
+      (Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '查询') as HTMLButtonElement).click();
+    });
+    expect(api.getRequirements).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', q: '导出', priority: 'HIGH', page: 1, pageSize: 20 }));
+    await act(async () => {
+      (Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '清除筛选') as HTMLButtonElement).click();
+    });
+    expect(container.querySelector('output')?.textContent).toBe('/work-items?projectId=project-1');
+    expect(api.getRequirements).toHaveBeenLastCalledWith(expect.objectContaining({ projectId: 'project-1', page: 1, pageSize: 20 }));
+    expect(api.getRequirements).toHaveBeenLastCalledWith(expect.not.objectContaining({ q: '导出', priority: 'HIGH' }));
+  });
+
   it('需求列表长文本单行省略并可悬停查看完整内容', async () => {
     const longTitle = '这是一个非常长的需求标题用于验证列表不会换行展示';
     const longDescription = '这是一个非常长的需求描述用于验证列表会在超出列宽后显示省略号而不是撑开表格';

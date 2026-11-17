@@ -1,9 +1,11 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
+import { submitQueryOnEnter, useDraftQuery } from '../hooks/use-draft-query';
 import { RefreshCw, UserPlus } from 'lucide-react';
 import { api } from '../api';
 import { ListPagination } from '../components/ListPagination';
 import { useAuth } from '../auth';
 import { EmptyState } from '../components/EmptyState';
+import { ListQueryActions } from '../components/ListQueryActions';
 import { ListToolbar } from '../components/ListToolbar';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
@@ -70,6 +72,7 @@ export function OrganizationUsersPage() {
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [filters, setFilter] = useStoredListFilters('organization-users');
   const search = filters.q ?? '';
+  const queryDraft = useDraftQuery({ q: search });
   const [createOpen, setCreateOpen] = useState(false);
   const [editMember, setEditMember] = useState<OrganizationMember | null>(null);
   const [createDraft, setCreateDraft] = useState<MemberDraft>(emptyDraft);
@@ -119,6 +122,17 @@ export function OrganizationUsersPage() {
     void refresh();
     return () => { requestSequence.current += 1; };
   }, [session?.organization?.id, page, search]);
+
+  function applySearch() {
+    setFilter('q', queryDraft.draft.q.trim() || undefined);
+    setPage(1);
+  }
+
+  function clearSearch() {
+    queryDraft.replace({ q: '' });
+    setFilter('q', undefined);
+    setPage(1);
+  }
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -315,11 +329,14 @@ export function OrganizationUsersPage() {
           <ListToolbar
             search={(
               <Input
+                aria-label="搜索成员"
                 placeholder="搜索姓名、账号或邮箱"
-                value={search}
-                onChange={(event) => { setPage(1); setFilter('q', event.target.value || undefined); }}
+                value={queryDraft.draft.q}
+                onChange={(event) => queryDraft.patch({ q: event.target.value })}
+                onKeyDown={(event) => submitQueryOnEnter(event, applySearch)}
               />
             )}
+            filters={<ListQueryActions onQuery={applySearch} onClear={clearSearch} showClear={Boolean(search || queryDraft.draft.q)} />}
           />
 
           {loading ? (

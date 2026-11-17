@@ -1,10 +1,12 @@
 import { Link, useSearchParams } from 'react-router-dom';
+import { submitQueryOnEnter, useDraftQuery } from '../../hooks/use-draft-query';
 import { useRememberedSearchFilters } from '../../utils/list-filter-storage';
 import { api } from '../../api';
 import { useQualityPage } from './use-quality-page';
 import { useScopedProjectId } from '../../project-scope-context';
 import { EmptyState } from '../../components/EmptyState';
 import { ProjectRequiredState } from '../../components/ProjectRequiredState';
+import { ListQueryActions } from '../../components/ListQueryActions';
 import { ListToolbar } from '../../components/ListToolbar';
 import { MetricCard } from '../../components/MetricCard';
 import { PageHeader } from '../../components/PageHeader';
@@ -39,6 +41,7 @@ export function QualityRunsPage() {
   const runType = searchParams.get('runType') ?? ALL;
   const status = searchParams.get('status') ?? ALL;
   const keyword = searchParams.get('q') ?? '';
+  const queryDraft = useDraftQuery({ q: keyword, runType, status });
   const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
 
   const result = useQualityPage(JSON.stringify({ projectId, page, status, runType, keyword }), () =>
@@ -53,6 +56,20 @@ export function QualityRunsPage() {
       else next.set(key, value);
     }
     setSearchParams(next, { replace: true });
+  }
+
+  function applyFilters() {
+    updateQuery({
+      q: queryDraft.draft.q.trim() || null,
+      runType: queryDraft.draft.runType,
+      status: queryDraft.draft.status,
+      page: null,
+    });
+  }
+
+  function clearFilters() {
+    queryDraft.replace({ q: '', runType: ALL, status: ALL });
+    updateQuery({ q: null, runType: null, status: null, page: null });
   }
 
   const rows = result.items;
@@ -93,13 +110,14 @@ export function QualityRunsPage() {
                 <Input
                   aria-label="搜索执行记录"
                   placeholder="搜索轮次、提测、项目或版本"
-                  value={keyword}
-                  onChange={(event) => updateQuery({ q: event.target.value || null, page: null })}
+                  value={queryDraft.draft.q}
+                  onChange={(event) => queryDraft.patch({ q: event.target.value })}
+                  onKeyDown={(event) => submitQueryOnEnter(event, applyFilters)}
                 />
               )}
               filters={(
                 <>
-                  <Select value={runType} onValueChange={(value) => updateQuery({ runType: value, page: null })}>
+                  <Select value={queryDraft.draft.runType} onValueChange={(value) => queryDraft.patch({ runType: value })}>
                     <SelectTrigger className="w-full sm:w-[140px]" aria-label="按轮次类型筛选">
                       <SelectValue />
                     </SelectTrigger>
@@ -110,7 +128,7 @@ export function QualityRunsPage() {
                       <SelectItem value="REGRESSION">Bug 回归</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Select value={status} onValueChange={(value) => updateQuery({ status: value, page: null })}>
+                  <Select value={queryDraft.draft.status} onValueChange={(value) => queryDraft.patch({ status: value })}>
                     <SelectTrigger className="w-full sm:w-[140px]" aria-label="按执行状态筛选">
                       <SelectValue />
                     </SelectTrigger>
@@ -119,6 +137,7 @@ export function QualityRunsPage() {
                       {Object.entries(runStatusLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                  <ListQueryActions onQuery={applyFilters} onClear={clearFilters} showClear={keyword !== '' || runType !== ALL || status !== ALL || queryDraft.draft.q !== '' || queryDraft.draft.runType !== ALL || queryDraft.draft.status !== ALL} />
                 </>
               )}
             />

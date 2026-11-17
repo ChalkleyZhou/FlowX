@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { submitQueryOnEnter, useDraftQuery } from '../hooks/use-draft-query';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ExternalLink, RefreshCw } from 'lucide-react';
 import { api } from '../api';
@@ -10,6 +11,7 @@ import { PagedSelect } from '../components/PagedSelect';
 import { EmptyState } from '../components/EmptyState';
 import { ProjectRequiredState } from '../components/ProjectRequiredState';
 import { PageHeader } from '../components/PageHeader';
+import { ListQueryActions } from '../components/ListQueryActions';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -46,14 +48,13 @@ export function ExecutionSessionsPage() {
   const sourceTool = searchParams.get('sourceTool') ?? 'all';
   const claimedByUserId = searchParams.get('claimedByUserId') ?? 'all';
   const search = searchParams.get('search')?.trim() ?? '';
-  const [searchDraft, setSearchDraft] = useState(search);
+  const queryDraft = useDraftQuery({ status, sourceTool, claimedByUserId, search });
   const rawView = searchParams.get('view');
   const view: ExecutionSessionView = views.find(([key]) => key === rawView)?.[0] ?? (status !== 'all' ? 'all' : 'active');
   const rawPage = Number(searchParams.get('page') ?? 1);
   const page = Number.isInteger(rawPage) && rawPage > 0 && rawPage <= 1_000_000 ? rawPage : 1;
   const query = searchParams.toString();
 
-  useEffect(() => setSearchDraft(search), [search]);
   useEffect(() => {
     let active = true;
     let inFlight = false;
@@ -104,6 +105,29 @@ export function ExecutionSessionsPage() {
     if (key === 'view') next.delete('status');
     next.delete('page'); next.delete('cursor'); setSearchParams(next);
   }
+
+  function applyFilters() {
+    const next = new URLSearchParams(searchParams);
+    const write = (key: string, value: string) => {
+      const normalized = key === 'search' ? value.trim() : value;
+      if (!normalized || normalized === 'all') next.delete(key);
+      else next.set(key, normalized);
+    };
+    write('status', queryDraft.draft.status);
+    write('sourceTool', queryDraft.draft.sourceTool);
+    write('claimedByUserId', queryDraft.draft.claimedByUserId);
+    write('search', queryDraft.draft.search);
+    next.delete('page');
+    next.delete('cursor');
+    setSearchParams(next);
+  }
+
+  function clearFilters() {
+    queryDraft.replace({ status: 'all', sourceTool: 'all', claimedByUserId: 'all', search: '' });
+    const next = new URLSearchParams();
+    if (projectId) next.set('projectId', projectId);
+    setSearchParams(next);
+  }
   function changePage(nextPage: number) {
     const next = new URLSearchParams(searchParams);
     next.set('page', String(nextPage)); next.delete('cursor'); setSearchParams(next);
@@ -132,14 +156,14 @@ export function ExecutionSessionsPage() {
     <DevelopmentOverview counts={counts} view={view} onChange={(value) => updateFilter('view', value)} />
     <div className="space-y-3 rounded-md border border-border bg-card p-4">
       <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap">
-        <PagedSelect label="按执行人筛选" value={claimedByUserId === 'all' ? '' : claimedByUserId} onValueChange={value => updateFilter('claimedByUserId',value)} placeholder="全部执行人" allowClear emptyLabel="全部执行人"
+        <PagedSelect label="按执行人筛选" value={queryDraft.draft.claimedByUserId === 'all' ? '' : queryDraft.draft.claimedByUserId} onValueChange={value => queryDraft.patch({ claimedByUserId: value || 'all' })} placeholder="全部执行人" allowClear emptyLabel="全部执行人"
           loadPage={async query => { const result = await api.getOrganizationMembers(query);return {...result,items:result.items.map(item => ({id:item.id,name:item.displayName}))};}} />
-        <Filter label="按工具筛选" value={sourceTool} allLabel="全部工具" items={tools} onChange={(value) => updateFilter('sourceTool', value)} />
-        <Filter label="按运行状态筛选" value={status} allLabel="全部状态" items={statuses} onChange={(value) => updateFilter('status', value)} />
+        <Filter label="按工具筛选" value={queryDraft.draft.sourceTool} allLabel="全部工具" items={tools} onChange={(value) => queryDraft.patch({ sourceTool: value })} />
+        <Filter label="按运行状态筛选" value={queryDraft.draft.status} allLabel="全部状态" items={statuses} onChange={(value) => queryDraft.patch({ status: value })} />
+        <ListQueryActions onQuery={applyFilters} onClear={clearFilters} showClear />
       </div>
-      <form className="flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); updateFilter('search', searchDraft.trim()); }}>
-        <Input className="min-w-40 flex-1" aria-label="搜索需求名称" placeholder="搜索需求名称" value={searchDraft} maxLength={200} onChange={(event) => setSearchDraft(event.target.value)} />
-        <Button type="submit" variant="outline">搜索</Button><Button type="button" variant="ghost" onClick={() => { setSearchDraft(''); const next = new URLSearchParams(); if (projectId) next.set('projectId', projectId); setSearchParams(next); }}>清除筛选</Button>
+      <form className="flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); applyFilters(); }}>
+        <Input className="min-w-40 flex-1" aria-label="搜索需求名称" placeholder="搜索需求名称" value={queryDraft.draft.search} maxLength={200} onChange={(event) => queryDraft.patch({ search: event.target.value })} onKeyDown={(event) => submitQueryOnEnter(event, applyFilters)} />
       </form>
     </div>
     {!projectId ? <ProjectRequiredState /> : null}

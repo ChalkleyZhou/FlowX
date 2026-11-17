@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { submitQueryOnEnter, useDraftQuery } from '../../hooks/use-draft-query';
 import { Plus } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useRememberedSearchFilters } from '../../utils/list-filter-storage';
@@ -7,6 +8,7 @@ import { useQualityPage } from './use-quality-page';
 import { useScopedProjectId } from '../../project-scope-context';
 import { EmptyState } from '../../components/EmptyState';
 import { ProjectRequiredState } from '../../components/ProjectRequiredState';
+import { ListQueryActions } from '../../components/ListQueryActions';
 import { ListToolbar } from '../../components/ListToolbar';
 import { MetricCard } from '../../components/MetricCard';
 import { PageHeader } from '../../components/PageHeader';
@@ -50,6 +52,7 @@ export function QualityRequestsPage() {
   const status = searchParams.get('status') ?? ALL;
   const keyword = searchParams.get('q') ?? '';
   const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
+  const queryDraft = useDraftQuery({ q: keyword, status });
 
   const result = useQualityPage(JSON.stringify({ projectId, page, status, keyword }), () =>
     api.getTestRequests({ projectId, page, pageSize: PAGE_SIZE, status: status === ALL ? undefined : status, q: keyword.trim() || undefined }), Boolean(projectId), nextPage => updateQuery({ page: String(nextPage) }));
@@ -80,6 +83,15 @@ export function QualityRequestsPage() {
       else next.set(key, value);
     }
     setSearchParams(next, { replace: true });
+  }
+
+  function applyFilters() {
+    updateQuery({ q: queryDraft.draft.q.trim() || null, status: queryDraft.draft.status, page: null });
+  }
+
+  function clearFilters() {
+    queryDraft.replace({ q: '', status: ALL });
+    updateQuery({ q: null, status: null, page: null });
   }
 
   const currentPage = page;
@@ -124,13 +136,14 @@ export function QualityRequestsPage() {
                 <Input
                   aria-label="搜索提测记录"
                   placeholder="搜索标题、项目、版本或需求"
-                  value={keyword}
-                  onChange={(event) => updateQuery({ q: event.target.value || null, page: null })}
+                  value={queryDraft.draft.q}
+                  onChange={(event) => queryDraft.patch({ q: event.target.value })}
+                  onKeyDown={(event) => submitQueryOnEnter(event, applyFilters)}
                 />
               )}
               filters={(
                 <>
-                  <Select value={status} onValueChange={(value) => updateQuery({ status: value, page: null })}>
+                  <Select value={queryDraft.draft.status} onValueChange={(value) => queryDraft.patch({ status: value })}>
                     <SelectTrigger className="w-full sm:w-[150px]" aria-label="按状态筛选">
                       <SelectValue />
                     </SelectTrigger>
@@ -141,6 +154,7 @@ export function QualityRequestsPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  <ListQueryActions onQuery={applyFilters} onClear={clearFilters} showClear={keyword !== '' || status !== ALL || queryDraft.draft.q !== '' || queryDraft.draft.status !== ALL} />
                 </>
               )}
             />
