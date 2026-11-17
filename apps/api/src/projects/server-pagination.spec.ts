@@ -67,7 +67,10 @@ describe('记录浏览使用数据库分页', () => {
     const workspace = {count:vi.fn().mockResolvedValue(1)};
     const instance = service(RequirementsService.prototype,{workItem,project,workspace});
     const result = await instance.findPage({projectId:'p',versionId:'v',planningStatus:'DONE',priority:'LOW',page:'2'});
-    expect(workItem.findMany.mock.calls[0][0]).toMatchObject({skip:20,take:20,where:{kind:'REQUIREMENT',projectId:'p',versionId:'v',planningStatus:'DONE',priority:'LOW'}});
+    const filtered = {kind:'REQUIREMENT',projectId:'p',versionId:'v',planningStatus:'DONE',priority:'LOW'};
+    expect(workItem.findMany.mock.calls[0][0]).toMatchObject({skip:20,take:20,where:filtered});
+    expect(workItem.count).toHaveBeenCalledWith({where:{AND:[filtered,{status:'ACTIVE'}]}});
+    expect(workItem.count).toHaveBeenCalledWith({where:{AND:[filtered,{status:'DONE'}]}});
     expect(result.summary).toMatchObject({requirementCount:31,visibleCount:31});
   });
 

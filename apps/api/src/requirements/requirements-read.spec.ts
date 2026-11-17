@@ -77,13 +77,14 @@ describe('RequirementsService 原型导入读取契约', () => {
     const createdAt = new Date('2026-11-01T00:00:00.000Z');
     await prisma.workItem.createMany({data:Array.from({length:25},(_,index)=>({
       id:`paged-requirement-${String(index).padStart(2,'0')}`, projectId:ordinary.projectId, workspaceId:ordinary.workspaceId,
-      title:`分页匹配 ${index}`,description:'分页说明',acceptanceCriteria:'',priority:'LOW',planningStatus:'DONE',createdAt,
+      title:`分页匹配 ${index}`,description:'分页说明',acceptanceCriteria:'',priority:'LOW',planningStatus:'DONE',status:index<3?'DONE':'ACTIVE',createdAt,
     }))});
     const filters = {projectId:ordinary.projectId,planningStatus:'DONE',priority:'LOW',q:'分页匹配'};
     const first = await service.findPage({...filters,page:'1'});
     const second = await service.findPage({...filters,page:'2'});
     expect(first.items).toHaveLength(20);expect(second.items).toHaveLength(5);
-    expect(first).toMatchObject({total:25,page:1,pageSize:20,totalPages:2,summary:{requirementCount:30,visibleCount:25,workspaceCount:1,projectCount:1,inProgressCount:0,completedCount:25}});
+    expect(first).toMatchObject({total:25,page:1,pageSize:20,totalPages:2,summary:{requirementCount:30,visibleCount:25,workspaceCount:1,projectCount:1,inProgressCount:22,completedCount:3}});
+    expect(second.summary).toMatchObject({inProgressCount:22,completedCount:3});
     expect(new Set([...first.items,...second.items].map(item=>item.id)).size).toBe(25);
     expect(first.items[0].id).toBe('paged-requirement-24');
     expect(first.items[0].project.workspace).not.toHaveProperty('repositories');

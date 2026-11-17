@@ -286,9 +286,8 @@ describe('RequirementsPage', () => {
   });
 
   it('统计当前筛选结果中的进行中和已完成需求', async () => {
-    const completed = { ...requirement, id: 'requirement-done', title: '已完成需求', planningStatus: 'DONE' };
+    const completed = { ...requirement, id: 'requirement-done', title: '已完成需求', status: 'DONE' };
     const result = paged([requirement, completed], 2);
-    result.summary = { ...result.summary, inProgressCount: 1, completedCount: 1 };
     vi.mocked(api.getRequirements).mockResolvedValue(result);
 
     await act(async () => {

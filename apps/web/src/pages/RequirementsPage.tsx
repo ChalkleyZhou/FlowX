@@ -156,8 +156,8 @@ export function RequirementsPage() {
   const hasLoaded = !loading;
   const requirementSummary = {
     visibleCount: list.summary?.visibleCount ?? total,
-    inProgressCount: list.summary?.inProgressCount ?? requirements.filter((item) => item.planningStatus === 'IN_PROGRESS').length,
-    completedCount: list.summary?.completedCount ?? requirements.filter((item) => item.planningStatus === 'DONE').length,
+    inProgressCount: list.summary?.inProgressCount ?? requirements.filter((item) => item.status === 'ACTIVE').length,
+    completedCount: list.summary?.completedCount ?? requirements.filter((item) => item.status === 'DONE').length,
   };
 
   async function chooseCreateProject(id: string) {

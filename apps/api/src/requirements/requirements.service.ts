@@ -374,8 +374,8 @@ export class RequirementsService {
       this.prisma.workItem.count({ where }), this.prisma.workItem.count({ where: scope }),
       this.prisma.workspace.count({ where: { projects: { some: { workItems: { some: { ...scope, kind: 'REQUIREMENT' } } } } } }),
       this.prisma.project.count({ where: { workItems: { some: { ...scope, kind: 'REQUIREMENT' } } } }),
-      this.prisma.workItem.count({ where: { ...where, planningStatus: 'IN_PROGRESS' } }),
-      this.prisma.workItem.count({ where: { ...where, planningStatus: 'DONE' } }),
+      this.prisma.workItem.count({ where: { AND: [where, { status: 'ACTIVE' }] } }),
+      this.prisma.workItem.count({ where: { AND: [where, { status: 'DONE' }] } }),
     ]);
     const items = rows.map(({ changes, ...row }) => ({ ...row, latestChangeAt: changes[0]?.createdAt ?? null, latestChangeContent: changes[0]?.content ?? null }));
     return { ...pageResult(items, total, paging), summary: { requirementCount, visibleCount: total, workspaceCount, projectCount, inProgressCount, completedCount } };
