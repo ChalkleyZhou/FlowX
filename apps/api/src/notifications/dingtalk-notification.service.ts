@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolvePublicWebBaseUrl } from '../common/public-web-base-url';
 
 type DingTalkNotificationRecipient = {
   flowxUserId: string;
@@ -17,6 +18,36 @@ type StageNotificationInput = {
   result: string;
   nextStep?: string | null;
   detail?: string | null;
+};
+
+export type WorkItemChangeNotificationInput = {
+  recipient: {
+    flowxUserId: string;
+    displayName: string;
+    providerOrganizationId: string;
+  };
+  item: {
+    id: string;
+    displayCode: string;
+    title: string;
+    projectName: string;
+  };
+  actorName: string;
+  ownerChange?: { from?: string | null; to?: string | null };
+  statusChange?: { from: string; to: string };
+};
+
+const WORK_ITEM_STATUS_LABELS: Record<string, string> = {
+  ACTIVE: '进行中',
+  OPEN: '待处理',
+  IN_PROGRESS: '处理中',
+  RESOLVED: '已解决',
+  CLOSED: '已关闭',
+  WONT_FIX: '不修复',
+  CONFIRMED: '已确认',
+  FIXING: '修复中',
+  FIXED: '已修复',
+  VERIFIED: '已验证',
 };
 
 @Injectable()
@@ -179,6 +210,68 @@ export class DingTalkNotificationService {
     }
 
     return payload;
+  }
+
+  async sendWorkItemChangeMarkdown(input: WorkItemChangeNotificationInput) {
+    if (!this.isEnabled()) {
+      this.logger.warn('Skip work item change notification because DingTalk app delivery is not configured.');
+      return;
+    }
+
+    const corpId = input.recipient.providerOrganizationId?.trim();
+    if (!corpId) {
+      this.logger.warn(`Skip work item change notification because organization provider id is missing for ${input.item.id}.`);
+      return;
+    }
+
+    try {
+      await this.sendPersonalMarkdown({
+        flowxUserId: input.recipient.flowxUserId,
+        corpId,
+        title: 'FlowX 工作项发生变更',
+        markdown: this.buildWorkItemChangeMarkdown(input),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`DingTalk work item change notification failed: ${message}`);
+    }
+  }
+
+  private buildWorkItemChangeMarkdown(input: WorkItemChangeNotificationInput) {
+    const lines = [
+      `## ${input.item.displayCode} ${input.item.title}`,
+      '',
+      `- 项目：${input.item.projectName}`,
+      `- 变更人：${input.actorName || '未记录'}`,
+    ];
+
+    if (input.ownerChange) {
+      lines.push(`- 负责人：${this.formatOwnerName(input.ownerChange.from)} → ${this.formatOwnerName(input.ownerChange.to)}`);
+    }
+
+    if (input.statusChange) {
+      lines.push(`- 状态：${this.formatStatus(input.statusChange.from)} → ${this.formatStatus(input.statusChange.to)}`);
+    }
+
+    const publicWebBaseUrl = resolvePublicWebBaseUrl({
+      FLOWX_PUBLIC_WEB_URL: this.configService.get<string>('FLOWX_PUBLIC_WEB_URL'),
+      PUBLIC_WEB_URL: this.configService.get<string>('PUBLIC_WEB_URL'),
+    });
+    if (publicWebBaseUrl) {
+      lines.push('', `[查看工作项](${publicWebBaseUrl}/work-items/${encodeURIComponent(input.item.id)})`);
+    } else {
+      this.logger.warn(`DingTalk work item change notification has no public Web URL for ${input.item.id}.`);
+    }
+
+    return lines.join('\n');
+  }
+
+  private formatOwnerName(value?: string | null) {
+    return value?.trim() || '未指定';
+  }
+
+  private formatStatus(value: string) {
+    return WORK_ITEM_STATUS_LABELS[value] ?? value;
   }
 
   async fetchStaffEmail(flowxUserId: string, corpId: string) {
