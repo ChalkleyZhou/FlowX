@@ -67,6 +67,7 @@ FlowX 容器内部包含两个服务：
 | `FLOWX_CODEX_REQUIRE_USER_CREDENTIAL`  | 已不再控制在线 AI。在线调用始终要求组织 Codex 凭据                                               | 否              |
 | `FRONTEND_BUILD_MODE`                  | 前端构建模式：`nginx`、`direct`、`auto`                                                   | 建议填写           |
 | `DIRECT_API_BASE_URL`                  | 直连模式下前端访问 API 的地址                                                                | `direct` 时建议填写 |
+| `FLOWX_PUBLIC_WEB_URL`                 | 钉钉工作项通知中的 Web 公网根地址，例如 `https://flowx.example.com`，用于生成“查看工作项”链接；不要填写 `127.0.0.1` 或内网地址 | 使用一键查看时必填 |
 | `DINGTALK_APP_ID`                      | 钉钉登录 App ID                                                                      | 仅钉钉登录时必填       |
 | `DINGTALK_APP_SECRET`                  | 钉钉登录 App Secret                                                                  | 仅钉钉登录时必填       |
 | `DINGTALK_AGENT_ID`                    | 钉钉通知 Agent ID                                                                    | 仅钉钉通知时必填       |
@@ -89,6 +90,7 @@ FlowX 容器内部包含两个服务：
 - 服务器上的 `OPENAI_API_KEY`、`CURSOR_API_KEY` 和 CLI 登录态不会再作为在线调用的回退
 - `FRONTEND_BUILD_MODE=nginx` 表示前端走同源 `/api` 代理，不在构建时写死完整 API 域名
 - `FRONTEND_BUILD_MODE=direct` 表示前端直接请求 `DIRECT_API_BASE_URL`
+- `FLOWX_PUBLIC_WEB_URL` 用于钉钉工作项负责人和状态变更通知中的“查看工作项”链接。未配置时通知仍会发送文字内容，但不会生成不可用的 localhost 链接。
 - 要让设计阶段接入 OpenDesign，需在运行 API 的同一环境安装 `od` CLI、对所用 agent 执行 `od mcp install codex|cursor`，并设置 `OPENDESIGN_MCP_ENABLED=1` 后重启；详见 [docs/opendesign-design-stage.md](opendesign-design-stage.md)
 
 ## 4. 构建镜像
@@ -207,6 +209,7 @@ cp .env.docker.example .env.docker
 - `DINGTALK_APP_ID`
 - `DINGTALK_APP_SECRET`
 - `DINGTALK_AGENT_ID`
+- `FLOWX_PUBLIC_WEB_URL=https://flowx.example.com`
 - `YUNXIAO_WEBHOOK_SECRET`
 - `OPENAI_API_KEY`
 - `GIT_AUTHOR_NAME`
