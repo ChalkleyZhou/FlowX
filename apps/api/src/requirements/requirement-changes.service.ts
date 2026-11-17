@@ -108,8 +108,9 @@ export class RequirementChangesService {
 
   async create(workItemId: string, dto: CreateRequirementChangeDto, author?: ChangeAuthor, prototype?: ChangePrototype) {
     if (!author?.user.id || !author.user.displayName) throw new ForbiddenException('请登录后提交需求变更。');
-    const content = dto.content?.trim(); const requestId = dto.requestId?.trim();
+    const content = dto.content?.trim(); const reason = dto.reason?.trim() ?? ''; const requestId = dto.requestId?.trim();
     if (!content || content.length > 20000 || !requestId || requestId.length > 128 || !['SUPPLEMENT', 'RESTART'].includes(dto.mode)) throw new BadRequestException('请填写有效的变更说明和提交标识。');
+    if (dto.versionId) await this.ensureCurrentVersionChange(workItemId, dto.versionId, reason);
     await this.ensureRequirement(workItemId);
     if (dto.sourceWorkflowRunId) {
       const source = await this.prisma.workflowRun.findFirst({ where: { id: dto.sourceWorkflowRunId, workItemId } });
@@ -122,13 +123,13 @@ export class RequirementChangesService {
         record = await this.prisma.$transaction(async (tx) => {
           const existing = await tx.requirementChange.findUnique({ where: { workItemId_requestId: { workItemId, requestId } }, include: changeInclude });
           if (existing) {
-            if (!!existing.prototype !== !!prototype || (prototype && (readChangePrototype(existing.prototype)?.sha256 !== prototype.sha256 || readChangePrototype(existing.prototype)?.aiProvider !== prototype.aiProvider)) || existing.content !== content || existing.mode !== dto.mode || existing.createdByUserId !== author.user.id || (dto.sourceWorkflowRunId && existing.sourceWorkflowRunId !== dto.sourceWorkflowRunId)) throw new ConflictException('该提交标识已用于其他变更，请刷新后重试。');
+            if (!!existing.prototype !== !!prototype || (prototype && (readChangePrototype(existing.prototype)?.sha256 !== prototype.sha256 || readChangePrototype(existing.prototype)?.aiProvider !== prototype.aiProvider)) || existing.content !== content || existing.reason !== reason || existing.mode !== dto.mode || existing.createdByUserId !== author.user.id || (dto.sourceWorkflowRunId && existing.sourceWorkflowRunId !== dto.sourceWorkflowRunId)) throw new ConflictException('该提交标识已用于其他变更，请刷新后重试。');
             return existing;
           }
           const latestSource = dto.mode === 'RESTART' && !dto.sourceWorkflowRunId ? await tx.workflowRun.findFirst({ where: { workItemId }, orderBy: { createdAt: 'desc' }, select: { id: true } }) : null;
           const updated = await tx.workItem.update({ where: { id: workItemId }, data: { revision: { increment: 1 } } });
           return tx.requirementChange.create({ data: {
-            workItemId, revision: updated.revision, content, mode: dto.mode, requestId,
+            workItemId, revision: updated.revision, content, reason, mode: dto.mode, requestId,
             createdByUserId: author.user.id, createdByName: author.user.displayName,
             sourceWorkflowRunId: dto.sourceWorkflowRunId ?? latestSource?.id,
             restartStatus: dto.mode === 'RESTART' ? 'PENDING' : 'NOT_REQUESTED',
@@ -209,9 +210,21 @@ export class RequirementChangesService {
     return requirement;
   }
 
+  private async ensureCurrentVersionChange(workItemId: string, versionId: string, reason: string) {
+    if (!reason || reason.length > 2000) throw new BadRequestException('请填写有效的变更原因。');
+    const requirement = await this.prisma.workItem.findFirst({
+      where: { id: workItemId, kind: 'REQUIREMENT' },
+      select: { versionId: true, project: { select: { currentVersionId: true } } },
+    });
+    if (!requirement) throw new NotFoundException('需求不存在或无权访问。');
+    if (requirement.versionId !== versionId || requirement.project.currentVersionId !== versionId) {
+      throw new BadRequestException('需求变更只能挂在项目当前版本。');
+    }
+  }
+
   private response(row: ChangeRow) {
     const prototype = readChangePrototype(row.prototype);
-    return { id: row.id, workItemId: row.workItemId, revision: row.revision, content: row.content, mode: row.mode,
+    return { id: row.id, workItemId: row.workItemId, revision: row.revision, content: row.content, reason: row.reason, mode: row.mode,
       createdByName: row.createdByName, createdAt: row.createdAt, sourceWorkflowRunId: row.sourceWorkflowRunId,
       prototype: prototype ? { name: prototype.name, aiProvider: prototype.aiProvider } : null,
       restartWorkflowRunId: row.restartWorkflowRun?.id ?? null, restartStatus: row.restartStatus, errorMessage: row.errorMessage };

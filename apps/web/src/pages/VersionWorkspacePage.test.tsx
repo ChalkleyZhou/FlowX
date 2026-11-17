@@ -17,6 +17,8 @@ vi.mock('../api', () => ({
     getRequirements: vi.fn(),
     getIssues: vi.fn(),
     getBugs: vi.fn(),
+    getRequirementChanges: vi.fn(),
+    createRequirementChange: vi.fn(),
     getWorkItem: vi.fn(),
     updateWorkItem: vi.fn(),
     deleteWorkItem: vi.fn(),
@@ -63,6 +65,8 @@ describe('VersionWorkspacePage', () => {
     vi.mocked(api.getRequirements).mockResolvedValue(pageResult([]));
     vi.mocked(api.getIssues).mockResolvedValue(pageResult([]));
     vi.mocked(api.getBugs).mockResolvedValue(pageResult([]));
+    vi.mocked(api.getRequirementChanges).mockResolvedValue({ items: [], revision: 0, total: 0, page: 1, pageSize: 20, totalPages: 1 });
+    vi.mocked(api.createRequirementChange).mockResolvedValue({ id: 'change-1', workItemId: 'requirement-1', revision: 1, content: '变更内容', reason: '变更原因', mode: 'SUPPLEMENT', createdByName: '产品', createdAt: '2026-11-01T00:00:00.000Z', sourceWorkflowRunId: null, restartWorkflowRunId: null, restartStatus: 'NOT_REQUESTED', errorMessage: null });
     vi.mocked(api.getWorkItem).mockResolvedValue({
       id: 'work-item-1', displayCode: 'REQ-001', projectId: 'project-1', versionId: 'version-1', workspaceId: 'workspace-1',
       kind: 'REQUIREMENT', title: '需求一', description: '需求描述', remark: '', status: 'ACTIVE', priority: 'HIGH',
@@ -173,6 +177,33 @@ describe('VersionWorkspacePage', () => {
     const title = container.querySelector('tbody button[title="需求一"]') as HTMLButtonElement;
     await act(async () => { title.click(); await Promise.resolve(); });
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain('编辑需求');
+  });
+
+  it('当前版本需求支持填写变更内容和原因并查看变更记录', async () => {
+    vi.mocked(api.getRequirements).mockResolvedValue(pageResult([{
+      id: 'requirement-1', title: '需求一', description: '需求描述', priority: 'HIGH',
+      createdByName: '产品', createdAt: '2026-11-01T00:00:00.000Z', prototypeImport: null,
+    } as never]));
+    await act(async () => {
+      root?.render(renderWorkspace('/versions?projectId=project-1&versionId=version-1&kind=REQUIREMENT'));
+      await Promise.resolve();
+    });
+
+    await act(async () => { Array.from(container.querySelectorAll('button')).find(button => button.textContent === '变更')?.click(); });
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('变更记录');
+    const textareas = Array.from(document.querySelectorAll('[role="dialog"] textarea')) as HTMLTextAreaElement[];
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(textareas[0], '增加导出格式');
+    textareas[0].dispatchEvent(new Event('input', { bubbles: true }));
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(textareas[1], '客户新增要求');
+    textareas[1].dispatchEvent(new Event('input', { bubbles: true }));
+    const submit = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')).find(button => button.textContent === '提交变更');
+    await act(async () => { submit?.click(); await Promise.resolve(); });
+    expect(api.createRequirementChange).toHaveBeenCalledWith('requirement-1', expect.objectContaining({
+      content: '增加导出格式',
+      reason: '客户新增要求',
+      mode: 'SUPPLEMENT',
+      versionId: 'version-1',
+    }));
   });
 
   it('问题 Tab 展示来源工作流和分支字段并通过弹框编辑', async () => {

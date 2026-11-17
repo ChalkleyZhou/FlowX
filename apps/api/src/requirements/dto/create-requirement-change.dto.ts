@@ -6,6 +6,11 @@ export class CreateRequirementChangeDto {
   @MaxLength(20000)
   content!: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  reason?: string;
+
   @IsIn(['SUPPLEMENT', 'RESTART'])
   mode!: 'SUPPLEMENT' | 'RESTART';
 
@@ -13,6 +18,11 @@ export class CreateRequirementChangeDto {
   @IsNotEmpty()
   @MaxLength(128)
   requestId!: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  versionId?: string;
 
   @IsOptional()
   @IsString()

@@ -65,6 +65,24 @@ describe('正式需求变更', () => {
     expect(rows.revision).toBe(2);
     expect((await prisma.workItem.findUniqueOrThrow({ where: { id: req.id } })).description).toBe('原始描述');
   });
+  it('版本工作台变更只接受项目当前版本并保存变更原因', async () => {
+    const version = await prisma.projectVersion.create({ data: { projectId, name: `当前版本-${Date.now()}` } });
+    const otherVersion = await prisma.projectVersion.create({ data: { projectId, name: `其他版本-${Date.now()}` } });
+    await prisma.project.update({ where: { id: projectId }, data: { currentVersionId: version.id } });
+    const req = await requirement();
+    await prisma.workItem.update({ where: { id: req.id }, data: { versionId: version.id } });
+
+    const record = await service.create(req.id, {
+      content: '增加导出格式', reason: '客户新增要求', mode: 'SUPPLEMENT', requestId: 'current-version-change', versionId: version.id,
+    }, author);
+    expect(record).toMatchObject({ content: '增加导出格式', reason: '客户新增要求' });
+    await expect(service.create(req.id, {
+      content: '不能挂到历史版本', reason: '测试约束', mode: 'SUPPLEMENT', requestId: 'old-version-change', versionId: otherVersion.id,
+    }, author)).rejects.toMatchObject({ status: 400 });
+    await expect(service.create(req.id, {
+      content: '缺少原因', mode: 'SUPPLEMENT', requestId: 'missing-reason', versionId: version.id,
+    }, author)).rejects.toMatchObject({ status: 400 });
+  });
   it('并发提交维持连续修订，同 requestId 并发只保存一条', async () => {
     const req = await requirement();
     const dto = { content: '并发同一条', mode: 'SUPPLEMENT' as const, requestId: 'parallel-same' };

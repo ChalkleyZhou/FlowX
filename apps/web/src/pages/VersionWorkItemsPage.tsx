@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api';
 import { useConfirm } from '../components/ConfirmDialog';
 import { ListQueryActions } from '../components/ListQueryActions';
+import { VersionRequirementChangeDialog } from '../components/VersionRequirementChangeDialog';
 import { submitQueryOnEnter, useDraftQuery } from '../hooks/use-draft-query';
 import { EmptyState } from '../components/EmptyState';
 import { ListPagination } from '../components/ListPagination';
@@ -61,8 +62,8 @@ function RemoveButton({ onClick }: { onClick: () => void }) {
   return <Button variant="outline" size="sm" onClick={onClick}>移除</Button>;
 }
 
-function RowActions({ onEdit, onRemove }: { onEdit: () => void; onRemove: () => void }) {
-  return <div className="flex flex-nowrap gap-2"><EditButton onClick={onEdit} /><RemoveButton onClick={onRemove} /></div>;
+function RowActions({ onEdit, onRemove, onChange }: { onEdit: () => void; onRemove: () => void; onChange?: () => void }) {
+  return <div className="flex flex-nowrap gap-2">{onChange ? <Button variant="outline" size="sm" onClick={onChange}>变更</Button> : null}<EditButton onClick={onEdit} /><RemoveButton onClick={onRemove} /></div>;
 }
 
 function IssueTable({ items, onEdit, onRemove }: { items: Issue[]; onEdit: (item: Issue) => void; onRemove: (item: Issue) => void }) {
@@ -93,11 +94,13 @@ function BugTable({ items, onEdit, onRemove }: { items: Bug[]; onEdit: (item: Bu
 export function VersionWorkItemsPage({
   projectId: projectIdProp,
   versionId: versionIdProp,
+  currentVersionId,
   onVersionChange,
   showManagementLink = false,
 }: {
   projectId?: string;
   versionId?: string;
+  currentVersionId?: string;
   onVersionChange?: (versionId: string) => void;
   showManagementLink?: boolean;
 }) {
@@ -124,6 +127,7 @@ export function VersionWorkItemsPage({
   const [error, setError] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<WorkItem | null>(null);
+  const [changingRequirement, setChangingRequirement] = useState<Requirement | null>(null);
   const [draft, setDraft] = useState({ kind: 'REQUIREMENT' as WorkItem['kind'], title: '', description: '', remark: '', splitMode: 'AI' as 'AI' | 'SINGLE' | 'MANUAL' });
 
   function clearLists() {
@@ -262,12 +266,14 @@ export function VersionWorkItemsPage({
   }
 
   const visibleItems = kind === 'REQUIREMENT' ? requirements : kind === 'ISSUE' ? issues : bugs;
+  const canChangeRequirements = kind === 'REQUIREMENT' && Boolean(currentVersionId && currentVersionId === versionId);
   const emptyDescription = kind === 'REQUIREMENT' ? '当前版本还没有需求。' : kind === 'ISSUE' ? '当前版本还没有问题。' : '当前版本还没有缺陷。';
   const createKindLabel = formatKindLabel(draft.kind);
 
   return (
     <div className="space-y-5">
       {editingItem ? <WorkItemEditDialog workItem={editingItem} open onOpenChange={open => { if (!open) setEditingItem(null); }} onSaved={() => void handleSaved()} /> : null}
+      {changingRequirement ? <VersionRequirementChangeDialog requirement={changingRequirement} versionId={versionId} open onOpenChange={open => { if (!open) setChangingRequirement(null); }} onSaved={() => void load(typedPage)} /> : null}
       <Dialog
         open={createOpen}
         onOpenChange={(open) => {
@@ -354,7 +360,7 @@ export function VersionWorkItemsPage({
             )}
           />
           {error ? <p role="alert" className="text-sm text-destructive">{error}<Button variant="outline" size="sm" onClick={() => void load(typedPage)}>重试</Button></p> : null}
-          {loading && visibleItems.length === 0 ? <div className="flex min-h-40 items-center justify-center"><Spinner className="h-7 w-7" /></div> : visibleItems.length > 0 ? <div className="overflow-x-auto rounded-md border border-border">{kind === 'REQUIREMENT' ? <RequirementListTable items={requirements} onOpen={item => void openEditor(item.id)} renderActions={item => <RowActions onEdit={() => void openEditor(item.id)} onRemove={() => void removeFromVersion(item)} />} /> : kind === 'ISSUE' ? <IssueTable items={issues} onEdit={item => void openEditor(item.id)} onRemove={item => void removeFromVersion(item)} /> : <BugTable items={bugs} onEdit={item => void openEditor(item.id)} onRemove={item => void removeFromVersion(item)} />}</div> : <EmptyState description={emptyDescription} />}
+          {loading && visibleItems.length === 0 ? <div className="flex min-h-40 items-center justify-center"><Spinner className="h-7 w-7" /></div> : visibleItems.length > 0 ? <div className="overflow-x-auto rounded-md border border-border">{kind === 'REQUIREMENT' ? <RequirementListTable items={requirements} onOpen={item => void openEditor(item.id)} renderActions={item => <RowActions onChange={canChangeRequirements ? () => setChangingRequirement(item) : undefined} onEdit={() => void openEditor(item.id)} onRemove={() => void removeFromVersion(item)} />} /> : kind === 'ISSUE' ? <IssueTable items={issues} onEdit={item => void openEditor(item.id)} onRemove={item => void removeFromVersion(item)} /> : <BugTable items={bugs} onEdit={item => void openEditor(item.id)} onRemove={item => void removeFromVersion(item)} />}</div> : <EmptyState description={emptyDescription} />}
           <ListPagination page={typedPage} total={typedTotal} pageSize={PAGE_SIZE} loading={loading} onPageChange={page => void load(page)} label={`${kind === 'REQUIREMENT' ? '需求' : kind === 'ISSUE' ? '问题' : '缺陷'}列表分页`} />
         </CardContent>
       </Card>

@@ -136,6 +136,7 @@ model RequirementChange {
   workItem           WorkItem  @relation(fields: [workItemId], references: [id], onDelete: Cascade)
   revision              Int
   content               String
+  reason                String       @default("")
   mode                  String
   requestId             String
   createdByUserId       String

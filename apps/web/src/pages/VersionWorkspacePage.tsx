@@ -80,6 +80,7 @@ export function VersionWorkspacePage() {
     <VersionWorkItemsPage
       projectId={projectId}
       versionId={selectedVersionId}
+      currentVersionId={project?.currentVersionId ?? undefined}
       onVersionChange={changeVersion}
       showManagementLink
     />

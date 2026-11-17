@@ -261,6 +261,7 @@ export interface RequirementChange {
   workItemId: string;
   revision: number;
   content: string;
+  reason?: string;
   mode: 'SUPPLEMENT' | 'RESTART';
   createdByName: string;
   createdAt: string;
@@ -281,8 +282,10 @@ export interface RequirementChanges {
 
 export interface RequirementChangePayload {
   content: string;
+  reason?: string;
   mode: RequirementChange['mode'];
   requestId: string;
+  versionId?: string;
   sourceWorkflowRunId?: string;
 }
 
