@@ -254,8 +254,7 @@ export class DingTalkNotificationService {
     }
 
     const publicWebBaseUrl = resolvePublicWebBaseUrl({
-      FLOWX_PUBLIC_WEB_URL: this.configService.get<string>('FLOWX_PUBLIC_WEB_URL'),
-      PUBLIC_WEB_URL: this.configService.get<string>('PUBLIC_WEB_URL'),
+      FLOWX_WEB_BASE_URL: this.configService.get<string>('FLOWX_WEB_BASE_URL'),
     });
     if (publicWebBaseUrl) {
       lines.push('', `[查看工作项](${publicWebBaseUrl}/work-items/${encodeURIComponent(input.item.id)})`);

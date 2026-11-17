@@ -46,7 +46,7 @@
 
 ### 一键查看
 
-消息使用 Markdown 链接指向 Web 工作项详情：`/work-items/{workItemId}`。部署环境通过 `FLOWX_PUBLIC_WEB_URL` 配置站点公网根地址，例如 `https://flowx.example.com`。地址统一去除末尾 `/`，并对工作项 ID 做 URL 编码。
+消息使用 Markdown 链接指向 Web 工作项详情：`/work-items/{workItemId}`。部署环境复用已有的 `FLOWX_WEB_BASE_URL` 配置站点公网根地址，例如 `https://flowx.example.com`。地址统一去除末尾 `/`，并对工作项 ID 做 URL 编码。
 
 ## 方案与组件
 
@@ -75,7 +75,7 @@
 
 ### Web 公网地址
 
-新增 `FLOWX_PUBLIC_WEB_URL` 配置和解析 helper。未配置时不拼接不可用的 localhost 链接；消息仍可发送文本内容，但记录 warning，提示需要配置公网地址才能使用一键查看。若未来已有站点地址配置，可在 helper 中增加兼容回退，不改变本配置的优先级。
+复用已有的 `FLOWX_WEB_BASE_URL` 配置和解析 helper。未配置时不拼接不可用的 localhost 链接；消息仍可发送文本内容，但记录 warning，提示需要配置公网地址才能使用一键查看。
 
 ## 消息格式
 
@@ -126,5 +126,5 @@
 - 运行 API 测试和构建。
 - 运行 Web 测试和构建，确保状态/负责人编辑流程未受影响。
 - 更新 `.env.docker.example`、部署文档、用户手册和 Web 镜像。
-- `FLOWX_PUBLIC_WEB_URL` 仅供 API 生成通知链接，`flowx-local`、MCP、CLI、Skill 和 `@flowx-ai/protocol` 无需适配。
+- `FLOWX_WEB_BASE_URL` 同时供 API 通知链接和 Cursor 扩展使用，`flowx-local`、MCP、CLI、Skill 和 `@flowx-ai/protocol` 无需新增适配。
 

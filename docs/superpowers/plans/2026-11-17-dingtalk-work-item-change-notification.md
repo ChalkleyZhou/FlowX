@@ -28,10 +28,9 @@ import { describe, expect, it } from 'vitest';
 import { resolvePublicWebBaseUrl } from './public-web-base-url';
 
 describe('resolvePublicWebBaseUrl', () => {
-  it('优先读取 FLOWX_PUBLIC_WEB_URL 并去除末尾斜杠', () => {
+  it('读取 FLOWX_WEB_BASE_URL 并去除末尾斜杠', () => {
     expect(resolvePublicWebBaseUrl({
-      FLOWX_PUBLIC_WEB_URL: ' https://flowx.example.com/// ',
-      PUBLIC_WEB_URL: 'https://fallback.example.com',
+      FLOWX_WEB_BASE_URL: ' https://flowx.example.com/// ',
     })).toBe('https://flowx.example.com');
   });
 
@@ -49,7 +48,7 @@ Expected: FAIL because `public-web-base-url.ts` and `resolvePublicWebBaseUrl` do
 
 - [x] **Step 3: Implement the helper**
 
-创建 `resolvePublicWebBaseUrl(env = process.env): string | null`，读取 `FLOWX_PUBLIC_WEB_URL`（可兼容读取 `PUBLIC_WEB_URL` 作为回退），trim 后移除所有末尾 `/`；空值返回 `null`。不回退到 localhost。
+创建 `resolvePublicWebBaseUrl(env = process.env): string | null`，读取已有的 `FLOWX_WEB_BASE_URL`，trim 后移除所有末尾 `/`；空值返回 `null`。不回退到 localhost。
 
 - [x] **Step 4: Run the focused test**
 
@@ -59,7 +58,7 @@ Expected: PASS。
 
 - [x] **Step 5: Update deployment documentation**
 
-在 `.env.docker.example` 增加 `FLOWX_PUBLIC_WEB_URL=`；在 `docs/docker-deployment.md` 环境变量表、说明和 Nginx 启动示例中说明它是钉钉“查看工作项”链接使用的 Web 公网根地址，例如 `https://flowx.example.com`，不要填写 `127.0.0.1` 或内网地址；在 `README.md` Docker 环境变量/部署说明中同步一条简短说明。
+在 `.env.docker.example` 增加已有的 `FLOWX_WEB_BASE_URL=`；在 `docs/docker-deployment.md` 环境变量表、说明和 Nginx 启动示例中说明它是钉钉“查看工作项”链接使用的 Web 公网根地址，例如 `https://flowx.example.com`，不要填写 `127.0.0.1` 或内网地址；在 `README.md` Docker 环境变量/部署说明中同步一条简短说明。
 
 - [x] **Step 6: Commit**
 
@@ -189,7 +188,7 @@ git commit -m "接入工作项负责人和状态变更钉钉通知"
 
 - [x] **Step 1: Document user-visible behavior**
 
-在用户手册钉钉/工作项相关章节增加：负责人变更通知新负责人、状态变化通知当前负责人、消息中的“查看工作项”链接需要 `FLOWX_PUBLIC_WEB_URL`；通知异常不影响保存。在 Web 镜像保持逐字一致。
+在用户手册钉钉/工作项相关章节增加：负责人变更通知新负责人、状态变化通知当前负责人、消息中的“查看工作项”链接需要 `FLOWX_WEB_BASE_URL`；通知异常不影响保存。在 Web 镜像保持逐字一致。
 
 - [x] **Step 2: Add CHANGELOG entry**
 

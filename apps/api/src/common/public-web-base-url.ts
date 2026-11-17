@@ -5,6 +5,6 @@
 export function resolvePublicWebBaseUrl(
   env: NodeJS.ProcessEnv = process.env,
 ): string | null {
-  const configured = env.FLOWX_PUBLIC_WEB_URL?.trim() || env.PUBLIC_WEB_URL?.trim() || '';
+  const configured = env.FLOWX_WEB_BASE_URL?.trim() || '';
   return configured ? configured.replace(/\/+$/, '') : null;
 }

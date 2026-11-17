@@ -260,7 +260,7 @@ This setup will:
   - `DINGTALK_PROFILE_URL`
   - `DINGTALK_ORGS_URL`
 - For personal stage completion notifications, also set `DINGTALK_AGENT_ID`.
-- For one-click links in work-item change notifications, set `FLOWX_PUBLIC_WEB_URL` to the public Web root, for example `https://flowx.example.com`.
+- For one-click links in work-item change notifications, set `FLOWX_WEB_BASE_URL` to the public Web root, for example `https://flowx.example.com`.
 - FlowX will try to notify only the current DingTalk login user who triggered the stage or confirmation, instead of broadcasting through a group robot.
 - 钉钉组织管理员可在“用户管理”中同步通讯录用户。同步会新增或更新用户，并将已不在钉钉通讯录中的钉钉成员移出当前组织；用户账号和历史数据不会删除，但该组织下的会话和 Personal API Token 会失效。FlowX 不保存部门结构；钉钉应用需具备通讯录部门和用户读取权限，包括 `qyapi_get_department_member`。
 - 每个组织保留一名主管理员；主管理员可以给多个成员分配或收回“子管理员”角色。子管理员可以执行组织内普通管理操作，但不能编辑、移除主管理员，也不能转让主管理员权限；只有主管理员可以分配子管理员和转让权限。

@@ -24,7 +24,7 @@ describe('DingTalkNotificationService.sendPersonalMarkdown', () => {
           if (key === 'DINGTALK_AGENT_ID') {
             return '123456';
           }
-          if (key === 'FLOWX_PUBLIC_WEB_URL') {
+          if (key === 'FLOWX_WEB_BASE_URL') {
             return 'https://flowx.example.com///';
           }
           return undefined;
