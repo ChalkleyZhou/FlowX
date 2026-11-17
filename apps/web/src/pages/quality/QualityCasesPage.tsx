@@ -422,7 +422,7 @@ export function QualityCasesPage() {
               )}
               filters={(
                 <>
-                  <PagedSelect label="按工作区筛选" value={queryDraft.draft.workspaceId} selectedLabel={workspaces.find(item => item.id === queryDraft.draft.workspaceId)?.name} disabled={queryDraft.draft.caseScope === 'project'} onValueChange={value => queryDraft.patch({ workspaceId: value })} loadPage={query => api.getWorkspaces(query)} />
+                  <PagedSelect className="w-full min-w-0 sm:w-40 sm:min-w-40" label="按工作区筛选" value={queryDraft.draft.workspaceId} selectedLabel={workspaces.find(item => item.id === queryDraft.draft.workspaceId)?.name} placeholder="选择工作区" disabled={queryDraft.draft.caseScope === 'project'} onValueChange={value => queryDraft.patch({ workspaceId: value })} loadPage={query => api.getWorkspaces(query)} />
                   <Select
                     value={queryDraft.draft.caseScope}
                     onValueChange={(value) => queryDraft.patch({ caseScope: value })}

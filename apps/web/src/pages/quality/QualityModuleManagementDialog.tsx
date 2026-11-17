@@ -224,7 +224,7 @@ export function QualityModuleManagementDialog({
               />
             </Field>
             <Field label="上级模块">
-              <PagedSelect label="上级模块" selectedLabel={moduleNames.get(parentId)} value={parentId === ROOT_MODULE ? '' : parentId} onValueChange={value => setParentId(value || ROOT_MODULE)} allowClear scopeKey={libraryId} loadPage={query => api.getTestCaseModules(libraryId, { ...query, excludeId: editingId ?? undefined })} placeholder="一级模块" />
+              <PagedSelect label="上级模块" selectedLabel={moduleNames.get(parentId)} value={parentId === ROOT_MODULE ? '' : parentId} onValueChange={value => setParentId(value || ROOT_MODULE)} allowClear emptyLabel="一级模块" scopeKey={libraryId} loadPage={query => api.getTestCaseModules(libraryId, { ...query, excludeId: editingId ?? undefined })} placeholder="一级模块" />
             </Field>
             <Button type="button" disabled={Boolean(busyId) || !libraryId || !name.trim()} onClick={() => void saveModule()}>
               {editingId ? null : <Plus aria-hidden="true" className="h-4 w-4" />}

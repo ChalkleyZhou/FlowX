@@ -135,7 +135,7 @@ export function ScheduleHubPage() {
             <FilterField label="工作项">
               <PagedSelect value={workItemId} onValueChange={value => updateParams({workItemId:value})}
                 label="筛选工作项" placeholder={projectId ? '全部工作项' : '请先选择项目'} disabled={!projectId}
-                selectedLabel={selectedRequirement ? `${selectedRequirement.displayCode ?? selectedRequirement.id} · ${selectedRequirement.title}` : undefined} scopeKey={projectId} allowClear emptyLabel="全部需求"
+                selectedLabel={selectedRequirement ? `${selectedRequirement.displayCode ?? selectedRequirement.id} · ${selectedRequirement.title}` : undefined} scopeKey={projectId} allowClear emptyLabel="全部工作项"
                 loadPage={async query => { const result = await api.getRequirements({...query,projectId}); return {...result,items:result.items.map(item => ({id:item.id,name:`${item.displayCode ?? item.id} · ${item.title}`}))}; }} />
             </FilterField>
 

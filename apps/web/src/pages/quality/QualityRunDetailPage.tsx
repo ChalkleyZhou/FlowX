@@ -207,7 +207,7 @@ function QualityRunDetailContent({ id }: { id: string }) {
         <div className="flex flex-wrap justify-between gap-3">
           <h2 className="font-semibold">逐例执行结果</h2>
           <div className="flex gap-2">
-            <PagedSelect label="按目标端筛选" value={target === 'all' ? '' : target} onValueChange={value => { setTarget(value); setCasePage(1); }} loadPage={query => api.getTestRunTargets(id, query)} placeholder="按目标端筛选" />
+            <PagedSelect label="按目标端筛选" value={target === 'all' ? '' : target} onValueChange={value => { setTarget(value || 'all'); setCasePage(1); }} allowClear emptyLabel="全部目标端" loadPage={query => api.getTestRunTargets(id, query)} placeholder="全部目标端" />
             <Button size="sm" variant="ghost" onClick={() => { setTarget('all'); setCasePage(1); }}>全部目标端</Button>
 
             <select

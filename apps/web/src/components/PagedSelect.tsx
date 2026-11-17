@@ -42,6 +42,9 @@ export function PagedSelect({ value, onValueChange, loadPage, placeholder = '请
 
   const choices: Option[] = [...(allowClear ? [{ id: '', name: emptyLabel }] : []), ...items];
   const currentLabel = selectedLabel || items.find(item => item.id === value)?.name || (selected?.id === value ? selected.name : '');
+  // 未选中时，可清空的筛选展示默认项（如「全部人员」）；禁用态仍用提示文案说明为什么不能选。
+  const idleLabel = allowClear && !disabled ? emptyLabel : placeholder;
+  const displayLabel = value ? (currentLabel || placeholder) : idleLabel;
 
   useEffect(() => {
     if (!open) {
@@ -141,10 +144,10 @@ export function PagedSelect({ value, onValueChange, loadPage, placeholder = '请
     }
   }
 
-  return <div ref={rootRef} className={cn('relative min-w-0', className)}>
+  return <div ref={rootRef} className={cn('relative min-w-40', className)}>
     <div className={cn(triggerClass, 'relative', disabled && 'cursor-not-allowed opacity-50')}>
       <button type="button" id={id} className="absolute inset-0 flex items-center rounded-md px-3 pr-8 text-left outline-none disabled:cursor-not-allowed" aria-label={label ?? placeholder} aria-expanded={open} aria-haspopup="listbox" disabled={disabled} onClick={() => { if (!open) openMenu(); }}>
-        <span className={cn('truncate', !value && 'text-muted-foreground', open && q && 'invisible')}>{value ? currentLabel || placeholder : placeholder}</span>
+        <span className={cn('truncate', !value && !allowClear && 'text-muted-foreground', open && q && 'invisible')}>{displayLabel}</span>
       </button>
       {open ? <input ref={searchRef} role="combobox" aria-expanded aria-controls={listId} aria-autocomplete="list" aria-activedescendant={choices.length ? `${listId}-option-${activeIndex}` : undefined} aria-label={`${label ?? placeholder}搜索`} value={q} placeholder={value ? '' : placeholder} className="absolute inset-y-0 left-3 right-8 z-10 border-0 bg-transparent text-sm shadow-none outline-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0" onChange={event => { setQ(event.target.value); setPage(1); setKeyNav(false); }} onKeyDown={onSearchKeyDown} /> : null}
       <ChevronDown className={cn('relative z-10 ml-auto h-4 w-4 shrink-0 opacity-50', open && 'rotate-180')} aria-hidden="true" onMouseDown={event => { event.preventDefault(); event.stopPropagation(); if (disabled) return; if (open) setOpen(false); else openMenu(); }} />

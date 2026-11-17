@@ -308,7 +308,7 @@ export function CreateCaseDialog({
               }} loadPage={query => api.getTestCaseLibraries({ ...query, workspaceId, projectId })} placeholder="选择用例库" />
             </Field>
             <Field label="模块（可选）">
-              <PagedSelect label="模块" value={moduleId === NO_MODULE ? '' : moduleId} onValueChange={value => setModuleId(value || NO_MODULE)} scopeKey={libraryId} disabled={!libraryId} allowClear loadPage={query => api.getTestCaseModules(libraryId, query)} placeholder="未分模块" />
+              <PagedSelect label="模块" value={moduleId === NO_MODULE ? '' : moduleId} onValueChange={value => setModuleId(value || NO_MODULE)} scopeKey={libraryId} disabled={!libraryId} allowClear emptyLabel="未分模块" loadPage={query => api.getTestCaseModules(libraryId, query)} placeholder="未分模块" />
             </Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-[1fr_120px]">

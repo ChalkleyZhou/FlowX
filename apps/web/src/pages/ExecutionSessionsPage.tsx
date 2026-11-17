@@ -156,7 +156,7 @@ export function ExecutionSessionsPage() {
     <DevelopmentOverview counts={counts} view={view} onChange={(value) => updateFilter('view', value)} />
     <div className="space-y-3 rounded-md border border-border bg-card p-4">
       <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap">
-        <PagedSelect label="按执行人筛选" value={queryDraft.draft.claimedByUserId === 'all' ? '' : queryDraft.draft.claimedByUserId} onValueChange={value => queryDraft.patch({ claimedByUserId: value || 'all' })} placeholder="全部执行人" allowClear emptyLabel="全部执行人"
+        <PagedSelect className="w-full min-w-0 sm:w-40 sm:min-w-40" label="按执行人筛选" value={queryDraft.draft.claimedByUserId === 'all' ? '' : queryDraft.draft.claimedByUserId} onValueChange={value => queryDraft.patch({ claimedByUserId: value || 'all' })} placeholder="全部人员" allowClear emptyLabel="全部人员"
           loadPage={async query => { const result = await api.getOrganizationMembers(query);return {...result,items:result.items.map(item => ({id:item.id,name:item.displayName}))};}} />
         <Filter label="按工具筛选" value={queryDraft.draft.sourceTool} allLabel="全部工具" items={tools} onChange={(value) => queryDraft.patch({ sourceTool: value })} />
         <Filter label="按运行状态筛选" value={queryDraft.draft.status} allLabel="全部状态" items={statuses} onChange={(value) => queryDraft.patch({ status: value })} />

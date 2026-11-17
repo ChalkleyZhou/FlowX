@@ -57,6 +57,7 @@ async function click(text: string) {
 it('默认查看进行中的开发，未知进度不以心跳代替', async () => {
   await render();
   expect(container.textContent).toContain('研发看板');
+  expect(container.querySelector('[aria-label="按执行人筛选"]')?.textContent).toContain('全部人员');
   expect(container.querySelector('[aria-label="进行中"]')?.textContent).toContain('41');
   expect(container.querySelector('[aria-label="需关注"]')?.textContent).toContain('8');
   expect(container.querySelector('[aria-label="已完成"]')?.textContent).toContain('17');
