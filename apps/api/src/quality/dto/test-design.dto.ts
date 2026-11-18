@@ -10,6 +10,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  MaxLength,
   Min,
   MinLength,
   ValidateNested,
@@ -95,6 +96,36 @@ export class TestDesignCaseDraftDto {
 
   @IsOptional() @IsArray() @IsString({ each: true })
   targetKeys?: string[];
+
+  @IsOptional() @IsString() @MaxLength(50)
+  scenarioType?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(50)
+  caseType?: string | null;
+
+  @IsOptional() @IsArray() @IsString({ each: true })
+  deviceModels?: string[];
+
+  @IsOptional() @IsArray() @IsString({ each: true })
+  applicableEnds?: string[];
+
+  @IsOptional() @IsString() @MaxLength(200)
+  traceId?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(5000)
+  purpose?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(5000)
+  passCriteria?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(5000)
+  failCriteria?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(20)
+  automationStatus?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(5000)
+  remark?: string | null;
 }
 
 export class UpdateTestDesignCandidateDto {

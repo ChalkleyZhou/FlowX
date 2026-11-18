@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { QualityCaseProfileFields, caseProfilePayload, emptyCaseProfile, type CaseProfileForm } from './QualityCaseProfileFields';
 import { QualityTargetKeysField } from './QualityTargetKeysField';
 import { api } from '../../api';
 import { PagedSelect } from '../../components/PagedSelect';
@@ -239,6 +240,7 @@ export function CreateCaseDialog({
   const [precondition, setPrecondition] = useState('');
   const [testData, setTestData] = useState('');
   const [targetKeys, setTargetKeys] = useState<string[]>([]);
+  const [profile, setProfile] = useState<CaseProfileForm>(emptyCaseProfile());
   const [steps, setSteps] = useState('');
   const [expected, setExpected] = useState('');
   const [tags, setTags] = useState('');
@@ -272,6 +274,7 @@ export function CreateCaseDialog({
         precondition: precondition.trim() || undefined,
         testData: testData.trim() || undefined,
         targetKeys,
+        ...caseProfilePayload(profile),
         steps: stepList,
         expected: expected.trim(),
         tags: tags.split(',').map((item) => item.trim()).filter(Boolean),
@@ -280,6 +283,7 @@ export function CreateCaseDialog({
       setPrecondition('');
       setTestData('');
       setTargetKeys([]);
+      setProfile(emptyCaseProfile());
       setSteps('');
       setExpected('');
       setTags('');
@@ -324,14 +328,15 @@ export function CreateCaseDialog({
               </Select>
             </Field>
           </div>
-          <Field label="标题"><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field>
+          <Field label="标题"><Input aria-label="用例标题" value={title} onChange={(event) => setTitle(event.target.value)} /></Field>
           <Field label="前置条件（可选）"><Input value={precondition} onChange={(event) => setPrecondition(event.target.value)} /></Field>
           <Field label="测试数据（可选）"><Textarea rows={2} value={testData} onChange={(event) => setTestData(event.target.value)} /></Field>
+          <QualityCaseProfileFields value={profile} onChange={setProfile} disabled={saving} />
           <QualityTargetKeysField value={targetKeys} onChange={setTargetKeys} disabled={saving} />
           <Field label="执行步骤">
-            <Textarea rows={4} placeholder="每行一个步骤" value={steps} onChange={(event) => setSteps(event.target.value)} />
+            <Textarea aria-label="执行步骤" rows={4} placeholder="每行一个步骤" value={steps} onChange={(event) => setSteps(event.target.value)} />
           </Field>
-          <Field label="预期结果"><Textarea rows={2} value={expected} onChange={(event) => setExpected(event.target.value)} /></Field>
+          <Field label="预期结果"><Textarea aria-label="预期结果" rows={2} value={expected} onChange={(event) => setExpected(event.target.value)} /></Field>
           <Field label="标签（可选）"><Input placeholder="使用英文逗号分隔" value={tags} onChange={(event) => setTags(event.target.value)} /></Field>
         </div>
         <DialogFooter>

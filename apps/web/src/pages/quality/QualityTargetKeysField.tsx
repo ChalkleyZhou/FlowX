@@ -16,13 +16,13 @@ export function QualityTargetKeysField({
 }) {
   return (
     <fieldset className="space-y-2">
-      <legend className="text-xs font-medium text-muted-foreground">用例适用端</legend>
+      <legend className="text-xs font-medium text-muted-foreground">执行目标</legend>
       <div className="flex flex-wrap gap-4">
         {QUALITY_TARGET_OPTIONS.map((target) => (
           <label key={target.key} className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
-              aria-label={`适用端 ${target.name}`}
+              aria-label={`执行目标 ${target.name}`}
               checked={value.includes(target.key)}
               disabled={disabled}
               onChange={(event) =>

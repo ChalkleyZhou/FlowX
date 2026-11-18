@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { pageResult, parsePagination, type PaginationQuery } from '../common/pagination';
 import type { PrismaService } from '../prisma/prisma.service';
+import { profileFromRecord } from './test-case-profile';
 import { scopeExceptionReason, scopeModuleIds } from './test-request-scope-summary';
 
 export type ScopeBrowseQuery = PaginationQuery & { q?: string; action?: string; view?: 'selected' | 'library' | 'exceptions'; libraryId?: string; moduleId?: string };
@@ -73,7 +74,7 @@ export async function browseScope(prisma: PrismaService, id: string, query: Scop
     const candidate = byDefinition.get(definition.id);
     return candidate ? { ...candidate, sourceDefinition: definition } : {
       id: `library:${definition.id}`, action: 'REUSE', resolution: 'REJECTED', sourceDefinitionId: definition.id, sourceVersion: definition.version, coverageKeys: [],
-      proposedCase: { title: definition.title, priority: definition.priority, precondition: definition.precondition, testData: definition.testData, targetKeys: definition.targetKeys, steps: definition.steps, expected: definition.expected, tags: definition.tags },
+      proposedCase: { title: definition.title, priority: definition.priority, precondition: definition.precondition, testData: definition.testData, targetKeys: definition.targetKeys, steps: definition.steps, expected: definition.expected, tags: definition.tags, ...profileFromRecord(definition) },
       sourceDefinition: definition,
     };
   });

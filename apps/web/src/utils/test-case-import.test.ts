@@ -22,10 +22,49 @@ describe('test case CSV import', () => {
     XLSX.utils.book_append_sheet(workbook, sheet, '用例');
     const preview = parseTestCaseImportXlsx(XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }));
     expect(preview.errors).toEqual([]);
-    expect(preview.rows[0]).toMatchObject({ externalId: 'CASE-1', parentModuleName: '账号', moduleName: '登录', testData: '账号=test', steps: ['输入账号'] });
+    expect(preview.rows[0]).toMatchObject({
+      externalId: 'CASE-1',
+      parentModuleName: '账号',
+      moduleName: '登录',
+      testData: '账号=test',
+      steps: ['输入账号'],
+      scenarioType: '正常',
+      caseType: '功能测试',
+      applicableEnds: ['phone'],
+      deviceModels: ['全部'],
+      traceId: 'REQ-1',
+      purpose: '验证登录',
+    });
+    expect(preview.rows[0].tags).toBeUndefined();
     expect(preview.autoCreateModules).toBe(true);
-    expect(preview.rows[0].tags).toEqual(expect.arrayContaining(['一级模块=账号', '二级模块=登录', '需求/追溯ID=REQ-1']));
-    expect(preview.notice).toContain('执行记录列不导入');
+    expect(preview.notice).toContain('双端为手机端和眼镜端');
+  });
+
+  it('expands combined ends on the first sheet and ignores later sheets', () => {
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['用例ID', '用例标题', '一级模块', '二级模块', '场景类型', '优先级', '用例类型', '适用端', '适用机型', '需求/追溯ID', '测试目的', '前置条件', '测试数据', '操作步骤', '预期结果', '通过标准', '失败判定', '是否可自动化', '备注'],
+      ['CASE-2', '双端登录', '账号', '登录', '主流程', 'P0', '黑盒', '双端', 'RG301/RG303', 'RTM-1', '验证双端', '已注册', '', '输入账号', '进入首页', '两端都进入首页', '任一端失败', '部分', '联调'],
+      ['CASE-3', '三端登录', '账号', '登录', '主流程', 'P1', '黑盒', '三端', '全部', 'RTM-1', '验证三端', '已注册', '', '输入账号', '进入首页', '', '', '待评估', ''],
+    ]), 'testcase items');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['用例ID', '用例标题', '优先级', '操作步骤', '预期结果'], ['IGNORED', '忽略', 'P0', '不要读', '不要读']]), '其他');
+    const preview = parseTestCaseImportXlsx(XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }));
+    expect(preview.errors).toEqual([]);
+    expect(preview.rows.map((row) => row.externalId)).toEqual(['CASE-2', 'CASE-3']);
+    expect(preview.rows.map((row) => row.applicableEnds)).toEqual([['phone', 'glasses'], ['phone', 'glasses', 'platform']]);
+    expect(preview.rows[0]).toMatchObject({ deviceModels: ['RG301', 'RG303'], passCriteria: '两端都进入首页', failCriteria: '任一端失败', automationStatus: '部分', remark: '联调' });
+  });
+
+  it('rejects a nonstandard first sheet without reading later sheets', () => {
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['项', '值'], ['主 Sheet', 'testcase items']]), '说明');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['用例ID', '用例标题', '优先级', '操作步骤', '预期结果'],
+      ['CASE-9', '不应导入', 'P0', '执行', '成功'],
+    ]), 'testcase items');
+    const preview = parseTestCaseImportXlsx(XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }));
+    expect(preview.rows).toEqual([]);
+    expect(preview.errors).toEqual([{ row: 1, message: '只读取第一个工作表，当前表头不符合 FlowX 模板或标准用例表' }]);
   });
 
   it('parses multiline steps, defaults priority and splits tags', () => {

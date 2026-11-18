@@ -22,6 +22,7 @@ import type {
 } from './dto/test-design.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { assignTestCaseNumbers } from './test-case-number';
+import { profileFromRecord } from './test-case-profile';
 
 const designInclude = {
   workItems: { include: { workItem: true } },
@@ -51,6 +52,16 @@ const comparisonCaseSelect = {
   tags: true,
   testData: true,
   targetKeys: true,
+  scenarioType: true,
+  caseType: true,
+  deviceModels: true,
+  applicableEnds: true,
+  traceId: true,
+  purpose: true,
+  passCriteria: true,
+  failCriteria: true,
+  automationStatus: true,
+  remark: true,
   moduleId: true,
   coverageLinks: { select: { targetType: true, targetKey: true } },
   library: { select: { scope: true, projectId: true, name: true } },
@@ -231,7 +242,7 @@ export class TestDesignsService {
         await tx.testDesignCandidate.create({ data: {
           testDesignId: id, sourceDefinitionId: item.id, sourceVersion: item.version,
           coverageKeys: [], action: 'REUSE', resolution: 'ACCEPTED', matchReason: '测试人员手工补选', sortOrder: design.candidates.length + index,
-          proposedCase: { title: item.title, priority: item.priority, precondition: item.precondition, steps: stringArray(item.steps), expected: item.expected, tags: stringArray(item.tags), testData: item.testData ?? null, targetKeys: stringArray(item.targetKeys) },
+          proposedCase: { title: item.title, priority: item.priority, precondition: item.precondition, steps: stringArray(item.steps), expected: item.expected, tags: stringArray(item.tags), testData: item.testData ?? null, targetKeys: stringArray(item.targetKeys), ...profileFromRecord(item) },
         } });
       }
     });
@@ -459,6 +470,10 @@ export class TestDesignsService {
               targetKeys: candidate.proposedCase.targetKeys === undefined
                 ? sourceById.get(candidate.sourceDefinitionId ?? '')?.targetKeys ?? []
                 : candidate.proposedCase.targetKeys,
+              ...profileFromRecord({
+                ...profileFromRecord(sourceById.get(candidate.sourceDefinitionId ?? '')),
+                ...candidate.proposedCase,
+              }),
             } as unknown as Prisma.InputJsonValue,
             sortOrder: index,
           })),
@@ -709,6 +724,7 @@ function normalizeCase(value: unknown): TestDesignCaseDraft {
     tags: readStringArray(item.tags),
     testData: typeof item.testData === 'string' ? item.testData.trim() || null : null,
     targetKeys: unique(readStringArray(item.targetKeys)).sort(),
+    ...profileFromRecord(item),
   };
 }
 
@@ -722,6 +738,7 @@ function caseData(value: TestDesignCaseDraft) {
     tags: value.tags as Prisma.InputJsonValue,
     testData: value.testData ?? null,
     targetKeys: (value.targetKeys ?? []) as Prisma.InputJsonValue,
+    ...profileFromRecord(value),
   };
 }
 

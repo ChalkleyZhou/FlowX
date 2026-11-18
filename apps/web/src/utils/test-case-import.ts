@@ -13,6 +13,16 @@ const HEADERS = {
   steps: '步骤（必填，每行一个）',
   expected: '预期结果（必填）',
   tags: '标签（用英文逗号分隔）',
+  scenarioType: '场景类型（可选）',
+  caseType: '用例类型（可选）',
+  applicableEnds: '适用端（可选，双端=手机端+眼镜端，三端=手机端+眼镜端+平台端）',
+  deviceModels: '适用机型（可选，用 / 分隔）',
+  traceId: '需求/追溯ID（可选）',
+  purpose: '测试目的（可选）',
+  passCriteria: '通过标准（可选）',
+  failCriteria: '失败判定（可选）',
+  automationStatus: '是否可自动化（可选）',
+  remark: '备注（可选）',
 } as const;
 
 const TEMPLATE_HEADERS = Object.values(HEADERS);
@@ -33,39 +43,72 @@ export interface TestCaseImportPreview {
 }
 
 const EXTERNAL_HEADERS = ['用例ID', '用例标题', '优先级', '操作步骤', '预期结果'];
+const APPLICABLE_END_ORDER = ['phone', 'glasses', 'platform', 'backend'] as const;
+const APPLICABLE_END_GROUPS: Record<string, Array<(typeof APPLICABLE_END_ORDER)[number]>> = {
+  phone: ['phone'], glasses: ['glasses'], platform: ['platform'], backend: ['backend'],
+  手机端: ['phone'], 眼镜端: ['glasses'], 平台端: ['platform'], 后台服务: ['backend'],
+  双端: ['phone', 'glasses'], 三端: ['phone', 'glasses', 'platform'],
+};
+
+export function normalizeImportedApplicableEnds(value: string): string[] {
+  const selected = new Set<string>();
+  for (const token of value.split(/[/+,，、;；]+/).map((item) => item.trim()).filter(Boolean)) {
+    for (const end of APPLICABLE_END_GROUPS[token] ?? []) selected.add(end);
+  }
+  return APPLICABLE_END_ORDER.filter((end) => selected.has(end));
+}
+
+function normalizeImportedDeviceModels(value: string): string[] {
+  const models: string[] = [];
+  for (const token of value.split(/[/+,，、;；]+/).map((item) => item.trim()).filter(Boolean)) {
+    if (!models.includes(token)) models.push(token);
+  }
+  return models;
+}
+
+function sheetMatrix(workbook: XLSX.WorkBook, name: string) {
+  const sheet = workbook.Sheets[name];
+  if (!sheet) return [];
+  return XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: '', raw: false, blankrows: false });
+}
 
 export function parseTestCaseImportXlsx(buffer: ArrayBuffer): TestCaseImportPreview {
   const workbook = XLSX.read(buffer, { type: 'array' });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  if (!sheet) return { rows: [], errors: [{ row: 1, message: '文件中没有工作表' }], sourceRowCount: 0 };
-  const matrix = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: '', raw: false, blankrows: false });
+  const name = workbook.SheetNames[0];
+  if (!name) return { rows: [], errors: [{ row: 1, message: '文件中没有工作表' }], sourceRowCount: 0 };
+  const matrix = sheetMatrix(workbook, name);
   const fields = (matrix[0] ?? []).map((value) => String(value).trim());
+  if (!EXTERNAL_HEADERS.every((header) => fields.includes(header)) && !REQUIRED_HEADERS.every((header) => fields.includes(header))) {
+    return { rows: [], errors: [{ row: 1, message: '只读取第一个工作表，当前表头不符合 FlowX 模板或标准用例表' }], sourceRowCount: 0 };
+  }
   if (EXTERNAL_HEADERS.every((header) => fields.includes(header))) {
     const index = (header: string) => fields.indexOf(header);
-    const value = (row: string[], header: string) => String(row[index(header)] ?? '').trim();
-    const data = matrix.slice(1).map((row) => {
-      const tags = ['一级模块', '二级模块', '场景类型', '用例类型', '适用端', '适用机型', '需求/追溯ID']
-        .map((header) => {
-          const content = value(row, header);
-          return content ? `${header}=${content.replaceAll(',', '，')}` : '';
-        })
-        .filter(Boolean);
-      return {
-        [HEADERS.externalId]: value(row, '用例ID'),
-        [HEADERS.title]: value(row, '用例标题'),
-        [HEADERS.priority]: value(row, '优先级'),
-        [HEADERS.moduleName]: value(row, '二级模块'),
-        [HEADERS.parentModuleName]: value(row, '一级模块'),
-        [HEADERS.precondition]: value(row, '前置条件'),
-        [HEADERS.testData]: value(row, '测试数据'),
-        [HEADERS.steps]: value(row, '操作步骤'),
-        [HEADERS.expected]: value(row, '预期结果'),
-        [HEADERS.tags]: tags.join(','),
-      };
-    });
+    const value = (row: string[], header: string) => index(header) < 0 ? '' : String(row[index(header)] ?? '').trim();
+    const data = matrix.slice(1).map((row) => ({
+      [HEADERS.externalId]: value(row, '用例ID'),
+      [HEADERS.title]: value(row, '用例标题'),
+      [HEADERS.priority]: value(row, '优先级'),
+      [HEADERS.moduleName]: value(row, '二级模块'),
+      [HEADERS.parentModuleName]: value(row, '一级模块'),
+      [HEADERS.precondition]: value(row, '前置条件'),
+      [HEADERS.testData]: value(row, '测试数据'),
+      [HEADERS.steps]: value(row, '操作步骤'),
+      [HEADERS.expected]: value(row, '预期结果'),
+      [HEADERS.tags]: '',
+      [HEADERS.scenarioType]: value(row, '场景类型'),
+      [HEADERS.caseType]: value(row, '用例类型'),
+      [HEADERS.applicableEnds]: value(row, '适用端'),
+      [HEADERS.deviceModels]: value(row, '适用机型'),
+      [HEADERS.traceId]: value(row, '需求/追溯ID'),
+      [HEADERS.purpose]: value(row, '测试目的'),
+      [HEADERS.passCriteria]: value(row, '通过标准'),
+      [HEADERS.failCriteria]: value(row, '失败判定'),
+      [HEADERS.automationStatus]: value(row, '是否可自动化'),
+      [HEADERS.remark]: value(row, '备注'),
+    }));
     return {
       ...parseTestCaseImportCsv(Papa.unparse({ fields: TEMPLATE_HEADERS, data })),
-      notice: '二级模块会按一级模块自动创建或复用，导入前无需手工建模块。一级模块、场景、用例类型、适用范围和追溯 ID 已保留为标签；测试目的、通过标准、失败判定、自动化状态、备注及执行记录列不导入。',
+      notice: '已读取标准用例表。二级模块会按一级模块自动创建或复用。适用端按多选保存：双端为手机端和眼镜端，三端再加平台端。执行结果、实际结果、缺陷 ID 和执行版本属于某次执行，不写入用例定义。',
       autoCreateModules: true,
     };
   }
@@ -124,6 +167,16 @@ export function parseTestCaseImportCsv(csv: string): TestCaseImportPreview {
       .split(',')
       .map((item) => item.trim())
       .filter(Boolean);
+    const scenarioType = source[HEADERS.scenarioType]?.trim();
+    const caseType = source[HEADERS.caseType]?.trim();
+    const applicableEnds = normalizeImportedApplicableEnds(source[HEADERS.applicableEnds] ?? '');
+    const deviceModels = normalizeImportedDeviceModels(source[HEADERS.deviceModels] ?? '');
+    const traceId = source[HEADERS.traceId]?.trim();
+    const purpose = source[HEADERS.purpose]?.trim();
+    const passCriteria = source[HEADERS.passCriteria]?.trim();
+    const failCriteria = source[HEADERS.failCriteria]?.trim();
+    const automationStatus = source[HEADERS.automationStatus]?.trim();
+    const remark = source[HEADERS.remark]?.trim();
 
     if (!title) errors.push({ row: rowNumber, message: '标题不能为空' });
     if (!PRIORITIES.has(priorityValue)) {
@@ -156,6 +209,16 @@ export function parseTestCaseImportCsv(csv: string): TestCaseImportPreview {
       steps,
       expected,
       tags: tags.length ? tags : undefined,
+      ...(scenarioType ? { scenarioType } : {}),
+      ...(caseType ? { caseType } : {}),
+      ...(applicableEnds.length ? { applicableEnds } : {}),
+      ...(deviceModels.length ? { deviceModels } : {}),
+      ...(traceId ? { traceId } : {}),
+      ...(purpose ? { purpose } : {}),
+      ...(passCriteria ? { passCriteria } : {}),
+      ...(failCriteria ? { failCriteria } : {}),
+      ...(automationStatus ? { automationStatus } : {}),
+      ...(remark ? { remark } : {}),
     };
   });
 

@@ -852,7 +852,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     inputSchema: { libraryId: z.string().min(1), parentId: z.string().optional(), ...paginationFields },
   }, async ({ libraryId, ...query }) => runRequest(() => qualityRequest(`/quality/case-libraries/${encodeURIComponent(libraryId)}/modules?${qualityQuery(query)}`)));
   server.registerTool('flowx_list_test_cases', {
-    title: '检索正式测试用例', description: '按库、模块、优先级、关键词分页检索正式用例，读取步骤、测试数据和预期。用返回的 definition id 补选候选。',
+    title: '检索正式测试用例', description: '按库、模块、优先级、关键词分页检索正式用例，读取步骤、测试数据、预期、适用端和用例画像。适用端为 phone/glasses/platform/backend，双端和三端在导入时已展开。用返回的 definition id 补选候选。',
     inputSchema: { workspaceId: z.string().min(1), projectId: z.string().min(1).optional(), libraryId: z.string().min(1).optional(), libraryIds: z.array(z.string().min(1)).optional(), moduleId: z.string().min(1).optional(), moduleIds: z.array(z.string().min(1)).optional(), priority: z.enum(['P0', 'P1', 'P2', 'P3']).optional(), priorities: z.array(z.enum(['P0', 'P1', 'P2', 'P3'])).optional(), q: z.string().optional(), page: z.number().int().min(1).optional(), pageSize: z.number().int().min(1).max(100).optional() },
   }, async input => runRequest(() => qualityRequest(`/quality/test-cases?${qualityQuery(input)}`)));
   server.registerTool('flowx_generate_test_design', {
@@ -866,7 +866,10 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
       action: z.enum(['REUSE', 'OPTIMIZE', 'CREATE', 'EXCLUDE']).optional(),
       resolution: z.enum(['PENDING', 'ACCEPTED', 'REJECTED']).optional(),
       matchScore: z.number().optional(), decisionNote: z.string().optional(),
-      proposedCase: z.object({ title: z.string().min(1), priority: z.string(), precondition: z.string().nullable().optional(), steps: z.array(z.string()), expected: z.string().min(1), tags: z.array(z.string()).optional(), testData: z.string().nullable().optional(), targetKeys: z.array(z.string()).optional() }).strict().optional(),
+      proposedCase: z.object({
+        title: z.string().min(1), priority: z.string(), precondition: z.string().nullable().optional(), steps: z.array(z.string()), expected: z.string().min(1), tags: z.array(z.string()).optional(), testData: z.string().nullable().optional(), targetKeys: z.array(z.string()).optional(),
+        scenarioType: z.string().nullable().optional(), caseType: z.string().nullable().optional(), deviceModels: z.array(z.string()).optional(), applicableEnds: z.array(z.string()).optional(), traceId: z.string().nullable().optional(), purpose: z.string().nullable().optional(), passCriteria: z.string().nullable().optional(), failCriteria: z.string().nullable().optional(), automationStatus: z.string().nullable().optional(), remark: z.string().nullable().optional(),
+      }).strict().optional(),
     },
   }, async ({ testDesignId, candidateId, ...body }) => runRequest(() => qualityRequest(`/quality/test-designs/${encodeURIComponent(testDesignId)}/candidates/${encodeURIComponent(candidateId)}`, { method: 'PATCH', body: JSON.stringify(body) })));
   server.registerTool('flowx_update_test_smoke', {

@@ -1270,14 +1270,24 @@ model TestCaseDefinition {
   version         Int                    @default(1)
   title           String
   priority        String                 @default("P2")
-  precondition    String?
-  testData        String?
-  targetKeys      Json?
-  steps           Json
-  expected        String
-  tags            Json?
-  metadata        Json?
-  createdByUserId String?
+  precondition      String?
+  testData          String?
+  targetKeys        Json?
+  scenarioType      String?
+  caseType          String?
+  deviceModels      Json?
+  applicableEnds    Json?
+  traceId           String?
+  purpose           String?
+  passCriteria      String?
+  failCriteria      String?
+  automationStatus  String?
+  remark            String?
+  steps             Json
+  expected          String
+  tags              Json?
+  metadata          Json?
+  createdByUserId   String?
   createdByUser   User?                  @relation("TestCaseDefinitionCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   coverageLinks   TestCaseCoverageLink[]
   scopeCases      TestRequestScopeCase[]
@@ -1461,6 +1471,16 @@ model TestRequestScopeCase {
   precondition       String?
   testData           String?
   targetKeys         Json?
+  scenarioType       String?
+  caseType           String?
+  deviceModels       Json?
+  applicableEnds     Json?
+  traceId            String?
+  purpose            String?
+  passCriteria       String?
+  failCriteria       String?
+  automationStatus   String?
+  remark             String?
   steps              Json
   expected           String
   metadata           Json?
@@ -1536,6 +1556,16 @@ model TestCaseSnapshot {
   precondition       String?
   testData           String?
   targetKeys         Json?
+  scenarioType       String?
+  caseType           String?
+  deviceModels       Json?
+  applicableEnds     Json?
+  traceId            String?
+  purpose            String?
+  passCriteria       String?
+  failCriteria       String?
+  automationStatus   String?
+  remark             String?
   steps              Json
   expected           String
   metadata           Json?

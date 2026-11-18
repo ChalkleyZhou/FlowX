@@ -4,6 +4,7 @@ import { api } from '../../api';
 import type { TestDesignCandidate, TestRequest } from '../../types';
 import { Button } from '../../components/ui/button';
 import { PagedSelect } from '../../components/PagedSelect';
+import { applicableEndLabels } from './QualityCaseProfileFields';
 
 export function QualityScopeCaseDetails({ request, item, previous, next, onNavigate, onClose, onSaved, onBusyChange, disabled }: {
   request: TestRequest; item: TestDesignCandidate; previous?: TestDesignCandidate; next?: TestDesignCandidate;
@@ -38,10 +39,22 @@ export function QualityScopeCaseDetails({ request, item, previous, next, onNavig
     <h3 className="mt-2 break-words font-semibold">{detail.title}</h3>
     <p className="mt-1 text-xs text-muted-foreground">{item.sourceDefinition?.library?.name ?? 'AI 新用例'}{item.sourceDefinition?.module?.name ? ` / ${item.sourceDefinition.module.name}` : ''} · {detail.priority}</p>
     <div className="mt-4 max-h-[420px] space-y-4 overflow-y-auto text-sm">
+      {detail.scenarioType || detail.caseType || detail.applicableEnds?.length || detail.deviceModels?.length || detail.traceId || detail.automationStatus ? <dl className="grid grid-cols-2 gap-2 text-xs">
+        {detail.scenarioType ? <div><dt className="text-muted-foreground">场景类型</dt><dd>{detail.scenarioType}</dd></div> : null}
+        {detail.caseType ? <div><dt className="text-muted-foreground">用例类型</dt><dd>{detail.caseType}</dd></div> : null}
+        {detail.applicableEnds?.length ? <div><dt className="text-muted-foreground">适用端</dt><dd>{applicableEndLabels(detail.applicableEnds).join('、')}</dd></div> : null}
+        {detail.deviceModels?.length ? <div><dt className="text-muted-foreground">适用机型</dt><dd>{detail.deviceModels.join('、')}</dd></div> : null}
+        {detail.traceId ? <div><dt className="text-muted-foreground">追溯 ID</dt><dd>{detail.traceId}</dd></div> : null}
+        {detail.automationStatus ? <div><dt className="text-muted-foreground">自动化</dt><dd>{detail.automationStatus}</dd></div> : null}
+      </dl> : null}
+      {detail.purpose ? <div><h4 className="font-medium">测试目的</h4><p className="mt-1 whitespace-pre-wrap text-muted-foreground">{detail.purpose}</p></div> : null}
       {detail.precondition ? <div><h4 className="font-medium">前置条件</h4><p className="mt-1 whitespace-pre-wrap text-muted-foreground">{detail.precondition}</p></div> : null}
       {detail.testData ? <div><h4 className="font-medium">测试数据</h4><p className="mt-1 whitespace-pre-wrap text-muted-foreground">{detail.testData}</p></div> : null}
       <div><h4 className="font-medium">测试步骤</h4><ol className="mt-1 list-decimal space-y-1 pl-5">{detail.steps.map((step, index) => <li key={index} className="whitespace-pre-wrap">{step}</li>)}</ol></div>
       <div><h4 className="font-medium">预期结果</h4><p className="mt-1 whitespace-pre-wrap">{detail.expected}</p></div>
+      {detail.passCriteria ? <div><h4 className="font-medium">通过标准</h4><p className="mt-1 whitespace-pre-wrap text-muted-foreground">{detail.passCriteria}</p></div> : null}
+      {detail.failCriteria ? <div><h4 className="font-medium">失败判定</h4><p className="mt-1 whitespace-pre-wrap text-muted-foreground">{detail.failCriteria}</p></div> : null}
+      {detail.remark ? <div><h4 className="font-medium">备注</h4><p className="mt-1 whitespace-pre-wrap text-muted-foreground">{detail.remark}</p></div> : null}
     </div>
     {item.action === 'CREATE' && !item.sourceDefinitionId && !saved ? <div className="mt-5 space-y-2 border-t pt-4">
       <p className="text-xs text-muted-foreground">需要长期复用时，可手动保存到用例库。</p>

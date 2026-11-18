@@ -687,12 +687,10 @@ describe('Quality pages', () => {
     expect((dialog.querySelector('input[aria-label="用例编号"]') as HTMLInputElement).value).toBe('保存后自动生成');
     expect((dialog.querySelector('input[aria-label="用例编号"]') as HTMLInputElement).readOnly).toBe(true);
     expect(dialog.textContent).not.toContain('用例编号（可选）');
-    const fields = dialog.querySelectorAll('input');
     await act(async () => {
-      setInputValue(fields[1] as HTMLInputElement, '新增认证用例');
-      const textareas = dialog.querySelectorAll('textarea');
-      setTextareaValue(textareas[1], '打开登录页');
-      setTextareaValue(textareas[2], '页面打开成功');
+      setInputValue(dialog.querySelector('[aria-label="用例标题"]') as HTMLInputElement, '新增认证用例');
+      setTextareaValue(dialog.querySelector('[aria-label="执行步骤"]') as HTMLTextAreaElement, '打开登录页');
+      setTextareaValue(dialog.querySelector('[aria-label="预期结果"]') as HTMLTextAreaElement, '页面打开成功');
     });
     await act(async () => {
       Array.from(dialog.querySelectorAll('button')).find((button) => button.textContent?.trim() === '创建用例')?.click();
@@ -755,7 +753,7 @@ describe('Quality pages', () => {
       .toBe('登录后恢复原访问页面');
     expect((document.body.querySelector('input[aria-label="用例编号"]') as HTMLInputElement)?.readOnly).toBe(true);
 
-    await act(async () => (document.querySelector('input[aria-label="适用端 Web"]') as HTMLInputElement).click());
+    await act(async () => (document.querySelector('input[aria-label="执行目标 Web"]') as HTMLInputElement).click());
     const saveButton = Array.from(document.body.querySelectorAll('button')).find(
       (button) => button.textContent?.trim() === '保存修改',
     );

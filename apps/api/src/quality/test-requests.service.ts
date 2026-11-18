@@ -4,6 +4,7 @@ import { parsePagination, pageResult, type PaginationQuery } from '../common/pag
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { profileFromRecord } from './test-case-profile';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AddTestScopeCasesDto, AssignTestRequestCasesDto, CompleteTestScopeDto, CreateTestRequestDto, PrepareTestRequestDto, SaveGeneratedTestCaseDto, UpdateTestRequestScopeDraftDto, UpdateTestScopeModuleDto } from './dto/test-request.dto';
 import { TestRequestStatus, assertTestRequestTransition } from './quality-status';
@@ -167,6 +168,7 @@ export class TestRequestsService {
                   precondition: proposed.precondition,
                   testData: proposed.testData ?? candidate.sourceDefinition?.testData ?? null,
                   targetKeys: proposed.targetKeys ?? candidate.sourceDefinition?.targetKeys ?? Prisma.DbNull,
+                  ...profileFromRecord(candidate.proposedCase),
                   steps: proposed.steps as Prisma.InputJsonValue,
                   expected: proposed.expected,
                   metadata: { candidateId: candidate.id, kind: 'FUNCTIONAL' },
@@ -213,6 +215,7 @@ export class TestRequestsService {
                     precondition: proposed.precondition,
                     testData: proposed.testData !== undefined ? proposed.testData : candidate.sourceDefinition?.testData ?? null,
                     targetKeys: proposed.targetKeys !== undefined ? proposed.targetKeys : candidate.sourceDefinition?.targetKeys ?? Prisma.DbNull,
+                    ...profileFromRecord(candidate.proposedCase),
                     steps: proposed.steps as Prisma.InputJsonValue,
                     expected: proposed.expected,
                     metadata: { kind: 'FUNCTIONAL', origin: candidate.action === 'CREATE' ? 'GENERATED' : 'LIBRARY', selectionReason: candidate.matchReason, coverageKeys: candidate.coverageKeys },
@@ -424,9 +427,9 @@ export class TestRequestsService {
       const selectionByCase = new Map(selections.map(selection => [selection.caseId, selection]));
       for (const [index, definition] of additions.entries()) {
         const selection = selectionByCase.get(definition.id)!;
-        const proposedCase = { title: definition.title, priority: definition.priority, precondition: definition.precondition, testData: definition.testData, targetKeys: definition.targetKeys ?? [], steps: definition.steps, expected: definition.expected, tags: definition.tags ?? [] };
+        const proposedCase = { title: definition.title, priority: definition.priority, precondition: definition.precondition, testData: definition.testData, targetKeys: definition.targetKeys ?? [], steps: definition.steps, expected: definition.expected, tags: definition.tags ?? [], ...profileFromRecord(definition) };
         const candidate = await tx.testDesignCandidate.create({ data: { testDesignId: request.testDesignId!, sourceDefinitionId: definition.id, sourceVersion: definition.version, coverageKeys: [], action: 'REUSE', resolution: 'ACCEPTED', matchReason: selection.reason.trim() || '测试人员手工补选', sortOrder: baseSortOrder + index, proposedCase } });
-        await tx.testRequestScopeCase.create({ data: { testRequestId: id, sourceDefinitionId: definition.id, sourceVersion: definition.version, libraryId: definition.libraryId, moduleId: definition.moduleId, moduleName: definition.module?.name ?? null, action: 'REUSE', status: 'INCLUDED', title: definition.title, priority: definition.priority, precondition: definition.precondition, testData: definition.testData, targetKeys: definition.targetKeys ?? Prisma.DbNull, steps: definition.steps as Prisma.InputJsonValue, expected: definition.expected, metadata: { candidateId: candidate.id, kind: 'FUNCTIONAL', selectedBy: userId ?? null }, coverageKeys: [], matchReason: selection.reason.trim() || '测试人员手工补选', origin: 'LIBRARY', sortOrder: baseSortOrder + index } });
+        await tx.testRequestScopeCase.create({ data: { testRequestId: id, sourceDefinitionId: definition.id, sourceVersion: definition.version, libraryId: definition.libraryId, moduleId: definition.moduleId, moduleName: definition.module?.name ?? null, action: 'REUSE', status: 'INCLUDED', title: definition.title, priority: definition.priority, precondition: definition.precondition, testData: definition.testData, targetKeys: definition.targetKeys ?? Prisma.DbNull, ...profileFromRecord(definition), steps: definition.steps as Prisma.InputJsonValue, expected: definition.expected, metadata: { candidateId: candidate.id, kind: 'FUNCTIONAL', selectedBy: userId ?? null }, coverageKeys: [], matchReason: selection.reason.trim() || '测试人员手工补选', origin: 'LIBRARY', sortOrder: baseSortOrder + index } });
       }
     }, { timeout: 30_000 });
     return this.getRequest(id);
@@ -496,6 +499,7 @@ export class TestRequestsService {
       precondition: proposed.precondition ?? undefined,
       testData: proposed.testData ?? undefined,
       targetKeys: proposed.targetKeys,
+      ...profileFromRecord(candidate.proposedCase),
       steps: proposed.steps,
       expected: proposed.expected,
       metadata: { origin: 'AI_TEST_REQUEST_SCOPE', candidateId },
@@ -617,6 +621,7 @@ export class TestRequestsService {
             precondition: definition.precondition,
             testData: definition.testData,
             targetKeys: definition.targetKeys ?? Prisma.DbNull,
+            ...profileFromRecord(definition),
             steps: definition.steps as unknown as Prisma.InputJsonValue,
             expected: definition.expected,
             metadata: definition.metadata ?? Prisma.JsonNull,
@@ -694,6 +699,7 @@ export class TestRequestsService {
                 precondition: proposed.precondition,
                 testData: proposed.testData ?? candidate.sourceDefinition?.testData ?? null,
                 targetKeys: proposed.targetKeys ?? candidate.sourceDefinition?.targetKeys ?? Prisma.DbNull,
+                ...profileFromRecord(candidate.proposedCase),
                 steps: proposed.steps as Prisma.InputJsonValue,
                 expected: proposed.expected,
                 metadata: { coverageKeys: candidate.coverageKeys, matchReason: candidate.matchReason },

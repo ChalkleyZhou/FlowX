@@ -95,6 +95,16 @@ export type TestDesignCandidateAction = 'REUSE' | 'OPTIMIZE' | 'CREATE' | 'EXCLU
 export interface TestDesignCaseDraft {
   testData?: string | null;
   targetKeys?: string[];
+  scenarioType?: string | null;
+  caseType?: string | null;
+  deviceModels?: string[];
+  applicableEnds?: string[];
+  traceId?: string | null;
+  purpose?: string | null;
+  passCriteria?: string | null;
+  failCriteria?: string | null;
+  automationStatus?: string | null;
+  remark?: string | null;
   title: string;
   priority: string;
   precondition?: string | null;

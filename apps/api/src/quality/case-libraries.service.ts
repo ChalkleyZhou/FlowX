@@ -3,6 +3,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { assignTestCaseNumbers } from './test-case-number';
+import { normalizeTestCaseProfile, profilePatch } from './test-case-profile';
 import type {
   CreateCaseLibraryDto,
   CreateTestCaseDefinitionDto,
@@ -193,6 +194,7 @@ export class CaseLibrariesService {
           precondition: dto.precondition?.trim() || null,
           testData: dto.testData?.trim() || null,
           targetKeys: dto.targetKeys,
+          ...normalizeTestCaseProfile(dto),
           steps: dto.steps as Prisma.InputJsonValue,
           expected: dto.expected.trim(),
           tags: dto.tags as Prisma.InputJsonValue | undefined,
@@ -268,6 +270,7 @@ export class CaseLibrariesService {
             precondition: item.precondition ?? null,
             testData: item.testData ?? null,
             targetKeys: item.targetKeys,
+            ...normalizeTestCaseProfile(item),
             steps: item.steps as Prisma.InputJsonValue,
             expected: item.expected,
             tags: item.tags?.length
@@ -383,6 +386,7 @@ export class CaseLibrariesService {
         ...(dto.precondition !== undefined ? { precondition: dto.precondition?.trim() || null } : {}),
         ...(dto.testData !== undefined ? { testData: dto.testData?.trim() || null } : {}),
         ...(dto.targetKeys !== undefined ? { targetKeys: dto.targetKeys } : {}),
+        ...profilePatch(dto),
         ...(dto.steps !== undefined ? { steps: steps as Prisma.InputJsonValue } : {}),
         ...(dto.expected !== undefined ? { expected } : {}),
         ...(dto.tags !== undefined

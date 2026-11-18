@@ -183,6 +183,36 @@ export class CreateTestCaseDefinitionDto {
   @MaxLength(5000)
   testData?: string;
 
+  @IsOptional() @IsString() @MaxLength(50)
+  scenarioType?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(50)
+  caseType?: string | null;
+
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @MaxLength(100, { each: true })
+  deviceModels?: string[];
+
+  @IsOptional() @IsArray() @ArrayMaxSize(8) @IsString({ each: true }) @MaxLength(50, { each: true })
+  applicableEnds?: string[];
+
+  @IsOptional() @IsString() @MaxLength(200)
+  traceId?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(5000)
+  purpose?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(5000)
+  passCriteria?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(5000)
+  failCriteria?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(20)
+  automationStatus?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(5000)
+  remark?: string | null;
+
   @IsArray()
   @IsString({ each: true })
   steps!: string[];
@@ -251,6 +281,36 @@ export class UpdateTestCaseDefinitionDto {
   @MaxLength(5000)
   testData?: string | null;
 
+  @IsOptional() @IsString() @MaxLength(50)
+  scenarioType?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(50)
+  caseType?: string | null;
+
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @MaxLength(100, { each: true })
+  deviceModels?: string[];
+
+  @IsOptional() @IsArray() @ArrayMaxSize(8) @IsString({ each: true }) @MaxLength(50, { each: true })
+  applicableEnds?: string[];
+
+  @IsOptional() @IsString() @MaxLength(200)
+  traceId?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(5000)
+  purpose?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(5000)
+  passCriteria?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(5000)
+  failCriteria?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(20)
+  automationStatus?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(5000)
+  remark?: string | null;
+
   @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
@@ -315,6 +375,36 @@ export class ImportTestCaseRowDto {
   @IsString()
   @MaxLength(5000)
   testData?: string;
+
+  @IsOptional() @IsString() @MaxLength(50)
+  scenarioType?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(50)
+  caseType?: string | null;
+
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @MaxLength(100, { each: true })
+  deviceModels?: string[];
+
+  @IsOptional() @IsArray() @ArrayMaxSize(8) @IsString({ each: true }) @MaxLength(50, { each: true })
+  applicableEnds?: string[];
+
+  @IsOptional() @IsString() @MaxLength(200)
+  traceId?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(5000)
+  purpose?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(5000)
+  passCriteria?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(5000)
+  failCriteria?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(20)
+  automationStatus?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(5000)
+  remark?: string | null;
 
   @IsArray()
   @ArrayMinSize(1)

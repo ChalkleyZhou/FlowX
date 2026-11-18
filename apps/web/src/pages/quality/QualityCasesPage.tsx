@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, Eye, Folder, FolderOpen, FolderTree, Loader2
 import { useSearchParams } from 'react-router-dom';
 import { useRememberedSearchFilters } from '../../utils/list-filter-storage';
 import { api } from '../../api';
+import { applicableEndLabels } from './QualityCaseProfileFields';
 import { PagedSelect } from '../../components/PagedSelect';
 import { QualityModuleTree } from './QualityModuleTree';
 import { useProjectScopeOptional, useScopedProjectId } from '../../project-scope-context';
@@ -541,7 +542,14 @@ export function QualityCasesPage() {
                 <div><dt className="text-xs text-muted-foreground">模块</dt><dd className="mt-1 font-medium">{selectedCase.module?.name ?? '未分模块'}</dd></div>
                 <div><dt className="text-xs text-muted-foreground">优先级</dt><dd className="mt-1"><Badge variant={priorityBadgeVariant(selectedCase.priority)}>{selectedCase.priority}</Badge></dd></div>
                 <div><dt className="text-xs text-muted-foreground">版本</dt><dd className="mt-1 font-medium">v{selectedCase.version}</dd></div>
+                {selectedCase.scenarioType ? <div><dt className="text-xs text-muted-foreground">场景类型</dt><dd className="mt-1 font-medium">{selectedCase.scenarioType}</dd></div> : null}
+                {selectedCase.caseType ? <div><dt className="text-xs text-muted-foreground">用例类型</dt><dd className="mt-1 font-medium">{selectedCase.caseType}</dd></div> : null}
+                {selectedCase.applicableEnds?.length ? <div><dt className="text-xs text-muted-foreground">适用端</dt><dd className="mt-1 font-medium">{applicableEndLabels(selectedCase.applicableEnds).join('、')}</dd></div> : null}
+                {selectedCase.deviceModels?.length ? <div><dt className="text-xs text-muted-foreground">适用机型</dt><dd className="mt-1 font-medium">{selectedCase.deviceModels.join('、')}</dd></div> : null}
+                {selectedCase.traceId ? <div><dt className="text-xs text-muted-foreground">需求/追溯 ID</dt><dd className="mt-1 font-medium">{selectedCase.traceId}</dd></div> : null}
+                {selectedCase.automationStatus ? <div><dt className="text-xs text-muted-foreground">是否可自动化</dt><dd className="mt-1 font-medium">{selectedCase.automationStatus}</dd></div> : null}
               </dl>
+              {selectedCase.purpose ? <div><h3 className="font-medium text-foreground">测试目的</h3><p className="mt-2 whitespace-pre-wrap leading-6 text-muted-foreground">{selectedCase.purpose}</p></div> : null}
               {selectedCase.precondition ? (
                 <div><h3 className="font-medium text-foreground">前置条件</h3><p className="mt-2 leading-6 text-muted-foreground">{selectedCase.precondition}</p></div>
               ) : null}
@@ -558,6 +566,9 @@ export function QualityCasesPage() {
                 <h3 className="font-medium text-foreground">预期结果</h3>
                 <p className="mt-2 rounded-md border border-border bg-card p-3 leading-6">{selectedCase.expected}</p>
               </div>
+              {selectedCase.passCriteria ? <div><h3 className="font-medium text-foreground">通过标准</h3><p className="mt-2 whitespace-pre-wrap leading-6 text-muted-foreground">{selectedCase.passCriteria}</p></div> : null}
+              {selectedCase.failCriteria ? <div><h3 className="font-medium text-foreground">失败判定</h3><p className="mt-2 whitespace-pre-wrap leading-6 text-muted-foreground">{selectedCase.failCriteria}</p></div> : null}
+              {selectedCase.remark ? <div><h3 className="font-medium text-foreground">备注</h3><p className="mt-2 whitespace-pre-wrap leading-6 text-muted-foreground">{selectedCase.remark}</p></div> : null}
               {selectedCase.tags?.length ? (
                 <div>
                   <h3 className="font-medium text-foreground">标签</h3>

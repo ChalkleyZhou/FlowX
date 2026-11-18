@@ -1,0 +1,32 @@
+ALTER TABLE "TestCaseDefinition" ADD COLUMN "scenarioType" TEXT;
+ALTER TABLE "TestCaseDefinition" ADD COLUMN "caseType" TEXT;
+ALTER TABLE "TestCaseDefinition" ADD COLUMN "deviceModels" JSONB;
+ALTER TABLE "TestCaseDefinition" ADD COLUMN "applicableEnds" JSONB;
+ALTER TABLE "TestCaseDefinition" ADD COLUMN "traceId" TEXT;
+ALTER TABLE "TestCaseDefinition" ADD COLUMN "purpose" TEXT;
+ALTER TABLE "TestCaseDefinition" ADD COLUMN "passCriteria" TEXT;
+ALTER TABLE "TestCaseDefinition" ADD COLUMN "failCriteria" TEXT;
+ALTER TABLE "TestCaseDefinition" ADD COLUMN "automationStatus" TEXT;
+ALTER TABLE "TestCaseDefinition" ADD COLUMN "remark" TEXT;
+
+ALTER TABLE "TestRequestScopeCase" ADD COLUMN "scenarioType" TEXT;
+ALTER TABLE "TestRequestScopeCase" ADD COLUMN "caseType" TEXT;
+ALTER TABLE "TestRequestScopeCase" ADD COLUMN "deviceModels" JSONB;
+ALTER TABLE "TestRequestScopeCase" ADD COLUMN "applicableEnds" JSONB;
+ALTER TABLE "TestRequestScopeCase" ADD COLUMN "traceId" TEXT;
+ALTER TABLE "TestRequestScopeCase" ADD COLUMN "purpose" TEXT;
+ALTER TABLE "TestRequestScopeCase" ADD COLUMN "passCriteria" TEXT;
+ALTER TABLE "TestRequestScopeCase" ADD COLUMN "failCriteria" TEXT;
+ALTER TABLE "TestRequestScopeCase" ADD COLUMN "automationStatus" TEXT;
+ALTER TABLE "TestRequestScopeCase" ADD COLUMN "remark" TEXT;
+
+ALTER TABLE "TestCaseSnapshot" ADD COLUMN "scenarioType" TEXT;
+ALTER TABLE "TestCaseSnapshot" ADD COLUMN "caseType" TEXT;
+ALTER TABLE "TestCaseSnapshot" ADD COLUMN "deviceModels" JSONB;
+ALTER TABLE "TestCaseSnapshot" ADD COLUMN "applicableEnds" JSONB;
+ALTER TABLE "TestCaseSnapshot" ADD COLUMN "traceId" TEXT;
+ALTER TABLE "TestCaseSnapshot" ADD COLUMN "purpose" TEXT;
+ALTER TABLE "TestCaseSnapshot" ADD COLUMN "passCriteria" TEXT;
+ALTER TABLE "TestCaseSnapshot" ADD COLUMN "failCriteria" TEXT;
+ALTER TABLE "TestCaseSnapshot" ADD COLUMN "automationStatus" TEXT;
+ALTER TABLE "TestCaseSnapshot" ADD COLUMN "remark" TEXT;

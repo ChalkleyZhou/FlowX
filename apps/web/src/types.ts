@@ -812,7 +812,20 @@ export interface QualityRetrievalSummary {
   truncated: boolean;
 }
 
-export interface TestCaseDefinition {
+export interface TestCaseProfileFields {
+  scenarioType?: string | null;
+  caseType?: string | null;
+  deviceModels?: string[] | null;
+  applicableEnds?: string[] | null;
+  traceId?: string | null;
+  purpose?: string | null;
+  passCriteria?: string | null;
+  failCriteria?: string | null;
+  automationStatus?: string | null;
+  remark?: string | null;
+}
+
+export interface TestCaseDefinition extends TestCaseProfileFields {
   id: string;
   libraryId: string;
   moduleId?: string | null;
@@ -849,7 +862,7 @@ export interface TestCasePage {
   };
 }
 
-export interface TestCaseImportRow {
+export interface TestCaseImportRow extends TestCaseProfileFields {
   externalId?: string;
   title: string;
   priority?: 'P0' | 'P1' | 'P2' | 'P3';
@@ -863,7 +876,7 @@ export interface TestCaseImportRow {
   tags?: string[];
 }
 
-export interface TestCaseSnapshot {
+export interface TestCaseSnapshot extends TestCaseProfileFields {
   id: string;
   sourceDefinitionId?: string | null;
   sourceVersion?: number | null;
@@ -1105,7 +1118,7 @@ export interface TestDesignCandidate {
   matchScore?: number | null;
   matchReason?: string | null;
   coverageKeys: string[];
-  proposedCase: {
+  proposedCase: TestCaseProfileFields & {
     title: string;
     priority: string;
     precondition?: string | null;
