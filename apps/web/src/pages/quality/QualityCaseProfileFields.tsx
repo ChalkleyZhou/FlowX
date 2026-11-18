@@ -64,7 +64,10 @@ export function caseProfileFromDefinition(value?: TestCaseProfileFields | null):
   };
 }
 
-export function caseProfilePayload(value: CaseProfileForm): TestCaseProfileFields {
+export function caseProfilePayload(value: CaseProfileForm): Omit<TestCaseProfileFields, 'deviceModels' | 'applicableEnds'> & {
+  deviceModels: string[];
+  applicableEnds: string[];
+} {
   return {
     scenarioType: value.scenarioType || null,
     caseType: value.caseType || null,
