@@ -16,20 +16,28 @@ interface Props {
   workflowRunId?: string;
   refreshKey?: string;
   onChanged?: () => void | Promise<void>;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function RequirementChangesPanel(props: Props) {
   return <ChangesPanel key={`${props.requirementId}:${props.workflowRunId ?? ''}`} {...props} />;
 }
 
-function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged }: Props) {
+function ChangesPanel({ requirementId, workflowRunId, refreshKey, onChanged, open: controlledOpen, onOpenChange }: Props) {
   const navigate = useNavigate();
   const [data, setData] = useState<ChangesPage | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [writeError, setWriteError] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (next: boolean | ((current: boolean) => boolean)) => {
+    const value = typeof next === 'function' ? next(open) : next;
+    if (controlledOpen === undefined) setInternalOpen(value);
+    onOpenChange?.(value);
+  };
   const [content, setContent] = useState('');
   const [busy, setBusy] = useState(false);
   const [file, setFile] = useState<File | null>(null);

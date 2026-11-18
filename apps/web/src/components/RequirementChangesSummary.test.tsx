@@ -23,7 +23,7 @@ describe('RequirementChangesSummary', () => {
 
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    vi.mocked(api.getRequirementChanges).mockResolvedValue({ items: [record(3), record(2), record(1)], total: 4, page: 1, pageSize: 3, totalPages: 2, revision: 3, changes: [record(3), record(2), record(1)] });
+    vi.mocked(api.getRequirementChanges).mockResolvedValue({ items: [record(3), record(2), record(1)], total: 4, page: 1, pageSize: 3, totalPages: 2, revision: 3 });
     onViewAll.mockReset(); onCreateChange.mockReset();
     container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
   });
@@ -46,7 +46,7 @@ describe('RequirementChangesSummary', () => {
     vi.mocked(api.getRequirementChanges).mockRejectedValueOnce(new Error('修改项服务不可用'));
     await act(async () => { root.render(<RequirementChangesSummary requirementId="req-1" onViewAll={onViewAll} onCreateChange={onCreateChange} />); });
     expect(container.textContent).toContain('修改项服务不可用');
-    vi.mocked(api.getRequirementChanges).mockResolvedValueOnce({ items: [record(1)], total: 1, page: 1, pageSize: 3, totalPages: 1, revision: 1, changes: [record(1)] });
+    vi.mocked(api.getRequirementChanges).mockResolvedValueOnce({ items: [record(1)], total: 1, page: 1, pageSize: 3, totalPages: 1, revision: 1 });
     await act(async () => { Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent?.trim() === '重试')?.click(); await Promise.resolve(); });
     expect(container.textContent).toContain('修改内容 1');
   });

@@ -367,6 +367,7 @@ export interface WorkItem {
   workspace?: { id: string; name: string } | null;
   sourceWorkflowRun?: { id: string; status: string } | null;
   reviewFinding?: { id: string; type: string; severity: string; title: string; description: string } | null;
+  assignments?: RequirementAssignment[];
   executionPlans?: ExecutionPlan[];
   updatedAt: string;
   createdAt: string;
