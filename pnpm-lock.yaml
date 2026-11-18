@@ -73,6 +73,9 @@ importers:
         specifier: ^3.4.0
         version: 3.4.0
     devDependencies:
+      '@types/ali-oss':
+        specifier: ^6.23.4
+        version: 6.23.4
       '@types/node':
         specifier: ^22.13.10
         version: 22.19.15
@@ -1555,6 +1558,9 @@ packages:
   '@tootallnate/once@2.0.1':
     resolution: {integrity: sha512-HqmEUIGRJ5fSXchkVgR5F7qn48bDBzv0kWj/Kfu5e6uci4UlEeng4331LnBkWffb++Ei3FOVLxo8JJWMFBDMeQ==}
     engines: {node: '>= 10'}
+
+  '@types/ali-oss@6.23.4':
+    resolution: {integrity: sha512-WR0ml5hqj92KOPW0q8LlewHvveEJSnTfeL0VbSNM60PP1FIx6DdSx0rz/fCdDAkpS63BTZ1FYpGJ2GXsGMEtUQ==}
 
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
@@ -4699,6 +4705,8 @@ snapshots:
   '@tokenizer/token@0.3.0': {}
 
   '@tootallnate/once@2.0.1': {}
+
+  '@types/ali-oss@6.23.4': {}
 
   '@types/babel__core@7.20.5':
     dependencies:

@@ -17,13 +17,14 @@ import { ArtifactsController } from '../artifacts/artifacts.controller';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import { EvidenceService } from '../artifacts/evidence.service';
 import { LocalArtifactStorageProvider } from '../artifacts/local-artifact-storage.provider';
+import { FileStorageService } from '../artifacts/file-storage.service';
 
 const directory = mkdtempSync(join(tmpdir(), 'flowx-local-owner-http-'));
 const url = `file:${join(directory, 'test.db')}`;
 const prisma = new PrismaClient({ datasources: { db: { url } } });
 const sessions = new ExecutionSessionsService(prisma as never);
 const events = new SyncEventsService(prisma as never, sessions);
-const artifacts = new ArtifactsService(prisma as never, sessions, new LocalArtifactStorageProvider());
+const artifacts = new ArtifactsService(prisma as never, sessions, new FileStorageService(new LocalArtifactStorageProvider()));
 const evidence = new EvidenceService(prisma as never, sessions);
 const previousStoreRoot = process.env.FLOWX_ARTIFACT_STORE_ROOT;
 process.env.FLOWX_ARTIFACT_STORE_ROOT = join(directory, 'artifacts');

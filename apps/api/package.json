@@ -30,6 +30,7 @@
     "yauzl": "^3.4.0"
   },
   "devDependencies": {
+    "@types/ali-oss": "^6.23.4",
     "@types/node": "^22.13.10",
     "@types/nodemailer": "^8.0.0",
     "@types/yauzl": "^3.4.0",

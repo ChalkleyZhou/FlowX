@@ -82,7 +82,7 @@ export class ArtifactsController {
     @Req() req: ArtifactRequest,
     @Res() res: ArtifactResponse,
   ) {
-    const { artifact, content } = await this.artifactsService.readLocalContent(id, toScope(req));
+    const { artifact, content } = await this.artifactsService.readContent(id, toScope(req));
     res.type(artifact.mimeType || 'application/octet-stream');
     res.setHeader('content-length', String(content.byteLength));
     res.setHeader('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(artifact.name)}`);

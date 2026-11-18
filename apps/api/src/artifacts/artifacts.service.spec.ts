@@ -19,7 +19,10 @@ function createService() {
     requireWritableSession: vi.fn().mockResolvedValue({}),
   };
   const storage = {
-    provider: 'local',
+    defaultProviderName: 'local',
+    defaultProvider: vi.fn(),
+    providerFor: vi.fn(),
+    validateReference: vi.fn(),
     resolvePath: vi.fn().mockReturnValue('/safe/report.html'),
     write: vi.fn(),
     read: vi.fn(),
@@ -143,7 +146,7 @@ describe('ArtifactsService', () => {
       storageKey: 'managed/session-1/execution.log',
     });
 
-    expect(storage.resolvePath).toHaveBeenCalledWith('managed/session-1/execution.log');
+    expect(storage.validateReference).toHaveBeenCalledWith('local', 'managed/session-1/execution.log');
   });
 
   it('creates a pending managed upload and verifies uploaded content', async () => {
