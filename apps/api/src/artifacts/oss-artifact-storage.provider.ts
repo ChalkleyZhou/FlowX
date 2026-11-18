@@ -78,7 +78,8 @@ export class OssArtifactStorageProvider implements ArtifactStorageProvider {
   async stat(storageKey: string): Promise<{ byteSize: number }> {
     try {
       const result = await this.client.head(this.toObjectKey(storageKey));
-      const value = result.res?.headers?.['content-length'] ?? result.res?.headers?.['Content-Length'];
+      const headers = (result.res?.headers ?? {}) as Record<string, unknown>;
+      const value = headers['content-length'] ?? headers['Content-Length'];
       const byteSize = Number(value);
       if (!Number.isFinite(byteSize) || byteSize < 0) throw new Error('invalid content length');
       return { byteSize };

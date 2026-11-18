@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException } from '@nes
 import { describe, expect, it, vi } from 'vitest';
 import { ArtifactsService } from './artifacts.service';
 
-function createService() {
+function createService(defaultProviderName: 'local' | 'oss' = 'local') {
   const prisma = {
     artifact: {
       findFirst: vi.fn(),
@@ -19,7 +19,7 @@ function createService() {
     requireWritableSession: vi.fn().mockResolvedValue({}),
   };
   const storage = {
-    defaultProviderName: 'local',
+    defaultProviderName,
     defaultProvider: vi.fn(),
     providerFor: vi.fn(),
     validateReference: vi.fn(),
@@ -184,6 +184,42 @@ describe('ArtifactsService', () => {
 
     expect(pending).toEqual(expect.objectContaining({ artifact: expect.objectContaining({ status: 'PENDING' }) }));
     expect(completed).toEqual(expect.objectContaining({ status: 'AVAILABLE' }));
+  });
+
+  it('uses the configured oss provider for new managed uploads', async () => {
+    const { service, prisma, executionSessions, storage } = createService('oss');
+    executionSessions.requireWritableSession.mockResolvedValue(runningSession);
+    prisma.artifact.create.mockImplementation(({ data }: { data: unknown }) => ({ id: 'artifact-oss', ...data as object }));
+
+    const pending = await service.createManagedUpload('session-1', {
+      artifactType: 'LOG',
+      name: 'execution.log',
+      byteSize: 4,
+      sha256: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+    }, { organizationId: 'org-1' });
+
+    expect(pending.artifact.storageProvider).toBe('oss');
+    expect(pending.artifact.storageKey).toContain('managed/session-1/');
+    expect(storage.validateReference).toHaveBeenCalledWith('oss', pending.artifact.storageKey);
+  });
+
+  it('reads an oss artifact through the provider while preserving local compatibility', async () => {
+    const { service, prisma, storage } = createService('oss');
+    const artifact = {
+      id: 'artifact-oss',
+      storageProvider: 'oss',
+      storageKey: 'managed/session-1/report.log',
+      status: 'AVAILABLE',
+      executionSession: { organizationId: 'org-1' },
+    };
+    prisma.artifact.findUnique.mockResolvedValue(artifact);
+    storage.read.mockResolvedValue(Buffer.from('oss-content'));
+
+    await expect(service.readContent(artifact.id, { organizationId: 'org-1' })).resolves.toMatchObject({
+      artifact,
+      content: Buffer.from('oss-content'),
+    });
+    expect(storage.read).toHaveBeenCalledWith('oss', artifact.storageKey);
   });
 
   it('accepts an identical content retry after the artifact became available', async () => {
