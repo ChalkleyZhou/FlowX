@@ -4,7 +4,7 @@
 
 需求、问题和缺陷已经统一为 `WorkItem`，但 Web 端仍存在多套详情体验：`RequirementDetailPage` 承载需求修改、排期和研发流程，`IssueDetailPage` 与 `BugDetailPage` 各自维护编辑表单，`WorkItemDetailPage` 又提供了一套较简化的统一入口。继续只优化需求页面会把共享字段和操作继续分叉。
 
-本次先优化需求详情页，同时以统一工作项壳层作为设计基线。问题和缺陷页面本轮保持现有页面布局，但共享组件和 API 契约必须可供后续迁移使用。
+当前 `/work-items/:id` 路由实际使用 `WorkItemDetailPage`；`RequirementDetailPage` 保留着需求专属流程测试和历史实现。本次先优化该统一入口中的需求展示，同时以统一工作项壳层作为设计基线。问题和缺陷页面本轮保持现有页面布局，但共享组件和 API 契约必须可供后续迁移使用。
 
 ## 目标与范围
 
@@ -17,7 +17,7 @@
 
 ### 本次范围
 
-- 重排 `RequirementDetailPage` 的信息架构。
+- 重排 `/work-items/:id` 对需求类型的详情信息架构，主要修改 `WorkItemDetailPage`。
 - 新增需求详情右侧的工作项快速编辑区。
 - 新增需求修改项摘要区，复用现有需求修改 API 和状态语义。
 - 扩展需求更新 API 支持 `ownerUserId`，并校验组织归属。
@@ -70,7 +70,7 @@
 
 共享工作项元信息展示和编辑边界，接收当前 `WorkItem`/`Requirement`、项目和工作区上下文，以及 `onSaved` 回调。需求页只启用负责人、优先级和版本；后续问题/缺陷迁移时可扩展状态、严重级别等字段。
 
-保存统一调用工作项更新契约，避免在页面中复制成员查询、版本查询和组织权限逻辑。
+保存统一调用 `api.updateWorkItem` 工作项更新契约，避免在页面中复制成员查询、版本查询和组织权限逻辑。保留并扩展 `api.updateRequirement` 是为了兼容需求专属旧组件和现有测试；后续问题/缺陷迁移时以 `updateWorkItem` 为唯一快速编辑入口。
 
 ### `RequirementChangesSummary`
 
