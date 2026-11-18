@@ -19,6 +19,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog';
@@ -498,7 +499,7 @@ export function RequirementsPage() {
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto" onEscapeKeyDown={(event) => { if (prototypeSubmitting || createSubmitting) event.preventDefault(); }} onPointerDownOutside={(event) => { if (prototypeSubmitting || createSubmitting) event.preventDefault(); }}>
+        <DialogContent className="max-w-2xl" onEscapeKeyDown={(event) => { if (prototypeSubmitting || createSubmitting) event.preventDefault(); }} onPointerDownOutside={(event) => { if (prototypeSubmitting || createSubmitting) event.preventDefault(); }}>
           <DialogHeader>
             <DialogTitle>创建需求</DialogTitle>
             <DialogDescription>填写标题、选择版本即可创建；也可上传已有原型，由 AI 整理。</DialogDescription>
@@ -637,9 +638,11 @@ export function RequirementsPage() {
               <div className="flex flex-col gap-2 text-sm"><label>默认 AI 执行器</label>{onlineAiAvailable ? <Select value={prototypeProvider ?? undefined} onValueChange={(value: 'codex' | 'cursor') => setPrototypeProvider(value)}><SelectTrigger aria-label="原型整理执行器"><SelectValue /></SelectTrigger><SelectContent>{availableAiProviders.map((provider) => <SelectItem key={provider.id} value={provider.id}>{provider.label}</SelectItem>)}</SelectContent></Select> : <p role="status" className="text-sm leading-6 text-muted-foreground">{ONLINE_AI_UNAVAILABLE_MESSAGE}</p>}</div>
               {prototypeError && <p role="alert" className="text-sm text-danger">{prototypeError}</p>}
             </>}
-            <UiButton type="submit" className="mt-2" disabled={prototypeSubmitting || createSubmitting || (createMode === 'prototype' && !onlineAiAvailable)}>
-              {createMode === 'prototype' ? prototypeSubmitting ? '上传整理中…' : '上传原型，AI 整理' : createSubmitting ? '创建中…' : '创建需求'}
-            </UiButton>
+            <DialogFooter>
+              <UiButton type="submit" disabled={prototypeSubmitting || createSubmitting || (createMode === 'prototype' && !onlineAiAvailable)}>
+                {createMode === 'prototype' ? prototypeSubmitting ? '上传整理中…' : '上传原型，AI 整理' : createSubmitting ? '创建中…' : '创建需求'}
+              </UiButton>
+            </DialogFooter>
             </fieldset>
           </form>
         </DialogContent>

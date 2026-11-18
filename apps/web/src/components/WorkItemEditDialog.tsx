@@ -111,7 +111,7 @@ export function WorkItemEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={next => { if (!saving) onOpenChange(next); }}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>编辑{kindLabel(workItem.kind)}</DialogTitle>
           <DialogDescription>快速修改当前工作项的常用信息，复杂配置请进入统一详情。</DialogDescription>

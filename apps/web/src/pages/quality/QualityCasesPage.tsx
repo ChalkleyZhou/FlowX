@@ -530,7 +530,7 @@ export function QualityCasesPage() {
       </section>
 
       <Dialog open={Boolean(selectedCase)} onOpenChange={(open) => !open && setSelectedCase(null)}>
-        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-[85vh] max-w-2xl">
           <DialogHeader>
             <DialogTitle>{selectedCase?.title}</DialogTitle>
             <DialogDescription>用例完整内容与覆盖信息</DialogDescription>

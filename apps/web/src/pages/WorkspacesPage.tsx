@@ -227,7 +227,9 @@ export function WorkspacesPage() {
                 placeholder="说明这个工作区对应的项目或业务边界。"
               />
             </div>
-            <UiButton type="submit">创建工作区</UiButton>
+            <DialogFooter>
+              <UiButton type="submit">创建工作区</UiButton>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
@@ -274,9 +276,11 @@ export function WorkspacesPage() {
                 placeholder="main / master / develop"
               />
             </div>
-            <UiButton type="submit" disabled={addingRepository}>
-              {addingRepository ? '提交中...' : '添加代码库'}
-            </UiButton>
+            <DialogFooter>
+              <UiButton type="submit" disabled={addingRepository}>
+                {addingRepository ? '提交中...' : '添加代码库'}
+              </UiButton>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
@@ -323,7 +327,7 @@ export function WorkspacesPage() {
                 placeholder="main / master / develop"
               />
             </div>
-            <DialogFooter className="border-t border-border pt-4">
+            <DialogFooter>
               <UiButton
                 type="submit"
                 className="min-w-[140px]"
@@ -360,7 +364,9 @@ export function WorkspacesPage() {
                 placeholder="例如：feature/workspace-page"
               />
             </div>
-            <UiButton type="submit">保存分支</UiButton>
+            <DialogFooter>
+              <UiButton type="submit">保存分支</UiButton>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

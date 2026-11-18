@@ -18,6 +18,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog';
@@ -286,9 +287,11 @@ export function BugsPage() {
               onError={(message) => toast.error(message)}
               disabled={createSubmitting}
             />
-            <UiButton type="submit" disabled={createSubmitting} className="self-start">
-              {createSubmitting ? '创建中...' : '创建缺陷'}
-            </UiButton>
+            <DialogFooter>
+              <UiButton type="submit" disabled={createSubmitting}>
+                {createSubmitting ? '创建中...' : '创建缺陷'}
+              </UiButton>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

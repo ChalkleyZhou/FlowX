@@ -191,7 +191,7 @@ export function QualityModuleManagementDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !busyId && onOpenChange(nextOpen)}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>模块管理</DialogTitle>
           <DialogDescription>按用例库维护模块层级。模块名称在同一个用例库内不可重复。</DialogDescription>

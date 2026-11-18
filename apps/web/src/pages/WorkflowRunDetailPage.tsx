@@ -34,7 +34,7 @@ import { WorkflowSteps } from '../components/WorkflowSteps';
 import { Badge } from '../components/ui/badge';
 import { Button as UiButton } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Input as UiInput } from '../components/ui/input';
 import { Spinner } from '../components/ui/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
@@ -2217,14 +2217,14 @@ function WorkflowRunDetailContent() {
                 </div>
               );
             })}
-            <div className="flex justify-end gap-2">
+            <DialogFooter>
               <UiButton type="button" variant="outline" onClick={() => setCompleteLocalOpen(false)}>
                 取消
               </UiButton>
               <UiButton type="submit" disabled={completeLocalBusy}>
                 {completeLocalBusy ? '提交中…' : '确认完成'}
               </UiButton>
-            </div>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

@@ -13,7 +13,7 @@ import { SectionHeader } from '../components/SectionHeader';
 import { Badge } from '../components/ui/badge';
 import { Button as UiButton } from '../components/ui/button';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Input as UiInput } from '../components/ui/input';
 import {
   Select,
@@ -130,7 +130,9 @@ export function ProjectsPage() {
                 placeholder="说明这个项目服务的业务目标或交付范围。"
               />
             </div>
-            <UiButton type="submit">创建项目</UiButton>
+            <DialogFooter>
+              <UiButton type="submit">创建项目</UiButton>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

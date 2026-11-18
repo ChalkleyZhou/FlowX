@@ -113,7 +113,7 @@ export function QualityCaseEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>编辑测试用例</DialogTitle>
           <DialogDescription>保存后生成新的用例版本，历史提测快照保持不变。</DialogDescription>

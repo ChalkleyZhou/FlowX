@@ -129,7 +129,7 @@ export function RequirementEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!saving) onOpenChange(next); }}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>编辑需求</DialogTitle>
           <DialogDescription>修改需求内容和补充档案。创建人与创建时间保持不变。</DialogDescription>
