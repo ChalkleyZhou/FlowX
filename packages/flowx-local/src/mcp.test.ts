@@ -1387,7 +1387,7 @@ it('提测单工具按动作透传发现、创建与显式准备，候选保留�
     expect(calls).toContainEqual(expect.objectContaining({ url: 'https://flowx.example/api/quality/test-requests/request%2F1', body: {} }));
     expect(calls).toContainEqual({ url: 'https://flowx.example/api/quality/test-requests', method: 'POST', body: request });
     expect(calls).toContainEqual({ url: 'https://flowx.example/api/quality/test-requests/request%2F1/prepare', method: 'POST', body: { scopeRevision: 2 } });
-    const proposedCase = { title: '原始用例', priority: 'P1', steps: ['执行'], expected: '成功', testData: '账号：用户甲', targetKeys: ['web', 'android'] };
+    const proposedCase = { title: '原始用例', priority: 'P1', steps: ['执行'], expected: '成功', testData: '账号：用户甲', targetKeys: ['web', 'android'], scenarioType: '正向', caseType: '功能', deviceModels: ['RG301', 'RG303'], applicableEnds: ['phone', 'glasses'], traceId: 'TRY-DUAL-01', purpose: '验证双端登录', passCriteria: '进入首页', failCriteria: '停留登录页', automationStatus: '待评估', remark: '试导入' };
     expect((await client.callTool({ name: 'flowx_update_test_candidate', arguments: { testDesignId: 'design', candidateId: 'candidate', revision: 3, proposedCase } })).isError).not.toBe(true);
     expect(calls).toContainEqual({ url: 'https://flowx.example/api/quality/test-designs/design/candidates/candidate', method: 'PATCH', body: { revision: 3, proposedCase } });
     expect((await client.callTool({ name: 'flowx_update_test_candidate', arguments: { testDesignId: 'design', candidateId: 'candidate', revision: 4, proposedCase: { ...proposedCase, testData: null } } })).isError).not.toBe(true);
