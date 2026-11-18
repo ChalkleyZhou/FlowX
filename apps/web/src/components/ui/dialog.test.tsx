@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act } from 'react';
+import { act, type SubmitEvent } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Button } from './button';
@@ -58,7 +58,7 @@ describe('DialogContent', () => {
   });
 
   it('pins a footer nested in a form and keeps submit associated with that form', () => {
-    const onSubmit = vi.fn((event: SubmitEvent) => event.preventDefault());
+    const onSubmit = vi.fn((event: SubmitEvent<HTMLFormElement>) => event.preventDefault());
     act(() => {
       root.render(
         <Dialog open>
