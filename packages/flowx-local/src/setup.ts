@@ -37,6 +37,7 @@ export const SETUP_SKILL_NAMES = [
   'flowx-local-execution',
   'flowx-local-smoke',
   'flowx-local-test',
+  'flowx-destination',
 ] as const;
 export type SetupSkillName = (typeof SETUP_SKILL_NAMES)[number];
 

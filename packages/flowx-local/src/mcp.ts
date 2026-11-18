@@ -844,9 +844,18 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     return new URLSearchParams(Object.entries(input).filter((entry): entry is [string, string | number | string[]] => entry[1] !== undefined).map(([key, value]) => [key, String(value)])).toString();
   }
   server.registerTool('flowx_list_case_libraries', {
-    title: '发现测试用例库', description: '查询有权限的工作区及项目用例库，返回 libraryId 供选例使用。',
-    inputSchema: { workspaceId: z.string().min(1), projectId: z.string().min(1).optional(), ...paginationFields },
-  }, async input => runRequest(() => qualityRequest(`/quality/case-libraries?${qualityQuery(input)}`)));
+    title: '发现测试用例库', description: '按项目列出项目专属用例库。只传 projectId 时由项目确定工作区，并只返回该项目的用例库。上传前把库名交给用户确认；没有合适用例库时让用户给出新库名称，不要自行写入工作区共享库。',
+    inputSchema: { workspaceId: z.string().min(1).optional(), projectId: z.string().min(1).optional(), ...paginationFields },
+  }, async (input) => runRequest(async () => {
+    if (!input.workspaceId && !input.projectId) throw new Error('列出用例库需要 projectId。');
+    let workspaceId = input.workspaceId;
+    if (input.projectId && !workspaceId) {
+      const project = await qualityRequest(`/projects/${encodeURIComponent(input.projectId)}`) as { workspaceId?: string; workspace?: { id?: string } };
+      workspaceId = project.workspaceId || project.workspace?.id;
+      if (!workspaceId) throw new Error('项目没有所属工作区。');
+    }
+    return qualityRequest(`/quality/case-libraries?${qualityQuery({ ...input, workspaceId, ...(input.projectId && !input.workspaceId ? { ownership: 'project' } : {}) })}`);
+  }));
   server.registerTool('flowx_list_case_modules', {
     title: '发现用例库模块', description: '读取所选用例库的模块和层级，返回 moduleId；不修改正式用例库。',
     inputSchema: { libraryId: z.string().min(1), parentId: z.string().optional(), ...paginationFields },
@@ -855,6 +864,51 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     title: '检索正式测试用例', description: '按库、模块、优先级、关键词分页检索正式用例，读取步骤、测试数据、预期、适用端和用例画像。适用端为 phone/glasses/platform/backend，双端和三端在导入时已展开。用返回的 definition id 补选候选。',
     inputSchema: { workspaceId: z.string().min(1), projectId: z.string().min(1).optional(), libraryId: z.string().min(1).optional(), libraryIds: z.array(z.string().min(1)).optional(), moduleId: z.string().min(1).optional(), moduleIds: z.array(z.string().min(1)).optional(), priority: z.enum(['P0', 'P1', 'P2', 'P3']).optional(), priorities: z.array(z.enum(['P0', 'P1', 'P2', 'P3'])).optional(), q: z.string().optional(), page: z.number().int().min(1).optional(), pageSize: z.number().int().min(1).max(100).optional() },
   }, async input => runRequest(() => qualityRequest(`/quality/test-cases?${qualityQuery(input)}`)));
+  const testCaseProfileSchema = {
+    scenarioType: z.string().nullable().optional(), caseType: z.string().nullable().optional(), deviceModels: z.array(z.string()).optional(), applicableEnds: z.array(z.string()).optional(), traceId: z.string().nullable().optional(), purpose: z.string().nullable().optional(), passCriteria: z.string().nullable().optional(), failCriteria: z.string().nullable().optional(), automationStatus: z.string().nullable().optional(), remark: z.string().nullable().optional(),
+  };
+  async function ensureCaseModule(libraryId: string, name: string, parentId?: string) {
+    const page = await qualityRequest(`/quality/case-libraries/${encodeURIComponent(libraryId)}/modules?${qualityQuery({ q: name, parentId: parentId ?? 'null', pageSize: 100 })}`) as { items?: Array<{ id: string; name: string; parentId?: string | null }> };
+    const found = page.items?.find((item) => item.name === name && (parentId ? item.parentId === parentId : !item.parentId));
+    if (found) return found.id;
+    const created = await qualityRequest(`/quality/case-libraries/${encodeURIComponent(libraryId)}/modules`, { method: 'POST', body: JSON.stringify({ name, ...(parentId ? { parentId } : {}) }) }) as { id: string };
+    return created.id;
+  }
+  async function projectWorkspace(projectId: string) {
+    const project = await qualityRequest(`/projects/${encodeURIComponent(projectId)}`) as { name?: string; workspaceId?: string; workspace?: { id?: string; name?: string } };
+    const workspaceId = project.workspaceId || project.workspace?.id;
+    if (!workspaceId) throw new Error('项目没有所属工作区，无法确定用例库。');
+    return { projectId, projectName: project.name ?? '', workspaceId, workspaceName: project.workspace?.name ?? '' };
+  }
+  async function requireProjectLibrary(ctx: { projectId: string; workspaceId: string }, libraryId: string) {
+    for (let page = 1; page <= 5; page += 1) {
+      const result = await qualityRequest(`/quality/case-libraries?${qualityQuery({ workspaceId: ctx.workspaceId, projectId: ctx.projectId, ownership: 'project', page, pageSize: 100 })}`) as { items?: Array<{ id: string; name: string; projectId?: string | null }>; totalPages?: number };
+      const library = result.items?.find((item) => item.id === libraryId && item.projectId === ctx.projectId);
+      if (library) return library;
+      if (!result.totalPages || page >= result.totalPages) break;
+    }
+    throw new Error('用例库不属于该项目。请先向用户确认项目专属用例库，或提供 newLibraryName 新建。');
+  }
+  server.registerTool('flowx_create_test_case', {
+    title: '新建正式测试用例', description: '向用户已确认的项目用例库新建一条正式用例。必须提供 projectId，并且只选择一种去向：已有项目用例库 libraryId，或 newLibraryName 新建项目专属用例库。不要猜测目的地，不要写入工作区共享库。适用端中文取值由服务端展开。传入模块名时复用同名模块，没有则创建。',
+    inputSchema: z.object({
+      projectId: z.string().min(1), libraryId: z.string().min(1).optional(), newLibraryName: z.string().min(1).optional(), moduleId: z.string().min(1).optional(), parentModuleName: z.string().min(1).optional(), moduleName: z.string().min(1).optional(), externalId: z.string().min(1).optional(), title: z.string().min(1), priority: z.enum(['P0', 'P1', 'P2', 'P3']).optional(), precondition: z.string().nullable().optional(), testData: z.string().nullable().optional(), steps: z.array(z.string().min(1)).min(1).max(50), expected: z.string().min(1), tags: z.array(z.string()).optional(), targetKeys: z.array(z.string()).optional(), ...testCaseProfileSchema,
+    }).strict().superRefine((value, context) => {
+      if (Number(Boolean(value.libraryId)) + Number(Boolean(value.newLibraryName)) !== 1) context.addIssue({ code: z.ZodIssueCode.custom, message: '必须指定已有 libraryId，或 newLibraryName 新建项目用例库，且只能选一种。' });
+    }),
+  }, async ({ projectId, libraryId, newLibraryName, parentModuleName, moduleName, moduleId, ...body }) => runRequest(async () => {
+    const ctx = await projectWorkspace(projectId);
+    const library = libraryId
+      ? await requireProjectLibrary(ctx, libraryId)
+      : await qualityRequest('/quality/case-libraries', { method: 'POST', body: JSON.stringify({ workspaceId: ctx.workspaceId, projectId, name: newLibraryName }) }) as { id: string; name: string; projectId?: string | null };
+    let resolvedModuleId = moduleId;
+    if (!resolvedModuleId && (parentModuleName || moduleName)) {
+      const parentId = parentModuleName ? await ensureCaseModule(library.id, parentModuleName) : undefined;
+      resolvedModuleId = moduleName ? await ensureCaseModule(library.id, moduleName, parentId) : parentId;
+    }
+    const created = await qualityRequest(`/quality/case-libraries/${encodeURIComponent(library.id)}/cases`, { method: 'POST', body: JSON.stringify({ ...body, ...(resolvedModuleId ? { moduleId: resolvedModuleId } : {}) }) });
+    return { projectId, projectName: ctx.projectName, workspaceName: ctx.workspaceName, library, case: created };
+  }));
   server.registerTool('flowx_generate_test_design', {
     title: '生成工作项测试设计', description: '在已明确用例库与范围后请求服务端生成候选设计。异步生成后读取最新设计；不会自动确认或开始测试。',
     inputSchema: { testDesignId: z.string().min(1) },

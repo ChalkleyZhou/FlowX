@@ -92,6 +92,7 @@ describe('flowx-local MCP server', () => {
       'flowx_list_case_libraries',
       'flowx_list_case_modules',
       'flowx_list_test_cases',
+      'flowx_create_test_case',
       'flowx_generate_test_design',
       'flowx_update_test_candidate',
       'flowx_update_test_smoke',
@@ -1314,6 +1315,41 @@ it('质量工具发现用例库与模块、过滤用例、生成确认设计、�
     expect(calls).toContainEqual(expect.objectContaining({ url: 'https://flowx.example/api/quality/test-runs/run/cases/case/bug', body: { bugId: 'bug' } }));
     expect((await client.callTool({ name: 'flowx_finish_test_run', arguments: { testRunId: 'run', revision: -1 } })).isError).toBe(true);
     expect((await client.callTool({ name: 'flowx_list_test_cases', arguments: { workspaceId: 'ws', priority: 'unknown' } })).isError).toBe(true);
+  } finally { await client.close(); await server.close(); }
+});
+it('新建正式用例时透传画像字段，并按模块名复用或创建模块', async () => {
+  process.env.FLOWX_API_BASE_URL = 'https://flowx.example/api';
+  process.env.FLOWX_API_TOKEN = 'test-token';
+  const calls: Array<{ url: string; method?: string; body: unknown }> = [];
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    const target = String(url);
+    calls.push({ url: target, method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : {} });
+    if (target.endsWith('/quality/capabilities')) return Response.json({ capabilities: ['local-test-runs'] });
+    if (target.endsWith('/projects/project-1')) return Response.json({ id: 'project-1', name: '接处警项目', workspaceId: 'ws', workspace: { id: 'ws', name: '接处警' } });
+    if (target.includes('/quality/case-libraries?')) return Response.json(testPage([{ id: 'lib/1', name: '项目库', projectId: 'project-1' }]));
+    if (target.endsWith('/quality/case-libraries') && init?.method === 'POST') return Response.json({ id: 'lib-new', name: '现场回归', projectId: 'project-1' });
+    if (target.includes('/modules?') && !init?.method) {
+      const parent = new URL(target).searchParams.get('parentId') === 'null';
+      return Response.json(testPage(parent ? [] : [{ id: 'child-1', name: '登录', parentId: 'parent-1' }]));
+    }
+    if (target.endsWith('/modules')) return Response.json({ id: 'parent-1', name: '账号', parentId: null });
+    return Response.json({ id: 'case-1', applicableEnds: ['phone', 'glasses'], deviceModels: ['RG301', 'RG303'] });
+  });
+  const { client, server } = await connectClient(makeHome());
+  try {
+    const result = await client.callTool({ name: 'flowx_create_test_case', arguments: { projectId: 'project-1', libraryId: 'lib/1', parentModuleName: '账号', moduleName: '登录', externalId: 'CASE-DUAL-01', title: '双端登录跳转', priority: 'P1', steps: ['打开登录页'], expected: '进入首页', applicableEnds: ['双端'], deviceModels: ['RG301/RG303'], scenarioType: '正向', caseType: '功能' } });
+    expect(result.isError).not.toBe(true);
+    expect(calls).toContainEqual(expect.objectContaining({ url: 'https://flowx.example/api/projects/project-1' }));
+    expect(calls).toContainEqual(expect.objectContaining({ url: 'https://flowx.example/api/quality/case-libraries/lib%2F1/modules', method: 'POST', body: { name: '账号' } }));
+    expect(calls).toContainEqual({ url: 'https://flowx.example/api/quality/case-libraries/lib%2F1/cases', method: 'POST', body: { externalId: 'CASE-DUAL-01', title: '双端登录跳转', priority: 'P1', steps: ['打开登录页'], expected: '进入首页', applicableEnds: ['双端'], deviceModels: ['RG301/RG303'], scenarioType: '正向', caseType: '功能', moduleId: 'child-1' } });
+    expect((await client.callTool({ name: 'flowx_create_test_case', arguments: { projectId: 'project-1', newLibraryName: '现场回归', title: '新建库中的用例', steps: ['打开页面'], expected: '页面可见' } })).isError).not.toBe(true);
+    expect(calls).toContainEqual({ url: 'https://flowx.example/api/quality/case-libraries', method: 'POST', body: { workspaceId: 'ws', projectId: 'project-1', name: '现场回归' } });
+    expect(calls).toContainEqual({ url: 'https://flowx.example/api/quality/case-libraries/lib-new/cases', method: 'POST', body: { title: '新建库中的用例', steps: ['打开页面'], expected: '页面可见' } });
+    const beforeInvalid = calls.length;
+    expect((await client.callTool({ name: 'flowx_create_test_case', arguments: { libraryId: 'lib/1', title: '未指定项目', steps: ['一步'], expected: '结果' } })).isError).toBe(true);
+    expect((await client.callTool({ name: 'flowx_create_test_case', arguments: { projectId: 'project-1', title: '未指定用例库', steps: ['一步'], expected: '结果' } })).isError).toBe(true);
+    expect((await client.callTool({ name: 'flowx_create_test_case', arguments: { projectId: 'project-1', libraryId: 'lib/1', newLibraryName: '新库', title: '两种去向', steps: ['一步'], expected: '结果' } })).isError).toBe(true);
+    expect(calls).toHaveLength(beforeInvalid);
   } finally { await client.close(); await server.close(); }
 });
 it('质量工具拒绝不支持服务端和上游权限失败，不降级到旧冒烟入口', async () => {

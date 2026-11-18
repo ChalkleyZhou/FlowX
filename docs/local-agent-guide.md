@@ -18,10 +18,11 @@ irm https://<当前站点>/install.ps1 | iex
 flowx-local login
 ```
 
-不需要预先安装 Node.js。脚本会优先复用已有的 Node.js 20+；没有可用版本时，会把固定版本的 FlowX 私有 runtime 安装到 `~/.flowx/runtime`，再把包和启动器安装到 `~/.flowx`。之后注册后台服务（macOS LaunchAgent / Linux systemd --user / Windows 计划任务），检测到 Cursor / Codex 时询问是否写入继续流程、需求登记、产品构思、Spec & Plan、本地执行、本地冒烟这几个 FlowX Skill 和 MCP。WorkBuddy 请再执行 `flowx-local setup workbuddy`。`login` 只粘贴设置页生成的 `fxpat_…`。
+不需要预先安装 Node.js。脚本会优先复用已有的 Node.js 20+；没有可用版本时，会把固定版本的 FlowX 私有 runtime 安装到 `~/.flowx/runtime`，再把包和启动器安装到 `~/.flowx`。之后注册后台服务（macOS LaunchAgent / Linux systemd --user / Windows 计划任务），检测到 Cursor / Codex 时询问是否写入继续流程、需求登记、产品构思、Spec & Plan、本地执行、本地冒烟、操作去向这几个 FlowX Skill 和 MCP。WorkBuddy 请再执行 `flowx-local setup workbuddy`。`login` 只粘贴设置页生成的 `fxpat_…`。
 
 ## 怎么用
 
+- **操作去向**：新建需求、上传用例，以及其他要写入 FlowX 且可能落到多处的操作，都先确定落点。本机记住了项目和对应容器时，只问是否继续在那里；没有记录时先列出项目，再选版本或用例库。同一批只确认一次。已经点名的工作流、工作项或执行会话直接用那条，不再重选项目。工作区随项目确定。
 - **新建需求**：在 IDE 里明确说要「在 FlowX 新建需求」。普通写代码不会登记；说不清时 Agent 会先问。只需标题和有效发布版本；描述、验收标准、优先级、功能模块、风险与影响、产品需求文档和备注可留空，后续构思中完善。没说优先级时按中创建。无当前版本时需选择已有版本或先创建版本，不支持以 `null` 创建未挂版本需求。流程：选项目 → 确认版本 → 创建需求 → **你确认后再启动工作流**。启动后按当前阶段继续，不固定进入构思。明确要求时也可以编辑或删除已有需求；删除前会再次确认，执行中或已纳入测试的需求会被拒绝。把工作项移出当前版本时传 `versionId: null`，只解除版本归属，不删除工作项。
 - **继续流程**：说「接着做这条 FlowX」。Agent 先调用 `flowx_get_workflow_position` 读取服务器上的当前阶段及最新已确认的上游产物。列出任务时可以按项目、发布版本、规划状态和优先级筛选；版本和规划状态只筛需求。PRD、设计确认后可从 Spec & Plan 或执行继续，等待网页确认时不生成下一步；他人已领取时返回 `localAction: none`，应等待当前执行人回传。网页需求详情也可直接继续已有流程，多条活跃流程按仓库范围选择。
 - **需求变更**：在网页需求或工作流详情点击「需求变更」，或让本地 Agent 提交。一句话补充会进入后续领取；重新走流程会保留旧轮。换包时给出本地 ZIP 路径，不超过 20 MiB。同一次提交重试使用同一个提交标识。新流程还没启动时，确认后继续启动，不要再记一条变更。正在运行的任务保留领取时上下文，需先结束旧任务再重新领取。领取构思、设计、Spec & Plan 和执行时，交接会带上已填写的优先级、功能模块、风险与影响、产品需求文档、备注和创建人。
@@ -84,7 +85,7 @@ flowx-local login
 
 本地 Agent 可使用以下正式工具，不需要解析网页或访问数据库：
 
-- 选例：`flowx_list_test_libraries`、`flowx_list_test_modules`、`flowx_list_test_cases`、`flowx_create_test_design`、`flowx_get_test_design`、`flowx_update_test_selection`、`flowx_add_test_candidates`、`flowx_update_test_candidate`、`flowx_update_test_smoke`、`flowx_generate_test_design`、`flowx_confirm_test_design`。检索结果包含用例画像。`applicableEnds` 为 `phone`、`glasses`、`platform`、`backend`；`@flowx-ai/local` `0.7.1` 起，`flowx_update_test_candidate` 的 `proposedCase` 可以写入这些可选字段。旧调用不传新字段仍然有效。已安装 `0.7.0` 时执行 `flowx-local update`，并重新加载 IDE 的 FlowX MCP。执行轮次的 `targetKeys` 仍是 Web、API、iOS、Android 等执行目标，不是产品适用端。
+- 选例：`flowx_list_test_libraries`、`flowx_list_test_modules`、`flowx_list_test_cases`、`flowx_create_test_design`、`flowx_get_test_design`、`flowx_update_test_selection`、`flowx_add_test_candidates`、`flowx_update_test_candidate`、`flowx_update_test_smoke`、`flowx_generate_test_design`、`flowx_confirm_test_design`。检索结果包含用例画像。`applicableEnds` 为 `phone`、`glasses`、`platform`、`backend`；`@flowx-ai/local` `0.7.1` 起，`flowx_update_test_candidate` 的 `proposedCase` 可以写入这些可选字段。`flowx_create_test_case` 向已确认的项目新建正式用例：先用 `flowx_list_case_libraries` 按 `projectId` 列出项目用例库，由用户选择 `libraryId`，或明确给出 `newLibraryName` 新建项目专属库。缺少项目或用例库去向时工具会拒绝，不会写入工作区共享库。包含该工具的本地包安装后重新加载 IDE MCP。旧调用不传新字段仍然有效。已安装 `0.7.0` 时执行 `flowx-local update`，并重新加载 IDE 的 FlowX MCP。执行轮次的 `targetKeys` 仍是 Web、API、iOS、Android 等执行目标，不是产品适用端。
 - 提测：`flowx_test_requests` 支持 `list/get/create/prepare`，创建后保持草稿；检查真实冻结范围并获得用户确认后显式 `prepare`，传入 `scopeRevision`。存在冒烟快照时仍需通过原门禁。
 - 执行：`flowx_create_test_run`、`flowx_list_test_tasks`、`flowx_claim_test_task`、`flowx_report_test_progress`、`flowx_submit_test_report`、`flowx_control_test_execution`。
 - 闭环：`flowx_link_test_bug`、`flowx_finish_test_run`、`flowx_test_reports`（轮次或提测汇总）；证据复用 `flowx_upload_artifact`。

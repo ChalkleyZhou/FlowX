@@ -79,8 +79,8 @@ describe('flowx-local setup', () => {
     };
 
     const first = await runSetup({ homeDir: home, targets: 'cursor,codex,od', ...extras });
-    // 7 个技能分别写入 cursor 和 agents；codex/od 共享 agents 目录。
-    expect(first.written).toHaveLength(14);
+    // 8 个技能分别写入 cursor 和 agents；codex/od 共享 agents 目录。
+    expect(first.written).toHaveLength(16);
     expect(first.skipped).toEqual([]);
     const cursorPrd = join(home, '.cursor', 'skills', 'flowx-product-prd', 'SKILL.md');
     const agentsPrd = join(home, '.agents', 'skills', 'flowx-product-prd', 'SKILL.md');
@@ -113,8 +113,10 @@ describe('flowx-local setup', () => {
     expect(readFileSync(cursorPrd, 'utf8')).not.toContain('OpenSpec');
     expect(readFileSync(cursorIntake, 'utf8')).toContain('flowx_start_workflow');
     expect(readFileSync(cursorIntake, 'utf8')).toContain('userConfirmedStart');
-    expect(readFileSync(cursorIntake, 'utf8')).toContain('用当前版本');
-    expect(readFileSync(cursorIntake, 'utf8')).toContain('flowx_create_project_version');
+    const cursorDestination = join(home, '.cursor', 'skills', 'flowx-destination', 'SKILL.md');
+    expect(readFileSync(cursorIntake, 'utf8')).toContain('flowx-destination');
+    expect(readFileSync(cursorDestination, 'utf8')).toContain('用当前版本');
+    expect(readFileSync(cursorDestination, 'utf8')).toContain('flowx_create_project_version');
     expect(readFileSync(cursorIntake, 'utf8')).toContain('禁止省略');
     expect(readFileSync(cursorIntake, 'utf8')).toContain('普通代码修改');
     expect(readFileSync(cursorIntake, 'utf8')).toContain('意图不明确时先询问');
@@ -124,6 +126,7 @@ describe('flowx-local setup', () => {
     expect(readFileSync(cursorSpecPlan, 'utf8')).toContain('PLAN_MARKDOWN');
     expect(readFileSync(cursorSmoke, 'utf8')).toContain('flowx_claim_smoke_task');
     expect(readFileSync(cursorSmoke, 'utf8')).toContain('testedRevisions');
+    expect(readFileSync(cursorDestination, 'utf8')).toContain('是否继续在 {projectName} 的 {slotName}？');
     const cursorContinue = join(home, '.cursor', 'skills', 'flowx-continue', 'SKILL.md');
     const cursorExecution = join(home, '.cursor', 'skills', 'flowx-local-execution', 'SKILL.md');
     expect(readFileSync(cursorContinue, 'utf8')).toContain('flowx_get_workflow_position');
@@ -141,6 +144,7 @@ describe('flowx-local setup', () => {
       cursorExecution,
       cursorSmoke,
       cursorTest,
+      cursorDestination,
     ]);
     expect(readFileSync(cursorPrd, 'utf8')).toBe('# custom\n');
 
@@ -153,6 +157,7 @@ describe('flowx-local setup', () => {
       cursorExecution,
       cursorSmoke,
       cursorTest,
+      cursorDestination,
     ]);
     expect(readFileSync(cursorPrd, 'utf8')).toContain('flowx_submit_brainstorm');
     expect(readFileSync(cursorIntake, 'utf8')).toContain('flowx_create_work_item');

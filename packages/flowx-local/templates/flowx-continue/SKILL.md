@@ -16,7 +16,7 @@ description: 继续一条 FlowX 流程。先联网读取当前阶段，再让用
 5. `localAction` 为 `none`：说明原因。没有可继续的流程时，再问要不要新建；新建走 `flowx-intake-requirement`。
 6. `localAction` 为 `generate`：只处理返回的当前 `stage`。`priorOutputs` 和 `artifacts` 只作上下文，不重做已提交阶段。
 
-用户确认这条流程和当前阶段后，再 `flowx_bind_workflow`。`workflowRunId`、`executionSessionId` 和 `sourceFingerprint` 只来自当次服务端响应。
+用户确认这条流程和当前阶段后，再 `flowx_bind_workflow`。`workflowRunId`、`executionSessionId` 和 `sourceFingerprint` 只来自当次服务端响应。已有这条流程时不要再走 `flowx-destination` 重选项目。
 
 ## 这一段怎么生成
 
