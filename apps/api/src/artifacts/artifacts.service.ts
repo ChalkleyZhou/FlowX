@@ -60,6 +60,41 @@ export class ArtifactsService {
     private readonly fileStorage: FileStorageService,
   ) {}
 
+  get defaultStorageProviderName() {
+    return this.fileStorage.defaultProviderName;
+  }
+
+  async storeWorkflowArtifact(input: {
+    workflowRunId: string;
+    artifactType: ArtifactType;
+    name: string;
+    version: string;
+    storageKey: string;
+    mimeType: string;
+    content: Buffer;
+    metadata?: Record<string, unknown>;
+    executionSessionId?: string | null;
+    createdByUserId?: string | null;
+  }) {
+    const storageProvider = this.fileStorage.defaultProviderName;
+    const stored = await this.fileStorage.write(storageProvider, input.storageKey, input.content);
+    return this.registerWorkflowArtifact({
+      workflowRunId: input.workflowRunId,
+      executionSessionId: input.executionSessionId,
+      createdByUserId: input.createdByUserId,
+      artifactType: input.artifactType,
+      name: input.name,
+      version: input.version,
+      storageProvider,
+      storageKey: input.storageKey,
+      mimeType: input.mimeType,
+      byteSize: stored.byteSize,
+      sha256: stored.sha256,
+      status: 'AVAILABLE',
+      metadata: input.metadata,
+    });
+  }
+
   async registerForSession(
     executionSessionId: string,
     input: RegisterArtifactDto | ArtifactRegistrationInput,

@@ -117,6 +117,48 @@ describe('WorkflowArtifactService', () => {
     expect(await service.readExecutionHtml('run_missing')).toBeNull();
   });
 
+  it('writes and reads execution HTML through OSS when configured', async () => {
+    const objects = new Map<string, Buffer>();
+    const fileStorage = {
+      defaultProviderName: 'oss' as const,
+      write: vi.fn(async (_provider: string, key: string, content: Buffer) => {
+        objects.set(key, content);
+        return { storageKey: key, byteSize: content.byteLength, sha256: createHash('sha256').update(content).digest('hex') };
+      }),
+      read: vi.fn(async (_provider: string, key: string) => {
+        const content = objects.get(key);
+        if (!content) throw new Error('missing object');
+        return content;
+      }),
+    };
+    const artifacts = {
+      storeWorkflowArtifact: vi.fn(async (input: { storageKey: string; content: Buffer }) => {
+        await fileStorage.write('oss', input.storageKey, input.content);
+        return { id: 'artifact-oss-1' };
+      }),
+    };
+    const ossService = new WorkflowArtifactService(artifacts as never, fileStorage as never);
+
+    const result = await ossService.writeExecutionArtifact({
+      workflowRunId: runId,
+      version: 3,
+      executor: 'CLOUD',
+      patchSummary: 'Stored remotely',
+      changedFiles: ['src/App.tsx'],
+      meta: {
+        executor: 'CLOUD', status: 'COMPLETED', completedAt: '2026-07-29T08:00:00.000Z',
+        patchSummary: 'Stored remotely', changedFiles: ['src/App.tsx'], pushed: true, repositories: [],
+      },
+      repositoryRows: [],
+      pushed: true,
+    });
+
+    expect(result.artifactId).toBe('artifact-oss-1');
+    expect(objects.has(`workflow/${runId}/artifacts/execution/v3/report.html`)).toBe(true);
+    await expect(access(join(ossService.getArtifactsRoot(runId), result.htmlPath))).rejects.toThrow();
+    await expect(ossService.readExecutionHtml(runId)).resolves.toContain('Stored remotely');
+  });
+
   it('keeps the written file when metadata registration fails', async () => {
     const registerWorkflowArtifact = vi.fn().mockRejectedValue(new Error('database unavailable'));
     const registeringService = new WorkflowArtifactService({ registerWorkflowArtifact } as never);

@@ -380,6 +380,9 @@ export interface DesignPageRef {
   relPath: string;
   bytes: number;
   generatedAt: string;
+  artifactId?: string;
+  storageProvider?: 'local' | 'oss';
+  storageKey?: string;
 }
 
 /** Stage output 中某一端的页面清单。 */
