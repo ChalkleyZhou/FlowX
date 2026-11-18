@@ -6,6 +6,7 @@
 
 ### 变更（2026-11-18）
 
+- 新增阿里云 OSS 文件存储接入设计：通过 `FLOWX_FILE_STORAGE_PROVIDER` 在 `local` 和 `oss` 间切换，新文件按配置写入，历史文件按 Artifact 记录原地读取，不执行迁移；设计基线见 `docs/superpowers/specs/2026-11-18-aliyun-oss-file-storage-design.md`。
 - 对话框的标题和底部操作固定在弹层边缘。内容超过视口时只滚动中间区域，关闭按钮保持在右上角。
 - 用例补齐场景类型、用例类型、适用机型、追溯 ID、测试目的、通过标准、失败判定、是否可自动化和备注。适用端按多选保存，双端展开为手机端和眼镜端，三端再加平台端；执行目标仍使用 Web、API、iOS、Android。导入只读取 Excel 第一个工作表；表头不符合 FlowX 模板或标准用例列时拒绝导入，不读取后续工作表。执行记录列不写入用例定义。
 - `@flowx-ai/local` 升到 `0.7.1`，安装脚本改为安装该版本。`flowx_update_test_candidate` 的 `proposedCase` 可写入用例画像和适用端，列表请求携带分页契约。已安装的 `0.7.0` 执行 `flowx-local update` 后重新加载 IDE 的 FlowX MCP。
