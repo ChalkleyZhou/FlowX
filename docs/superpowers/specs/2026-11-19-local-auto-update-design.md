@@ -18,7 +18,7 @@ CLI 启动、MCP 工具调用和 loopback 请求触发检查，共享五分钟�
 
 ## 本地适配
 
-结论：**需要适配**。影响 CLI、stdio MCP、loopback daemon、Skill 刷新及 IDE 启动路径。API、Web 和 `@flowx-ai/protocol` 业务契约复用现有能力；不新增 MCP 业务工具，不改变权限、领取或回传语义。已有 0.7.2 客户端需要手动安装包含此能力的后续发布，源码变更不代表 npm 已发布。Windows、macOS、Linux 的核心调度使用 Node API，实机未验证的平台在交付时注明。
+结论：**需要适配**。影响 CLI、stdio MCP、loopback daemon、Skill 刷新及 IDE 启动路径。API、Web 和 `@flowx-ai/protocol` 业务契约复用现有能力；不新增 MCP 业务工具，不改变权限、领取或回传语义。设计完成后已发布为 `@flowx-ai/local@0.8.0`；已有 0.7.2 客户端需要手动运行一次更新。Windows、macOS、Linux 的核心调度使用 Node API，实机未验证的平台在交付时注明。
 
 ## 验收
 

@@ -182,7 +182,7 @@ Artifact 默认使用 API 项目文件服务。生产环境可以设置 `FLOWX_F
 
 OpenDesign 跑在设计师本机。打开正在使用的 FlowX，进入「本地 Agent」复制安装命令，再执行 `flowx-local login`。安装器不要求预先安装 Node.js；没有可用版本时会自动下载 FlowX 私有 runtime。详见 [本地 Agent 使用指南](docs/local-agent-guide.md)。贡献者可用 `pnpm --filter @flowx-ai/local build && pnpm flowx-local serve`。
 
-包含自动更新能力的本地包会在 CLI 启动、MCP 工具调用和网页请求本地服务时触发后台检查，五分钟内复用结果。新版校验成功后，下次 CLI/MCP 启动使用新版；本地服务在请求结束后切换，当前 IDE 任务继续运行，自定义 Skill 保留。`flowx-local status` 可查看运行版本与已准备版本；`~/.flowx/local.json` 的 `autoUpdate: false` 可关闭检查。此能力尚未发布到 npm，现有 `0.7.2` 需要在后续版本发布后先手动升级一次。
+包含自动更新能力的本地包会在 CLI 启动、MCP 工具调用和网页请求本地服务时触发后台检查，五分钟内复用结果。新版校验成功后，下次 CLI/MCP 启动使用新版；本地服务在请求结束后切换，当前 IDE 任务继续运行，自定义 Skill 保留。`flowx-local status` 可查看运行版本与已准备版本；`~/.flowx/local.json` 的 `autoUpdate: false` 可关闭检查。此能力已随 `@flowx-ai/local@0.8.0` 发布；已有 `0.7.2` 用户请先运行一次 `flowx-local update`，再重新加载 IDE 的 FlowX MCP。
 
 ## Docker deployment
 
@@ -301,4 +301,4 @@ This setup will:
 
 冒烟结果必须由原领取人回传。提测详情分别加载基本信息、报告和轮次；尚无报告时正常提示，局部加载失败可单独重试，权限不足、记录不存在和网络错误分别展示。
 
-完整功能测试与回归使用独立的 `INITIAL` / `REGRESSION` 本地轮次。从需求准备测试设计时可指定库与模块并补选，提测后明确每条快照的适用端；在执行详情交接本地 IDE，真实执行后分批回传结果与证据。失败轮次也可结束并生成测试报告。Bug 修复完成后新建回归，使用修复交付版本，汇总时显式指定替代范围，历史初测及报告保留。新功能通过通用质量 MCP 工具和 `flowx-local-test` 技能提供；旧冒烟继续承担提测前门禁。接口与统计口径见 [测试与质量中心](docs/quality-foundation.md)。新增工具需要更新本地包并重载 IDE MCP；当前源码能力尚未发布到 npm。
+完整功能测试与回归使用独立的 `INITIAL` / `REGRESSION` 本地轮次。从需求准备测试设计时可指定库与模块并补选，提测后明确每条快照的适用端；在执行详情交接本地 IDE，真实执行后分批回传结果与证据。失败轮次也可结束并生成测试报告。Bug 修复完成后新建回归，使用修复交付版本，汇总时显式指定替代范围，历史初测及报告保留。新功能通过通用质量 MCP 工具和 `flowx-local-test` 技能提供；旧冒烟继续承担提测前门禁。接口与统计口径见 [测试与质量中心](docs/quality-foundation.md)。新增工具需要更新到 `@flowx-ai/local@0.8.0` 并重载 IDE MCP。

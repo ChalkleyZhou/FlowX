@@ -5,7 +5,7 @@ import { FLOWX_PROTOCOL_VERSION } from '@flowx-ai/protocol';
 import { isLocalIde, type Ide } from './open-ide.js';
 
 export const DEFAULT_PORT = 3920;
-export const PACKAGE_VERSION = '0.7.2';
+export const PACKAGE_VERSION = '0.8.0';
 
 export type DefaultIde = Ide;
 

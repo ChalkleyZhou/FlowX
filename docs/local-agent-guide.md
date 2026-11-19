@@ -22,7 +22,7 @@ flowx-local login
 
 ## 自动更新
 
-以下行为需要安装包含自动更新能力的后续发布；当前已发布的 `0.7.2` 不包含此能力，源码更新不代表 npm 已发布。后续发布后先执行一次 `flowx-local update` 或重新运行站点安装脚本，再重新加载 IDE 的 FlowX MCP。
+`@flowx-ai/local@0.8.0` 已包含以下自动更新能力；已有 `0.7.2` 用户请先执行一次 `flowx-local update` 或重新运行站点安装脚本，再重新加载 IDE 的 FlowX MCP。
 
 默认在 CLI 启动、IDE 连接 FlowX MCP、调用 MCP 工具或网页请求本地服务时触发后台检查。五分钟内复用结果，空闲时不轮询；检查、下载和安装不阻塞本次操作。只自动安装 npm 官方源 `latest` 指向的稳定版本，新版校验失败或网络不可用时继续使用现有版本。
 
@@ -97,7 +97,7 @@ flowx-local login
 
 本地 Agent 可使用以下正式工具，不需要解析网页或访问数据库：
 
-- 选例：`flowx_list_test_libraries`、`flowx_list_test_modules`、`flowx_list_test_cases`、`flowx_create_test_design`、`flowx_get_test_design`、`flowx_update_test_selection`、`flowx_add_test_candidates`、`flowx_update_test_candidate`、`flowx_update_test_smoke`、`flowx_generate_test_design`、`flowx_confirm_test_design`。检索结果包含用例画像。`applicableEnds` 为 `phone`、`glasses`、`platform`、`backend`；`@flowx-ai/local` `0.7.2` 起，`flowx_update_test_candidate` 的 `proposedCase` 可以写入这些可选字段。`flowx_create_test_case` 向已确认的项目新建正式用例：先用 `flowx_list_case_libraries` 按 `projectId` 列出项目用例库，由用户选择 `libraryId`，或明确给出 `newLibraryName` 新建项目专属库。缺少项目或用例库去向时工具会拒绝，不会写入工作区共享库。这些能力在 `@flowx-ai/local` `0.7.2`。`0.7.1` 因协议导出缺失无法启动。执行 `flowx-local update` 后重新加载 IDE 的 FlowX MCP。旧调用不传新字段仍然有效。执行轮次的 `targetKeys` 与适用端相同：`phone`、`glasses`、`platform`、`backend`。
+- 选例：`flowx_list_test_libraries`、`flowx_list_test_modules`、`flowx_list_test_cases`、`flowx_create_test_design`、`flowx_get_test_design`、`flowx_update_test_selection`、`flowx_add_test_candidates`、`flowx_update_test_candidate`、`flowx_update_test_smoke`、`flowx_generate_test_design`、`flowx_confirm_test_design`。检索结果包含用例画像。`applicableEnds` 为 `phone`、`glasses`、`platform`、`backend`；`@flowx-ai/local` `0.8.0` 起，`flowx_update_test_candidate` 的 `proposedCase` 可以写入这些可选字段。`flowx_create_test_case` 向已确认的项目新建正式用例：先用 `flowx_list_case_libraries` 按 `projectId` 列出项目用例库，由用户选择 `libraryId`，或明确给出 `newLibraryName` 新建项目专属库。缺少项目或用例库去向时工具会拒绝，不会写入工作区共享库。这些能力在 `@flowx-ai/local` `0.8.0`。`0.7.1` 因协议导出缺失无法启动。执行 `flowx-local update` 后重新加载 IDE 的 FlowX MCP。旧调用不传新字段仍然有效。执行轮次的 `targetKeys` 与适用端相同：`phone`、`glasses`、`platform`、`backend`。
 - 提测：`flowx_test_requests` 支持 `list/get/create/prepare`，创建后保持草稿；检查真实冻结范围并获得用户确认后显式 `prepare`，传入 `scopeRevision`。存在冒烟快照时仍需通过原门禁。
 - 执行：`flowx_create_test_run`、`flowx_list_test_tasks`、`flowx_claim_test_task`、`flowx_report_test_progress`、`flowx_submit_test_report`、`flowx_control_test_execution`。
 - 闭环：`flowx_link_test_bug`、`flowx_finish_test_run`、`flowx_test_reports`（轮次或提测汇总）；证据复用 `flowx_upload_artifact`。
