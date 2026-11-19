@@ -753,7 +753,6 @@ describe('Quality pages', () => {
       .toBe('登录后恢复原访问页面');
     expect((document.body.querySelector('input[aria-label="用例编号"]') as HTMLInputElement)?.readOnly).toBe(true);
 
-    await act(async () => (document.querySelector('input[aria-label="执行目标 Web"]') as HTMLInputElement).click());
     const saveButton = Array.from(document.body.querySelectorAll('button')).find(
       (button) => button.textContent?.trim() === '保存修改',
     );
@@ -767,12 +766,12 @@ describe('Quality pages', () => {
       libraryId: 'library-1',
       moduleId: 'module-1',
       title: '登录后恢复原访问页面',
-      targetKeys: ['web'],
       steps: ['打开受保护页面', '完成登录'],
       expected: '自动返回登录前页面',
     }));
     expect(successToast).toHaveBeenCalledWith('测试用例已更新至 v4');
     expect(vi.mocked(api.updateTestCase).mock.calls[0][1]).not.toHaveProperty('externalId');
+    expect(vi.mocked(api.updateTestCase).mock.calls[0][1]).not.toHaveProperty('targetKeys');
     expect(api.getTestCasesPage).toHaveBeenCalledTimes(2);
   });
 

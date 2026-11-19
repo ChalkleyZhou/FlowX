@@ -26,19 +26,19 @@ async function check(label: string) { await act(async () => document.querySelect
 
 it('创建轮次不把首屏预选当全范围，跨页仅提交明确勾选项', async () => {
   await act(async () => root.render(<QualityCreateRunDialog open onOpenChange={vi.fn()} request={request} onCreated={vi.fn()} />));
-  expect(document.querySelector<HTMLInputElement>('input[aria-label="case-1 适用 Web"]')?.checked).toBe(false);
+  expect(document.querySelector<HTMLInputElement>('input[aria-label="case-1 适用 手机端"]')?.checked).toBe(false);
   await button('创建本地轮次');
   expect(api.createLocalTestRun).not.toHaveBeenCalled();
-  await check('case-1 适用 Web'); await button('下一页'); await check('case-2 适用 Web'); await button('创建本地轮次');
-  expect(api.createLocalTestRun).toHaveBeenCalledWith('request-1', expect.objectContaining({ cases: [{ snapshotId: 'case-1', targetKeys: ['web'] }, { snapshotId: 'case-2', targetKeys: ['web'] }] }));
+  await check('case-1 适用 手机端'); await button('下一页'); await check('case-2 适用 手机端'); await button('创建本地轮次');
+  expect(api.createLocalTestRun).toHaveBeenCalledWith('request-1', expect.objectContaining({ cases: [{ snapshotId: 'case-1', targetKeys: ['phone'] }, { snapshotId: 'case-2', targetKeys: ['phone'] }] }));
 });
 
 it('缺陷回归按bugId跨页加载原执行项，页外目标仍可选择', async () => {
   vi.mocked(api.getTestRunCases).mockImplementation(async (_id, query) => pageResult([{ id: `row-${query?.page ?? 1}`, snapshot: snapshot(`bug-case-${query?.page ?? 1}`), target: { id: 'outside-target-page', key: 'api', name: 'API' } }], { total: 21, totalPages: 2, page: query?.page ?? 1 }));
   await act(async () => root.render(<QualityCreateRunDialog open onOpenChange={vi.fn()} request={request} sourceBugId="bug-1" sourceRunId="source-run" onCreated={vi.fn()} />));
   expect(api.getTestRunCases).toHaveBeenCalledWith('source-run', expect.objectContaining({ bugId: 'bug-1', page: 1, pageSize: 20 }));
-  await check('bug-case-1 适用 API'); await button('下一页'); await check('bug-case-2 适用 API'); await button('创建本地轮次');
-  expect(api.createLocalTestRun).toHaveBeenCalledWith('request-1', expect.objectContaining({ sourceBugId: 'bug-1', cases: [{ snapshotId: 'bug-case-1', targetKeys: ['api'] }, { snapshotId: 'bug-case-2', targetKeys: ['api'] }] }));
+  await check('bug-case-1 适用 后台服务'); await button('下一页'); await check('bug-case-2 适用 后台服务'); await button('创建本地轮次');
+  expect(api.createLocalTestRun).toHaveBeenCalledWith('request-1', expect.objectContaining({ sourceBugId: 'bug-1', cases: [{ snapshotId: 'bug-case-1', targetKeys: ['backend'] }, { snapshotId: 'bug-case-2', targetKeys: ['backend'] }] }));
 });
 
 it('报告轮次与基线跨页选择保留完整ID，切换轮次清除旧基线', async () => {

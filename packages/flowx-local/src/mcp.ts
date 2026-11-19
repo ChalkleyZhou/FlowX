@@ -977,7 +977,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     return runRequest(() => qualityRequest(`/quality/test-requests/${encodeURIComponent(action.testRequestId)}/prepare`, { method: 'POST', body: JSON.stringify({ scopeRevision: action.scopeRevision }) }));
   });
   server.registerTool('flowx_create_test_run', {
-    title: '创建本地功能测试或回归', description: '从就绪的测试计划创建功能初测或缺陷回归。必须明确用例适用端；回归需修复已完成的 sourceBugId。',
+    title: '创建本地功能测试或回归', description: '从就绪的测试计划创建功能初测或缺陷回归。targets.key 与用例适用端相同：phone、glasses、platform、backend。回归需修复已完成的 sourceBugId。',
     inputSchema: { testRequestId: z.string().min(1), name: z.string().min(1), runType: z.enum(['INITIAL', 'REGRESSION']), sourceBugId: z.string().optional(), targets: z.array(smokeTargetSchema).min(1), cases: z.array(z.object({ snapshotId: z.string().min(1), targetKeys: z.array(z.string().min(1)).min(1) }).strict()).min(1) },
   }, async ({ testRequestId, ...body }) => runRequest(() => qualityRequest(`/quality/test-requests/${encodeURIComponent(testRequestId)}/local-test-runs`, { method: 'POST', body: JSON.stringify(body) })));
   server.registerTool('flowx_list_test_tasks', {

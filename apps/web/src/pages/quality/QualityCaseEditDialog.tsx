@@ -22,7 +22,6 @@ import { Textarea } from '../../components/ui/textarea';
 import { useToast } from '../../components/ui/toast';
 import type { TestCaseDefinition, TestCaseLibrary } from '../../types';
 import { QualityCaseProfileFields, caseProfileFromDefinition, caseProfilePayload, emptyCaseProfile, type CaseProfileForm } from './QualityCaseProfileFields';
-import { QualityTargetKeysField } from './QualityTargetKeysField';
 import { Field } from './quality-ui';
 
 const NO_MODULE = '__none__';
@@ -51,7 +50,6 @@ export function QualityCaseEditDialog({
   const [priority, setPriority] = useState<TestCaseDefinition['priority']>('P2');
   const [precondition, setPrecondition] = useState('');
   const [testData, setTestData] = useState('');
-  const [targetKeys, setTargetKeys] = useState<string[]>([]);
   const [profile, setProfile] = useState<CaseProfileForm>(emptyCaseProfile());
   const [steps, setSteps] = useState('');
   const [expected, setExpected] = useState('');
@@ -66,7 +64,6 @@ export function QualityCaseEditDialog({
     setPriority(testCase.priority);
     setPrecondition(testCase.precondition ?? '');
     setTestData(testCase.testData ?? '');
-    setTargetKeys(testCase.targetKeys ?? []);
     setProfile(caseProfileFromDefinition(testCase));
     setSteps(testCase.steps.join('\n'));
     setExpected(testCase.expected);
@@ -92,7 +89,6 @@ export function QualityCaseEditDialog({
         priority,
         precondition: precondition.trim() || null,
         testData: testData.trim() || null,
-        targetKeys,
         ...caseProfilePayload(profile),
         steps: stepList,
         expected: expected.trim(),
@@ -153,7 +149,6 @@ export function QualityCaseEditDialog({
             <Textarea aria-label="编辑测试数据" rows={2} value={testData} disabled={saving} onChange={(event) => setTestData(event.target.value)} />
           </Field>
           <QualityCaseProfileFields value={profile} onChange={setProfile} disabled={saving} />
-          <QualityTargetKeysField value={targetKeys} onChange={setTargetKeys} disabled={saving} />
           <Field label="执行步骤">
             <Textarea aria-label="编辑执行步骤" rows={5} value={steps} disabled={saving} onChange={(event) => setSteps(event.target.value)} />
           </Field>

@@ -29,13 +29,9 @@ import { QualityReportsPanel } from './QualityReportsPanel';
 import { Input } from '../../components/ui/input';
 import { useToast } from '../../components/ui/toast';
 import { LoadingState, RefreshButton, runStatusLabels, statusBadgeVariant } from './quality-ui';
+import { APPLICABLE_END_OPTIONS } from './QualityCaseProfileFields';
 
-const TARGET_OPTIONS = [
-  { key: 'web', name: 'Web' },
-  { key: 'api', name: 'API' },
-  { key: 'ios', name: 'iOS' },
-  { key: 'android', name: 'Android' },
-];
+const TARGET_OPTIONS = APPLICABLE_END_OPTIONS;
 
 function useDetailResource<T>(id: string, fetcher: (id: string) => Promise<T>) {
   const [data, setData] = useState<T>();
@@ -119,7 +115,7 @@ function QualityRequestDetailContent({ id }: { id: string }) {
   const [finalizingId, setFinalizingId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [runName, setRunName] = useState('本地冒烟');
-  const [selectedTargets, setSelectedTargets] = useState<string[]>(['web', 'api']);
+  const [selectedTargets, setSelectedTargets] = useState<string[]>([]);
 
   async function refresh(options: { silent?: boolean } = {}) {
     await Promise.all([detail.reload(options), smoke.reload(options), submission.reload(options), formal.reload(options)]);
@@ -141,7 +137,7 @@ function QualityRequestDetailContent({ id }: { id: string }) {
 
   async function createRun() {
     if (!selectedTargets.length) {
-      toast.error('请至少选择一个目标端');
+      toast.error('请至少选择一个适用端');
       return;
     }
     setCreating(true);
@@ -351,7 +347,7 @@ function QualityRequestDetailContent({ id }: { id: string }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>创建本地冒烟轮次</DialogTitle>
-            <DialogDescription>选择需要覆盖的目标端；服务端会按冒烟用例生成独立覆盖矩阵。</DialogDescription>
+            <DialogDescription>选择适用端，与用例的手机端、眼镜端、平台端、后台服务一致。服务端会按冒烟用例生成覆盖矩阵。</DialogDescription>
           </DialogHeader>
           <label className="grid gap-1.5 text-sm font-medium">
             <span>轮次名称</span>

@@ -186,7 +186,7 @@ describe('质量执行与报告', () => {
       ),
     );
     const web = container.ownerDocument.querySelector(
-      'input[aria-label="登录恢复 适用 Web"]',
+      'input[aria-label="登录恢复 适用 手机端"]',
     ) as HTMLInputElement;
     expect(web.checked).toBe(false);
     await act(async () => web.click());
@@ -199,8 +199,8 @@ describe('质量执行与报告', () => {
       'request-1',
       expect.objectContaining({
         runType: 'INITIAL',
-        cases: [{ snapshotId: 'snapshot-1', targetKeys: ['web'] }],
-        targets: [{ key: 'web', name: 'Web', required: true, expectedRevisions: [] }],
+        cases: [{ snapshotId: 'snapshot-1', targetKeys: ['phone'] }],
+        targets: [{ key: 'phone', name: '手机端', required: true, expectedRevisions: [] }],
       }),
     );
   });
@@ -227,7 +227,7 @@ describe('质量执行与报告', () => {
     });
     await choosePaged('执行人', '张三');
     await act(async () => {
-      (document.querySelector('input[aria-label="登录恢复 适用 Web"]') as HTMLInputElement).click();
+      (document.querySelector('input[aria-label="登录恢复 适用 手机端"]') as HTMLInputElement).click();
     });
     await act(async () => {
       Array.from(document.querySelectorAll('button')).find((item) => item.textContent === '创建人工轮次')?.click();

@@ -15,13 +15,9 @@ import {
 } from '../../components/ui/dialog';
 import { useToast } from '../../components/ui/toast';
 import type { TestRequest, TestRun } from '../../types';
+import { APPLICABLE_END_OPTIONS, applicableEndLabels } from './QualityCaseProfileFields';
 
-const targets = [
-  { key: 'web', name: 'Web' },
-  { key: 'api', name: 'API' },
-  { key: 'ios', name: 'iOS' },
-  { key: 'android', name: 'Android' },
-];
+const targets = APPLICABLE_END_OPTIONS;
 type CaseMapping = { snapshotId: string; targetKeys: string[] };
 export function QualityCreateRunDialog({
   open,
@@ -68,13 +64,28 @@ export function QualityCreateRunDialog({
     setMappings(next);
     setError('');
   }, [open, sourceBugId, request.id]);
+  useEffect(() => {
+    if (!open) return;
+    setMappings((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const snapshot of snapshots) {
+        if (next[snapshot.id]) continue;
+        const ends = (snapshot.applicableEnds ?? []).filter((key) => targets.some((target) => target.key === key));
+        if (!ends.length) continue;
+        next[snapshot.id] = ends;
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [open, snapshots]);
 
   const cases = Object.entries(mappings)
     .filter(([, keys]) => keys.length)
     .map(([snapshotId, targetKeys]) => ({ snapshotId, targetKeys }));
   async function submit() {
     if (!cases.length) {
-      setError('请明确选择至少一个用例与执行目标。空执行目标表示未确认，不会自动覆盖全部端。');
+      setError('请至少选择一条用例的适用端。未填写适用端的用例不会自动进入本轮。');
       return;
     }
     if (executionMode === 'MANUAL' && !assigneeId) {
@@ -120,7 +131,7 @@ export function QualityCreateRunDialog({
         <DialogHeader>
           <DialogTitle>{sourceBugId ? '创建独立回归轮次' : '创建功能测试轮次'}</DialogTitle>
           <DialogDescription>
-            明确勾选本轮用例与执行目标，跨页保留选择；未勾选的用例不会进入本轮。
+            按用例适用端选择本轮要执行的手机端、眼镜端、平台端或后台服务，跨页保留选择；未勾选的不会进入本轮。
             {sourceBugId
               ? '回归使用已完成修复交付的代码基线，原失败历史保留。'
               : '服务端使用冻结的研发交付代码基线，回传结果保存在新轮次中。'}
@@ -166,7 +177,7 @@ export function QualityCreateRunDialog({
                     {snapshot.title}
                     <span className="block text-xs text-muted-foreground">
                       {snapshot.priority} ·{' '}
-                      {snapshot.targetKeys?.length ? '已记录执行目标，可在本轮调整' : '执行目标未确认'}
+                      {snapshot.applicableEnds?.length ? `适用端 ${applicableEndLabels(snapshot.applicableEnds).join('、')}` : '适用端未填写'}
                     </span>
                   </td>
                   {targets.map((target) => (

@@ -289,7 +289,7 @@ FlowX 端侧执行平面
 
 ## 10. 测试用例编号
 
-正式用例的 `externalId` 由质量域服务端分配，按库采用 `TC-000001` 起的流水号。`TestCaseLibrary.nextCaseNumber` 与用例写入共用事务，串行分配并保留历史、归档和导入编号；Web 新建、批量导入和测试设计确认共用分配函数。Web 编辑编号只读，旧 API 显式编号输入继续兼容，已有用例与快照不批量改写。用例画像包含场景类型、用例类型、适用机型、追溯 ID、测试目的、通过标准、失败判定、自动化状态和备注。`applicableEnds` 是产品适用端多选，`targetKeys` 是执行目标。详见 [测试与质量中心](quality-foundation.md#用例编号)。
+正式用例的 `externalId` 由质量域服务端分配，按库采用 `TC-000001` 起的流水号。`TestCaseLibrary.nextCaseNumber` 与用例写入共用事务，串行分配并保留历史、归档和导入编号；Web 新建、批量导入和测试设计确认共用分配函数。Web 编辑编号只读，旧 API 显式编号输入继续兼容，已有用例与快照不批量改写。用例画像包含场景类型、用例类型、适用机型、追溯 ID、测试目的、通过标准、失败判定、自动化状态和备注。`applicableEnds` 是产品适用端多选。本地测试轮次和冒烟的 `targetKeys` 使用同一套取值：`phone`、`glasses`、`platform`、`backend`。详见 [测试与质量中心](quality-foundation.md#用例编号)。
 
 ## 11. 文档维护规则
 

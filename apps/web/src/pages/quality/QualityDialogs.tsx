@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { QualityCaseProfileFields, caseProfilePayload, emptyCaseProfile, type CaseProfileForm } from './QualityCaseProfileFields';
-import { QualityTargetKeysField } from './QualityTargetKeysField';
 import { api } from '../../api';
 import { PagedSelect } from '../../components/PagedSelect';
 import { ListPagination } from '../../components/ListPagination';
@@ -239,7 +238,6 @@ export function CreateCaseDialog({
   const [priority, setPriority] = useState('P2');
   const [precondition, setPrecondition] = useState('');
   const [testData, setTestData] = useState('');
-  const [targetKeys, setTargetKeys] = useState<string[]>([]);
   const [profile, setProfile] = useState<CaseProfileForm>(emptyCaseProfile());
   const [steps, setSteps] = useState('');
   const [expected, setExpected] = useState('');
@@ -273,7 +271,6 @@ export function CreateCaseDialog({
         priority,
         precondition: precondition.trim() || undefined,
         testData: testData.trim() || undefined,
-        targetKeys,
         ...caseProfilePayload(profile),
         steps: stepList,
         expected: expected.trim(),
@@ -282,7 +279,6 @@ export function CreateCaseDialog({
       setTitle('');
       setPrecondition('');
       setTestData('');
-      setTargetKeys([]);
       setProfile(emptyCaseProfile());
       setSteps('');
       setExpected('');
@@ -332,7 +328,6 @@ export function CreateCaseDialog({
           <Field label="前置条件（可选）"><Input value={precondition} onChange={(event) => setPrecondition(event.target.value)} /></Field>
           <Field label="测试数据（可选）"><Textarea rows={2} value={testData} onChange={(event) => setTestData(event.target.value)} /></Field>
           <QualityCaseProfileFields value={profile} onChange={setProfile} disabled={saving} />
-          <QualityTargetKeysField value={targetKeys} onChange={setTargetKeys} disabled={saving} />
           <Field label="执行步骤">
             <Textarea aria-label="执行步骤" rows={4} placeholder="每行一个步骤" value={steps} onChange={(event) => setSteps(event.target.value)} />
           </Field>
