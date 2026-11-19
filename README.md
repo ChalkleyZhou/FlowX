@@ -182,6 +182,8 @@ Artifact 默认使用 API 项目文件服务。生产环境可以设置 `FLOWX_F
 
 OpenDesign 跑在设计师本机。打开正在使用的 FlowX，进入「本地 Agent」复制安装命令，再执行 `flowx-local login`。安装器不要求预先安装 Node.js；没有可用版本时会自动下载 FlowX 私有 runtime。详见 [本地 Agent 使用指南](docs/local-agent-guide.md)。贡献者可用 `pnpm --filter @flowx-ai/local build && pnpm flowx-local serve`。
 
+包含自动更新能力的本地包会在 CLI 启动、MCP 工具调用和网页请求本地服务时触发后台检查，五分钟内复用结果。新版校验成功后，下次 CLI/MCP 启动使用新版；本地服务在请求结束后切换，当前 IDE 任务继续运行，自定义 Skill 保留。`flowx-local status` 可查看运行版本与已准备版本；`~/.flowx/local.json` 的 `autoUpdate: false` 可关闭检查。此能力尚未发布到 npm，现有 `0.7.2` 需要在后续版本发布后先手动升级一次。
+
 ## Docker deployment
 
 完整部署说明见 [docs/docker-deployment.md](/Users/chalkley/workspace/FlowX/docs/docker-deployment.md)。

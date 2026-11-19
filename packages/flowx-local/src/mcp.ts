@@ -1,5 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { triggerAutoUpdate } from './auto-update.js';
 import {
   ARTIFACT_TYPES,
   type ExecutionCheckpointResult,
@@ -1557,7 +1559,18 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
   return server;
 }
 
-export async function runLocalMcp() {
-  const server = createLocalMcpServer();
-  await server.connect(new StdioServerTransport());
+export async function runLocalMcp(options: LocalMcpOptions & { transport?: Transport; onActivity?: () => void } = {}) {
+  const activity = () => {
+    try { (options.onActivity ?? (() => triggerAutoUpdate()))(); } catch { /* 保持 MCP 协议可用。 */ }
+  };
+  const server = createLocalMcpServer(options);
+  const transport = options.transport ?? new StdioServerTransport();
+  await server.connect(transport);
+  const onmessage = transport.onmessage;
+  transport.onmessage = (message, extra) => {
+    if ('method' in message && message.method === 'tools/call') activity();
+    onmessage?.(message, extra);
+  };
+  activity();
+  return server;
 }

@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { writeActiveDesignSession } from './active-design-session.js';
 import { PACKAGE_VERSION } from './config.js';
 import { writeCredentials } from './credentials.js';
-import { createLocalMcpServer } from './mcp.js';
+import { createLocalMcpServer, runLocalMcp } from './mcp.js';
 import { readWorkflowBinding, writeWorkflowBinding } from './workflow-binding.js';
 
 const homes: string[] = [];
@@ -67,6 +67,21 @@ afterEach(() => {
 });
 
 describe('flowx-local MCP server', () => {
+  it('真实 MCP 连接与工具调用触发检查，检查异常不破坏工具结果', async () => {
+    const onActivity = vi.fn(() => { throw Error('update unavailable'); });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = await runLocalMcp({ homeDir: makeHome(), transport: serverTransport, onActivity });
+    const client = new Client({ name: 'activity-test', version: '1.0.0' });
+    try {
+      await client.connect(clientTransport);
+      await client.listTools();
+      expect(onActivity).toHaveBeenCalledOnce();
+      const result = await client.callTool({ name: 'flowx_get_active_design_session', arguments: {} });
+      expect(result.isError).not.toBe(true);
+      expect(onActivity).toHaveBeenCalledTimes(2);
+    } finally { await client.close(); await server.close(); }
+  });
+
   it('identifies as flowx-local and registers the user-facing tools', async () => {
     const { client, server } = await connectClient(makeHome());
 

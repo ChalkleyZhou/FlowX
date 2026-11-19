@@ -59,6 +59,13 @@ describe('normalizeRepoUrl', () => {
 });
 
 describe('loadConfig / saveConfig', () => {
+  it('旧配置默认启用自动更新，显式关闭可以保存', () => {
+    const homeDir = makeHome();
+    expect(loadConfig({ homeDir }).autoUpdate).toBe(true);
+    saveConfig({ ...DEFAULT_LOCAL_CONFIG, autoUpdate: false }, { homeDir });
+    expect(loadConfig({ homeDir }).autoUpdate).toBe(false);
+  });
+
   it('returns defaults when config file is missing', () => {
     const homeDir = makeHome();
     expect(loadConfig({ homeDir })).toEqual(DEFAULT_LOCAL_CONFIG);

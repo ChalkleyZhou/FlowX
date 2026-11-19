@@ -42,7 +42,7 @@ describe('buildStatusPayload', () => {
     const plistPath = join(home, 'Library', 'LaunchAgents', 'ai.flowx.local.plist');
     mkdirSync(join(home, 'Library', 'LaunchAgents'), { recursive: true });
     writeFileSync(plistPath, '<plist/>');
-    const fetchImpl = vi.fn().mockResolvedValue({ ok: true });
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ version: '0.7.1' }) });
 
     const payload = await buildStatusPayload({
       homeDir: home,
@@ -51,12 +51,13 @@ describe('buildStatusPayload', () => {
     });
 
     expect(payload).toMatchObject({
+      update: { runningVersion: expect.any(String), enabled: true },
       deviceId: 'device-1',
       installationId: 'install-1',
       protocolVersion: '1',
       apiBaseUrl: 'https://flowx.example/api',
       outboxPending: 0,
-      service: { platform: 'darwin', installed: true, healthOk: true },
+      service: { platform: 'darwin', installed: true, healthOk: true, version: '0.7.1' },
     });
     expect(fetchImpl).toHaveBeenCalledWith(
       'http://127.0.0.1:4123/health',

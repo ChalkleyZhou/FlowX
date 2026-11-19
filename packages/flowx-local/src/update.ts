@@ -1,7 +1,7 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { homedir } from 'node:os';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -10,6 +10,40 @@ import {
   SETUP_SKILL_NAMES,
   type SetupTarget,
 } from './setup.js';
+import { parse } from 'smol-toml';
+import { upsertUserMcp } from './user-mcp.js';
+
+export function refreshUpdatedIntegrations(options: {
+  homeDir: string; previousPackageDir: string; nextPackageDir: string; flowxBin: string;
+}): string[] {
+  const skipped: string[] = [];
+  for (const target of ['cursor', 'codex', 'od', 'workbuddy'] as const) {
+    for (const skill of SETUP_SKILL_NAMES) {
+      for (const path of resolveSkillInstallPaths(target, options.homeDir, skill)) {
+        if (!existsSync(path)) continue;
+        try {
+          const previous = readFileSync(join(options.previousPackageDir, 'templates', skill, 'SKILL.md'), 'utf8');
+          const next = readFileSync(join(options.nextPackageDir, 'templates', skill, 'SKILL.md'), 'utf8');
+          const installed = readFileSync(path, 'utf8');
+          if (installed === previous) writeFileSync(path, next, 'utf8');
+          else if (installed !== next) skipped.push(path);
+        } catch { skipped.push(path); }
+      }
+    }
+    if (target === 'od') continue;
+    const path = target === 'codex' ? join(options.homeDir, '.codex', 'config.toml')
+      : join(options.homeDir, `.${target}`, 'mcp.json');
+    if (!existsSync(path)) continue;
+    try {
+      const raw = readFileSync(path, 'utf8');
+      const document = target === 'codex' ? parse(raw) : JSON.parse(raw) as Record<string, unknown>;
+      const servers = target === 'codex' ? document.mcp_servers : document.mcpServers;
+      if (!servers || typeof servers !== 'object' || !('flowx' in servers)) continue;
+      upsertUserMcp({ homeDir: options.homeDir, targets: [target], flowxBin: options.flowxBin, skipUnchanged: true });
+    } catch { skipped.push(path); }
+  }
+  return skipped;
+}
 
 export type PackageInstaller = 'npm' | 'pnpm' | 'unknown';
 

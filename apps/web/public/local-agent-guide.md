@@ -20,6 +20,18 @@ flowx-local login
 
 不需要预先安装 Node.js。脚本会优先复用已有的 Node.js 20+；没有可用版本时，会把固定版本的 FlowX 私有 runtime 安装到 `~/.flowx/runtime`，再把包和启动器安装到 `~/.flowx`。之后注册后台服务（macOS LaunchAgent / Linux systemd --user / Windows 计划任务），检测到 Cursor / Codex 时询问是否写入继续流程、需求登记、产品构思、Spec & Plan、本地执行、本地冒烟、操作去向这几个 FlowX Skill 和 MCP。WorkBuddy 请再执行 `flowx-local setup workbuddy`。`login` 只粘贴设置页生成的 `fxpat_…`。
 
+## 自动更新
+
+以下行为需要安装包含自动更新能力的后续发布；当前已发布的 `0.7.2` 不包含此能力，源码更新不代表 npm 已发布。后续发布后先执行一次 `flowx-local update` 或重新运行站点安装脚本，再重新加载 IDE 的 FlowX MCP。
+
+默认在 CLI 启动、IDE 连接 FlowX MCP、调用 MCP 工具或网页请求本地服务时触发后台检查。五分钟内复用结果，空闲时不轮询；检查、下载和安装不阻塞本次操作。只自动安装 npm 官方源 `latest` 指向的稳定版本，新版校验失败或网络不可用时继续使用现有版本。
+
+新版准备好后，下次 CLI/MCP 启动生效；后台服务收到新版就绪事件后，等待全部请求及业务处理结束再切换；空闲时直接切换，无需再发请求。已经连接的 MCP 保留原版本，需要重新加载 IDE 的 FlowX MCP 才能使用新版工具列表；已经加载的 Skill 也可能需要新会话重新读取。未修改的已安装 FlowX Skill 会同步刷新，自定义内容保留。自动更新不会为尚未安装的 IDE 新增配置；MCP 已指向稳定入口且内容无需更新时，不重写配置文件，避免触发 IDE 无谓重载。
+
+执行 `flowx-local status` 查看 `update.runningVersion`（当前 CLI）、`update.readyVersion`（下次启动可用版本）、`service.version`（后台服务实际版本）、`checkedAt`（最近检查的 Unix 毫秒时间）、`result`（`current` / `ready` / `failed`）和 `failure`（`check` / `install` / `verify`）。检查尚未完成时，后几项可能省略；`skippedSkills` 列出保留的自定义 Skill 或未能刷新的配置文件。需要立即更新时仍可执行 `flowx-local update`；该命令默认按既有行为强制刷新所选 Skill，使用 `--no-force` 保留已有文件。
+
+关闭自动检查：在 `~/.flowx/local.json` 保留原配置并增加 `"autoUpdate": false`，或为对应进程设置 `FLOWX_LOCAL_AUTO_UPDATE=0`；重启现有进程后生效。关闭检查不会撤回已准备的版本，手动 `update` 仍可使用。源码开发目录自动跳过安装更新，使用仓库构建命令。
+
 ## 怎么用
 
 - **操作去向**：新建需求、上传用例，以及其他要写入 FlowX 且可能落到多处的操作，都先确定落点。本机记住了项目和对应容器时，只问是否继续在那里；没有记录时先列出项目，再选版本或用例库。同一批只确认一次。已经点名的工作流、工作项或执行会话直接用那条，不再重选项目。工作区随项目确定。
@@ -56,8 +68,8 @@ flowx-local login
 | 命令 | 作用 |
 | --- | --- |
 | `flowx-local login` | 写入 Personal API Token |
-| `flowx-local status` | 后台服务与待同步数量 |
-| `flowx-local update` | 升级本机包并刷新 Skill / MCP / 服务 |
+| `flowx-local status` | 后台服务、待同步数量、运行版本与更新状态 |
+| `flowx-local update` | 立即检查并准备新版，刷新所选 Skill / MCP / 服务；`--no-force` 保留已有 Skill |
 | `flowx-local sync` | 重试完成报告和资料上传 Outbox；资料使用稳定副本，不依赖原文件继续存在 |
 | `flowx-local map <repoUrl> <path>` | 映射远程仓库到本地目录 |
 | `flowx-local logout` | 清除本机凭据 |

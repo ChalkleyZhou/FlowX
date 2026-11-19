@@ -42,6 +42,11 @@ function argv1Exists(argv1: string | undefined): string | null {
 export function resolveFlowxLocalBin(
   input: { pathEnv?: string; argv1?: string; platform?: NodeJS.Platform } = {},
 ): string {
+  const original = process.env.FLOWX_LOCAL_ORIGINAL_PACKAGE;
+  if (original) {
+    const stableEntry = join(original, 'dist', 'index.js');
+    if (isExecutable(stableEntry) || argv1Exists(stableEntry)) return stableEntry;
+  }
   const pathEnv = input.pathEnv ?? process.env.PATH ?? '';
   const argv1 = input.argv1 ?? process.argv[1];
   const platform = input.platform ?? process.platform;

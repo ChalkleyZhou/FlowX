@@ -24,6 +24,9 @@ describe('upsertUserMcp', () => {
           flowx: {
             command: 'old',
             args: ['mcp'],
+            enabled: false,
+            disabled_tools: ['flowx_create_work_item'],
+            startup_timeout_sec: 45,
             env: { FLOWX_API_TOKEN: 'fxpat_old', FLOWX_API_BASE_URL: 'http://127.0.0.1:3000', KEEP: 'x' },
           },
         },
@@ -39,6 +42,9 @@ describe('upsertUserMcp', () => {
     expect(parsed.mcpServers.flowx).toEqual({
       command: '/usr/local/bin/flowx-local',
       args: ['mcp'],
+      enabled: false,
+      disabled_tools: ['flowx_create_work_item'],
+      startup_timeout_sec: 45,
       env: { KEEP: 'x' },
     });
     expect(result.written).toContain(mcpPath);

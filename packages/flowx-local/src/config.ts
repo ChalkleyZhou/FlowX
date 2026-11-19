@@ -10,6 +10,7 @@ export const PACKAGE_VERSION = '0.7.2';
 export type DefaultIde = Ide;
 
 export type LocalConfig = {
+  autoUpdate: boolean;
   port: number;
   repositories: Record<string, string>;
   defaultIde: DefaultIde;
@@ -21,6 +22,7 @@ export type LocalConfig = {
 };
 
 export const DEFAULT_LOCAL_CONFIG: LocalConfig = {
+  autoUpdate: true,
   port: DEFAULT_PORT,
   repositories: {},
   defaultIde: 'cursor',
@@ -94,6 +96,7 @@ function normalizeConfig(raw: Partial<LocalConfig> | null | undefined): LocalCon
       : DEFAULT_LOCAL_CONFIG.defaultIde;
 
   return {
+    autoUpdate: raw?.autoUpdate !== false,
     port,
     repositories: normalizeRepositories(raw?.repositories),
     defaultIde,

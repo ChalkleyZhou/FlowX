@@ -12,6 +12,8 @@ import {
 } from './open-design.js';
 
 export type StartServerOptions = ConfigOptions & {
+  onActivity?: () => void;
+  onIdle?: () => void;
   port?: number;
   version?: string;
   runLaunch?: typeof runLaunch;
@@ -61,130 +63,152 @@ export function createLocalServer(options: StartServerOptions = {}): Server {
   const designSubmit = options.submitOpenDesignResult ?? submitOpenDesignResult;
   const config = ensureDeviceIdentity(options);
   const outbox = new Outbox(options);
+  let activeRequests = 0;
 
   return createServer(async (req, res) => {
-    const method = req.method ?? 'GET';
-    const path = req.url?.split('?')[0] ?? '/';
+    activeRequests += 1;
+    try { options.onActivity?.(); } catch { /* 更新失败不影响请求。 */ }
+    let finished = false;
+    let handlerFinished = false;
+    let responseFinished = false;
+    const finish = () => {
+      if (finished || !handlerFinished || !responseFinished) return;
+      finished = true;
+      activeRequests -= 1;
+      if (activeRequests === 0) {
+        try { options.onIdle?.(); } catch { /* 更新失败不影响服务。 */ }
+      }
+    };
+    const responseDone = () => { responseFinished = true; finish(); };
+    res.once('finish', responseDone);
+    res.once('close', responseDone);
+    try {
+      const method = req.method ?? 'GET';
+      const path = req.url?.split('?')[0] ?? '/';
 
-    if (method === 'GET' && path === '/health') {
-      const body = JSON.stringify({
-        ok: true,
-        version,
-        deviceId: config.deviceId,
-        installationId: config.installationId,
-        protocolVersion: config.protocolVersion,
-        outboxPending: await outbox.pendingCount(),
-      });
-      res.writeHead(200, {
-        'content-type': 'application/json; charset=utf-8',
-        'content-length': Buffer.byteLength(body),
-        'access-control-allow-origin': '*',
-      });
-      res.end(body);
-      return;
-    }
-
-    if (method === 'GET' && path === '/design/active-session') {
-      const active = await readActiveDesignSession(options.homeDir);
-      if (!active) {
-        sendJson(res, 404, { ok: false, error: 'no_active_design_session' });
+      if (method === 'GET' && path === '/health') {
+        const body = JSON.stringify({
+          ok: true,
+          version,
+          deviceId: config.deviceId,
+          installationId: config.installationId,
+          protocolVersion: config.protocolVersion,
+          outboxPending: await outbox.pendingCount(),
+        });
+        res.writeHead(200, {
+          'content-type': 'application/json; charset=utf-8',
+          'content-length': Buffer.byteLength(body),
+          'access-control-allow-origin': '*',
+        });
+        res.end(body);
         return;
       }
-      // 该接口仅监听 loopback，不加 CORS，避免把短期 token 暴露给浏览器。
-      sendJson(res, 200, active);
-      return;
-    }
 
-    if (['/launch', '/design/launch', '/design/submit'].includes(path) && method === 'OPTIONS') {
-      res.writeHead(204, {
-        'access-control-allow-origin': '*',
-        'access-control-allow-methods': 'POST, OPTIONS',
-        'access-control-allow-headers': 'content-type',
-      });
-      res.end();
-      return;
-    }
-
-    if (path === '/launch' && method === 'POST') {
-      try {
-        const body = (await readJson(req)) as Partial<LaunchRequest>;
-        if (
-          !body ||
-          typeof body.ticket !== 'string' ||
-          typeof body.ide !== 'string' ||
-          !isLocalIde(body.ide) ||
-          typeof body.apiBaseUrl !== 'string' ||
-          (body.purpose !== undefined && body.purpose !== 'quality-test')
-        ) {
-          sendJson(res, 400, { ok: false, error: 'ticket, ide, and apiBaseUrl are required' }, true);
+      if (method === 'GET' && path === '/design/active-session') {
+        const active = await readActiveDesignSession(options.homeDir);
+        if (!active) {
+          sendJson(res, 404, { ok: false, error: 'no_active_design_session' });
           return;
         }
-        sendJson(res, 200, await launch(body as LaunchRequest, { homeDir: options.homeDir, deviceId: config.deviceId }), true);
-      } catch (error) {
-        const code =
-          error && typeof error === 'object' && 'code' in error
-            ? (error as { code?: string }).code
-            : undefined;
-        const message = error instanceof Error ? error.message : 'Launch failed';
-        sendJson(
-          res,
-          code === 'REDEEM_FAILED' ? 502 : 400,
-          { ok: false, error: code === 'PATH_CANCELLED' ? 'PATH_CANCELLED' : message },
-          true,
-        );
+        // 该接口仅监听 loopback，不加 CORS，避免把短期 token 暴露给浏览器。
+        sendJson(res, 200, active);
+        return;
       }
-      return;
-    }
 
-    if (path === '/design/launch' && method === 'POST') {
-      try {
-        const body = (await readJson(req)) as Partial<OpenDesignLaunchRequest>;
-        if (!body?.ticket?.trim() || !body.apiBaseUrl?.trim()) {
-          sendJson(res, 400, { ok: false, error: 'ticket and apiBaseUrl are required' }, true);
-          return;
+      if (['/launch', '/design/launch', '/design/submit'].includes(path) && method === 'OPTIONS') {
+        res.writeHead(204, {
+          'access-control-allow-origin': '*',
+          'access-control-allow-methods': 'POST, OPTIONS',
+          'access-control-allow-headers': 'content-type',
+        });
+        res.end();
+        return;
+      }
+
+      if (path === '/launch' && method === 'POST') {
+        try {
+          const body = (await readJson(req)) as Partial<LaunchRequest>;
+          if (
+            !body ||
+            typeof body.ticket !== 'string' ||
+            typeof body.ide !== 'string' ||
+            !isLocalIde(body.ide) ||
+            typeof body.apiBaseUrl !== 'string' ||
+            (body.purpose !== undefined && body.purpose !== 'quality-test')
+          ) {
+            sendJson(res, 400, { ok: false, error: 'ticket, ide, and apiBaseUrl are required' }, true);
+            return;
+          }
+          sendJson(res, 200, await launch(body as LaunchRequest, { homeDir: options.homeDir, deviceId: config.deviceId }), true);
+        } catch (error) {
+          const code =
+            error && typeof error === 'object' && 'code' in error
+              ? (error as { code?: string }).code
+              : undefined;
+          const message = error instanceof Error ? error.message : 'Launch failed';
+          sendJson(
+            res,
+            code === 'REDEEM_FAILED' ? 502 : 400,
+            { ok: false, error: code === 'PATH_CANCELLED' ? 'PATH_CANCELLED' : message },
+            true,
+          );
         }
-        sendJson(
-          res,
-          200,
-          await designLaunch(body as OpenDesignLaunchRequest, { homeDir: options.homeDir }),
-          true,
-        );
-      } catch (error) {
-        sendJson(
-          res,
-          400,
-          { ok: false, error: error instanceof Error ? error.message : 'OpenDesign launch failed' },
-          true,
-        );
+        return;
       }
-      return;
-    }
 
-    if (path === '/design/submit' && method === 'POST') {
-      try {
-        const body = (await readJson(req)) as { executionSessionId?: string };
-        if (!body?.executionSessionId?.trim()) {
-          sendJson(res, 400, { ok: false, error: 'executionSessionId is required' }, true);
-          return;
+      if (path === '/design/launch' && method === 'POST') {
+        try {
+          const body = (await readJson(req)) as Partial<OpenDesignLaunchRequest>;
+          if (!body?.ticket?.trim() || !body.apiBaseUrl?.trim()) {
+            sendJson(res, 400, { ok: false, error: 'ticket and apiBaseUrl are required' }, true);
+            return;
+          }
+          sendJson(
+            res,
+            200,
+            await designLaunch(body as OpenDesignLaunchRequest, { homeDir: options.homeDir }),
+            true,
+          );
+        } catch (error) {
+          sendJson(
+            res,
+            400,
+            { ok: false, error: error instanceof Error ? error.message : 'OpenDesign launch failed' },
+            true,
+          );
         }
-        sendJson(
-          res,
-          200,
-          await designSubmit(body.executionSessionId, { homeDir: options.homeDir }),
-          true,
-        );
-      } catch (error) {
-        sendJson(
-          res,
-          400,
-          { ok: false, error: error instanceof Error ? error.message : 'OpenDesign submit failed' },
-          true,
-        );
+        return;
       }
-      return;
-    }
 
-    sendJson(res, 404, { ok: false, error: 'not_found' });
+      if (path === '/design/submit' && method === 'POST') {
+        try {
+          const body = (await readJson(req)) as { executionSessionId?: string };
+          if (!body?.executionSessionId?.trim()) {
+            sendJson(res, 400, { ok: false, error: 'executionSessionId is required' }, true);
+            return;
+          }
+          sendJson(
+            res,
+            200,
+            await designSubmit(body.executionSessionId, { homeDir: options.homeDir }),
+            true,
+          );
+        } catch (error) {
+          sendJson(
+            res,
+            400,
+            { ok: false, error: error instanceof Error ? error.message : 'OpenDesign submit failed' },
+            true,
+          );
+        }
+        return;
+      }
+
+      sendJson(res, 404, { ok: false, error: 'not_found' });
+    } finally {
+      handlerFinished = true;
+      finish();
+    }
   });
 }
 

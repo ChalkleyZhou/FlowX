@@ -1,9 +1,10 @@
 import { FLOWX_PROTOCOL_VERSION } from '@flowx-ai/protocol';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Server } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { request } from 'node:http';
 import { PACKAGE_VERSION } from './config.js';
 import { createLocalServer, startServer } from './server.js';
 import { writeActiveDesignSession } from './active-design-session.js';
@@ -30,6 +31,55 @@ function makeHome() {
 }
 
 describe('flowx-local server', () => {
+  it('请求触发活动检查，只有并发请求全部结束后才通知空闲', async () => {
+    let complete!: () => void;
+    let started!: () => void;
+    const pending = new Promise<void>((resolve) => { complete = resolve; });
+    const launchStarted = new Promise<void>((resolve) => { started = resolve; });
+    const onActivity = vi.fn();
+    const onIdle = vi.fn();
+    const { server, url } = await startServer({
+      port: 0, homeDir: makeHome(), onActivity, onIdle,
+      runLaunch: async () => { started(); await pending; return { ok: true } as never; },
+    });
+    servers.push(server);
+    const launch = fetch(`${url}/launch`, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ticket: 'ticket', ide: 'codex', apiBaseUrl: 'https://flowx.example/api' }) });
+    try {
+      await launchStarted;
+      await (await fetch(`${url}/health`)).json();
+      expect(onActivity).toHaveBeenCalledTimes(2);
+      expect(onIdle).not.toHaveBeenCalled();
+    } finally { complete(); }
+    await (await launch).json();
+    await vi.waitFor(() => expect(onIdle).toHaveBeenCalledOnce());
+  });
+
+  it('客户端断开后仍等待正在执行的业务处理结束', async () => {
+    let complete!: () => void;
+    let started!: () => void;
+    const pending = new Promise<void>((resolve) => { complete = resolve; });
+    const launchStarted = new Promise<void>((resolve) => { started = resolve; });
+    const onIdle = vi.fn();
+    const { server, url } = await startServer({ port: 0, homeDir: makeHome(), onIdle,
+      runLaunch: async () => { started(); await pending; return { ok: true } as never; },
+    });
+    servers.push(server);
+    const responseClosed = new Promise<void>((resolve) => server.once('request', (_req, res) => res.once('close', resolve)));
+    const req = request(`${url}/launch`, { method: 'POST', headers: { 'content-type': 'application/json' } });
+    req.on('error', () => {});
+    req.end(JSON.stringify({ ticket: 'ticket', ide: 'codex', apiBaseUrl: 'https://flowx.example/api' }));
+    await launchStarted;
+    const disconnected = new Promise<void>((resolve) => req.once('close', resolve));
+    req.destroy();
+    await disconnected;
+    await responseClosed;
+    try {
+      expect(onIdle).not.toHaveBeenCalled();
+    } finally { complete(); }
+    await vi.waitFor(() => expect(onIdle).toHaveBeenCalledOnce());
+  });
+
   it('serves GET /health on loopback', async () => {
     const { server, url } = await startServer({ port: 0, homeDir: makeHome() });
     servers.push(server);
