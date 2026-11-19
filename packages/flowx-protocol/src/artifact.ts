@@ -18,7 +18,7 @@ export const ARTIFACT_TYPES = [
 
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
 
-export const ARTIFACT_STORAGE_PROVIDERS = ['local', 'minio', 's3', 'external'] as const;
+export const ARTIFACT_STORAGE_PROVIDERS = ['local', 'minio', 's3', 'oss', 'external'] as const;
 
 export type ArtifactStorageProvider = (typeof ARTIFACT_STORAGE_PROVIDERS)[number];
 

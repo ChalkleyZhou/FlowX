@@ -4773,6 +4773,9 @@ export class WorkflowService {
             relPath: page.relPath,
             bytes: page.bytes,
             generatedAt: page.generatedAt,
+            artifactId: typeof page.artifactId === 'string' ? page.artifactId : undefined,
+            storageProvider: page.storageProvider === 'oss' || page.storageProvider === 'local' ? page.storageProvider : undefined,
+            storageKey: typeof page.storageKey === 'string' ? page.storageKey : undefined,
           });
         }
         if (pages.length > 0) {
@@ -4795,7 +4798,8 @@ export class WorkflowService {
     const generatedAt = new Date().toISOString();
     const safeSurface = this.encodeDesignPathSegment(surfaceId);
     const absDir = join(DESIGN_ARTIFACT_ROOT, workflowRunId, safeSurface);
-    await mkdir(absDir, { recursive: true });
+    const useOss = this.artifactsService?.defaultStorageProviderName === 'oss';
+    if (!useOss) await mkdir(absDir, { recursive: true });
     const outPages: DesignPageRef[] = [];
 
     for (const page of pages) {
@@ -4809,9 +4813,31 @@ export class WorkflowService {
       const safePage = createHash('sha256').update(page.id).digest('hex');
       const fileName = `${safePage}-${generatedAt.replace(/[:.]/g, '-')}.html`;
       const relPath = `${workflowRunId}/${safeSurface}/${fileName}`;
-      await writeFile(join(absDir, fileName), page.html, 'utf8');
+      const storageKey = `design/${relPath}`;
+      let artifactId: string | undefined;
+      if (useOss && this.artifactsService) {
+        const artifact = await this.artifactsService.storeWorkflowArtifact({
+          workflowRunId,
+          executionSessionId: ownership?.executionSessionId,
+          createdByUserId: ownership?.createdByUserId,
+          artifactType: 'DESIGN_HTML',
+          name: `${surfaceId}/${page.title ?? page.id}`,
+          version: generatedAt,
+          storageKey,
+          mimeType: 'text/html; charset=utf-8',
+          content: Buffer.from(page.html, 'utf8'),
+          metadata: { generatedAt, surfaceId, pageId: page.id },
+        });
+        artifactId = artifact.id;
+      } else {
+        await writeFile(join(absDir, fileName), page.html, 'utf8');
+      }
       if (this.artifactsService) {
         try {
+          if (useOss) {
+            outPages.push({ id: page.id, title: page.title ?? page.id, relPath, bytes, generatedAt, artifactId, storageProvider: 'oss', storageKey });
+            continue;
+          }
           await this.artifactsService.registerWorkflowArtifact({
             workflowRunId,
             ...ownership,
@@ -4839,6 +4865,8 @@ export class WorkflowService {
         relPath,
         bytes,
         generatedAt,
+        storageProvider: 'local',
+        storageKey,
       });
     }
 
@@ -4885,7 +4913,7 @@ export class WorkflowService {
     let total = 0;
     for (const surface of inventory) {
       for (const page of surface.pages) {
-        const html = await this.readWorkflowDesignArtifactHtml(page.relPath);
+        const html = await this.readDesignPageHtml(page);
         if (!html) {
           continue;
         }
@@ -4935,7 +4963,7 @@ export class WorkflowService {
     if (!page?.relPath) {
       return { exists: false, html: null };
     }
-    const html = await this.readWorkflowDesignArtifactHtml(page.relPath);
+    const html = await this.readDesignPageHtml(page);
     return {
       exists: Boolean(html),
       html,
@@ -4943,6 +4971,18 @@ export class WorkflowService {
       pageId,
       generatedAt: page.generatedAt,
     };
+  }
+
+  private async readDesignPageHtml(page: DesignPageRef): Promise<string | null> {
+    if (page.artifactId && this.artifactsService) {
+      try {
+        const result = await this.artifactsService.readContent(page.artifactId);
+        return result.content.toString('utf8');
+      } catch {
+        return null;
+      }
+    }
+    return this.readWorkflowDesignArtifactHtml(page.relPath);
   }
 
   private async buildWorkflowRepositoryComponentContext(

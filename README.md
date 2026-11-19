@@ -146,6 +146,13 @@ YUNXIAO_ACCESS_KEY_ID=""
 YUNXIAO_ACCESS_KEY_SECRET=""
 YUNXIAO_REGION_ID="cn-hangzhou"
 YUNXIAO_API_ENDPOINT=""
+FLOWX_FILE_STORAGE_PROVIDER="local"
+FLOWX_OSS_REGION=""
+FLOWX_OSS_BUCKET=""
+FLOWX_OSS_ACCESS_KEY_ID=""
+FLOWX_OSS_ACCESS_KEY_SECRET=""
+FLOWX_OSS_ENDPOINT=""
+FLOWX_OSS_PREFIX="flowx/prod"
 ```
 
 1. Install dependencies:
@@ -166,6 +173,10 @@ pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma 
 ```bash
 pnpm dev
 ```
+
+### 文件存储
+
+Artifact 默认使用 API 项目文件服务。生产环境可以设置 `FLOWX_FILE_STORAGE_PROVIDER=oss`，并配置私有 OSS Bucket、RAM 用户 AK/SK、region 和可选 endpoint；API 继续代理上传和读取，Web 与 `flowx-local` 不需要 OSS 凭据。历史 Artifact 不迁移，仍按记录中的 `storageProvider` 读取。
 
 ### 本地 OpenDesign 设计
 

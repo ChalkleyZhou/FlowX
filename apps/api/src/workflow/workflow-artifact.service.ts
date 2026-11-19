@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { ArtifactsService } from '../artifacts/artifacts.service';
+import { FILE_STORAGE_SERVICE } from '../artifacts/artifact-storage.provider';
+import { FileStorageService } from '../artifacts/file-storage.service';
 import { getWorkflowArtifactsRoot } from './workflow-artifact.paths';
 import { renderExecutionReportHtml, type ExecutionReportRepositoryRow } from './workflow-artifact.execution.render';
 
@@ -30,6 +32,9 @@ interface ExecutionManifestEntry {
   sha256: string;
   executor: string;
   completedAt: string;
+  artifactId?: string;
+  storageProvider?: 'local' | 'oss';
+  storageKey?: string;
 }
 
 interface ArtifactManifest {
@@ -44,13 +49,24 @@ function sha256Hex(content: string | Buffer): string {
 export class WorkflowArtifactService {
   private readonly logger = new Logger(WorkflowArtifactService.name);
 
-  constructor(@Optional() @Inject(forwardRef(() => ArtifactsService)) private readonly artifactsService?: ArtifactsService) {}
-
   getArtifactsRoot(workflowRunId: string): string {
     return getWorkflowArtifactsRoot(workflowRunId);
   }
 
+  constructor(
+    @Optional() @Inject(forwardRef(() => ArtifactsService)) private readonly artifactsService?: ArtifactsService,
+    @Optional() @Inject(FILE_STORAGE_SERVICE) private readonly fileStorage?: FileStorageService,
+  ) {}
+
   async readManifest(workflowRunId: string): Promise<ArtifactManifest> {
+    const manifestKey = `workflow/${workflowRunId}/manifest.json`;
+    if (this.fileStorage?.defaultProviderName === 'oss') {
+      try {
+        return JSON.parse((await this.fileStorage.read('oss', manifestKey)).toString('utf8')) as ArtifactManifest;
+      } catch {
+        // Older manifests are local files and remain readable after switching the default provider.
+      }
+    }
     const manifestPath = join(this.getArtifactsRoot(workflowRunId), 'manifest.json');
     try {
       return JSON.parse(await readFile(manifestPath, 'utf8')) as ArtifactManifest;
@@ -68,15 +84,13 @@ export class WorkflowArtifactService {
     meta: ExecutionArtifactMeta;
     repositoryRows: ExecutionReportRepositoryRow[];
     pushed: boolean;
-  }): Promise<{ htmlPath: string; metaPath: string; sha256: string }> {
+  }): Promise<{ htmlPath: string; metaPath: string; sha256: string; artifactId?: string }> {
     const { workflowRunId, version } = params;
     const root = this.getArtifactsRoot(workflowRunId);
     const htmlRel = `execution/v${version}/report.html`;
     const metaRel = `execution/v${version}/execution.meta.json`;
     const htmlAbs = join(root, htmlRel);
     const metaAbs = join(root, metaRel);
-
-    await mkdir(dirname(htmlAbs), { recursive: true });
 
     const html = renderExecutionReportHtml({
       workflowRunId,
@@ -88,8 +102,8 @@ export class WorkflowArtifactService {
       pushed: params.pushed,
     });
 
-    await writeFile(htmlAbs, html, 'utf8');
-    await writeFile(metaAbs, `${JSON.stringify(params.meta, null, 2)}\n`, 'utf8');
+    const htmlBuffer = Buffer.from(html, 'utf8');
+    const metaBuffer = Buffer.from(`${JSON.stringify(params.meta, null, 2)}\n`, 'utf8');
 
     const sha256 = sha256Hex(html);
     const completedAt = params.meta.completedAt;
@@ -102,23 +116,50 @@ export class WorkflowArtifactService {
       executor: params.executor,
       completedAt,
     };
-    await writeFile(join(root, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    const htmlStorageKey = `workflow/${workflowRunId}/artifacts/${htmlRel}`;
+    const metaStorageKey = `workflow/${workflowRunId}/artifacts/${metaRel}`;
+    let artifactId: string | undefined;
+    if (this.fileStorage?.defaultProviderName === 'oss' && this.artifactsService) {
+      const artifact = await this.artifactsService.storeWorkflowArtifact({
+        workflowRunId,
+        artifactType: 'EXECUTION_REPORT',
+        name: `执行报告 v${version}`,
+        version: String(version),
+        storageKey: htmlStorageKey,
+        mimeType: 'text/html; charset=utf-8',
+        content: htmlBuffer,
+        metadata: { metaPath: metaRel, executor: params.executor, completedAt },
+      });
+      artifactId = artifact.id;
+      await this.fileStorage.write('oss', metaStorageKey, metaBuffer);
+      manifest.execution = {
+        ...manifest.execution,
+        artifactId,
+        storageProvider: 'oss',
+        storageKey: htmlStorageKey,
+      } as ExecutionManifestEntry;
+      await this.fileStorage.write('oss', `workflow/${workflowRunId}/manifest.json`, Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`));
+    } else {
+      await mkdir(dirname(htmlAbs), { recursive: true });
+      await writeFile(htmlAbs, html, 'utf8');
+      await writeFile(metaAbs, metaBuffer);
+      await writeFile(join(root, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+      await this.registerArtifact({
+        workflowRunId,
+        artifactType: 'EXECUTION_REPORT',
+        name: `执行报告 v${version}`,
+        version: String(version),
+        storageProvider: 'local',
+        storageKey: htmlStorageKey,
+        mimeType: 'text/html; charset=utf-8',
+        byteSize: Buffer.byteLength(html, 'utf8'),
+        sha256,
+        status: 'AVAILABLE',
+        metadata: { metaPath: metaRel, executor: params.executor, completedAt },
+      });
+    }
 
-    await this.registerArtifact({
-      workflowRunId,
-      artifactType: 'EXECUTION_REPORT',
-      name: `执行报告 v${version}`,
-      version: String(version),
-      storageProvider: 'local',
-      storageKey: `workflow/${workflowRunId}/artifacts/${htmlRel}`,
-      mimeType: 'text/html; charset=utf-8',
-      byteSize: Buffer.byteLength(html, 'utf8'),
-      sha256,
-      status: 'AVAILABLE',
-      metadata: { metaPath: metaRel, executor: params.executor, completedAt },
-    });
-
-    return { htmlPath: htmlRel, metaPath: metaRel, sha256 };
+    return { htmlPath: htmlRel, metaPath: metaRel, sha256, artifactId };
   }
 
   async readExecutionHtml(workflowRunId: string): Promise<string | null> {
@@ -126,11 +167,14 @@ export class WorkflowArtifactService {
     if (!manifest.execution?.path) {
       return null;
     }
-    try {
-      return await readFile(join(this.getArtifactsRoot(workflowRunId), manifest.execution.path), 'utf8');
-    } catch {
-      return null;
+    if (manifest.execution.storageProvider && manifest.execution.storageKey && this.fileStorage) {
+      try {
+        return (await this.fileStorage.read(manifest.execution.storageProvider, manifest.execution.storageKey)).toString('utf8');
+      } catch {
+        return null;
+      }
     }
+    try { return await readFile(join(this.getArtifactsRoot(workflowRunId), manifest.execution.path), 'utf8'); } catch { return null; }
   }
 
   private async registerArtifact(

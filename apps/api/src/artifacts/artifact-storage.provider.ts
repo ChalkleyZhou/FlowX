@@ -1,4 +1,5 @@
 export const ARTIFACT_STORAGE_PROVIDER = Symbol('ARTIFACT_STORAGE_PROVIDER');
+export const FILE_STORAGE_SERVICE = Symbol('FILE_STORAGE_SERVICE');
 
 export type StoredArtifactInfo = {
   storageKey: string;
@@ -7,8 +8,8 @@ export type StoredArtifactInfo = {
 };
 
 export interface ArtifactStorageProvider {
-  readonly provider: 'local';
-  resolvePath(storageKey: string): string;
+  readonly provider: 'local' | 'oss';
+  resolvePath?(storageKey: string): string;
   write(storageKey: string, content: Buffer): Promise<StoredArtifactInfo>;
   read(storageKey: string): Promise<Buffer>;
   stat(storageKey: string): Promise<{ byteSize: number }>;

@@ -21,9 +21,9 @@ import {
 } from '../execution-sessions/execution-sessions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
-  ARTIFACT_STORAGE_PROVIDER,
-  type ArtifactStorageProvider,
+  FILE_STORAGE_SERVICE,
 } from './artifact-storage.provider';
+import { FileStorageService } from './file-storage.service';
 import type { RegisterArtifactDto } from './dto/register-artifact.dto';
 import {
   MAX_MANAGED_ARTIFACT_BYTES,
@@ -56,9 +56,44 @@ export class ArtifactsService {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => ExecutionSessionsService))
     private readonly executionSessionsService: ExecutionSessionsService,
-    @Inject(ARTIFACT_STORAGE_PROVIDER)
-    private readonly localStorage: ArtifactStorageProvider,
+    @Inject(FILE_STORAGE_SERVICE)
+    private readonly fileStorage: FileStorageService,
   ) {}
+
+  get defaultStorageProviderName() {
+    return this.fileStorage.defaultProviderName;
+  }
+
+  async storeWorkflowArtifact(input: {
+    workflowRunId: string;
+    artifactType: ArtifactType;
+    name: string;
+    version: string;
+    storageKey: string;
+    mimeType: string;
+    content: Buffer;
+    metadata?: Record<string, unknown>;
+    executionSessionId?: string | null;
+    createdByUserId?: string | null;
+  }) {
+    const storageProvider = this.fileStorage.defaultProviderName;
+    const stored = await this.fileStorage.write(storageProvider, input.storageKey, input.content);
+    return this.registerWorkflowArtifact({
+      workflowRunId: input.workflowRunId,
+      executionSessionId: input.executionSessionId,
+      createdByUserId: input.createdByUserId,
+      artifactType: input.artifactType,
+      name: input.name,
+      version: input.version,
+      storageProvider,
+      storageKey: input.storageKey,
+      mimeType: input.mimeType,
+      byteSize: stored.byteSize,
+      sha256: stored.sha256,
+      status: 'AVAILABLE',
+      metadata: input.metadata,
+    });
+  }
 
   async registerForSession(
     executionSessionId: string,
@@ -104,7 +139,7 @@ export class ArtifactsService {
       artifactType: input.artifactType,
       name: input.name,
       version: input.version,
-      storageProvider: 'local',
+      storageProvider: this.fileStorage.defaultProviderName,
       storageKey: `managed/${executionSessionId}/${artifactId}/${storageName}`,
       mimeType: input.mimeType,
       byteSize: input.byteSize,
@@ -136,7 +171,7 @@ export class ArtifactsService {
     }
     const artifact = await this.findOne(artifactId, scope);
     await this.assertWritableArtifact(artifact, scope);
-    if (artifact.storageProvider !== 'local' || !artifact.storageKey?.startsWith('managed/')) {
+    if (!['local', 'oss'].includes(artifact.storageProvider) || !artifact.storageKey?.startsWith('managed/')) {
       throw new BadRequestException('Artifact does not accept managed content uploads.');
     }
     const byteSize = content.byteLength;
@@ -151,7 +186,7 @@ export class ArtifactsService {
     if (artifact.status !== 'PENDING') {
       throw new BadRequestException('Artifact is not waiting for managed content upload.');
     }
-    const stored = await this.localStorage.write(artifact.storageKey, content);
+    const stored = await this.fileStorage.write(artifact.storageProvider, artifact.storageKey, content);
     return this.prisma.artifact.update({
       where: { id: artifactId },
       data: {
@@ -199,7 +234,8 @@ export class ArtifactsService {
   }) {
     const artifactId = randomUUID();
     const storageKey = `managed/server/${artifactId}/${sanitizeStorageName(input.name)}`;
-    const stored = await this.localStorage.write(storageKey, input.content);
+    const storageProvider = this.fileStorage.defaultProviderName;
+    const stored = await this.fileStorage.write(storageProvider, storageKey, input.content);
     return this.register(
       {
         workspaceId: input.workspaceId,
@@ -209,7 +245,7 @@ export class ArtifactsService {
         artifactType: input.artifactType,
         name: input.name,
         version: input.version,
-        storageProvider: 'local',
+        storageProvider,
         storageKey,
         mimeType: input.mimeType,
         byteSize: stored.byteSize,
@@ -291,15 +327,19 @@ export class ArtifactsService {
     });
   }
 
-  async readLocalContent(id: string, scope: ExecutionSessionScope = {}) {
+  async readContent(id: string, scope: ExecutionSessionScope = {}) {
     const artifact = await this.findOne(id, scope);
-    if (artifact.storageProvider !== 'local' || !artifact.storageKey) {
-      throw new BadRequestException('Artifact does not use local storage.');
+    if (!artifact.storageKey || !['local', 'oss'].includes(artifact.storageProvider)) {
+      throw new BadRequestException('Artifact storage provider is not available on this instance.');
     }
     return {
       artifact,
-      content: await this.localStorage.read(artifact.storageKey),
+      content: await this.fileStorage.read(artifact.storageProvider, artifact.storageKey),
     };
+  }
+
+  async readLocalContent(id: string, scope: ExecutionSessionScope = {}) {
+    return this.readContent(id, scope);
   }
 
   async markDeleted(id: string, scope: ExecutionSessionScope = {}) {
@@ -405,7 +445,7 @@ export class ArtifactsService {
       if (!storageKey) {
         throw this.invalidReference('Local artifacts require storageKey.');
       }
-      this.localStorage.resolvePath(storageKey);
+      this.fileStorage.validateReference(input.storageProvider, storageKey);
       return { storageKey, externalUrl };
     }
     if (input.storageProvider === 'external') {
@@ -416,6 +456,9 @@ export class ArtifactsService {
     }
     if (!storageKey) {
       throw this.invalidReference(`${input.storageProvider} artifacts require storageKey.`);
+    }
+    if (input.storageProvider === 'oss') {
+      this.fileStorage.validateReference(input.storageProvider, storageKey);
     }
     return { storageKey, externalUrl };
   }

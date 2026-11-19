@@ -7,6 +7,7 @@
 ### 变更（2026-11-18）
 
 - 修复对话框测试的表单提交事件类型，避免 Web 构建在类型检查阶段失败。
+- 接入阿里云 OSS 文件存储：通过 `FLOWX_FILE_STORAGE_PROVIDER` 在 `local` 和 `oss` 间切换，新 Artifact、执行报告和设计 HTML 可写入私有 OSS；API 继续代理读写，历史本地文件不迁移并按原 provider 读取。
 - 新增阿里云 OSS 文件存储接入设计：通过 `FLOWX_FILE_STORAGE_PROVIDER` 在 `local` 和 `oss` 间切换，新文件按配置写入，历史文件按 Artifact 记录原地读取，不执行迁移；设计基线见 `docs/superpowers/specs/2026-11-18-aliyun-oss-file-storage-design.md`。
 - 对话框的标题和底部操作固定在弹层边缘。内容超过视口时只滚动中间区域，关闭按钮保持在右上角。
 - 用例补齐场景类型、用例类型、适用机型、追溯 ID、测试目的、通过标准、失败判定、是否可自动化和备注。适用端按多选保存，双端展开为手机端和眼镜端，三端再加平台端；执行目标仍使用 Web、API、iOS、Android。导入只读取 Excel 第一个工作表；表头不符合 FlowX 模板或标准用例列时拒绝导入，不读取后续工作表。执行记录列不写入用例定义。

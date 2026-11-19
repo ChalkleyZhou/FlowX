@@ -77,6 +77,13 @@ FlowX 容器内部包含两个服务：
 | `YUNXIAO_ACCESS_KEY_SECRET`            | 云效 OpenAPI AccessKey Secret                                                                  | 否                    |
 | `YUNXIAO_REGION_ID`                    | 云效 OpenAPI 区域（AccessKey 兼容路径使用）                                                       | 否，默认 `cn-hangzhou` |
 | `YUNXIAO_API_ENDPOINT`                 | 云效 OpenAPI 自定义 endpoint                                                                     | 否                      |
+| `FLOWX_FILE_STORAGE_PROVIDER`          | 新文件存储 provider：`local` 或 `oss`；默认 `local`                                                | 否                    |
+| `FLOWX_OSS_REGION`                     | 阿里云 OSS region，例如 `oss-cn-hangzhou`                                                        | `oss` 时必填          |
+| `FLOWX_OSS_BUCKET`                     | 阿里云 OSS 私有 Bucket 名称                                                                       | `oss` 时必填          |
+| `FLOWX_OSS_ACCESS_KEY_ID`              | OSS 专用 RAM 用户 AccessKey ID                                                                   | `oss` 时必填          |
+| `FLOWX_OSS_ACCESS_KEY_SECRET`          | OSS 专用 RAM 用户 AccessKey Secret                                                               | `oss` 时必填          |
+| `FLOWX_OSS_ENDPOINT`                   | OSS 可选自定义 endpoint                                                                          | 否                    |
+| `FLOWX_OSS_PREFIX`                     | OSS 对象 key 前缀                                                                                 | 否，默认空           |
 | `GIT_AUTHOR_NAME`                      | Git 提交用户名                                                                        | 建议填写           |
 | `GIT_AUTHOR_EMAIL`                     | Git 提交邮箱                                                                         | 建议填写           |
 
@@ -92,6 +99,7 @@ FlowX 容器内部包含两个服务：
 - `FRONTEND_BUILD_MODE=direct` 表示前端直接请求 `DIRECT_API_BASE_URL`
 - `FLOWX_WEB_BASE_URL` 用于钉钉工作项负责人和状态变更通知中的“查看工作项”链接。未配置时通知仍会发送文字内容，但不会生成不可用的 localhost 链接。
 - 要让设计阶段接入 OpenDesign，需在运行 API 的同一环境安装 `od` CLI、对所用 agent 执行 `od mcp install codex|cursor`，并设置 `OPENDESIGN_MCP_ENABLED=1` 后重启；详见 [docs/opendesign-design-stage.md](opendesign-design-stage.md)
+- 设置 `FLOWX_FILE_STORAGE_PROVIDER=oss` 后，FlowX 使用私有 OSS Bucket 保存新 Artifact 和工作流 HTML；API 代理所有读写，历史本地文件不迁移并继续按 Artifact 记录读取。RAM 用户只需目标 Bucket 的 `oss:PutObject`、`oss:GetObject` 和 `oss:HeadObject` 权限。
 
 ## 4. 构建镜像
 
