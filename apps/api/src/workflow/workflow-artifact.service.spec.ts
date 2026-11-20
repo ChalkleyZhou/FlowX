@@ -133,9 +133,11 @@ describe('WorkflowArtifactService', () => {
     };
     const artifacts = {
       storeWorkflowArtifact: vi.fn(async (input: { storageKey: string; content: Buffer }) => {
-        await fileStorage.write('oss', input.storageKey, input.content);
-        return { id: 'artifact-oss-1' };
+        const storageKey = `org/org-1/workflow/${input.storageKey}`;
+        await fileStorage.write('oss', storageKey, input.content);
+        return { id: 'artifact-oss-1', storageKey };
       }),
+      workflowStorageKey: vi.fn(async (_workflowRunId: string, key: string) => `org/org-1/workflow/${key}`),
     };
     const ossService = new WorkflowArtifactService(artifacts as never, fileStorage as never);
 
@@ -154,7 +156,8 @@ describe('WorkflowArtifactService', () => {
     });
 
     expect(result.artifactId).toBe('artifact-oss-1');
-    expect(objects.has(`workflow/${runId}/artifacts/execution/v3/report.html`)).toBe(true);
+    expect(objects.has(`org/org-1/workflow/workflow/${runId}/artifacts/execution/v3/report.html`)).toBe(true);
+    expect(objects.has(`org/org-1/workflow/workflow/${runId}/artifacts/execution/v3/execution.meta.json`)).toBe(true);
     await expect(access(join(ossService.getArtifactsRoot(runId), result.htmlPath))).rejects.toThrow();
     await expect(ossService.readExecutionHtml(runId)).resolves.toContain('Stored remotely');
   });

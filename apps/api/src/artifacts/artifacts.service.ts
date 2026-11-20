@@ -24,6 +24,7 @@ import {
   FILE_STORAGE_SERVICE,
 } from './artifact-storage.provider';
 import { FileStorageService } from './file-storage.service';
+import { buildOssStorageKey, isOssStorageKeyInOrganization } from './oss-storage-key';
 import type { RegisterArtifactDto } from './dto/register-artifact.dto';
 import {
   MAX_MANAGED_ARTIFACT_BYTES,
@@ -77,7 +78,14 @@ export class ArtifactsService {
     createdByUserId?: string | null;
   }) {
     const storageProvider = this.fileStorage.defaultProviderName;
-    const stored = await this.fileStorage.write(storageProvider, input.storageKey, input.content);
+    const storageKey = storageProvider === 'oss'
+      ? buildOssStorageKey({
+          organizationId: await this.resolveWorkflowOrganizationId(input.workflowRunId),
+          scope: 'workflow',
+          key: input.storageKey,
+        })
+      : input.storageKey;
+    const stored = await this.fileStorage.write(storageProvider, storageKey, input.content);
     return this.registerWorkflowArtifact({
       workflowRunId: input.workflowRunId,
       executionSessionId: input.executionSessionId,
@@ -86,7 +94,7 @@ export class ArtifactsService {
       name: input.name,
       version: input.version,
       storageProvider,
-      storageKey: input.storageKey,
+      storageKey,
       mimeType: input.mimeType,
       byteSize: stored.byteSize,
       sha256: stored.sha256,
@@ -106,6 +114,13 @@ export class ArtifactsService {
     );
     if (!session.workspaceId) {
       throw new BadRequestException('Execution session is not associated with a workspace.');
+    }
+
+    if (input.storageProvider === 'oss' && (!session.organizationId || !input.storageKey || !isOssStorageKeyInOrganization(input.storageKey, session.organizationId))) {
+      throw new BadRequestException({
+        code: 'OSS_STORAGE_REFERENCE_INVALID',
+        message: 'OSS artifact references must stay inside the current organization namespace.',
+      });
     }
 
     return this.register({
@@ -135,12 +150,20 @@ export class ArtifactsService {
       .digest('hex')
       .slice(0, 32);
     const storageName = sanitizeStorageName(input.name);
+    const storageKey = this.fileStorage.defaultProviderName === 'oss'
+      ? buildOssStorageKey({
+          organizationId: session.organizationId,
+          userId: scope.userId,
+          scope: 'managed',
+          key: `${executionSessionId}/${artifactId}/${storageName}`,
+        })
+      : `managed/${executionSessionId}/${artifactId}/${storageName}`;
     const artifact = await this.register({
       artifactType: input.artifactType,
       name: input.name,
       version: input.version,
       storageProvider: this.fileStorage.defaultProviderName,
-      storageKey: `managed/${executionSessionId}/${artifactId}/${storageName}`,
+      storageKey,
       mimeType: input.mimeType,
       byteSize: input.byteSize,
       sha256: input.sha256,
@@ -171,7 +194,11 @@ export class ArtifactsService {
     }
     const artifact = await this.findOne(artifactId, scope);
     await this.assertWritableArtifact(artifact, scope);
-    if (!['local', 'oss'].includes(artifact.storageProvider) || !artifact.storageKey?.startsWith('managed/')) {
+    const managedKey = artifact.storageKey ?? '';
+    const acceptsManagedKey = artifact.storageProvider === 'local'
+      ? managedKey.startsWith('managed/')
+      : artifact.storageProvider === 'oss' && managedKey.includes('/managed/');
+    if (!['local', 'oss'].includes(artifact.storageProvider) || !acceptsManagedKey) {
       throw new BadRequestException('Artifact does not accept managed content uploads.');
     }
     const byteSize = content.byteLength;
@@ -185,6 +212,9 @@ export class ArtifactsService {
     if (artifact.status === 'AVAILABLE') return artifact;
     if (artifact.status !== 'PENDING') {
       throw new BadRequestException('Artifact is not waiting for managed content upload.');
+    }
+    if (!artifact.storageKey) {
+      throw new BadRequestException('Artifact is missing its storage key.');
     }
     const stored = await this.fileStorage.write(artifact.storageProvider, artifact.storageKey, content);
     return this.prisma.artifact.update({
@@ -205,13 +235,21 @@ export class ArtifactsService {
           select: {
             workspaceId: true,
             projectId: true,
-            project: { select: { workspaceId: true } },
+            workspace: { select: { organizationId: true } },
+            project: { select: { workspaceId: true, workspace: { select: { organizationId: true } } } },
           },
         },
       },
     });
     if (!workflow) {
       throw new NotFoundException('Workflow run not found.');
+    }
+    const organizationId = workflow.workItem.workspace?.organizationId ?? workflow.workItem.project?.workspace.organizationId;
+    if (input.storageProvider === 'oss' && (!organizationId || !input.storageKey || !isOssStorageKeyInOrganization(input.storageKey, organizationId))) {
+      throw new BadRequestException({
+        code: 'OSS_STORAGE_REFERENCE_INVALID',
+        message: 'OSS artifact references must stay inside the current organization namespace.',
+      });
     }
     return this.register({
       ...input,
@@ -233,8 +271,15 @@ export class ArtifactsService {
     createdByUserId?: string | null;
   }) {
     const artifactId = randomUUID();
-    const storageKey = `managed/server/${artifactId}/${sanitizeStorageName(input.name)}`;
     const storageProvider = this.fileStorage.defaultProviderName;
+    const storageKey = storageProvider === 'oss'
+      ? buildOssStorageKey({
+          organizationId: await this.resolveWorkspaceOrganizationId(input.workspaceId),
+          userId: input.createdByUserId,
+          scope: 'server',
+          key: `${artifactId}/${sanitizeStorageName(input.name)}`,
+        })
+      : `managed/server/${artifactId}/${sanitizeStorageName(input.name)}`;
     const stored = await this.fileStorage.write(storageProvider, storageKey, input.content);
     return this.register(
       {
@@ -461,6 +506,38 @@ export class ArtifactsService {
       this.fileStorage.validateReference(input.storageProvider, storageKey);
     }
     return { storageKey, externalUrl };
+  }
+
+  async workflowStorageKey(workflowRunId: string, key: string): Promise<string> {
+    if (this.fileStorage.defaultProviderName !== 'oss') return key;
+    return buildOssStorageKey({
+      organizationId: await this.resolveWorkflowOrganizationId(workflowRunId),
+      scope: 'workflow',
+      key,
+    });
+  }
+
+  private async resolveWorkflowOrganizationId(workflowRunId: string): Promise<string> {
+    const workflow = await this.prisma.workflowRun.findUnique({
+      where: { id: workflowRunId },
+      select: {
+        workItem: {
+          select: {
+            workspace: { select: { organizationId: true } },
+            project: { select: { workspace: { select: { organizationId: true } } } },
+          },
+        },
+      },
+    });
+    return workflow?.workItem.workspace?.organizationId ?? workflow?.workItem.project?.workspace.organizationId ?? '';
+  }
+
+  private async resolveWorkspaceOrganizationId(workspaceId: string): Promise<string> {
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { organizationId: true },
+    });
+    return workspace?.organizationId ?? '';
   }
 
   private validateExternalUrl(value: string) {

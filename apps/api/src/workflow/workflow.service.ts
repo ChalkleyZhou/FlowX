@@ -4815,6 +4815,7 @@ export class WorkflowService {
       const relPath = `${workflowRunId}/${safeSurface}/${fileName}`;
       const storageKey = `design/${relPath}`;
       let artifactId: string | undefined;
+      let artifactStorageKey: string | undefined;
       if (useOss && this.artifactsService) {
         const artifact = await this.artifactsService.storeWorkflowArtifact({
           workflowRunId,
@@ -4829,13 +4830,14 @@ export class WorkflowService {
           metadata: { generatedAt, surfaceId, pageId: page.id },
         });
         artifactId = artifact.id;
+        artifactStorageKey = artifact.storageKey ?? undefined;
       } else {
         await writeFile(join(absDir, fileName), page.html, 'utf8');
       }
       if (this.artifactsService) {
         try {
           if (useOss) {
-            outPages.push({ id: page.id, title: page.title ?? page.id, relPath, bytes, generatedAt, artifactId, storageProvider: 'oss', storageKey });
+            outPages.push({ id: page.id, title: page.title ?? page.id, relPath, bytes, generatedAt, artifactId, storageProvider: 'oss', storageKey: artifactStorageKey ?? storageKey });
             continue;
           }
           await this.artifactsService.registerWorkflowArtifact({

@@ -99,7 +99,7 @@ FlowX 容器内部包含两个服务：
 - `FRONTEND_BUILD_MODE=direct` 表示前端直接请求 `DIRECT_API_BASE_URL`
 - `FLOWX_WEB_BASE_URL` 用于钉钉工作项负责人和状态变更通知中的“查看工作项”链接。未配置时通知仍会发送文字内容，但不会生成不可用的 localhost 链接。
 - 要让设计阶段接入 OpenDesign，需在运行 API 的同一环境安装 `od` CLI、对所用 agent 执行 `od mcp install codex|cursor`，并设置 `OPENDESIGN_MCP_ENABLED=1` 后重启；详见 [docs/opendesign-design-stage.md](opendesign-design-stage.md)
-- 设置 `FLOWX_FILE_STORAGE_PROVIDER=oss` 后，FlowX 使用私有 OSS Bucket 保存新 Artifact 和工作流 HTML；API 代理所有读写，历史本地文件不迁移并继续按 Artifact 记录读取。RAM 用户只需目标 Bucket 的 `oss:PutObject`、`oss:GetObject` 和 `oss:HeadObject` 权限。
+- 设置 `FLOWX_FILE_STORAGE_PROVIDER=oss` 后，FlowX 使用私有 OSS Bucket 保存新 Artifact 和工作流 HTML；对象 key 按组织隔离，执行会话上传和服务端生成资源进一步按用户分区，API 代理所有读写，历史本地或旧 OSS 文件不迁移并继续按 Artifact/manifest 记录读取。RAM 用户只需目标 Bucket 的 `oss:PutObject`、`oss:GetObject` 和 `oss:HeadObject` 权限。
 
 ## 4. 构建镜像
 

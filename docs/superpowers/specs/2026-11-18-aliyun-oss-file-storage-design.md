@@ -56,15 +56,16 @@ API 只签发短期 URL，Web 或本地 Agent 直接上传/下载 OSS。大文�
 
 ### 对象 key
 
-对象 key 使用稳定、可重试的逻辑 key：
+对象 key 使用稳定、可重试的逻辑 key，并在 OSS Bucket 内增加组织和用户隔离层：
 
 ```text
-{prefix}/managed/{executionSessionId}/{artifactId}/{safeName}
-{prefix}/workflow/{workflowRunId}/artifacts/execution/v1/report.html
-{prefix}/design/{workflowRunId}/{surface}/{page}-{timestamp}.html
+{prefix}/org/{organizationId}/user/{userId}/managed/{executionSessionId}/{artifactId}/{safeName}
+{prefix}/org/{organizationId}/user/{userId|system}/server/{artifactId}/{safeName}
+{prefix}/org/{organizationId}/workflow/workflow/{workflowRunId}/artifacts/execution/v1/report.html
+{prefix}/org/{organizationId}/workflow/design/{workflowRunId}/{surface}/{page}-{timestamp}.html
 ```
 
-数据库 `storageKey` 只保存去掉前缀后的逻辑 key，`storageProvider` 保存 `oss`。Bucket、endpoint 和 prefix 由服务端配置决定。文件名继续使用现有安全化规则，禁止 `..`、绝对路径和空路径段。
+数据库 `storageKey` 保存不含配置 `FLOWX_OSS_PREFIX`、但包含组织/用户 namespace 的 key，`storageProvider` 保存 `oss`。工作流资源按组织和 workflow 共享；执行会话上传及服务端生成资源按组织和用户分区。Bucket、endpoint 和 prefix 由服务端配置决定。文件名继续使用现有安全化规则，禁止 `..`、绝对路径和空路径段。历史未带 namespace 的 OSS key 继续按数据库记录读取，不执行迁移。
 
 ### 上传流程
 

@@ -14,6 +14,9 @@ function createService(defaultProviderName: 'local' | 'oss' = 'local') {
     workflowRun: {
       findUnique: vi.fn(),
     },
+    workspace: {
+      findUnique: vi.fn(),
+    },
   };
   const executionSessions = {
     requireWritableSession: vi.fn().mockResolvedValue({}),
@@ -177,7 +180,7 @@ describe('ArtifactsService', () => {
       mimeType: 'text/plain',
       byteSize: 4,
       sha256: expectedSha256,
-    }, { organizationId: 'org-1' });
+    }, { organizationId: 'org-1', userId: 'user-1' });
     const completed = await service.writeManagedContent('artifact-1', Buffer.from('test'), {
       organizationId: 'org-1',
     });
@@ -196,11 +199,63 @@ describe('ArtifactsService', () => {
       name: 'execution.log',
       byteSize: 4,
       sha256: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
-    }, { organizationId: 'org-1' });
+    }, { organizationId: 'org-1', userId: 'user-1' });
 
     expect(pending.artifact.storageProvider).toBe('oss');
-    expect(pending.artifact.storageKey).toContain('managed/session-1/');
+    expect(pending.artifact.storageKey).toContain('org/org-1/user/user-1/managed/session-1/');
     expect(storage.validateReference).toHaveBeenCalledWith('oss', pending.artifact.storageKey);
+  });
+
+  it('rejects manually registered oss references from another organization', async () => {
+    const { service, executionSessions } = createService('oss');
+    executionSessions.requireWritableSession.mockResolvedValue(runningSession);
+
+    await expect(service.registerForSession('session-1', {
+      artifactType: 'LOG',
+      name: 'execution.log',
+      storageProvider: 'oss',
+      storageKey: 'org/org-2/user/user-2/managed/session-2/log.txt',
+    }, { organizationId: 'org-1', userId: 'user-1' })).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('namespaces server generated oss artifacts by organization and user', async () => {
+    const { service, prisma, storage } = createService('oss');
+    prisma.workspace.findUnique.mockResolvedValue({ organizationId: 'org-1' });
+    prisma.artifact.create.mockImplementation(({ data }: { data: unknown }) => ({ id: 'artifact-server', ...data as object }));
+    storage.write.mockResolvedValue({ storageKey: 'ignored', byteSize: 4, sha256: 'a'.repeat(64) });
+
+    const artifact = await service.createServerGeneratedArtifact({
+      workspaceId: 'workspace-1',
+      artifactType: 'TEST_REPORT',
+      name: 'report.html',
+      version: '1',
+      mimeType: 'text/html',
+      content: Buffer.from('test'),
+      createdByUserId: 'user-1',
+    });
+
+    expect(artifact.storageKey).toContain('org/org-1/user/user-1/server/');
+    expect(storage.write).toHaveBeenCalledWith('oss', artifact.storageKey, Buffer.from('test'));
+  });
+
+  it('namespaces workflow oss artifacts by organization', async () => {
+    const { service, prisma, storage } = createService('oss');
+    prisma.workflowRun.findUnique.mockResolvedValue({ workItem: { workspaceId: 'workspace-1', projectId: null, workspace: { organizationId: 'org-1' }, project: null } });
+    prisma.artifact.create.mockImplementation(({ data }: { data: unknown }) => ({ id: 'artifact-workflow', ...data as object }));
+    storage.write.mockResolvedValue({ storageKey: 'ignored', byteSize: 4, sha256: 'a'.repeat(64) });
+
+    const artifact = await service.storeWorkflowArtifact({
+      workflowRunId: 'workflow-1',
+      artifactType: 'DESIGN_HTML',
+      name: 'design.html',
+      version: '1',
+      storageKey: 'design/workflow-1/page.html',
+      mimeType: 'text/html',
+      content: Buffer.from('test'),
+    });
+
+    expect(artifact.storageKey).toBe('org/org-1/workflow/design/workflow-1/page.html');
+    expect(storage.write).toHaveBeenCalledWith('oss', artifact.storageKey, Buffer.from('test'));
   });
 
   it('reads an oss artifact through the provider while preserving local compatibility', async () => {

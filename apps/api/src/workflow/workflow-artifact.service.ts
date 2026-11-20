@@ -59,11 +59,21 @@ export class WorkflowArtifactService {
   ) {}
 
   async readManifest(workflowRunId: string): Promise<ArtifactManifest> {
-    const manifestKey = `workflow/${workflowRunId}/manifest.json`;
+    const logicalManifestKey = `workflow/${workflowRunId}/manifest.json`;
+    const manifestKey = this.artifactsService?.workflowStorageKey
+      ? await this.artifactsService.workflowStorageKey(workflowRunId, logicalManifestKey)
+      : logicalManifestKey;
     if (this.fileStorage?.defaultProviderName === 'oss') {
       try {
         return JSON.parse((await this.fileStorage.read('oss', manifestKey)).toString('utf8')) as ArtifactManifest;
       } catch {
+        if (manifestKey !== logicalManifestKey) {
+          try {
+            return JSON.parse((await this.fileStorage.read('oss', logicalManifestKey)).toString('utf8')) as ArtifactManifest;
+          } catch {
+            // Older manifests may use the pre-namespace OSS key.
+          }
+        }
         // Older manifests are local files and remain readable after switching the default provider.
       }
     }
@@ -131,14 +141,17 @@ export class WorkflowArtifactService {
         metadata: { metaPath: metaRel, executor: params.executor, completedAt },
       });
       artifactId = artifact.id;
-      await this.fileStorage.write('oss', metaStorageKey, metaBuffer);
+      const storedHtmlKey = artifact.storageKey ?? await this.artifactsService.workflowStorageKey(workflowRunId, htmlStorageKey);
+      const storedMetaKey = await this.artifactsService.workflowStorageKey(workflowRunId, metaStorageKey);
+      const storedManifestKey = await this.artifactsService.workflowStorageKey(workflowRunId, `workflow/${workflowRunId}/manifest.json`);
+      await this.fileStorage.write('oss', storedMetaKey, metaBuffer);
       manifest.execution = {
         ...manifest.execution,
         artifactId,
         storageProvider: 'oss',
-        storageKey: htmlStorageKey,
+        storageKey: storedHtmlKey,
       } as ExecutionManifestEntry;
-      await this.fileStorage.write('oss', `workflow/${workflowRunId}/manifest.json`, Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`));
+      await this.fileStorage.write('oss', storedManifestKey, Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`));
     } else {
       await mkdir(dirname(htmlAbs), { recursive: true });
       await writeFile(htmlAbs, html, 'utf8');
