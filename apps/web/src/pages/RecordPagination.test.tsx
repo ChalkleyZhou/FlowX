@@ -67,7 +67,7 @@ it('工作区列表和代码库子列表分别查询当前页', async () => {
 it.each([['BUG', BugsPage, 'getBugs'],['ISSUE', IssuesPage, 'getIssues']] as const)('%s 普通列表将URL标签交给API并使用服务端统计',async (_kind,Page,method)=>{
  vi.mocked(api[method]).mockResolvedValue({items:[],total:0,page:1,pageSize:20,totalPages:1});
  await act(async()=>root.render(<MemoryRouter initialEntries={['/work-items?projectId=p1&labelIds=l1']}><Page/></MemoryRouter>));
- expect(api[method]).toHaveBeenLastCalledWith(expect.objectContaining({projectId:'p1',labelIds:['l1']}));expect(container.textContent).toContain('匹配任一所选标签');
+ expect(api[method]).toHaveBeenLastCalledWith(expect.objectContaining({projectId:'p1',labelIds:['l1']}));expect(container.querySelector('[aria-label="按标签筛选"]')).not.toBeNull();
 });
 
 it.each([['BUG', BugsPage, 'getBugs'],['ISSUE', IssuesPage, 'getIssues']] as const)('%s 标签选择先保留草稿，查询后一次更新URL和请求',async (_kind,Page,method)=>{

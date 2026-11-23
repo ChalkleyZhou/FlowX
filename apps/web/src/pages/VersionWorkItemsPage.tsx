@@ -363,7 +363,7 @@ export function VersionWorkItemsPage({
             search={<Input aria-label="搜索标题或描述" placeholder="搜索标题或描述" value={queryDraft.draft.q} onChange={event => queryDraft.patch({ q: event.target.value })} onKeyDown={event => submitQueryOnEnter(event, applyFilters)} />}
             filters={(
               <>
-                <div className="min-w-48"><ProjectLabelSelect projectId={projectId} value={labelFilter.draft} onChange={labelFilter.setDraft} label="按标签筛选" /><span className="text-xs text-muted-foreground">匹配任一所选标签</span>{labelFilter.error ? <p role="alert" className="text-xs text-destructive">{labelFilter.error}</p> : null}</div>
+                <div className="min-w-48"><ProjectLabelSelect projectId={projectId} value={labelFilter.draft} onChange={labelFilter.setDraft} label="按标签筛选" />{labelFilter.error ? <p role="alert" className="text-xs text-destructive">{labelFilter.error}</p> : null}</div>
                 <Select value={queryDraft.draft.priority || '__all__'} onValueChange={value => queryDraft.patch({ priority: value === '__all__' ? '' : value })}>
                   <SelectTrigger className="w-[140px]" aria-label="按优先级"><SelectValue placeholder="优先级" /></SelectTrigger>
                   <SelectContent>

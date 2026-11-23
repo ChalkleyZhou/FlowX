@@ -107,7 +107,7 @@ export function IssuesPage() {
                 )}
                 filters={(
                   <>
-                    <div className="min-w-48"><ProjectLabelSelect projectId={scopedProjectId} value={labelFilter.draft} onChange={labelFilter.setDraft} label="按标签筛选" /><span className="text-xs text-muted-foreground">匹配任一所选标签</span>{labelFilter.error ? <p role="alert" className="text-xs text-destructive">{labelFilter.error}</p> : null}</div>
+                    <div className="min-w-48"><ProjectLabelSelect projectId={scopedProjectId} value={labelFilter.draft} onChange={labelFilter.setDraft} label="按标签筛选" />{labelFilter.error ? <p role="alert" className="text-xs text-destructive">{labelFilter.error}</p> : null}</div>
                     <PagedSelect value={queryDraft.draft.workspaceId} label="按工作区筛选" placeholder="全部工作区" allowClear emptyLabel="全部工作区" className="w-[180px]" loadPage={api.getWorkspaces}
                       onValueChange={value => queryDraft.patch({ workspaceId: value })} />
                     <Select

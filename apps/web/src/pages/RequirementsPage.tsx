@@ -714,7 +714,7 @@ export function RequirementsPage() {
             )}
             filters={(
               <>
-                <div className="min-w-48"><ProjectLabelSelect projectId={selectedProjectId ?? ''} value={labelFilter.draft} onChange={labelFilter.setDraft} label="按标签筛选" /><span className="text-xs text-muted-foreground">匹配任一所选标签</span>{labelFilter.error ? <p role="alert" className="text-xs text-destructive">{labelFilter.error}</p> : null}</div>
+                <div className="min-w-48"><ProjectLabelSelect projectId={selectedProjectId ?? ''} value={labelFilter.draft} onChange={labelFilter.setDraft} label="按标签筛选" />{labelFilter.error ? <p role="alert" className="text-xs text-destructive">{labelFilter.error}</p> : null}</div>
                 <PagedSelect className="w-[220px]" value={queryDraft.draft.versionId} selectedLabel={filterVersion && filterVersion.id === queryDraft.draft.versionId ? filterVersion.name : undefined} label="按发布版本" placeholder="按发布版本" allowClear emptyLabel="全部版本" disabled={!selectedProjectId} scopeKey={selectedProjectId ?? ''}
                   loadPage={query => api.listProjectVersions(selectedProjectId!, query)} onValueChange={value => queryDraft.patch({ versionId: value })} />
                 <Select

@@ -146,7 +146,7 @@ describe('RequirementsPage', () => {
   it('URL标签与其他筛选一起提交给服务端，不做当前页过滤', async () => {
     await act(async () => { root?.render(<MemoryRouter initialEntries={['/work-items?projectId=project-1&labelIds=l1&priority=HIGH']}><RequirementsPage /></MemoryRouter>); });
     expect(api.getRequirements).toHaveBeenLastCalledWith(expect.objectContaining({ projectId: 'project-1', labelIds: ['l1'], priority: 'HIGH' }));
-    expect(container.textContent).toContain('匹配任一所选标签');
+    expect(container.querySelector('[aria-label="按标签筛选"]')).not.toBeNull();
   });
 
   it('指定仓库范围以服务端总数展示，缺少预览时不能误报继承默认范围', async () => {
