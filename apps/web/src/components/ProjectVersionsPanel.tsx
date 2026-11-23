@@ -120,7 +120,7 @@ export function ProjectVersionsPanel({
             {versions.map((version) => {
               const isCurrent = version.id === currentVersionId;
               return (
-                <li key={version.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
+                <li key={version.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-border px-3 py-2">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-foreground">{version.name}</span>
                     {isCurrent ? <Badge variant="secondary">当前</Badge> : null}
@@ -151,7 +151,7 @@ export function ProjectVersionsPanel({
           </ul>
         )}
         {listing.error ? <p role="alert">{listing.error}</p> : null}
-        <ListPagination {...listing} label="项目版本分页" />
+        {listing.total > listing.pageSize ? <ListPagination {...listing} label="项目版本分页" /> : null}
       </CardContent>
     </Card>
   );

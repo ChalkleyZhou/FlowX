@@ -76,16 +76,21 @@ export function ProjectDetailPage() {
         )}
       />
 
-      <div className="mb-5 flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-2">
         <Badge variant="outline">{project.workspace.name}</Badge>
         {project.code ? <Badge variant="secondary">{project.code}</Badge> : null}
         {project.currentVersion ? <Badge variant="secondary">{project.currentVersion.name}</Badge> : null}
       </div>
 
       <Tabs value={tab} onValueChange={value => { const next = new URLSearchParams(searchParams); next.set('tab', value); setSearchParams(next); }}>
-        <TabsList aria-label="项目设置"><TabsTrigger value="versions">版本</TabsTrigger><TabsTrigger value="labels">标签</TabsTrigger><TabsTrigger value="briefing">简报</TabsTrigger><TabsTrigger value="codeReview">代码审查</TabsTrigger></TabsList>
+        <TabsList className="w-fit" aria-label="项目设置">
+          <TabsTrigger className="flex-none" value="versions">版本</TabsTrigger>
+          <TabsTrigger className="flex-none" value="labels">标签</TabsTrigger>
+          <TabsTrigger className="flex-none" value="briefing">简报</TabsTrigger>
+          <TabsTrigger className="flex-none" value="codeReview">代码审查</TabsTrigger>
+        </TabsList>
       </Tabs>
-      <div className="mt-5">
+      <div>
         {tab === 'versions' ? <div id="project-versions" className="scroll-mt-5"><ProjectVersionsPanel projectId={projectId} currentVersionId={project.currentVersionId} onChanged={refresh} /></div> : null}
         {tab === 'labels' ? <ProjectLabelsPanel key={projectId} projectId={projectId} /> : null}
         {tab === 'briefing' || tab === 'codeReview' ? <ProjectFeedsPanel projectId={projectId} kind={tab} workspaceId={project.workspace.id} /> : null}
