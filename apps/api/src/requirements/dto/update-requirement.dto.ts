@@ -44,4 +44,10 @@ export class UpdateRequirementDto {
   @IsString()
   @IsNotEmpty()
   versionId?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @IsNotEmpty()
+  ownerUserId?: string | null;
 }

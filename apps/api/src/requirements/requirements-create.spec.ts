@@ -155,4 +155,18 @@ describe('需求最小创建契约', () => {
     expect(kept.title).toBe('新标题');
     expect(kept.versionId).toBe(versionId);
   });
+
+  it('可以设置或清空负责人，并拒绝组织外成员', async () => {
+    const user = await prisma.user.create({ data: { account: 'requirement-owner', displayName: '需求负责人' } });
+    await prisma.userOrganization.create({ data: { userId: user.id, organizationId: (await prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { workspace: { select: { organizationId: true } } } })).workspace.organizationId, role: 'member' } });
+    const created = await service.create({ projectId, title: '负责人更新', versionId } as CreateRequirementDto);
+
+    const assigned = await service.update(created.id, { ownerUserId: user.id });
+    expect(assigned).toMatchObject({ ownerUserId: user.id, ownerUser: { id: user.id, displayName: '需求负责人' } });
+
+    const cleared = await service.update(created.id, { ownerUserId: null });
+    expect(cleared).toMatchObject({ ownerUserId: null, ownerUser: null });
+
+    await expect(service.update(created.id, { ownerUserId: 'outside-user' })).rejects.toMatchObject({ status: 400 });
+  });
 });

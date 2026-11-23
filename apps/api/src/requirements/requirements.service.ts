@@ -203,6 +203,7 @@ export class RequirementsService {
 
   private readonly requirementRelationsInclude = {
     version: { select: { id: true, name: true } },
+    ownerUser: { select: { id: true, displayName: true, avatarUrl: true } },
     executionPlans: {
       orderBy: [{ createdAt: 'desc' as const }, { id: 'desc' as const }],
       include: { items: { orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }] } },
@@ -230,6 +231,9 @@ export class RequirementsService {
     if (Object.prototype.hasOwnProperty.call(dto, 'versionId') && dto.versionId) {
       await this.assertVersionOwned(existing.project.id, dto.versionId);
     }
+    if (dto.ownerUserId) {
+      await this.assertUserInOrganization(dto.ownerUserId, existing.project.workspace.organizationId);
+    }
     const title = dto.title?.trim();
     if (dto.title !== undefined && !title) {
       throw new BadRequestException('请填写需求名称');
@@ -248,6 +252,7 @@ export class RequirementsService {
         ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
         ...(dto.planningStatus !== undefined ? { planningStatus: dto.planningStatus } : {}),
         ...(Object.prototype.hasOwnProperty.call(dto, 'versionId') ? { versionId: dto.versionId ?? null } : {}),
+        ...(Object.prototype.hasOwnProperty.call(dto, 'ownerUserId') ? { ownerUserId: dto.ownerUserId ?? null } : {}),
       },
       include: {
         project: {
@@ -548,6 +553,11 @@ export class RequirementsService {
     if (!owned) {
       throw new BadRequestException('Version does not belong to this project.');
     }
+  }
+
+  private async assertUserInOrganization(userId: string, organizationId: string) {
+    const membership = await this.prisma.userOrganization.findFirst({ where: { userId, organizationId }, select: { id: true } });
+    if (!membership) throw new BadRequestException('负责人不属于当前组织。');
   }
 
   // ── Ideation methods ──
