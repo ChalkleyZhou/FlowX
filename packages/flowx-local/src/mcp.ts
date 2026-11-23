@@ -131,6 +131,19 @@ function requirementProfileBody(input: {
   riskImpact?: string;
   productRequirementDocument?: string;
   remark?: string;
+  status?: string;
+  severity?: string;
+  expectedBehavior?: string;
+  actualBehavior?: string;
+  reproductionSteps?: string[];
+  resolution?: string;
+  ownerUserId?: string;
+  sourceProvider?: string;
+  sourceId?: string;
+  sourceUrl?: string;
+  affectedVersion?: string;
+  participantUserIds?: string[];
+  verifierUserId?: string | null;
 }) {
   return {
     ...(input.priority !== undefined ? { priority: input.priority } : {}),
@@ -138,6 +151,19 @@ function requirementProfileBody(input: {
     ...(input.riskImpact !== undefined ? { riskImpact: input.riskImpact } : {}),
     ...(input.productRequirementDocument !== undefined ? { productRequirementDocument: input.productRequirementDocument } : {}),
     ...(input.remark !== undefined ? { remark: input.remark } : {}),
+    ...(input.status !== undefined ? { status: input.status } : {}),
+    ...(input.severity !== undefined ? { severity: input.severity } : {}),
+    ...(input.expectedBehavior !== undefined ? { expectedBehavior: input.expectedBehavior } : {}),
+    ...(input.actualBehavior !== undefined ? { actualBehavior: input.actualBehavior } : {}),
+    ...(input.reproductionSteps !== undefined ? { reproductionSteps: input.reproductionSteps } : {}),
+    ...(input.resolution !== undefined ? { resolution: input.resolution } : {}),
+    ...(input.ownerUserId !== undefined ? { ownerUserId: input.ownerUserId } : {}),
+    ...(input.sourceProvider !== undefined ? { sourceProvider: input.sourceProvider } : {}),
+    ...(input.sourceId !== undefined ? { sourceId: input.sourceId } : {}),
+    ...(input.sourceUrl !== undefined ? { sourceUrl: input.sourceUrl } : {}),
+    ...(input.affectedVersion !== undefined ? { affectedVersion: input.affectedVersion } : {}),
+    ...(input.participantUserIds !== undefined ? { participantUserIds: input.participantUserIds } : {}),
+    ...(input.verifierUserId !== undefined ? { verifierUserId: input.verifierUserId } : {}),
   };
 }
 
@@ -1210,6 +1236,19 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
         riskImpact: z.string().optional(),
         productRequirementDocument: z.string().optional(),
         remark: z.string().optional(),
+        status: z.string().trim().min(1).optional(),
+        severity: z.string().optional(),
+        expectedBehavior: z.string().optional(),
+        actualBehavior: z.string().optional(),
+        reproductionSteps: z.array(z.string()).optional(),
+        resolution: z.string().optional(),
+        ownerUserId: z.string().optional(),
+        sourceProvider: z.string().optional(),
+        sourceId: z.string().optional(),
+        sourceUrl: z.string().url().optional(),
+        affectedVersion: z.string().optional(),
+        participantUserIds: z.array(z.string()).optional(),
+        verifierUserId: z.string().optional(),
         repositoryIds: z.array(z.string()).optional(),
         labelIds: projectLabelIdsSchema.optional(),
         versionId: z.string().trim().min(1),
@@ -1253,6 +1292,15 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
         riskImpact: z.string().optional(),
         productRequirementDocument: z.string().optional(),
         remark: z.string().optional(),
+        status: z.string().trim().min(1).optional(),
+        severity: z.string().optional(),
+        expectedBehavior: z.string().optional(),
+        actualBehavior: z.string().optional(),
+        reproductionSteps: z.array(z.string()).optional(),
+        resolution: z.string().optional(),
+        ownerUserId: z.string().optional(),
+        participantUserIds: z.array(z.string()).optional(),
+        verifierUserId: z.string().nullable().optional(),
         versionId: z.string().trim().min(1).nullable().optional(),
         labelIds: projectLabelIdsSchema.optional(),
       }),

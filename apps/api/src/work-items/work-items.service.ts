@@ -7,7 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { pageResult, parsePagination } from '../common/pagination';
 import { AI_EXECUTOR_REGISTRY, type AIExecutorRegistry } from '../ai/ai-executor';
 import { AiInvocationContextService } from '../ai/ai-invocation-context.service';
-import { CreateWorkItemDto } from './dto/create-work-item.dto';
+import { CreateWorkItemDto, WORK_ITEM_MEMBER_ROLES } from './dto/create-work-item.dto';
 import { CreateExecutionItemDto } from './dto/create-execution-item.dto';
 import { GenerateExecutionPlanDto } from './dto/generate-execution-plan.dto';
 import { ListWorkItemsDto } from './dto/list-work-items.dto';
@@ -39,6 +39,15 @@ export class WorkItemsService {
     const requestedPageSize = Number.isFinite(query.pageSize) ? query.pageSize! : PAGE_SIZE;
     const take = Math.min(Math.max(requestedPageSize, 1), MAX_PAGE_SIZE);
     const cursor = this.decodeCursor(query.cursor);
+    if (cursor && !cursor.createdAt) {
+      // 旧游标使用更新时间；升级后按原工作项的创建时间继续定位。
+      const item = await this.prisma.workItem.findFirst({
+        where: { id: cursor.id, projectId, versionId },
+        select: { createdAt: true },
+      });
+      if (!item) throw new BadRequestException('cursor 对应的工作项已移出版本或删除，请刷新列表。');
+      cursor.createdAt = item.createdAt;
+    }
     const filters: Prisma.WorkItemWhereInput[] = [];
     if (query.q?.trim()) {
       const keyword = query.q.trim();
@@ -46,8 +55,8 @@ export class WorkItemsService {
     }
     if (cursor) {
       filters.push({ OR: [
-        { updatedAt: { lt: cursor.updatedAt } },
-        { updatedAt: cursor.updatedAt, id: { lt: cursor.id } },
+        { createdAt: { lt: cursor.createdAt! } },
+        { createdAt: cursor.createdAt!, id: { lt: cursor.id } },
       ] });
     }
     const where: Prisma.WorkItemWhereInput = {
@@ -65,7 +74,7 @@ export class WorkItemsService {
     const rows = await this.prisma.workItem.findMany({
       where,
       take: take + 1,
-      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       include: {
         labels: workItemLabelsInclude,
         ownerUser: { select: { id: true, displayName: true, avatarUrl: true } },
@@ -78,7 +87,7 @@ export class WorkItemsService {
     const last = items.at(-1);
     return {
       items: items.map(withProjectLabels),
-      nextCursor: hasMore && last ? Buffer.from(JSON.stringify({ updatedAt: last.updatedAt.toISOString(), id: last.id }), 'utf8').toString('base64url') : null,
+      nextCursor: hasMore && last ? Buffer.from(JSON.stringify({ createdAt: last.createdAt.toISOString(), id: last.id }), 'utf8').toString('base64url') : null,
     };
   }
 
@@ -105,7 +114,7 @@ export class WorkItemsService {
         where,
         skip: paging.skip,
         take: paging.take,
-        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         include: {
           labels: workItemLabelsInclude,
           project: { select: { id: true, name: true } },
@@ -139,6 +148,9 @@ export class WorkItemsService {
     const title = dto.title.trim();
     if (!title) throw new BadRequestException('请填写工作项标题。');
     if (dto.ownerUserId) await this.assertUserInOrganization(dto.ownerUserId, project.workspace.organizationId);
+    const participantUserIds = Array.from(new Set((dto.participantUserIds ?? []).map((value) => value.trim()).filter(Boolean)));
+    const memberUserIds = Array.from(new Set([...participantUserIds, ...(dto.verifierUserId?.trim() ? [dto.verifierUserId.trim()] : [])]));
+    for (const userId of memberUserIds) await this.assertUserInOrganization(userId, project.workspace.organizationId);
     const repositoryIds = Array.from(new Set((dto.repositoryIds ?? []).map((value) => value.trim()).filter(Boolean)));
     const allowedRepositoryIds = new Set(project.workspace.repositories.map((repository) => repository.id));
     const invalidRepositoryIds = repositoryIds.filter((repositoryId) => !allowedRepositoryIds.has(repositoryId));
@@ -156,7 +168,7 @@ export class WorkItemsService {
           versionId,
           workspaceId: project.workspaceId,
           kind: dto.kind,
-          status: dto.kind === 'ISSUE' || dto.kind === 'BUG' ? 'OPEN' : 'ACTIVE',
+          status: dto.status ?? (dto.kind === 'ISSUE' || dto.kind === 'BUG' ? 'OPEN' : 'ACTIVE'),
           title,
           description: dto.description?.trim() ?? '',
           remark: dto.remark?.trim() ?? '',
@@ -170,7 +182,18 @@ export class WorkItemsService {
           expectedBehavior: dto.expectedBehavior?.trim() || null,
           actualBehavior: dto.actualBehavior?.trim() || null,
           branchName: dto.branchName?.trim() || null,
+          reproductionSteps: dto.reproductionSteps ?? undefined,
+          sourceProvider: dto.sourceProvider?.trim() || null,
+          sourceId: dto.sourceId?.trim() || null,
+          sourceUrl: dto.sourceUrl?.trim() || null,
+          affectedVersion: dto.affectedVersion?.trim() || null,
           ownerUserId: dto.ownerUserId || null,
+          members: memberUserIds.length ? {
+            create: [
+              ...participantUserIds.map((userId) => ({ userId, role: WORK_ITEM_MEMBER_ROLES[0] })),
+              ...(dto.verifierUserId?.trim() ? [{ userId: dto.verifierUserId.trim(), role: WORK_ITEM_MEMBER_ROLES[1] }] : []),
+            ],
+          } : undefined,
           createdByUserId: auth?.user?.id || null,
           acceptanceCriteria: dto.acceptanceCriteria?.trim() ?? '',
           ...(repositoryIds.length && dto.kind === 'REQUIREMENT' ? { requirementRepositories: { create: repositoryIds.map((repositoryId) => ({ repositoryId })) } } : {}),
@@ -199,6 +222,7 @@ export class WorkItemsService {
         project: { include: { workspace: { include: { organization: true } } } },
         version: { select: { id: true, name: true } },
         ownerUser: { select: { id: true, displayName: true, avatarUrl: true } },
+        members: { include: { user: { select: { id: true, displayName: true, avatarUrl: true } } }, orderBy: { createdAt: 'asc' } },
         workflowRuns: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] },
         requirementRepositories: { include: { repository: true }, orderBy: { createdAt: 'asc' } },
         assignments: { include: { user: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
@@ -220,6 +244,19 @@ export class WorkItemsService {
       if (dto.versionId) await this.assertProjectVersion(existing.projectId, dto.versionId, auth);
     }
     if (dto.ownerUserId) await this.assertUserInOrganization(dto.ownerUserId, existing.project.workspace.organizationId);
+    const memberRolesToReplace = [
+      ...(dto.participantUserIds !== undefined ? [WORK_ITEM_MEMBER_ROLES[0]] : []),
+      ...(dto.verifierUserId !== undefined ? [WORK_ITEM_MEMBER_ROLES[1]] : []),
+    ];
+    const participantUserIds = dto.participantUserIds === undefined
+      ? undefined
+      : Array.from(new Set(dto.participantUserIds.map((value) => value.trim()).filter(Boolean)));
+    const verifierUserId = dto.verifierUserId === undefined ? undefined : dto.verifierUserId?.trim() || null;
+    const memberUserIds = Array.from(new Set([
+      ...(participantUserIds ?? []),
+      ...(verifierUserId ? [verifierUserId] : []),
+    ]));
+    for (const userId of memberUserIds) await this.assertUserInOrganization(userId, existing.project.workspace.organizationId);
     if (dto.title !== undefined && !dto.title.trim()) throw new BadRequestException('请填写工作项标题。');
     if (dto.updatedAt && Number.isNaN(Date.parse(dto.updatedAt))) {
       throw new BadRequestException('updatedAt 无效。');
@@ -244,6 +281,7 @@ export class WorkItemsService {
           ...(dto.severity !== undefined ? { severity: dto.severity.trim() || null } : {}),
           ...(dto.expectedBehavior !== undefined ? { expectedBehavior: dto.expectedBehavior.trim() || null } : {}),
           ...(dto.actualBehavior !== undefined ? { actualBehavior: dto.actualBehavior.trim() || null } : {}),
+          ...(dto.reproductionSteps !== undefined ? { reproductionSteps: dto.reproductionSteps } : {}),
           ...(dto.branchName !== undefined ? { branchName: dto.branchName.trim() || null } : {}),
           ...(dto.ownerUserId !== undefined ? { ownerUserId: dto.ownerUserId } : {}),
           ...(dto.versionId !== undefined ? { versionId: dto.versionId } : {}),
@@ -251,11 +289,20 @@ export class WorkItemsService {
       });
       if (updated.count !== 1) throw new ConflictException({ code: 'RESOURCE_UPDATED', message: '工作项已被其他人更新，请刷新后重试。' });
       if (labelIds !== undefined) await replaceWorkItemLabels(tx, existing.projectId, id, labelIds);
+      if (memberRolesToReplace.length) {
+        await tx.workItemMember.deleteMany({ where: { workItemId: id, role: { in: memberRolesToReplace } } });
+        const members = [
+          ...(participantUserIds ?? []).map((userId) => ({ workItemId: id, userId, role: WORK_ITEM_MEMBER_ROLES[0] })),
+          ...(verifierUserId ? [{ workItemId: id, userId: verifierUserId, role: WORK_ITEM_MEMBER_ROLES[1] }] : []),
+        ];
+        if (members.length) await tx.workItemMember.createMany({ data: members });
+      }
       return tx.workItem.findUniqueOrThrow({
         where: { id },
         include: {
           labels: workItemLabelsInclude,
           ownerUser: { select: { id: true, displayName: true, avatarUrl: true } },
+          members: { include: { user: { select: { id: true, displayName: true, avatarUrl: true } } }, orderBy: { createdAt: 'asc' } },
           version: { select: { id: true, name: true } },
         },
       });
@@ -649,11 +696,12 @@ export class WorkItemsService {
   private decodeCursor(value?: string) {
     if (!value) return null;
     try {
-      const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as { updatedAt?: string; id?: string };
-      if (!parsed.updatedAt || !parsed.id) throw new Error('invalid');
-      const date = new Date(parsed.updatedAt);
+      const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as { createdAt?: string; updatedAt?: string; id?: string };
+      const timestamp = parsed.createdAt ?? parsed.updatedAt;
+      if (typeof timestamp !== 'string' || typeof parsed.id !== 'string' || !parsed.id) throw new Error('invalid');
+      const date = new Date(timestamp);
       if (Number.isNaN(date.valueOf())) throw new Error('invalid');
-      return { updatedAt: date, id: parsed.id };
+      return { createdAt: parsed.createdAt ? date : null, id: parsed.id };
     } catch {
       throw new BadRequestException('cursor 无效。');
     }

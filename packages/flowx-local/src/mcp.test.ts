@@ -667,6 +667,74 @@ describe('flowx-local MCP server', () => {
     await server.close();
   });
 
+  it('透传 BUG 字段和云效来源元数据', async () => {
+    const homeDir = makeHome();
+    delete process.env.FLOWX_API_TOKEN;
+    await writeCredentials({ apiBaseUrl: 'https://flowx.example/api', apiToken: 'fxpat_x' }, homeDir);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/projects/proj_1/versions/ver-1/work-items') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body));
+        expect(body).toMatchObject({
+          kind: 'BUG',
+          status: 'WONT_FIX',
+          severity: 'P1',
+          expectedBehavior: '应该正常显示',
+          actualBehavior: '页面空白',
+          reproductionSteps: ['打开页面', '点击按钮'],
+          resolution: '暂不修复',
+          ownerUserId: 'owner-1',
+          sourceProvider: 'yunxiao',
+          sourceId: 'bug-1',
+          sourceUrl: 'https://devops.aliyun.com/projex/bug/bug-1',
+          affectedVersion: '2.6.6',
+          participantUserIds: ['participant-1'],
+          verifierUserId: 'verifier-1',
+        });
+        return new Response(JSON.stringify({ id: 'bug_1' }), { status: 201 });
+      }
+      if (url.endsWith('/work-items/bug_1') && init?.method === 'PATCH') {
+        expect(JSON.parse(String(init.body))).toMatchObject({ status: 'FIXING', reproductionSteps: ['复现'] });
+        return new Response(JSON.stringify({ id: 'bug_1', status: 'FIXING' }), { status: 200 });
+      }
+      throw new Error(`unexpected url: ${url} ${init?.method}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { client, server } = await connectClient(homeDir);
+
+    const created = await client.callTool({
+      name: 'flowx_create_work_item',
+      arguments: {
+        projectId: 'proj_1',
+        versionId: 'ver-1',
+        kind: 'BUG',
+        title: '云效缺陷',
+        status: 'WONT_FIX',
+        severity: 'P1',
+        expectedBehavior: '应该正常显示',
+        actualBehavior: '页面空白',
+        reproductionSteps: ['打开页面', '点击按钮'],
+        resolution: '暂不修复',
+        ownerUserId: 'owner-1',
+        sourceProvider: 'yunxiao',
+        sourceId: 'bug-1',
+        sourceUrl: 'https://devops.aliyun.com/projex/bug/bug-1',
+        affectedVersion: '2.6.6',
+        participantUserIds: ['participant-1'],
+        verifierUserId: 'verifier-1',
+      },
+    });
+    expect(created.isError).toBeUndefined();
+
+    const updated = await client.callTool({
+      name: 'flowx_update_work_item',
+      arguments: { workItemId: 'bug_1', status: 'FIXING', reproductionSteps: ['复现'] },
+    });
+    expect(updated.isError).toBeUndefined();
+    await client.close();
+    await server.close();
+  });
+
   it('forwards requirement profile fields, edits, deletion and formal changes', async () => {
     const homeDir = makeHome();
     delete process.env.FLOWX_API_TOKEN;

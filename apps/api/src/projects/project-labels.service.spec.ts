@@ -29,6 +29,46 @@ beforeAll(async () => {
   otherId = (await prisma.project.create({ data: { name: '其他', workspaceId } })).id;
 }, 30_000);
 afterAll(async () => { await prisma.$disconnect(); rmSync(directory, { recursive: true, force: true }); });
+
+it.each(['REQUIREMENT', 'ISSUE', 'BUG'] as const)('版本工作项 %s 按创建时间倒序，编辑后翻页不重复或遗漏', async (kind) => {
+  const title = `created-order-${kind}`;
+  const project = await prisma.project.create({ data: { name: title, workspaceId, versions: { create: { name: 'v1' } } }, include: { versions: true } });
+  const projectId = project.id;
+  const versionId = project.versions[0].id;
+  const older = new Date('2026-01-01T00:00:00.000Z');
+  const newer = new Date('2026-01-02T00:00:00.000Z');
+  const rows = [];
+  for (const [suffix, createdAt] of [['a', older], ['b', newer], ['c', newer]] as const) {
+    rows.push(await prisma.workItem.create({ data: {
+      id: `${title}-${suffix}`, title, kind, projectId, versionId, workspaceId,
+      createdAt, updatedAt: createdAt,
+    } }));
+  }
+  const query = { q: title, kind, pageSize: 1 };
+  const first = await items.listByVersion(projectId, versionId, query, auth());
+  expect(first.items.map(row => row.id)).toEqual([rows[2].id]);
+  expect(JSON.parse(Buffer.from(first.nextCursor!, 'base64url').toString('utf8')))
+    .toEqual({ createdAt: newer.toISOString(), id: rows[2].id });
+
+  const label = await labels.create(projectId, { name: `排序-${kind}` }, auth());
+  await items.update(rows[0].id, { description: '编辑描述', labelIds: [label.id] }, auth());
+  await items.update(rows[2].id, { remark: '已读记录也发生编辑' }, auth());
+  const second = await items.listByVersion(projectId, versionId, { ...query, cursor: first.nextCursor! }, auth());
+  const third = await items.listByVersion(projectId, versionId, { ...query, cursor: second.nextCursor! }, auth());
+  expect(second.items.map(row => row.id)).toEqual([rows[1].id]);
+  expect(third.items.map(row => row.id)).toEqual([rows[0].id]);
+  expect(third.nextCursor).toBeNull();
+  const page = await items.listGlobal({ projectId, versionId, kind, q: title, pageSize: 10 }, auth());
+  expect(page.items.map(row => row.id)).toEqual([rows[2].id, rows[1].id, rows[0].id]);
+
+  const legacyCursor = Buffer.from(JSON.stringify({ updatedAt: newer.toISOString(), id: rows[2].id })).toString('base64url');
+  const legacyNext = await items.listByVersion(projectId, versionId, { ...query, cursor: legacyCursor }, auth());
+  expect(legacyNext.items.map(row => row.id)).toEqual([rows[1].id]);
+  const otherVersion = await prisma.projectVersion.create({ data: { projectId, name: 'v2' } });
+  await expect(items.listByVersion(projectId, otherVersion.id, { ...query, cursor: legacyCursor }, auth()))
+    .rejects.toMatchObject({ status: 400 });
+});
+
 describe('项目标签事务、隔离与兼容', () => {
   it('项目内规范名称唯一，默认颜色，分页，组织隔离', async () => {
     const label = await labels.create(projectId, { name: ' 前端 ' }, auth());

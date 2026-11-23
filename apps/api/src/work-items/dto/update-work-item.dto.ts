@@ -1,5 +1,6 @@
 import { IsArray as LabelIsArray, IsString as LabelIsString, ValidateIf as LabelValidateIf } from 'class-validator';
-import { IsDateString, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsDateString, IsIn, IsOptional, IsString } from 'class-validator';
+import { WORK_ITEM_STATUSES } from './create-work-item.dto';
 
 export class UpdateWorkItemDto {
   @LabelValidateIf((_, value) => value !== undefined) @LabelIsArray() @LabelIsString({ each: true })
@@ -17,8 +18,8 @@ export class UpdateWorkItemDto {
   remark?: string;
 
   @IsOptional()
-  @IsString()
-  status?: string;
+  @IsIn(WORK_ITEM_STATUSES)
+  status?: (typeof WORK_ITEM_STATUSES)[number];
 
   @IsOptional()
   @IsString()
@@ -61,12 +62,26 @@ export class UpdateWorkItemDto {
   actualBehavior?: string;
 
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  reproductionSteps?: string[];
+
+  @IsOptional()
   @IsString()
   branchName?: string;
 
   @IsOptional()
   @IsString()
   ownerUserId?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  participantUserIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  verifierUserId?: string | null;
 
   @IsOptional()
   @IsString()

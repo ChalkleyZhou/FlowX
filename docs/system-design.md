@@ -16,7 +16,7 @@
 
 ## WorkItem 与执行项核心模型
 
-版本工作台直接读取统一的 `WorkItem`，用 `kind` 区分 `REQUIREMENT`、`ISSUE` 和 `BUG`；需求、问题和缺陷字段位于同一业务根。每个工作项同时保留系统 `id` 和项目内类型编号 `displayCode`（例如 `REQ-001`、`ISSUE-001`、`BUG-001`），前者用于接口和路由，后者用于用户识别；编号由 `WorkItemSequence(projectId, kind)` 在创建事务内分配，历史数据按创建时间回填。`WorkflowRun` 以 `workItemId` 作为最终业务根，执行拆解使用 `ExecutionPlan -> ExecutionItem -> ExecutionSession`，简单项也生成一个隐式执行项。`SINGLE` 创建后立即得到可执行的隐式执行项，`AI`/`MANUAL` 创建先落为待确认草案，只有计划确认并绑定工作流后才允许端侧领取。版本列表使用 `(projectId, versionId, updatedAt, id)` 稳定游标分页，会议页只提供状态、负责人和备注等高频编辑，改版本、启动流程和拆解确认收在详情操作中。
+版本工作台直接读取统一的 `WorkItem`，用 `kind` 区分 `REQUIREMENT`、`ISSUE` 和 `BUG`；需求、问题和缺陷字段位于同一业务根。每个工作项同时保留系统 `id` 和项目内类型编号 `displayCode`（例如 `REQ-001`、`ISSUE-001`、`BUG-001`），前者用于接口和路由，后者用于用户识别；编号由 `WorkItemSequence(projectId, kind)` 在创建事务内分配，历史数据按创建时间回填。`WorkflowRun` 以 `workItemId` 作为最终业务根，执行拆解使用 `ExecutionPlan -> ExecutionItem -> ExecutionSession`，简单项也生成一个隐式执行项。`SINGLE` 创建后立即得到可执行的隐式执行项，`AI`/`MANUAL` 创建先落为待确认草案，只有计划确认并绑定工作流后才允许端侧领取。版本列表默认按 `createdAt desc, id desc` 稳定游标分页；统一工作项列表与缺陷列表保持相同排序。游标编码创建时间与 ID，旧版含 `updatedAt` 的游标通过限定项目、版本的工作项查询解析为创建时间；边界项已移出版本或删除时返回 400 并提示刷新。Web 与 MCP 复用 API 排序和不透明游标，本地工具 schema、CLI/Adapter 和共享协议无需变更，会议页只提供状态、负责人和备注等高频编辑，改版本、启动流程和拆解确认收在详情操作中。
 
 本模型不通过客户端拼接两组列表，也不引入 `VersionWorkItem` 投影或公共字段双写；迁移脚本在同一事务内回填现有数据，并由后续切换删除旧根模型。端侧领取和完成统一针对 `executionItemId`，服务端事务条件更新保证单领取者和幂等回传。
 

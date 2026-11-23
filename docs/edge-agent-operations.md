@@ -49,7 +49,7 @@ pnpm flowx-local design-submit <executionSessionId>
 
 `flowx-local status` 的 `update` 区分当前 CLI 的 `runningVersion` 与已准备的 `readyVersion`，`service.version` 来自真实 `/health`。更新结果、失败阶段和跳过文件在同一状态中查看，未检查时字段省略。配置 `autoUpdate: false` 或进程环境 `FLOWX_LOCAL_AUTO_UPDATE=0` 关闭检查，已准备版本仍会生效；环境变量修改后重启相应服务/MCP。手动 `update` 不受开关限制，并继续刷新所选集成。
 
-当前已发布 `@flowx-ai/local@0.9.0`；已有 `0.7.2` 必须先手动运行一次 `flowx-local update`。npm/私有安装前缀和 pnpm 的原始入口保持有效，服务端 API 与业务协议不变。更新目录保留旧版本以保护尚在使用它们的进程，目前不自动回收，需在停止所有本地服务与 MCP 后再按运维策略清理。Windows/Linux 的核心逻辑使用 Node API，实机兼容仍需相应平台验证。
+当前已发布 `@flowx-ai/local@0.9.1`；已有 `0.7.2` 必须先手动运行一次 `flowx-local update`。npm/私有安装前缀和 pnpm 的原始入口保持有效，服务端 API 与业务协议不变。更新目录保留旧版本以保护尚在使用它们的进程，目前不自动回收，需在停止所有本地服务与 MCP 后再按运维策略清理。Windows/Linux 的核心逻辑使用 Node API，实机兼容仍需相应平台验证。
 
 ## 工作项标签与升级兼容
 

@@ -2,7 +2,9 @@ import { IsArray as LabelIsArray, IsString as LabelIsString, ValidateIf as Label
 import { IsArray, IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export const WORK_ITEM_KINDS = ['REQUIREMENT', 'ISSUE', 'BUG'] as const;
+export const WORK_ITEM_STATUSES = ['ACTIVE', 'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'WONT_FIX', 'CONFIRMED', 'FIXING', 'FIXED', 'VERIFIED', 'DONE', 'FAILED', 'CANCELLED', 'ARCHIVED'] as const;
 export const WORK_ITEM_SPLIT_MODES = ['AI', 'SINGLE', 'MANUAL'] as const;
+export const WORK_ITEM_MEMBER_ROLES = ['PARTICIPANT', 'VERIFIER'] as const;
 
 export class CreateWorkItemDto {
   @LabelValidateIf((_, value) => value !== undefined) @LabelIsArray() @LabelIsString({ each: true })
@@ -17,6 +19,10 @@ export class CreateWorkItemDto {
 
   @IsIn(WORK_ITEM_KINDS)
   kind!: (typeof WORK_ITEM_KINDS)[number];
+
+  @IsOptional()
+  @IsIn(WORK_ITEM_STATUSES)
+  status?: (typeof WORK_ITEM_STATUSES)[number];
 
   @IsString()
   @IsNotEmpty()
@@ -37,6 +43,15 @@ export class CreateWorkItemDto {
   @IsOptional()
   @IsString()
   ownerUserId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  participantUserIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  verifierUserId?: string;
 
   @IsOptional()
   @IsString()
@@ -77,6 +92,27 @@ export class CreateWorkItemDto {
   @IsOptional()
   @IsString()
   branchName?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  reproductionSteps?: string[];
+
+  @IsOptional()
+  @IsString()
+  sourceProvider?: string;
+
+  @IsOptional()
+  @IsString()
+  sourceId?: string;
+
+  @IsOptional()
+  @IsString()
+  sourceUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  affectedVersion?: string;
 
   @IsOptional()
   @IsArray()

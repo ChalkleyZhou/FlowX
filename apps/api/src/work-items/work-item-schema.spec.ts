@@ -16,6 +16,12 @@ describe('WorkItem core schema', () => {
     expect(schema).toContain('model WorkItemSequence {');
     expect(schema).toContain('acceptanceCriteria      String');
     expect(schema).toContain('resolution              String?');
+    expect(schema).toContain('sourceProvider          String?');
+    expect(schema).toContain('affectedVersion         String?');
+    expect(schema).toContain('@@unique([sourceProvider, sourceId])');
+    expect(schema).toContain('model WorkItemMember {');
+    expect(schema).toContain('members                 WorkItemMember[]');
+    expect(schema).toContain('@@unique([workItemId, userId, role])');
     expect(schema).toContain('model ExecutionPlan {');
     expect(schema).toContain('model ExecutionItem {');
     expect(schema).toContain('completionEvidence Json?');
@@ -41,5 +47,10 @@ describe('WorkItem core schema', () => {
     expect(migration).toContain('UPDATE "WorkflowRun" SET "workItemId" = "requirementId"');
     expect(migration).toContain('RENAME TO "TestDesignWorkItem"');
     expect(migration).toContain('RENAME TO "TestRequestWorkItem"');
+    const importMigration = readFileSync(resolve(process.cwd(), '../../prisma/migrations/20261123130000_add_work_item_import_fields/migration.sql'), 'utf8');
+    expect(importMigration).toContain('WorkItem_sourceProvider_sourceId_key');
+    const memberMigration = readFileSync(resolve(process.cwd(), '../../prisma/migrations/20261123133000_add_work_item_members/migration.sql'), 'utf8');
+    expect(memberMigration).toContain('CREATE TABLE "WorkItemMember"');
+    expect(memberMigration).toContain('WorkItemMember_workItemId_userId_role_key');
   });
 });

@@ -22,7 +22,7 @@ flowx-local login
 
 ## 自动更新
 
-`@flowx-ai/local@0.9.0` 已包含以下自动更新能力；已有 `0.7.2` 用户请先执行一次 `flowx-local update` 或重新运行站点安装脚本，再重新加载 IDE 的 FlowX MCP。
+`@flowx-ai/local@0.9.1` 已包含以下自动更新能力；已有 `0.7.2` 用户请先执行一次 `flowx-local update` 或重新运行站点安装脚本，再重新加载 IDE 的 FlowX MCP。
 
 默认在 CLI 启动、IDE 连接 FlowX MCP、调用 MCP 工具或网页请求本地服务时触发后台检查。五分钟内复用结果，空闲时不轮询；检查、下载和安装不阻塞本次操作。只自动安装 npm 官方源 `latest` 指向的稳定版本，新版校验失败或网络不可用时继续使用现有版本。
 
@@ -133,5 +133,9 @@ HTTP 记录列表默认 `page=1&pageSize=20`，`pageSize` 最大 100，并要求
 使用标签参数需要支持标签的服务端和本地包。更新到包含该能力的版本后，执行 `flowx-local update` 并重新加载 IDE MCP；仅更新服务端不会刷新已安装工具的输入 schema。旧客户端不传标签时仍可创建或编辑工作项，编辑其他字段不会清空已有标签。服务端尚不支持标签时，Agent 必须明确说明升级要求，不能删除参数后声称成功；网络或权限错误也不能当作“不支持”。源码改动不代表 npm 包已发布。
 
 ## 版本工作项与端侧执行项
+
+`flowx_list_version_work_items` 默认按创建时间倒序、ID 倒序分页；编辑工作项不会使其重新置顶。下一页原样传回 `nextCursor`，不解析或自行拼接游标。服务端兼容旧版基于更新时间的游标，并按对应工作项的创建时间继续定位；该工作项已移出版本或删除时，刷新列表重新开始分页。此排序调整复用现有 MCP 能力，无需升级本地包或重新加载工具。
+
+BUG 工作项创建支持 `status`、`severity`、`expectedBehavior`、`actualBehavior`、`reproductionSteps`、`resolution`、`sourceProvider`、`sourceId`、`sourceUrl`、`affectedVersion`，以及 `ownerUserId`、`participantUserIds` 和 `verifierUserId`。来源字段用于去重，不写入 `remark`。
 
 本地 Agent 可以通过 FlowX MCP 查询版本工作项并领取执行项。版本工作项的 `kind` 可以是 `REQUIREMENT`（需求）、`ISSUE`（问题）或 `BUG`（缺陷）；三类记录共用执行计划和端侧领取协议。领取、完成、阻塞和取消都使用 `executionItemId`；领取和完成使用 `claimKey`，完成时可附带 `evidence`。领取成功后服务端会创建并返回绑定该执行项的 `executionSessionId`，用于端云执行追踪。多执行项计划不能通过工作流级入口整包领取，必须逐项领取；只有单执行项计划才允许工作流级本地启动。服务端负责依赖检查、并发保护、权限校验和幂等重试；Agent 不直接操作数据库，也不自行判断是否可以合并提测。常用工具为 `flowx_list_version_work_items`、`flowx_claim_execution_item`、`flowx_complete_execution_item`、`flowx_block_execution_item` 和 `flowx_cancel_execution_item`。

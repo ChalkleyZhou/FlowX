@@ -238,6 +238,53 @@ describe('WorkItemsService execution item lifecycle', () => {
   });
 });
 
+describe('WorkItemsService imported member roles', () => {
+  it('stores participants and verifier as WorkItem member roles', async () => {
+    const project = {
+      id: 'project-1',
+      workspaceId: 'workspace-1',
+      currentVersionId: 'version-1',
+      workspace: { organizationId: 'org-1', repositories: [] },
+    };
+    const workItemCreate = vi.fn().mockResolvedValue({ id: 'work-item-1' });
+    const workItemFindUnique = vi.fn().mockResolvedValue({
+      id: 'work-item-1',
+      projectId: 'project-1',
+      project: { workspace: { organizationId: 'org-1' } },
+      labels: [],
+    });
+    const prisma = {
+      project: { findUnique: vi.fn().mockResolvedValue(project) },
+      projectVersion: { findFirst: vi.fn().mockResolvedValue({ id: 'version-1' }) },
+      userOrganization: { findFirst: vi.fn().mockResolvedValue({ id: 'membership-1' }) },
+      projectLabel: { findMany: vi.fn().mockResolvedValue([]) },
+      workItemSequence: { upsert: vi.fn().mockResolvedValue({ nextValue: 1 }) },
+      workItem: { create: workItemCreate, findUnique: workItemFindUnique },
+      executionPlan: { create: vi.fn().mockResolvedValue({ id: 'plan-1', items: [] }) },
+    };
+    (prisma as typeof prisma & { $transaction: (callback: (tx: typeof prisma) => Promise<unknown>) => Promise<unknown> }).$transaction = async (callback) => callback(prisma);
+    const service = new WorkItemsService(prisma as never, {} as never);
+
+    await service.create('project-1', 'version-1', {
+      kind: 'BUG',
+      title: '导入缺陷',
+      participantUserIds: ['user-1', 'user-1'],
+      verifierUserId: 'user-2',
+    }, { organization: { id: 'org-1' }});
+
+    expect(workItemCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        members: {
+          create: [
+            { userId: 'user-1', role: 'PARTICIPANT' },
+            { userId: 'user-2', role: 'VERIFIER' },
+          ],
+        },
+      }),
+    }));
+  });
+});
+
 describe('WorkItemsService version removal', () => {
   it('clears versionId without deleting the work item', async () => {
     const existing = {
@@ -271,7 +318,7 @@ describe('WorkItemsService version removal', () => {
 
 describe('WorkItemsService work item paging and plan validation', () => {
   it('combines keyword filtering with a stable cursor instead of replacing one filter with the other', async () => {
-    const updatedAt = new Date('2026-11-13T00:00:00.000Z');
+    const createdAt = new Date('2026-11-13T00:00:00.000Z');
     const findMany = vi.fn().mockResolvedValue([]);
     const prisma = {
       project: {
@@ -286,7 +333,7 @@ describe('WorkItemsService work item paging and plan validation', () => {
       workItem: { findMany },
     };
     const service = new WorkItemsService(prisma as never, {} as never);
-    const cursor = Buffer.from(JSON.stringify({ updatedAt: updatedAt.toISOString(), id: 'item-9' }), 'utf8').toString('base64url');
+    const cursor = Buffer.from(JSON.stringify({ createdAt: createdAt.toISOString(), id: 'item-9' }), 'utf8').toString('base64url');
 
     await service.listByVersion('project-1', 'version-1', { q: '登录', cursor, pageSize: 20 }, { organization: { id: 'org-1' } });
 
@@ -294,7 +341,7 @@ describe('WorkItemsService work item paging and plan validation', () => {
       where: expect.objectContaining({
         AND: [
           { OR: [{ title: { contains: '登录' } }, { description: { contains: '登录' } }, { displayCode: { contains: '登录' } }] },
-          { OR: [{ updatedAt: { lt: updatedAt } }, { updatedAt, id: { lt: 'item-9' } }] },
+          { OR: [{ createdAt: { lt: createdAt } }, { createdAt, id: { lt: 'item-9' } }] },
         ],
       }),
     }));

@@ -34,6 +34,10 @@ model WorkItem {
   reproductionSteps      Json?
   screenshots             Json?
   branchName              String?
+  sourceProvider          String?
+  sourceId                String?
+  sourceUrl               String?
+  affectedVersion         String?
   projectId               String
   project                 Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
   versionId               String?
@@ -42,6 +46,7 @@ model WorkItem {
   workspace               Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   ownerUserId             String?
   ownerUser               User?                   @relation("WorkItemOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  members                 WorkItemMember[]
   assigneeUserId          String?
   assigneeUser            User?                   @relation("IssueAssignedTo", fields: [assigneeUserId], references: [id], onDelete: SetNull)
   reportedByUserId        String?
@@ -76,12 +81,26 @@ model WorkItem {
   updatedAt               DateTime                  @updatedAt
 
   @@unique([projectId, displayCode])
+  @@unique([sourceProvider, sourceId])
   @@index([projectId, createdAt])
   @@index([projectId, versionId])
   @@index([projectId, versionId, updatedAt, id])
   @@index([workspaceId, kind, status, updatedAt])
   @@index([ownerUserId, status, updatedAt])
   @@index([sourceWorkflowRunId, createdAt])
+}
+
+model WorkItemMember {
+  id         String   @id @default(cuid())
+  workItemId String
+  workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation("WorkItemMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+  role       String
+  createdAt  DateTime @default(now())
+
+  @@unique([workItemId, userId, role])
+  @@index([userId, role])
 }
 
 model ExecutionPlan {
@@ -549,6 +568,7 @@ model User {
   reportedIssues  WorkItem[]            @relation("IssueReportedBy")
   assignedIssues  WorkItem[]            @relation("IssueAssignedTo")
   ownedWorkItems  WorkItem[]         @relation("WorkItemOwner")
+  workItemMemberships WorkItemMember[] @relation("WorkItemMemberUser")
   createdExecutionPlans ExecutionPlan[] @relation("ExecutionPlanCreatedBy")
   ownedExecutionItems ExecutionItem[] @relation("ExecutionItemOwner")
   reportedBugs    Bug[]              @relation("BugReportedBy")
