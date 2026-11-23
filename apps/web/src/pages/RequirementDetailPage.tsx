@@ -1,3 +1,4 @@
+import { ProjectLabelBadges } from '../components/ProjectLabelBadges';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
@@ -191,6 +192,7 @@ export function RequirementDetailPage() {
         )}
       />
 
+      <div className="flex items-center gap-2 text-sm"><span>标签</span><ProjectLabelBadges labels={requirement.labels} limit={20} /></div>
       {requirement.prototypeImport && <PrototypeImportPanel
         importId={requirement.prototypeImport.id}
         existingWorkflowId={activeList.total === 1 && activeWorkflows[0] ? activeWorkflows[0].id : undefined}

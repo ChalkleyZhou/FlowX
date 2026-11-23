@@ -1,4 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { ProjectLabelSelect } from './ProjectLabelSelect';
+import type { ProjectLabelSummary } from '../types';
 import { api } from '../api';
 import type { WorkItem } from '../types';
 import { PagedSelect } from './PagedSelect';
@@ -18,6 +20,7 @@ import { Textarea } from './ui/textarea';
 import { formatWorkItemStatus } from '../utils/label-utils';
 
 interface EditDraft {
+  labels: ProjectLabelSummary[];
   title: string;
   description: string;
   priority: string;
@@ -39,6 +42,7 @@ function kindLabel(kind: WorkItem['kind']) {
 
 function draftFrom(workItem: WorkItem): EditDraft {
   return {
+    labels: workItem.labels ?? [],
     title: workItem.title,
     description: workItem.description ?? '',
     priority: workItem.priority || 'MEDIUM',
@@ -95,6 +99,7 @@ export function WorkItemEditDialog({
     try {
       const updated = await api.updateWorkItem(workItem.id, {
         title,
+        labelIds: draft.labels.map(label => label.id),
         description: draft.description.trim(),
         priority: draft.priority,
         ownerUserId: draft.ownerUserId || null,
@@ -129,6 +134,7 @@ export function WorkItemEditDialog({
             <Field label="描述" htmlFor="work-item-edit-description">
               <Textarea id="work-item-edit-description" rows={5} value={draft.description} onChange={event => setDraft(current => ({ ...current, description: event.target.value }))} />
             </Field>
+            <Field label="标签（可选）"><ProjectLabelSelect projectId={workItem.projectId} value={draft.labels} onChange={labels => setDraft(current => ({ ...current, labels }))} disabled={saving} /></Field>
             <Field label="优先级">
               <Select value={draft.priority} onValueChange={value => setDraft(current => ({ ...current, priority: value }))}>
                 <SelectTrigger aria-label="优先级"><SelectValue /></SelectTrigger>

@@ -16,3 +16,5 @@ export * from './quality-launch.js';
 
 export * from './pagination.js';
 export * from './work-items.js';
+
+export * from './project-labels.js';

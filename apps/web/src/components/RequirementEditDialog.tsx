@@ -1,4 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { ProjectLabelSelect } from './ProjectLabelSelect';
+import type { ProjectLabelSummary } from '../types';
 import { api } from '../api';
 import { PagedSelect } from './PagedSelect';
 import type { ProjectVersionSummary, Requirement } from '../types';
@@ -29,6 +31,7 @@ const priorityOptions = [
 ];
 
 interface EditDraft {
+  labels: ProjectLabelSummary[];
   title: string;
   description: string;
   acceptanceCriteria: string;
@@ -42,6 +45,7 @@ interface EditDraft {
 
 function draftFrom(requirement: Requirement): EditDraft {
   return {
+    labels: requirement.labels ?? [],
     title: requirement.title,
     description: requirement.description ?? '',
     acceptanceCriteria: requirement.acceptanceCriteria ?? '',
@@ -111,6 +115,8 @@ export function RequirementEditDialog({
     try {
       const updated = await api.updateRequirement(requirement.id, {
         title,
+        labelIds: draft.labels.map(label => label.id),
+        updatedAt: requirement.updatedAt,
         description: draft.description.trim(),
         acceptanceCriteria: draft.acceptanceCriteria.trim(),
         priority: draft.priority,
@@ -152,6 +158,7 @@ export function RequirementEditDialog({
                 onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
               />
             </Field>
+            <Field label="标签（可选）"><ProjectLabelSelect projectId={requirement.project.id} value={draft.labels} onChange={labels => setDraft(current => ({ ...current, labels }))} disabled={saving} /></Field>
             <Field label="优先级">
               <Select value={draft.priority} onValueChange={(value) => setDraft((current) => ({ ...current, priority: value }))}>
                 <SelectTrigger aria-label="优先级">

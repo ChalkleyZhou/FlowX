@@ -1,3 +1,4 @@
+import { IsArray as LabelIsArray, IsString as LabelIsString, ValidateIf as LabelValidateIf } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
   IsArray,
@@ -10,6 +11,8 @@ import {
 import { BugScreenshotUploadDto } from './bug-screenshot-upload.dto';
 
 export class CreateBugDto {
+  @LabelValidateIf((_, value) => value !== undefined) @LabelIsArray() @LabelIsString({ each: true })
+  labelIds?: string[];
   @IsString()
   @IsNotEmpty()
   workspaceId!: string;

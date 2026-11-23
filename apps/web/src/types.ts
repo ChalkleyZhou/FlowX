@@ -1,3 +1,8 @@
+import type { ProjectLabelColor, ProjectLabelSummary } from '@flowx-ai/protocol';
+export type { ProjectLabelColor, ProjectLabelSummary } from '@flowx-ai/protocol';
+
+export interface ProjectLabel extends ProjectLabelSummary { projectId: string; updatedAt: string; workItemCount: number; }
+
 export type { PageQuery, PageResult } from '@flowx-ai/protocol';
 export interface RequirementScheduleSummary {
   assignmentCount: number;
@@ -290,6 +295,8 @@ export interface RequirementChangePayload {
 }
 
 export interface Requirement {
+  updatedAt?: string;
+  labels?: ProjectLabelSummary[];
   _count?: { workflowRuns?: number; assignments?: number; requirementRepositories?: number; ideationSessions?: number; ideationArtifacts?: number };
   id: string;
   displayCode?: string | null;
@@ -337,6 +344,7 @@ export interface Requirement {
 }
 
 export interface WorkItem {
+  labels?: ProjectLabelSummary[];
   id: string;
   displayCode?: string | null;
   projectId: string;
@@ -688,6 +696,8 @@ export interface BugScreenshot {
 }
 
 export interface Bug {
+  updatedAt?: string;
+  labels?: ProjectLabelSummary[];
   id: string;
   displayCode?: string | null;
   kind?: 'BUG';

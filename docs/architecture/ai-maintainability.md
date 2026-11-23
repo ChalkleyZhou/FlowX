@@ -127,6 +127,12 @@ pnpm check
 
 例如，为执行检查点新增可选进度摘要时，应检查 `flowx_execution_checkpoint` 的 schema、请求透传、API 校验及旧版不带摘要的请求，按需要同步执行 Skill 和本地指南；仅在网页新增一个进度展示卡片时，可以复用已有检查点能力，但需确认展示依赖的数据确实已有回传。
 
+## 项目工作项标签适配
+
+工作项标签结论为“需要适配”。共享契约由 `@flowx-ai/protocol` 定义，API 集中执行项目/组织归属、唯一名称和事务关联校验；Web、原型创建、缺陷专属接口和 MCP 使用同一规则。`flowx_list_project_labels` 提供标签发现，`flowx_create_work_item`、`flowx_update_work_item` 与 `flowx_list_version_work_items` 接收可选 `labelIds`。必须验证空数组确实透传、旧客户端省略字段不清空标签、跨项目 ID 被拒绝、执行上下文保留标签摘要，以及旧服务端能力缺失和权限/网络失败的区分。
+
+标签实体的新增/改名/改色/删除暂由 Web 维护，不增加 CLI 命令或 MCP 标签管理写工具。标签不承担执行控制，不改变领取、回传、状态机或历史 Artifact/Evidence；改名、改色以新读取的当前实体显示。已发布本地包需包含新工具 schema 并重新加载 IDE 才能接收新增参数，不能因为源码已改就宣称 npm 安装用户已具备能力。
+
 ## 原型导入边界
 
 原型 ZIP 读取、受限预览和导入状态位于独立 `prototype-imports` 模块；AI 分析以 `prototype-analysis.output.schema.json` 为契约源，消费者共用运行时校验。确认后以工作流 intake 快照作为后续事实来源，避免多个入口重复推导需求与设计。安全外壳、CAS 基线与状态接续的回归属于该模块必需验证，详见 [原型导入](../prototype-import.md)。

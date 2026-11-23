@@ -1,3 +1,6 @@
+import { ProjectLabelSelect } from '../components/ProjectLabelSelect';
+import { useProjectLabelFilter } from '../hooks/use-project-label-filter';
+import type { ProjectLabelSummary } from '../types';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
@@ -113,7 +116,7 @@ export function RequirementsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  useRememberedSearchFilters('requirements', ['q', 'versionId', 'priority']);
+  useRememberedSearchFilters('requirements', ['q', 'versionId', 'priority', 'labelIds']);
   const [scopedProject, setScopedProject] = useState<Project | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [filterVersion, setFilterVersion] = useState<ProjectVersionSummary | null>(null);
@@ -131,6 +134,7 @@ export function RequirementsPage() {
   const [availableAiProviders, setAvailableAiProviders] = useState<Array<{ id: 'codex' | 'cursor'; label: string }>>([]);
   const [launchSubmitting, setLaunchSubmitting] = useState(false);
   const [createDraft, setCreateDraft] = useState(emptyCreateDraft);
+  const [createLabels, setCreateLabels] = useState<ProjectLabelSummary[]>([]);
   const [createMode, setCreateMode] = useState<'manual' | 'prototype'>('manual');
   const [prototypeFile, setPrototypeFile] = useState<File | null>(null);
   const [prototypeGoal, setPrototypeGoal] = useState('');
@@ -141,6 +145,7 @@ export function RequirementsPage() {
   const toast = useToast();
   const confirm = useConfirm();
   const selectedProjectId = useScopedProjectId() || undefined;
+  const labelFilter = useProjectLabelFilter(selectedProjectId ?? '');
   const selectedVersionId = searchParams.get('versionId') ?? undefined;
   const selectedPriority = searchParams.get('priority') ?? undefined;
   const selectedQuery = searchParams.get('q') ?? undefined;
@@ -150,9 +155,9 @@ export function RequirementsPage() {
     priority: selectedPriority ?? '',
   });
   const hasActiveFilters = Boolean(
-    selectedQuery || selectedVersionId || selectedPriority || queryDraft.draft.q || queryDraft.draft.versionId || queryDraft.draft.priority,
+    labelFilter.draft.length || labelFilter.labelIds.length || selectedQuery || selectedVersionId || selectedPriority || queryDraft.draft.q || queryDraft.draft.versionId || queryDraft.draft.priority,
   );
-  const list = useListPage(api.getRequirements, { projectId: selectedProjectId, q: selectedQuery, versionId: selectedVersionId, priority: selectedPriority }, {enabled: Boolean(selectedProjectId)});
+  const list = useListPage(api.getRequirements, { projectId: selectedProjectId, q: selectedQuery, versionId: selectedVersionId, priority: selectedPriority, labelIds: labelFilter.labelIds.length ? labelFilter.labelIds : undefined }, {enabled: Boolean(selectedProjectId)});
   const {items: requirements, total, page, loading, refresh, onPageChange: setPage} = list;
   const hasLoaded = !loading;
   const requirementSummary = {
@@ -163,6 +168,7 @@ export function RequirementsPage() {
 
   async function chooseCreateProject(id: string) {
     const epoch = ++createProjectEpoch.current;
+    setCreateLabels([]);
     setCreateDraft(current => ({ ...current, projectId: id, repositoryIds: [], versionId: '' }));
     setSelectedProject(null);
     try {
@@ -214,13 +220,15 @@ export function RequirementsPage() {
       q: queryDraft.draft.q.trim() || undefined,
       versionId: queryDraft.draft.versionId || undefined,
       priority: queryDraft.draft.priority || undefined,
+      labelIds: labelFilter.draft.map(label => label.id).join(',') || undefined,
     }, [], true);
   }
 
   function clearFilters() {
     const nextParams = new URLSearchParams(searchParams);
-    ['workspaceId', 'q', 'versionId', 'planningStatus', 'priority', 'page'].forEach((key) => nextParams.delete(key));
+    ['workspaceId', 'q', 'versionId', 'planningStatus', 'priority', 'page', 'labelIds'].forEach((key) => nextParams.delete(key));
     queryDraft.replace({ q: '', versionId: '', priority: '' });
+    labelFilter.clear();
     setSearchParams(nextParams, { replace: true });
   }
 
@@ -261,6 +269,7 @@ export function RequirementsPage() {
   }, [hasLoaded, launchRequestId]);
 
   async function createRequirement(values: {
+    labelIds: string[];
     projectId: string;
     title: string;
     priority: string;
@@ -342,7 +351,7 @@ export function RequirementsPage() {
       setPrototypeSubmitting(true);
       setPrototypeError(null);
       try {
-        const imported = await api.createPrototypeImport({ projectId: createDraft.projectId, versionId: createDraft.versionId, goal: prototypeGoal.trim(), aiProvider: prototypeProvider }, prototypeFile);
+        const imported = await api.createPrototypeImport({ labelIds: createLabels.map(label => label.id), projectId: createDraft.projectId, versionId: createDraft.versionId, goal: prototypeGoal.trim(), aiProvider: prototypeProvider }, prototypeFile);
         navigate(`/work-items/${imported.workItemId}?importing=1`);
       } catch (error) {
         setPrototypeError(error instanceof Error ? error.message : '上传原型失败，请重试');
@@ -359,6 +368,7 @@ export function RequirementsPage() {
     }
 
     await createRequirement({
+      labelIds: createLabels.map(label => label.id),
       projectId: createDraft.projectId,
       title: createDraft.title.trim(),
       priority: createDraft.priority,
@@ -521,6 +531,7 @@ export function RequirementsPage() {
                 {selectedProject?._count?.versions === 0 && <p className="text-sm text-muted-foreground">项目尚无发布版本，请先<Link className="text-primary underline" to={`/project-settings?projectId=${createDraft.projectId}`}>前往项目设置版本</Link>。</p>}
               </div>
             ) : null}
+            <div className="space-y-2"><label className="text-sm font-semibold">标签（可选）</label><ProjectLabelSelect projectId={createDraft.projectId} value={createLabels} onChange={setCreateLabels} disabled={prototypeSubmitting || createSubmitting} /></div>
             {createMode === 'manual' && <>
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-foreground" htmlFor="requirement-title">需求标题（必填）</label>
@@ -679,6 +690,7 @@ export function RequirementsPage() {
                 <UiButton onClick={() => {
                   const project = scopedProject;
                   setSelectedProject(project);
+                  setCreateLabels([]);
                   setCreateDraft({ ...emptyCreateDraft, projectId: project?.id ?? '', versionId: project?.currentVersionId ?? '' });
                   setPrototypeProvider(defaultAiProvider);
                   setCreateModalOpen(true);
@@ -702,6 +714,7 @@ export function RequirementsPage() {
             )}
             filters={(
               <>
+                <div className="min-w-48"><ProjectLabelSelect projectId={selectedProjectId ?? ''} value={labelFilter.draft} onChange={labelFilter.setDraft} label="按标签筛选" /><span className="text-xs text-muted-foreground">匹配任一所选标签</span>{labelFilter.error ? <p role="alert" className="text-xs text-destructive">{labelFilter.error}</p> : null}</div>
                 <PagedSelect className="w-[220px]" value={queryDraft.draft.versionId} selectedLabel={filterVersion && filterVersion.id === queryDraft.draft.versionId ? filterVersion.name : undefined} label="按发布版本" placeholder="按发布版本" allowClear emptyLabel="全部版本" disabled={!selectedProjectId} scopeKey={selectedProjectId ?? ''}
                   loadPage={query => api.listProjectVersions(selectedProjectId!, query)} onValueChange={value => queryDraft.patch({ versionId: value })} />
                 <Select

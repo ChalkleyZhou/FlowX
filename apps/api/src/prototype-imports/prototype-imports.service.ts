@@ -1,3 +1,4 @@
+import { assertProjectLabelIds, labelIdsInput } from '../projects/project-labels.service';
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, type OnModuleInit } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
@@ -67,7 +68,9 @@ export class PrototypeImportsService implements OnModuleInit {
     try {
       const record = await this.prisma.$transaction(async (tx) => {
         const displayCode = await reserveWorkItemDisplayCode(tx, project.id, 'REQUIREMENT');
-        const requirement = await tx.workItem.create({ data: { displayCode, kind: 'REQUIREMENT', status: 'ACTIVE', projectId: project.id, workspaceId: project.workspaceId, versionId, title: dto.title?.trim() || name.replace(/\.zip$/i, '') || '导入原型', description: dto.goal?.trim() || '正在根据原型整理需求', acceptanceCriteria: '正在根据原型整理验收标准', createdByUserId: actor?.user.id, createdByName: actor?.user.displayName, executionPlans: { create: { status: 'CONFIRMED', strategy: 'SINGLE', items: { create: { title: dto.title?.trim() || name.replace(/\.zip$/i, '') || '导入原型', description: dto.goal?.trim() || '正在根据原型整理需求', target: 'LOCAL', status: 'READY' } } } } } });
+        const labelIds = dto.labelIds === undefined ? [] : labelIdsInput(dto.labelIds);
+        await assertProjectLabelIds(tx, project.id, labelIds);
+        const requirement = await tx.workItem.create({ data: { labels: labelIds.length ? { create: labelIds.map(labelId => ({ labelId })) } : undefined, displayCode, kind: 'REQUIREMENT', status: 'ACTIVE', projectId: project.id, workspaceId: project.workspaceId, versionId, title: dto.title?.trim() || name.replace(/\.zip$/i, '') || '导入原型', description: dto.goal?.trim() || '正在根据原型整理需求', acceptanceCriteria: '正在根据原型整理验收标准', createdByUserId: actor?.user.id, createdByName: actor?.user.displayName, executionPlans: { create: { status: 'CONFIRMED', strategy: 'SINGLE', items: { create: { title: dto.title?.trim() || name.replace(/\.zip$/i, '') || '导入原型', description: dto.goal?.trim() || '正在根据原型整理需求', target: 'LOCAL', status: 'READY' } } } } } });
         return tx.prototypeImport.create({ data: { id, workItemId: requirement.id, aiProvider, goal: dto.goal?.trim() || dto.title?.trim() || '', manifest: json(manifest), answers: {} } });
       });
       this.schedule(record, actor!);

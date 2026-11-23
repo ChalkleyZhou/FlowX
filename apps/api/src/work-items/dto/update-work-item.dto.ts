@@ -1,6 +1,9 @@
+import { IsArray as LabelIsArray, IsString as LabelIsString, ValidateIf as LabelValidateIf } from 'class-validator';
 import { IsDateString, IsIn, IsOptional, IsString } from 'class-validator';
 
 export class UpdateWorkItemDto {
+  @LabelValidateIf((_, value) => value !== undefined) @LabelIsArray() @LabelIsString({ each: true })
+  labelIds?: string[];
   @IsOptional()
   @IsString()
   title?: string;

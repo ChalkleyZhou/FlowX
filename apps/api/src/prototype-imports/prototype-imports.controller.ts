@@ -5,7 +5,7 @@ import { PrototypeImportsService, type PrototypeActor } from './prototype-import
 
 type Upload = { buffer: Buffer; originalname: string };
 type Request = { authSession?: PrototypeActor };
-const upload = () => FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024, files: 1, fields: 5, fieldSize: 20000 } });
+const upload = () => FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024, files: 1, fields: 6, fieldSize: 20000 } });
 function file(uploaded?: Upload) {
   if (!uploaded?.buffer?.length) throw new BadRequestException('请选择原型 ZIP 包。');
   // multipart filename 按历史约定经 latin1 传递，处理常见中文文件名。

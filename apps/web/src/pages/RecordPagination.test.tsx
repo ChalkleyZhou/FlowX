@@ -9,7 +9,7 @@ import { IssuesPage } from './IssuesPage';
 import { ProjectsPage } from './ProjectsPage';
 import { WorkspacesPage } from './WorkspacesPage';
 
-vi.mock('../api', () => ({ api: { getBugs: vi.fn(), getIssues: vi.fn(), getWorkspaces: vi.fn(), getProjects: vi.fn(), getWorkspaceRepositories: vi.fn() } }));
+vi.mock('../api', () => ({ api: { getBugs: vi.fn(), listProjectLabels: vi.fn(), getIssues: vi.fn(), getWorkspaces: vi.fn(), getProjects: vi.fn(), getWorkspaceRepositories: vi.fn() } }));
 const toast = { error: vi.fn(), success: vi.fn() };
 vi.mock('../components/ui/toast', () => ({ useToast: () => toast }));
 vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => vi.fn() }));
@@ -18,6 +18,7 @@ beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   localStorage.clear(); vi.clearAllMocks();
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+  vi.mocked(api.listProjectLabels).mockResolvedValue({items:[{id:'l1',projectId:'p1',name:'前端',color:'BLUE',updatedAt:'',workItemCount:1}],total:1,page:1,pageSize:20,totalPages:1});
   vi.mocked(api.getWorkspaces).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20, totalPages: 1 });
   vi.mocked(api.getProjects).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20, totalPages: 1 });
 });
@@ -61,4 +62,20 @@ it('工作区列表和代码库子列表分别查询当前页', async () => {
   const next = Array.from(container.querySelectorAll('button')).find(b => b.textContent === '下一页' && !b.disabled);
   await act(async () => next?.click());
   expect(api.getWorkspaceRepositories).toHaveBeenLastCalledWith('w1', expect.objectContaining({ page: 2, pageSize: 20 }));
+});
+
+it.each([['BUG', BugsPage, 'getBugs'],['ISSUE', IssuesPage, 'getIssues']] as const)('%s 普通列表将URL标签交给API并使用服务端统计',async (_kind,Page,method)=>{
+ vi.mocked(api[method]).mockResolvedValue({items:[],total:0,page:1,pageSize:20,totalPages:1});
+ await act(async()=>root.render(<MemoryRouter initialEntries={['/work-items?projectId=p1&labelIds=l1']}><Page/></MemoryRouter>));
+ expect(api[method]).toHaveBeenLastCalledWith(expect.objectContaining({projectId:'p1',labelIds:['l1']}));expect(container.textContent).toContain('匹配任一所选标签');
+});
+
+it.each([['BUG', BugsPage, 'getBugs'],['ISSUE', IssuesPage, 'getIssues']] as const)('%s 标签选择先保留草稿，查询后一次更新URL和请求',async (_kind,Page,method)=>{
+ vi.mocked(api[method]).mockResolvedValue({items:[],total:0,page:1,pageSize:20,totalPages:1});
+ await act(async()=>root.render(<MemoryRouter initialEntries={['/work-items?projectId=p1']}><Page/></MemoryRouter>));
+ await act(async()=>container.querySelector<HTMLButtonElement>('button[aria-label="按标签筛选"]')!.click());
+ await act(async()=>container.querySelector<HTMLButtonElement>('[role="checkbox"]')!.click());
+ expect(api[method]).toHaveBeenLastCalledWith(expect.not.objectContaining({labelIds:['l1']}));
+ await act(async()=>Array.from(container.querySelectorAll('button')).find(x=>x.textContent==='查询')!.click());
+ expect(api[method]).toHaveBeenLastCalledWith(expect.objectContaining({labelIds:['l1']}));
 });

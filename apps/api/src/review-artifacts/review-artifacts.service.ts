@@ -1,5 +1,6 @@
+import { assertProjectLabelIds, labelFilterWhere, labelIdsInput, replaceWorkItemLabels, withProjectLabels, workItemLabelsInclude } from '../projects/project-labels.service';
 import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { WorkflowService } from '../workflow/workflow.service';
@@ -280,19 +281,19 @@ export class ReviewArtifactsService {
     return bug;
   }
 
-  async getIssuesPage(query: PaginationQuery & { workspaceId?: string; projectId?: string; workflowRunId?: string; status?: string; priority?: string; severity?: string; q?: string } = {}) {
+  async getIssuesPage(query: PaginationQuery & { workspaceId?: string; projectId?: string; workflowRunId?: string; status?: string; priority?: string; severity?: string; labelIds?: string; q?: string } = {}) {
     const paging = parsePagination(query);
     const scope = {};
-    const where = { kind: 'ISSUE', ...scope, ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}), ...(query.workflowRunId ? { sourceWorkflowRunId: query.workflowRunId } : {}), ...(query.status ? { status: query.status } : {}), ...(query.priority ? { priority: query.priority } : {}), ...(query.projectId ? { projectId: query.projectId } : {}), ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }, { displayCode: { contains: query.q.trim() } }, { workspace: { name: { contains: query.q.trim() } } }] } : {}) };
+    const where = { kind: 'ISSUE', ...scope, ...labelFilterWhere(query.labelIds), ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}), ...(query.workflowRunId ? { sourceWorkflowRunId: query.workflowRunId } : {}), ...(query.status ? { status: query.status } : {}), ...(query.priority ? { priority: query.priority } : {}), ...(query.projectId ? { projectId: query.projectId } : {}), ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }, { displayCode: { contains: query.q.trim() } }, { workspace: { name: { contains: query.q.trim() } } }] } : {}) };
     const [items, total, scopeTotal, openCount] = await Promise.all([
-      this.prisma.workItem.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { workspace: true, sourceWorkflowRun: true } }),
+      this.prisma.workItem.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { labels: workItemLabelsInclude, workspace: true, sourceWorkflowRun: true } }),
       this.prisma.workItem.count({ where }), this.prisma.workItem.count({ where: scope }), this.prisma.workItem.count({ where: { ...scope, status: 'OPEN' } }),
     ]);
-    return { ...pageResult(items, total, paging), summary: { total: scopeTotal, visible: total, openCount, inProgressCount: await this.prisma.workItem.count({ where: { ...scope, status: 'IN_PROGRESS' } }) } };
+    return { ...pageResult(items.map(withProjectLabels), total, paging), summary: { total: scopeTotal, visible: total, openCount, inProgressCount: await this.prisma.workItem.count({ where: { ...scope, status: 'IN_PROGRESS' } }) } };
   }
 
   async getIssues(filters: { workspaceId?: string; workflowRunId?: string; status?: string }) {
-    return this.prisma.workItem.findMany({
+    const rows = await this.prisma.workItem.findMany({
       where: {
         ...(filters.workspaceId ? { workspaceId: filters.workspaceId } : {}),
         ...(filters.workflowRunId ? { sourceWorkflowRunId: filters.workflowRunId } : {}),
@@ -300,17 +301,20 @@ export class ReviewArtifactsService {
         ...(filters.status ? { status: filters.status } : {}),
       },
       include: {
+        labels: workItemLabelsInclude,
         workspace: true,
         sourceWorkflowRun: true,
       },
       orderBy: { createdAt: 'desc' },
     });
+    return rows.map(withProjectLabels);
   }
 
   async getIssue(id: string) {
     const issue = await this.prisma.workItem.findUnique({
       where: { id },
       include: {
+        labels: workItemLabelsInclude,
         workspace: true,
         sourceWorkflowRun: true,
         reviewFinding: true,
@@ -320,12 +324,12 @@ export class ReviewArtifactsService {
     if (!issue) {
       throw new NotFoundException('Issue not found.');
     }
-    return issue;
+    return withProjectLabels(issue);
   }
 
   async updateIssue(id: string, dto: UpdateIssueDto) {
     await this.getIssue(id);
-    return this.prisma.workItem.update({
+    const updated = await this.prisma.workItem.update({
       where: { id },
       data: {
         ...(dto.title !== undefined ? { title: dto.title } : {}),
@@ -336,11 +340,13 @@ export class ReviewArtifactsService {
         ...(dto.branchName !== undefined ? { branchName: dto.branchName } : {}),
       },
       include: {
+        labels: workItemLabelsInclude,
         workspace: true,
         sourceWorkflowRun: true,
         reviewFinding: true,
       },
     });
+    return withProjectLabels(updated);
   }
 
   async createBug(dto: CreateBugDto, userId: string | null) {
@@ -365,29 +371,34 @@ export class ReviewArtifactsService {
       if (!repository) throw new BadRequestException('Repository does not belong to the selected workspace.');
     }
 
-    const displayCode = await reserveWorkItemDisplayCode(this.prisma, projectId, 'BUG');
-    const bug = await this.prisma.workItem.create({
-      data: {
-        displayCode,
-        kind: 'BUG', status: 'OPEN', severity: dto.severity ?? 'MEDIUM', priority: dto.priority ?? 'MEDIUM',
-        title: dto.title.trim(), description: dto.description.trim(), expectedBehavior: dto.expectedBehavior?.trim() || null,
-        actualBehavior: dto.actualBehavior?.trim() || null, reproductionSteps: dto.reproductionSteps ?? [], screenshots: [],
-        workspaceId: dto.workspaceId, projectId, repositoryId: dto.repositoryId ?? null, branchName: dto.branchName?.trim() || null,
-        reportedByUserId: userId,
-        executionPlans: { create: { status: 'CONFIRMED', strategy: 'SINGLE', ...(userId ? { createdByUserId: userId } : {}), items: { create: { title: dto.title.trim(), description: dto.description.trim(), target: 'LOCAL', status: 'READY' } } } },
-      },
-      include: { workspace: true, project: true, sourceWorkflowRun: true, fixWorkflowRun: true, fixWorkItem: true, reviewFinding: true },
+    const labelIds = dto.labelIds === undefined ? [] : labelIdsInput(dto.labelIds);
+    const bug = await this.prisma.$transaction(async tx => {
+      await assertProjectLabelIds(tx, projectId, labelIds);
+      const displayCode = await reserveWorkItemDisplayCode(tx, projectId, 'BUG');
+      return tx.workItem.create({
+        data: {
+          labels: labelIds.length ? { create: labelIds.map(labelId => ({ labelId })) } : undefined,
+          displayCode,
+          kind: 'BUG', status: 'OPEN', severity: dto.severity ?? 'MEDIUM', priority: dto.priority ?? 'MEDIUM',
+          title: dto.title.trim(), description: dto.description.trim(), expectedBehavior: dto.expectedBehavior?.trim() || null,
+          actualBehavior: dto.actualBehavior?.trim() || null, reproductionSteps: dto.reproductionSteps ?? [], screenshots: [],
+          workspaceId: dto.workspaceId, projectId, repositoryId: dto.repositoryId ?? null, branchName: dto.branchName?.trim() || null,
+          reportedByUserId: userId,
+          executionPlans: { create: { status: 'CONFIRMED', strategy: 'SINGLE', ...(userId ? { createdByUserId: userId } : {}), items: { create: { title: dto.title.trim(), description: dto.description.trim(), target: 'LOCAL', status: 'READY' } } } },
+        },
+        include: { labels: workItemLabelsInclude, workspace: true, project: true, sourceWorkflowRun: true, fixWorkflowRun: true, fixWorkItem: true, reviewFinding: true },
+      });
     });
 
-    if (!dto.screenshots?.length) return { ...bug, workflowRun: bug.sourceWorkflowRun, workflowRunId: bug.sourceWorkflowRunId, workItemId: bug.id };
+    if (!dto.screenshots?.length) return { ...withProjectLabels(bug), workflowRun: bug.sourceWorkflowRun, workflowRunId: bug.sourceWorkflowRunId, workItemId: bug.id };
     try {
       const screenshots = await persistBugScreenshots(bug.id, dto.screenshots);
       const updated = await this.prisma.workItem.update({
         where: { id: bug.id },
         data: { screenshots: screenshots as unknown as Prisma.InputJsonValue },
-        include: { workspace: true, project: true, sourceWorkflowRun: true, fixWorkflowRun: true, fixWorkItem: true, reviewFinding: true },
+        include: { labels: workItemLabelsInclude, workspace: true, project: true, sourceWorkflowRun: true, fixWorkflowRun: true, fixWorkItem: true, reviewFinding: true },
       });
-      return { ...updated, workflowRun: updated.sourceWorkflowRun, workflowRunId: updated.sourceWorkflowRunId, workItemId: updated.id };
+      return { ...withProjectLabels(updated), workflowRun: updated.sourceWorkflowRun, workflowRunId: updated.sourceWorkflowRunId, workItemId: updated.id };
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : '截图保存失败');
     }
@@ -404,56 +415,66 @@ export class ReviewArtifactsService {
     return this.workflowService.createBugFixWorkflowRun(bugId, dto);
   }
 
-  async getBugsPage(query: PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; workflowRunId?: string; status?: string; priority?: string; severity?: string; q?: string } = {}) {
+  async getBugsPage(query: PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; workflowRunId?: string; status?: string; priority?: string; severity?: string; labelIds?: string; q?: string } = {}) {
     const paging = parsePagination(query);
     const where: Prisma.WorkItemWhereInput = {
+      ...labelFilterWhere(query.labelIds),
       kind: 'BUG', ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}), ...(query.projectId ? { projectId: query.projectId } : {}), ...(query.versionId ? { versionId: query.versionId } : {}),
       ...(query.workflowRunId ? { sourceWorkflowRunId: query.workflowRunId } : {}), ...(query.status ? { status: query.status } : {}),
       ...(query.priority ? { priority: query.priority } : {}), ...(query.severity ? { severity: query.severity } : {}),
       ...(query.q?.trim() ? { OR: [{ title: { contains: query.q.trim() } }, { description: { contains: query.q.trim() } }, { displayCode: { contains: query.q.trim() } }, { workspace: { name: { contains: query.q.trim() } } }] } : {}),
     };
     const [items, total, openCount, criticalCount] = await Promise.all([
-      this.prisma.workItem.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { workspace: true, project: true, sourceWorkflowRun: true, fixWorkflowRun: true, fixWorkItem: true, reviewFinding: true } }),
+      this.prisma.workItem.findMany({ where, skip: paging.skip, take: paging.take, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { labels: workItemLabelsInclude, workspace: true, project: true, sourceWorkflowRun: true, fixWorkflowRun: true, fixWorkItem: true, reviewFinding: true } }),
       this.prisma.workItem.count({ where }), this.prisma.workItem.count({ where: { ...where, status: 'OPEN' } }), this.prisma.workItem.count({ where: { ...where, severity: 'CRITICAL' } }),
     ]);
-    return { ...pageResult(items.map(item => ({ ...item, workflowRun: item.sourceWorkflowRun, workflowRunId: item.sourceWorkflowRunId, workItemId: item.id })), total, paging), summary: { total, visible: total, openCount, criticalCount } };
+    return { ...pageResult(items.map(item => ({ ...withProjectLabels(item), workflowRun: item.sourceWorkflowRun, workflowRunId: item.sourceWorkflowRunId, workItemId: item.id })), total, paging), summary: { total, visible: total, openCount, criticalCount } };
   }
 
   async getBugs(filters: { workspaceId?: string; workflowRunId?: string; status?: string }) {
     const items = await this.prisma.workItem.findMany({
       where: { kind: 'BUG', ...(filters.workspaceId ? { workspaceId: filters.workspaceId } : {}), ...(filters.workflowRunId ? { sourceWorkflowRunId: filters.workflowRunId } : {}), ...(filters.status ? { status: filters.status } : {}) },
-      include: { workspace: true, project: true, sourceWorkflowRun: true, fixWorkflowRun: true, fixWorkItem: true, reviewFinding: true }, orderBy: { createdAt: 'desc' },
+      include: { labels: workItemLabelsInclude, workspace: true, project: true, sourceWorkflowRun: true, fixWorkflowRun: true, fixWorkItem: true, reviewFinding: true }, orderBy: { createdAt: 'desc' },
     });
-    return items.map(item => ({ ...item, workflowRun: item.sourceWorkflowRun, workflowRunId: item.sourceWorkflowRunId, workItemId: item.id }));
+    return items.map(item => ({ ...withProjectLabels(item), workflowRun: item.sourceWorkflowRun, workflowRunId: item.sourceWorkflowRunId, workItemId: item.id }));
   }
 
   async getBug(id: string) {
-    const bug = await this.prisma.workItem.findFirst({ where: { id, kind: 'BUG' }, include: { workspace: true, project: true, sourceWorkflowRun: true, fixWorkflowRun: true, fixWorkItem: true, reviewFinding: true, executionPlans: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { items: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } } } } });
+    const bug = await this.prisma.workItem.findFirst({ where: { id, kind: 'BUG' }, include: { labels: workItemLabelsInclude, workspace: true, project: true, sourceWorkflowRun: true, fixWorkflowRun: true, fixWorkItem: true, reviewFinding: true, executionPlans: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { items: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } } } } });
     if (!bug) throw new NotFoundException('Bug not found.');
-    return { ...bug, workflowRun: bug.sourceWorkflowRun, workflowRunId: bug.sourceWorkflowRunId, workItemId: bug.id };
+    return { ...withProjectLabels(bug), workflowRun: bug.sourceWorkflowRun, workflowRunId: bug.sourceWorkflowRunId, workItemId: bug.id };
   }
 
   async updateBug(id: string, dto: UpdateBugDto) {
     const bug = await this.getBug(id);
+    const labelIds = dto.labelIds === undefined ? undefined : labelIdsInput(dto.labelIds);
     const existingScreenshots = parseBugScreenshots(bug.screenshots);
     let nextScreenshots: Prisma.InputJsonValue | undefined;
     if (dto.screenshots?.length) {
       try { nextScreenshots = [...existingScreenshots, ...await persistBugScreenshots(id, dto.screenshots, existingScreenshots)] as unknown as Prisma.InputJsonValue; }
       catch (error) { throw new BadRequestException(error instanceof Error ? error.message : '截图保存失败'); }
     }
-    const updated = await this.prisma.workItem.update({
-      where: { id },
-      data: {
-        ...(dto.title !== undefined ? { title: dto.title } : {}), ...(dto.description !== undefined ? { description: dto.description } : {}),
-        ...(dto.status !== undefined ? { status: dto.status } : {}), ...(dto.severity !== undefined ? { severity: dto.severity } : {}),
-        ...(dto.priority !== undefined ? { priority: dto.priority } : {}), ...(dto.expectedBehavior !== undefined ? { expectedBehavior: dto.expectedBehavior } : {}),
-        ...(dto.actualBehavior !== undefined ? { actualBehavior: dto.actualBehavior } : {}), ...(dto.reproductionSteps !== undefined ? { reproductionSteps: dto.reproductionSteps } : {}),
-        ...(dto.resolution !== undefined ? { resolution: dto.resolution } : {}), ...(dto.branchName !== undefined ? { branchName: dto.branchName } : {}),
-        ...(nextScreenshots !== undefined ? { screenshots: nextScreenshots } : {}),
-      },
-      include: { workspace: true, project: true, sourceWorkflowRun: true, fixWorkflowRun: true, fixWorkItem: true, reviewFinding: true },
+    if (dto.updatedAt !== undefined && Number.isNaN(Date.parse(dto.updatedAt))) throw new BadRequestException("updatedAt 无效。");
+    const updated = await this.prisma.$transaction(async tx => {
+      if (dto.updatedAt !== undefined) {
+        const cas = await tx.workItem.updateMany({ where: { id, updatedAt: new Date(dto.updatedAt) }, data: { updatedAt: new Date() } });
+        if (cas.count !== 1) throw new ConflictException({ code: "RESOURCE_UPDATED", message: "工作项已被其他人更新，请刷新后重试。" });
+      }
+      if (labelIds !== undefined) await replaceWorkItemLabels(tx, bug.projectId, id, labelIds);
+      return tx.workItem.update({
+        where: { id },
+        data: {
+          ...(dto.title !== undefined ? { title: dto.title } : {}), ...(dto.description !== undefined ? { description: dto.description } : {}),
+          ...(dto.status !== undefined ? { status: dto.status } : {}), ...(dto.severity !== undefined ? { severity: dto.severity } : {}),
+          ...(dto.priority !== undefined ? { priority: dto.priority } : {}), ...(dto.expectedBehavior !== undefined ? { expectedBehavior: dto.expectedBehavior } : {}),
+          ...(dto.actualBehavior !== undefined ? { actualBehavior: dto.actualBehavior } : {}), ...(dto.reproductionSteps !== undefined ? { reproductionSteps: dto.reproductionSteps } : {}),
+          ...(dto.resolution !== undefined ? { resolution: dto.resolution } : {}), ...(dto.branchName !== undefined ? { branchName: dto.branchName } : {}),
+          ...(nextScreenshots !== undefined ? { screenshots: nextScreenshots } : {}),
+        },
+        include: { labels: workItemLabelsInclude, workspace: true, project: true, sourceWorkflowRun: true, fixWorkflowRun: true, fixWorkItem: true, reviewFinding: true },
+      });
     });
-    return { ...updated, workflowRun: updated.sourceWorkflowRun, workflowRunId: updated.sourceWorkflowRunId, workItemId: updated.id };
+    return { ...withProjectLabels(updated), workflowRun: updated.sourceWorkflowRun, workflowRunId: updated.sourceWorkflowRunId, workItemId: updated.id };
   }
 
   private async getFindingOrThrow(id: string) {

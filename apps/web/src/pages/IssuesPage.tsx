@@ -1,10 +1,14 @@
+import { useScopedProjectId } from '../project-scope-context';
+import { ProjectLabelSelect } from '../components/ProjectLabelSelect';
+import { ProjectLabelBadges } from '../components/ProjectLabelBadges';
+import { useProjectLabelFilter } from '../hooks/use-project-label-filter';
 import { ListQueryActions } from '../components/ListQueryActions';
 import { submitQueryOnEnter, useDraftQuery } from '../hooks/use-draft-query';
 import { useListPage } from '../hooks/use-list-page';
 import { ListPagination } from '../components/ListPagination';
 import { PagedSelect } from '../components/PagedSelect';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { EmptyState } from '../components/EmptyState';
 import { ListToolbar } from '../components/ListToolbar';
@@ -31,6 +35,9 @@ import { useStoredListFilters } from '../utils/list-filter-storage';
 
 export function IssuesPage() {
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const scopedProjectId = useScopedProjectId();
+  const labelFilter = useProjectLabelFilter(scopedProjectId);
   const [filters, , replaceFilters] = useStoredListFilters('issues');
   const selectedWorkspaceId = filters.workspaceId;
   const selectedStatus = filters.status;
@@ -44,20 +51,21 @@ export function IssuesPage() {
   });
   const toast = useToast();
 
-  const list = useListPage(api.getIssues, { workspaceId: selectedWorkspaceId, status: selectedStatus, priority: selectedPriority, q: keyword || undefined });
+  const list = useListPage(api.getIssues, { projectId: scopedProjectId || undefined, workspaceId: selectedWorkspaceId, status: selectedStatus, priority: selectedPriority, labelIds: labelFilter.labelIds.length ? labelFilter.labelIds : undefined, q: keyword || undefined });
   function applyFilters() {
+    setSearchParams(current => { const next = new URLSearchParams(current); labelFilter.write(next); return next; });
     replaceFilters({
       keyword: queryDraft.draft.keyword.trim() || undefined,
       workspaceId: queryDraft.draft.workspaceId || undefined,
       status: queryDraft.draft.status || undefined,
       priority: queryDraft.draft.priority || undefined,
     });
-    list.onPageChange(1);
   }
   function clearFilters() {
+    labelFilter.clear();
+    setSearchParams(current => { const next = new URLSearchParams(current); next.delete('labelIds'); next.delete('page'); return next; });
     queryDraft.replace({ keyword: '', workspaceId: '', status: '', priority: '' });
     replaceFilters({ keyword: undefined, workspaceId: undefined, status: undefined, priority: undefined });
-    list.onPageChange(1);
   }
   const { items: pagedIssues, loading, refresh } = list;
   const issueSummary = { ...{total: 0, visible: 0, openCount: 0, inProgressCount: 0}, ...list.summary };
@@ -99,6 +107,7 @@ export function IssuesPage() {
                 )}
                 filters={(
                   <>
+                    <div className="min-w-48"><ProjectLabelSelect projectId={scopedProjectId} value={labelFilter.draft} onChange={labelFilter.setDraft} label="按标签筛选" /><span className="text-xs text-muted-foreground">匹配任一所选标签</span>{labelFilter.error ? <p role="alert" className="text-xs text-destructive">{labelFilter.error}</p> : null}</div>
                     <PagedSelect value={queryDraft.draft.workspaceId} label="按工作区筛选" placeholder="全部工作区" allowClear emptyLabel="全部工作区" className="w-[180px]" loadPage={api.getWorkspaces}
                       onValueChange={value => queryDraft.patch({ workspaceId: value })} />
                     <Select
@@ -132,7 +141,7 @@ export function IssuesPage() {
                         <SelectItem value="URGENT">{formatPriority('URGENT')}</SelectItem>
                       </SelectContent>
                     </Select>
-                    <ListQueryActions onQuery={applyFilters} onClear={clearFilters} showClear={Boolean(keyword || selectedWorkspaceId || selectedStatus || selectedPriority || queryDraft.draft.keyword || queryDraft.draft.workspaceId || queryDraft.draft.status || queryDraft.draft.priority)} />
+                    <ListQueryActions onQuery={applyFilters} onClear={clearFilters} showClear={Boolean(labelFilter.draft.length || labelFilter.labelIds.length || keyword || selectedWorkspaceId || selectedStatus || selectedPriority || queryDraft.draft.keyword || queryDraft.draft.workspaceId || queryDraft.draft.status || queryDraft.draft.priority)} />
                   </>
                 )}
               />
@@ -148,6 +157,7 @@ export function IssuesPage() {
                   <>
                     <Badge variant="secondary">{formatIssueStatus(item.status)}</Badge>
                     <Badge variant="outline">{formatPriorityLabel(item.priority)}</Badge>
+                    <span className="inline-flex items-center gap-1 text-xs"><span className="text-muted-foreground">标签</span><ProjectLabelBadges labels={item.labels} /></span>
                     {item.workspace?.name ? <Badge variant="default">{item.workspace.name}</Badge> : null}
                   </>
                 }

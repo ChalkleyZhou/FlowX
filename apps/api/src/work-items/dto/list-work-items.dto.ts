@@ -2,6 +2,7 @@ import { IsIn, IsOptional, IsString } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class ListWorkItemsDto {
+  @IsOptional() @IsString() labelIds?: string;
   @IsOptional()
   @Transform(({ value }) => Number(value))
   page?: number;

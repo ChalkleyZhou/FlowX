@@ -256,6 +256,8 @@ describe('WorkItemsService version removal', () => {
     };
     const service = new WorkItemsService(prisma as never, {} as never);
 
+    Object.assign(prisma, { $transaction: async (callback: (tx: typeof prisma) => Promise<unknown>) => callback(prisma) });
+
     const updated = await service.update('item-1', { versionId: null });
 
     expect(prisma.workItem.updateMany).toHaveBeenCalledWith({

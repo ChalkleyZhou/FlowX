@@ -1,3 +1,7 @@
+import type { ProjectLabelSummary } from '../types';
+import { ProjectLabelSelect } from '../components/ProjectLabelSelect';
+import { ProjectLabelBadges } from '../components/ProjectLabelBadges';
+import { useProjectLabelFilter } from '../hooks/use-project-label-filter';
 import { ListQueryActions } from '../components/ListQueryActions';
 import { submitQueryOnEnter, useDraftQuery } from '../hooks/use-draft-query';
 import { useListPage } from '../hooks/use-list-page';
@@ -54,10 +58,11 @@ import { useStoredListFilters } from '../utils/list-filter-storage';
 
 export function BugsPage() {
   const location = useLocation();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const scopedProjectId = useScopedProjectId();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [createLabels, setCreateLabels] = useState<ProjectLabelSummary[]>([]);
   const [createAttachments, setCreateAttachments] = useState<PendingImageAttachment[]>([]);
   const [createDraft, setCreateDraft] = useState({
     workspaceId: '',
@@ -70,6 +75,7 @@ export function BugsPage() {
     actualBehavior: '',
     reproductionSteps: '',
   });
+  const labelFilter = useProjectLabelFilter(scopedProjectId);
   const [filters, , replaceFilters] = useStoredListFilters('bugs');
   const selectedWorkspaceId = filters.workspaceId;
   const selectedStatus = filters.status;
@@ -85,8 +91,9 @@ export function BugsPage() {
   });
   const toast = useToast();
 
-  const list = useListPage(api.getBugs, { projectId: scopedProjectId || undefined, workspaceId: selectedWorkspaceId, status: selectedStatus, priority: selectedPriority, q: keyword || undefined, severity: selectedSeverity }, { enabled: Boolean(scopedProjectId) });
+  const list = useListPage(api.getBugs, { projectId: scopedProjectId || undefined, workspaceId: selectedWorkspaceId, status: selectedStatus, priority: selectedPriority, labelIds: labelFilter.labelIds.length ? labelFilter.labelIds : undefined, q: keyword || undefined, severity: selectedSeverity }, { enabled: Boolean(scopedProjectId) });
   function applyFilters() {
+    setSearchParams(current => { const next = new URLSearchParams(current); labelFilter.write(next); return next; });
     replaceFilters({
       keyword: queryDraft.draft.keyword.trim() || undefined,
       workspaceId: queryDraft.draft.workspaceId || undefined,
@@ -94,14 +101,14 @@ export function BugsPage() {
       severity: queryDraft.draft.severity || undefined,
       priority: queryDraft.draft.priority || undefined,
     });
-    list.onPageChange(1);
   }
   function clearFilters() {
+    labelFilter.clear();
+    setSearchParams(current => { const next = new URLSearchParams(current); next.delete('labelIds'); next.delete('page'); return next; });
     queryDraft.replace({ keyword: '', workspaceId: '', status: '', severity: '', priority: '' });
     replaceFilters({ keyword: undefined, workspaceId: undefined, status: undefined, severity: undefined, priority: undefined });
-    list.onPageChange(1);
   }
-  const showClear = Boolean(keyword || selectedWorkspaceId || selectedStatus || selectedSeverity || selectedPriority || Object.values(queryDraft.draft).some(Boolean));
+  const showClear = Boolean(labelFilter.draft.length || labelFilter.labelIds.length || keyword || selectedWorkspaceId || selectedStatus || selectedSeverity || selectedPriority || Object.values(queryDraft.draft).some(Boolean));
   const { items: pagedBugs, loading, refresh } = list;
   const bugSummary = { ...{total: 0, visible: 0, openCount: 0, criticalCount: 0}, ...list.summary };
 
@@ -114,6 +121,7 @@ export function BugsPage() {
     setCreateSubmitting(true);
     try {
       await api.createBug({
+        labelIds: createLabels.map(label => label.id),
         workspaceId: createDraft.workspaceId,
         projectId: createDraft.projectId || undefined,
         title: createDraft.title.trim(),
@@ -130,6 +138,7 @@ export function BugsPage() {
           createAttachments.length > 0 ? toImageAttachmentPayload(createAttachments) : undefined,
       });
       toast.success('缺陷已创建');
+      setCreateLabels([]);
       setCreateModalOpen(false);
       releaseImageAttachmentPreviews(createAttachments);
       setCreateAttachments([]);
@@ -162,6 +171,7 @@ export function BugsPage() {
           <UiButton onClick={() => {
             if (scopedProjectId) {
               void api.getProject(scopedProjectId).then(project => {
+                setCreateLabels([]);
                 setCreateDraft(current => ({ ...current, projectId: project.id, workspaceId: project.workspace.id }));
                 setCreateModalOpen(true);
               }).catch(error => toast.error(error instanceof Error ? error.message : '加载项目失败'));
@@ -215,6 +225,7 @@ export function BugsPage() {
                 }
               />
             </div>
+            <div className="space-y-2"><label className="text-sm font-semibold">标签（可选）</label><ProjectLabelSelect projectId={createDraft.projectId} value={createLabels} onChange={setCreateLabels} disabled={createSubmitting} /></div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-semibold text-foreground">严重级别</label>
@@ -327,6 +338,7 @@ export function BugsPage() {
                 )}
                 filters={(
                   <>
+                    <div className="min-w-48"><ProjectLabelSelect projectId={scopedProjectId} value={labelFilter.draft} onChange={labelFilter.setDraft} label="按标签筛选" /><span className="text-xs text-muted-foreground">匹配任一所选标签</span>{labelFilter.error ? <p role="alert" className="text-xs text-destructive">{labelFilter.error}</p> : null}</div>
                     <PagedSelect value={queryDraft.draft.workspaceId} label="按工作区筛选" placeholder="全部工作区" allowClear emptyLabel="全部工作区" className="w-[180px]" loadPage={api.getWorkspaces}
                       onValueChange={value => queryDraft.patch({ workspaceId: value })} />
                     <Select
@@ -392,6 +404,7 @@ export function BugsPage() {
                   <>
                     <Badge variant="destructive">{formatSeverityLabel(item.severity)}</Badge>
                     <Badge variant="outline">{formatPriorityLabel(item.priority)}</Badge>
+                    <span className="inline-flex items-center gap-1 text-xs"><span className="text-muted-foreground">标签</span><ProjectLabelBadges labels={item.labels} /></span>
                     <Badge variant="secondary">{formatBugStatus(item.status)}</Badge>
                     <Badge variant="default">
                       {item.workspace?.name ?? '未绑定工作区'}

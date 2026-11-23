@@ -1,3 +1,4 @@
+import { assertProjectLabelIds, labelFilterWhere, labelIdsInput, replaceWorkItemLabels, withProjectLabels, workItemLabelsInclude } from '../projects/project-labels.service';
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { FLOWX_PROTOCOL_VERSION, type ExecutionSessionStatus } from '@flowx-ai/protocol';
@@ -50,6 +51,7 @@ export class WorkItemsService {
       ] });
     }
     const where: Prisma.WorkItemWhereInput = {
+      ...labelFilterWhere(query.labelIds),
       projectId,
       versionId,
       ...(query.kind ? { kind: query.kind } : {}),
@@ -65,6 +67,7 @@ export class WorkItemsService {
       take: take + 1,
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       include: {
+        labels: workItemLabelsInclude,
         ownerUser: { select: { id: true, displayName: true, avatarUrl: true } },
         executionPlans: { take: 1, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { items: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } } },
         _count: { select: { workflowRuns: true, executionPlans: true } },
@@ -74,7 +77,7 @@ export class WorkItemsService {
     const items = hasMore ? rows.slice(0, take) : rows;
     const last = items.at(-1);
     return {
-      items,
+      items: items.map(withProjectLabels),
       nextCursor: hasMore && last ? Buffer.from(JSON.stringify({ updatedAt: last.updatedAt.toISOString(), id: last.id }), 'utf8').toString('base64url') : null,
     };
   }
@@ -82,6 +85,7 @@ export class WorkItemsService {
   async listGlobal(query: ListWorkItemsDto, auth?: AuthSession) {
     const paging = parsePagination({ page: query.page, pageSize: query.pageSize });
     const where: Prisma.WorkItemWhereInput = {
+      ...labelFilterWhere(query.labelIds),
       ...(query.kind ? { kind: query.kind } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.priority ? { priority: query.priority } : {}),
@@ -96,13 +100,14 @@ export class WorkItemsService {
     if (auth?.organization?.id) {
       where.workspace = { organizationId: auth.organization.id };
     }
-    const [items, total] = await Promise.all([
+    const [items, statusCounts] = await Promise.all([
       this.prisma.workItem.findMany({
         where,
         skip: paging.skip,
         take: paging.take,
         orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
         include: {
+          labels: workItemLabelsInclude,
           project: { select: { id: true, name: true } },
           version: { select: { id: true, name: true } },
           workspace: { select: { id: true, name: true } },
@@ -111,9 +116,22 @@ export class WorkItemsService {
           executionPlans: { take: 1, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { items: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } } },
         },
       }),
-      this.prisma.workItem.count({ where }),
+      this.prisma.workItem.groupBy({ by: ['kind', 'status'], where, _count: { _all: true } }),
     ]);
-    return pageResult(items, total, paging);
+    const summary = statusCounts.reduce((counts, row) => {
+      const count = row._count._all;
+      counts.total += count;
+      if (row.status === 'OPEN') counts.openCount += count;
+      if ((row.kind === 'REQUIREMENT' && row.status === 'ACTIVE')
+        || (row.kind === 'ISSUE' && row.status === 'IN_PROGRESS')
+        || (row.kind === 'BUG' && row.status === 'FIXING')) counts.inProgressCount += count;
+      if (row.kind === 'REQUIREMENT' && row.status === 'DONE') counts.completedCount += count;
+      return counts;
+    }, { total: 0, openCount: 0, inProgressCount: 0, completedCount: 0 });
+    return {
+      ...pageResult(items.map(withProjectLabels), summary.total, paging),
+      summary: { ...summary, visible: summary.total, visibleCount: summary.total },
+    };
   }
 
   async create(projectId: string, versionId: string, dto: CreateWorkItemDto, auth?: AuthSession) {
@@ -126,10 +144,13 @@ export class WorkItemsService {
     const invalidRepositoryIds = repositoryIds.filter((repositoryId) => !allowedRepositoryIds.has(repositoryId));
     if (invalidRepositoryIds.length) throw new NotFoundException('仓库不属于当前项目工作区。');
     const splitMode = dto.splitMode ?? 'SINGLE';
+    const labelIds = dto.labelIds === undefined ? [] : labelIdsInput(dto.labelIds);
     const created = await this.prisma.$transaction(async (tx) => {
+      await assertProjectLabelIds(tx, projectId, labelIds);
       const displayCode = await reserveWorkItemDisplayCode(tx, projectId, dto.kind);
       const item = await tx.workItem.create({
         data: {
+          labels: labelIds.length ? { create: labelIds.map(labelId => ({ labelId })) } : undefined,
           displayCode,
           projectId,
           versionId,
@@ -174,6 +195,7 @@ export class WorkItemsService {
     const item = await this.prisma.workItem.findUnique({
       where: { id },
       include: {
+        labels: workItemLabelsInclude,
         project: { include: { workspace: { include: { organization: true } } } },
         version: { select: { id: true, name: true } },
         ownerUser: { select: { id: true, displayName: true, avatarUrl: true } },
@@ -189,7 +211,7 @@ export class WorkItemsService {
     });
     if (!item) throw new NotFoundException('工作项不存在。');
     this.assertOrganization(item.project.workspace.organizationId, auth);
-    return item;
+    return withProjectLabels(item);
   }
 
   async update(id: string, dto: UpdateWorkItemDto, auth?: AuthSession) {
@@ -202,38 +224,44 @@ export class WorkItemsService {
     if (dto.updatedAt && Number.isNaN(Date.parse(dto.updatedAt))) {
       throw new BadRequestException('updatedAt 无效。');
     }
-    const updated = await this.prisma.workItem.updateMany({
-      where: { id, ...(dto.updatedAt ? { updatedAt: new Date(dto.updatedAt) } : {}) },
-      data: {
-        ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
-        ...(dto.description !== undefined ? { description: dto.description.trim() } : {}),
-        ...(dto.remark !== undefined ? { remark: dto.remark.trim() } : {}),
-        ...(dto.status !== undefined ? { status: dto.status.trim() } : {}),
-        ...(dto.priority !== undefined ? { priority: dto.priority.trim() } : {}),
-        ...(dto.acceptanceCriteria !== undefined ? { acceptanceCriteria: dto.acceptanceCriteria.trim() } : {}),
-        ...(dto.functionalModule !== undefined ? { functionalModule: dto.functionalModule.trim() } : {}),
-        ...(dto.riskImpact !== undefined ? { riskImpact: dto.riskImpact.trim() } : {}),
-        ...(dto.productRequirementDocument !== undefined ? { productRequirementDocument: dto.productRequirementDocument.trim() } : {}),
-        ...(dto.planningStatus !== undefined ? { planningStatus: dto.planningStatus.trim() } : {}),
-        ...(dto.resolution !== undefined ? { resolution: dto.resolution.trim() || null } : {}),
-        ...(dto.severity !== undefined ? { severity: dto.severity.trim() || null } : {}),
-        ...(dto.expectedBehavior !== undefined ? { expectedBehavior: dto.expectedBehavior.trim() || null } : {}),
-        ...(dto.actualBehavior !== undefined ? { actualBehavior: dto.actualBehavior.trim() || null } : {}),
-        ...(dto.branchName !== undefined ? { branchName: dto.branchName.trim() || null } : {}),
-        ...(dto.ownerUserId !== undefined ? { ownerUserId: dto.ownerUserId } : {}),
-        ...(dto.versionId !== undefined ? { versionId: dto.versionId } : {}),
-      },
-    });
-    if (updated.count !== 1) throw new ConflictException('工作项已被其他人更新，请刷新后重试。');
-    const updatedItem = await this.prisma.workItem.findUniqueOrThrow({
-      where: { id },
-      include: {
-        ownerUser: { select: { id: true, displayName: true, avatarUrl: true } },
-        version: { select: { id: true, name: true } },
-      },
+    const labelIds = dto.labelIds === undefined ? undefined : labelIdsInput(dto.labelIds);
+    const updatedItem = await this.prisma.$transaction(async tx => {
+      const updated = await tx.workItem.updateMany({
+        where: { id, ...(dto.updatedAt ? { updatedAt: new Date(dto.updatedAt) } : {}) },
+        data: {
+          ...(labelIds !== undefined ? { updatedAt: new Date() } : {}),
+          ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
+          ...(dto.description !== undefined ? { description: dto.description.trim() } : {}),
+          ...(dto.remark !== undefined ? { remark: dto.remark.trim() } : {}),
+          ...(dto.status !== undefined ? { status: dto.status.trim() } : {}),
+          ...(dto.priority !== undefined ? { priority: dto.priority.trim() } : {}),
+          ...(dto.acceptanceCriteria !== undefined ? { acceptanceCriteria: dto.acceptanceCriteria.trim() } : {}),
+          ...(dto.functionalModule !== undefined ? { functionalModule: dto.functionalModule.trim() } : {}),
+          ...(dto.riskImpact !== undefined ? { riskImpact: dto.riskImpact.trim() } : {}),
+          ...(dto.productRequirementDocument !== undefined ? { productRequirementDocument: dto.productRequirementDocument.trim() } : {}),
+          ...(dto.planningStatus !== undefined ? { planningStatus: dto.planningStatus.trim() } : {}),
+          ...(dto.resolution !== undefined ? { resolution: dto.resolution.trim() || null } : {}),
+          ...(dto.severity !== undefined ? { severity: dto.severity.trim() || null } : {}),
+          ...(dto.expectedBehavior !== undefined ? { expectedBehavior: dto.expectedBehavior.trim() || null } : {}),
+          ...(dto.actualBehavior !== undefined ? { actualBehavior: dto.actualBehavior.trim() || null } : {}),
+          ...(dto.branchName !== undefined ? { branchName: dto.branchName.trim() || null } : {}),
+          ...(dto.ownerUserId !== undefined ? { ownerUserId: dto.ownerUserId } : {}),
+          ...(dto.versionId !== undefined ? { versionId: dto.versionId } : {}),
+        },
+      });
+      if (updated.count !== 1) throw new ConflictException({ code: 'RESOURCE_UPDATED', message: '工作项已被其他人更新，请刷新后重试。' });
+      if (labelIds !== undefined) await replaceWorkItemLabels(tx, existing.projectId, id, labelIds);
+      return tx.workItem.findUniqueOrThrow({
+        where: { id },
+        include: {
+          labels: workItemLabelsInclude,
+          ownerUser: { select: { id: true, displayName: true, avatarUrl: true } },
+          version: { select: { id: true, name: true } },
+        },
+      });
     });
     this.scheduleWorkItemChangeNotifications(existing, updatedItem, dto, auth);
-    return updatedItem;
+    return withProjectLabels(updatedItem);
   }
 
   private scheduleWorkItemChangeNotifications(

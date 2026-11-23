@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { ProjectLabelBadges } from './ProjectLabelBadges';
 import { Badge } from './ui/badge';
 import type { Requirement } from '../types';
 import { formatPriority, formatWorkItemStatus } from '../utils/label-utils';
@@ -40,7 +41,7 @@ export function RequirementListTable({
     <table className="w-max min-w-full text-sm">
       <thead className="bg-muted/40 text-left text-muted-foreground">
         <tr>
-          {['需求', '需求描述', '优先级', '状态', '规划版本', personLabel, '创建时间', '操作'].map((label) => (
+          {['需求', '需求描述', '标签', '优先级', '状态', '规划版本', personLabel, '创建时间', '操作'].map((label) => (
             <th
               key={label}
               className={label === '操作'
@@ -77,6 +78,7 @@ export function RequirementListTable({
               <td className="px-4 py-3 text-muted-foreground">
                 <span className="block w-[320px] truncate" title={description}>{description}</span>
               </td>
+              <td className="max-w-80 px-4 py-3"><ProjectLabelBadges labels={item.labels} /></td>
               <td className="whitespace-nowrap px-4 py-3">{formatPriority(item.priority)}</td>
               <td className="whitespace-nowrap px-4 py-3"><Badge variant={statusVariant(item.status)}>{formatWorkItemStatus(item.status)}</Badge></td>
               <td className="whitespace-nowrap px-4 py-3"><span className="block max-w-[180px] truncate" title={version}>{version}</span></td>

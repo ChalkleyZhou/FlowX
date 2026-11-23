@@ -1,7 +1,10 @@
+import { IsArray } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength, Min, ValidateIf } from 'class-validator';
 
 export class CreatePrototypeImportDto {
+  @Transform(({ value }) => { if (typeof value !== "string") return value; try { return JSON.parse(value) as unknown; } catch { return value; } })
+  @ValidateIf((_, value) => value !== undefined) @IsArray() @IsString({ each: true }) labelIds?: string[];
   @IsString() @IsNotEmpty() projectId!: string;
   @IsOptional() @IsString() @MaxLength(1000) title?: string;
   @ValidateIf((_, value) => value !== undefined) @IsString() @IsNotEmpty() versionId?: string;

@@ -1,3 +1,6 @@
+import { ProjectLabelSelect } from '../components/ProjectLabelSelect';
+import { ProjectLabelBadges } from '../components/ProjectLabelBadges';
+import type { ProjectLabelSummary } from '../types';
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { api } from '../api';
@@ -40,6 +43,7 @@ export function IssueDetailPage() {
     title: string;
     description: string;
   } | null>(null);
+  const [labels, setLabels] = useState<ProjectLabelSummary[]>([]);
   const [draft, setDraft] = useState({
     title: '',
     description: '',
@@ -58,6 +62,7 @@ export function IssueDetailPage() {
     try {
       const nextIssue = await api.getIssue(issueId);
       setIssue(nextIssue);
+      setLabels(nextIssue.labels ?? []);
       setDraft({
         title: nextIssue.title,
         description: nextIssue.description,
@@ -90,8 +95,9 @@ export function IssueDetailPage() {
     }
     setSaving(true);
     try {
-      const nextIssue = await api.updateIssue(issueId, values);
+      const nextIssue = await api.updateIssue(issueId, { ...values, labelIds: labels.map(label => label.id), updatedAt: issue?.updatedAt });
       setIssue(nextIssue);
+      setLabels(nextIssue.labels ?? []);
       setDraft({
         title: nextIssue.title,
         description: nextIssue.description,
@@ -171,6 +177,7 @@ export function IssueDetailPage() {
           }
         />
 
+        <div className="flex items-center gap-2 text-sm"><span>标签</span><ProjectLabelBadges labels={issue?.labels} limit={20} /></div>
         <div className="grid gap-5 md:grid-cols-4">
           <MetricCard label="当前状态" value={formatIssueStatus(issue?.status ?? 'OPEN')} helpText="问题项当前所处的处理阶段。" />
           <MetricCard label="优先级" value={formatPriority(issue?.priority ?? 'MEDIUM')} helpText="用于标记后续处理和排期的紧急程度。" />
@@ -218,6 +225,7 @@ export function IssueDetailPage() {
                     onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
                   />
                 </div>
+                <div className="space-y-2"><label className="text-sm font-semibold">标签（可选）</label><ProjectLabelSelect projectId={issue?.projectId ?? issue?.project?.id ?? ''} value={labels} onChange={setLabels} disabled={saving} /></div>
                 <div className="flex flex-wrap gap-3">
                   <div className="flex min-w-[220px] flex-1 flex-col gap-2">
                     <label className="text-sm font-semibold text-foreground">状态</label>

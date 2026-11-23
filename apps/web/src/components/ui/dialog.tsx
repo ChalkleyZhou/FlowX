@@ -8,6 +8,8 @@ const DialogTrigger = DialogPrimitive.Trigger;
 const DialogPortal = DialogPrimitive.Portal;
 const DialogClose = DialogPrimitive.Close;
 
+export const PROJECT_LABEL_SELECT_DISMISS_EVENT = 'flowx:close-project-label-select';
+
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
@@ -92,8 +94,14 @@ function extractDialogSlots(nodes: React.ReactNode, ctx: SlotContext): React.Rea
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => {
+>(({ className, children, onEscapeKeyDown, ...props }, ref) => {
   const reactId = React.useId();
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
+  const setContentRef = React.useCallback((node: HTMLDivElement | null) => {
+    contentRef.current = node;
+    if (typeof ref === 'function') ref(node);
+    else if (ref) ref.current = node;
+  }, [ref]);
   const [bodyElement, setBodyElement] = React.useState<HTMLDivElement | null>(null);
   const [scrolls, setScrolls] = React.useState(false);
   let formSequence = 0;
@@ -131,13 +139,23 @@ const DialogContent = React.forwardRef<
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
-        ref={ref}
+        ref={setContentRef}
         className={cn(
           'fixed left-[50%] top-[50%] z-50 flex w-full max-h-[min(90vh,calc(100dvh-2rem))] max-w-lg translate-x-[-50%] translate-y-[-50%] flex-col rounded-lg border bg-background shadow-lg duration-200',
           className,
           scrolls ? 'overflow-hidden' : 'overflow-visible',
         )}
         {...props}
+        onEscapeKeyDown={event => {
+          // Radix 在 document 捕获阶段先处理 Escape；先关闭标签面板，保留父表单草稿。
+          const labelPanel = contentRef.current?.querySelector<HTMLElement>('[data-project-label-panel="open"]');
+          if (labelPanel) {
+            event.preventDefault();
+            labelPanel.dispatchEvent(new Event(PROJECT_LABEL_SELECT_DISMISS_EVENT));
+            return;
+          }
+          onEscapeKeyDown?.(event);
+        }}
       >
         {hasHeader ? (
           <div data-dialog-section="header" className={cn('shrink-0 px-6 pr-12 pt-6', !hasBody && 'pb-4')}>

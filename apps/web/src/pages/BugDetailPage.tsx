@@ -1,3 +1,6 @@
+import { ProjectLabelSelect } from '../components/ProjectLabelSelect';
+import { ProjectLabelBadges } from '../components/ProjectLabelBadges';
+import type { ProjectLabelSummary } from '../types';
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useListPage } from '../hooks/use-list-page';
@@ -69,6 +72,7 @@ export function BugDetailPage() {
     description: string;
   } | null>(null);
   const [newAttachments, setNewAttachments] = useState<PendingImageAttachment[]>([]);
+  const [labels, setLabels] = useState<ProjectLabelSummary[]>([]);
   const [draft, setDraft] = useState({
     title: '',
     description: '',
@@ -98,6 +102,7 @@ export function BugDetailPage() {
     try {
       const nextBug = await api.getBug(bugId);
       setBug(nextBug);
+      setLabels(nextBug.labels ?? []);
       setDraft({
         title: nextBug.title,
         description: nextBug.description,
@@ -173,11 +178,14 @@ export function BugDetailPage() {
     try {
       const nextBug = await api.updateBug(bugId, {
         ...values,
+        labelIds: labels.map(label => label.id),
+        updatedAt: bug?.updatedAt,
         reproductionSteps: values.reproductionSteps
           ? values.reproductionSteps.split('\n').map((item) => item.trim()).filter(Boolean)
           : [],
       });
       setBug(nextBug);
+      setLabels(nextBug.labels ?? []);
       setDraft({
         title: nextBug.title,
         description: nextBug.description,
@@ -286,6 +294,7 @@ export function BugDetailPage() {
           }
         />
 
+        <div className="flex items-center gap-2 text-sm"><span>标签</span><ProjectLabelBadges labels={bug?.labels} limit={20} /></div>
         <div className="grid gap-5 md:grid-cols-4">
           <MetricCard label="当前状态" value={formatBugStatus(bug?.status ?? 'OPEN')} helpText="缺陷当前所处的处理阶段。" />
           <MetricCard label="严重级别" value={formatSeverity(bug?.severity ?? 'MEDIUM')} helpText="用于标记影响范围和风险等级。" />
@@ -329,6 +338,7 @@ export function BugDetailPage() {
                     onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
                   />
                 </div>
+                <div className="space-y-2"><label className="text-sm font-semibold">标签（可选）</label><ProjectLabelSelect projectId={bug?.projectId ?? bug?.project?.id ?? ''} value={labels} onChange={setLabels} disabled={saving} /></div>
                 <div className="flex flex-wrap gap-3">
                   <div className="flex min-w-[220px] flex-1 flex-col gap-2">
                     <label className="text-sm font-semibold text-foreground">状态</label>

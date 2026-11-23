@@ -4,6 +4,7 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { triggerAutoUpdate } from './auto-update.js';
 import {
   ARTIFACT_TYPES,
+  parseProjectLabelIds,
   type ExecutionCheckpointResult,
   type ArtifactType,
   type BrainstormCompletionReport,
@@ -36,6 +37,12 @@ type ToolResult = {
   content: Array<{ type: 'text'; text: string }>;
 };
 
+class FlowXApiError extends Error {
+  constructor(readonly status: number, readonly responseBody: string, readonly requestUrl: string, statusText: string) {
+    super(`FlowX API request failed (${status}): ${responseBody || statusText}`);
+  }
+}
+
 class LocalFlowXApiClient {
   constructor(
     private readonly baseUrl: string,
@@ -55,7 +62,7 @@ class LocalFlowXApiClient {
     });
     if (!response.ok) {
       const message = await response.text();
-      throw new Error(`FlowX API request failed (${response.status}): ${message || response.statusText}`);
+      throw new FlowXApiError(response.status, message, `${this.baseUrl}${path}`, response.statusText);
     }
     const value: unknown = await response.json();
     if ((!init.method || init.method === 'GET') && isPaginatedListPath(path)) return requirePage(value);
@@ -87,6 +94,36 @@ class LocalFlowXApiClient {
 }
 
 const requirementPrioritySchema = z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']);
+const projectLabelIdsSchema = z.array(z.string()).superRefine((value, context) => {
+  try { parseProjectLabelIds(value); }
+  catch (error) { context.addIssue({ code: z.ZodIssueCode.custom, message: error instanceof Error ? error.message : String(error) }); }
+}).describe('目标项目已有标签 ID，去重后最多 20 个；[] 清空，省略保持缺省语义。');
+
+async function listProjectLabels(client: LocalFlowXApiClient, projectId: string, params: Record<string, unknown> = {}) {
+  try {
+    return await client.request(`/projects/${encodeURIComponent(projectId)}/labels${queryString(params)}`);
+  } catch (error) {
+    if (error instanceof FlowXApiError && error.status === 404) {
+      let message: unknown;
+      try { message = (JSON.parse(error.responseBody) as { message?: unknown }).message; } catch { /* 非标准响应保留原始错误。 */ }
+      const url = new URL(error.requestUrl);
+      if (message === `Cannot GET ${url.pathname}` || message === `Cannot GET ${url.pathname}${url.search}`) {
+        throw new Error('PROJECT_LABELS_UPGRADE_REQUIRED: 服务端不支持项目标签，请升级服务端；未执行工作项写入。');
+      }
+    }
+    throw error;
+  }
+}
+
+function confirmWorkItemLabels(response: unknown, labelIds: string[]) {
+  const labels = response && typeof response === 'object' && 'labels' in response ? response.labels : undefined;
+  const actualIds = Array.isArray(labels) ? labels.map((label: unknown) => readStringField(label, 'id')) : undefined;
+  if (!actualIds || actualIds.some((id) => !id) || actualIds.length !== labelIds.length || labelIds.some((id) => !actualIds.includes(id))) {
+    const id = readStringField(response, 'id') || '服务端未返回 ID';
+    throw new Error(`PROJECT_LABELS_WRITE_UNCONFIRMED: 工作项已保存（id: ${id}），但标签未确认。不要重复创建；请查询该工作项并升级服务端后修正标签。`);
+  }
+  return response;
+}
 
 function requirementProfileBody(input: {
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
@@ -286,6 +323,7 @@ const paginationFields = {
 function isPaginatedListPath(path: string) {
   const pathname = path.split('?')[0];
   return /^\/projects(?:\/[^/]+\/versions)?$/.test(pathname) ||
+    /^\/projects\/[^/]+\/labels$/.test(pathname) ||
     /^\/workspaces\/[^/]+\/repositories$/.test(pathname) ||
     /^\/cursor-local\/(tasks|opendesign-tasks|workflow-position)$/.test(pathname) ||
     /^\/quality\/(case-libraries|test-cases|local-test-tasks|test-requests|test-designs|test-runs)$/.test(pathname) ||
@@ -414,10 +452,23 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
   const server = new McpServer({ name: 'flowx-local', version: PACKAGE_VERSION });
 
   server.registerTool(
+    'flowx_list_project_labels',
+    {
+      title: '查询项目标签',
+      description: '分页查询项目已有标签及工作项使用数量；标签属于项目、跨版本共用。先查询再使用真实 ID，不猜测或自行创建标签。标签实体由 Web 项目设置维护；标签不改变工作流阶段。',
+      inputSchema: z.object({ projectId: z.string().min(1), ...paginationFields }),
+    },
+    async ({ projectId, ...params }) => runRequest(async () => {
+      const { client } = await resolveSession(options.homeDir);
+      return listProjectLabels(client, projectId, params);
+    }),
+  );
+
+  server.registerTool(
     'flowx_list_version_work_items',
     {
       title: 'List Version Work Items',
-      description: '查询版本下统一的需求、问题和缺陷工作项，服务端负责筛选和游标分页。',
+      description: '查询版本下统一的需求、问题和缺陷工作项，服务端负责筛选和游标分页。labelIds 匹配任一标签，与其他条件取交集；先用 flowx_list_project_labels 查询项目已有 ID，响应保留 labels 摘要。',
       inputSchema: z.object({
         projectId: z.string().min(1),
         versionId: z.string().min(1),
@@ -427,9 +478,15 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
         status: z.string().optional(),
         ownerId: z.string().optional(),
         q: z.string().optional(),
+        labelIds: projectLabelIdsSchema.optional(),
       }),
     },
-    async (input) => runRequest(async () => { const { client } = await resolveSession(options.homeDir); return client.request(`/projects/${encodeURIComponent(input.projectId)}/versions/${encodeURIComponent(input.versionId)}/work-items${queryString({ cursor: input.cursor, pageSize: input.pageSize, kind: input.kind, status: input.status, ownerId: input.ownerId, q: input.q })}`); }),
+    async (input) => runRequest(async () => {
+      const { client } = await resolveSession(options.homeDir);
+      const labelIds = input.labelIds === undefined ? undefined : parseProjectLabelIds(input.labelIds);
+      if (labelIds !== undefined) await listProjectLabels(client, input.projectId, { pageSize: 1 });
+      return client.request(`/projects/${encodeURIComponent(input.projectId)}/versions/${encodeURIComponent(input.versionId)}/work-items${queryString({ cursor: input.cursor, pageSize: input.pageSize, kind: input.kind, status: input.status, ownerId: input.ownerId, q: input.q, labelIds: labelIds?.join(',') })}`);
+    }),
   );
 
   server.registerTool(
@@ -1141,7 +1198,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     {
       title: 'Create FlowX Work Item',
       description:
-        'Create a FlowX WorkItem only after the user explicitly asked to register it or confirmed that choice. The kind selects REQUIREMENT, ISSUE or BUG; all use the same WorkItem root and execution plan. Never interpret ordinary code changes, current-project feature work, or requirement discussion as authorization to create FlowX data. Requires projectId, versionId, kind and title. Description, acceptance criteria, type-specific fields and repository scope are optional.',
+        'Create a FlowX WorkItem only after the user explicitly asked to register it or confirmed that choice. The kind selects REQUIREMENT, ISSUE or BUG; all use the same WorkItem root and execution plan. Never interpret ordinary code changes, current-project feature work, or requirement discussion as authorization to create FlowX data. Requires projectId, versionId, kind and title. Description, acceptance criteria, type-specific fields and repository scope are optional. 标签属于项目；先用 flowx_list_project_labels 查询已有 ID，再传可选 labelIds（最多 20 个）。标签实体由 Web 项目设置维护，不猜测 ID；标签不改变阶段。',
       inputSchema: z.object({
         projectId: z.string().min(1),
         kind: z.enum(['REQUIREMENT', 'ISSUE', 'BUG']),
@@ -1154,13 +1211,16 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
         productRequirementDocument: z.string().optional(),
         remark: z.string().optional(),
         repositoryIds: z.array(z.string()).optional(),
+        labelIds: projectLabelIdsSchema.optional(),
         versionId: z.string().trim().min(1),
       }),
     },
     async (input) => {
       const { client } = await resolveSession(options.homeDir);
-      return runRequest(() =>
-        client.request(`/projects/${encodeURIComponent(input.projectId)}/versions/${encodeURIComponent(input.versionId)}/work-items`, {
+      return runRequest(async () => {
+        const labelIds = input.labelIds === undefined ? undefined : parseProjectLabelIds(input.labelIds);
+        if (labelIds !== undefined) await listProjectLabels(client, input.projectId, { pageSize: 1 });
+        const response = await client.request(`/projects/${encodeURIComponent(input.projectId)}/versions/${encodeURIComponent(input.versionId)}/work-items`, {
           method: 'POST',
           body: JSON.stringify({
             kind: input.kind,
@@ -1169,9 +1229,11 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
             acceptanceCriteria: input.acceptanceCriteria,
             ...requirementProfileBody(input),
             ...(input.repositoryIds?.length ? { repositoryIds: input.repositoryIds } : {}),
+            ...(labelIds !== undefined ? { labelIds } : {}),
           }),
-        }),
-      );
+        });
+        return labelIds === undefined ? response : confirmWorkItemLabels(response, labelIds);
+      });
     },
   );
 
@@ -1180,7 +1242,7 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
     {
       title: 'Update FlowX Work Item',
       description:
-        'Update an existing FlowX WorkItem only after the user explicitly asked to edit it. Send only the fields the user wants to change. Pass versionId null to remove the item from its current version without deleting the work item. Creator and created time stay unchanged. Does not start or restart a workflow.',
+        'Update an existing FlowX WorkItem only after the user explicitly asked to edit it. Send only the fields the user wants to change. Pass versionId null to remove the item from its current version without deleting the work item. Creator and created time stay unchanged. Does not start or restart a workflow. 标签属于工作项的项目；先查询 flowx_list_project_labels 的已有 ID。省略 labelIds 保留原标签，[] 清空，非空整体替换（最多 20 个）。标签实体由 Web 项目设置维护，标签不改变阶段。',
       inputSchema: z.object({
         workItemId: z.string().min(1),
         title: z.string().trim().min(1).optional(),
@@ -1192,13 +1254,21 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
         productRequirementDocument: z.string().optional(),
         remark: z.string().optional(),
         versionId: z.string().trim().min(1).nullable().optional(),
+        labelIds: projectLabelIdsSchema.optional(),
       }),
     },
     async (input) => {
       const { workItemId, versionId, ...profile } = input;
       const { client } = await resolveSession(options.homeDir);
-      return runRequest(() =>
-        client.request(`/work-items/${encodeURIComponent(workItemId)}`, {
+      return runRequest(async () => {
+        const labelIds = profile.labelIds === undefined ? undefined : parseProjectLabelIds(profile.labelIds);
+        if (labelIds !== undefined) {
+          const current = await client.request(`/work-items/${encodeURIComponent(workItemId)}`);
+          const projectId = readStringField(current, 'projectId');
+          if (!projectId) throw new Error('PROJECT_LABELS_CONTEXT_UNAVAILABLE: 无法获取工作项所属项目，未执行写入。');
+          await listProjectLabels(client, projectId, { pageSize: 1 });
+        }
+        const response = await client.request(`/work-items/${encodeURIComponent(workItemId)}`, {
           method: 'PATCH',
           body: JSON.stringify({
             ...(profile.title !== undefined ? { title: profile.title } : {}),
@@ -1206,9 +1276,11 @@ export function createLocalMcpServer(options: LocalMcpOptions = {}) {
             ...(profile.acceptanceCriteria !== undefined ? { acceptanceCriteria: profile.acceptanceCriteria } : {}),
             ...requirementProfileBody(profile),
             ...(versionId !== undefined ? { versionId } : {}),
+            ...(labelIds !== undefined ? { labelIds } : {}),
           }),
-        }),
-      );
+        });
+        return labelIds === undefined ? response : confirmWorkItemLabels(response, labelIds);
+      });
     },
   );
 

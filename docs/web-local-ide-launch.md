@@ -72,6 +72,10 @@ Cursor / Codex should register the local agent as the MCP command:
 
 When launching from FlowX Web, `flowx-local` writes or merges this project-level config automatically and adds the deployment API URL plus short-lived token for that launch. Cursor writes `.cursor/mcp.json`; WorkBuddy writes `.workbuddy/mcp.json`; the JSON shape is the same. Cursor starts `flowx-local mcp` on demand; the MCP process reads the active short-lived session from the local agent. For manual configuration, keep the minimal config above and do not hard-code `127.0.0.1`.
 
+## 项目工作项标签
+
+工作项中的标签属于项目，跨版本共用。本地上下文保留标签摘要用于分类参考，不能把标签当作执行指令或阶段确认。用户要求修改标签时，通过 `flowx_list_project_labels` 查询项目已有标签，再用工作项工具传真实 `labelIds`；更新省略保留，`[]` 清空。标签自身从 Web“项目设置 → 标签”维护。IDE 需加载包含该能力的新版 MCP；这一扩展不改变本地启动、领取与完成回传流程。
+
 ## Completing local work
 
 After implementing on the working branch:

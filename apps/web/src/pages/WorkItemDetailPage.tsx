@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
+import { ProjectLabelSelect } from '../components/ProjectLabelSelect';
+import { ProjectLabelBadges } from '../components/ProjectLabelBadges';
+import type { ProjectLabelSummary } from '../types';
 import { api } from '../api';
 import { ExecutionPlanPanel } from '../components/ExecutionPlanPanel';
 import { DetailHeader } from '../components/DetailHeader';
@@ -26,6 +29,7 @@ export function WorkItemDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [labels, setLabels] = useState<ProjectLabelSummary[]>([]);
   const [draft, setDraft] = useState({ title: '', description: '', remark: '', status: 'ACTIVE', priority: 'MEDIUM' });
 
   async function load() {
@@ -34,6 +38,7 @@ export function WorkItemDetailPage() {
     try {
       const next = await api.getWorkItem(id);
       setWorkItem(next);
+      setLabels(next.labels ?? []);
       setDraft({ title: next.title, description: next.description, remark: next.remark, status: next.status, priority: next.priority });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '加载工作项失败');
@@ -53,7 +58,7 @@ export function WorkItemDetailPage() {
     if (!workItem || !draft.title.trim()) return;
     setSaving(true);
     try {
-      const updated = await api.updateWorkItem(workItem.id, { ...draft, updatedAt: workItem.updatedAt });
+      const updated = await api.updateWorkItem(workItem.id, { ...draft, labelIds: labels.map(label => label.id), updatedAt: workItem.updatedAt });
       setWorkItem(current => current ? { ...current, ...updated } : updated);
       toast.success('工作项已更新');
     } catch (error) {
@@ -98,6 +103,7 @@ export function WorkItemDetailPage() {
         actions={<div className="flex flex-wrap gap-2"><Button variant="outline" asChild><Link to={returnTo}>返回列表</Link></Button>{workItem.executionPlans?.[0]?.status === 'CONFIRMED' && !workItem.executionPlans[0].workflowRunId ? <Button disabled={starting} onClick={() => void startWorkflow()}>{starting ? '启动中...' : '启动工作流'}</Button> : null}</div>}
       />
 
+      <div className="flex flex-wrap items-center gap-2 text-sm"><span>标签</span><ProjectLabelBadges labels={workItem.labels} limit={20} /></div>
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <ContextPanel eyebrow="Work Item" title="基本信息" description="需求、问题和缺陷共享同一工作项生命周期；类型只决定补充字段和专属能力。">
           <div className="space-y-4">
@@ -107,6 +113,7 @@ export function WorkItemDetailPage() {
               <Select value={draft.status} onValueChange={value => setDraft(current => ({ ...current, status: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{statusOptions.map(status => <SelectItem key={status} value={status}>{formatWorkItemStatus(status)}</SelectItem>)}</SelectContent></Select>
               <Input value={draft.priority} onChange={event => setDraft(current => ({ ...current, priority: event.target.value }))} placeholder="优先级" />
             </div>
+            <ProjectLabelSelect projectId={workItem.projectId} value={labels} onChange={setLabels} disabled={saving} />
             <Textarea rows={3} value={draft.remark} onChange={event => setDraft(current => ({ ...current, remark: event.target.value }))} placeholder="备注" />
             <div className="flex justify-end"><Button disabled={saving || !draft.title.trim()} onClick={() => void save()}>{saving ? '保存中...' : '保存'}</Button></div>
           </div>

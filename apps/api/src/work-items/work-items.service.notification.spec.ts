@@ -34,6 +34,7 @@ function createService(existing: Record<string, unknown>, updated: Record<string
       findFirst: vi.fn().mockResolvedValue({ id: 'membership-1' }),
     },
   };
+  Object.assign(prisma, { $transaction: async (callback: (tx: typeof prisma) => Promise<unknown>) => callback(prisma) });
   const notificationService = {
     sendWorkItemChangeMarkdown: vi.fn().mockResolvedValue(undefined),
   };

@@ -1,7 +1,9 @@
+import { withProjectLabels } from '../projects/project-labels.service';
 import type { RequirementProfileFields } from '@flowx-ai/protocol';
 
 /** 只带出已填写的资料，空字符串不进入本地交接。 */
 export function requirementProfileFields(workItem: {
+  labels?: Array<{ label: { id: string; name: string; color: string } }>;
   priority?: string | null;
   functionalModule?: string | null;
   riskImpact?: string | null;
@@ -19,6 +21,7 @@ export function requirementProfileFields(workItem: {
   const remark = text(workItem.remark);
   const createdByName = text(workItem.createdByName);
   return {
+    ...(workItem.labels ? { labels: withProjectLabels(workItem).labels } : {}),
     ...(workItem.priority ? { priority: workItem.priority } : {}),
     ...(functionalModule ? { functionalModule } : {}),
     ...(riskImpact ? { riskImpact } : {}),

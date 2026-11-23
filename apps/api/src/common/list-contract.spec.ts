@@ -31,7 +31,7 @@ describe('分页客户端升级边界', () => {
     expect((await fetch(`${base}${path}`)).status).toBe(200);
   });
   it.each([
-    '/projects', '/projects/p1/versions', '/workspaces/w1/repositories', '/work-items/r1/changes', '/work-items/r1/ideation/sessions/s1/events',
+    '/projects', '/projects/p1/labels', '/projects/p1/versions', '/workspaces/w1/repositories', '/work-items/r1/changes', '/work-items/r1/ideation/sessions/s1/events',
     '/workflow-runs/w1/history', '/execution-sessions/s1/evidence', '/quality/test-requests/r1/report-supersessions', '/quality/test-requests/r1/work-items', '/quality/test-designs/d1/work-items', '/quality/test-runs/r1/cases',
     '/cursor-local/tasks', '/edge/opendesign-tasks', '/schedule/gantt', '/integrations/yunxiao/unmatched-recipients', '/auth/personal-api-tokens',
   ])('升级保护覆盖记录浏览 %s', path => { expect(isPaginatedBrowseRoute(path)).toBe(true); });

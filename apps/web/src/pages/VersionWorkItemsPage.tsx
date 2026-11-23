@@ -1,3 +1,7 @@
+import { ProjectLabelSelect } from '../components/ProjectLabelSelect';
+import { ProjectLabelBadges } from '../components/ProjectLabelBadges';
+import { useProjectLabelFilter } from '../hooks/use-project-label-filter';
+import type { ProjectLabelSummary } from '../types';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
@@ -67,9 +71,10 @@ function RowActions({ onEdit, onRemove, onChange }: { onEdit: () => void; onRemo
 }
 
 function IssueTable({ items, onEdit, onRemove }: { items: Issue[]; onEdit: (item: Issue) => void; onRemove: (item: Issue) => void }) {
-  return <table className="w-max min-w-full text-sm"><TableHeader labels={['问题标题', '问题描述', '状态', '优先级', '来源工作流', '分支', '操作']} /><tbody>{items.map(item => <tr key={item.id} className="border-t border-border">
+  return <table className="w-max min-w-full text-sm"><TableHeader labels={['问题标题', '问题描述', '标签', '状态', '优先级', '来源工作流', '分支', '操作']} /><tbody>{items.map(item => <tr key={item.id} className="border-t border-border">
     <td className="whitespace-nowrap px-4 py-3 font-medium"><div className="flex min-w-[220px] flex-col gap-1"><button type="button" onClick={() => onEdit(item)} title={item.title} className="block max-w-[260px] truncate text-left text-foreground hover:text-primary">{item.title}</button><span className="text-xs font-normal text-muted-foreground">{item.displayCode ?? item.id}</span></div></td>
     <td className="max-w-md whitespace-normal break-words px-4 py-3 text-muted-foreground">{item.description?.trim() || '未填写'}</td>
+    <td className="max-w-80 px-4 py-3"><ProjectLabelBadges labels={item.labels} /></td>
     <td className="whitespace-nowrap px-4 py-3"><Badge variant="secondary">{formatIssueStatus(item.status)}</Badge></td>
     <td className="whitespace-nowrap px-4 py-3">{formatPriority(item.priority)}</td>
     <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{item.sourceWorkflowRun?.id ? <Link className="text-primary hover:underline" to={`/workflow-runs/${item.sourceWorkflowRun.id}`}>查看来源流程</Link> : '未关联'}</td>
@@ -79,9 +84,10 @@ function IssueTable({ items, onEdit, onRemove }: { items: Issue[]; onEdit: (item
 }
 
 function BugTable({ items, onEdit, onRemove }: { items: Bug[]; onEdit: (item: Bug) => void; onRemove: (item: Bug) => void }) {
-  return <table className="w-max min-w-full text-sm"><TableHeader labels={['缺陷标题', '缺陷描述', '严重级别', '优先级', '状态', '来源工作流', '分支', '操作']} /><tbody>{items.map(item => <tr key={item.id} className="border-t border-border">
+  return <table className="w-max min-w-full text-sm"><TableHeader labels={['缺陷标题', '缺陷描述', '标签', '严重级别', '优先级', '状态', '来源工作流', '分支', '操作']} /><tbody>{items.map(item => <tr key={item.id} className="border-t border-border">
     <td className="whitespace-nowrap px-4 py-3 font-medium"><div className="flex min-w-[220px] flex-col gap-1"><button type="button" onClick={() => onEdit(item)} title={item.title} className="block max-w-[260px] truncate text-left text-foreground hover:text-primary">{item.title}</button><span className="text-xs font-normal text-muted-foreground">{item.displayCode ?? item.id}</span></div></td>
     <td className="max-w-md whitespace-normal break-words px-4 py-3 text-muted-foreground">{item.description?.trim() || '未填写'}</td>
+    <td className="max-w-80 px-4 py-3"><ProjectLabelBadges labels={item.labels} /></td>
     <td className="whitespace-nowrap px-4 py-3"><Badge variant="destructive">{formatSeverity(item.severity)}</Badge></td>
     <td className="whitespace-nowrap px-4 py-3">{formatPriority(item.priority)}</td>
     <td className="whitespace-nowrap px-4 py-3"><Badge variant="secondary">{formatBugStatus(item.status)}</Badge></td>
@@ -109,6 +115,8 @@ export function VersionWorkItemsPage({
   const [searchParams, setSearchParams] = useSearchParams();
   const projectId = projectIdProp ?? params.projectId ?? '';
   const versionId = versionIdProp ?? params.versionId ?? '';
+  const labelFilter = useProjectLabelFilter(projectId);
+  const [createLabels, setCreateLabels] = useState<ProjectLabelSummary[]>([]);
   const kind = parseKind(searchParams.get('kind'));
   const selectedPriority = searchParams.get('priority') ?? '';
   const selectedStatus = searchParams.get('status') ?? '';
@@ -126,6 +134,8 @@ export function VersionWorkItemsPage({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const createInFlight = useRef(false);
   const [editingItem, setEditingItem] = useState<WorkItem | null>(null);
   const [changingRequirement, setChangingRequirement] = useState<Requirement | null>(null);
   const [draft, setDraft] = useState({ kind: 'REQUIREMENT' as WorkItem['kind'], title: '', description: '', remark: '', splitMode: 'AI' as 'AI' | 'SINGLE' | 'MANUAL' });
@@ -143,6 +153,7 @@ export function VersionWorkItemsPage({
       const query = {
         projectId,
         versionId,
+        labelIds: labelFilter.labelIds.length ? labelFilter.labelIds : undefined,
         q: selectedQuery.trim() || undefined,
         priority: selectedPriority || undefined,
         status: selectedStatus || undefined,
@@ -178,17 +189,23 @@ export function VersionWorkItemsPage({
   useEffect(() => {
     clearLists();
     void load();
-  }, [projectId, versionId, kind, selectedPriority, selectedStatus, selectedQuery]);
+  }, [projectId, versionId, kind, selectedPriority, selectedStatus, selectedQuery, searchParams.get('labelIds')]);
 
   async function create() {
-    if (!draft.title.trim()) return;
+    if (!draft.title.trim() || createInFlight.current) return;
+    createInFlight.current = true;
+    setCreating(true);
     try {
-      await api.createVersionWorkItem(projectId, versionId, draft);
+      await api.createVersionWorkItem(projectId, versionId, { ...draft, labelIds: createLabels.map(label => label.id) });
+      setCreateLabels([]);
       setDraft({ kind: 'REQUIREMENT', title: '', description: '', remark: '', splitMode: 'AI' });
       setCreateOpen(false);
       await load(typedPage);
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : '创建工作项失败');
+    } finally {
+      createInFlight.current = false;
+      setCreating(false);
     }
   }
 
@@ -227,7 +244,7 @@ export function VersionWorkItemsPage({
       onVersionChange(nextVersionId);
       return;
     }
-    if (projectId) navigate(`/projects/${projectId}/versions/${nextVersionId}/work-items`);
+    if (projectId) navigate(`/projects/${projectId}/versions/${nextVersionId}/work-items?${searchParams.toString()}`);
   }
 
   function changeKind(nextKind: WorkItemKind) {
@@ -243,6 +260,7 @@ export function VersionWorkItemsPage({
       if (!value || value === '__all__') next.delete(name);
       else next.set(name, value.trim());
     };
+    labelFilter.write(next);
     write('q', queryDraft.draft.q);
     write('priority', queryDraft.draft.priority);
     write('status', queryDraft.draft.status);
@@ -256,11 +274,13 @@ export function VersionWorkItemsPage({
   function clearFilters() {
     queryDraft.replace({ q: '', priority: '', status: '' });
     const next = new URLSearchParams(searchParams);
-    ['q', 'priority', 'status'].forEach(key => next.delete(key));
+    labelFilter.clear();
+    ['q', 'priority', 'status', 'labelIds'].forEach(key => next.delete(key));
     setSearchParams(next);
   }
 
   function openCreate() {
+    setCreateLabels([]);
     setDraft(current => ({ ...current, kind }));
     setCreateOpen(true);
   }
@@ -277,6 +297,7 @@ export function VersionWorkItemsPage({
       <Dialog
         open={createOpen}
         onOpenChange={(open) => {
+          if (createInFlight.current) return;
           setCreateOpen(open);
           if (!open) setDraft({ kind, title: '', description: '', remark: '', splitMode: 'AI' });
         }}
@@ -306,14 +327,15 @@ export function VersionWorkItemsPage({
               <label className="text-sm font-medium" htmlFor="version-work-item-description">描述</label>
               <Textarea id="version-work-item-description" rows={4} placeholder="补充会议记录或工作项背景（可选）" value={draft.description} onChange={event => setDraft(current => ({ ...current, description: event.target.value }))} />
             </div>
+            <div className="grid gap-2"><label className="text-sm font-medium">标签（可选）</label><ProjectLabelSelect projectId={projectId} value={createLabels} onChange={setCreateLabels} disabled={creating} /></div>
             <div className="grid gap-2">
               <label className="text-sm font-medium" htmlFor="version-work-item-remark">备注</label>
               <Input id="version-work-item-remark" placeholder="备注（可选）" value={draft.remark} onChange={event => setDraft(current => ({ ...current, remark: event.target.value }))} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
-            <Button onClick={() => void create()} disabled={!draft.title.trim()}>创建</Button>
+            <Button variant="outline" disabled={creating} onClick={() => setCreateOpen(false)}>取消</Button>
+            <Button onClick={() => void create()} disabled={creating || !draft.title.trim()}>{creating ? '创建中…' : '创建'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -341,6 +363,7 @@ export function VersionWorkItemsPage({
             search={<Input aria-label="搜索标题或描述" placeholder="搜索标题或描述" value={queryDraft.draft.q} onChange={event => queryDraft.patch({ q: event.target.value })} onKeyDown={event => submitQueryOnEnter(event, applyFilters)} />}
             filters={(
               <>
+                <div className="min-w-48"><ProjectLabelSelect projectId={projectId} value={labelFilter.draft} onChange={labelFilter.setDraft} label="按标签筛选" /><span className="text-xs text-muted-foreground">匹配任一所选标签</span>{labelFilter.error ? <p role="alert" className="text-xs text-destructive">{labelFilter.error}</p> : null}</div>
                 <Select value={queryDraft.draft.priority || '__all__'} onValueChange={value => queryDraft.patch({ priority: value === '__all__' ? '' : value })}>
                   <SelectTrigger className="w-[140px]" aria-label="按优先级"><SelectValue placeholder="优先级" /></SelectTrigger>
                   <SelectContent>
@@ -355,7 +378,7 @@ export function VersionWorkItemsPage({
                     {statusOptions[kind].map(value => <SelectItem key={value} value={value}>{formatWorkItemStatus(value)}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <ListQueryActions onQuery={applyFilters} onClear={clearFilters} showClear={Boolean(selectedQuery || selectedPriority || selectedStatus || queryDraft.draft.q || queryDraft.draft.priority || queryDraft.draft.status)} />
+                <ListQueryActions onQuery={applyFilters} onClear={clearFilters} showClear={Boolean(labelFilter.draft.length || labelFilter.labelIds.length || selectedQuery || selectedPriority || selectedStatus || queryDraft.draft.q || queryDraft.draft.priority || queryDraft.draft.status)} />
               </>
             )}
           />

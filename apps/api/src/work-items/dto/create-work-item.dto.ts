@@ -1,9 +1,12 @@
+import { IsArray as LabelIsArray, IsString as LabelIsString, ValidateIf as LabelValidateIf } from 'class-validator';
 import { IsArray, IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export const WORK_ITEM_KINDS = ['REQUIREMENT', 'ISSUE', 'BUG'] as const;
 export const WORK_ITEM_SPLIT_MODES = ['AI', 'SINGLE', 'MANUAL'] as const;
 
 export class CreateWorkItemDto {
+  @LabelValidateIf((_, value) => value !== undefined) @LabelIsArray() @LabelIsString({ each: true })
+  labelIds?: string[];
   @IsOptional()
   @IsString()
   projectId?: string;

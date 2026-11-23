@@ -4,7 +4,7 @@ type ListMiddleware = (request: ListRequest, response: ListResponse, next: () =>
 
 // 仅登记已升级为分页的记录浏览路由；详情、内容下载、执行上下文和固定能力枚举不适用。
 export const PAGINATED_BROWSE_ROUTES = [
-  '/projects', '/projects/:id/versions', '/workspaces', '/workspaces/:id/repositories',
+  '/projects', '/projects/:id/labels', '/projects/:id/versions', '/workspaces', '/workspaces/:id/repositories',
   '/work-items', '/work-items/:id/repositories', '/work-items/:id/changes', '/work-items/:id/assignments',
   '/work-items/:id/ideation/sessions', '/work-items/:id/ideation/artifacts', '/work-items/:id/ideation/sessions/:sessionId/events',
   '/workflow-runs', '/workflow-runs/:id/repositories', '/workflow-runs/:id/history', '/workflow-runs/:id/code-delivery/history', '/workflow-runs/:id/review-findings',

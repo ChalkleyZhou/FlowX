@@ -40,6 +40,8 @@ import type {
   PrototypeImport,
   PrototypeImportUpdate,
   Project,
+  ProjectLabel,
+  ProjectLabelColor,
   ProjectFeed,
   ProjectVersionSummary,
   RequirementAssignment,
@@ -108,6 +110,7 @@ function buildApiUrl(path: string) {
 }
 
 interface RequirementPayload {
+  labelIds?: string[];
   projectId: string;
   title: string;
   priority?: string;
@@ -264,6 +267,7 @@ export function getBugScreenshotUrl(bugId: string, screenshotId: string) {
 
 
 export type ListQuery = PageQuery & {
+  labelIds?: string[];
   workspaceId?: string; projectId?: string; versionId?: string; projectVersionId?: string;
   requirementId?: string; workItemId?: string; workflowRunId?: string; status?: string; priority?: string;
   planningStatus?: string; severity?: string; runType?: string; role?: string;
@@ -284,8 +288,9 @@ async function requestPage<T>(path: string, query: ListQuery = {}): Promise<Page
 }
 
 export const api = {
-  createPrototypeImport: (payload: { projectId: string; title?: string; versionId?: string; goal?: string; aiProvider?: 'codex' | 'cursor' }, file: File) => {
+  createPrototypeImport: (payload: { projectId: string; labelIds?: string[]; title?: string; versionId?: string; goal?: string; aiProvider?: 'codex' | 'cursor' }, file: File) => {
     const body = new FormData(); body.append('file', file); body.append('projectId', payload.projectId);
+    if (payload.labelIds !== undefined) body.append('labelIds', JSON.stringify(payload.labelIds));
     if (payload.title) body.append('title', payload.title);
     if (payload.versionId !== undefined) body.append('versionId', payload.versionId);
     if (payload.goal) body.append('goal', payload.goal);
@@ -356,13 +361,17 @@ export const api = {
   getRepository: (workspaceId: string, repositoryId: string) => request<Repository>(`/workspaces/${workspaceId}/repositories/${repositoryId}`),
   getProjects: (query?: ListQuery) => requestPage<Project>('/projects', query),
   getProject: (id: string) => request<Project>(`/projects/${id}`),
+  listProjectLabels: (projectId: string, query?: ListQuery) => requestPage<ProjectLabel>(`/projects/${projectId}/labels`, query),
+  createProjectLabel: (projectId: string, payload: { name: string; color?: ProjectLabelColor }) => request<ProjectLabel>(`/projects/${projectId}/labels`, { method: 'POST', body: JSON.stringify(payload) }),
+  updateProjectLabel: (projectId: string, labelId: string, payload: { name?: string; color?: ProjectLabelColor; updatedAt?: string }) => request<ProjectLabel>(`/projects/${projectId}/labels/${labelId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteProjectLabel: (projectId: string, labelId: string) => request<{ ok: true; removedAssociations: number }>(`/projects/${projectId}/labels/${labelId}`, { method: 'DELETE' }),
   listProjectVersions: (projectId: string, query?: ListQuery) => requestPage<ProjectVersionSummary>(`/projects/${projectId}/versions`, query),
-  listVersionWorkItems: (projectId: string, versionId: string, query?: { cursor?: string; pageSize?: number; kind?: WorkItem['kind']; status?: string; ownerId?: string; q?: string }) =>
+  listVersionWorkItems: (projectId: string, versionId: string, query?: { labelIds?: string[]; cursor?: string; pageSize?: number; kind?: WorkItem['kind']; status?: string; ownerId?: string; q?: string }) =>
     request<WorkItemsPage>(`/projects/${projectId}/versions/${versionId}/work-items${queryString(query)}`),
-  createVersionWorkItem: (projectId: string, versionId: string, payload: { kind: WorkItem['kind']; title: string; description?: string; remark?: string; priority?: string; ownerUserId?: string; acceptanceCriteria?: string; splitMode?: 'AI' | 'SINGLE' | 'MANUAL' }) =>
+  createVersionWorkItem: (projectId: string, versionId: string, payload: { labelIds?: string[]; kind: WorkItem['kind']; title: string; description?: string; remark?: string; priority?: string; ownerUserId?: string; acceptanceCriteria?: string; splitMode?: 'AI' | 'SINGLE' | 'MANUAL' }) =>
     request<WorkItem>(`/projects/${projectId}/versions/${versionId}/work-items`, { method: 'POST', body: JSON.stringify(payload) }),
   getWorkItem: (id: string) => request<WorkItem>(`/work-items/${id}`),
-  updateWorkItem: (id: string, payload: { title?: string; description?: string; remark?: string; status?: string; priority?: string; ownerUserId?: string | null; versionId?: string | null; updatedAt?: string }) =>
+  updateWorkItem: (id: string, payload: { labelIds?: string[]; title?: string; description?: string; remark?: string; status?: string; priority?: string; ownerUserId?: string | null; versionId?: string | null; updatedAt?: string }) =>
     request<WorkItem>(`/work-items/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   deleteWorkItem: (id: string) => request<{ id: string }>(`/work-items/${id}`, { method: 'DELETE' }),
   startWorkItemWorkflow: (id: string, payload?: { repositoryIds?: string[]; aiProvider?: 'codex' | 'cursor'; splitMode?: 'AI' | 'SINGLE' | 'MANUAL' }) =>
@@ -780,6 +789,8 @@ export const api = {
   updateRequirement: (
     id: string,
     payload: {
+      updatedAt?: string;
+      labelIds?: string[];
       title?: string;
       description?: string;
       acceptanceCriteria?: string;
@@ -1148,6 +1159,8 @@ export const api = {
   updateIssue: (
     id: string,
     payload: {
+      updatedAt?: string;
+      labelIds?: string[];
       title?: string;
       description?: string;
       status?: string;
@@ -1387,6 +1400,7 @@ export const api = {
     return response.blob();
   },
   createBug: (payload: {
+    labelIds?: string[];
     workspaceId: string;
     projectId?: string;
     title: string;
@@ -1427,6 +1441,8 @@ export const api = {
   updateBug: (
     id: string,
     payload: {
+      updatedAt?: string;
+      labelIds?: string[];
       title?: string;
       description?: string;
       status?: string;

@@ -9,6 +9,7 @@ import { ProjectDetailPage } from './ProjectDetailPage';
 
 vi.mock('../api', () => ({ api: { getProject: vi.fn() } }));
 vi.mock('../components/ui/toast', () => ({ useToast: () => ({ success: vi.fn(), error: vi.fn() }) }));
+vi.mock('../components/ProjectLabelsPanel', () => ({ ProjectLabelsPanel: ({ projectId }: { projectId: string }) => <div>项目标签管理 {projectId}</div> }));
 vi.mock('../components/ProjectFeedsPanel', () => ({ ProjectFeedsPanel: () => null }));
 vi.mock('../components/ProjectVersionsPanel', () => ({ ProjectVersionsPanel: () => <div>版本管理</div> }));
 
@@ -47,6 +48,13 @@ describe('项目设置', () => {
     expect(container.textContent).toContain('版本管理');
     expect(container.textContent).not.toContain('新建需求');
     expect(container.querySelector('a[href="/schedule?projectId=project-1"]')).toBeTruthy();
+  });
+
+  it('标签页签深链只展示项目标签管理', async () => {
+    await act(async () => { root.render(<MemoryRouter initialEntries={['/project-settings?projectId=project-1&tab=labels']}><ProjectDetailPage /></MemoryRouter>); });
+    expect(container.textContent).toContain('项目标签管理 project-1');
+    expect(container.textContent).not.toContain('版本管理');
+    expect(container.querySelectorAll('[role=tab]')).toHaveLength(4);
   });
 
   it('没有当前项目时提示先选择', async () => {

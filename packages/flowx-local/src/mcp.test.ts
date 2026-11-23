@@ -88,6 +88,7 @@ describe('flowx-local MCP server', () => {
     expect(client.getServerVersion()).toMatchObject({ name: 'flowx-local', version: PACKAGE_VERSION });
     const result = await client.listTools();
     expect(result.tools.map((tool) => tool.name)).toEqual([
+      'flowx_list_project_labels',
       'flowx_list_version_work_items',
       'flowx_claim_execution_item',
       'flowx_complete_execution_item',

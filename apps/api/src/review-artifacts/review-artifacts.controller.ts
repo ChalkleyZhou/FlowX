@@ -68,7 +68,7 @@ export class ReviewArtifactsController {
   }
 
   @Get('bugs')
-  getBugs(@Query() query: import('../common/pagination').PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; workflowRunId?: string; status?: string; priority?: string; severity?: string; q?: string } = {}) {
+  getBugs(@Query() query: import('../common/pagination').PaginationQuery & { workspaceId?: string; projectId?: string; versionId?: string; workflowRunId?: string; status?: string; priority?: string; severity?: string; labelIds?: string; q?: string } = {}) {
     return this.reviewArtifactsService.getBugsPage(query);
   }
 

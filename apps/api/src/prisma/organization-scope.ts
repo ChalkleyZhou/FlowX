@@ -51,6 +51,8 @@ function executionSessionScope(organizationId: string) {
 
 const scopeFactories: Record<string, (organizationId: string) => Record<string, unknown>> = {
   WorkItem: workItemScope,
+  ProjectLabel: (organizationId) => ({ project: projectScope(organizationId) }),
+  WorkItemLabel: (organizationId) => ({ workItem: workItemScope(organizationId), label: { project: projectScope(organizationId) } }),
   Workspace: workspaceScope,
   Project: projectScope,
   ProjectVersion: (organizationId) => ({ project: projectScope(organizationId) }),

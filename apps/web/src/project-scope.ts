@@ -30,6 +30,9 @@ const DETAIL_TO_LIST: Array<[RegExp, string]> = [
 
 export const PROJECT_DEPENDENT_QUERY_KEYS = [
   'versionId',
+  'labelIds',
+  'labelsQ',
+  'labelsPage',
   'workItemId',
   'libraryId',
   'projectVersionId',

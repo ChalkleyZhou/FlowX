@@ -17,9 +17,11 @@ vi.mock('../api', () => ({
     getRequirements: vi.fn(),
     getIssues: vi.fn(),
     getBugs: vi.fn(),
+    listProjectLabels: vi.fn(),
     getRequirementChanges: vi.fn(),
     createRequirementChange: vi.fn(),
     getWorkItem: vi.fn(),
+    createVersionWorkItem: vi.fn(),
     updateWorkItem: vi.fn(),
     deleteWorkItem: vi.fn(),
     deleteRequirement: vi.fn(),
@@ -65,6 +67,7 @@ describe('VersionWorkspacePage', () => {
     vi.mocked(api.getRequirements).mockResolvedValue(pageResult([]));
     vi.mocked(api.getIssues).mockResolvedValue(pageResult([]));
     vi.mocked(api.getBugs).mockResolvedValue(pageResult([]));
+    vi.mocked(api.listProjectLabels).mockResolvedValue(pageResult([{id:'l1',projectId:'project-1',name:'前端',color:'BLUE',updatedAt:'',workItemCount:1}]));
     vi.mocked(api.getRequirementChanges).mockResolvedValue({ items: [], revision: 0, total: 0, page: 1, pageSize: 20, totalPages: 1 });
     vi.mocked(api.createRequirementChange).mockResolvedValue({ id: 'change-1', workItemId: 'requirement-1', revision: 1, content: '变更内容', reason: '变更原因', mode: 'SUPPLEMENT', createdByName: '产品', createdAt: '2026-11-01T00:00:00.000Z', sourceWorkflowRunId: null, restartWorkflowRunId: null, restartStatus: 'NOT_REQUESTED', errorMessage: null });
     vi.mocked(api.getWorkItem).mockResolvedValue({
@@ -80,6 +83,28 @@ describe('VersionWorkspacePage', () => {
     act(() => root?.unmount());
     document.body.innerHTML = '';
     vi.clearAllMocks();
+  });
+
+  it('快速新建提交所选标签且保存中阻止重复提交', async () => {
+    let finish: (() => void) | undefined;
+    vi.mocked(api.createVersionWorkItem).mockImplementation(() => new Promise(resolve => { finish = () => resolve({ id: 'created' } as Awaited<ReturnType<typeof api.createVersionWorkItem>>); }));
+    await act(async () => { root?.render(renderWorkspace('/versions?projectId=project-1')); });
+    await act(async () => { Array.from(container.querySelectorAll('button')).find(x => x.textContent === '快速新建')?.click(); });
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    const title = dialog.querySelector<HTMLInputElement>('#version-work-item-title')!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(title, '新工作项'); title.dispatchEvent(new Event('input', { bubbles: true })); });
+    await act(async () => { dialog.querySelector<HTMLButtonElement>('button[aria-label="标签（可选）"]')!.click(); });
+    await act(async () => { dialog.querySelector<HTMLButtonElement>('[role="checkbox"]')!.click(); });
+    const create = Array.from(dialog.querySelectorAll<HTMLButtonElement>('button')).find(x => x.textContent === '创建')!;
+    await act(async () => { create.click(); create.click(); });
+    expect(api.createVersionWorkItem).toHaveBeenCalledTimes(1);
+    expect(api.createVersionWorkItem).toHaveBeenCalledWith('project-1', 'version-1', expect.objectContaining({ title: '新工作项', labelIds: ['l1'] }));
+    await act(async () => finish?.());
+  });
+
+  it('版本三类查询共享标签过滤并保留分页服务端总数', async () => {
+    await act(async () => { root?.render(renderWorkspace('/versions?projectId=project-1&labelIds=l1&kind=BUG')); });
+    expect(api.getBugs).toHaveBeenLastCalledWith(expect.objectContaining({ labelIds: ['l1'], projectId: 'project-1', versionId: 'version-1' }));
   });
 
   it('opens the current version work-item board and exposes a version switcher', async () => {

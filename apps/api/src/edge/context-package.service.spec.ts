@@ -32,3 +32,9 @@ describe('ContextPackageService', () => {
     expect(context.task).not.toHaveProperty('riskImpact');
   });
 });
+
+it('执行上下文和任务原始上下文返回标签摘要', async () => {
+  const service = createService({ id: 'work-1', title: '标签', labels: [{ label: { id: 'label-1', name: '前端', color: 'BLUE' } }] });
+  expect((await service.getContextPackage('exec-1', 'codex')).task.labels).toEqual([{ id: 'label-1', name: '前端', color: 'BLUE' }]);
+  expect((await service.getTaskContext('exec-1')).executionPlan.workItem.labels).toEqual([{ id: 'label-1', name: '前端', color: 'BLUE' }]);
+});

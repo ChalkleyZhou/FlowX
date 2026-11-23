@@ -81,11 +81,13 @@ describe('原型导入到确认', () => {
     const selected = await prisma.projectVersion.create({ data: { projectId: project, name: '快捷创建显示版本' } });
     const current = await prisma.projectVersion.create({ data: { projectId: project, name: '之后切换的当前版本' } });
     await prisma.project.update({ where: { id: project }, data: { currentVersionId: current.id } });
-    const body = new FormData(); body.append('projectId', project); body.append('title', '  原型快捷标题  '); body.append('versionId', selected.id); body.append('file', new Blob(['zip']), '原型.zip');
+    const label = await prisma.projectLabel.create({ data: { projectId: project, name: '快捷导入标签', nameKey: '快捷导入标签', color: 'BLUE' } });
+    const body = new FormData(); body.append('projectId', project); body.append('title', '  原型快捷标题  '); body.append('versionId', selected.id); body.append('labelIds', JSON.stringify([label.id])); body.append('goal', '原型快捷标题'); body.append('aiProvider', 'codex'); body.append('file', new Blob(['zip']), '原型.zip');
     const response = await fetch(`${baseUrl}/prototype-imports`, { method: 'POST', headers: { 'x-org-id': org }, body });
     expect(response.status).toBe(201);
     const result = await response.json() as { id: string; workItemId: string };
     expect(await prisma.workItem.findUniqueOrThrow({ where: { id: result.workItemId } })).toMatchObject({ title: '原型快捷标题', versionId: selected.id });
+    expect(await prisma.workItemLabel.findMany({ where: { workItemId: result.workItemId } })).toEqual([{ workItemId: result.workItemId, labelId: label.id }]);
     expect((await service.get(result.id, actor())).goal).toBe('原型快捷标题');
     await vi.waitFor(async () => expect((await service.get(result.id, actor())).status).not.toBe('ANALYZING'));
     await prisma.project.update({ where: { id: project }, data: { currentVersionId: null } });
@@ -416,4 +418,13 @@ describe('快速导入自动接续', () => {
       await expect(automatic.analyze(imported.id, { revision: completed.revision }, actor())).rejects.toMatchObject({ status: 409 });
     } finally { surfaces.mockRestore(); }
   });
+});
+
+it('ZIP 工作项标签原子创建，失效标签不留下工作项', async () => {
+  const label = await prisma.projectLabel.create({ data: { projectId: project, name: '原型', nameKey: '原型', color: 'BLUE' } });
+  const result = await service.create({ projectId: project, title: '标签原型', labelIds: [label.id] }, Buffer.from('zip'), 'prototype.zip', actor());
+  expect(await prisma.workItemLabel.findMany({ where: { workItemId: result.workItemId } })).toHaveLength(1);
+  const before = await prisma.workItem.count();
+  await expect(service.create({ projectId: project, title: '失效标签', labelIds: ['missing'] }, Buffer.from('zip'), 'prototype.zip', actor())).rejects.toMatchObject({ status: 404 });
+  expect(await prisma.workItem.count()).toBe(before);
 });

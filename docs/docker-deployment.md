@@ -681,6 +681,12 @@ DINGTALK_APPID
 
 本次增加 `RequirementChange` 表、需求 `revision` 和工作流的新旧轮次关联，对应 migration 为 `20261023160000_add_requirement_changes`。升级前备份 SQLite，容器继续使用现有启动脚本同步 schema，无新增环境变量。非 Docker 环境重新生成 Prisma client，再按当前数据库管理方式应用本次 migration 或运行上述 `prisma db push --accept-data-loss`，随后重启 API。既有需求的修订从 0 开始，原始描述、流程与产物保留；上线前已领取的本地任务仍按原修订读取上下文。
 
+## 项目工作项标签升级
+
+标签功能新增 `ProjectLabel` 和 `WorkItemLabel` 表，已有项目和工作项不需要标签回填，缺省无标签。升级前按既有流程备份 SQLite，重新生成 Prisma client，再执行现有 schema 同步；Docker 启动的 `db push` 可直接创建这两张新表。采用 migration 管理的环境使用 `20261123090000_project_work_item_labels`。无需修改现有工作流状态或执行会话。
+
+需同步部署 Web 与 API。已经安装的本地包仍需更新到包含标签功能的版本并重新加载 IDE MCP，服务端升级不会改变旧本地工具的 schema；旧包编辑其他字段会保留已有标签。本次代码变更不自动发布 npm 包。
+
 ## 工作项根模型切换
 
 版本工作台现在统一使用 `WorkItem`，`kind` 为 `REQUIREMENT` 或 `ISSUE`。升级旧库时，容器会先执行 `20261112090000_work_item_core`，把需求、问题及其工作流、变更、排期、原型、测试和审查关联映射到 `WorkItem`，再同步最终 schema；随后补齐 `20261113100000_execution_item_contract` 的执行项负责人建议和验证字段。该切换会移除旧 `Requirement`/`Issue` 表；升级前必须备份 SQLite。手动升级需先执行同一 migration SQL，再运行 `pnpm --filter flowx-api exec prisma db push --schema ../../prisma/schema.prisma --accept-data-loss`。

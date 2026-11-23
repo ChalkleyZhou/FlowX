@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { PageHeader } from '../components/PageHeader';
 import { ProjectFeedsPanel } from '../components/ProjectFeedsPanel';
 import { ProjectRequiredState } from '../components/ProjectRequiredState';
+import { ProjectLabelsPanel } from '../components/ProjectLabelsPanel';
+import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { ProjectVersionsPanel } from '../components/ProjectVersionsPanel';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -14,7 +16,9 @@ import { useScopedProjectId } from '../project-scope-context';
 
 export function ProjectDetailPage() {
   const { projectId: routeProjectId } = useParams();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const tab = location.hash === '#project-versions' ? 'versions' : ['versions', 'labels', 'briefing', 'codeReview'].includes(searchParams.get('tab') ?? '') ? searchParams.get('tab')! : 'versions';
   const projectId = useScopedProjectId() || routeProjectId || '';
   const toast = useToast();
   const [project, setProject] = useState<Project | null>(null);
@@ -78,25 +82,13 @@ export function ProjectDetailPage() {
         {project.currentVersion ? <Badge variant="secondary">{project.currentVersion.name}</Badge> : null}
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <ProjectFeedsPanel
-          projectId={projectId}
-          kind="briefing"
-          workspaceId={project.workspace.id}
-        />
-        <ProjectFeedsPanel
-          projectId={projectId}
-          kind="codeReview"
-          workspaceId={project.workspace.id}
-        />
-      </div>
-
-      <div id="project-versions" className="mt-5 scroll-mt-5">
-        <ProjectVersionsPanel
-          projectId={projectId}
-          currentVersionId={project.currentVersionId}
-          onChanged={refresh}
-        />
+      <Tabs value={tab} onValueChange={value => { const next = new URLSearchParams(searchParams); next.set('tab', value); setSearchParams(next); }}>
+        <TabsList aria-label="项目设置"><TabsTrigger value="versions">版本</TabsTrigger><TabsTrigger value="labels">标签</TabsTrigger><TabsTrigger value="briefing">简报</TabsTrigger><TabsTrigger value="codeReview">代码审查</TabsTrigger></TabsList>
+      </Tabs>
+      <div className="mt-5">
+        {tab === 'versions' ? <div id="project-versions" className="scroll-mt-5"><ProjectVersionsPanel projectId={projectId} currentVersionId={project.currentVersionId} onChanged={refresh} /></div> : null}
+        {tab === 'labels' ? <ProjectLabelsPanel key={projectId} projectId={projectId} /> : null}
+        {tab === 'briefing' || tab === 'codeReview' ? <ProjectFeedsPanel projectId={projectId} kind={tab} workspaceId={project.workspace.id} /> : null}
       </div>
     </>
   );

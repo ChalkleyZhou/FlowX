@@ -26,6 +26,7 @@ vi.mock('../api', () => ({
     getRequirement: vi.fn(),
     getWorkflowRuns: vi.fn(),
     getRequirements: vi.fn(),
+    listProjectLabels: vi.fn(),
     getWorkflowProviders: vi.fn(),
     createRequirement: vi.fn(),
     updateRequirement: vi.fn(),
@@ -56,6 +57,7 @@ describe('RequirementsPage', () => {
 
   const requirement: Requirement = {
     id: 'requirement-1',
+    updatedAt: 'requirement-cas',
     title: '端云设计闭环',
     description: '设计师在本地 OpenDesign 完成设计并回传 FlowX。',
     acceptanceCriteria: '设计 Artifact 和 Evidence 可追溯。',
@@ -115,6 +117,7 @@ describe('RequirementsPage', () => {
     vi.mocked(api.getWorkspaces).mockResolvedValue(paged([requirement.project.workspace]));
     vi.mocked(api.getProjects).mockResolvedValue(paged([requirement.project]));
     vi.mocked(api.getRequirements).mockResolvedValue(paged([requirement]));
+    vi.mocked(api.listProjectLabels).mockResolvedValue(paged([{id:'l1',projectId:'project-1',name:'前端',color:'BLUE',updatedAt:'',workItemCount:1}]));
     vi.mocked(api.getProject).mockResolvedValue(requirement.project);
     vi.mocked(api.getProjectVersion).mockImplementation(async (_id, versionId) => ({id:versionId,name:versionId === 'ver-2' ? '2.7.0' : '2.6.0'}));
     vi.mocked(api.listProjectVersions).mockResolvedValue(paged(requirement.project.versions ?? []));
@@ -138,6 +141,12 @@ describe('RequirementsPage', () => {
     }
     document.body.innerHTML = '';
     vi.clearAllMocks();
+  });
+
+  it('URL标签与其他筛选一起提交给服务端，不做当前页过滤', async () => {
+    await act(async () => { root?.render(<MemoryRouter initialEntries={['/work-items?projectId=project-1&labelIds=l1&priority=HIGH']}><RequirementsPage /></MemoryRouter>); });
+    expect(api.getRequirements).toHaveBeenLastCalledWith(expect.objectContaining({ projectId: 'project-1', labelIds: ['l1'], priority: 'HIGH' }));
+    expect(container.textContent).toContain('匹配任一所选标签');
   });
 
   it('指定仓库范围以服务端总数展示，缺少预览时不能误报继承默认范围', async () => {
@@ -185,7 +194,7 @@ describe('RequirementsPage', () => {
     expect(api.listProjectVersions).toHaveBeenLastCalledWith('project-1',expect.objectContaining({page:2}));
     await act(async () => { (Array.from(dialog.querySelectorAll('[role="option"]')).find(option=>option.textContent==='第21版') as HTMLElement).click(); });
     await act(async () => { dialog.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})); });
-    expect(api.updateRequirement).toHaveBeenCalledWith('requirement-1',expect.objectContaining({versionId:'ver-21'}));
+    expect(api.updateRequirement).toHaveBeenCalledWith('requirement-1',expect.objectContaining({versionId:'ver-21',updatedAt:'requirement-cas'}));
   });
 
   it('does not expose OpenDesign launch from the requirements list', async () => {
@@ -256,15 +265,16 @@ describe('RequirementsPage', () => {
     });
 
     const headers = Array.from(container.querySelectorAll('th')).map((cell) => cell.textContent);
-    expect(headers).toEqual(['需求', '需求描述', '优先级', '状态', '规划版本', '创建人', '创建时间', '操作']);
+    expect(headers).toEqual(['需求', '需求描述', '标签', '优先级', '状态', '规划版本', '创建人', '创建时间', '操作']);
     expect(container.querySelector('th:last-child')?.className).toContain('sticky');
     expect(container.querySelector('th:last-child')?.className).toContain('right-0');
     expect(container.querySelector('tbody td:last-child')?.className).toContain('sticky');
     const cells = Array.from(container.querySelectorAll('tbody td')).map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim());
     expect(cells[0]).toContain('端云设计闭环');
     expect(cells[0]).toContain('requirement-1');
-    expect(cells.slice(1, 7)).toEqual([
+    expect(cells.slice(1, 8)).toEqual([
       requirement.description,
+      '—',
       '高',
       '进行中',
       '2.6.0',
@@ -535,7 +545,7 @@ describe('RequirementsPage', () => {
     expect(input.files?.[0]).toBe(file);
     expect(api.createRequirement).not.toHaveBeenCalled();
     await act(async () => { upload.click(); });
-    expect(api.createPrototypeImport).toHaveBeenLastCalledWith({ projectId: 'project-1', versionId: 'ver-1', goal: '', aiProvider: 'codex' }, file);
+    expect(api.createPrototypeImport).toHaveBeenLastCalledWith({ projectId: 'project-1', versionId: 'ver-1', goal: '', aiProvider: 'codex', labelIds: [] }, file);
     expect(container.textContent).toBe('/work-items/req-import?importing=1');
   });
 

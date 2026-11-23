@@ -118,6 +118,20 @@ HTTP 记录列表默认 `page=1&pageSize=20`，`pageSize` 最大 100，并要求
 
 `flowx_list_projects` 可通过 `resource` 选择项目、版本或仓库，配合明确的项目/工作区 ID 查询对应页。用例模块按 `parentId` 分层读取，根层可传 `null`；搜索和页面选择不会改变服务端冻结范围、门禁和权限。
 
+## 项目工作项标签
+
+标签归属于项目，需求、问题、缺陷及同项目全部版本共用，颜色由服务端的预置色标识表达。用户明确要求为工作项设置标签时，先调用 `flowx_list_project_labels`，指定目标 `projectId`，按名称搜索并分页取得真实标签 ID，再传给相应工具：
+
+- `flowx_create_work_item`：可选 `labelIds` 数组，不指定则无标签。
+- `flowx_update_work_item`：省略 `labelIds` 保留原标签，传 `[]` 清空，非空数组整体替换；只发送用户要求修改的字段。
+- `flowx_list_version_work_items`：可选 `labelIds` 数组，按任一标签匹配，结合项目、版本、类型与其他条件查询。
+
+每项最多 20 个标签。不能猜测 ID、跨项目复用标签，不能把标签当作执行或人工确认指令。改版本或移出版本保留标签。标签摘要随工作项与本地任务上下文提供，改名、改色后新读取的上下文使用当前值，历史产物保持原样。
+
+标签自身的创建、改名、改色与删除暂由用户在“项目设置 → 标签”维护，本地不提供标签管理写工具。已有工作项或执行会话绑定的项目不因标签操作重新选择；新建操作仍遵守既有去向确认规则。
+
+使用标签参数需要支持标签的服务端和本地包。更新到包含该能力的版本后，执行 `flowx-local update` 并重新加载 IDE MCP；仅更新服务端不会刷新已安装工具的输入 schema。旧客户端不传标签时仍可创建或编辑工作项，编辑其他字段不会清空已有标签。服务端尚不支持标签时，Agent 必须明确说明升级要求，不能删除参数后声称成功；网络或权限错误也不能当作“不支持”。源码改动不代表 npm 包已发布。
+
 ## 版本工作项与端侧执行项
 
 本地 Agent 可以通过 FlowX MCP 查询版本工作项并领取执行项。版本工作项的 `kind` 可以是 `REQUIREMENT`（需求）、`ISSUE`（问题）或 `BUG`（缺陷）；三类记录共用执行计划和端侧领取协议。领取、完成、阻塞和取消都使用 `executionItemId`；领取和完成使用 `claimKey`，完成时可附带 `evidence`。领取成功后服务端会创建并返回绑定该执行项的 `executionSessionId`，用于端云执行追踪。多执行项计划不能通过工作流级入口整包领取，必须逐项领取；只有单执行项计划才允许工作流级本地启动。服务端负责依赖检查、并发保护、权限校验和幂等重试；Agent 不直接操作数据库，也不自行判断是否可以合并提测。常用工具为 `flowx_list_version_work_items`、`flowx_claim_execution_item`、`flowx_complete_execution_item`、`flowx_block_execution_item` 和 `flowx_cancel_execution_item`。

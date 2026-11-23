@@ -1,3 +1,4 @@
+import { workItemLabelsInclude } from '../projects/project-labels.service';
 import { parsePagination, pageResult, type PaginationQuery } from '../common/pagination';
 import { readChangePrototype } from '../requirements/requirement-change-prototype';
 import { effectiveRequirementDescription, readRequirementRevision } from '../requirements/requirement-change-context';
@@ -3495,6 +3496,7 @@ export class WorkflowService {
     return {
       workItem: {
         include: {
+          labels: workItemLabelsInclude,
           changes: { orderBy: { revision: 'asc' as const } },
           project: {
             include: {
@@ -6113,6 +6115,7 @@ export type WorkflowPayload = Prisma.WorkflowRunGetPayload<{
   include: {
     workItem: {
       include: {
+        labels: { select: { label: { select: { id: true; name: true; color: true } } }; orderBy: { labelId: "asc" } };
         changes: true;
         project: {
           include: {

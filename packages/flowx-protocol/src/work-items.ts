@@ -1,3 +1,4 @@
+import type { ProjectLabelSummary } from './project-labels.js';
 export const WORK_ITEM_KINDS = ['REQUIREMENT', 'ISSUE', 'BUG'] as const;
 export type WorkItemKind = (typeof WORK_ITEM_KINDS)[number];
 
@@ -8,6 +9,7 @@ export interface WorkItemRef {
   kind: WorkItemKind;
   title: string;
   status: string;
+  labels?: ProjectLabelSummary[];
 }
 
 export interface ExecutionItemRef {

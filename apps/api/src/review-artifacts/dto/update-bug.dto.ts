@@ -1,8 +1,13 @@
+import { IsDateString } from 'class-validator';
+import { IsArray as LabelIsArray, IsString as LabelIsString, ValidateIf as LabelValidateIf } from 'class-validator';
 import { Type } from 'class-transformer';
 import { IsArray, IsIn, IsNotEmpty, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { BugScreenshotUploadDto } from './bug-screenshot-upload.dto';
 
 export class UpdateBugDto {
+  @LabelValidateIf((_, value) => value !== undefined) @IsDateString() updatedAt?: string;
+  @LabelValidateIf((_, value) => value !== undefined) @LabelIsArray() @LabelIsString({ each: true })
+  labelIds?: string[];
   @IsOptional()
   @IsString()
   @IsNotEmpty()

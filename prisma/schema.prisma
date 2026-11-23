@@ -12,6 +12,7 @@ datasource db {
 model WorkItem {
   id                      String                  @id @default(cuid())
   /// 面向用户展示的项目内类型编号，例如 REQ-001、ISSUE-001、BUG-001。
+  labels                  WorkItemLabel[]
   displayCode             String?
   kind                    String                  @default("REQUIREMENT")
   status                  String                  @default("ACTIVE")
@@ -213,6 +214,7 @@ model Project {
   currentVersionId String?
   currentVersion   ProjectVersion?  @relation("ProjectCurrentVersion", fields: [currentVersionId], references: [id], onDelete: Restrict)
   versions         ProjectVersion[] @relation("ProjectVersions")
+  labels           ProjectLabel[]
   workItems        WorkItem[]
   workItemSequences WorkItemSequence[]
   bugs         Bug[]
@@ -1803,4 +1805,27 @@ model QualityTestReport {
   @@unique([requestId, kind, revision])
   @@unique([requestId, idempotencyKey])
   @@index([runId, createdAt])
+}
+
+model ProjectLabel {
+  id String @id @default(cuid())
+  projectId String
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name String
+  nameKey String
+  color String @default("BLUE")
+  workItems WorkItemLabel[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([projectId, nameKey])
+  @@index([projectId, createdAt, id])
+}
+
+model WorkItemLabel {
+  workItemId String
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  labelId String
+  label ProjectLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  @@id([workItemId, labelId])
+  @@index([labelId, workItemId])
 }

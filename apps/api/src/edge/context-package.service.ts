@@ -1,3 +1,4 @@
+import { withProjectLabels, workItemLabelsInclude } from '../projects/project-labels.service';
 import { Injectable } from '@nestjs/common';
 import {
   FLOWX_PROTOCOL_VERSION,
@@ -13,13 +14,14 @@ export class ContextPackageService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getTaskContext(executionItemId: string) {
-    return this.prisma.executionItem.findUniqueOrThrow({
+    const result = await this.prisma.executionItem.findUniqueOrThrow({
       where: { id: executionItemId },
       include: {
         executionPlan: {
           include: {
             workItem: {
               include: {
+                labels: workItemLabelsInclude,
                 changes: { orderBy: { revision: 'asc' } },
                 repository: true,
                 requirementRepositories: { include: { repository: true } },
@@ -29,6 +31,7 @@ export class ContextPackageService {
         },
       },
     });
+    return { ...result, executionPlan: { ...result.executionPlan, workItem: withProjectLabels(result.executionPlan.workItem) } };
   }
 
   async getContextPackage(executionItemId: string, sourceTool: SourceTool) {
@@ -45,6 +48,7 @@ export class ContextPackageService {
         workItemId: workItem.id,
         executionItemId: executionItem.id,
         title: executionItem.title,
+        labels: workItem.labels,
         description: executionItem.description || workItem.description,
         acceptanceCriteria: workItem.acceptanceCriteria,
         expectedBehavior: workItem.expectedBehavior,
@@ -82,6 +86,7 @@ export class ContextPackageService {
         workItemId: handoff.workItem.id,
         executionItemId: input.executionItemId,
         title: handoff.executionItem.title,
+        labels: handoff.workItem.labels ?? [],
         description: handoff.executionItem.description || handoff.workItem.description,
         acceptanceCriteria: handoff.workItem.acceptanceCriteria,
       },

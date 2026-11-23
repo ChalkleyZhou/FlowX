@@ -12,6 +12,7 @@ import { WorkItemEditDialog } from './WorkItemEditDialog';
 vi.mock('../api', () => ({
   api: {
     updateWorkItem: vi.fn(),
+    listProjectLabels: vi.fn().mockResolvedValue({items: [],page:1,pageSize:20,total:0,totalPages:1}),
     listProjectVersions: vi.fn(),
     getOrganizationMembers: vi.fn(),
   },
@@ -123,6 +124,15 @@ describe('WorkItemEditDialog', () => {
     await act(async () => { (document.querySelector('form') as HTMLFormElement).requestSubmit(); });
     expect(api.updateWorkItem).toHaveBeenCalledWith('work-item-1', expect.objectContaining({ title: '新标题', description: '新描述', remark: '新备注', ownerUserId: 'user-2', versionId: 'version-1', updatedAt: workItem.updatedAt }));
     expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ title: '更新后的标题' }));
+  });
+
+  it('回填全部标签，清空后随工作项提交空数组', async () => {
+    renderDialog({ ...workItem, labels: [{ id: 'l1', name: '前端', color: 'BLUE' }] });
+    expect(document.body.textContent).toContain('前端');
+    await act(async () => { document.querySelector<HTMLButtonElement>('button[aria-label="标签（可选）"]')?.click(); });
+    await act(async () => { Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(x => x.textContent === '清空全部')?.click(); });
+    await act(async () => { (document.querySelector('form') as HTMLFormElement).requestSubmit(); });
+    expect(api.updateWorkItem).toHaveBeenCalledWith(workItem.id, expect.objectContaining({ labelIds: [] }));
   });
 
   it('keeps the dialog open with the error when saving fails', async () => {
