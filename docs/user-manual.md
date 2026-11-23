@@ -50,7 +50,7 @@ flowx-local login
 
 完整说明见 **[本地 Agent](/local-agent)**。
 
-包含自动更新能力的本地包默认在使用时触发后台检查，五分钟内复用结果，本次操作照常执行。新版校验成功后，下次启动 CLI 或重新加载 IDE 的 FlowX MCP 生效；本地服务等当前请求结束后切换。自动更新保留自定义 Skill，可用 `flowx-local status` 查看版本与更新状态，在 `~/.flowx/local.json` 设置 `autoUpdate: false` 关闭检查。当前已发布的 `@flowx-ai/local@0.8.0` 已包含该能力；已有 `0.7.2` 用户请先手动运行一次 `flowx-local update`。
+包含自动更新能力的本地包默认在使用时触发后台检查，五分钟内复用结果，本次操作照常执行。新版校验成功后，下次启动 CLI 或重新加载 IDE 的 FlowX MCP 生效；本地服务等当前请求结束后切换。自动更新保留自定义 Skill，可用 `flowx-local status` 查看版本与更新状态，在 `~/.flowx/local.json` 设置 `autoUpdate: false` 关闭检查。当前已发布的 `@flowx-ai/local@0.9.0` 已包含该能力；已有 `0.7.2` 用户请先手动运行一次 `flowx-local update`。
 
 ## 快速上手
 

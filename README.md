@@ -38,7 +38,7 @@ flowchart LR
 
 业务记录、详情子列表和动态选项从服务端按页读取，API 默认每页 20 条、上限 100 条；部分页面采用较小页大小，以界面标注为准。搜索和筛选由服务端执行，数量统计覆盖当前权限及筛选范围；下拉选项在选择器内搜索，并在滚动到底部时按需加载下一页。列表页码保存在 URL，切换筛选后回到第一页。
 
-服务端、Web 和 `@flowx-ai/local` 需配套升级。列表 HTTP 使用 `page`、`pageSize` 和 `X-FlowX-List-Contract: pagination-v1`，响应为 `{ items, total, page, pageSize, totalPages }`；旧调用方收到 `426 / PAGINATION_UPGRADE_REQUIRED`，不能将第一页当作完整结果。本地安装更新后重新加载 IDE MCP；源码改动不代表已发布 npm 包。详情中的固定执行上下文及已生成报告内容保留完整业务语义。云效上游不支持成员分页，改为按 `userId` 查询单人组织身份，不读取全项目成员；此查询不验证项目成员资格。
+服务端、Web 和 `@flowx-ai/local` 需配套升级。列表 HTTP 使用 `page`、`pageSize` 和 `X-FlowX-List-Contract: pagination-v1`，响应为 `{ items, total, page, pageSize, totalPages }`；旧调用方收到 `426 / PAGINATION_UPGRADE_REQUIRED`，不能将第一页当作完整结果。本地安装更新后重新加载 IDE MCP；标签 MCP 需要 `@flowx-ai/protocol@0.8.0` 与 `@flowx-ai/local@0.9.0`，更新后请重新加载 IDE MCP。详情中的固定执行上下文及已生成报告内容保留完整业务语义。云效上游不支持成员分页，改为按 `userId` 查询单人组织身份，不读取全项目成员；此查询不验证项目成员资格。
 
 ### 快速确认提测范围
 
@@ -54,7 +54,7 @@ AI 生成的第一版范围默认纳入。提测详情左侧目录只筛选用�
 
 在“项目设置 → 标签”维护项目标签，支持自定义名称和 8 种预置色；同项目名称忽略英文大小写后唯一。需求、问题、缺陷及其所有发布版本共用标签，新建和编辑时可搜索、多选，每个工作项最多 20 个。换版本或移出版本保留标签；列表支持标签展示与“匹配任一所选标签”的筛选，并与其他条件同时生效。
 
-改名或改色会同步显示在关联工作项中；删除前提示使用数量，确认后只解除关联，保留工作项。标签不触发工作流、自动分派或状态变更。本地 Agent 通过 `flowx_list_project_labels` 查询已有标签，再在工作项创建、编辑和版本查询工具中传 `labelIds`；标签本身由网页维护。使用新参数需配套升级支持标签的服务端与本地包，并重新加载 IDE MCP；本次源码变更不代表已发布 npm 包。
+改名或改色会同步显示在关联工作项中；删除前提示使用数量，确认后只解除关联，保留工作项。标签不触发工作流、自动分派或状态变更。本地 Agent 通过 `flowx_list_project_labels` 查询已有标签，再在工作项创建、编辑和版本查询工具中传 `labelIds`；标签本身由网页维护。使用新参数需配套升级支持标签的服务端与本地包，并重新加载 IDE MCP；本次发布包含 `@flowx-ai/protocol@0.8.0` 与 `@flowx-ai/local@0.9.0`；更新后请重新加载 IDE MCP。
 
 ### 测试用例编号
 
@@ -188,7 +188,7 @@ Artifact 默认使用 API 项目文件服务。生产环境可以设置 `FLOWX_F
 
 OpenDesign 跑在设计师本机。打开正在使用的 FlowX，进入「本地 Agent」复制安装命令，再执行 `flowx-local login`。安装器不要求预先安装 Node.js；没有可用版本时会自动下载 FlowX 私有 runtime。详见 [本地 Agent 使用指南](docs/local-agent-guide.md)。贡献者可用 `pnpm --filter @flowx-ai/local build && pnpm flowx-local serve`。
 
-包含自动更新能力的本地包会在 CLI 启动、MCP 工具调用和网页请求本地服务时触发后台检查，五分钟内复用结果。新版校验成功后，下次 CLI/MCP 启动使用新版；本地服务在请求结束后切换，当前 IDE 任务继续运行，自定义 Skill 保留。`flowx-local status` 可查看运行版本与已准备版本；`~/.flowx/local.json` 的 `autoUpdate: false` 可关闭检查。此能力已随 `@flowx-ai/local@0.8.0` 发布；已有 `0.7.2` 用户请先运行一次 `flowx-local update`，再重新加载 IDE 的 FlowX MCP。
+包含自动更新能力的本地包会在 CLI 启动、MCP 工具调用和网页请求本地服务时触发后台检查，五分钟内复用结果。新版校验成功后，下次 CLI/MCP 启动使用新版；本地服务在请求结束后切换，当前 IDE 任务继续运行，自定义 Skill 保留。`flowx-local status` 可查看运行版本与已准备版本；`~/.flowx/local.json` 的 `autoUpdate: false` 可关闭检查。此能力已随 `@flowx-ai/local@0.9.0` 发布；已有 `0.7.2` 用户请先运行一次 `flowx-local update`，再重新加载 IDE 的 FlowX MCP。
 
 ## Docker deployment
 
@@ -307,4 +307,4 @@ This setup will:
 
 冒烟结果必须由原领取人回传。提测详情分别加载基本信息、报告和轮次；尚无报告时正常提示，局部加载失败可单独重试，权限不足、记录不存在和网络错误分别展示。
 
-完整功能测试与回归使用独立的 `INITIAL` / `REGRESSION` 本地轮次。从需求准备测试设计时可指定库与模块并补选，提测后明确每条快照的适用端；在执行详情交接本地 IDE，真实执行后分批回传结果与证据。失败轮次也可结束并生成测试报告。Bug 修复完成后新建回归，使用修复交付版本，汇总时显式指定替代范围，历史初测及报告保留。新功能通过通用质量 MCP 工具和 `flowx-local-test` 技能提供；旧冒烟继续承担提测前门禁。接口与统计口径见 [测试与质量中心](docs/quality-foundation.md)。新增工具需要更新到 `@flowx-ai/local@0.8.0` 并重载 IDE MCP。
+完整功能测试与回归使用独立的 `INITIAL` / `REGRESSION` 本地轮次。从需求准备测试设计时可指定库与模块并补选，提测后明确每条快照的适用端；在执行详情交接本地 IDE，真实执行后分批回传结果与证据。失败轮次也可结束并生成测试报告。Bug 修复完成后新建回归，使用修复交付版本，汇总时显式指定替代范围，历史初测及报告保留。新功能通过通用质量 MCP 工具和 `flowx-local-test` 技能提供；旧冒烟继续承担提测前门禁。接口与统计口径见 [测试与质量中心](docs/quality-foundation.md)。新增工具需要更新到 `@flowx-ai/local@0.9.0` 并重载 IDE MCP。
