@@ -10,6 +10,7 @@ import { ProjectsPage } from './ProjectsPage';
 import { WorkspacesPage } from './WorkspacesPage';
 
 vi.mock('../api', () => ({ api: { getBugs: vi.fn(), listProjectLabels: vi.fn(), getIssues: vi.fn(), getWorkspaces: vi.fn(), getProjects: vi.fn(), getWorkspaceRepositories: vi.fn() } }));
+vi.mock('../auth', () => ({ useAuth: () => ({ session: { organization: { role: 'member' } } }) }));
 const toast = { error: vi.fn(), success: vi.fn() };
 vi.mock('../components/ui/toast', () => ({ useToast: () => toast }));
 vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => vi.fn() }));

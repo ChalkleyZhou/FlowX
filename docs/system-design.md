@@ -6,6 +6,8 @@
 
 `ProjectLabel` 是项目所有版本及三类 `WorkItem` 共用的标签实体，保存规范化名称、`nameKey` 和预置颜色标识；`(projectId, nameKey)` 唯一。`WorkItemLabel` 使用 `(workItemId, labelId)` 主键建立显式多对多关联，并为标签反查建立索引。标签或工作项删除时级联清理关联，工作项换版本或解除版本归属时保留关联。
 
+项目永久删除仅允许组织主管理员执行；服务端会在事务中检查运行中的工作流阶段和活动执行会话，命中时拒绝删除，否则清理项目业务关联并级联删除项目数据。
+
 `ProjectLabelsService` 集中执行名称/颜色校验、项目/组织归属校验、分页管理和标签数量统计。`GET/POST /projects/:projectId/labels` 与 `PATCH/DELETE /projects/:projectId/labels/:labelId` 提供标签管理；分页采用既有 `pagination-v1` 契约。新增实体与关联均纳入 Prisma 组织隔离，不能仅依赖认证 guard。工作项写入在同一事务中验证全部标签属于目标项目，结合 `updatedAt` 乐观并发控制替换关联；`labelIds` 省略表示保留，空数组表示清空，`null` 拒绝。创建省略标签时默认无标签。
 
 工作项读取投影为 `labels: [{ id, name, color }]`，标签管理额外返回跨版本/状态/类型的 `workItemCount`。列表查询的 `labelIds` 为逗号分隔 ID，标签之间取 OR，与其他条件取 AND，数据、计数与普通列表的 `summary` 统计使用同一过滤，完整筛选集的统计不依赖当前页。`/bugs` 专属接口与原型 ZIP 创建复用同一标签校验和事务规则。改名、改色采用当前标签实体展示，不批量改写工作项或历史快照；标签变化不推进工作流，也不触发状态/负责人通知。

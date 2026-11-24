@@ -23,6 +23,13 @@ class LocalStorageMock {
 }
 
 describe('api helpers', () => {
+  it('删除项目使用项目级 DELETE 接口并编码项目 ID', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, projectId: 'project/1' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    await api.deleteProject('project/1');
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/projects/project%2F1'), expect.objectContaining({ method: 'DELETE' }));
+  });
+
   it('通用质量接口透传快照目标端、版本控制及报告替代关系', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => pageResult([]) });
     vi.stubGlobal('fetch', fetchMock);

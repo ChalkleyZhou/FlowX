@@ -450,6 +450,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  deleteProject: (projectId: string) => request<{ success: true; projectId: string }>(`/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' }),
   getBriefingSources: (query?: ListQuery) => requestPage<BriefingSource>('/briefing-sources', query),
   resolveBriefingRepositoryBinding: (params: {
     workspaceId: string;

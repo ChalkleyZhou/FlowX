@@ -7,7 +7,8 @@ import { api } from '../api';
 import type { Project } from '../types';
 import { ProjectDetailPage } from './ProjectDetailPage';
 
-vi.mock('../api', () => ({ api: { getProject: vi.fn() } }));
+vi.mock('../api', () => ({ api: { getProject: vi.fn(), deleteProject: vi.fn() } }));
+vi.mock('../auth', () => ({ useAuth: () => ({ session: { organization: { role: 'admin' } } }) }));
 vi.mock('../components/ui/toast', () => ({ useToast: () => ({ success: vi.fn(), error: vi.fn() }) }));
 vi.mock('../components/ProjectLabelsPanel', () => ({ ProjectLabelsPanel: ({ projectId }: { projectId: string }) => <div>项目标签管理 {projectId}</div> }));
 vi.mock('../components/ProjectFeedsPanel', () => ({ ProjectFeedsPanel: () => null }));

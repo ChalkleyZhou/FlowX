@@ -1,5 +1,5 @@
 import type { PaginationQuery } from '../common/pagination';
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { CreateProjectVersionDto } from './dto/create-project-version.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
@@ -64,5 +64,13 @@ export class ProjectsController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.projectsService.findDetail(id);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string, @Req() req: { authSession?: { organization?: { role?: string | null } | null } }) {
+    if (req.authSession?.organization?.role !== 'admin') {
+      throw new ForbiddenException('只有主组织管理员可以删除项目。');
+    }
+    return this.projectsService.remove(id);
   }
 }

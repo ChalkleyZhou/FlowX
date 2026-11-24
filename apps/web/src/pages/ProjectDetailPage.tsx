@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
+import { useAuth } from '../auth';
 import { PageHeader } from '../components/PageHeader';
 import { ProjectFeedsPanel } from '../components/ProjectFeedsPanel';
 import { ProjectRequiredState } from '../components/ProjectRequiredState';
@@ -13,16 +14,22 @@ import { Spinner } from '../components/ui/spinner';
 import { useToast } from '../components/ui/toast';
 import type { Project } from '../types';
 import { useScopedProjectId } from '../project-scope-context';
+import { ProjectDeleteDialog } from '../components/ProjectDeleteDialog';
+import { writeCurrentProjectId } from '../project-scope';
 
 export function ProjectDetailPage() {
   const { projectId: routeProjectId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const tab = location.hash === '#project-versions' ? 'versions' : ['versions', 'labels', 'briefing', 'codeReview'].includes(searchParams.get('tab') ?? '') ? searchParams.get('tab')! : 'versions';
   const projectId = useScopedProjectId() || routeProjectId || '';
   const toast = useToast();
+  const { session } = useAuth();
+  const canDeleteProjects = session?.organization?.role === 'admin';
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
 
   async function refresh() {
     if (!projectId) {
@@ -60,6 +67,7 @@ export function ProjectDetailPage() {
 
   return (
     <>
+      <ProjectDeleteDialog project={canDeleteProjects ? deletingProject : null} onOpenChange={open => { if (!open) setDeletingProject(null); }} onDeleted={() => { writeCurrentProjectId(null); setDeletingProject(null); navigate('/projects'); }} />
       <PageHeader
         eyebrow="Project"
         title={project.name}
@@ -72,6 +80,7 @@ export function ProjectDetailPage() {
             <Button variant="outline" asChild>
               <Link to="/projects">全部项目</Link>
             </Button>
+            {canDeleteProjects ? <Button variant="destructive" onClick={() => setDeletingProject(project)}>删除项目</Button> : null}
           </div>
         )}
       />

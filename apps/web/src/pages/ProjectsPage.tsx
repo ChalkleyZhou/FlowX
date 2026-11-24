@@ -27,6 +27,9 @@ import { Textarea } from '../components/ui/textarea';
 import { useToast } from '../components/ui/toast';
 import { useStoredListFilters } from '../utils/list-filter-storage';
 import { useProjectScopeOptional } from '../project-scope-context';
+import { writeCurrentProjectId } from '../project-scope';
+import { useAuth } from '../auth';
+import { ProjectDeleteDialog } from '../components/ProjectDeleteDialog';
 import type { Project, Workspace } from '../types';
 
 export function ProjectsPage() {
@@ -42,6 +45,9 @@ export function ProjectsPage() {
     description: '',
   });
   const toast = useToast();
+  const { session } = useAuth();
+  const canDeleteProjects = session?.organization?.role === 'admin';
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
 
   const list = useListPage(api.getProjects, { workspaceId: selectedWorkspaceId });
   const { items: filteredProjects, loading, refresh } = list;
@@ -82,6 +88,7 @@ export function ProjectsPage() {
 
   return (
     <>
+      <ProjectDeleteDialog project={canDeleteProjects ? deletingProject : null} onOpenChange={open => { if (!open) setDeletingProject(null); }} onDeleted={deletedId => { if (scope?.projectId === deletedId) writeCurrentProjectId(null); setDeletingProject(null); void refresh(); }} />
       <Dialog
         open={createModalOpen}
         onOpenChange={(open) => {
@@ -196,7 +203,7 @@ export function ProjectsPage() {
                     </p>
                   }
                   actions={(
-                    <UiButton variant="outline" onClick={() => enterProject(project.id)}>进入项目</UiButton>
+                    <div className="flex flex-wrap gap-2"><UiButton variant="outline" onClick={() => enterProject(project.id)}>进入项目</UiButton>{canDeleteProjects ? <UiButton variant="destructive" onClick={() => setDeletingProject(project)}>删除项目</UiButton> : null}</div>
                   )}
                 />
               ))}
